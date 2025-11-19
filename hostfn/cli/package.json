@@ -1,0 +1,53 @@
+{
+  "name": "hostfn",
+  "version": "0.1.4",
+  "license": "Apache-2.0",
+  "description": "Universal application deployment CLI",
+  "type": "module",
+  "bin": {
+    "hostfn": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "chalk": "^5.3.0",
+    "ora": "^7.0.1",
+    "inquirer": "^9.2.12",
+    "zod": "^3.22.4",
+    "ssh2": "^1.15.0",
+    "dotenv": "^16.3.1",
+    "execa": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ssh2": "^1.15.0",
+    "@types/inquirer": "^9.0.7",
+    "@vitest/coverage-v8": "^1.0.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.0.0"
+  },
+  "author": "21n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/hostfn.git"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/hostfn/issues"
+  },
+  "keywords": [
+    "deployment",
+    "vps"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

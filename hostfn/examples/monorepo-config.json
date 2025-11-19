@@ -1,0 +1,76 @@
+{
+  "name": "21n",
+  "runtime": "nodejs",
+  "version": "18",
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "instances": "max"
+    },
+    "staging": {
+      "server": "ubuntu@staging.example.com",
+      "port": 3000,
+      "instances": 2
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "production"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "services": {
+    "account": {
+      "port": 3001,
+      "path": "services/account",
+      "domain": "account.example.com",
+      "instances": "max"
+    },
+    "auth": {
+      "port": 3002,
+      "path": "services/auth",
+      "domain": "auth.example.com",
+      "instances": 2
+    },
+    "notification": {
+      "port": 3003,
+      "path": "services/notification",
+      "domain": "notification.example.com"
+    },
+    "analytics": {
+      "port": 3004,
+      "path": "services/analytics"
+    }
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  },
+  "env": {
+    "required": ["NODE_ENV", "DATABASE_URL"],
+    "optional": ["REDIS_URL", "LOG_LEVEL"]
+  },
+  "sync": {
+    "exclude": [
+      "node_modules",
+      ".git",
+      ".github",
+      "dist",
+      "build",
+      ".env",
+      ".env.*",
+      "*.log",
+      ".turbo",
+      ".wrangler"
+    ]
+  },
+  "backup": {
+    "keep": 5
+  }
+}

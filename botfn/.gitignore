@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Misc
+.DS_Store
+*.log
+*.log.*
+
+# Environment variables
+.env
+.env*.local
+.env.production
+
+# Turbo
+.turbo/
+
+# Wrangler
+.wrangler/
+.dev.vars
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.tsbuildinfo
+
+# Compiled JavaScript in src directories (Cloudflare Workers don't need compiled output)
+services/persistence/src/**/*.js
+
+
+*.pem
+# Conduct
+_conduct/logs/
+_conduct/*.db
+_conduct/*.db-*
+
+
+.cursor/
+.factory/
+.github/prompts/

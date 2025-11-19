@@ -1,0 +1,39 @@
+{
+  "name": "superset",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Building blocks for software development",
+  "workspaces": ["searchfn", "botfn/*", "hostfn/*"],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "test:coverage": "turbo run test:coverage",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "fast-glob": "^3.3.3",
+    "@cloudflare/vitest-pool-workers": "^0.10.4",
+    "@types/node": "^20.0.0",
+    "@vitest/ui": "^3.2.4",
+    "msw": "^2.11.6",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "21n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/superset.git"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/superset/issues"
+  },
+  "packageManager": "npm@10.2.0"
+}

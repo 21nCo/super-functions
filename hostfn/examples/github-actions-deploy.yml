@@ -1,0 +1,40 @@
+name: Deploy with hostfn
+
+on:
+  push:
+    branches:
+      - main
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install hostfn
+        run: npm install -g hostfn
+      
+      - name: Deploy to production
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+          HOSTFN_SSH_PASSPHRASE: ${{ secrets.HOSTFN_SSH_PASSPHRASE }}
+        run: hostfn deploy production --ci
+
+  deploy-selfhosted:
+    # This job runs on a self-hosted runner on the deployment server
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy locally (no SSH needed)
+        run: hostfn deploy production --local --ci

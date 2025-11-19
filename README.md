@@ -1,1 +1,2 @@
-# super functions
+# Superset
+The building blocks for software development

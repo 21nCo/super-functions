@@ -1,0 +1,19 @@
+name = "botfn-persistence-service"
+main = "src/index.cloudflare.ts"
+compatibility_date = "2024-01-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "botfn-db"
+database_id = "2f7ed98f-54aa-4fe5-a99f-97fa97a36f10"
+
+# Environment variables (if needed)
+[vars]
+# Add non-secret variables here if needed
+
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

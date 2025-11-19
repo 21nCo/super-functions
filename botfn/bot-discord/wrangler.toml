@@ -1,0 +1,21 @@
+name = "discord-bot"
+main = "src/index.cloudflare.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Non-sensitive environment variables
+PERSISTENCE_SERVICE_URL = "https://persistence.bot.21n.org"
+
+# Add secrets via:
+# wrangler secret put DISCORD_PUBLIC_KEY
+# wrangler secret put DISCORD_CLIENT_ID
+# wrangler secret put GITHUB_APP_ID
+# wrangler secret put GITHUB_INSTALLATION_ID
+# wrangler secret put GITHUB_PRIVATE_KEY
+# wrangler secret put LINEAR_API_KEY
+# wrangler secret put LINEAR_TEAM_ID
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
