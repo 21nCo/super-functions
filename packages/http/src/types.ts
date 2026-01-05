@@ -1,0 +1,155 @@
+/**
+ * Core type definitions for the HTTP abstraction layer
+ */
+
+// ============================================================================
+// Router Configuration
+// ============================================================================
+
+export interface RouterOptions<TContext = any> {
+  /** Route definitions */
+  routes: Route<TContext>[];
+
+  /** Global middleware (runs before all routes) */
+  middleware?: Middleware<TContext>[];
+
+  /** Context factory (creates context per request) */
+  context?: TContext | ((request: Request) => Promise<TContext> | TContext);
+
+  /** Error handler */
+  onError?: (error: Error, request: Request) => Response | Promise<Response>;
+
+  /** Base path for all routes */
+  basePath?: string;
+
+  /** CORS configuration */
+  cors?: CorsOptions | false;
+}
+
+// ============================================================================
+// Route Definition
+// ============================================================================
+
+export interface Route<TContext = any> {
+  /** HTTP method */
+  method: HttpMethod;
+
+  /** Route path (supports params: /users/:id) */
+  path: string;
+
+  /** Route handler */
+  handler: RouteHandler<TContext>;
+
+  /** Route-specific middleware */
+  middleware?: Middleware<TContext>[];
+
+  /** Metadata (for docs, validation, etc.) */
+  meta?: Record<string, any>;
+}
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+
+export type RouteHandler<TContext = any> = (
+  request: Request,
+  context: TContext & RouteContext
+) => Promise<Response> | Response;
+
+// ============================================================================
+// Route Context
+// ============================================================================
+
+export interface RouteContext {
+  /** Parsed path params */
+  params: Record<string, string>;
+
+  /** Query string parsed as URLSearchParams */
+  query: URLSearchParams;
+
+  /** Request URL */
+  url: URL;
+
+  /** Convenience: parse JSON body */
+  json: <T = any>() => Promise<T>;
+
+  /** Convenience: parse form data */
+  formData: () => Promise<FormData>;
+
+  /** Convenience: get text body */
+  text: () => Promise<string>;
+}
+
+// ============================================================================
+// Middleware
+// ============================================================================
+
+export type Middleware<TContext = any> = (
+  request: Request,
+  context: TContext & RouteContext,
+  next: () => Promise<Response>
+) => Promise<Response> | Response;
+
+// ============================================================================
+// Router Interface
+// ============================================================================
+
+export interface Router<TContext = any> {
+  /** Handle a Web Standard Request */
+  handle(request: Request): Promise<Response>;
+
+  /** Get all routes */
+  getRoutes(): Route<TContext>[];
+
+  /** Add route dynamically */
+  addRoute(route: Route<TContext>): void;
+
+  /** Add middleware dynamically */
+  use(middleware: Middleware<TContext>): void;
+
+  /** Match route by method and path */
+  match(method: string, path: string): MatchedRoute<TContext> | null;
+
+  /**
+   * Universal handler - can be used directly in Fetch-native frameworks
+   * This is an alias to router.handle for convenience
+   */
+  handler: (request: Request) => Promise<Response>;
+}
+
+export interface MatchedRoute<TContext = any> {
+  route: Route<TContext>;
+  params: Record<string, string>;
+}
+
+// ============================================================================
+// CORS Configuration
+// ============================================================================
+
+export interface CorsOptions {
+  /** Allowed origins (string, array, or function) */
+  origin?: string | string[] | ((origin: string) => boolean);
+
+  /** Allowed methods */
+  methods?: HttpMethod[];
+
+  /** Allowed headers */
+  allowedHeaders?: string[];
+
+  /** Exposed headers */
+  exposedHeaders?: string[];
+
+  /** Allow credentials */
+  credentials?: boolean;
+
+  /** Max age for preflight cache */
+  maxAge?: number;
+}
+
+// ============================================================================
+// Internal Types
+// ============================================================================
+
+export interface CompiledRoute<TContext = any> {
+  route: Route<TContext>;
+  pattern: RegExp;
+  keys: string[];
+}

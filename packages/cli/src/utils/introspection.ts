@@ -1,0 +1,350 @@
+/**
+ * Schema introspection utilities for different database types
+ * Queries information_schema or equivalent to discover current database structure
+ */
+
+import type { TableSchema, FieldSchema } from '@superfunctions/db';
+
+export interface DatabaseColumn {
+  tableName: string;
+  columnName: string;
+  dataType: string;
+  isNullable: boolean;
+  defaultValue: string | null;
+  isPrimaryKey: boolean;
+  isUnique: boolean;
+}
+
+export interface DatabaseTable {
+  name: string;
+  columns: DatabaseColumn[];
+  indexes: DatabaseIndex[];
+  constraints: DatabaseConstraint[];
+}
+
+export interface DatabaseIndex {
+  name: string;
+  tableName: string;
+  columns: string[];
+  isUnique: boolean;
+}
+
+export interface DatabaseConstraint {
+  name: string;
+  type: 'PRIMARY KEY' | 'FOREIGN KEY' | 'UNIQUE' | 'CHECK';
+  tableName: string;
+  columns: string[];
+  referencedTable?: string;
+  referencedColumns?: string[];
+}
+
+/**
+ * Introspect PostgreSQL database schema
+ */
+export async function introspectPostgres(
+  db: any,
+  schema: string = 'public',
+  tablePrefix?: string
+): Promise<DatabaseTable[]> {
+  // Query tables
+  const tablesQuery = `
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = $1 
+      AND table_type = 'BASE TABLE'
+      ${tablePrefix ? `AND table_name LIKE $2` : ''}
+    ORDER BY table_name
+  `;
+  const tables = await db.query(
+    tablesQuery,
+    tablePrefix ? [schema, `${tablePrefix}%`] : [schema]
+  );
+
+  const result: DatabaseTable[] = [];
+
+  for (const { table_name } of tables.rows) {
+    // Query columns
+    const columnsQuery = `
+      SELECT 
+        c.column_name,
+        c.data_type,
+        c.is_nullable,
+        c.column_default,
+        CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
+        CASE WHEN uq.column_name IS NOT NULL THEN true ELSE false END as is_unique
+      FROM information_schema.columns c
+      LEFT JOIN (
+        SELECT ku.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage ku 
+          ON tc.constraint_name = ku.constraint_name
+        WHERE tc.table_schema = $1 
+          AND tc.table_name = $2
+          AND tc.constraint_type = 'PRIMARY KEY'
+      ) pk ON c.column_name = pk.column_name
+      LEFT JOIN (
+        SELECT ku.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage ku 
+          ON tc.constraint_name = ku.constraint_name
+        WHERE tc.table_schema = $1 
+          AND tc.table_name = $2
+          AND tc.constraint_type = 'UNIQUE'
+      ) uq ON c.column_name = uq.column_name
+      WHERE c.table_schema = $1 
+        AND c.table_name = $2
+      ORDER BY c.ordinal_position
+    `;
+    const columns = await db.query(columnsQuery, [schema, table_name]);
+
+    // Query indexes
+    const indexesQuery = `
+      SELECT 
+        i.indexname as name,
+        i.tablename,
+        ARRAY_AGG(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns,
+        ix.indisunique as is_unique
+      FROM pg_indexes i
+      JOIN pg_class c ON c.relname = i.indexname
+      JOIN pg_index ix ON ix.indexrelid = c.oid
+      JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = ANY(ix.indkey)
+      WHERE i.schemaname = $1 
+        AND i.tablename = $2
+      GROUP BY i.indexname, i.tablename, ix.indisunique
+    `;
+    const indexes = await db.query(indexesQuery, [schema, table_name]);
+
+    result.push({
+      name: table_name,
+      columns: columns.rows.map((c: any) => ({
+        tableName: table_name,
+        columnName: c.column_name,
+        dataType: c.data_type,
+        isNullable: c.is_nullable === 'YES',
+        defaultValue: c.column_default,
+        isPrimaryKey: c.is_primary_key,
+        isUnique: c.is_unique,
+      })),
+      indexes: indexes.rows.map((idx: any) => ({
+        name: idx.name,
+        tableName: idx.tablename,
+        columns: idx.columns,
+        isUnique: idx.is_unique,
+      })),
+      constraints: [],
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Introspect MySQL database schema
+ */
+export async function introspectMySQL(
+  db: any,
+  database: string,
+  tablePrefix?: string
+): Promise<DatabaseTable[]> {
+  // Query tables
+  const tablesQuery = `
+    SELECT TABLE_NAME as table_name
+    FROM information_schema.TABLES 
+    WHERE TABLE_SCHEMA = ?
+      AND TABLE_TYPE = 'BASE TABLE'
+      ${tablePrefix ? `AND TABLE_NAME LIKE ?` : ''}
+    ORDER BY TABLE_NAME
+  `;
+  const [tables] = await db.query(
+    tablesQuery,
+    tablePrefix ? [database, `${tablePrefix}%`] : [database]
+  );
+
+  const result: DatabaseTable[] = [];
+
+  for (const { table_name } of tables) {
+    // Query columns
+    const columnsQuery = `
+      SELECT 
+        COLUMN_NAME as column_name,
+        DATA_TYPE as data_type,
+        IS_NULLABLE as is_nullable,
+        COLUMN_DEFAULT as column_default,
+        COLUMN_KEY as column_key
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION
+    `;
+    const [columns] = await db.query(columnsQuery, [database, table_name]);
+
+    // Query indexes
+    const indexesQuery = `
+      SELECT 
+        INDEX_NAME as name,
+        TABLE_NAME as table_name,
+        NON_UNIQUE as non_unique,
+        COLUMN_NAME as column_name
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = ?
+        AND TABLE_NAME = ?
+      ORDER BY INDEX_NAME, SEQ_IN_INDEX
+    `;
+    const [indexRows] = await db.query(indexesQuery, [database, table_name]);
+
+    // Group indexes by name
+    const indexMap = new Map<string, DatabaseIndex>();
+    for (const row of indexRows as any[]) {
+      if (!indexMap.has(row.name)) {
+        indexMap.set(row.name, {
+          name: row.name,
+          tableName: row.table_name,
+          columns: [],
+          isUnique: row.non_unique === 0,
+        });
+      }
+      indexMap.get(row.name)!.columns.push(row.column_name);
+    }
+
+    result.push({
+      name: table_name,
+      columns: (columns as any[]).map((c) => ({
+        tableName: table_name,
+        columnName: c.column_name,
+        dataType: c.data_type,
+        isNullable: c.is_nullable === 'YES',
+        defaultValue: c.column_default,
+        isPrimaryKey: c.column_key === 'PRI',
+        isUnique: c.column_key === 'UNI',
+      })),
+      indexes: Array.from(indexMap.values()),
+      constraints: [],
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Introspect SQLite database schema
+ */
+export async function introspectSQLite(
+  db: any,
+  tablePrefix?: string
+): Promise<DatabaseTable[]> {
+  // Query tables
+  const tablesQuery = `
+    SELECT name as table_name
+    FROM sqlite_master 
+    WHERE type = 'table' 
+      AND name NOT LIKE 'sqlite_%'
+      ${tablePrefix ? `AND name LIKE ?` : ''}
+    ORDER BY name
+  `;
+  const tables = await db.all(
+    tablesQuery,
+    tablePrefix ? [`${tablePrefix}%`] : []
+  );
+
+  const result: DatabaseTable[] = [];
+
+  for (const { table_name } of tables) {
+    // Query columns using PRAGMA
+    const columns = await db.all(`PRAGMA table_info(${table_name})`);
+
+    // Query indexes
+    const indexesQuery = await db.all(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?`,
+      [table_name]
+    );
+
+    const indexes: DatabaseIndex[] = [];
+    for (const { name } of indexesQuery) {
+      const indexInfo = await db.all(`PRAGMA index_info(${name})`);
+      indexes.push({
+        name,
+        tableName: table_name,
+        columns: indexInfo.map((i: any) => i.name),
+        isUnique: false, // Would need index_list to determine
+      });
+    }
+
+    result.push({
+      name: table_name,
+      columns: columns.map((c: any) => ({
+        tableName: table_name,
+        columnName: c.name,
+        dataType: c.type,
+        isNullable: c.notnull === 0,
+        defaultValue: c.dflt_value,
+        isPrimaryKey: c.pk === 1,
+        isUnique: false,
+      })),
+      indexes,
+      constraints: [],
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Convert database column type to FieldSchema type
+ */
+export function mapDatabaseTypeToFieldType(dbType: string): FieldSchema['type'] {
+  const normalized = dbType.toLowerCase();
+
+  if (normalized.includes('int') || normalized.includes('serial')) {
+    return normalized.includes('big') ? 'bigint' : 'number';
+  }
+  if (
+    normalized.includes('varchar') ||
+    normalized.includes('text') ||
+    normalized.includes('char')
+  ) {
+    return 'string';
+  }
+  if (normalized.includes('bool')) {
+    return 'boolean';
+  }
+  if (
+    normalized.includes('timestamp') ||
+    normalized.includes('date') ||
+    normalized.includes('time')
+  ) {
+    return 'date';
+  }
+  if (normalized.includes('json')) {
+    return 'json';
+  }
+
+  // Default to string for unknown types
+  return 'string';
+}
+
+/**
+ * Convert DatabaseTable to TableSchema
+ */
+export function databaseTableToSchema(dbTable: DatabaseTable): TableSchema {
+  const fields: Record<string, FieldSchema> = {};
+
+  for (const col of dbTable.columns) {
+    fields[col.columnName] = {
+      type: mapDatabaseTypeToFieldType(col.dataType),
+      required: !col.isNullable,
+      unique: col.isUnique || col.isPrimaryKey,
+      fieldName: col.columnName,
+    };
+  }
+
+  return {
+    modelName: dbTable.name,
+    fields,
+    indexes: dbTable.indexes.map((idx) => ({
+      name: idx.name,
+      fields: idx.columns,
+      unique: idx.isUnique,
+    })),
+    constraints: [],
+  };
+}

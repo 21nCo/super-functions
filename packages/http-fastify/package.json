@@ -1,0 +1,56 @@
+{
+  "name": "@superfunctions/http-fastify",
+  "version": "0.1.1",
+  "description": "Fastify adapter for @superfunctions/http",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@superfunctions/http": "^0.1.0",
+    "fastify": "^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@superfunctions/http": "^0.1.0",
+    "@types/node": "^22.0.0",
+    "fastify": "^5.2.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "http",
+    "fastify",
+    "adapter",
+    "router",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/http-fastify"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
