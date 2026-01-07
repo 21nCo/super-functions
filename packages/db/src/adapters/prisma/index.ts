@@ -82,12 +82,14 @@ function buildPrismaWhere(where: WhereClause[]): any {
 
     for (let i = 1; i < conditions.length; i++) {
       if (where[i].connector === 'OR') {
+        // Flush current AND group before starting OR
         if (currentGroup.length > 0) {
-          result.AND.push(currentGroup.length === 1 ? currentGroup[0] : { OR: currentGroup });
-          currentGroup = [];
+          result.AND.push(currentGroup.length === 1 ? currentGroup[0] : { AND: currentGroup });
         }
-        currentGroup.push(conditions[i]);
+        // Start new group with the OR condition
+        currentGroup = [conditions[i]];
       } else {
+        // Continue building AND group
         currentGroup.push(conditions[i]);
       }
     }
@@ -163,6 +165,22 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
         });
       },
 
+      /**
+       * Update a single record matching the where clause.
+       * 
+       * @important This method uses updateMany followed by findFirst, which can have race conditions
+       * when the where clause is not unique:
+       * - Another process may modify or delete rows between updateMany and findFirst
+       * - findFirst may return a different row than what was actually updated
+       * 
+       * For atomic/consistent updates, wrap this call in adapter.transaction().
+       * 
+       * Note: Current codebase usages typically use unique id equality and are therefore safe.
+       * 
+       * @param {UpdateParams} params - Update parameters including model, where, data, and select
+       * @returns {Promise<T>} The updated record
+       * @throws {Error} If no rows were updated
+       */
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
         const m = resolveModel(model);
         const prismaWhere = buildPrismaWhere(where);
@@ -181,10 +199,22 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
         await m.deleteMany({ where: prismaWhere });
       },
 
+      /**
+       * Create multiple records in batch.
+       * 
+       * @important Prisma's createMany does not return created records with DB-generated values.
+       * This method returns the input data as-is, which means:
+       * - Auto-generated IDs will NOT be included
+       * - Database default values will NOT be included
+       * - Computed columns will NOT be included
+       * 
+       * If you need the created records with DB-generated values, use individual create() calls
+       * or query the records after creation using unique keys.
+       */
       async createMany<T = any>({ model, data }: CreateManyParams): Promise<T[]> {
         const m = resolveModel(model);
         await m.createMany({ data });
-        // Prisma createMany doesn't return records; fallback
+        // Prisma createMany doesn't return records; fallback to input data
         return data as T[];
       },
 
@@ -243,12 +273,20 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
       async getSchemaVersion(namespace: string): Promise<number> {
         if (!schemaVersionsTable) return 0;
         const m = (prisma as any)[schemaVersionsTable];
-        if (!m) return 0;
+        if (!m) return 0;  // Model not configured
+
         try {
           const record = await m.findFirst({ where: { namespace } });
           return record?.version ?? 0;
-        } catch {
-          return 0;
+        } catch (error: any) {
+          // Check if error is due to table not existing
+          // Prisma error code P2021 = table does not exist
+          if (error.code === 'P2021') {
+            return 0;
+          }
+          // For other errors (DB connectivity, etc.), log and rethrow
+          console.error(`Error getting schema version for namespace "${namespace}":`, error.message);
+          throw error;
         }
       },
 

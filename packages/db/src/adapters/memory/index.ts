@@ -375,6 +375,7 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
 
   let hasOrClause = false;
   let orMatched = false;
+  let andMatched = true;
 
   for (const clause of where) {
     const value = record[clause.field];
@@ -384,9 +385,16 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
       hasOrClause = true;
       if (matches) orMatched = true;
     } else {
-      // Default AND
-      if (!matches) return false;
+      // Default AND - all AND clauses must match
+      if (!matches) {
+        andMatched = false;
+      }
     }
+  }
+
+  // All AND clauses must match
+  if (!andMatched) {
+    return false;
   }
 
   // If we had OR clauses, at least one must have matched

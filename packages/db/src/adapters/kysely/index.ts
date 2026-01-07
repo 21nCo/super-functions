@@ -261,14 +261,19 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
           const columns = Object.keys(allData);
           const values = Object.values(allData);
 
+          // Helper function to escape MySQL identifiers
+          const escapeIdentifier = (identifier: string): string => {
+            return `\`${identifier.replace(/`/g, '``')}\``;
+          };
+
           // Build UPDATE SET clause for ON DUPLICATE KEY
           const updateSet = Object.keys(update)
-            .map(key => `${key} = VALUES(${key})`)
+            .map(key => `${escapeIdentifier(key)} = VALUES(${escapeIdentifier(key)})`)
             .join(', ');
 
-          // Execute raw SQL for atomic upsert
+          // Execute raw SQL for atomic upsert with properly escaped identifiers
           const sql = `
-            INSERT INTO ${table} (${columns.join(', ')})
+            INSERT INTO ${escapeIdentifier(table)} (${columns.map(escapeIdentifier).join(', ')})
             VALUES (${columns.map(() => '?').join(', ')})
             ON DUPLICATE KEY UPDATE ${updateSet}
           `;

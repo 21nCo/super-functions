@@ -2,6 +2,16 @@ import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import type { DatabaseTable } from './introspection.js';
 
 /**
+ * Convert string to snake_case
+ */
+function toSnakeCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, '_$1')
+    .toLowerCase()
+    .replace(/^_/, '');
+}
+
+/**
  * Map FieldSchema type to generic SQL type for comparison
  */
 function mapFieldTypeToSQLType(type: FieldSchema['type']): string {
@@ -91,17 +101,25 @@ export function diffSchemas(
  */
 export function diffTables(
   required: TableSchema[],
-  current: DatabaseTable[]
+  current: DatabaseTable[],
+  namespace: string
 ): TableDiff[] {
   const diffs: TableDiff[] = [];
   const currentMap = new Map(current.map((t) => [t.name, t]));
-  const requiredMap = new Map(required.map((t) => [t.modelName, t]));
+
+  // Map required tables to their actual DB names (namespace_snake_case)
+  const requiredMap = new Map(
+    required.map((t) => {
+      const dbName = `${namespace}_${toSnakeCase(t.modelName)}`;
+      return [dbName, t];
+    })
+  );
 
   // Check for missing tables (need to create)
-  for (const reqTable of required) {
-    if (!currentMap.has(reqTable.modelName)) {
+  for (const [dbName, _reqTable] of requiredMap.entries()) {
+    if (!currentMap.has(dbName)) {
       diffs.push({
-        tableName: reqTable.modelName,
+        tableName: dbName,
         action: 'create',
       });
     }
@@ -118,8 +136,8 @@ export function diffTables(
   }
 
   // Check for schema mismatches (need to alter)
-  for (const reqTable of required) {
-    const curTable = currentMap.get(reqTable.modelName);
+  for (const [dbName, reqTable] of requiredMap.entries()) {
+    const curTable = currentMap.get(dbName);
     if (!curTable) continue;
 
     const missingColumns: string[] = [];
@@ -176,7 +194,7 @@ export function diffTables(
 
     if (missingColumns.length > 0 || extraColumns.length > 0 || columnChanges.length > 0) {
       diffs.push({
-        tableName: reqTable.modelName,
+        tableName: `${namespace}_${toSnakeCase(reqTable.modelName)}`,
         action: 'alter',
         missingColumns,
         extraColumns,

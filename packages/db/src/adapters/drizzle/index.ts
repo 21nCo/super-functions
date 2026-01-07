@@ -158,10 +158,15 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
           await q.execute();
           // MySQL has no returning; fetch the inserted row if selection present
           if (select && select.length > 0) {
-            const where = Object.keys(data as any)
-              .filter((k) => k in tbl)
-              .slice(0, 1)
-              .map((k) => ({ field: k, operator: 'eq' as const, value: (data as any)[k] }));
+            // Use the id field (primary key) for re-selection
+            const id = (data as any)['id'];
+            if (!id) {
+              throw new Error(
+                'Drizzle adapter: MySQL create with select requires "id" field in data for re-selection. ' +
+                'Ensure the id is generated before calling create().'
+              );
+            }
+            const where = [{ field: 'id', operator: 'eq' as const, value: id }];
             const row = await this.findOne<T>({ model, where, select });
             return row as T;
           }
@@ -237,16 +242,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       async delete({ model, where }: DeleteParams): Promise<void> {
         const tbl = resolveTable(model);
         const cond = buildWhere(tbl, where);
-        const q = db.delete(tbl).where(cond);
-        if (dialect === 'mysql') {
-          // MySQL no returning; attempt to fetch first then delete
-          const existing = await this.findOne({ model, where });
-          await db.delete(tbl).where(cond).execute();
-          return existing ?? null;
-        } else {
-          const res = await q.execute();
-          void res; // ignore value; delete returns void
-        }
+        await db.delete(tbl).where(cond).execute();
       },
 
       async deleteMany({ model, where }: DeleteManyParams): Promise<number> {
@@ -394,16 +390,26 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async setSchemaVersion(namespace: string, version: number): Promise<void> {
         if (!schemaVersionsTable) throw new OperationNotSupportedError('setSchemaVersion', 'DrizzleAdapter (schemaVersionsTable not configured)');
-        // Try update, then insert
-        const existing = await this.getSchemaVersion(namespace);
+
         const now = new Date().toISOString();
-        if (existing === 0) {
-          await db.insert(schemaVersionsTable).values({ namespace, version, appliedAt: now }).execute();
-        } else {
+        const data = { namespace, version, appliedAt: now };
+
+        if (dialect === 'mysql') {
+          // MySQL: use onDuplicateKeyUpdate for atomic upsert
           await db
-            .update(schemaVersionsTable)
-            .set({ version, appliedAt: now })
-            .where(drizzleOps.eq((schemaVersionsTable as any).namespace, namespace))
+            .insert(schemaVersionsTable)
+            .values(data)
+            .onDuplicateKeyUpdate({ set: { version, appliedAt: now } })
+            .execute();
+        } else {
+          // Postgres/SQLite: use onConflictDoUpdate for atomic upsert
+          await db
+            .insert(schemaVersionsTable)
+            .values(data)
+            .onConflictDoUpdate({
+              target: [(schemaVersionsTable as any).namespace],
+              set: { version, appliedAt: now }
+            })
             .execute();
         }
       },

@@ -292,7 +292,7 @@ export async function generateMigrations(
       }
 
       // Compare schemas
-      const tableDiffs = diffTables(lib.tables, currentTables);
+      const tableDiffs = diffTables(lib.tables, currentTables, lib.namespace);
 
       if (tableDiffs.length === 0) {
         console.log(`   ℹ️  No schema changes detected\n`);

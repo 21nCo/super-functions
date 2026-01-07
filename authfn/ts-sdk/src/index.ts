@@ -170,7 +170,7 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
     return sanitized;
   }
 
-  async function listKeys(filters?: { resourceId?: string }): Promise<ApiKey[]> {
+  async function listKeys(filters?: { resourceId?: string }): Promise<Omit<ApiKey, 'key'>[]> {
     const where: any[] = [];
 
     if (filters?.resourceId) {
@@ -184,7 +184,8 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
       namespace,
     });
 
-    return keys;
+    // Sanitize results by removing the secret key field
+    return keys.map(({ key: _, ...sanitized }) => sanitized);
   }
 
   // Create management API router if enabled

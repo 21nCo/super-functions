@@ -114,6 +114,7 @@ program
       const cfg = await loadConfig(opts.config);
       if (!cfg) {
         console.log("Config not found");
+        process.exitCode = 1;
         return;
       }
       if (!cfg.adapter?.type) throw new Error("adapter.type is required");
@@ -139,6 +140,7 @@ program
       const cfg = await loadConfig(opts.config);
       if (!cfg) {
         console.log("❌ No config found");
+        process.exitCode = 1;
         return;
       }
       const adapterType = cfg.adapter?.type;
