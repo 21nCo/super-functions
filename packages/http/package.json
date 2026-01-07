@@ -1,0 +1,60 @@
+{
+  "name": "@superfunctions/http",
+  "version": "0.1.2",
+  "description": "Framework-agnostic HTTP abstraction layer for Superfunctions libraries",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "default": "./dist/middleware/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "http",
+    "router",
+    "framework-agnostic",
+    "web-standard",
+    "express",
+    "hono",
+    "fastify",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/http"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

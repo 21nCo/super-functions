@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "license": "Apache-2.0",
   "description": "Building blocks for software development",
-  "workspaces": ["searchfn", "botfn/*", "hostfn/*"],
+  "workspaces": [
+    "searchfn",
+    "botfn/*",
+    "hostfn/*",
+    "authfn/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -30,10 +36,10 @@
   "author": "21n",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/21nCo/superset.git"
+    "url": "git+https://github.com/21nCo/super-functions.git"
   },
   "bugs": {
-    "url": "https://github.com/21nCo/superset/issues"
+    "url": "https://github.com/21nCo/super-functions/issues"
   },
   "packageManager": "npm@10.2.0"
 }

@@ -4,6 +4,13 @@ import { Command } from 'commander';
 import { Logger } from './utils/logger.js';
 import { RuntimeRegistry } from './runtimes/registry.js';
 import { NodeJSAdapter } from './runtimes/nodejs/index.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
 
 // Register runtime adapters
 RuntimeRegistry.register(new NodeJSAdapter());
@@ -13,7 +20,7 @@ const program = new Command();
 program
   .name('hostfn')
   .description('Universal application deployment CLI')
-  .version('0.1.0');
+  .version(packageJson.version);
 
 // Init command
 program

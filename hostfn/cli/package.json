@@ -1,6 +1,6 @@
 {
   "name": "hostfn",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "Apache-2.0",
   "description": "Universal application deployment CLI",
   "type": "module",
@@ -30,18 +30,19 @@
     "@types/node": "^20.10.0",
     "@types/ssh2": "^1.15.0",
     "@types/inquirer": "^9.0.7",
-    "@vitest/coverage-v8": "^1.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "typescript": "^5.3.0",
     "tsx": "^4.7.0",
-    "vitest": "^1.0.0"
+    "vitest": "^1.6.0",
+    "fast-glob": "^3.3.2"
   },
   "author": "21n",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/21nCo/hostfn.git"
+    "url": "git+https://github.com/21nCo/super-functions.git"
   },
   "bugs": {
-    "url": "https://github.com/21nCo/hostfn/issues"
+    "url": "https://github.com/21nCo/super-functions/issues"
   },
   "keywords": [
     "deployment",

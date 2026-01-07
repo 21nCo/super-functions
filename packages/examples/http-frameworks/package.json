@@ -1,0 +1,30 @@
+{
+  "name": "cross-framework-demo",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Demo showing the same router working across multiple frameworks",
+  "scripts": {
+    "express": "tsx express/server.ts",
+    "hono": "tsx hono/server.ts",
+    "fastify": "tsx fastify/server.ts",
+    "test": "./test-all.sh"
+  },
+  "dependencies": {
+    "@superfunctions/http": "^0.1.0",
+    "@superfunctions/http-express": "^0.1.0",
+    "@superfunctions/http-hono": "^0.1.0",
+    "@superfunctions/http-fastify": "^0.1.0",
+    "@superfunctions/http-next": "^0.1.0",
+    "@superfunctions/http-sveltekit": "^0.1.0",
+    "express": "^4.21.2",
+    "hono": "^4.6.16",
+    "@hono/node-server": "^1.13.7",
+    "fastify": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.0"
+  }
+}

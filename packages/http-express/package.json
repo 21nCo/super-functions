@@ -1,0 +1,59 @@
+{
+  "name": "@superfunctions/http-express",
+  "version": "0.1.2",
+  "description": "Express adapter for @superfunctions/http",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@superfunctions/http": "^0.1.0",
+    "express": "^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@superfunctions/http": "^0.1.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.2",
+    "express": "^4.21.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "http",
+    "express",
+    "adapter",
+    "router",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/http-express"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

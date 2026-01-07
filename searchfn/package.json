@@ -1,5 +1,5 @@
 {
-  "name": "searchfn",
+  "name": "@searchfn/client",
   "version": "0.2.0",
   "description": "IndexedDB-backed full-text search engine with hybrid in-memory caching and FlexSearch-compatible adapters.",
   "license": "Apache-2.0",
@@ -42,10 +42,13 @@
   "author": "21nOrg",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/21nOrg/searchfn.git"
+    "url": "git+https://github.com/21nCo/super-functions.git"
   },
   "bugs": {
-    "url": "https://github.com/21nOrg/searchfn/issues"
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "sideEffects": false,
   "devDependencies": {
