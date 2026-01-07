@@ -373,16 +373,25 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
     return true;
   }
 
+  let hasOrClause = false;
+  let orMatched = false;
+
   for (const clause of where) {
     const value = record[clause.field];
     const matches = matchesClause(value, clause);
 
     if (clause.connector === 'OR') {
-      if (matches) return true;
+      hasOrClause = true;
+      if (matches) orMatched = true;
     } else {
       // Default AND
       if (!matches) return false;
     }
+  }
+
+  // If we had OR clauses, at least one must have matched
+  if (hasOrClause && !orMatched) {
+    return false;
   }
 
   return true;

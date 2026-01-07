@@ -58,17 +58,35 @@ export class NamespaceManager {
 
   /**
    * Parse namespaced table name
+   * 
+   * @param namespacedName - The full namespaced table name (e.g., 'authFn_email_log')
+   * @param namespace - The expected namespace (e.g., 'authFn')
+   * @returns The parsed namespace and table name
    */
-  parse(namespacedName: string): { namespace?: string; table: string } {
+  parse(namespacedName: string, namespace: string): { namespace: string; table: string } {
     if (!this.config.enabled) {
-      return { table: namespacedName };
+      return { namespace: '', table: namespacedName };
     }
 
-    const parts = namespacedName.split(this.config.separator);
-    const table = parts.pop()!;
-    const namespace = parts.join(this.config.separator);
+    // Build expected prefix
+    const prefixParts: string[] = [];
+    if (this.config.prefix) {
+      prefixParts.push(this.config.prefix);
+    }
+    prefixParts.push(namespace);
+    const expectedPrefix = prefixParts.join(this.config.separator);
 
-    return { namespace, table };
+    // Validate that the namespaced name starts with the expected prefix
+    if (!namespacedName.startsWith(expectedPrefix + this.config.separator)) {
+      throw new Error(
+        `Invalid namespaced table name: "${namespacedName}" does not start with expected prefix "${expectedPrefix}${this.config.separator}"`
+      );
+    }
+
+    // Extract table name by removing the prefix and separator
+    const table = namespacedName.substring(expectedPrefix.length + this.config.separator.length);
+
+    return { namespace: expectedPrefix, table };
   }
 
   /**

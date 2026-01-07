@@ -19,4 +19,4 @@ This project is licensed under the MIT license. See the [LICENSE](LICENSE) file 
 
 For any questions, security reporting or feedback, please contact us at [hello@21n.org](mailto:hello@21n.org).
 
-❤️ We extend our deepest gratitude to all the [OSS libraries and tools](https://github.com/21nOrg/nucleus/network/dependencies) that made this project possible.
+❤️ We extend our deepest gratitude to all the [OSS libraries and tools](https://github.com/21nCo/super-functions/network/dependencies) that made this project possible.

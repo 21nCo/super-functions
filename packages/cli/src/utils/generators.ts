@@ -70,6 +70,22 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
 }
 
 /**
+ * Escape SQL string literals to prevent syntax errors
+ * Handles single quotes (SQL standard) and backslashes (MySQL)
+ */
+function escapeSqlString(value: string, dialect: Dialect): string {
+  // Escape single quotes by doubling them (SQL standard)
+  let escaped = value.replace(/'/g, "''");
+
+  // For MySQL, also escape backslashes
+  if (dialect === 'mysql') {
+    escaped = escaped.replace(/\\/g, '\\\\');
+  }
+
+  return `'${escaped}'`;
+}
+
+/**
  * Generate CREATE TABLE statement
  */
 function generateCreateTableSQL(
@@ -96,7 +112,7 @@ function generateCreateTableSQL(
     if (field.defaultValue !== undefined) {
       const defaultVal =
         typeof field.defaultValue === 'string'
-          ? `'${field.defaultValue}'`
+          ? escapeSqlString(field.defaultValue, dialect)
           : field.defaultValue;
       parts.push(`DEFAULT ${defaultVal}`);
     }

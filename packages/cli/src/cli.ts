@@ -41,7 +41,12 @@ program
   .option("-f, --force", "Overwrite if exists", false)
   .action(async (opts) => {
     const { initConfig } = await import("./commands/init.js");
-    await initConfig(opts);
+    try {
+      await initConfig(opts);
+    } catch (e: any) {
+      console.error("❌ Error:", e.message);
+      process.exitCode = 1;
+    }
   });
 
 program
@@ -144,7 +149,9 @@ program
       } else if (adapterType === "prisma") {
         console.log("   npx prisma migrate deploy");
       } else if (adapterType === "kysely") {
-        console.log("   npx kysely migrate latest");
+        console.log("   # Install kysely-ctl first: npm install -D kysely-ctl");
+        console.log("   npx kysely-ctl migrate up");
+        console.log("   # or use another Kysely migration tool");
       } else {
         console.log("   (Unknown adapter type)");
       }

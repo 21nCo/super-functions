@@ -24,7 +24,12 @@ function generateApiKey(prefix: string = 'ak'): string {
  */
 function generateId(prefix: string): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 9);
+  // Use cryptographically secure random generation
+  const randomBytes = crypto.getRandomValues(new Uint8Array(5));
+  const random = Array.from(randomBytes)
+    .map(b => b.toString(36))
+    .join('')
+    .substring(0, 7);
   return `${prefix}_${timestamp}${random}`;
 }
 
@@ -38,13 +43,13 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
   const provider: AuthProvider<ApiKeySession> = {
     async authenticate(request: Request): Promise<ApiKeySession | null> {
       const authHeader = request.headers.get('authorization');
-      
+
       if (!authHeader) {
         return null;
       }
 
       const token = authHeader.replace(/^Bearer\s+/i, '');
-      
+
       if (!token) {
         return null;
       }
@@ -149,18 +154,25 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
     });
   }
 
-  async function getKey(keyId: string): Promise<ApiKey | null> {
+  async function getKey(keyId: string): Promise<Omit<ApiKey, 'key'> | null> {
     const key = await database.findOne<ApiKey>({
       model: 'apiKeys',
       where: [{ field: 'id', operator: 'eq', value: keyId }],
       namespace,
     });
-    return key;
+
+    if (!key) {
+      return null;
+    }
+
+    // Return sanitized key without the secret
+    const { key: _, ...sanitized } = key;
+    return sanitized;
   }
 
   async function listKeys(filters?: { resourceId?: string }): Promise<ApiKey[]> {
     const where: any[] = [];
-    
+
     if (filters?.resourceId) {
       where.push({ field: 'resourceIds', operator: 'contains', value: filters.resourceId });
     }
@@ -183,7 +195,8 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
     // Admin auth middleware
     const adminAuthMiddleware = async (req: Request, _ctx: any, next: () => Promise<Response>) => {
       if (!adminKey) {
-        return next(); // No admin key configured, skip auth
+        // Fail closed: reject requests when adminKey is not configured
+        throw new UnauthorizedError('Admin API is not configured. Set apiConfig.adminKey to enable.');
       }
 
       const authHeader = req.headers.get('authorization');
@@ -254,10 +267,8 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
               throw new NotFoundError('API key not found');
             }
 
-            // Don't return the actual key value
-            const { key: _, ...sanitized } = key;
-
-            return Response.json(sanitized);
+            // getKey already returns sanitized data without the secret key
+            return Response.json(key);
           },
         },
 

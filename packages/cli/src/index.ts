@@ -16,11 +16,11 @@ export type {
 export interface SuperfunctionsConfig {
   adapter: AdapterConfig;
   migrationsDir?: string;
-  
+
   // Array of file paths that contain library initializations
   // Example: ['./src/conduct.ts', './src/auth.ts']
   libraries?: string[];
-  
+
   // Auto-discover library initialization files
   // true: Use default patterns
   // object: Custom patterns and exclusions
@@ -31,7 +31,7 @@ export interface SuperfunctionsConfig {
 }
 
 export interface AdapterConfig {
-  type: 'drizzle' | 'prisma' | 'kysely' | 'mongodb';
+  type: 'drizzle' | 'prisma' | 'kysely';  // TODO: Add 'mongodb' when MongoDBConfig is implemented
   drizzle?: DrizzleConfig;
   prisma?: PrismaConfig;
   kysely?: KyselyConfig;

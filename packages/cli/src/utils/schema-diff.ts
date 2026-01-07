@@ -1,5 +1,36 @@
-import type { TableSchema } from '@superfunctions/db';
+import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import type { DatabaseTable } from './introspection.js';
+
+/**
+ * Map FieldSchema type to generic SQL type for comparison
+ */
+function mapFieldTypeToSQLType(type: FieldSchema['type']): string {
+  switch (type) {
+    case 'string': return 'text';
+    case 'number': return 'integer';
+    case 'bigint': return 'bigint';
+    case 'boolean': return 'boolean';
+    case 'date': return 'timestamp';
+    case 'json': return 'json';
+    default: return 'text';
+  }
+}
+
+/**
+ * Normalize column type from database for comparison
+ */
+function normalizeColumnType(dbType: string): string {
+  const lower = dbType.toLowerCase();
+  // Normalize common type variations
+  if (lower.includes('char') || lower.includes('text')) return 'text';
+  if (lower.includes('int') && !lower.includes('bigint')) return 'integer';
+  if (lower.includes('bigint')) return 'bigint';
+  if (lower.includes('bool')) return 'boolean';
+  if (lower.includes('timestamp') || lower.includes('datetime')) return 'timestamp';
+  if (lower.includes('json')) return 'json';
+  return lower;
+}
+
 
 export interface SchemaDiff {
   missing: string[]; // tables that should exist but don't
@@ -42,7 +73,7 @@ export function diffSchemas(
   currentVersions: Record<string, number>
 ): Record<string, { required: number; current: number; status: 'outdated' | 'up-to-date' | 'not-installed' }> {
   const result: Record<string, any> = {};
-  
+
   for (const req of required) {
     const current = currentVersions[req.namespace] ?? 0;
     result[req.namespace] = {
@@ -51,7 +82,7 @@ export function diffSchemas(
       status: current === 0 ? 'not-installed' : current < req.version ? 'outdated' : 'up-to-date',
     };
   }
-  
+
   return result;
 }
 
@@ -107,6 +138,15 @@ export function diffTables(
         // Check for type/constraint changes
         const curCol = curColMap.get(colName)!;
         const changes: string[] = [];
+
+        // Check for type changes
+        // Map FieldSchema types to SQL types for comparison
+        const expectedType = mapFieldTypeToSQLType(fieldSchema.type);
+        const actualType = normalizeColumnType(curCol.dataType);
+
+        if (expectedType !== actualType) {
+          changes.push(`type changed from ${actualType} to ${expectedType}`);
+        }
 
         if (fieldSchema.required && curCol.isNullable) {
           changes.push('changed to NOT NULL');

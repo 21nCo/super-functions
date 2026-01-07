@@ -18,7 +18,7 @@ export async function discoverLibraryConfigs(
   manualPaths?: string[]
 ): Promise<DiscoveredConfig[]> {
   const discovered: DiscoveredConfig[] = [];
-  
+
   // 1. Auto-discovery using glob pattern
   const patterns = [
     '*.config.{ts,js,mjs}',
@@ -26,26 +26,28 @@ export async function discoverLibraryConfigs(
     'lib/**/*.config.{ts,js,mjs}',
     'server/**/*.config.{ts,js,mjs}',
   ];
-  
+
   const files = await glob(patterns, {
     cwd,
     ignore: ['node_modules/**', 'dist/**', 'build/**'],
     absolute: true,
   });
-  
+
+  // Check installed libraries once before the loop (performance optimization)
+  const installedLibs = detectInstalledLibraries(cwd);
+
   for (const file of files) {
     const basename = path.basename(file);
     const match = basename.match(/^([^.]+)\.config\.(ts|js|mjs)$/);
-    
+
     if (match) {
       const libraryName = match[1]; // 'conduct', 'authfn', etc
-      
+
       // Check if library is installed
-      const installedLibs = detectInstalledLibraries(cwd);
       const isInstalled = installedLibs.some(
         lib => lib.name.includes(libraryName)
       );
-      
+
       if (isInstalled) {
         discovered.push({
           libraryName,
@@ -55,7 +57,7 @@ export async function discoverLibraryConfigs(
       }
     }
   }
-  
+
   // 2. Manual paths from config (fallback)
   if (manualPaths) {
     for (const manualPath of manualPaths) {
@@ -73,7 +75,7 @@ export async function discoverLibraryConfigs(
       }
     }
   }
-  
+
   return discovered;
 }
 
@@ -87,11 +89,11 @@ async function extractLibraryName(configPath: string): Promise<string | null> {
     const importMatch = content.match(
       /import.*from ['"](@superfunctions\/)?(\w+)['"]/
     );
-    
+
     if (importMatch) {
       return importMatch[2]; // authfn, conduct, etc
     }
-    
+
     return null;
   } catch {
     return null;

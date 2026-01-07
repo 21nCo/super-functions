@@ -12,6 +12,8 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+FAILURES=0 # Initialize failure counter
+
 test_endpoint() {
   local name=$1
   local url=$2
@@ -23,6 +25,7 @@ test_endpoint() {
     echo -e "${GREEN}✓${NC} $name: $url (HTTP $response)"
   else
     echo -e "${RED}✗${NC} $name: $url (Expected $expected_status, got $response)"
+    FAILURES=$((FAILURES + 1)) # Increment failure counter
   fi
 }
 
@@ -51,7 +54,12 @@ test_endpoint "404 Test" "http://localhost:3003/api/notfound" 404
 echo ""
 
 echo "================================"
-echo "✅ All tests complete!"
+if [ $FAILURES -gt 0 ]; then
+  echo -e "${RED}✗ $FAILURES test(s) failed${NC}"
+  exit 1
+else
+  echo -e "${GREEN}✅ All tests passed!${NC}"
+fi
 echo ""
 echo "Test identical responses:"
 echo "curl http://localhost:3001/api/users | jq"

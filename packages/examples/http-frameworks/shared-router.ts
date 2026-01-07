@@ -14,6 +14,9 @@ const users = [
   { id: '3', name: 'Charlie', email: 'charlie@example.com' },
 ];
 
+// ID counter to prevent duplicates after deletions
+let nextUserId = 4;
+
 // Shared API router
 export const apiRouter = createRouter({
   routes: [
@@ -22,9 +25,9 @@ export const apiRouter = createRouter({
       method: 'GET',
       path: '/api/health',
       handler: async () => {
-        return Response.json({ 
-          status: 'ok', 
-          timestamp: new Date().toISOString() 
+        return Response.json({
+          status: 'ok',
+          timestamp: new Date().toISOString()
         });
       },
     },
@@ -37,10 +40,10 @@ export const apiRouter = createRouter({
         // Support pagination via query params
         const limit = ctx.query.get('limit');
         const userList = limit ? users.slice(0, Number(limit)) : users;
-        
-        return Response.json({ 
+
+        return Response.json({
           users: userList,
-          total: users.length 
+          total: users.length
         });
       },
     },
@@ -51,14 +54,14 @@ export const apiRouter = createRouter({
       path: '/api/users/:id',
       handler: async (req, ctx) => {
         const user = users.find(u => u.id === ctx.params.id);
-        
+
         if (!user) {
           return Response.json(
             { error: 'User not found' },
             { status: 404 }
           );
         }
-        
+
         return Response.json({ user });
       },
     },
@@ -69,22 +72,22 @@ export const apiRouter = createRouter({
       path: '/api/users',
       handler: async (req, ctx) => {
         const body = await ctx.json();
-        
+
         if (!body.name || !body.email) {
           return Response.json(
             { error: 'Name and email are required' },
             { status: 400 }
           );
         }
-        
+
         const newUser = {
-          id: String(users.length + 1),
+          id: String(nextUserId++),
           name: body.name,
           email: body.email,
         };
-        
+
         users.push(newUser);
-        
+
         return Response.json(
           { user: newUser },
           { status: 201 }
@@ -98,19 +101,19 @@ export const apiRouter = createRouter({
       path: '/api/users/:id',
       handler: async (req, ctx) => {
         const user = users.find(u => u.id === ctx.params.id);
-        
+
         if (!user) {
           return Response.json(
             { error: 'User not found' },
             { status: 404 }
           );
         }
-        
+
         const body = await ctx.json();
-        
+
         if (body.name) user.name = body.name;
         if (body.email) user.email = body.email;
-        
+
         return Response.json({ user });
       },
     },
@@ -121,16 +124,16 @@ export const apiRouter = createRouter({
       path: '/api/users/:id',
       handler: async (req, ctx) => {
         const index = users.findIndex(u => u.id === ctx.params.id);
-        
+
         if (index === -1) {
           return Response.json(
             { error: 'User not found' },
             { status: 404 }
           );
         }
-        
+
         users.splice(index, 1);
-        
+
         return Response.json({ success: true });
       },
     },
@@ -141,14 +144,14 @@ export const apiRouter = createRouter({
     async (req, ctx, next) => {
       const start = Date.now();
       const url = new URL(req.url);
-      
+
       console.log(`→ ${req.method} ${url.pathname}`);
-      
+
       const response = await next();
-      
+
       const duration = Date.now() - start;
       console.log(`← ${req.method} ${url.pathname} ${response.status} (${duration}ms)`);
-      
+
       return response;
     },
   ],

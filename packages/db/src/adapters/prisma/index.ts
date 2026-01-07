@@ -37,10 +37,10 @@ export interface PrismaAdapterConfig {
  */
 function buildPrismaWhere(where: WhereClause[]): any {
   if (!where || where.length === 0) return {};
-  
+
   const conditions = where.map((clause) => {
     const { field, operator, value } = clause;
-    
+
     switch (operator) {
       case 'eq':
         return { [field]: value };
@@ -68,18 +68,18 @@ function buildPrismaWhere(where: WhereClause[]): any {
         throw new Error(`Unsupported operator: ${operator}`);
     }
   });
-  
+
   // Combine with AND/OR based on connector
   if (conditions.length === 1) return conditions[0];
-  
+
   // Check if any conditions use OR connector
   const hasOr = where.some((c, i) => i > 0 && c.connector === 'OR');
-  
+
   if (hasOr) {
     // Mixed AND/OR: group by connector
     const result: any = { AND: [] };
     let currentGroup: any[] = [conditions[0]];
-    
+
     for (let i = 1; i < conditions.length; i++) {
       if (where[i].connector === 'OR') {
         if (currentGroup.length > 0) {
@@ -91,11 +91,11 @@ function buildPrismaWhere(where: WhereClause[]): any {
         currentGroup.push(conditions[i]);
       }
     }
-    
+
     if (currentGroup.length > 0) {
       result.AND.push(currentGroup.length === 1 ? currentGroup[0] : { AND: currentGroup });
     }
-    
+
     return result.AND.length === 1 ? result.AND[0] : result;
   } else {
     // All AND
@@ -165,17 +165,20 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
 
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
         const m = resolveModel(model);
-        // Prisma update requires unique where; use first clause
-        const prismaWhere = where.length > 0 ? { [where[0].field]: where[0].value } : {};
+        const prismaWhere = buildPrismaWhere(where);
         const prismaSelect = buildPrismaSelect(select);
-        return await m.update({ where: prismaWhere, data, select: prismaSelect });
+        // Note: Prisma update requires unique where, but we use updateMany + findFirst for flexibility
+        await m.updateMany({ where: prismaWhere, data });
+        const updated = await m.findFirst({ where: prismaWhere, select: prismaSelect });
+        if (!updated) throw new Error('Update affected zero rows');
+        return updated;
       },
 
       async delete({ model, where }: DeleteParams): Promise<void> {
         const m = resolveModel(model);
-        // Prisma delete requires unique where; use first clause
-        const prismaWhere = where.length > 0 ? { [where[0].field]: where[0].value } : {};
-        await m.delete({ where: prismaWhere });
+        const prismaWhere = buildPrismaWhere(where);
+        // Use deleteMany to support complex where clauses
+        await m.deleteMany({ where: prismaWhere });
       },
 
       async createMany<T = any>({ model, data }: CreateManyParams): Promise<T[]> {

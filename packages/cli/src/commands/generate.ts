@@ -23,6 +23,25 @@ import { getSuperfunctionsRegistry, discoverSuperfunctionsPackages } from '../ut
 import { autoDiscoverLibraryFiles, toRelativePaths } from '../utils/auto-discover.js';
 import type { TableSchema } from '@superfunctions/db';
 
+/**
+ * Extract database name from connection string
+ * Works for MySQL/PostgreSQL connection strings in format:
+ * mysql://user:pass@host:port/database?params
+ * postgres://user:pass@host:port/database?params
+ */
+function extractDatabaseName(connectionString: string): string | null {
+  try {
+    const parts = connectionString.split('/');
+    if (parts.length < 4) return null;
+    const dbWithParams = parts[3];
+    const dbName = dbWithParams.split('?')[0];
+    return dbName || null;
+  } catch {
+    return null;
+  }
+}
+
+
 export async function generateMigrations(
   configPath: string,
   libraryFilter?: string,
@@ -54,7 +73,7 @@ export async function generateMigrations(
   // Discover superfunctions packages
   console.log('🔍 Discovering superfunctions libraries...');
   const discoveredPackages = discoverSuperfunctionsPackages(process.cwd());
-  
+
   if (discoveredPackages.length === 0) {
     console.log('⚠️  No superfunctions libraries found in node_modules');
     console.log('   Make sure libraries have "superfunctions" metadata in package.json');
@@ -72,13 +91,13 @@ export async function generateMigrations(
     }
   }
   console.log('');
-  
+
   // Build registry from discovered packages
   const registry = getSuperfunctionsRegistry(process.cwd());
-  
+
   // Determine which files to parse
   let filesToParse: string[] = [];
-  
+
   if (config.libraries && config.libraries.length > 0) {
     // Use explicitly specified files
     console.log('📂 Using specified library files...');
@@ -91,7 +110,7 @@ export async function generateMigrations(
       registry,
       config.autoDiscover
     );
-    
+
     if (discoveredFiles.length === 0) {
       console.log('❌ No library initialization files found');
       console.log('   Try specifying files explicitly:');
@@ -99,7 +118,7 @@ export async function generateMigrations(
       process.exitCode = 1;
       return;
     }
-    
+
     filesToParse = discoveredFiles;
     console.log(`   ✅ Found ${filesToParse.length} file(s) with initializations:`);
     const relativePaths = toRelativePaths(filesToParse, process.cwd());
@@ -116,19 +135,19 @@ export async function generateMigrations(
     process.exitCode = 1;
     return;
   }
-  
+
   console.log('');
-  
+
   // Parse library initialization files
   console.log('📖 Parsing library initialization files...');
   const allLibraryInits: any[] = [];
-  
+
   for (const filePath of filesToParse) {
     if (!fs.existsSync(filePath)) {
       console.log(`   ⚠️  File not found: ${filePath}`);
       continue;
     }
-    
+
     try {
       const inits = parseLibraryInitializations(filePath, registry);
       if (inits.length > 0) {
@@ -151,7 +170,7 @@ export async function generateMigrations(
     process.exitCode = 1;
     return;
   }
-  
+
   // Filter if specified
   const libraryInitsToProcess = libraryFilter
     ? allLibraryInits.filter(init => init.libraryName === libraryFilter)
@@ -231,7 +250,22 @@ export async function generateMigrations(
     if (connection.dialect === 'postgres') {
       currentTables = await introspectPostgres(rawConn, 'public');
     } else if (connection.dialect === 'mysql') {
-      const dbName = config.adapter?.drizzle?.connectionString?.split('/').pop()?.split('?')[0] ?? 'database';
+      // Extract database name from connection string based on adapter type
+      let dbName = 'database'; // fallback
+
+      if (adapterType === 'drizzle' && config.adapter.drizzle?.connectionString) {
+        dbName = extractDatabaseName(config.adapter.drizzle.connectionString) ?? 'database';
+      } else if (adapterType === 'kysely' && config.adapter.kysely?.connectionString) {
+        dbName = extractDatabaseName(config.adapter.kysely.connectionString) ?? 'database';
+      } else if (adapterType === 'prisma') {
+        // Prisma uses DATABASE_URL from environment or connection string
+        // For now, try to get from process.env.DATABASE_URL if available
+        const prismaConnString = process.env.DATABASE_URL;
+        if (prismaConnString) {
+          dbName = extractDatabaseName(prismaConnString) ?? 'database';
+        }
+      }
+
       currentTables = await introspectMySQL(rawConn, dbName);
     } else if (connection.dialect === 'sqlite') {
       currentTables = await introspectSQLite(rawConn);

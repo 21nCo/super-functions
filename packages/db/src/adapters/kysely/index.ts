@@ -36,6 +36,14 @@ export interface KyselyAdapterConfig {
 }
 
 /**
+ * Escape SQL LIKE wildcards to prevent SQL injection
+ * Escapes % and _ characters that have special meaning in LIKE patterns
+ */
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[%_]/g, '\\$&');
+}
+
+/**
  * Apply where clauses to Kysely query builder
  */
 function applyWhere(qb: any, where: WhereClause[]): any {
@@ -73,13 +81,13 @@ function applyWhere(qb: any, where: WhereClause[]): any {
         builder = builder[method](field, 'not in', Array.isArray(value) ? value : [value]);
         break;
       case 'contains':
-        builder = builder[method](field, 'like', `%${value}%`);
+        builder = builder[method](field, 'like', `%${escapeLikeWildcards(String(value))}%`);
         break;
       case 'starts_with':
-        builder = builder[method](field, 'like', `${value}%`);
+        builder = builder[method](field, 'like', `${escapeLikeWildcards(String(value))}%`);
         break;
       case 'ends_with':
-        builder = builder[method](field, 'like', `%${value}`);
+        builder = builder[method](field, 'like', `%${escapeLikeWildcards(String(value))}`);
         break;
       default:
         throw new Error(`Unsupported operator: ${operator}`);
@@ -126,13 +134,17 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
       async create<T = any>({ model, data, select }: CreateParams): Promise<T> {
         const table = resolveTable(model);
         let qb = db.insertInto(table).values(data);
-        
+
         if (dialect === 'mysql') {
           await qb.execute();
           // MySQL doesn't support returning; re-select if needed
           if (select && select.length > 0) {
-            const idField = Object.keys(data)[0]; // assume first field is identifier
-            let selectQb = db.selectFrom(table).where(idField, '=', (data as any)[idField]);
+            // Use 'id' field convention for re-selecting the inserted row
+            const idValue = (data as any)['id'];
+            if (!idValue) {
+              throw new Error('Kysely adapter: MySQL create requires "id" field in data for re-selection');
+            }
+            let selectQb = db.selectFrom(table).where('id', '=', idValue);
             selectQb = applySelect(selectQb, select);
             const row = await selectQb.executeTakeFirst();
             return row as T;
@@ -170,7 +182,7 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
         const table = resolveTable(model);
         let qb = db.updateTable(table).set(data);
         qb = applyWhere(qb, where);
-        
+
         if (dialect === 'mysql') {
           await qb.execute();
           // Re-select for MySQL
@@ -197,7 +209,7 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
       async createMany<T = any>({ model, data }: CreateManyParams): Promise<T[]> {
         const table = resolveTable(model);
         let qb = db.insertInto(table).values(data);
-        
+
         if (dialect === 'mysql') {
           await qb.execute();
           return data as T[];
@@ -226,7 +238,7 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
 
       async upsert<T = any>({ model, where, create, update, select }: UpsertParams): Promise<T> {
         const table = resolveTable(model);
-        
+
         // Kysely doesn't have native upsert; use insert...onConflict or fallback to update/insert
         if (dialect === 'postgres' || dialect === 'sqlite') {
           const conflictColumn = where.length > 0 ? where[0].field : 'id';
@@ -234,7 +246,7 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
             .insertInto(table)
             .values(create)
             .onConflict((oc: any) => oc.column(conflictColumn).doUpdateSet(update));
-          
+
           if (select && select.length > 0) {
             qb = qb.returning(select);
           } else {
@@ -243,13 +255,32 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
           const result = await qb.executeTakeFirst();
           return result as T;
         } else {
-          // MySQL fallback: try update, then insert
-          const updateResult = await this.updateMany({ model, where, data: update });
-          if (updateResult > 0) {
-            const result = await this.findOne<T>({ model, where, select });
-            return result as T;
+          // MySQL: use INSERT...ON DUPLICATE KEY UPDATE for atomic upsert
+          // Merge create and update data
+          const allData = { ...create, ...update };
+          const columns = Object.keys(allData);
+          const values = Object.values(allData);
+
+          // Build UPDATE SET clause for ON DUPLICATE KEY
+          const updateSet = Object.keys(update)
+            .map(key => `${key} = VALUES(${key})`)
+            .join(', ');
+
+          // Execute raw SQL for atomic upsert
+          const sql = `
+            INSERT INTO ${table} (${columns.join(', ')})
+            VALUES (${columns.map(() => '?').join(', ')})
+            ON DUPLICATE KEY UPDATE ${updateSet}
+          `;
+
+          await db.executeQuery({ sql, parameters: values } as any);
+
+          // Re-select the upserted row
+          const result = await this.findOne<T>({ model, where, select });
+          if (!result) {
+            throw new Error('Upsert succeeded but failed to retrieve result');
           }
-          return await this.create<T>({ model, data: create, select });
+          return result;
         }
       },
 

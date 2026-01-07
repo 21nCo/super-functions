@@ -1,1 +1,1 @@
-export { toNextHandlers, type NextHandler } from './adapter';
+export { toNextHandlers, type NextHandler } from './adapter.js';

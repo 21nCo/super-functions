@@ -2,7 +2,7 @@
  * Generate ORM-specific schema files from abstract schema
  */
 
-import type { TableSchema } from '@superfunctions/db';
+import type { TableSchema, FieldSchema } from '@superfunctions/db';
 
 interface AbstractSchema {
   version: number;
@@ -16,29 +16,42 @@ interface AbstractSchema {
 export function generateDrizzleSchemaFile(
   abstractSchema: AbstractSchema,
   libraryName: string,
-  namespace: string
+  namespace: string,
+  dialect: 'postgres' | 'mysql' | 'sqlite' = 'postgres'
 ): string {
   const imports = new Set<string>();
   const tables: string[] = [];
 
-  // Determine which Drizzle table builder to use
-  // TODO: Make this configurable based on database type
-  const tableBuilder = 'pgTable';
-  imports.add(`import { ${tableBuilder}, text, integer, boolean, timestamp, json, bigint } from 'drizzle-orm/pg-core';`);
+  // Map dialect to Drizzle table builder and core module
+  const dialectMap = {
+    postgres: { builder: 'pgTable', core: 'drizzle-orm/pg-core' },
+    mysql: { builder: 'mysqlTable', core: 'drizzle-orm/mysql-core' },
+    sqlite: { builder: 'sqliteTable', core: 'drizzle-orm/sqlite-core' }
+  };
+
+  const { builder: tableBuilder, core: coreModule } = dialectMap[dialect];
+  imports.add(`import { ${tableBuilder}, text, integer, boolean, timestamp, json, bigint } from '${coreModule}';`);
 
   for (const table of abstractSchema.schemas) {
     const tableName = table.modelName;
     const tableNameSnakeCase = toSnakeCase(namespace + '_' + tableName);
-    
+
     const fields: string[] = [];
 
     // Generate field definitions
-    for (const [fieldKey, field] of Object.entries(table.fields)) {
+    for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
+      const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
       const drizzleType = mapTypeToDrizzle(field.type);
-      
+
       // For timestamp fields, add mode: 'string' to handle ISO string dates
-      const typeConfig = field.type === 'date' ? "{ mode: 'string' }" : '';
+      // For bigint fields, add mode: 'bigint' for full precision
+      let typeConfig = '';
+      if (field.type === 'date') {
+        typeConfig = "{ mode: 'string' }";
+      } else if (field.type === 'bigint') {
+        typeConfig = "{ mode: 'bigint' }";
+      }
       let fieldDef = `  ${fieldKey}: ${drizzleType}('${fieldName}'${typeConfig ? `, ${typeConfig}` : ''})`;
 
       // Add constraints
@@ -52,8 +65,8 @@ export function generateDrizzleSchemaFile(
         fieldDef += '.unique()';
       }
       if (field.defaultValue !== undefined) {
-        const defaultVal = typeof field.defaultValue === 'string' 
-          ? `"${field.defaultValue}"` 
+        const defaultVal = typeof field.defaultValue === 'string'
+          ? `"${field.defaultValue}"`
           : field.defaultValue;
         fieldDef += `.default(${defaultVal})`;
       }
@@ -122,11 +135,13 @@ export function generatePrismaSchemaFile(
     const modelName = capitalize(table.modelName);
     const fields: string[] = [];
 
-    for (const [fieldKey, field] of Object.entries(table.fields)) {
+    for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
+      const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
       const prismaType = mapTypeToPrisma(field.type);
-      
-      let fieldDef = `  ${fieldName} ${prismaType}`;
+      const optionalMarker = field.required ? '' : '?';
+
+      let fieldDef = `  ${fieldName} ${prismaType}${optionalMarker}`;
 
       // Add constraints
       if (fieldKey === 'id') {
@@ -136,8 +151,8 @@ export function generatePrismaSchemaFile(
         fieldDef += ' @unique';
       }
       if (field.defaultValue !== undefined) {
-        const defaultVal = typeof field.defaultValue === 'string' 
-          ? `"${field.defaultValue}"` 
+        const defaultVal = typeof field.defaultValue === 'string'
+          ? `"${field.defaultValue}"`
           : field.defaultValue;
         fieldDef += ` @default(${defaultVal})`;
       }
@@ -213,7 +228,8 @@ export function generateKyselySchemaFile(
     const interfaceName = capitalize(table.modelName) + 'Table';
     const fields: string[] = [];
 
-    for (const [fieldKey, field] of Object.entries(table.fields)) {
+    for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
+      const field = fieldValue as FieldSchema;
       const tsType = mapTypeToTypeScript(field.type);
       const optional = field.required ? '' : '?';
       fields.push(`  ${fieldKey}${optional}: ${tsType};`);
@@ -252,8 +268,9 @@ function mapTypeToTypeScript(type: string): string {
     case 'string':
       return 'string';
     case 'number':
-    case 'bigint':
       return 'number';
+    case 'bigint':
+      return 'bigint';
     case 'boolean':
       return 'boolean';
     case 'date':
