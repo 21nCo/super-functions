@@ -1,0 +1,25 @@
+{
+  "name": "todo-app-server",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@datafn/core": "*",
+    "@datafn/server": "*",
+    "@superfunctions/db": "*",
+    "@superfunctions/http-hono": "*",
+    "drizzle-orm": "^0.35.0",
+    "hono": "^4.6.16",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.0"
+  }
+}

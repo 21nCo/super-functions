@@ -38,6 +38,8 @@ export type {
   LibraryOptions,
   Logger,
   AdapterImplementation,
+  KVStoreAdapter,
+  KVStoreAdapterFactory,
 } from './adapter/types.js';
 
 // Capabilities

@@ -368,3 +368,20 @@ export interface AdapterFactoryOptions {
   config: AdapterFactoryConfig;
   adapter: (context: AdapterContext) => AdapterImplementation;
 }
+
+// ============================================================================
+// KV Store Adapter (for middleware/caching use cases)
+// ============================================================================
+
+export interface KVStoreAdapter {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttlMs?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+  has?(key: string): Promise<boolean>;
+  expire?(key: string, ttlMs: number): Promise<void>;
+  ttl?(key: string): Promise<number | null>;
+}
+
+export interface KVStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): KVStoreAdapter;
+}
