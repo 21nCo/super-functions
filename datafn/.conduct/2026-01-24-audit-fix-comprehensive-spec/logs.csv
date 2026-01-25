@@ -1,0 +1,20 @@
+timestamp,model,IDE/Editor,command,agent_name,phase(s),path
+2026-01-24T19:25:00Z,Claude Sonnet 4.5,Factory Droid,spec,factory-droid,.conduct/2026-01-24-audit-fix-comprehensive-spec
+2026-01-24T09:19:09Z,Claude Sonnet 4,Amp,analyze,amp-agent,,.conduct/2026-01-24-audit-fix-comprehensive-spec/audits/2026-01-24-q8xm3n2p-spec-gen-audit.md
+2026-01-24T09:32:22Z,Claude Sonnet 4,Amp,execute,amp-agent,PHASE_00,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_00.md
+2026-01-24T23:30:00Z,Claude Sonnet 4.5,Factory Droid,execute,factory-droid,PHASE_01,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_01.md
+2026-01-24T23:36:00Z,Claude Sonnet 4.5,Factory Droid,execute,factory-droid,PHASE_02,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_02.md
+2026-01-24T10:33:36Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_03,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_03.md
+2026-01-24T10:33:36Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_04,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_04.md
+2026-01-24T10:33:36Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_05,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_05.md
+2026-01-24T10:33:36Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_06,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_06.md
+2026-01-24T10:33:36Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_07,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_07.md
+2026-01-24T18:45:00Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_08,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_08.md
+2026-01-24T18:55:00Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_09,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_09.md
+2026-01-24T19:05:00Z,Gemini CLI,CLI,execute,gemini-cli,PHASE_10,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_10.md
+2026-01-24T12:00:00Z,gemini-2.0-flash-exp,CLI,execute,unknown-agent,PHASE_11,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_11.md
+2026-01-24T12:05:00Z,gemini-2.0-flash-exp,CLI,execute,unknown-agent,PHASE_12,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_12.md
+2026-01-24T12:15:00Z,gemini-2.0-flash-exp,CLI,execute,unknown-agent,PHASE_13,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_13.md
+2026-01-24T12:20:00Z,gemini-2.0-flash-exp,CLI,execute,unknown-agent,PHASE_14,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_14.md
+2026-01-25T13:56:00Z,gemini-2.0-flash-exp,CLI,execute,unknown-agent,PHASE_15,.conduct/2026-01-24-audit-fix-comprehensive-spec/phases/PHASE_15.md
+2026-01-25T10:13:01Z,gpt-5.2 (xhigh reasoning),Warp,audit-spec,unknown-agent,,.conduct/2026-01-24-audit-fix-comprehensive-spec/audits/2026-01-25-lm2e0bi6-spec-audit.md

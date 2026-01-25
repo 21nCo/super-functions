@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "superfunctions-flask"
+version = "0.1.0"
+description = "Flask adapter for superfunctions.http"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["superfunctions", "flask", "http", "adapter", "web"]
+authors = [{ name = "21n", email = "support@superfunctions.dev" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = ["superfunctions>=0.1.0", "flask>=3.0.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.6",
+]
+
+[project.urls]
+Documentation = "https://docs.superfunctions.dev/adapters/flask"
+Repository = "https://github.com/21nCo/super-functions"
+Issues = "https://github.com/21nCo/super-functions/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["superfunctions_flask"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4"]
+ignore = ["E501"]

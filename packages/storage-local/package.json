@@ -1,0 +1,39 @@
+{
+  "name": "@superfunctions/storage-local",
+  "version": "0.1.0",
+  "description": "Local filesystem storage adapter for @superfunctions/storage",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["storage", "local", "filesystem", "superfunctions"],
+  "author": "21n",
+  "license": "MIT",
+  "bugs": { "url": "https://github.com/21nCo/super-functions/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/storage-local"
+  },
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@superfunctions/storage": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

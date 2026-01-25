@@ -1,0 +1,2 @@
+timestamp,model,IDE/Editor,command,agent_name,phase(s),path
+2026-01-24T19:25:00Z,Claude Sonnet 4.5,Factory Droid,spec,factory-droid,.conduct/2026-01-24-audit-fix-comprehensive-spec

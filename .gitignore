@@ -8,6 +8,15 @@ dist/
 build/
 *.tsbuildinfo
 
+# TypeScript compiled outputs in src/tests
+**/*.js
+**/*.d.ts
+**/*.d.ts.map
+# But allow config files
+!*.config.js
+!**/vitest.config.js
+!**/tsup.config.js
+
 # Logs
 logs
 *.log
@@ -21,6 +30,13 @@ lerna-debug.log*
 .env
 .env.*
 !.env.example
+
+# Security
+*.pem
+*.p12
+*.key
+*-key.pem
+secrets.json
 
 # Testing
 coverage/
@@ -40,9 +56,14 @@ coverage/
 # Misc
 *.tgz
 .cache/
+*.bundled_*.mjs
 
 
 _conduct/.meta
 
 21n
 .agent
+.venv
+
+__pycache__
+venv
