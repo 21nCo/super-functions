@@ -1,0 +1,27 @@
+/**
+ * Abstract data store interface for query execution
+ */
+
+export interface JoinRow {
+  from: string;
+  to: string;
+  [key: string]: unknown; // metadata fields
+}
+
+export interface DataStore {
+  /**
+   * Get all records for a resource, sorted by id
+   */
+  getRecords(resource: string): Record<string, unknown>[];
+
+  /**
+   * Get a single record by id
+   */
+  getRecord(resource: string, id: string): Record<string, unknown> | null;
+
+  /**
+   * Get join rows for a many-many relation
+   * Relation name format: "from.relation" (e.g., "task.tags")
+   */
+  getJoinRows(relationKey: string): JoinRow[];
+}
