@@ -2,6 +2,47 @@
  * Core type definitions for the HTTP abstraction layer
  */
 
+export type CookieSameSite = 'lax' | 'strict' | 'none';
+
+export const AUTH_ROUTE_MODES = ['none', 'cookie-session', 'bearer', 'hybrid'] as const;
+export type AuthRouteMode = (typeof AUTH_ROUTE_MODES)[number];
+
+export interface AuthRouteMeta {
+  mode: AuthRouteMode;
+  csrf?: boolean;
+  scopes?: string[];
+  [key: string]: unknown;
+}
+
+export interface OpenApiRouteMeta {
+  include?: boolean;
+  operationId?: string;
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  requestBodySchema?: Record<string, unknown>;
+  responseSchemas?: Record<string, Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export interface HttpRouteMeta {
+  auth?: AuthRouteMeta;
+  openapi?: OpenApiRouteMeta;
+  [key: string]: unknown;
+}
+
+export interface SetCookieInput {
+  name: string;
+  value: string;
+  path?: string;
+  domain?: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: CookieSameSite;
+  maxAge?: number;
+  expires?: Date;
+}
+
 // ============================================================================
 // Router Configuration
 // ============================================================================
@@ -44,7 +85,7 @@ export interface Route<TContext = any> {
   middleware?: Middleware<TContext>[];
 
   /** Metadata (for docs, validation, etc.) */
-  meta?: Record<string, any>;
+  meta?: HttpRouteMeta;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';

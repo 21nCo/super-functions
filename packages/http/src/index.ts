@@ -10,6 +10,11 @@ export type {
   Router,
   RouterOptions,
   Route,
+  HttpRouteMeta,
+  AuthRouteMeta,
+  OpenApiRouteMeta,
+  SetCookieInput,
+  CookieSameSite,
   RouteHandler,
   RouteContext,
   Middleware,
@@ -51,3 +56,10 @@ export {
   executeMiddlewareChain,
   combineMiddleware,
 } from './middleware.js';
+
+export {
+  parseCookieHeader,
+  parseCookies,
+  serializeSetCookie,
+  assertValidRouteMeta,
+} from './cookies.js';
