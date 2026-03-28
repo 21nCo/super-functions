@@ -9,6 +9,7 @@
     "hostfn/*",
     "authfn/*",
     "datafn/client",
+    "datafn/core",
     "packages/*"
   ],
   "scripts": {
