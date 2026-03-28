@@ -46,6 +46,9 @@ export interface Adapter {
 
   // Optional: Schema generation for CLI
   createSchema?(params: CreateSchemaParams): Promise<SchemaCreation>;
+
+  /** Raw CRUD for internal tables, bypasses ORM schema resolution */
+  readonly internal: InternalCrud;
 }
 
 export interface TransactionAdapter extends Omit<Adapter, 'transaction' | 'close'> {
@@ -130,6 +133,8 @@ export interface UpsertParams {
   update: Record<string, any>;
   select?: string[];
   namespace?: string;
+  /** Explicit ON CONFLICT target column(s). When set, overrides columns derived from `where`. */
+  conflictTarget?: string | string[];
 }
 
 export interface CountParams {
@@ -234,6 +239,15 @@ export interface SchemaCreation {
 // Factory Types
 // ============================================================================
 
+export interface RowLevelNamespaceConfig {
+  /** Enable row-level namespace filtering. Default: false. */
+  enabled: boolean;
+  /** Column name for the discriminator. Default: "__ns". */
+  columnName?: string;
+  /** Whether namespace is mandatory on every CRUD call. Default: true. */
+  mandatory?: boolean;
+}
+
 export interface AdapterFactoryConfig {
   // Required
   adapterId: string;
@@ -276,6 +290,9 @@ export interface AdapterFactoryConfig {
   // Custom ID generation
   customIdGenerator?: () => string | number;
   disableIdGeneration?: boolean;
+
+  // Row-level namespace isolation
+  rowLevelNamespace?: RowLevelNamespaceConfig;
 
   // Debug logging
   debug?:
@@ -367,4 +384,112 @@ export interface AdapterImplementation {
 export interface AdapterFactoryOptions {
   config: AdapterFactoryConfig;
   adapter: (context: AdapterContext) => AdapterImplementation;
+}
+
+// ============================================================================
+// Internal CRUD Types (bypasses ORM schema resolution)
+// ============================================================================
+
+export interface InternalColumnDef {
+  name: string;
+  type: 'text' | 'integer';
+  primaryKey?: boolean;
+}
+
+export type InternalCrudOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
+
+export interface InternalWhereClause {
+  field: string;
+  op: InternalCrudOperator;
+  value: unknown;
+}
+
+export interface InternalCrud {
+  /** Ensure an internal table exists (CREATE TABLE IF NOT EXISTS) */
+  ensureTable(name: string, columns: InternalColumnDef[]): Promise<void>;
+
+  /** Create a record in an internal table */
+  create(
+    table: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
+
+  /** Find one record in an internal table */
+  findOne(
+    table: string,
+    where: InternalWhereClause[],
+  ): Promise<Record<string, unknown> | null>;
+
+  /** Find many records in an internal table */
+  findMany(
+    table: string,
+    where: InternalWhereClause[],
+    opts?: { orderBy?: string; limit?: number },
+  ): Promise<Record<string, unknown>[]>;
+
+  /** Update records matching where clause */
+  update(
+    table: string,
+    where: InternalWhereClause[],
+    data: Record<string, unknown>,
+  ): Promise<number>;
+
+  /** Delete records matching where clause */
+  delete(
+    table: string,
+    where: InternalWhereClause[],
+  ): Promise<number>;
+
+  /** EXE-018: Optional batch create for change-tracking performance */
+  createMany?(
+    table: string,
+    data: Record<string, unknown>[],
+  ): Promise<Record<string, unknown>[]>;
+}
+
+// ============================================================================
+// KV Store Adapter (for middleware/caching use cases)
+// ============================================================================
+
+export interface KVStoreAdapter {
+  get(key: string): Promise<string | null>;
+  set(input: { key: string; value: string; ttlSeconds?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+  incr?(input: { key: string; by?: number; ttlSeconds?: number }): Promise<{ value: number }>;
+}
+
+export interface KVStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): KVStoreAdapter;
+}
+
+// ============================================================================
+// Redis Adapter (for atomic operations, caching, rate limiting)
+// ============================================================================
+
+/**
+ * Redis adapter interface supporting atomic operations.
+ * Compatible with Redis, Valkey, and other Redis-compatible implementations.
+ */
+export interface RedisAdapter {
+  /** Atomic increment operation - returns new value */
+  incr(key: string, by?: number): Promise<number>;
+
+  /** Get current value */
+  get(key: string): Promise<string | null>;
+
+  /** Set value with optional TTL */
+  set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+
+  /** Delete key */
+  del(key: string): Promise<void>;
+
+  /** Check if adapter is healthy */
+  isHealthy(): Promise<boolean>;
+
+  /** Close connection */
+  close(): Promise<void>;
+}
+
+export interface RedisAdapterFactory<TConfig = unknown> {
+  (config: TConfig): RedisAdapter;
 }

@@ -22,10 +22,13 @@ import type {
   OrderBy,
 } from '../../adapter/types.js';
 import { createAdapterFactory } from '../../adapter/factory.js';
-import { OperationNotSupportedError } from '../../adapter/errors.js';
+import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
+import { createPrismaInternalCrud } from './internal.js';
+import type { PrismaProvider } from './internal.js';
 
 export interface PrismaAdapterConfig {
   prisma: any; // PrismaClient instance
+  provider?: PrismaProvider;
   modelMap: Record<string, string>; // model name -> Prisma model name (e.g., 'users' -> 'user')
   schemaVersionsTable?: string; // optional model name for schema versions
   namespace?: any;
@@ -186,9 +189,12 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
         const prismaWhere = buildPrismaWhere(where);
         const prismaSelect = buildPrismaSelect(select);
         // Note: Prisma update requires unique where, but we use updateMany + findFirst for flexibility
-        await m.updateMany({ where: prismaWhere, data });
+        const updateResult = await m.updateMany({ where: prismaWhere, data });
+        if (!updateResult || Number(updateResult.count ?? 0) === 0) {
+          throw new NotFoundError(model, where);
+        }
         const updated = await m.findFirst({ where: prismaWhere, select: prismaSelect });
-        if (!updated) throw new Error('Update affected zero rows');
+        if (!updated) throw new NotFoundError(model, where);
         return updated;
       },
 
@@ -317,7 +323,7 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
       namespace: config.namespace,
       capabilities: {
         types: { json: true, dates: true, booleans: true, bigint: true, uuid: true, enum: true },
-        operations: { batch: true, upsert: true, streaming: false, fulltext: false, returning: false },
+        operations: { batch: true, upsert: true, streaming: false, fulltext: false, returning: false, strictUpdateNotFound: true },
         transactions: { supported: true, nested: false, isolation: undefined },
         performance: { supportsJoins: true, supportsPreparedStatements: true },
         schema: { migrations: true, constraints: true, indexes: true },
@@ -327,5 +333,7 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
     adapter: createImpl,
   });
 
-  return factory({});
+  const adapter = factory({});
+  const internalCrud = createPrismaInternalCrud(config.prisma, config.provider);
+  return Object.assign(adapter, { internal: internalCrud });
 }

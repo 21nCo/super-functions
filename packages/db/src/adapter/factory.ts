@@ -265,6 +265,16 @@ function wrapAdapter(
     createSchema: implementation.createSchema
       ? async (params) => implementation.createSchema!(params)
       : undefined,
+
+    // Internal CRUD placeholder — overridden by each adapter via Object.assign
+    internal: {
+      ensureTable: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+      create: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+      findOne: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+      findMany: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+      update: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+      delete: async () => { throw new Error('InternalCrud not implemented by this adapter'); },
+    } as any,
   };
 }
 

@@ -24,7 +24,7 @@ export function testAdapterContract(config: AdapterTestConfig) {
     /**
      * Test CRUD operations
      */
-    async testCRUD() {
+    testCRUD() {
       const tests: Array<{ name: string; test: () => Promise<void> }> = [];
 
       // Test create
@@ -156,13 +156,34 @@ export function testAdapterContract(config: AdapterTestConfig) {
         },
       });
 
+      if (adapter.capabilities.operations.strictUpdateNotFound) {
+        tests.push({
+          name: 'should throw NotFoundError on update with zero matched rows',
+          test: async () => {
+            try {
+              await adapter.update({
+                model: 'users',
+                where: [{ field: 'id', operator: 'eq', value: 'missing-update-id' }],
+                data: { age: 42 },
+                namespace,
+              });
+              throw new Error('Expected NotFoundError for zero-row update');
+            } catch (error: any) {
+              if (error?.name !== 'NotFoundError') {
+                throw new Error(`Expected NotFoundError, received ${error?.name || 'unknown error'}`);
+              }
+            }
+          },
+        });
+      }
+
       return tests;
     },
 
     /**
      * Test batch operations
      */
-    async testBatch() {
+    testBatch() {
       if (!adapter.capabilities.operations.batch) {
         return [];
       }
@@ -198,7 +219,7 @@ export function testAdapterContract(config: AdapterTestConfig) {
     /**
      * Test advanced operations
      */
-    async testAdvanced() {
+    testAdvanced() {
       const tests: Array<{ name: string; test: () => Promise<void> }> = [];
 
       // Test count
@@ -269,7 +290,7 @@ export function testAdapterContract(config: AdapterTestConfig) {
     /**
      * Test lifecycle operations
      */
-    async testLifecycle() {
+    testLifecycle() {
       const tests: Array<{ name: string; test: () => Promise<void> }> = [];
 
       tests.push({
@@ -308,10 +329,10 @@ export function testAdapterContract(config: AdapterTestConfig) {
      */
     async runAll() {
       const allTests = [
-        ...(await this.testCRUD()),
-        ...(await this.testBatch()),
-        ...(await this.testAdvanced()),
-        ...(await this.testLifecycle()),
+        ...this.testCRUD(),
+        ...this.testBatch(),
+        ...this.testAdvanced(),
+        ...this.testLifecycle(),
       ];
 
       const results = {
@@ -361,6 +382,10 @@ export function describeAdapterContract(
 ) {
   describe(`Adapter Contract: ${name}`, () => {
     const tests = testAdapterContract(config);
+    const crudTests = tests.testCRUD();
+    const batchTests = tests.testBatch();
+    const advancedTests = tests.testAdvanced();
+    const lifecycleTests = tests.testLifecycle();
 
     describe('CRUD Operations', () => {
       if (beforeEach) {
@@ -375,30 +400,11 @@ export function describeAdapterContract(
         });
       }
 
-      it('should create a record', async () => {
-        const crudTests = await tests.testCRUD();
-        await crudTests[0].test();
-      });
-
-      it('should find a record', async () => {
-        const crudTests = await tests.testCRUD();
-        await crudTests[1].test();
-      });
-
-      it('should find multiple records', async () => {
-        const crudTests = await tests.testCRUD();
-        await crudTests[2].test();
-      });
-
-      it('should update a record', async () => {
-        const crudTests = await tests.testCRUD();
-        await crudTests[3].test();
-      });
-
-      it('should delete a record', async () => {
-        const crudTests = await tests.testCRUD();
-        await crudTests[4].test();
-      });
+      for (const test of crudTests) {
+        it(test.name, async () => {
+          await test.test();
+        });
+      }
     });
 
     if (config.adapter.capabilities.operations.batch) {
@@ -415,12 +421,11 @@ export function describeAdapterContract(
           });
         }
 
-        it('should create multiple records', async () => {
-          const batchTests = await tests.testBatch();
-          if (batchTests.length > 0) {
-            await batchTests[0].test();
-          }
-        });
+        for (const test of batchTests) {
+          it(test.name, async () => {
+            await test.test();
+          });
+        }
       });
     }
 
@@ -437,27 +442,19 @@ export function describeAdapterContract(
         });
       }
 
-      it('should count records', async () => {
-        const advancedTests = await tests.testAdvanced();
-        await advancedTests[0].test();
-      });
+      for (const test of advancedTests) {
+        it(test.name, async () => {
+          await test.test();
+        });
+      }
     });
 
     describe('Lifecycle', () => {
-      it('should initialize', async () => {
-        const lifecycleTests = await tests.testLifecycle();
-        await lifecycleTests[0].test();
-      });
-
-      it('should check health', async () => {
-        const lifecycleTests = await tests.testLifecycle();
-        await lifecycleTests[1].test();
-      });
-
-      it('should manage schema versions', async () => {
-        const lifecycleTests = await tests.testLifecycle();
-        await lifecycleTests[2].test();
-      });
+      for (const test of lifecycleTests) {
+        it(test.name, async () => {
+          await test.test();
+        });
+      }
     });
   });
 }

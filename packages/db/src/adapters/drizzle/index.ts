@@ -24,7 +24,8 @@ import type {
   OrderBy,
 } from '../../adapter/types.js';
 import { createAdapterFactory } from '../../adapter/factory.js';
-import { OperationNotSupportedError } from '../../adapter/errors.js';
+import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
+import { createDrizzleInternalCrud } from './internal.js';
 
 // Import Drizzle helpers loosely to avoid strict peer typing
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -63,7 +64,7 @@ function escapeLikeWildcards(value: string): string {
 
 function buildWhere(tbl: any, where: WhereClause[] | undefined) {
   if (!where || where.length === 0) return undefined;
-  const { and, or, not, eq, ne, gt, gte, lt, lte, inArray, sql } = drizzleOps;
+  const { and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull, sql } = drizzleOps;
   const parts = where.map((clause) => {
     const col = tbl[clause.field];
     const op = clause.operator;
@@ -71,8 +72,14 @@ function buildWhere(tbl: any, where: WhereClause[] | undefined) {
 
     switch (op) {
       case 'eq':
+        if (val === null) {
+          return isNull(col);
+        }
         return eq(col, val);
       case 'ne':
+        if (val === null) {
+          return isNotNull(col);
+        }
         return ne(col, val);
       case 'gt':
         return gt(col, val);
@@ -220,12 +227,14 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         if (dialect === 'mysql') {
           await q.execute();
           const row = await this.findOne<T>({ model, where, select });
-          if (!row) throw new Error('Update affected zero rows');
+          if (!row) throw new NotFoundError(model, where);
           return row;
         } else {
           const returning = select && select.length > 0 ? Object.fromEntries(select.map((k) => [k, (tbl as any)[k]])) : undefined;
           const res = await (returning ? q.returning(returning as any) : q.returning()).execute();
-          return (Array.isArray(res) ? res[0] : (res as any)) as T;
+          const row = Array.isArray(res) ? res[0] : (res as any);
+          if (!row) throw new NotFoundError(model, where);
+          return row as T;
         }
       },
 
@@ -253,37 +262,75 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         return typeof n === 'number' ? n : 0;
       },
 
-      async upsert<T = any>({ model, where, create, update, select }: UpsertParams): Promise<T> {
+      async upsert<T = any>({ model, where, create, update, select, conflictTarget }: UpsertParams): Promise<T> {
         const tbl = resolveTable(model);
         if (!where || where.length === 0) throw new Error('upsert requires a non-empty where clause targeting unique columns');
 
-        // Determine conflict target
-        let target: string | string[] | undefined = config.upsertKeys?.[model];
+        // Determine conflict target: explicit param > config > derived from where
+        let target: string | string[] | undefined =
+          conflictTarget ?? config.upsertKeys?.[model];
         if (!target) {
           // derive from where fields
           target = where.length === 1 ? where[0].field : where.map((w) => w.field);
         }
 
+        const hasUpdate = update && Object.keys(update).length > 0;
+        const targetFields = Array.isArray(target) ? target : [target];
+        const stableWhere = targetFields
+          .map((field) => {
+            const fromCreate = (create as any)[field];
+            if (fromCreate !== undefined) {
+              return { field, operator: 'eq' as const, value: fromCreate };
+            }
+
+            const fromWhere = where.find((clause) => clause.field === field && clause.operator === 'eq');
+            return fromWhere
+              ? { field, operator: 'eq' as const, value: fromWhere.value }
+              : null;
+          })
+          .filter((clause): clause is { field: string; operator: 'eq'; value: unknown } => clause !== null);
+        const reselectWhere = stableWhere.length === targetFields.length ? stableWhere : where;
+
         if (config.dialect === 'mysql') {
-          const q = db.insert(tbl).values(create as any).onDuplicateKeyUpdate({ set: update as any });
-          if (select && select.length > 0) {
-            await q.execute();
-            // reselect
-            const row = await this.findOne<T>({ model, where, select });
-            if (!row) throw new Error('Upsert failed to return a row');
-            return row;
-          } else {
-            await q.execute();
-            return (create as any) as T;
+          const insertQuery = db.insert(tbl).values(create as any);
+
+          try {
+            if (hasUpdate) {
+              await insertQuery.onDuplicateKeyUpdate({ set: update as any }).execute();
+            } else {
+              await insertQuery.execute();
+            }
+          } catch (error: any) {
+            if (hasUpdate || error?.code !== 'ER_DUP_ENTRY') {
+              throw error;
+            }
           }
+
+          const row = await this.findOne<T>({
+            model,
+            where: reselectWhere,
+            select,
+          });
+
+          if (row) {
+            return row;
+          }
+
+          throw new Error('Upsert failed to return a row');
         } else {
           const keys = Array.isArray(target) ? target.map((k) => (tbl as any)[k]) : [(tbl as any)[target as string]];
           const returning = select && select.length > 0 ? Object.fromEntries(select.map((k) => [k, (tbl as any)[k]])) : undefined;
-          const q = db
-            .insert(tbl)
-            .values(create as any)
-            .onConflictDoUpdate({ target: keys as any, set: update as any });
+          const q = hasUpdate
+            ? db.insert(tbl).values(create as any)
+                .onConflictDoUpdate({ target: keys as any, set: update as any })
+            : db.insert(tbl).values(create as any)
+                .onConflictDoNothing({ target: keys as any });
           const res = await (returning ? q.returning(returning as any) : q.returning()).execute();
+          // onConflictDoNothing returns empty array when conflict occurs; fall back to findOne
+          if ((!res || (Array.isArray(res) && res.length === 0)) && !hasUpdate) {
+            const row = await this.findOne<T>({ model, where, select });
+            return row as T;
+          }
           return (Array.isArray(res) ? res[0] : (res as any)) as T;
         }
       },
@@ -429,7 +476,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       namespace: config.namespace,
       capabilities: {
         types: { json: true, dates: true, booleans: true, bigint: true, uuid: true, enum: true },
-        operations: { batch: true, upsert: true, streaming: false, fulltext: false, returning: config.dialect !== 'mysql' },
+        operations: { batch: true, upsert: true, streaming: false, fulltext: false, returning: config.dialect !== 'mysql', strictUpdateNotFound: true },
         transactions: { supported: true, nested: false, isolation: undefined },
         performance: { supportsJoins: true, supportsPreparedStatements: true },
         schema: { migrations: false, constraints: true, indexes: true },
@@ -439,6 +486,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
     adapter: createImpl,
   });
 
-  // Return an adapter instance for default (no library-provided overrides)
-  return factory({});
+  const adapter = factory({});
+  const internalCrud = createDrizzleInternalCrud(config.db, config.dialect);
+  return Object.assign(adapter, { internal: internalCrud });
 }

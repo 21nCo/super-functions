@@ -5,11 +5,15 @@
 // Core factory
 export { createAdapterFactory } from './adapter/factory.js';
 
+// Row-level namespace isolation
+export { wrapWithRowLevelNamespace, NamespaceRequiredError } from './adapter/row-level-namespace.js';
+
 // Types
 export type {
   Adapter,
   TransactionAdapter,
   AdapterFactoryConfig,
+  RowLevelNamespaceConfig,
   AdapterFactoryOptions,
   AdapterContext,
   HealthStatus,
@@ -38,6 +42,12 @@ export type {
   LibraryOptions,
   Logger,
   AdapterImplementation,
+  KVStoreAdapter,
+  KVStoreAdapterFactory,
+  RedisAdapter,
+  RedisAdapterFactory,
+  InternalCrud,
+  InternalColumnDef,
 } from './adapter/types.js';
 
 // Capabilities

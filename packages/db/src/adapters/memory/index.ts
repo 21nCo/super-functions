@@ -22,6 +22,8 @@ import type {
   TableSchema,
   ValidationResult,
   HealthStatus,
+  InternalCrud,
+  InternalColumnDef,
 } from '../../adapter/types.js';
 
 export interface MemoryAdapterConfig {
@@ -31,6 +33,145 @@ export interface MemoryAdapterConfig {
     prefix?: string;
   };
   debug?: boolean;
+}
+
+function createMemoryInternalCrud(): InternalCrud {
+  const internalStore = new Map<string, Map<string, Record<string, unknown>>>();
+  const ensuredTables = new Set<string>();
+  const TABLE_NAME_RE = /^__datafn_[a-z0-9_]+$/;
+
+  function matchesInternalWhere(
+    record: Record<string, unknown>,
+    where: Array<{ field: string; op: string; value: unknown }>,
+  ): boolean {
+    return where.every((w) => {
+      const val = record[w.field];
+      switch (w.op) {
+        case 'eq': return val === w.value;
+        case 'ne': return val !== w.value;
+        case 'gt': return (val as number) > (w.value as number);
+        case 'gte': return (val as number) >= (w.value as number);
+        case 'lt': return (val as number) < (w.value as number);
+        case 'lte': return (val as number) <= (w.value as number);
+        default: throw new Error(`Unsupported internal CRUD operator: ${w.op}`);
+      }
+    });
+  }
+
+  return {
+    async ensureTable(name: string, _columns: InternalColumnDef[]): Promise<void> {
+      if (!TABLE_NAME_RE.test(name)) {
+        throw new Error(`ensureTable: table name must start with "__datafn_": "${name}"`);
+      }
+      if (ensuredTables.has(name)) return;
+      if (!internalStore.has(name)) {
+        internalStore.set(name, new Map());
+      }
+      ensuredTables.add(name);
+    },
+
+    async create(
+      table: string,
+      data: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      if (!internalStore.has(table)) {
+        internalStore.set(table, new Map());
+      }
+      const store = internalStore.get(table)!;
+      const id = (data.id as string) ?? Math.random().toString(36).substr(2, 9);
+      const record = { ...data, id };
+      store.set(id, record);
+      return record;
+    },
+
+    async findOne(
+      table: string,
+      where: Array<{ field: string; op: string; value: unknown }>,
+    ): Promise<Record<string, unknown> | null> {
+      const store = internalStore.get(table);
+      if (!store) return null;
+      for (const record of store.values()) {
+        if (matchesInternalWhere(record, where)) return { ...record };
+      }
+      return null;
+    },
+
+    async findMany(
+      table: string,
+      where: Array<{ field: string; op: string; value: unknown }>,
+      opts?: { orderBy?: string; limit?: number },
+    ): Promise<Record<string, unknown>[]> {
+      const store = internalStore.get(table);
+      if (!store) return [];
+      let results = Array.from(store.values()).filter((r) => matchesInternalWhere(r, where));
+      if (opts?.orderBy) {
+        const desc = opts.orderBy.startsWith('-');
+        const field = desc ? opts.orderBy.slice(1) : opts.orderBy;
+        results.sort((a, b) => {
+          const av = a[field] as number;
+          const bv = b[field] as number;
+          const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+          return desc ? -cmp : cmp;
+        });
+      }
+      if (typeof opts?.limit === 'number') {
+        results = results.slice(0, opts.limit);
+      }
+      return results.map((r) => ({ ...r }));
+    },
+
+    async update(
+      table: string,
+      where: Array<{ field: string; op: string; value: unknown }>,
+      data: Record<string, unknown>,
+    ): Promise<number> {
+      const store = internalStore.get(table);
+      if (!store) return 0;
+      let count = 0;
+      for (const [id, record] of store.entries()) {
+        if (matchesInternalWhere(record, where)) {
+          store.set(id, { ...record, ...data });
+          count++;
+        }
+      }
+      return count;
+    },
+
+    async delete(
+      table: string,
+      where: Array<{ field: string; op: string; value: unknown }>,
+    ): Promise<number> {
+      const store = internalStore.get(table);
+      if (!store) return 0;
+      let count = 0;
+      for (const [id, record] of store.entries()) {
+        if (matchesInternalWhere(record, where)) {
+          store.delete(id);
+          count++;
+        }
+      }
+      return count;
+    },
+
+    /** EXE-018: Batch create for change-tracking performance */
+    async createMany(
+      table: string,
+      data: Record<string, unknown>[],
+    ): Promise<Record<string, unknown>[]> {
+      if (!internalStore.has(table)) {
+        internalStore.set(table, new Map());
+      }
+      const tableStore = internalStore.get(table)!;
+      const results: Record<string, unknown>[] = [];
+      for (const item of data) {
+        const id = (item.id as string) ?? Math.random().toString(36).substr(2, 9);
+        const record = { ...item, id };
+        tableStore.set(id, record);
+        results.push(record);
+      }
+      return results;
+    },
+  };
 }
 
 /**
@@ -56,6 +197,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           streaming: false,
           fulltext: false,
           returning: true,
+          strictUpdateNotFound: true,
         },
         transactions: {
           supported: false, // Simple in-memory, no real transactions
@@ -97,6 +239,12 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
 
           const table = store.get(tableName)!;
           const id = params.data.id || Math.random().toString(36).substr(2, 9);
+
+          // Enforce uniqueness: create must fail if record with this ID already exists
+          if (table.has(id)) {
+            throw new Error(`UNIQUE constraint failed: record with id "${id}" already exists in ${tableName}`);
+          }
+
           const record = { ...params.data, id } as Record<string, any>;
 
           table.set(id, record);
@@ -362,7 +510,9 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  return factory({});
+  const adapter = factory({});
+  const internalCrud = createMemoryInternalCrud();
+  return Object.assign(adapter, { internal: internalCrud });
 }
 
 /**

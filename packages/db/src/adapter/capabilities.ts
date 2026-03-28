@@ -22,6 +22,7 @@ export interface AdapterCapabilities {
     streaming: boolean; // Stream large datasets
     fulltext: boolean; // Full-text search
     returning: boolean; // RETURNING clause support
+    strictUpdateNotFound?: boolean; // update() throws NotFoundError/canonical not-found on zero matched rows
   };
 
   // Transaction support
@@ -72,6 +73,7 @@ export const DEFAULT_CAPABILITIES: AdapterCapabilities = {
     streaming: false,
     fulltext: false,
     returning: false,
+    strictUpdateNotFound: false,
   },
   transactions: {
     supported: false,

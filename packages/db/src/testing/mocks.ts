@@ -42,6 +42,15 @@ export class MockAdapter implements Adapter {
   readonly version = '1.0.0';
   readonly capabilities = DEFAULT_CAPABILITIES;
 
+  readonly internal = {
+    ensureTable: async () => { this.recordCall('internal.ensureTable', {}); },
+    create: async (table: string, data: Record<string, unknown>) => { this.recordCall('internal.create', { table, data }); return data; },
+    findOne: async () => { this.recordCall('internal.findOne', {}); return null; },
+    findMany: async () => { this.recordCall('internal.findMany', {}); return []; },
+    update: async () => { this.recordCall('internal.update', {}); return 0; },
+    delete: async () => { this.recordCall('internal.delete', {}); return 0; },
+  };
+
   /**
    * Set a mock response for a specific method
    */

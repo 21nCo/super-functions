@@ -10,6 +10,9 @@ export type { MemoryAdapterConfig } from '../adapters/memory/index.js';
 export { testAdapterContract, describeAdapterContract } from './contract-tests.js';
 export type { AdapterTestConfig } from './contract-tests.js';
 
+// Row-level namespace contract tests
+export { runRowLevelNamespaceContractTests } from './namespace-contract-tests.js';
+
 // Mock adapter
 export { MockAdapter, createMockAdapter } from './mocks.js';
 export type { MockCall } from './mocks.js';
