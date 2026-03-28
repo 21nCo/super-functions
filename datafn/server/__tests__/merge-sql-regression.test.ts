@@ -1,0 +1,225 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { createDatafnServer } from "../src/server.js";
+
+const kvTable = sqliteTable("kv", {
+  id: text("id").primaryKey(),
+  __ns: text("__ns").notNull(),
+  value: text("value"),
+});
+
+const taskTable = sqliteTable("task", {
+  id: text("id").primaryKey(),
+  __ns: text("__ns").notNull(),
+  title: text("title").notNull(),
+  priority: integer("priority"),
+});
+
+describe("SQL regression: merge persistence and false-success gating", () => {
+  let sqlite: Database.Database;
+  let server: Awaited<ReturnType<typeof createDatafnServer>>;
+  let adapter: ReturnType<typeof drizzleAdapter>;
+
+  beforeEach(async () => {
+    sqlite = new Database(":memory:");
+    sqlite.exec(`
+      CREATE TABLE kv (
+        id TEXT PRIMARY KEY,
+        __ns TEXT NOT NULL,
+        value TEXT
+      );
+      CREATE TABLE task (
+        id TEXT PRIMARY KEY,
+        __ns TEXT NOT NULL,
+        title TEXT NOT NULL,
+        priority INTEGER
+      );
+    `);
+
+    const db = drizzle(sqlite, { schema: { kv: kvTable, task: taskTable } });
+    adapter = drizzleAdapter({ db, dialect: "sqlite", debug: false });
+
+    server = await createDatafnServer({
+      allowUnknownResources: true,
+      db: adapter,
+      schema: {
+        resources: [
+          {
+            name: "kv",
+            version: 1,
+            fields: [{ name: "value", type: "string", required: false }],
+          },
+          {
+            name: "task",
+            version: 1,
+            fields: [
+              { name: "title", type: "string", required: true },
+              { name: "priority", type: "number", required: false },
+            ],
+          },
+        ],
+        relations: [],
+      },
+    });
+  });
+
+  afterEach(() => {
+    server?.close();
+    sqlite?.close();
+  });
+
+  it("KV first-write merge persists and subsequent merge updates value (TV-KV-001/002)", async () => {
+    const firstPush = await server.router.handle(
+      new Request("http://localhost/datafn/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: "c1",
+          mutations: [
+            {
+              resource: "kv",
+              version: 1,
+              operation: "merge",
+              id: "kv:pref:theme",
+              record: { value: "light" },
+              clientId: "c1",
+              mutationId: "m-kv-create",
+            },
+          ],
+        }),
+      }),
+    );
+    const firstBody = await firstPush.json();
+    expect(firstPush.status).toBe(200);
+    expect(firstBody.ok).toBe(true);
+    expect(firstBody.result.ok).toBe(true);
+    expect(firstBody.result.applied).toContain("m-kv-create");
+    expect(firstBody.result.errors).toHaveLength(0);
+
+    const queryAfterCreate = await server.router.handle(
+      new Request("http://localhost/datafn/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "kv",
+          filters: { id: { $eq: "kv:pref:theme" } },
+        }),
+      }),
+    );
+    const queryCreateBody = await queryAfterCreate.json();
+    expect(queryCreateBody.ok).toBe(true);
+    expect(queryCreateBody.result.data).toHaveLength(1);
+    expect(queryCreateBody.result.data[0].id).toBe("kv:pref:theme");
+    expect(queryCreateBody.result.data[0].value).toBe("light");
+
+    const secondPush = await server.router.handle(
+      new Request("http://localhost/datafn/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: "c1",
+          mutations: [
+            {
+              resource: "kv",
+              version: 1,
+              operation: "merge",
+              id: "kv:pref:theme",
+              record: { value: "dark" },
+              clientId: "c1",
+              mutationId: "m-kv-update",
+            },
+          ],
+        }),
+      }),
+    );
+    const secondBody = await secondPush.json();
+    expect(secondPush.status).toBe(200);
+    expect(secondBody.ok).toBe(true);
+    expect(secondBody.result.ok).toBe(true);
+    expect(secondBody.result.applied).toContain("m-kv-update");
+    expect(secondBody.result.errors).toHaveLength(0);
+
+    const queryAfterUpdate = await server.router.handle(
+      new Request("http://localhost/datafn/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "kv",
+          filters: { id: { $eq: "kv:pref:theme" } },
+        }),
+      }),
+    );
+    const queryUpdateBody = await queryAfterUpdate.json();
+    expect(queryUpdateBody.ok).toBe(true);
+    expect(queryUpdateBody.result.data).toHaveLength(1);
+    expect(queryUpdateBody.result.data[0].value).toBe("dark");
+  });
+
+  it("ineligible merge is not applied and does not emit change-tracking records (TV-MRG-002, TV-OBS-002)", async () => {
+    const pushRes = await server.router.handle(
+      new Request("http://localhost/datafn/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: "c1",
+          mutations: [
+            {
+              resource: "task",
+              version: 1,
+              operation: "merge",
+              id: "task:missing",
+              record: { priority: 1 },
+              clientId: "c1",
+              mutationId: "m-merge-missing",
+            },
+          ],
+        }),
+      }),
+    );
+    const pushBody = await pushRes.json();
+    expect(pushRes.status).toBe(200);
+    expect(pushBody.ok).toBe(true);
+    expect(pushBody.result.ok).toBe(true);
+    expect(pushBody.result.applied).not.toContain("m-merge-missing");
+    expect(pushBody.result.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mutationId: "m-merge-missing", code: "NOT_FOUND", path: "id" }),
+      ]),
+    );
+    expect(pushBody.result.cursor).toBe("0");
+
+    const pullRes = await server.router.handle(
+      new Request("http://localhost/datafn/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: "c1",
+          cursor: "0",
+          limit: 100,
+        }),
+      }),
+    );
+    const pullBody = await pullRes.json();
+    expect(pullRes.status).toBe(200);
+    expect(pullBody.ok).toBe(true);
+    expect(pullBody.result.ok).toBe(true);
+    expect(pullBody.result.changes).toHaveLength(0);
+
+    const task = await server.router.handle(
+      new Request("http://localhost/datafn/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "task",
+          filters: { id: { $eq: "task:missing" } },
+        }),
+      }),
+    );
+    const taskBody = await task.json();
+    expect(taskBody.ok).toBe(true);
+    expect(taskBody.result.data).toHaveLength(0);
+  });
+});
