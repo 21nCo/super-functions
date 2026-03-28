@@ -1,0 +1,1 @@
+"""Flask adapter tests."""

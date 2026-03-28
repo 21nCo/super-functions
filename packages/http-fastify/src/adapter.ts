@@ -90,8 +90,13 @@ async function convertToFastifyReply(
   // Set status
   reply.status(webResponse.status);
 
+  const { headers, setCookies } = collectResponseHeaders(webResponse.headers);
+  if (setCookies.length > 0) {
+    reply.header('set-cookie', setCookies);
+  }
+
   // Set headers
-  webResponse.headers.forEach((value, key) => {
+  headers.forEach(([key, value]) => {
     reply.header(key, value);
   });
 
@@ -114,4 +119,28 @@ async function convertToFastifyReply(
   } else {
     reply.send();
   }
+}
+
+function collectResponseHeaders(
+  headers: Headers
+): { headers: Array<[string, string]>; setCookies: string[] } {
+  const maybeHeaders = headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const supportsGetSetCookie = typeof maybeHeaders.getSetCookie === 'function';
+  const setCookies = supportsGetSetCookie ? maybeHeaders.getSetCookie() : [];
+  const headerEntries: Array<[string, string]> = [];
+
+  headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'set-cookie') {
+      if (!supportsGetSetCookie) {
+        setCookies.push(value);
+      }
+      return;
+    }
+
+    headerEntries.push([key, value]);
+  });
+
+  return { headers: headerEntries, setCookies };
 }

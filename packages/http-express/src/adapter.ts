@@ -88,8 +88,13 @@ async function convertToExpressResponse(
     expressResponse.statusMessage = webResponse.statusText;
   }
 
+  const { headers, setCookies } = collectResponseHeaders(webResponse.headers);
+  if (setCookies.length > 0) {
+    expressResponse.setHeader('set-cookie', setCookies);
+  }
+
   // Set headers
-  webResponse.headers.forEach((value, key) => {
+  headers.forEach(([key, value]) => {
     expressResponse.setHeader(key, value);
   });
 
@@ -100,4 +105,28 @@ async function convertToExpressResponse(
   } else {
     expressResponse.end();
   }
+}
+
+function collectResponseHeaders(
+  headers: Headers
+): { headers: Array<[string, string]>; setCookies: string[] } {
+  const maybeHeaders = headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const supportsGetSetCookie = typeof maybeHeaders.getSetCookie === 'function';
+  const setCookies = supportsGetSetCookie ? maybeHeaders.getSetCookie() : [];
+  const headerEntries: Array<[string, string]> = [];
+
+  headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'set-cookie') {
+      if (!supportsGetSetCookie) {
+        setCookies.push(value);
+      }
+      return;
+    }
+
+    headerEntries.push([key, value]);
+  });
+
+  return { headers: headerEntries, setCookies };
 }

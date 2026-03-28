@@ -245,4 +245,37 @@ describe('Fastify Adapter', () => {
     const deleteRes = await fastify.inject({ method: 'DELETE', url: '/api/resource' });
     expect(deleteRes.json()).toEqual({ method: 'DELETE' });
   });
+
+  it('should preserve repeated set-cookie headers', async () => {
+    const router = createRouter({
+      routes: [
+        {
+          method: 'GET',
+          path: '/cookies',
+          handler: async () => {
+            const headers = new Headers();
+            headers.append('set-cookie', 'session=abc; Path=/; HttpOnly');
+            headers.append('set-cookie', 'csrf=def; Path=/; SameSite=Strict');
+            headers.set('x-trace-id', 'trace-123');
+            return new Response('ok', {
+              headers,
+            });
+          },
+        },
+      ],
+    });
+
+    const fastify = Fastify();
+    await fastify.register(toFastify(router), { prefix: '/api' });
+
+    const response = await fastify.inject({
+      method: 'GET',
+      url: '/api/cookies',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-trace-id']).toBe('trace-123');
+    expect(response.cookies).toHaveLength(2);
+    expect(response.cookies.map((cookie) => cookie.name)).toEqual(['session', 'csrf']);
+  });
 });
