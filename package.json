@@ -13,6 +13,7 @@
     "datafn/core",
     "datafn/docs",
     "datafn/server",
+    "datafn/svelte",
     "packages/*"
   ],
   "scripts": {
