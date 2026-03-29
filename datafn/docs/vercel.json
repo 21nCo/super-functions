@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm ci --include-workspace-root && npx turbo run build --filter=@superfunctions/docs-theme --filter=@datafn/docs",
+  "framework": "nextjs"
+}

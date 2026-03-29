@@ -11,6 +11,7 @@
     "datafn/client",
     "datafn/cli",
     "datafn/core",
+    "datafn/docs",
     "datafn/server",
     "packages/*"
   ],
