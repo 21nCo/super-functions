@@ -1,0 +1,54 @@
+{
+  "name": "@datafn/cli",
+  "version": "0.0.2",
+  "description": "CLI and Codegen for DataFn",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "datafn": "./dist/cli.js"
+  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "test": "npm run build && vitest run",
+    "test:watch": "vitest watch"
+  },
+  "dependencies": {
+    "@datafn/core": "*",
+    "@datafn/client": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "optionalDependencies": {
+    "tsx": "^4.7.0"
+  },
+  "author": "21n",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "datafn/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

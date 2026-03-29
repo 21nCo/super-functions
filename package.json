@@ -9,6 +9,7 @@
     "hostfn/*",
     "authfn/*",
     "datafn/client",
+    "datafn/cli",
     "datafn/core",
     "datafn/server",
     "packages/*"
