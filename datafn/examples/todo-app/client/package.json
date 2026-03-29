@@ -1,0 +1,28 @@
+{
+  "name": "todo-app-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@21n/fonts": "^1.0.1",
+    "@datafn/client": "*",
+    "@datafn/core": "*",
+    "@datafn/svelte": "*",
+    "@searchfn/adapter-indexeddb": "*",
+    "@searchfn/datafn-provider": "*",
+    "svelte": "^4.2.7",
+    "todo-app-server": "*"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "svelte-check": "^3.6.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}

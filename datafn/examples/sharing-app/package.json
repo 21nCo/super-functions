@@ -1,0 +1,14 @@
+{
+  "name": "@datafn/examples-sharing-app",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dedicated DataFn sharing example scaffold",
+  "scripts": {
+    "dev:server": "npm --prefix ./server run dev",
+    "dev:client": "npm --prefix ./client run dev",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.2"
+  }
+}

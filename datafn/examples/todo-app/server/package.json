@@ -1,0 +1,37 @@
+{
+  "name": "todo-app-server",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    "./schema": "./src/schema.datafn.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@datafn/core": "*",
+    "@datafn/server": "*",
+    "@searchfn/adapter-elasticsearch": "*",
+    "@searchfn/adapter-memory": "*",
+    "@searchfn/datafn-provider": "*",
+    "@superfunctions/db": "*",
+    "@superfunctions/http-hono": "*",
+    "dotenv": "^16.6.1",
+    "drizzle-orm": "^0.35.0",
+    "hono": "^4.6.16",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.0"
+  }
+}
