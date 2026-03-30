@@ -1,0 +1,88 @@
+{
+  "name": "@searchfn/client",
+  "version": "0.3.0",
+  "description": "Thin search client over SearchAdapter for browser and server apps.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./in-memory-search": {
+      "types": "./dist/in-memory-search.d.ts",
+      "import": "./dist/in-memory-search.js",
+      "require": "./dist/in-memory-search.cjs"
+    },
+    "./constructors": {
+      "types": "./dist/constructors.d.ts",
+      "import": "./dist/constructors.js",
+      "require": "./dist/constructors.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+    "test": "vitest",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "benchmark": "tsx benchmarks/indexing-benchmark.ts",
+    "prepublishOnly": "npm run lint && npm run build"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "keywords": [
+    "search",
+    "full-text-search",
+    "search-client",
+    "adapter"
+  ],
+  "author": "21n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "searchfn/client"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@searchfn/core": "file:../core",
+    "@searchfn/adapter-contracts": "file:../adapter-contracts",
+    "@searchfn/adapter-memory": "file:../adapter-memory",
+    "@searchfn/adapter-indexeddb": "file:../adapter-indexeddb"
+  },
+  "superfunctions": {
+    "initFunction": "searchFn",
+    "schemaVersion": 1,
+    "namespace": "searchfn"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "fake-indexeddb": "^6.2.4",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

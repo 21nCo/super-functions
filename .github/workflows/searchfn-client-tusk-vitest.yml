@@ -1,0 +1,57 @@
+name: SearchFn Client Tusk Vitest
+
+on:
+  workflow_dispatch:
+    inputs:
+      runId:
+        description: "Tusk Run ID"
+        required: true
+      tuskUrl:
+        description: "Tusk server URL"
+        required: true
+      commitSha:
+        description: "Commit SHA to checkout"
+        required: true
+      runnerIndexes:
+        description: "Runner indexes"
+        required: false
+        default: "[\"1\"]"
+
+jobs:
+  test-action:
+    name: Tusk Test Runner
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runnerIndex: ${{ fromJson(github.event.inputs.runnerIndexes) }}
+    defaults:
+      run:
+        working-directory: searchfn/client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commitSha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start runner
+        uses: Use-Tusk/test-runner@c83efabca725843d6cdb5d3e9c4083baf7c8282e
+        with:
+          runId: ${{ github.event.inputs.runId }}
+          tuskUrl: ${{ github.event.inputs.tuskUrl }}
+          commitSha: ${{ github.event.inputs.commitSha }}
+          authToken: ${{ secrets.TUSK_AUTH_TOKEN }}
+          appDir: "searchfn/client"
+          testFramework: "Vitest"
+          testFileRegex: 'searchfn/client/__tests__/.*\.test\.ts$'
+          lintScript: 'npx prettier --write {{file}} && npx eslint --fix {{file}}'
+          testScript: 'npx vitest run {{file}}'
+          runnerIndex: ${{ matrix.runnerIndex }}
