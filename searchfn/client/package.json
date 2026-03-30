@@ -62,10 +62,10 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@searchfn/core": "file:../core",
-    "@searchfn/adapter-contracts": "file:../adapter-contracts",
-    "@searchfn/adapter-memory": "file:../adapter-memory",
-    "@searchfn/adapter-indexeddb": "file:../adapter-indexeddb"
+    "@searchfn/core": "^0.3.0",
+    "@searchfn/adapter-contracts": "^0.1.0",
+    "@searchfn/adapter-memory": "^0.1.0",
+    "@searchfn/adapter-indexeddb": "^0.1.0"
   },
   "superfunctions": {
     "initFunction": "searchFn",

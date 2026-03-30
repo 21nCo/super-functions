@@ -108,6 +108,18 @@ describe("createSearchClient", () => {
       expect(adapter.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 25 }));
     });
 
+    it("rejects invalid default limit at client creation", () => {
+      expect(() =>
+        createSearchClient({ adapter, defaults: { limit: 0 } }),
+      ).toThrow("defaults.limit must be a positive number");
+    });
+
+    it("rejects invalid default limitPerResource at client creation", () => {
+      expect(() =>
+        createSearchClient({ adapter, defaults: { limitPerResource: 0 } }),
+      ).toThrow("defaults.limitPerResource must be a positive number");
+    });
+
     it("applies custom default fuzzy", async () => {
       const client = createSearchClient({ adapter, defaults: { fuzzy: 1 } });
       await client.search({ resource: "tasks", query: "test" });

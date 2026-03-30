@@ -77,6 +77,8 @@ export function createSearchClient(config: SearchClientConfig): SearchClient {
   if (!adapter) {
     throw new SearchClientValidationError("DFQL_INVALID", "adapter is required", "adapter");
   }
+  validateLimit(defaults.limit, "defaults.limit", MAX_LIMIT);
+  validateLimit(defaults.limitPerResource, "defaults.limitPerResource", MAX_LIMIT_PER_RESOURCE);
 
   const client: SearchClient = {
     async index(params: IndexParams): Promise<void> {
