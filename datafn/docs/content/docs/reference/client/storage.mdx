@@ -83,6 +83,7 @@ The factory is called with the namespace string when the client is configured wi
 |---|---|---|
 | `MemoryStorageAdapter` | Any | In-memory (lost on reload). |
 | `IndexedDbStorageAdapter` | Browser | IndexedDB (persistent). |
+| `createNativeBackedStorageAdapter(...)` | `WKWebView` in a Swift host | Core Data via native bridge. |
 
 ```typescript
 import { MemoryStorageAdapter, IndexedDbStorageAdapter } from "@datafn/client";
@@ -90,6 +91,20 @@ import { MemoryStorageAdapter, IndexedDbStorageAdapter } from "@datafn/client";
 const memory = new MemoryStorageAdapter();
 const idb = new IndexedDbStorageAdapter("my-app-db");
 ```
+
+Native-backed Apple WebView mode uses `@datafn/swift-bridge`:
+
+```typescript
+import {
+  createNativeBackedStorageAdapter,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+const storage = createNativeBackedStorageAdapter(bus);
+```
+
+Native-backed storage must be paired with `sync.owner = "native"`. It is not a best-effort fallback, and DataFn must not create an IndexedDB database when native-backed mode is selected.
 
 For namespace isolation:
 

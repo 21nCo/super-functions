@@ -46,3 +46,10 @@ _conduct/.meta
 
 21n
 .agent
+
+# Apple / Xcode user artifacts
+DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+**/.swiftpm/
+**/.build/

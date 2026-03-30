@@ -259,6 +259,61 @@ describe("clientSearch plugin UNI-001 / UNI-002", () => {
     });
   });
 
+  it("routes native-backed provider queries but skips provider-owned rebuild and mutation indexing", async () => {
+    const provider = {
+      ...makeProvider(),
+      __datafnNativeBacked: true as const,
+    };
+    provider.search.mockResolvedValueOnce(["task:1"]);
+
+    await storage.upsertRecord("task", {
+      id: "task:1",
+      title: "Seed",
+      description: "native",
+    });
+
+    const plugin = createClientSearchPlugin({ storage, searchProvider: provider });
+
+    const transformed = await plugin.beforeQuery!(
+      { env: "client", schema },
+      {
+        resource: "task",
+        version: 1,
+        search: { query: "native", prefix: true },
+      },
+    );
+
+    await plugin.afterSync!(
+      { env: "client", schema },
+      "clone",
+      { storage },
+      {},
+    );
+    await plugin.afterMutation!(
+      { env: "client", schema },
+      { resource: "task", operation: "insert", id: "task:1" },
+      {},
+    );
+
+    expect(miniSearchConstructor).not.toHaveBeenCalled();
+    expect(provider.search).toHaveBeenCalledWith({
+      resource: "task",
+      query: "native",
+      type: undefined,
+      fields: undefined,
+      limit: undefined,
+      prefix: true,
+      fuzzy: undefined,
+      fieldBoosts: undefined,
+      signal: undefined,
+    });
+    expect(transformed).toMatchObject({
+      filters: { id: { in: ["task:1"] } },
+      _searchCandidateIds: ["task:1"],
+    });
+    expect(provider.updateIndices).not.toHaveBeenCalled();
+  });
+
   it("TV-UNI-002-P: legacy MiniSearch mode still works without provider", async () => {
     await storage.upsertRecord("task", {
       id: "task:1",

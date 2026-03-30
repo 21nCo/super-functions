@@ -18,8 +18,9 @@ import {
   sanitizeCapabilityReadonlyFields,
 } from "./capability-fields.js";
 
-import type { SyncEngine } from "./sync/engine.js";
 import type { DebouncerMap } from "./debounce.js";
+
+export type MutationPushScheduler = () => void | Promise<void>;
 
 export type TableOperation =
   | "delete"
@@ -213,13 +214,23 @@ function resolveSearchIndexOperation(
   return undefined;
 }
 
+function isNativeBackedSearchProvider(
+  searchProvider: SearchProvider | undefined,
+): boolean {
+  return (
+    typeof searchProvider === "object" &&
+    searchProvider !== null &&
+    (searchProvider as { __datafnNativeBacked?: unknown }).__datafnNativeBacked === true
+  );
+}
+
 async function tryUpdateSearchIndex(
   searchProvider: SearchProvider | undefined,
   storage: DatafnStorageAdapter | undefined,
   mutation: Record<string, unknown>,
   resolvedRecord?: Record<string, unknown>,
 ): Promise<void> {
-  if (!searchProvider) return;
+  if (!searchProvider || isNativeBackedSearchProvider(searchProvider)) return;
 
   const resource = mutation.resource;
   const id = mutation.id;
@@ -274,7 +285,7 @@ export async function executeMutation(
   storage?: DatafnStorageAdapter,
   plugins: DatafnPlugin[] = [],
   schema?: DatafnSchema,
-  syncEngine?: SyncEngine,
+  schedulePush?: MutationPushScheduler,
   offlinability?: boolean,
   clientId?: string,
   debouncerMap?: DebouncerMap,
@@ -406,9 +417,9 @@ export async function executeMutation(
                   { ok: true, mutationId: debouncedMutation.mutationId },
                 );
 
-                // Schedule push if syncEngine exists
-                if (syncEngine) {
-                  syncEngine.schedulePush();
+                // Schedule push if native or JavaScript sync ownership is available.
+                if (schedulePush) {
+                  await schedulePush();
                 }
               } catch (err) {
                 // If changelog append fails, emit rejection event
@@ -475,7 +486,7 @@ export async function executeMutation(
   // Local-first path (SYNC-MUT-001)
   // Only use local-first when hydration is ready to avoid data integrity issues
   // (e.g., editing a record that exists on remote but not yet synced locally)
-  if (offlinability && storage && syncEngine) {
+  if (offlinability && storage && schedulePush) {
     const mutations = Array.isArray(capabilitySanitizedMutation)
       ? capabilitySanitizedMutation
       : [capabilitySanitizedMutation];
@@ -527,8 +538,8 @@ export async function executeMutation(
         emitMutationEvents(eventBus, getTimestamp, mut, result);
       }
 
-      // Schedule push
-      syncEngine.schedulePush();
+      // Schedule push through the active sync owner.
+      await schedulePush();
 
       return Array.isArray(m) ? results : results[0];
     }

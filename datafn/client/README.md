@@ -1,12 +1,28 @@
 # @datafn/client
 
-Offline-first, reactive client for DataFn. Provides fluent Table and KV APIs, reactive signals for UI binding, local storage with IndexedDB, bidirectional synchronization, an event bus, transactions, plugins, and multi-user data isolation.
+Offline-first, reactive client for DataFn. Provides fluent Table and KV APIs, reactive signals for UI binding, browser-owned IndexedDB storage, native-backed Core Data storage through `@datafn/swift-bridge`, bidirectional synchronization, an event bus, transactions, plugins, and multi-user data isolation.
 
 ## Installation
 
 ```bash
 npm install @datafn/client @datafn/core
 ```
+
+For Apple WebView hosts that want Swift-owned persistence and sync:
+
+```bash
+npm install @datafn/client @datafn/core @datafn/swift-bridge
+```
+
+## Topology Matrix
+
+| Topology | Local persistence | Remote persistence | Sync owner |
+|---|---|---|---|
+| Browser-owned | IndexedDB | DataFn server | JavaScript |
+| Native-backed DataFn-server | Core Data | DataFn server | Swift |
+| Native-backed CloudKit | Core Data | CloudKit private database | Swift |
+
+Native-backed mode is explicit. It does not silently fall back to IndexedDB if the bridge is missing.
 
 ## Features
 
@@ -77,6 +93,53 @@ signal.subscribe((result) => {
   console.log("Active tasks:", result.data);
 });
 ```
+
+## Native-backed Apple WebView Mode
+
+When the same web app is embedded inside a SwiftUI host, configure the client with native-backed bridge adapters instead of IndexedDB:
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+import {
+  createNativeBackedRemoteAdapter,
+  createNativeBackedSearchProvider,
+  createNativeBackedStorageAdapter,
+  createNativeSyncController,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+
+const client = createDatafnClient({
+  schema,
+  clientId: "apple-webview-device",
+  namespace: "org-1:user-1",
+  storage: createNativeBackedStorageAdapter(bus),
+  searchProvider: createNativeBackedSearchProvider(bus),
+  sync: {
+    owner: "native",
+    mode: "sync",
+    offlinability: true,
+    remoteAdapter: createNativeBackedRemoteAdapter(bus),
+    native: {
+      syncController: createNativeSyncController(bus),
+      remoteMode: "datafn-server",
+      expectedSchemaHash: "todo-app-example-v1",
+      failIfUnavailable: true,
+      remoteProfile: "default",
+    },
+  },
+});
+```
+
+For CloudKit-backed personal apps, change `remoteMode` to `"icloud"`. In both native-backed modes:
+
+- Swift owns persistence and synchronization.
+- Swift also owns the SearchFn-backed local index.
+- The JavaScript `SyncEngine` must stay inactive.
+- DataFn must fail before persistence starts if the bridge is unavailable.
+- IndexedDB must not be used as a fallback persistence or search-index layer.
+- CloudKit syncs records only. Search index files remain derived local state on each device.
 
 ---
 
@@ -205,6 +268,12 @@ const result = await tasks.query({
 ### Search (Provider-Backed, Local-First)
 
 DataFn search is provider-backed when `searchProvider` is configured. In sync mode, search is local-first after hydration is ready.
+
+Topology-specific search ownership:
+
+- Browser-owned mode: use a JavaScript SearchFn provider, typically `@searchfn/datafn-provider` with `@searchfn/adapter-indexeddb`.
+- Native-backed Apple WebView mode: use `createNativeBackedSearchProvider(bus)` so Swift executes search against the shared native SearchFn backend.
+- Native-backed CloudKit mode: the same native SearchFn backend is used, but CloudKit syncs records only; index files are rebuilt and maintained locally per device.
 
 `table.query()` search block options:
 

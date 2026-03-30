@@ -54,6 +54,16 @@ const UPSERT_MUTATION_OPERATIONS = new Set([
   "unarchive",
 ]);
 
+function isNativeBackedSearchProvider(
+  searchProvider: SearchProvider | undefined,
+): boolean {
+  return (
+    typeof searchProvider === "object" &&
+    searchProvider !== null &&
+    (searchProvider as { __datafnNativeBacked?: unknown }).__datafnNativeBacked === true
+  );
+}
+
 /**
  * Create a client-side search plugin.
  */
@@ -84,6 +94,9 @@ export function createClientSearchPlugin(options?: ClientSearchConfig): DatafnPl
       }
 
       if (searchProvider) {
+        if (isNativeBackedSearchProvider(searchProvider)) {
+          return;
+        }
         if (!storage) {
           console.warn("[client-search] No storage adapter available, skipping provider index rebuild");
           return;
@@ -102,6 +115,9 @@ export function createClientSearchPlugin(options?: ClientSearchConfig): DatafnPl
 
     async afterMutation(_ctx: DatafnHookContext, m: unknown | unknown[], _result: unknown) {
       if (searchProvider) {
+        if (isNativeBackedSearchProvider(searchProvider)) {
+          return;
+        }
         if (Array.isArray(m)) {
           for (const mutation of m) {
             await updateProviderIndex(searchProvider, mutation, storage);
@@ -308,6 +324,10 @@ async function rebuildProviderIndices(
   storage: DatafnStorageAdapter,
   searchProvider: SearchProvider,
 ): Promise<void> {
+  if (isNativeBackedSearchProvider(searchProvider)) {
+    return;
+  }
+
   for (const resource of schema.resources) {
     const searchFields = getSearchFields(resource as unknown as Record<string, unknown>);
     if (!searchFields || searchFields.length === 0) {
@@ -335,6 +355,10 @@ async function updateProviderIndex(
   mutation: unknown,
   storage?: DatafnStorageAdapter,
 ): Promise<void> {
+  if (isNativeBackedSearchProvider(searchProvider)) {
+    return;
+  }
+
   if (!isPlainObject(mutation)) {
     return;
   }

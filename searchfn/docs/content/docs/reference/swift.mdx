@@ -1,0 +1,98 @@
+---
+title: Swift Package Reference
+description: Reference for the standalone SearchFn Swift package, adapters, convenience APIs, and diagnostics.
+---
+
+## Products
+
+| Product | Use for |
+| --- | --- |
+| `SearchFnCore` | Built-in search engine primitives |
+| `SearchFnAdapterContracts` | Shared request/response/config/error types |
+| `SearchFnMemoryAdapter` | Ephemeral in-memory local search |
+| `SearchFnSQLiteAdapter` | Persisted SearchFn-owned local search |
+| `SearchFnClient` | Validating client facade |
+| `SearchFnConvenience` | `InMemorySearchFn` and `SearchFn(sqlite:)` |
+
+## Convenience APIs
+
+### `InMemorySearchFn`
+
+Use for local, process-owned search state:
+
+```swift
+let search = InMemorySearchFn()
+let client = search.client()
+```
+
+### `SearchFn(sqlite:)`
+
+Use for persisted local search state:
+
+```swift
+let search = try SearchFn(
+    sqlite: SearchFnSQLiteAdapterConfiguration(
+        rootURL: rootURL,
+        indexKey: "project-docs"
+    )
+)
+```
+
+## Client Methods
+
+The Swift client mirrors the SearchFn adapter/client contract semantics:
+
+- `initialize(_:)`
+- `index(_:)`
+- `search(_:)`
+- `searchAll(_:)`
+- `remove(resource:ids:)`
+- `clear(resource:)`
+- `dispose()`
+- `adapterInfo()`
+
+Deterministic `searchAll` ordering is:
+
+1. `score desc`
+2. `resource asc`
+3. `id asc`
+
+## Diagnostics
+
+Diagnostics are opt-in and use `SearchFnDiagnosticsEvent`.
+
+Current event groups include:
+
+- `client.initialize`
+- `client.index`
+- `client.search`
+- `client.searchAll`
+- `client.searchAll.fallback`
+- `client.remove`
+- `client.clear`
+- `client.dispose`
+- `adapter.initialize`
+- `adapter.index`
+- `adapter.search`
+- `adapter.searchAll`
+- `adapter.remove`
+- `adapter.clear`
+- `adapter.dispose`
+- `persistence.open`
+- `persistence.reopen`
+- `persistence.close`
+
+Diagnostics include counts and metadata such as resource names, query length, index key, deterministic directory name, and schema version. They intentionally omit raw query bodies and indexed field contents.
+
+## Persistence Ownership
+
+`SearchFnSQLiteAdapter` stores SearchFn-owned search state beneath the caller-supplied root directory. It does not place index state in Core Data.
+
+Persisted contents include:
+
+- resource configuration
+- stored documents
+- postings
+- vocabulary counts
+- posting metadata
+- manifest format metadata

@@ -26,6 +26,15 @@ export interface SyncFacade {
   cloneUp(options?: CloneUpOptions): Promise<CloneUpResult>;
 }
 
+export interface SyncControlMethods {
+  start(): Promise<void>;
+  stop(): void;
+  pullNow(): Promise<void>;
+  cloneNow(): Promise<void>;
+  reconcileNow(): Promise<void>;
+  schedulePush(): Promise<void>;
+}
+
 /**
  * Create sync facade that delegates to remote adapter
  * Wraps all sync phases with beforeSync/afterSync hooks (HOOK-001)

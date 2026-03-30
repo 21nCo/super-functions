@@ -4,9 +4,13 @@
  * Handles query execution via remote adapter or local storage based on hydration state.
  */
 
-import type { DatafnRemoteAdapter } from "./client.js";
+import type {
+  DatafnNativeRemoteMode,
+  DatafnRemoteAdapter,
+} from "./client.js";
 import type { DatafnStorageAdapter } from "./storage.js";
 import type { DatafnPlugin, DatafnSchema, SchemaIndex } from "@datafn/core";
+import { createClientError } from "./errors.js";
 import { unwrapRemoteSuccess } from "./remote/unwrap.js";
 import { executeLocalQuery } from "./offline/query.js";
 import { runBeforeQuery, runAfterQuery } from "./plugins/run-hooks.js";
@@ -79,6 +83,7 @@ export async function executeQuery<T = unknown>(
   plugins: DatafnPlugin[] = [],
   schema?: DatafnSchema,
   schemaIndex?: SchemaIndex,
+  nativeRemoteMode?: DatafnNativeRemoteMode,
 ): Promise<T | T[]> {
   // Run beforeQuery hooks (fail-closed)
   const transformedQuery = schema
@@ -160,6 +165,14 @@ export async function executeQuery<T = unknown>(
     // Check if table is remote-only
     const resourceDef = schema?.resources.find((r) => r.name === resource);
     if (resourceDef?.isRemoteOnly) {
+      if (nativeRemoteMode === "icloud") {
+        throw createClientError(
+          "DFQL_UNSUPPORTED",
+          "Remote-only resource is unsupported in icloud mode",
+          { path: "query.resource", resource },
+        );
+      }
+
       // Force remote execution for remote-only tables (SYNC-003)
       const response = await remote.query(normalizedQuery);
       let result = unwrapRemoteSuccess<T>(response);

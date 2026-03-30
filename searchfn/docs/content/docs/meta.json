@@ -1,0 +1,12 @@
+{
+  "title": "SearchFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "getting-started-swift",
+    "architecture",
+    "reference",
+    "integrations",
+    "operations"
+  ]
+}

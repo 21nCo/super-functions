@@ -13,8 +13,12 @@ import { unwrapRemoteSuccess } from "./remote/unwrap.js";
  */
 export async function executeTransact(
   remote: DatafnRemoteAdapter,
-  payload: unknown
+  payload: unknown,
+  beforeExecute?: () => Promise<void>,
 ): Promise<unknown> {
+  if (beforeExecute) {
+    await beforeExecute();
+  }
   const response = await remote.transact(payload);
   return unwrapRemoteSuccess(response);
 }
