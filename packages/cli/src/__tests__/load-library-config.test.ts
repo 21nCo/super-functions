@@ -289,6 +289,26 @@ describe('loadLibraryConfig', () => {
       expect(loaded.namespace).toBe('correct');
     });
 
+    it('should preserve TypeScript config-export priority for backward compatibility', async () => {
+      const configPath = path.join(testDir, 'test.config.ts');
+      fs.writeFileSync(
+        configPath,
+        `
+        export const config = {
+          namespace: 'named',
+        };
+
+        export default {
+          namespace: 'default',
+        };
+        `
+      );
+
+      const loaded = await loadLibraryConfig(configPath);
+
+      expect(loaded.namespace).toBe('named');
+    });
+
     it('should fallback to entire module if neither default nor config exists', async () => {
       const configPath = path.join(testDir, 'test.config.js');
       fs.writeFileSync(
@@ -467,6 +487,27 @@ describe('loadLibraryConfig', () => {
       expect(typeof config.validators.custom).toBe('function');
       expect(config.validators.custom('test')).toBe(true);
       expect(config.validators.custom('')).toBe(false);
+    });
+
+    it('should not auto-invoke top-level function exports', async () => {
+      const configPath = path.join(testDir, 'factory.config.js');
+      fs.writeFileSync(
+        configPath,
+        `
+        export default function configFactory() {
+          return {
+            namespace: 'conduct',
+          };
+        }
+        `
+      );
+
+      const config = await loadLibraryConfig(configPath);
+
+      expect(typeof config).toBe('function');
+      expect(config()).toEqual({
+        namespace: 'conduct',
+      });
     });
   });
 

@@ -63,3 +63,11 @@ export interface KyselyConfig {
 export function defineConfig(config: SuperfunctionsConfig): SuperfunctionsConfig {
   return config;
 }
+
+export {
+  loadConfigModule,
+  type LoadConfigModuleOptions,
+  type LoadedConfigModule,
+  type LoadedConfigModuleContext,
+} from './utils/load-config-module.js';
+export { loadLibraryConfig } from './utils/load-library-config.js';
