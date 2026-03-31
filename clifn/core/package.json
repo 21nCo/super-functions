@@ -1,0 +1,120 @@
+{
+  "name": "clifn",
+  "version": "0.1.0",
+  "description": "Reusable CLI primitives runtime for the Superfunctions ecosystem",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./output": {
+      "types": "./dist/output.d.ts",
+      "import": "./dist/output.js"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "import": "./dist/runner.js"
+    },
+    "./config-loader": {
+      "types": "./dist/config-loader.d.ts",
+      "import": "./dist/config-loader.js"
+    },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "import": "./dist/env.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "import": "./dist/diagnostics.js"
+    },
+    "./exec": {
+      "types": "./dist/exec.d.ts",
+      "import": "./dist/exec.js"
+    },
+    "./scaffold": {
+      "types": "./dist/scaffold.d.ts",
+      "import": "./dist/scaffold.js"
+    },
+    "./credentials": {
+      "types": "./dist/credentials.d.ts",
+      "import": "./dist/credentials.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.js"
+    },
+    "./stdio": {
+      "types": "./dist/stdio.d.ts",
+      "import": "./dist/stdio.js"
+    },
+    "./prompt": {
+      "types": "./dist/prompt.d.ts",
+      "import": "./dist/prompt.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "cli",
+    "superfunctions",
+    "runner",
+    "output",
+    "diagnostics",
+    "scaffold",
+    "credentials",
+    "config",
+    "stdio"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "dependencies": {
+    "ini": "^5.0.0",
+    "jiti": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/ini": "^4.1.1",
+    "@types/node": "^22.0.0",
+    "cac": "^6.7.14",
+    "commander": "^12.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "clifn/core"
+  },
+  "superfunctionsPhasePlan": {
+    "clifnPhase00": {
+      "addedRuntimeDependencies": [
+        "ini",
+        "jiti"
+      ],
+      "dependencyPolicy": "Prefer repository-shared mechanisms such as the existing packages/cli loader pattern before adding new dependencies in later phases."
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
