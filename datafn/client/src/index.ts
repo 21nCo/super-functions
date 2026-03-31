@@ -6,6 +6,14 @@ export {
   createDatafnClient,
   type DatafnClient,
   type DatafnClientConfig,
+  type DatafnSyncConfig,
+  type DatafnSyncOwner,
+  type DatafnNativeRemoteMode,
+  type DatafnNativeHandshakeRequest,
+  type DatafnNativeHandshakeResult,
+  type DatafnNativeSyncConfig,
+  type DatafnNativeSyncController,
+  type DatafnBridgeEventEnvelope,
   type DatafnRemoteAdapter,
   type SwitchContextOverride,
 } from "./client.js";
@@ -21,6 +29,7 @@ export {
 export { unwrapRemoteSuccess } from "./remote/unwrap.js";
 export { type DatafnTable } from "./tables/table.js";
 export { type PermissionEntry } from "./query.js";
+export { type SyncControlMethods } from "./sync.js";
 export {
   type DatafnStorageAdapter,
   type DatafnStorageFactory,

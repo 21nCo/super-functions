@@ -27,6 +27,16 @@ import { runBeforeSync, runAfterSync } from "../plugins/run-hooks.js";
 
 const ACTOR_FEED_CURSOR_KEY = "__datafn_actor_feed__";
 
+function isNativeBackedSearchProvider(
+  searchProvider: SearchProvider | undefined,
+): boolean {
+  return (
+    typeof searchProvider === "object" &&
+    searchProvider !== null &&
+    (searchProvider as { __datafnNativeBacked?: unknown }).__datafnNativeBacked === true
+  );
+}
+
 /**
  * Helper: Sleep for a given number of milliseconds (PHASE_08)
  */
@@ -477,7 +487,11 @@ export class SyncEngine {
   }
 
   private scheduleSearchRebuild(resources: string[], attempt = 0) {
-    if (!this.searchProvider || resources.length === 0) return;
+    if (
+      !this.searchProvider ||
+      isNativeBackedSearchProvider(this.searchProvider) ||
+      resources.length === 0
+    ) return;
     this.searchRebuildState = "pending";
     this.emitSearchRebuildProgress("pending", 0, 0);
     setTimeout(() => {
@@ -488,7 +502,7 @@ export class SyncEngine {
   }
 
   private async rebuildSearchIndices(resources: string[], attempt = 0): Promise<void> {
-    if (!this.searchProvider) return;
+    if (!this.searchProvider || isNativeBackedSearchProvider(this.searchProvider)) return;
 
     let totalRecords = 0;
     for (const resource of resources) {
@@ -563,6 +577,9 @@ export class SyncEngine {
       // Clone with pagination if configured
       const pageSize = this.getClonePageSize(tables[0]); // Use first table for now
       const skipCloneIndexing = this.config?.skipCloneIndexing === true;
+      const searchProvider = this.searchProvider;
+      const shouldManageSearchIndices =
+        !!searchProvider && !isNativeBackedSearchProvider(searchProvider);
       let result: CloneResult;
       
       if (pageSize && pageSize < 1000) {
@@ -572,7 +589,7 @@ export class SyncEngine {
         }
         // Create a synthetic result for event emission
         result = { ok: true, data: {}, cursors: {}, next: {} };
-        if (this.searchProvider && skipCloneIndexing) {
+        if (shouldManageSearchIndices && skipCloneIndexing) {
           this.scheduleSearchRebuild(tables);
         }
       } else {
@@ -582,14 +599,14 @@ export class SyncEngine {
         if (response.ok && response.result?.ok) {
           result = response.result as CloneResult;
           await applyCloneResult(this.storage, result);
-          if (this.searchProvider) {
+          if (shouldManageSearchIndices) {
             if (skipCloneIndexing) {
               this.scheduleSearchRebuild(tables);
             } else {
               for (const [resource, records] of Object.entries(result.data)) {
-                if (records.length > 0) {
+                  if (records.length > 0) {
                   try {
-                    await this.searchProvider.updateIndices({ resource, records, operation: "upsert" });
+                    await searchProvider.updateIndices({ resource, records, operation: "upsert" });
                   } catch (e) {
                     // fail-soft
                   }
@@ -704,7 +721,7 @@ export class SyncEngine {
       if (response.ok && response.result?.ok) {
         const cloneResult = response.result as CloneResult;
         await applyCloneResult(this.storage, cloneResult);
-        if (indexAfterPage && this.searchProvider) {
+        if (indexAfterPage && this.searchProvider && !isNativeBackedSearchProvider(this.searchProvider)) {
           const records = cloneResult.data?.[table] ?? [];
           if (records.length > 0) {
             try {
@@ -852,7 +869,7 @@ export class SyncEngine {
         if (response.ok && response.result?.ok) {
           lastResult = response.result;
           await applyPullResult(this.storage, lastResult);
-          if (this.searchProvider && lastResult) {
+          if (this.searchProvider && !isNativeBackedSearchProvider(this.searchProvider) && lastResult) {
             try {
               if (lastResult.records) {
                 for (const [resource, records] of Object.entries(lastResult.records as Record<string, unknown[]>)) {

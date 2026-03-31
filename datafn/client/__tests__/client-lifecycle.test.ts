@@ -179,6 +179,68 @@ describe("@datafn/client lifecycle - destroy", () => {
     expect(() => client.subscribe(() => {})).toThrow();
   });
 
+  it("destroy disposes extension event listeners", async () => {
+    const storage = new MemoryStorageAdapter(["task", "kv"]);
+    const cleanup = vi.fn();
+    const remote = {
+      ...createStubRemote(),
+      onEvent: vi.fn(() => cleanup),
+      subscribeRemote: vi.fn(async () => "sub-1"),
+      unsubscribeRemote: vi.fn(async () => {}),
+    };
+
+    const client = createDatafnClient({
+      schema: testSchema,
+      sync: { remoteAdapter: remote },
+      clientId: "test-client",
+      storage,
+      getTimestamp: () => Date.now(),
+    });
+
+    await client.destroy();
+
+    expect(remote.onEvent).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy cleans up remote subscriptions that resolve after teardown starts", async () => {
+    const storage = new MemoryStorageAdapter(["task", "kv"]);
+    let resolveRemoteSubscribe:
+      | ((value: string) => void)
+      | undefined;
+    const remote = {
+      ...createStubRemote(),
+      onEvent: vi.fn(() => () => {}),
+      subscribeRemote: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveRemoteSubscribe = resolve;
+          }),
+      ),
+      unsubscribeRemote: vi.fn(async () => {}),
+    };
+
+    const client = createDatafnClient({
+      schema: testSchema,
+      sync: { remoteAdapter: remote },
+      clientId: "test-client",
+      storage,
+      getTimestamp: () => Date.now(),
+    });
+
+    client.subscribe(() => {});
+    const destroyPromise = client.destroy();
+
+    expect(resolveRemoteSubscribe).toBeTypeOf("function");
+    resolveRemoteSubscribe?.("sub-1");
+
+    await destroyPromise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(remote.unsubscribeRemote).toHaveBeenCalledWith("sub-1");
+  });
+
   it("TV-CLN-001: Query after destroy throws DFQL_INVALID", async () => {
     const storage = new MemoryStorageAdapter(["task", "kv"]);
     const remote = createStubRemote();

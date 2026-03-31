@@ -383,9 +383,12 @@ describe("Extension RPC Tests", () => {
     });
 
     const unsub = client.subscribe(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     const subReq = bus.sentMessages.find(
       (msg: any) => msg.method === "subscribe",
     ) as DatafnRpcRequest;
+    expect(subReq).toBeTruthy();
 
     unsub();
 
@@ -394,7 +397,11 @@ describe("Extension RPC Tests", () => {
       envelope: { ok: true, result: { subscriptionId: "sub-early" } },
     } as DatafnRpcResponse);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await vi.waitFor(() => {
+      expect(
+        bus.sentMessages.some((msg: any) => msg.method === "unsubscribe"),
+      ).toBe(true);
+    });
 
     const unsubscribeReq = bus.sentMessages.find(
       (msg: any) => msg.method === "unsubscribe",

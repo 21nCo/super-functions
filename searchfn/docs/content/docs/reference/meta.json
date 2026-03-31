@@ -1,6 +1,7 @@
 {
   "title": "Reference",
   "pages": [
+    "swift",
     "client",
     "server",
     "adapters"

@@ -72,8 +72,8 @@ export class ExtensionSubscriptionManager {
 
       if (sub.localSubscriberCount === 0) {
         // Last subscriber removed - close remote subscription
-        await this.adapter.unsubscribeRemote(sub.subscriptionId);
         this.remoteSubscriptions.delete(key);
+        await this.adapter.unsubscribeRemote(sub.subscriptionId);
       }
     };
   }

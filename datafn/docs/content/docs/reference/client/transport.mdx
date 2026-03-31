@@ -28,6 +28,28 @@ interface DatafnRemoteAdapter {
 
 Each method posts JSON to the corresponding server endpoint and returns the response envelope.
 
+## Native-backed Remote Adapter
+
+For Apple WebView hosts, `@datafn/swift-bridge` provides a native-backed remote adapter that proxies the same transport contract over the `datafn-bridge/v1` message bus:
+
+```typescript
+import {
+  createNativeBackedRemoteAdapter,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+const remoteAdapter = createNativeBackedRemoteAdapter(bus);
+```
+
+Use that adapter together with:
+
+- `storage: createNativeBackedStorageAdapter(bus)`
+- `sync.owner = "native"`
+- `sync.native.syncController = createNativeSyncController(bus)`
+
+In native-backed CloudKit mode, the remote adapter still satisfies the client contract, but there is no DataFn-server remote-only path. Remote-only resources must fail explicitly there.
+
 ## Endpoint Mapping
 
 | Method | HTTP Endpoint |

@@ -41,11 +41,17 @@ interface DatafnClientConfig {
 
 ```typescript
 interface DatafnSyncConfig {
+  /** "javascript" (default) or "native". */
+  owner?: "javascript" | "native";
+
   /** Server URL. Required in sync mode. */
   remote?: string;
 
   /** Injected remote adapter (overrides built-in HTTP transport). */
   remoteAdapter?: DatafnRemoteAdapter;
+
+  /** Native-backed sync configuration. Required when owner is "native". */
+  native?: DatafnNativeSyncConfig;
 
   /** Enable WebSocket for real-time push. Default: false. */
   ws?: boolean;
@@ -99,6 +105,57 @@ interface DatafnSyncConfig {
   crossTab?: boolean;
 }
 ```
+
+## DatafnNativeSyncConfig
+
+```typescript
+interface DatafnNativeSyncConfig {
+  syncController: DatafnNativeSyncController;
+  remoteMode: "datafn-server" | "icloud";
+  expectedSchemaHash: string;
+  failIfUnavailable?: boolean;
+  remoteProfile?: string;
+}
+```
+
+## DatafnNativeSyncController
+
+```typescript
+interface DatafnNativeSyncController {
+  handshake(payload: {
+    schemaHash: string;
+    namespace: string;
+    clientId: string;
+    remoteMode: "datafn-server" | "icloud";
+    remoteProfile?: string;
+  }): Promise<DatafnEnvelope<{
+    bridgeVersion: number;
+    schemaHash: string;
+    namespace: string;
+    storageBackend: "coredata";
+    syncOwner: "native";
+    remoteMode: "datafn-server" | "icloud";
+    indexedDbDisabled: true;
+    cloudKitPrivateOnly?: boolean;
+    capabilities: string[];
+  }>>;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  pullNow(): Promise<void>;
+  cloneNow(): Promise<void>;
+  reconcileNow(): Promise<void>;
+  schedulePush(): Promise<void>;
+  onEvent(handler: (event: DatafnBridgeEventEnvelope) => void): () => void;
+}
+```
+
+When `owner` is `"native"`:
+
+- `storage` must be a native-backed adapter.
+- `remoteAdapter` must be a native-backed adapter.
+- `expectedSchemaHash` is mandatory.
+- direct JavaScript `sync.remote` ownership is invalid.
+- missing bridge availability must fail fast by default.
 
 ## DatafnHydrationConfig
 
@@ -182,6 +239,11 @@ interface SearchProvider {
 
 At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
 
+Two common setups are supported:
+
+- Browser-owned SearchFn: `@searchfn/datafn-provider` with an IndexedDB or memory adapter.
+- Native-backed Apple WebView search: `createNativeBackedSearchProvider(bus)` from `@datafn/swift-bridge`, which delegates all search operations to Swift. In that mode, JavaScript does not own index maintenance and must not create IndexedDB search persistence.
+
 See the full [SearchProvider interface reference](/docs/reference/core/search-provider) for method signatures and parameter types.
 
 The recommended way to create a search provider is with `@searchfn/datafn-provider`:
@@ -200,6 +262,30 @@ const client = createDatafnClient({
   clientId,
   storage,
   searchProvider,
+});
+```
+
+Native-backed example:
+
+```typescript
+import { createNativeBackedRemoteAdapter, createNativeBackedSearchProvider, createNativeBackedStorageAdapter, createNativeSyncController, createWKWebViewBridgeBus } from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage: createNativeBackedStorageAdapter(bus),
+  searchProvider: createNativeBackedSearchProvider(bus),
+  sync: {
+    owner: "native",
+    remoteAdapter: createNativeBackedRemoteAdapter(bus),
+    native: {
+      syncController: createNativeSyncController(bus),
+      remoteMode: "datafn-server",
+      expectedSchemaHash: "todo-app-example-v1",
+    },
+  },
 });
 ```
 

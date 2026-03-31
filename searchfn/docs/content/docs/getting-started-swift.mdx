@@ -1,0 +1,94 @@
+---
+title: Getting Started with Swift
+description: Build local Swift search with the standalone SearchFn Swift package.
+---
+
+SearchFn Swift is a standalone Swift Package Manager package for local search in native Apple apps and other Swift runtimes where in-process or SQLite-backed search is the right fit.
+
+It ships:
+
+- `SearchFnCore` for tokenization, prefix indexing, fuzzy expansion, and BM25-style scoring
+- `SearchFnMemoryAdapter` for ephemeral in-process search
+- `SearchFnSQLiteAdapter` for persisted SearchFn-owned local indexes
+- `SearchFnClient` for validation and deterministic `searchAll`
+- `SearchFnConvenience` for `InMemorySearchFn` and `SearchFn(sqlite:)`
+
+## Build From Repo Root
+
+```bash
+swift test --package-path searchfn/swift
+swift build --package-path searchfn/swift --target SearchFnInMemoryExample
+swift build --package-path searchfn/swift --target SearchFnSQLiteExample
+```
+
+## In-Memory Example
+
+```swift
+import SearchFnAdapterContracts
+import SearchFnConvenience
+
+let search = InMemorySearchFn(
+    defaults: SearchFnDefaults(limit: 20, limitPerResource: 10, fuzzy: .enabled, prefix: true)
+)
+
+let client = search.client()
+
+try await client.initialize(
+    SearchFnInitializeParams(
+        resources: [
+            SearchFnInitializeResourceConfig(name: "tasks", searchFields: ["title", "body"])
+        ]
+    )
+)
+
+try await client.index(
+    SearchFnIndexParams(
+        resource: "tasks",
+        documents: [
+            SearchFnDocument(id: "t1", fields: ["title": "Hybrid search", "body": "Swift local index"]),
+            SearchFnDocument(id: "t2", fields: ["title": "Groceries", "body": "Milk and bread"])
+        ]
+    )
+)
+
+let ids = try await client.search(
+    SearchFnSearchParams(resource: "tasks", query: "hybrid")
+)
+```
+
+## SQLite Example
+
+```swift
+import Foundation
+import SearchFnAdapterContracts
+import SearchFnConvenience
+import SearchFnSQLiteAdapter
+
+let rootURL = FileManager.default.temporaryDirectory
+    .appendingPathComponent("searchfn-swift-demo", isDirectory: true)
+
+let search = try SearchFn(
+    sqlite: SearchFnSQLiteAdapterConfiguration(
+        rootURL: rootURL,
+        indexKey: "project-docs"
+    )
+)
+
+let client = search.client()
+```
+
+The SQLite adapter owns its persisted index state. The store layout is:
+
+```text
+<rootURL>/<slug(indexKey)>-<hash16(indexKey)>/
+  searchfn.sqlite
+  manifest.json
+```
+
+This is SearchFn-owned persistence, not Core Data-owned persistence.
+
+## What To Look At Next
+
+- [Swift Reference](/docs/reference/swift)
+- [Adapters Reference](/docs/reference/adapters/index)
+- [Architecture](/docs/architecture)

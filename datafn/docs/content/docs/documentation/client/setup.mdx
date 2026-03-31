@@ -45,6 +45,71 @@ const client = createDatafnClient({
 });
 ```
 
+## Topology Matrix
+
+The same app can now run in three supported topologies:
+
+| Topology | Local persistence | Remote persistence | Sync owner |
+|---|---|---|---|
+| Browser-owned | IndexedDB | DataFn server | JavaScript |
+| Native-backed DataFn-server | Core Data | DataFn server | Swift |
+| Native-backed CloudKit | Core Data | CloudKit private database | Swift |
+
+Browser-owned mode remains unchanged. Native-backed mode is explicit and must fail fast if the native bridge is unavailable.
+
+## Native-backed Apple WebView Setup
+
+Use this when your app runs inside `WKWebView` in a SwiftUI host and the Swift side owns persistence plus sync:
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+import {
+  createNativeBackedRemoteAdapter,
+  createNativeBackedSearchProvider,
+  createNativeBackedStorageAdapter,
+  createNativeSyncController,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+
+const client = createDatafnClient({
+  schema,
+  clientId: "apple-webview-device",
+  namespace: "org-1:user-1",
+  storage: createNativeBackedStorageAdapter(bus),
+  searchProvider: createNativeBackedSearchProvider(bus),
+  sync: {
+    owner: "native",
+    mode: "sync",
+    offlinability: true,
+    remoteAdapter: createNativeBackedRemoteAdapter(bus),
+    native: {
+      syncController: createNativeSyncController(bus),
+      remoteMode: "datafn-server",
+      expectedSchemaHash: "todo-app-example-v1",
+      failIfUnavailable: true,
+      remoteProfile: "default",
+    },
+  },
+});
+```
+
+Switch `remoteMode` to `"icloud"` when the Swift host uses `NSPersistentCloudKitContainer` instead of the DataFn server.
+
+In native-backed mode:
+
+- `storage` must be native-backed.
+- `searchProvider` should be native-backed so Swift owns the SearchFn index.
+- `sync.owner` must be `"native"`.
+- `sync.remoteAdapter` must also be native-backed.
+- IndexedDB must not be used as a fallback persistence layer.
+- If the bridge is missing, the client must fail before it starts local persistence.
+
+When `remoteMode` is `"icloud"`, CloudKit syncs the Core Data records only. The SearchFn index stays derived local state under the native support directory and is rebuilt or updated locally on each device.
+
+Also note that `remoteMode: "icloud"` is incompatible with `isRemoteOnly: true` resources. In CloudKit mode, the native-backed client rejects remote-only resources because CloudKit syncs the local Core Data store rather than a server-only dataset.
+
 ## Configuration Reference
 
 ### Top-Level Options
@@ -65,6 +130,8 @@ The `sync` object controls how the client communicates with the server and handl
 
 ```typescript
 sync: {
+  owner: "javascript",     // default; use "native" in Apple WebView mode
+
   // Connection
   remote: "https://api.example.com/datafn",
   ws: true,
@@ -104,6 +171,8 @@ sync: {
 |---|---|---|
 | `remote` | -- | Server URL. Required in `"sync"` mode unless `remoteAdapter` is provided. |
 | `remoteAdapter` | -- | Injected remote adapter, used instead of the built-in HTTP transport. |
+| `owner` | `"javascript"` | `"javascript"` keeps the existing browser-owned sync engine. `"native"` delegates sync lifecycle to the Apple host. |
+| `native` | -- | Required when `owner` is `"native"`. Defines the native sync controller, remote mode, schema hash, and fail-fast bridge behavior. |
 | `ws` | `false` | Enable WebSocket for real-time server push. |
 | `wsUrl` | derived | WebSocket URL. Auto-derived from `remote` when `ws` is enabled. |
 | `mode` | `"sync"` | `"sync"` requires a remote. `"local-only"` marks all tables as ready immediately with no server. |
@@ -135,6 +204,18 @@ const memory = new MemoryStorageAdapter();
 
 // IndexedDB (browser persistence)
 const idb = new IndexedDbStorageAdapter("my-app-db");
+```
+
+For native-backed Apple hosts, use `@datafn/swift-bridge` instead of IndexedDB:
+
+```typescript
+import {
+  createNativeBackedStorageAdapter,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+const storage = createNativeBackedStorageAdapter(bus);
 ```
 
 For multi-namespace isolation, pass a factory function with a `namespace`:

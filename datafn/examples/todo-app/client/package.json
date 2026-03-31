@@ -12,6 +12,7 @@
     "@21n/fonts": "^1.0.1",
     "@datafn/client": "*",
     "@datafn/core": "*",
+    "@datafn/swift-bridge": "*",
     "@datafn/svelte": "*",
     "@searchfn/adapter-indexeddb": "*",
     "@searchfn/datafn-provider": "*",

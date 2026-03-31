@@ -5,7 +5,11 @@ audience: reference
 applies_to: both
 ---
 
-DataFn search is provider-backed and local-first when a `searchProvider` is configured on the client. See [Setting Up a Search Provider](#setting-up-a-search-provider) below to get started.
+DataFn search is provider-backed and local-first when a `searchProvider` is configured on the client. Which provider you use depends on topology:
+
+- Browser-owned apps typically use a JavaScript SearchFn provider backed by IndexedDB.
+- Native-backed Apple WebView apps use `createNativeBackedSearchProvider(...)`, which routes search into Swift and the shared native SearchFn backend.
+- Native-backed CloudKit apps use the same Swift backend; CloudKit syncs records, not search index files.
 
 The same option set is supported across query and cross-resource search:
 
@@ -104,9 +108,13 @@ The server validates these options and forwards them to the configured search pr
 
 ## Setting Up a Search Provider
 
-To enable local-first search on the client, configure a `searchProvider`. The recommended approach uses [SearchFn](https://searchfn.com) adapters via the `@searchfn/datafn-provider` bridge.
+To enable local-first search on the client, configure a `searchProvider`. DataFn supports both browser-owned SearchFn and native-backed SearchFn topologies.
 
-### 1. Install Dependencies
+### Browser-Owned SearchFn Setup
+
+The recommended browser path uses [SearchFn](https://searchfn.com) adapters via the `@searchfn/datafn-provider` bridge.
+
+#### 1. Install Dependencies
 
 ```bash
 npm install @searchfn/datafn-provider @searchfn/adapter-indexeddb
@@ -121,7 +129,7 @@ Other adapters are available depending on your environment:
 | `@searchfn/adapter-meilisearch` | Server-side with Meilisearch |
 | `@searchfn/adapter-postgres` | Server-side with PostgreSQL |
 
-### 2. Define Resource Search Fields
+#### 2. Define Resource Search Fields
 
 Map each resource to the fields that should be indexed:
 
@@ -132,7 +140,7 @@ const resourceFields = {
 };
 ```
 
-### 3. Create the Search Provider
+#### 3. Create the Search Provider
 
 ```typescript
 import { createSearchProvider } from "@searchfn/datafn-provider";
@@ -147,7 +155,7 @@ const searchProvider = createSearchProvider(
 );
 ```
 
-### 4. Pass to `createDatafnClient`
+#### 4. Pass to `createDatafnClient`
 
 ```typescript
 import { createDatafnClient } from "@datafn/client";
@@ -160,7 +168,7 @@ const client = createDatafnClient({
 });
 ```
 
-### 5. Verify with a Local Search
+#### 5. Verify with a Local Search
 
 ```typescript
 const results = await client.search({
@@ -171,6 +179,49 @@ const results = await client.search({
 ```
 
 If `source: "local"` returns results, your provider is working. Use `source: "auto"` (the default) in production for local-first with server fallback.
+
+### Native-Backed Apple WebView Search Setup
+
+When the same web app runs inside `WKWebView`, configure a native-backed provider instead of an IndexedDB-backed SearchFn adapter:
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+import {
+  createNativeBackedRemoteAdapter,
+  createNativeBackedSearchProvider,
+  createNativeBackedStorageAdapter,
+  createNativeSyncController,
+  createWKWebViewBridgeBus,
+} from "@datafn/swift-bridge";
+
+const bus = createWKWebViewBridgeBus({ handlerName: "datafn" });
+
+const client = createDatafnClient({
+  schema,
+  clientId: "apple-webview-device",
+  namespace: "org-1:user-1",
+  storage: createNativeBackedStorageAdapter(bus),
+  searchProvider: createNativeBackedSearchProvider(bus),
+  sync: {
+    owner: "native",
+    mode: "sync",
+    offlinability: true,
+    remoteAdapter: createNativeBackedRemoteAdapter(bus),
+    native: {
+      syncController: createNativeSyncController(bus),
+      remoteMode: "datafn-server",
+      expectedSchemaHash: "todo-app-example-v1",
+    },
+  },
+});
+```
+
+In native-backed mode:
+
+- Swift owns both the authoritative local store and the SearchFn index lifecycle.
+- JavaScript must not create an IndexedDB search sidecar.
+- `client.search()` and DFQL `search` blocks route through the native bridge.
+- In `icloud` mode, CloudKit syncs records only; each device maintains its own derived local search index.
 
 ### Alternative: Plugin-Based Setup
 

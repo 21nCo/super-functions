@@ -7,6 +7,17 @@ applies_to: both
 
 DataFn provides a full-featured synchronization engine that keeps client-side data in sync with the server. The engine supports offline-first workflows, incremental updates, and real-time push notifications via WebSocket.
 
+## Sync Ownership
+
+DataFn now supports two sync owners:
+
+| Owner | Where it runs | Typical topology |
+|---|---|---|
+| `javascript` | Web app runtime | Browser-owned IndexedDB mode |
+| `native` | Apple Swift host | Embedded `WKWebView` with Core Data or CloudKit |
+
+Browser-owned mode behaves exactly as before. Native-backed mode keeps the same public client API but delegates sync lifecycle to Swift through `@datafn/swift-bridge`.
+
 ## Sync Modes
 
 The sync engine operates in three primary modes:
@@ -27,6 +38,13 @@ When the sync engine starts, it progresses through a sequence of phases:
 4. **Push** -- Upload locally queued mutations from the changelog.
 5. **CloneUp** -- Bulk upload of offline-created data to the server.
 6. **Reconcile** -- Drift detection by comparing local and server record counts, triggering re-clone for mismatched resources.
+
+In native-backed mode, those lifecycle operations are still available through `client.sync`, but the JavaScript `SyncEngine` must stay inactive. The Swift host owns:
+
+- Core Data persistence
+- changelog and cursor state
+- DataFn-server HTTP and WebSocket sync when `remoteMode = "datafn-server"`
+- CloudKit private-database sync when `remoteMode = "icloud"`
 
 ```typescript
 import { createDatafnClient } from "@datafn/client";
@@ -112,3 +130,12 @@ await client.sync.pullNow();      // Immediate incremental pull cycle
 await client.sync.cloneNow();     // Immediate clone cycle using hydration plan
 await client.sync.reconcileNow(); // Count-based drift detection + targeted re-clone
 ```
+
+The method names stay the same in native-backed mode, but the implementation is delegated to the native sync controller instead of the JavaScript `SyncEngine`.
+
+## Native-backed Caveats
+
+- Native-backed mode must fail before persistence starts if the bridge is unavailable.
+- IndexedDB must not be used as a fallback storage path in native-backed mode.
+- Remote-only resources continue to work in native-backed DataFn-server mode.
+- Remote-only resources are intentionally unsupported in native-backed CloudKit mode because there is no DataFn server remote path there.

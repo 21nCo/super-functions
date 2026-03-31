@@ -19,6 +19,14 @@ export type DatafnErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "INTERNAL"
+  | "BRIDGE_UNAVAILABLE"
+  | "BRIDGE_PROTOCOL_MISMATCH"
+  | "BRIDGE_METHOD_UNSUPPORTED"
+  | "NATIVE_BRIDGE_UNAVAILABLE"
+  | "NATIVE_SEARCH_UNAVAILABLE"
+  | "NATIVE_SYNC_CONFLICT"
+  | "SEARCH_INDEX_REBUILD_FAILED"
+  | "ICLOUD_UNAVAILABLE"
   /** LOW-026: Network/transport-layer errors (timeouts, connection refused, etc.) */
   | "TRANSPORT_ERROR";
 

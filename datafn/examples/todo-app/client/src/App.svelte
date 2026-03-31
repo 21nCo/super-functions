@@ -5,6 +5,10 @@
     client,
     switchMode,
     auditLog,
+    topologyLabel,
+    searchTopologyLabel,
+    isNativeBackedExample,
+    embeddedRemoteMode,
     type AppMode,
     type AuditEntry,
   } from "./lib/datafn";
@@ -28,12 +32,13 @@
   let isSwitching = false;
 
   async function handleModeSwitch() {
+    if (isNativeBackedExample) return;
     if (isSwitching) return;
     const next: AppMode = currentMode === "sync" ? "local-only" : "sync";
     isSwitching = true;
     try {
-      await switchMode(next);
       currentMode = next;
+      await switchMode(next);
     } catch (e) {
       console.error("[DEBUG] Mode switch failed:", e);
     } finally {
@@ -539,14 +544,26 @@
       Showcasing offline-first sync, signals, KV, relations, transactions,
       plugins &amp; more
     </p>
+    <p class="subtitle">
+      Active topology: {topologyLabel}
+      {#if isNativeBackedExample}
+        · Swift owns storage and sync{#if embeddedRemoteMode} ({embeddedRemoteMode}){/if}
+      {/if}
+    </p>
+    <p class="subtitle">Search backend: {searchTopologyLabel}</p>
 
     <div class="header-controls">
       <button
         class="mode-btn"
         class:active={currentMode === "sync"}
+        disabled={isNativeBackedExample}
         on:click={handleModeSwitch}
       >
-        {currentMode === "sync" ? "● Sync Mode" : "○ Local-Only Mode"}
+        {#if isNativeBackedExample}
+          Native-backed mode
+        {:else}
+          {currentMode === "sync" ? "● Sync Mode" : "○ Local-Only Mode"}
+        {/if}
       </button>
 
       <button
@@ -719,7 +736,7 @@
 
       <div class="status-bar">
         {activeCount} remaining · {completedCount} completed · mode:
-        <strong>{currentMode}</strong>
+        <strong>{isNativeBackedExample ? topologyLabel : currentMode}</strong>
       </div>
     </section>
 
@@ -747,6 +764,11 @@
 
       <p class="hint">
         Uses <code>client.search()</code> with debounce and request cancellation.
+        {#if isNativeBackedExample}
+          Search executes in Swift over the shared native SearchFn index.
+        {:else}
+          Search executes in the browser over the IndexedDB-backed SearchFn index.
+        {/if}
       </p>
 
       {#if isSearching}
@@ -822,8 +844,12 @@
       <h2>KV Preferences <small>(client.kv API)</small></h2>
       <p class="hint">
         Values are stored via the built-in KV resource and exposed as reactive
-        signals. They persist across sessions in IndexedDB and sync with the
-        server (in sync mode).
+        signals.
+        {#if isNativeBackedExample}
+          They persist in the native Core Data store and participate in Swift-owned sync.
+        {:else}
+          They persist across sessions in IndexedDB and sync with the server (in sync mode).
+        {/if}
       </p>
 
       <div class="kv-grid">
