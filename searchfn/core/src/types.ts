@@ -1,4 +1,5 @@
 export type DocId = string | number;
+export type PostingChunkEncoding = "delta-varint" | "json" | "posting-bin-v1";
 
 export interface TermIdentifier {
   field: string;
@@ -16,7 +17,7 @@ export interface StoredPostingChunk {
   /**
    * Encoding hint so we can avoid additional lookups when decoding.
    */
-  encoding?: "delta-varint" | "json";
+  encoding?: PostingChunkEncoding;
   /**
    * Term frequency metadata for scoring heuristics.
    */
@@ -71,10 +72,10 @@ export interface StorageLogger {
 
 export interface ChunkEncodeResult {
   buffer: Uint8Array;
-  encoding: "delta-varint" | "json";
+  encoding: PostingChunkEncoding;
 }
 
 export interface ChunkDecodeResult {
-  postings: Array<number | string>;
-  encoding: "delta-varint" | "json";
+  postings: Array<number | string | Record<string, unknown>>;
+  encoding: PostingChunkEncoding;
 }

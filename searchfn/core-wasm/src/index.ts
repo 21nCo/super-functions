@@ -1,5 +1,6 @@
 import {
   TsSearchCoreEngine,
+  encodeTermPostings,
   type DocumentStatsProvider,
   type IndexedDbManager,
   type LruCache,
@@ -35,19 +36,33 @@ export async function createSearchCoreEngine(
     kind: "wasm",
     ingest: (record) => delegate.ingest(record),
     ingestBatch: (records) => delegate.ingestBatch(records),
-    encodePostings: (input) => delegate.encodePostings(input),
+    encodePostings: (input) => {
+      const encoded = encodeTermPostings(input.postings);
+      return {
+        payload: encoded.buffer.buffer.slice(
+          encoded.buffer.byteOffset,
+          encoded.buffer.byteOffset + encoded.buffer.byteLength
+        ) as ArrayBuffer,
+        encoding: encoded.encoding,
+        docFrequency: input.postings.length,
+        inverseDocumentFrequency: undefined
+      };
+    },
     decodePostings: (input) => delegate.decodePostings(input),
     executeQuery: (input) => delegate.executeQuery(input),
     selfTest: async () => {
-      const encoded = delegate.encodePostings({
-        postings: [{ docId: "__searchfn_wasm_self_test__", termFrequency: 1 }]
-      });
+      const encoded = encodeTermPostings([
+        { docId: "__searchfn_wasm_self_test__", termFrequency: 1 }
+      ]);
       const decoded = delegate.decodePostings({
         chunk: {
           key: { field: "__self_test__", term: "__self_test__", chunk: 0 },
-          payload: encoded.payload,
+          payload: encoded.buffer.buffer.slice(
+            encoded.buffer.byteOffset,
+            encoded.buffer.byteOffset + encoded.buffer.byteLength
+          ) as ArrayBuffer,
           encoding: encoded.encoding,
-          docFrequency: encoded.docFrequency
+          docFrequency: 1
         }
       });
       assertSelfTestResult(decoded);
