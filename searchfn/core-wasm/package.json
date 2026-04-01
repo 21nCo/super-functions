@@ -19,10 +19,12 @@
     "rust"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:wasm && tsup && npm run copy:wasm",
+    "build:wasm": "node ./scripts/build-wasm.mjs",
     "build:watch": "tsup --watch",
-    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "vitest run",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true }); require('fs').rmSync('.wasm', { recursive: true, force: true })\"",
+    "copy:wasm": "node ./scripts/copy-wasm.mjs",
+    "test": "npm run build:wasm && vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit"
   },
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@types/node": "^24.9.1",
     "fake-indexeddb": "^6.2.4",
+    "tsx": "^4.19.1",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
