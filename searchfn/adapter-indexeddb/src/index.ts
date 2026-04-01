@@ -28,11 +28,55 @@ import type {
 } from "@searchfn/adapter-contracts";
 import { SearchAdapterError, SEARCH_ADAPTER_DISPOSED } from "@searchfn/adapter-contracts";
 
+const SEARCHFN_WASM_ABI_VERSION = 1;
+
+export type SearchEngineMode = "ts" | "wasm" | "auto";
+
+export type EngineSelectionReasonCode =
+  | "explicit_ts"
+  | "explicit_wasm"
+  | "auto_wasm_ready"
+  | "auto_loader_missing"
+  | "auto_init_failed"
+  | "auto_abi_mismatch"
+  | "auto_self_test_failed"
+  | "wasm_loader_missing"
+  | "wasm_init_failed"
+  | "wasm_abi_mismatch"
+  | "wasm_self_test_failed";
+
+export interface SearchCoreEngineFactoryOptions {
+  storage: IndexedDbManager;
+  termCache: LruCache<TermCacheValue>;
+  vectorCache: LruCache<VectorCacheValue>;
+  stats: DocumentStatsManager;
+  pipeline: PipelineEngine;
+}
+
+export interface SearchFnWasmModule {
+  abiVersion: number;
+  createSearchCoreEngine: (options: SearchCoreEngineFactoryOptions) => Promise<SearchCoreEngine>;
+}
+
 export interface IndexedDbAdapterOptions {
   dbName?: string;
   pipeline?: PipelineOptions;
   cache?: { terms?: number; vectors?: number };
   defaults?: SearchDefaults;
+  engine?: SearchEngineMode;
+  wasmLoader?: () => Promise<SearchFnWasmModule>;
+  onEngineSelected?: (info: {
+    engine: "ts" | "wasm";
+    code: EngineSelectionReasonCode;
+    reason: string;
+    resource?: string;
+  }) => void;
+  onWasmFallback?: (info: {
+    code: EngineSelectionReasonCode;
+    reason: string;
+    resource?: string;
+    error?: unknown;
+  }) => void;
 }
 
 interface PostingInfo {
@@ -59,6 +103,8 @@ interface ResourceEngine {
   searchFields: string[] | null;
   docTerms: Map<string, DocTermEntry[]>;
   openPromise: Promise<void> | null;
+  selectionPromise: Promise<void> | null;
+  selectedEngineKind: "ts" | "wasm" | null;
   mutationQueue: Promise<void>;
   vocabulary: Set<string>;
   fuzzyCache: Map<string, string[]>;
@@ -112,11 +158,11 @@ export class IndexedDbAdapter implements SearchAdapter {
         maxEntries: this.options.cache?.vectors ?? DEFAULT_VECTOR_CACHE_SIZE,
       });
       const statsManager = new DocumentStatsManager();
-      const coreEngine = new TsSearchCoreEngine({
+      const coreEngine = this.createTsCoreEngine({
         storage,
         termCache,
         vectorCache,
-        stats: statsManager,
+        statsManager,
         pipeline,
       });
       engine = {
@@ -132,6 +178,8 @@ export class IndexedDbAdapter implements SearchAdapter {
         searchFields: null,
         docTerms: new Map(),
         openPromise: null,
+        selectionPromise: null,
+        selectedEngineKind: null,
         mutationQueue: Promise.resolve(),
         vocabulary: new Set(),
         fuzzyCache: new Map(),
@@ -181,9 +229,152 @@ export class IndexedDbAdapter implements SearchAdapter {
         await this.loadDocTerms(engine);
         await this.loadFieldNames(engine);
         await this.loadVocabulary(engine);
+        await this.ensureCoreEngineSelected(engine);
       })();
     }
     await engine.openPromise;
+  }
+
+  private createTsCoreEngine(
+    engine: Pick<ResourceEngine, "storage" | "termCache" | "vectorCache" | "statsManager" | "pipeline">,
+  ): SearchCoreEngine {
+    return new TsSearchCoreEngine({
+      storage: engine.storage,
+      termCache: engine.termCache,
+      vectorCache: engine.vectorCache,
+      stats: engine.statsManager,
+      pipeline: engine.pipeline,
+    });
+  }
+
+  private async ensureCoreEngineSelected(engine: ResourceEngine): Promise<void> {
+    if (engine.selectedEngineKind !== null) {
+      return;
+    }
+    if (!engine.selectionPromise) {
+      engine.selectionPromise = this.selectCoreEngine(engine);
+    }
+    await engine.selectionPromise;
+  }
+
+  private async selectCoreEngine(engine: ResourceEngine): Promise<void> {
+    const resource = this.findResourceName(engine);
+    const configuredMode = this.options.engine ?? "ts";
+    if (configuredMode === "ts") {
+      engine.selectedEngineKind = "ts";
+      this.options.onEngineSelected?.({
+        engine: "ts",
+        code: "explicit_ts",
+        reason: "Using the built-in TypeScript search engine.",
+        resource,
+      });
+      return;
+    }
+
+    if (!this.options.wasmLoader) {
+      if (configuredMode === "wasm") {
+        throw this.createEngineSelectionError(
+          "wasm_loader_missing",
+          "WASM engine was requested, but no wasmLoader was provided.",
+        );
+      }
+
+      engine.selectedEngineKind = "ts";
+      this.options.onEngineSelected?.({
+        engine: "ts",
+        code: "auto_loader_missing",
+        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        resource,
+      });
+      return;
+    }
+
+    try {
+      const wasmModule = await this.options.wasmLoader();
+      if (wasmModule.abiVersion !== SEARCHFN_WASM_ABI_VERSION) {
+        throw this.createEngineSelectionError(
+          configuredMode === "wasm" ? "wasm_abi_mismatch" : "auto_abi_mismatch",
+          `WASM ABI mismatch: expected ${SEARCHFN_WASM_ABI_VERSION}, received ${wasmModule.abiVersion}.`,
+        );
+      }
+
+      const wasmEngine = await wasmModule.createSearchCoreEngine({
+        storage: engine.storage,
+        termCache: engine.termCache,
+        vectorCache: engine.vectorCache,
+        stats: engine.statsManager,
+        pipeline: engine.pipeline,
+      });
+      if (wasmEngine.kind !== "wasm") {
+        throw this.createEngineSelectionError(
+          configuredMode === "wasm" ? "wasm_init_failed" : "auto_init_failed",
+          "WASM loader did not return a WASM search engine implementation.",
+        );
+      }
+
+      if (wasmEngine.selfTest) {
+        try {
+          await wasmEngine.selfTest();
+        } catch (error) {
+          throw this.createEngineSelectionError(
+            configuredMode === "wasm" ? "wasm_self_test_failed" : "auto_self_test_failed",
+            "WASM search engine self-test failed.",
+            error,
+          );
+        }
+      }
+
+      engine.coreEngine = wasmEngine;
+      engine.selectedEngineKind = "wasm";
+      this.options.onEngineSelected?.({
+        engine: "wasm",
+        code: configuredMode === "wasm" ? "explicit_wasm" : "auto_wasm_ready",
+        reason:
+          configuredMode === "wasm"
+            ? "Using the configured WASM search engine."
+            : "WASM search engine initialized successfully.",
+        resource,
+      });
+    } catch (error) {
+      if (configuredMode === "wasm") {
+        throw normalizeEngineSelectionError(error, "wasm_init_failed");
+      }
+
+      const selectionError = normalizeEngineSelectionError(error, "auto_init_failed");
+      engine.coreEngine = this.createTsCoreEngine(engine);
+      engine.selectedEngineKind = "ts";
+      this.options.onWasmFallback?.({
+        code: selectionError.code as EngineSelectionReasonCode,
+        reason: selectionError.message,
+        resource,
+        error: getErrorCause(selectionError),
+      });
+      this.options.onEngineSelected?.({
+        engine: "ts",
+        code: selectionError.code as EngineSelectionReasonCode,
+        reason: `${selectionError.message} Falling back to the TypeScript engine.`,
+        resource,
+      });
+    }
+  }
+
+  private findResourceName(targetEngine: ResourceEngine): string | undefined {
+    for (const [resource, engine] of this.engines.entries()) {
+      if (engine === targetEngine) {
+        return resource;
+      }
+    }
+    return undefined;
+  }
+
+  private createEngineSelectionError(
+    code: EngineSelectionReasonCode,
+    message: string,
+    cause?: unknown,
+  ): SearchAdapterError {
+    const error = new SearchAdapterError(code, message) as SearchAdapterError & { cause?: unknown };
+    error.cause = cause;
+    return error;
   }
 
   private async loadStats(engine: ResourceEngine): Promise<void> {
@@ -699,6 +890,26 @@ export class IndexedDbAdapter implements SearchAdapter {
     this.engines.clear();
     this.disposed = true;
   }
+}
+
+function normalizeEngineSelectionError(
+  error: unknown,
+  defaultCode: EngineSelectionReasonCode,
+): SearchAdapterError {
+  if (error instanceof SearchAdapterError) {
+    return error;
+  }
+
+  const normalized = new SearchAdapterError(
+    defaultCode,
+    error instanceof Error ? error.message : "Unknown search engine initialization error.",
+  ) as SearchAdapterError & { cause?: unknown };
+  normalized.cause = error;
+  return normalized;
+}
+
+function getErrorCause(error: SearchAdapterError): unknown {
+  return (error as SearchAdapterError & { cause?: unknown }).cause;
 }
 
 function parseRawPosting(

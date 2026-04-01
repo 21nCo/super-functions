@@ -41,6 +41,7 @@ export interface SearchCoreEngine {
   };
   decodePostings(input: EngineDecodePostingsInput): TermPosting[];
   executeQuery(input: EngineExecuteQueryInput): Promise<EngineQueryResult>;
+  selfTest?(): Promise<void>;
 }
 
 export interface TsSearchCoreEngineOptions {
