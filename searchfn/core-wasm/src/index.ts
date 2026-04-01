@@ -1,16 +1,23 @@
 import {
+  QueryEngine,
   TsSearchCoreEngine,
   type DocumentStatsProvider,
   type IndexedDbManager,
   type LruCache,
   type Pipeline,
+  type QueryScoringInput,
+  type ScoredDocument,
   type SearchCoreEngine,
+  type StoredPostingChunk,
   type TermCacheValue,
   type TermPosting,
   type VectorCacheValue
 } from "@searchfn/core";
 
 export const abiVersion = 1;
+
+const TEXT_ENCODER = new TextEncoder();
+const TEXT_DECODER = new TextDecoder();
 
 export interface SearchCoreEngineFactoryOptions {
   storage: IndexedDbManager;
@@ -27,10 +34,29 @@ interface SearchFnRustWasmExports {
   searchfn_free: (ptr: number, capacity: number) => void;
   searchfn_encode_postings_json: (ptr: number, len: number) => number;
   searchfn_decode_postings_to_json: (ptr: number, len: number) => number;
+  searchfn_score_documents_json: (ptr: number, len: number) => number;
   searchfn_get_output_ptr: () => number;
   searchfn_get_output_len: () => number;
   searchfn_get_last_error_ptr: () => number;
   searchfn_get_last_error_len: () => number;
+}
+
+interface RustScoreRequest {
+  chunks: Array<{
+    field: string;
+    term: string;
+    docFrequency: number;
+    inverseDocumentFrequency?: number;
+    postings: Array<{
+      docId: string;
+      termFrequency: number;
+      metadata?: Record<string, unknown>;
+    }>;
+  }>;
+  documentLengths: Record<string, number>;
+  averageDocLength: number;
+  options?: QueryScoringInput["options"];
+  limit?: number;
 }
 
 let wasmExportsPromise: Promise<SearchFnRustWasmExports> | null = null;
@@ -45,6 +71,14 @@ export async function createSearchCoreEngine(
     vectorCache: options.vectorCache,
     stats: options.stats,
     pipeline: options.pipeline
+  });
+  const queryEngine = new QueryEngine({
+    storage: options.storage,
+    termCache: options.termCache,
+    vectorCache: options.vectorCache,
+    stats: options.stats,
+    decodeChunk: (chunk) => decodeChunkWithRust(wasm, delegate, chunk),
+    scoreDocuments: (input) => scoreDocumentsWithRust(wasm, input)
   });
 
   return {
@@ -64,14 +98,43 @@ export async function createSearchCoreEngine(
       docFrequency: input.postings.length,
       inverseDocumentFrequency: undefined
     }),
-    decodePostings: (input) => delegate.decodePostings(input),
-    executeQuery: (input) => delegate.executeQuery(input),
+    decodePostings: (input) => decodeChunkWithRust(wasm, delegate, input.chunk),
+    executeQuery: (input) =>
+      queryEngine.execute(input.tokens, {
+        limit: input.limit
+      }),
     selfTest: async () => {
       const decoded = decodePostingsWithRust(
         wasm,
         encodePostingsWithRust(wasm, [{ docId: "__searchfn_wasm_self_test__", termFrequency: 1 }])
       );
-      assertSelfTestResult(decoded);
+      assertSelfTestPostings(decoded);
+
+      const scored = scoreDocumentsWithRust(wasm, {
+        chunks: [
+          {
+            field: "title",
+            term: "self-test",
+            docFrequency: 2,
+            postings: [
+              { docId: "doc-1", termFrequency: 2 },
+              { docId: "doc-2", termFrequency: 1, metadata: { isPrefix: true } }
+            ]
+          }
+        ],
+        documentLengths: new Map([
+          ["doc-1", 4],
+          ["doc-2", 4]
+        ]),
+        averageDocLength: 4,
+        options: {
+          k1: 1.2,
+          b: 0.75,
+          d: 0.5
+        },
+        limit: 2
+      });
+      assertSelfTestScores(scored);
     }
   };
 }
@@ -134,7 +197,7 @@ function encodePostingsWithRust(
   wasm: SearchFnRustWasmExports,
   postings: Array<{ docId: string; termFrequency: number; metadata?: Record<string, unknown> }>
 ): ArrayBuffer {
-  const payload = new TextEncoder().encode(JSON.stringify(postings));
+  const payload = TEXT_ENCODER.encode(JSON.stringify(postings));
   const success = invokeWasm(wasm, payload, wasm.searchfn_encode_postings_json);
   if (!success) {
     throw new Error(readLastError(wasm));
@@ -148,7 +211,7 @@ function decodePostingsWithRust(wasm: SearchFnRustWasmExports, payload: ArrayBuf
     throw new Error(readLastError(wasm));
   }
 
-  const decodedJson = new TextDecoder().decode(readOutputBytes(wasm));
+  const decodedJson = TEXT_DECODER.decode(readOutputBytes(wasm));
   const decoded = JSON.parse(decodedJson) as Array<{
     docId: string;
     termFrequency: number;
@@ -160,6 +223,61 @@ function decodePostingsWithRust(wasm: SearchFnRustWasmExports, payload: ArrayBuf
     termFrequency: normalizeTermFrequency(posting.termFrequency),
     metadata: posting.metadata
   }));
+}
+
+function scoreDocumentsWithRust(
+  wasm: SearchFnRustWasmExports,
+  input: QueryScoringInput
+): ScoredDocument[] {
+  const payload = TEXT_ENCODER.encode(
+    JSON.stringify(serializeScoringInput(input))
+  );
+  const success = invokeWasm(wasm, payload, wasm.searchfn_score_documents_json);
+  if (!success) {
+    throw new Error(readLastError(wasm));
+  }
+
+  const decodedJson = TEXT_DECODER.decode(readOutputBytes(wasm));
+  const decoded = JSON.parse(decodedJson) as Array<{ docId: string; score: number }>;
+
+  return decoded.map((document) => ({
+    docId: document.docId,
+    score: Number.isFinite(document.score) ? document.score : 0
+  }));
+}
+
+function decodeChunkWithRust(
+  wasm: SearchFnRustWasmExports,
+  delegate: TsSearchCoreEngine,
+  chunk: StoredPostingChunk
+): TermPosting[] {
+  if (chunk.encoding === "posting-bin-v1") {
+    return decodePostingsWithRust(wasm, chunk.payload);
+  }
+
+  return delegate.decodePostings({ chunk });
+}
+
+function serializeScoringInput(input: QueryScoringInput): RustScoreRequest {
+  return {
+    chunks: input.chunks.map((chunk) => ({
+      field: chunk.field,
+      term: chunk.term,
+      docFrequency: chunk.docFrequency,
+      inverseDocumentFrequency: chunk.inverseDocumentFrequency,
+      postings: chunk.postings.map((posting) => ({
+        docId: String(posting.docId),
+        termFrequency: normalizeTermFrequency(posting.termFrequency),
+        metadata: posting.metadata
+      }))
+    })),
+    documentLengths: Object.fromEntries(
+      Array.from(input.documentLengths.entries()).map(([docId, length]) => [String(docId), normalizeLength(length)])
+    ),
+    averageDocLength: normalizeLength(input.averageDocLength),
+    options: input.options,
+    limit: input.limit
+  };
 }
 
 function invokeWasm(
@@ -186,14 +304,14 @@ function readOutputBytes(wasm: SearchFnRustWasmExports): Uint8Array {
 function readLastError(wasm: SearchFnRustWasmExports): string {
   const ptr = wasm.searchfn_get_last_error_ptr();
   const len = wasm.searchfn_get_last_error_len();
-  return new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len));
+  return TEXT_DECODER.decode(new Uint8Array(wasm.memory.buffer, ptr, len));
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-function assertSelfTestResult(postings: TermPosting[]): void {
+function assertSelfTestPostings(postings: TermPosting[]): void {
   if (
     postings.length !== 1 ||
     postings[0]?.docId !== "__searchfn_wasm_self_test__" ||
@@ -203,9 +321,27 @@ function assertSelfTestResult(postings: TermPosting[]): void {
   }
 }
 
+function assertSelfTestScores(documents: ScoredDocument[]): void {
+  if (
+    documents.length !== 2 ||
+    documents[0]?.docId !== "doc-1" ||
+    documents[1]?.docId !== "doc-2" ||
+    !(documents[0]?.score > documents[1]?.score)
+  ) {
+    throw new Error("SearchFn WASM engine scoring self-test failed.");
+  }
+}
+
 function normalizeTermFrequency(termFrequency: number): number {
   if (!Number.isFinite(termFrequency) || termFrequency <= 0) {
     return 1;
   }
   return Math.max(1, Math.min(Math.floor(termFrequency), 0xffffffff));
+}
+
+function normalizeLength(length: number): number {
+  if (!Number.isFinite(length) || length <= 0) {
+    return 1;
+  }
+  return length;
 }
