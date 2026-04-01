@@ -44,3 +44,4 @@ export class PipelineEngine implements Pipeline {
 }
 
 export type { PipelineOptions, PipelineStage, PipelineContext, Token, Pipeline } from "./types";
+export * from "./compatibility";

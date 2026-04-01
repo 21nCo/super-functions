@@ -4,6 +4,7 @@ import {
   IndexedDbManager,
   LruCache,
   fuzzyExpand,
+  analyzePipelineCompatibility,
   TsSearchCoreEngine,
 } from "@searchfn/core";
 import type {
@@ -37,10 +38,12 @@ export type EngineSelectionReasonCode =
   | "explicit_wasm"
   | "auto_wasm_ready"
   | "auto_loader_missing"
+  | "auto_pipeline_not_portable"
   | "auto_init_failed"
   | "auto_abi_mismatch"
   | "auto_self_test_failed"
   | "wasm_loader_missing"
+  | "wasm_pipeline_not_portable"
   | "wasm_init_failed"
   | "wasm_abi_mismatch"
   | "wasm_self_test_failed";
@@ -267,6 +270,31 @@ export class IndexedDbAdapter implements SearchAdapter {
         engine: "ts",
         code: "explicit_ts",
         reason: "Using the built-in TypeScript search engine.",
+        resource,
+      });
+      return;
+    }
+
+    const compatibility = analyzePipelineCompatibility(this.options.pipeline);
+    if (!compatibility.portable) {
+      const message = compatibility.issues.map((issue) => issue.reason).join(" ");
+      if (configuredMode === "wasm") {
+        throw this.createEngineSelectionError(
+          "wasm_pipeline_not_portable",
+          message,
+        );
+      }
+
+      engine.selectedEngineKind = "ts";
+      this.options.onWasmFallback?.({
+        code: "auto_pipeline_not_portable",
+        reason: message,
+        resource,
+      });
+      this.options.onEngineSelected?.({
+        engine: "ts",
+        code: "auto_pipeline_not_portable",
+        reason: `${message} Falling back to the TypeScript engine.`,
         resource,
       });
       return;
