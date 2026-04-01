@@ -72,8 +72,8 @@ export class ExtensionSubscriptionManager {
 
       if (sub.localSubscriberCount === 0) {
         // Last subscriber removed - close remote subscription
-        this.remoteSubscriptions.delete(key);
         await this.adapter.unsubscribeRemote(sub.subscriptionId);
+        this.remoteSubscriptions.delete(key);
       }
     };
   }
@@ -88,5 +88,19 @@ export class ExtensionSubscriptionManager {
     await Promise.all(
       subs.map((sub) => this.adapter.unsubscribeRemote(sub.subscriptionId)),
     );
+  }
+
+  ownsSubscriptionId(subscriptionId: string): boolean {
+    for (const subscription of this.remoteSubscriptions.values()) {
+      if (subscription.subscriptionId === subscriptionId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  getActiveSubscriptionCount(): number {
+    return this.remoteSubscriptions.size;
   }
 }

@@ -1,0 +1,47 @@
+{
+  "name": "@superfunctions/extfn",
+  "version": "0.1.0",
+  "description": "Code-first browser extension config and runtime contracts for Superfunctions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "browser-extension",
+    "extfn",
+    "superfunctions",
+    "vite"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "extfn/core"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

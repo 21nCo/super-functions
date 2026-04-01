@@ -843,26 +843,27 @@ function _buildRawClient<S extends DatafnSchema>(
   if (config.sync?.remoteAdapter) {
     // Precedence 1: Use provided remoteAdapter
     remote = config.sync.remoteAdapter;
+    const extAdapter = remote as any;
+
+    if ("subscribeRemote" in extAdapter && "unsubscribeRemote" in extAdapter) {
+      extensionSubscriptionManager = new ExtensionSubscriptionManager({
+        subscribeRemote: extAdapter.subscribeRemote.bind(extAdapter),
+        unsubscribeRemote: extAdapter.unsubscribeRemote.bind(extAdapter),
+      });
+    }
 
     // EXT-001: Wire inbound remote events if extension adapter supports it
     // Check if the adapter has onEvent capability (extension adapter)
-    if ("onEvent" in remote && typeof remote.onEvent === "function") {
-      const extAdapter = remote as any; // Has onEvent, subscribeRemote, unsubscribeRemote methods
-
-      // Wire inbound remote events into local event bus
+    if ("onEvent" in extAdapter && typeof extAdapter.onEvent === "function") {
       extensionEventUnsubscribe = extAdapter.onEvent((delivery: { subscriptionId: string; event: any }) => {
-        // Emit the remote event into local event bus
-        // The event is already in DatafnEvent format from background
-        eventBus.emit(delivery.event);
+        if (
+          !extensionSubscriptionManager ||
+          extensionSubscriptionManager.ownsSubscriptionId(delivery.subscriptionId)
+        ) {
+          // Emit only events for subscriptions owned by this client.
+          eventBus.emit(delivery.event);
+        }
       });
-
-      // Create subscription manager for lifecycle management
-      if ("subscribeRemote" in extAdapter && "unsubscribeRemote" in extAdapter) {
-        extensionSubscriptionManager = new ExtensionSubscriptionManager({
-          subscribeRemote: extAdapter.subscribeRemote.bind(extAdapter),
-          unsubscribeRemote: extAdapter.unsubscribeRemote.bind(extAdapter),
-        });
-      }
     }
   } else if (config.sync?.remote) {
     // Precedence 2: Create DefaultHttpTransport from remote URL

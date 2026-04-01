@@ -57,3 +57,4 @@ export {
   parseDateFields,
   parseQueryResultDates,
 } from "./codecs/date.js";
+export * from "./extension/index.js";
