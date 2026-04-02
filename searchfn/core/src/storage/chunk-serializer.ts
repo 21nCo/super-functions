@@ -207,6 +207,9 @@ function decodeTermPostings(buffer: Uint8Array): TermPosting[] {
   const postings: TermPosting[] = [];
 
   for (let index = 0; index < count; index += 1) {
+    if (offset + 4 > buffer.length) {
+      throw new Error("Invalid posting-bin-v1 payload length");
+    }
     const docIdLength = view.getUint32(offset, true);
     offset += 4;
     const docIdEnd = offset + docIdLength;
@@ -276,7 +279,7 @@ function encodePostingMetadata(metadata?: Record<string, unknown>): { flags: num
     extraMetadata[key] = value;
   }
 
-  if (Object.keys(extraMetadata).length > 0) {
+  if (Object.keys(extraMetadata).length > 0 || (flags === 0 && metadata !== undefined)) {
     flags |= FLAG_HAS_EXTRA_METADATA;
     return {
       flags,
@@ -291,5 +294,5 @@ function normaliseTermFrequency(termFrequency: number): number {
   if (!Number.isFinite(termFrequency) || termFrequency <= 0) {
     return 1;
   }
-  return Math.min(Math.floor(termFrequency), 0xffffffff);
+  return Math.max(1, Math.min(Math.floor(termFrequency), 0xffffffff));
 }

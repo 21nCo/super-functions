@@ -41,7 +41,8 @@ describe("chunk serializer", () => {
     const { buffer, encoding } = encodeTermPostings([
       { docId: "doc-1", termFrequency: 2, metadata: { isPrefix: true } },
       { docId: 42, termFrequency: 4, metadata: { section: "intro" } },
-      { docId: "doc-3", termFrequency: 1, metadata: { isPrefix: true, language: "en" } }
+      { docId: "doc-3", termFrequency: 1, metadata: { isPrefix: true, language: "en" } },
+      { docId: "doc-4", termFrequency: 0.5, metadata: {} }
     ]);
 
     expect(encoding).toBe("posting-bin-v1");
@@ -51,7 +52,18 @@ describe("chunk serializer", () => {
     expect(decoded.postings).toEqual([
       { docId: "doc-1", termFrequency: 2, metadata: { isPrefix: true } },
       { docId: "42", termFrequency: 4, metadata: { section: "intro" } },
-      { docId: "doc-3", termFrequency: 1, metadata: { isPrefix: true, language: "en" } }
+      { docId: "doc-3", termFrequency: 1, metadata: { isPrefix: true, language: "en" } },
+      { docId: "doc-4", termFrequency: 1, metadata: {} }
     ]);
+  });
+
+  it("rejects posting-bin-v1 payloads that end before the next docId length", () => {
+    const malformed = new Uint8Array([
+      0x53, 0x46, 0x50, 0x31,
+      0x01, 0x00, 0x00, 0x00,
+      0xff, 0xff
+    ]);
+
+    expect(() => decodePostings(malformed.buffer, "posting-bin-v1")).toThrow("Invalid posting-bin-v1 payload length");
   });
 });
