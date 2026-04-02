@@ -17,6 +17,7 @@
     "datafn/extfn",
     "datafn/server",
     "datafn/svelte",
+    "filefn/*",
     "clifn/*",
     "packages/*"
   ],
