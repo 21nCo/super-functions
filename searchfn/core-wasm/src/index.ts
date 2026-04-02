@@ -267,7 +267,7 @@ function serializeScoringInput(input: QueryScoringInput): RustScoreRequest {
       inverseDocumentFrequency: chunk.inverseDocumentFrequency,
       postings: chunk.postings.map((posting) => ({
         docId: String(posting.docId),
-        termFrequency: normalizeTermFrequency(posting.termFrequency),
+        termFrequency: normalizeScoreTermFrequency(posting.termFrequency),
         metadata: posting.metadata
       }))
     })),
@@ -344,4 +344,11 @@ function normalizeLength(length: number): number {
     return 1;
   }
   return length;
+}
+
+function normalizeScoreTermFrequency(termFrequency: number): number {
+  if (!Number.isFinite(termFrequency) || termFrequency <= 0) {
+    return 1;
+  }
+  return termFrequency;
 }
