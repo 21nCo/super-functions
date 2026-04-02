@@ -519,6 +519,33 @@ mod tests {
     }
 
     #[test]
+    fn preserves_explicit_empty_metadata_objects() {
+        let encoded = encode_postings_binary(&[InputPosting {
+            doc_id: "doc-1".to_string(),
+            term_frequency: 1,
+            metadata: Some(Map::new()),
+        }])
+        .expect("encode");
+
+        let decoded = decode_postings_binary(&encoded).expect("decode");
+        assert_eq!(
+            decoded,
+            vec![OutputPosting {
+                doc_id: "doc-1".to_string(),
+                term_frequency: 1,
+                metadata: Some(Map::new()),
+            }]
+        );
+    }
+
+    #[test]
+    fn rejects_payloads_with_impossible_record_counts() {
+        let invalid = vec![0x53, 0x46, 0x50, 0x31, 0xff, 0xff, 0xff, 0x7f];
+        let result = decode_postings_binary(&invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn scores_documents_like_the_typescript_engine() {
         let request = ScoreRequest {
             chunks: vec![ScoreChunk {
