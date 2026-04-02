@@ -129,6 +129,7 @@ export class IndexedDbAdapter implements SearchAdapter {
   private readonly options: IndexedDbAdapterOptions;
   private readonly defaults: SearchDefaults;
   private readonly engines = new Map<string, ResourceEngine>();
+  private wasmModulePromise: Promise<SearchFnWasmModule> | null = null;
   private disposed = false;
 
   constructor(options?: IndexedDbAdapterOptions) {
@@ -290,7 +291,7 @@ export class IndexedDbAdapter implements SearchAdapter {
     }
 
     try {
-      const wasmModule = await this.options.wasmLoader();
+      const wasmModule = await this.loadWasmModule();
       if (wasmModule.abiVersion !== SEARCHFN_WASM_ABI_VERSION) {
         throw this.createEngineSelectionError(
           configuredMode === "wasm" ? "wasm_abi_mismatch" : "auto_abi_mismatch",
@@ -341,13 +342,12 @@ export class IndexedDbAdapter implements SearchAdapter {
       }
 
       const selectionError = normalizeEngineSelectionError(error, "auto_init_failed");
-      engine.coreEngine = this.createTsCoreEngine(engine);
       engine.selectedEngineKind = "ts";
       this.options.onWasmFallback?.({
         code: selectionError.code as EngineSelectionReasonCode,
         reason: selectionError.message,
         resource,
-        error: getErrorCause(selectionError),
+        error: getErrorCause(selectionError) ?? error,
       });
       this.options.onEngineSelected?.({
         engine: "ts",
@@ -375,6 +375,24 @@ export class IndexedDbAdapter implements SearchAdapter {
     const error = new SearchAdapterError(code, message) as SearchAdapterError & { cause?: unknown };
     error.cause = cause;
     return error;
+  }
+
+  private loadWasmModule(): Promise<SearchFnWasmModule> {
+    if (!this.options.wasmLoader) {
+      throw this.createEngineSelectionError(
+        "wasm_loader_missing",
+        "WASM engine was requested, but no wasmLoader was provided.",
+      );
+    }
+
+    if (!this.wasmModulePromise) {
+      this.wasmModulePromise = this.options.wasmLoader().catch((error) => {
+        this.wasmModulePromise = null;
+        throw error;
+      });
+    }
+
+    return this.wasmModulePromise;
   }
 
   private async loadStats(engine: ResourceEngine): Promise<void> {

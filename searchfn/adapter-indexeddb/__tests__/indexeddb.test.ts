@@ -572,8 +572,8 @@ describe("IndexedDbAdapter — engine selection", () => {
   });
 
   it("emits fallback metadata when auto mode fails to initialize WASM", async () => {
-    const fallbackEvents: Array<{ code: string; reason: string }> = [];
-    const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string }> = [];
+    const fallbackEvents: Array<{ code: string; reason: string; resource?: string; error?: unknown }> = [];
+    const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "auto",
@@ -581,10 +581,10 @@ describe("IndexedDbAdapter — engine selection", () => {
         throw new Error("boom");
       },
       onWasmFallback: (info) => {
-        fallbackEvents.push({ code: info.code, reason: info.reason });
+        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource, error: info.error });
       },
       onEngineSelected: (info) => {
-        selectionEvents.push({ engine: info.engine, code: info.code });
+        selectionEvents.push({ engine: info.engine, code: info.code, resource: info.resource });
       },
     });
 
@@ -594,8 +594,13 @@ describe("IndexedDbAdapter — engine selection", () => {
         documents: [{ id: "1", fields: { title: "engine fallback" } }],
       });
       expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
-      expect(fallbackEvents).toContainEqual({ code: "auto_init_failed", reason: "boom" });
-      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_init_failed" });
+      expect(fallbackEvents).toContainEqual({
+        code: "auto_init_failed",
+        reason: "boom",
+        resource: "docs",
+        error: expect.any(Error)
+      });
+      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_init_failed", resource: "docs" });
     } finally {
       await adapter.dispose();
     }
@@ -620,13 +625,13 @@ describe("IndexedDbAdapter — engine selection", () => {
   });
 
   it("uses the provided WASM engine when initialization succeeds", async () => {
-    const selections: Array<{ engine: "ts" | "wasm"; code: string }> = [];
+    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "wasm",
       wasmLoader: async () => createDelegatingWasmModule(),
       onEngineSelected: (info) => {
-        selections.push({ engine: info.engine, code: info.code });
+        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
       },
     });
 
@@ -636,7 +641,36 @@ describe("IndexedDbAdapter — engine selection", () => {
         documents: [{ id: "1", fields: { title: "wasm path" } }],
       });
       expect(await adapter.search({ resource: "docs", query: "wasm" })).toEqual(["1"]);
-      expect(selections).toContainEqual({ engine: "wasm", code: "explicit_wasm" });
+      expect(selections).toContainEqual({ engine: "wasm", code: "explicit_wasm", resource: "docs" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("reuses a single wasmLoader result across resources", async () => {
+    let loaderCalls = 0;
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "wasm",
+      wasmLoader: async () => {
+        loaderCalls += 1;
+        return createDelegatingWasmModule();
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "shared loader docs" } }],
+      });
+      await adapter.index({
+        resource: "notes",
+        documents: [{ id: "2", fields: { title: "shared loader notes" } }],
+      });
+
+      expect(await adapter.search({ resource: "docs", query: "shared" })).toEqual(["1"]);
+      expect(await adapter.search({ resource: "notes", query: "shared" })).toEqual(["2"]);
+      expect(loaderCalls).toBe(1);
     } finally {
       await adapter.dispose();
     }
