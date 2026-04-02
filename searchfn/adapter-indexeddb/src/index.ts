@@ -281,6 +281,11 @@ export class IndexedDbAdapter implements SearchAdapter {
       }
 
       engine.selectedEngineKind = "ts";
+      this.options.onWasmFallback?.({
+        code: "auto_loader_missing",
+        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        resource,
+      });
       this.options.onEngineSelected?.({
         engine: "ts",
         code: "auto_loader_missing",

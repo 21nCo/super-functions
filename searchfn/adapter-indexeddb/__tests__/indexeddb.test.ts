@@ -550,12 +550,16 @@ describe("IndexedDbAdapter — engine selection", () => {
   });
 
   it("falls back to TypeScript in auto mode when no wasm loader is configured", async () => {
-    const selections: Array<{ engine: "ts" | "wasm"; code: string }> = [];
+    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const fallbackEvents: Array<{ code: string; reason: string; resource?: string }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "auto",
+      onWasmFallback: (info) => {
+        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource });
+      },
       onEngineSelected: (info) => {
-        selections.push({ engine: info.engine, code: info.code });
+        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
       },
     });
 
@@ -565,7 +569,12 @@ describe("IndexedDbAdapter — engine selection", () => {
         documents: [{ id: "1", fields: { title: "fallback path" } }],
       });
       expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
-      expect(selections).toContainEqual({ engine: "ts", code: "auto_loader_missing" });
+      expect(fallbackEvents).toContainEqual({
+        code: "auto_loader_missing",
+        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        resource: "docs"
+      });
+      expect(selections).toContainEqual({ engine: "ts", code: "auto_loader_missing", resource: "docs" });
     } finally {
       await adapter.dispose();
     }
