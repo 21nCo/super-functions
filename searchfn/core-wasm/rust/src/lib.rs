@@ -112,7 +112,7 @@ pub extern "C" fn searchfn_get_last_error_len() -> usize {
     LAST_ERROR.with(|error| error.borrow().len())
 }
 
-fn read_input(ptr: *const u8, len: usize) -> Result<&'static [u8], String> {
+fn read_input<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], String> {
     if len == 0 {
         return Ok(&[]);
     }
@@ -175,6 +175,10 @@ fn decode_postings_binary(bytes: &[u8]) -> Result<Vec<OutputPosting>, String> {
 
     let mut offset = MAGIC.len();
     let count = read_u32(bytes, &mut offset)? as usize;
+    let remaining_bytes = bytes.len().saturating_sub(offset);
+    if count > remaining_bytes / 9 {
+        return Err("Invalid posting-bin-v1 payload length".to_string());
+    }
     let mut postings = Vec::with_capacity(count);
 
     for _ in 0..count {
@@ -250,7 +254,7 @@ fn encode_metadata(metadata: Option<&Map<String, Value>>) -> Result<(u8, Option<
         extra_metadata.insert(key.clone(), value.clone());
     }
 
-    if extra_metadata.is_empty() {
+    if extra_metadata.is_empty() && flags != 0 {
         return Ok((flags, None));
     }
 
@@ -321,6 +325,33 @@ mod tests {
     #[test]
     fn rejects_invalid_magic_header() {
         let invalid = b"BAD!".to_vec();
+        let result = decode_postings_binary(&invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn preserves_explicit_empty_metadata_objects() {
+        let encoded = encode_postings_binary(&[InputPosting {
+            doc_id: "doc-1".to_string(),
+            term_frequency: 1,
+            metadata: Some(Map::new()),
+        }])
+        .expect("encode");
+
+        let decoded = decode_postings_binary(&encoded).expect("decode");
+        assert_eq!(
+            decoded,
+            vec![OutputPosting {
+                doc_id: "doc-1".to_string(),
+                term_frequency: 1,
+                metadata: Some(Map::new()),
+            }]
+        );
+    }
+
+    #[test]
+    fn rejects_payloads_with_impossible_record_counts() {
+        let invalid = vec![0x53, 0x46, 0x50, 0x31, 0xff, 0xff, 0xff, 0x7f];
         let result = decode_postings_binary(&invalid);
         assert!(result.is_err());
     }

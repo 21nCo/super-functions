@@ -80,9 +80,10 @@ async function loadRustWasmExports(): Promise<SearchFnRustWasmExports> {
   if (!wasmExportsPromise) {
     wasmExportsPromise = (async () => {
       const bytes = await loadWasmBytes();
-      const instantiated = await WebAssembly.instantiate(bytes, {});
-      const source = instantiated as WebAssembly.WebAssemblyInstantiatedSource | WebAssembly.Instance;
-      const instance = source instanceof WebAssembly.Instance ? source : source.instance;
+      const instantiated = await WebAssembly.instantiate(bytes, {}) as
+        | WebAssembly.WebAssemblyInstantiatedSource
+        | WebAssembly.Instance;
+      const instance: WebAssembly.Instance = "instance" in instantiated ? instantiated.instance : instantiated;
       const exports = instance.exports as unknown as SearchFnRustWasmExports;
       if (exports.searchfn_wasm_abi_version() !== abiVersion) {
         throw new Error(
@@ -90,7 +91,10 @@ async function loadRustWasmExports(): Promise<SearchFnRustWasmExports> {
         );
       }
       return exports;
-    })();
+    })().catch((error) => {
+      wasmExportsPromise = null;
+      throw error;
+    });
   }
   return wasmExportsPromise;
 }
@@ -203,5 +207,5 @@ function normalizeTermFrequency(termFrequency: number): number {
   if (!Number.isFinite(termFrequency) || termFrequency <= 0) {
     return 1;
   }
-  return termFrequency;
+  return Math.max(1, Math.min(Math.floor(termFrequency), 0xffffffff));
 }

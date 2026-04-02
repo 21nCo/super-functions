@@ -55,4 +55,36 @@ describe("@searchfn/core-wasm", () => {
       await storage.deleteDatabase();
     }
   });
+
+  it("normalizes fractional term frequencies before encoding through Rust", async () => {
+    const { storage, termCache, vectorCache, stats } = createFactoryOptions();
+    await storage.open();
+
+    try {
+      const engine = await createSearchCoreEngine({
+        storage,
+        termCache,
+        vectorCache,
+        stats
+      });
+
+      const encoded = engine.encodePostings({
+        postings: [{ docId: "doc-1", termFrequency: 1.5 }]
+      });
+
+      expect(
+        engine.decodePostings({
+          chunk: {
+            key: { field: "title", term: "hello", chunk: 0 },
+            payload: encoded.payload,
+            encoding: encoded.encoding,
+            docFrequency: encoded.docFrequency
+          }
+        })
+      ).toEqual([{ docId: "doc-1", termFrequency: 1 }]);
+    } finally {
+      await storage.close();
+      await storage.deleteDatabase();
+    }
+  });
 });
