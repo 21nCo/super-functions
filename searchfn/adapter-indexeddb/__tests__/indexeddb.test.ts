@@ -595,6 +595,47 @@ describe("IndexedDbAdapter — engine selection", () => {
     }
   });
 
+  it("falls back to TypeScript in auto mode when pipeline options are not portable", async () => {
+    let loaderCalls = 0;
+    const fallbackEvents: string[] = [];
+    const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string }> = [];
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "auto",
+      pipeline: {
+        customStages: [
+          {
+            name: "noop",
+            execute: (tokens) => tokens,
+          },
+        ],
+      },
+      wasmLoader: async () => {
+        loaderCalls += 1;
+        return createDelegatingWasmModule();
+      },
+      onWasmFallback: (info) => {
+        fallbackEvents.push(info.code);
+      },
+      onEngineSelected: (info) => {
+        selectionEvents.push({ engine: info.engine, code: info.code });
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "portable fallback" } }],
+      });
+      expect(await adapter.search({ resource: "docs", query: "portable" })).toEqual(["1"]);
+      expect(loaderCalls).toBe(0);
+      expect(fallbackEvents).toContain("auto_pipeline_not_portable");
+      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_pipeline_not_portable" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
   it("emits fallback metadata when auto mode fails to initialize WASM", async () => {
     const fallbackEvents: Array<{ code: string; reason: string; resource?: string; error?: unknown }> = [];
     const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
@@ -643,6 +684,30 @@ describe("IndexedDbAdapter — engine selection", () => {
           query: "hello",
         }),
       ).rejects.toMatchObject({ code: "wasm_loader_missing" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("fails fast in wasm mode when pipeline options are not portable", async () => {
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "wasm",
+      pipeline: {
+        stemmer: {
+          stem: (token) => token,
+        },
+      },
+      wasmLoader: async () => createDelegatingWasmModule(),
+    });
+
+    try {
+      await expect(
+        adapter.search({
+          resource: "docs",
+          query: "hello",
+        }),
+      ).rejects.toMatchObject({ code: "wasm_pipeline_not_portable" });
     } finally {
       await adapter.dispose();
     }
