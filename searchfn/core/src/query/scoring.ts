@@ -1,4 +1,9 @@
-import type { RetrievedPostingChunk, ScoredDocument } from "./types";
+import type {
+  QueryScoringInput,
+  QueryScoringOptions,
+  RetrievedPostingChunk,
+  ScoredDocument
+} from "./types";
 import type { DocId } from "../types";
 
 interface ScoreAccumulator {
@@ -14,8 +19,18 @@ export function scorePostings(
   chunks: RetrievedPostingChunk[],
   documentLengths: Map<DocId, number>,
   averageDocLength: number,
-  options?: { k1?: number; b?: number; d?: number }
+  options?: QueryScoringOptions
 ): ScoredDocument[] {
+  return scoreQueryResults({
+    chunks,
+    documentLengths,
+    averageDocLength,
+    options
+  });
+}
+
+export function scoreQueryResults(input: QueryScoringInput): ScoredDocument[] {
+  const { chunks, documentLengths, averageDocLength, options, limit } = input;
   const k1 = options?.k1 ?? DEFAULT_K1;
   const b = options?.b ?? DEFAULT_B;
   const d = options?.d ?? DEFAULT_D;
@@ -41,7 +56,7 @@ export function scorePostings(
     }
   }
 
-  return Array.from(scores.entries())
+  const scored = Array.from(scores.entries())
     .map(([docId, accumulator]) => ({
       docId,
       score: accumulator.score
@@ -52,6 +67,12 @@ export function scorePostings(
       const bId = String(b.docId);
       return aId < bId ? -1 : aId > bId ? 1 : 0;
     });
+
+  if (typeof limit === "number") {
+    return scored.slice(0, Math.max(0, limit));
+  }
+
+  return scored;
 }
 
 function computeDefaultIdf(docFrequency: number): number {

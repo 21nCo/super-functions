@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::collections::HashMap;
 
 const MAGIC: [u8; 4] = *b"SFP1";
 const FLAG_IS_PREFIX: u8 = 0b0000_0001;
 const FLAG_HAS_EXTRA_METADATA: u8 = 0b0000_0010;
+const DEFAULT_K1: f64 = 1.2;
+const DEFAULT_B: f64 = 0.75;
+const DEFAULT_D: f64 = 0.5;
+const PREFIX_MATCH_PENALTY: f64 = 0.7;
 
 thread_local! {
     static OUTPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -31,8 +37,58 @@ struct OutputPosting {
     metadata: Option<Map<String, Value>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ScoreRequest {
+    chunks: Vec<ScoreChunk>,
+    #[serde(rename = "documentLengths", default)]
+    document_lengths: HashMap<String, f64>,
+    #[serde(rename = "averageDocLength")]
+    average_doc_length: f64,
+    #[serde(default)]
+    options: Option<ScoreOptions>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScoreChunk {
+    #[serde(rename = "docFrequency")]
+    doc_frequency: u32,
+    #[serde(rename = "inverseDocumentFrequency")]
+    inverse_document_frequency: Option<f64>,
+    postings: Vec<ScorePosting>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScorePosting {
+    #[serde(rename = "docId")]
+    doc_id: String,
+    #[serde(rename = "termFrequency", default = "default_score_term_frequency")]
+    term_frequency: f64,
+    #[serde(default)]
+    metadata: Option<Map<String, Value>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScoreOptions {
+    k1: Option<f64>,
+    b: Option<f64>,
+    d: Option<f64>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+struct ScoredDocument {
+    #[serde(rename = "docId")]
+    doc_id: String,
+    score: f64,
+}
+
 fn default_term_frequency() -> u32 {
     1
+}
+
+fn default_score_term_frequency() -> f64 {
+    1.0
 }
 
 #[unsafe(no_mangle)]
@@ -79,6 +135,25 @@ pub extern "C" fn searchfn_decode_postings_to_json(ptr: *const u8, len: usize) -
     match read_input(ptr, len)
         .and_then(decode_postings_binary)
         .and_then(|postings| serde_json::to_vec(&postings).map_err(|err| err.to_string()))
+    {
+        Ok(bytes) => {
+            set_output(bytes);
+            clear_error();
+            1
+        }
+        Err(error) => {
+            set_error(error);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn searchfn_score_documents_json(ptr: *const u8, len: usize) -> u32 {
+    match read_input(ptr, len)
+        .and_then(|bytes| serde_json::from_slice::<ScoreRequest>(bytes).map_err(|err| err.to_string()))
+        .and_then(|request| score_documents(&request))
+        .and_then(|documents| serde_json::to_vec(&documents).map_err(|err| err.to_string()))
     {
         Ok(bytes) => {
             set_output(bytes);
@@ -238,6 +313,79 @@ fn decode_postings_binary(bytes: &[u8]) -> Result<Vec<OutputPosting>, String> {
     Ok(postings)
 }
 
+fn score_documents(request: &ScoreRequest) -> Result<Vec<ScoredDocument>, String> {
+    let average_doc_length = normalise_length(request.average_doc_length);
+    let k1 = request
+        .options
+        .as_ref()
+        .and_then(|options| options.k1)
+        .unwrap_or(DEFAULT_K1);
+    let b = request
+        .options
+        .as_ref()
+        .and_then(|options| options.b)
+        .unwrap_or(DEFAULT_B);
+    let d = request
+        .options
+        .as_ref()
+        .and_then(|options| options.d)
+        .unwrap_or(DEFAULT_D);
+    let mut scores: HashMap<String, f64> = HashMap::new();
+
+    for chunk in &request.chunks {
+        let idf = chunk
+            .inverse_document_frequency
+            .unwrap_or_else(|| compute_default_idf(chunk.doc_frequency));
+        for posting in &chunk.postings {
+            let doc_length = request
+                .document_lengths
+                .get(&posting.doc_id)
+                .copied()
+                .map(normalise_length)
+                .unwrap_or(average_doc_length);
+            let tf = normalise_score_term_frequency(posting.term_frequency);
+            let norm = 1.0 - b + (b * doc_length) / average_doc_length.max(1.0);
+            let mut score_contribution = idf * (d + ((k1 + 1.0) * tf) / (k1 * norm + tf));
+
+            if metadata_is_prefix(posting.metadata.as_ref()) {
+                score_contribution *= PREFIX_MATCH_PENALTY;
+            }
+
+            *scores.entry(posting.doc_id.clone()).or_insert(0.0) += score_contribution;
+        }
+    }
+
+    let mut scored = scores
+        .into_iter()
+        .map(|(doc_id, score)| ScoredDocument { doc_id, score })
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|a, b| match b.score.total_cmp(&a.score) {
+        Ordering::Equal => a.doc_id.cmp(&b.doc_id),
+        ordering => ordering,
+    });
+
+    if let Some(limit) = request.limit {
+        scored.truncate(limit);
+    }
+
+    Ok(scored)
+}
+
+fn compute_default_idf(doc_frequency: u32) -> f64 {
+    if doc_frequency == 0 {
+        return 0.0;
+    }
+    (1.0 + 1.0 / doc_frequency as f64).ln()
+}
+
+fn metadata_is_prefix(metadata: Option<&Map<String, Value>>) -> bool {
+    metadata
+        .and_then(|metadata| metadata.get("isPrefix"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
 fn encode_metadata(metadata: Option<&Map<String, Value>>) -> Result<(u8, Option<Vec<u8>>), String> {
     let Some(metadata) = metadata else {
         return Ok((0, None));
@@ -275,6 +423,20 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32, String> {
 
 fn normalise_term_frequency(term_frequency: u32) -> u32 {
     term_frequency.max(1)
+}
+
+fn normalise_score_term_frequency(term_frequency: f64) -> f64 {
+    if !term_frequency.is_finite() || term_frequency <= 0.0 {
+        return 1.0;
+    }
+    term_frequency
+}
+
+fn normalise_length(length: f64) -> f64 {
+    if !length.is_finite() || length <= 0.0 {
+        return 1.0;
+    }
+    length
 }
 
 #[cfg(test)]
@@ -324,7 +486,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_magic_header() {
-        let invalid = b"BAD!".to_vec();
+        let invalid = b"BAD!XXXX".to_vec();
         let result = decode_postings_binary(&invalid);
         assert!(result.is_err());
     }
@@ -354,5 +516,108 @@ mod tests {
         let invalid = vec![0x53, 0x46, 0x50, 0x31, 0xff, 0xff, 0xff, 0x7f];
         let result = decode_postings_binary(&invalid);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn preserves_explicit_empty_metadata_objects() {
+        let encoded = encode_postings_binary(&[InputPosting {
+            doc_id: "doc-1".to_string(),
+            term_frequency: 1,
+            metadata: Some(Map::new()),
+        }])
+        .expect("encode");
+
+        let decoded = decode_postings_binary(&encoded).expect("decode");
+        assert_eq!(
+            decoded,
+            vec![OutputPosting {
+                doc_id: "doc-1".to_string(),
+                term_frequency: 1,
+                metadata: Some(Map::new()),
+            }]
+        );
+    }
+
+    #[test]
+    fn rejects_payloads_with_impossible_record_counts() {
+        let invalid = vec![0x53, 0x46, 0x50, 0x31, 0xff, 0xff, 0xff, 0x7f];
+        let result = decode_postings_binary(&invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn scores_documents_like_the_typescript_engine() {
+        let request = ScoreRequest {
+            chunks: vec![ScoreChunk {
+                doc_frequency: 2,
+                inverse_document_frequency: None,
+                postings: vec![
+                    ScorePosting {
+                        doc_id: "doc-1".to_string(),
+                        term_frequency: 0.8,
+                        metadata: None,
+                    },
+                    ScorePosting {
+                        doc_id: "doc-2".to_string(),
+                        term_frequency: 1.6,
+                        metadata: Some(Map::from_iter([(
+                            "isPrefix".to_string(),
+                            Value::Bool(true),
+                        )])),
+                    },
+                ],
+            }],
+            document_lengths: HashMap::from_iter([
+                ("doc-1".to_string(), 4.0),
+                ("doc-2".to_string(), 4.0),
+            ]),
+            average_doc_length: 4.0,
+            options: Some(ScoreOptions {
+                k1: Some(1.2),
+                b: Some(0.75),
+                d: Some(0.5),
+            }),
+            limit: Some(2),
+        };
+
+        let scored = score_documents(&request).expect("score");
+
+        assert_eq!(scored.len(), 2);
+        assert_eq!(scored[0].doc_id, "doc-1");
+        assert_eq!(scored[1].doc_id, "doc-2");
+        assert!(scored[0].score > scored[1].score);
+    }
+
+    #[test]
+    fn honors_limit_and_tie_breaks_by_doc_id() {
+        let request = ScoreRequest {
+            chunks: vec![ScoreChunk {
+                doc_frequency: 2,
+                inverse_document_frequency: Some(1.0),
+                postings: vec![
+                    ScorePosting {
+                        doc_id: "b".to_string(),
+                        term_frequency: 1.0,
+                        metadata: None,
+                    },
+                    ScorePosting {
+                        doc_id: "a".to_string(),
+                        term_frequency: 1.0,
+                        metadata: None,
+                    },
+                ],
+            }],
+            document_lengths: HashMap::new(),
+            average_doc_length: 1.0,
+            options: None,
+            limit: Some(1),
+        };
+
+        let scored = score_documents(&request).expect("score");
+
+        assert_eq!(scored, vec![ScoredDocument {
+            doc_id: "a".to_string(),
+            score: 1.5,
+        }]);
     }
 }

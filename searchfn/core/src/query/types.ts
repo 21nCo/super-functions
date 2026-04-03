@@ -1,6 +1,5 @@
-import type { DocId } from "../types";
+import type { DocId, ChunkDecodeResult, StoredPostingChunk, TermIdentifier } from "../types";
 import type { TermPosting } from "../cache";
-import type { ChunkDecodeResult, StoredPostingChunk, TermIdentifier } from "../types";
 
 export interface QueryToken {
   field: string;
@@ -26,6 +25,24 @@ export interface ScoredDocument {
   docId: DocId;
   score: number;
 }
+
+export interface QueryScoringOptions {
+  k1?: number;
+  b?: number;
+  d?: number;
+}
+
+export interface QueryScoringInput {
+  chunks: RetrievedPostingChunk[];
+  documentLengths: Map<DocId, number>;
+  averageDocLength: number;
+  options?: QueryScoringOptions;
+  limit?: number;
+}
+
+export type QueryDocumentScorer = (
+  input: QueryScoringInput
+) => ScoredDocument[] | Promise<ScoredDocument[]>;
 
 export interface QueryStorage {
   getTermChunk(key: TermIdentifier): Promise<StoredPostingChunk | undefined>;
