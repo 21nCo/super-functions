@@ -85,7 +85,13 @@ describe("createIndexedDbSearchClient", () => {
 
   it("accepts custom adapter config and defaults", () => {
     const client = createIndexedDbSearchClient({
-      adapterConfig: { dbName: "test-search-db" },
+      adapterConfig: {
+        dbName: "test-search-db",
+        engine: "auto",
+        wasmLoader: async () => {
+          throw new Error("not-loaded-in-constructor-test");
+        },
+      },
       defaults: { limit: 20 },
     });
     expect(client.adapterInfo().name).toBe("indexeddb");

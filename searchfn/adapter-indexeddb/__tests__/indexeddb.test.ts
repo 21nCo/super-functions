@@ -1,11 +1,44 @@
 import { describe, it, expect } from "vitest";
 import { runAdapterContractTests } from "./adapter-contract";
-import { IndexedDbAdapter } from "../src/index";
+import { TsSearchCoreEngine } from "@searchfn/core";
 import { SearchAdapterError } from "@searchfn/adapter-contracts";
+import {
+  IndexedDbAdapter,
+  type SearchCoreEngineFactoryOptions,
+  type SearchFnWasmModule,
+} from "../src/index";
 
 let testCounter = 0;
 function freshDbName(): string {
   return `test-idb-${++testCounter}`;
+}
+
+function createDelegatingWasmModule(options?: {
+  abiVersion?: number;
+  selfTest?: () => Promise<void>;
+}): SearchFnWasmModule {
+  return {
+    abiVersion: options?.abiVersion ?? 1,
+    async createSearchCoreEngine(factoryOptions: SearchCoreEngineFactoryOptions) {
+      const delegate = new TsSearchCoreEngine({
+        storage: factoryOptions.storage,
+        termCache: factoryOptions.termCache,
+        vectorCache: factoryOptions.vectorCache,
+        stats: factoryOptions.stats,
+        pipeline: factoryOptions.pipeline,
+      });
+
+      return {
+        kind: "wasm",
+        ingest: (record) => delegate.ingest(record),
+        ingestBatch: (records) => delegate.ingestBatch(records),
+        encodePostings: (input) => delegate.encodePostings(input),
+        decodePostings: (input) => delegate.decodePostings(input),
+        executeQuery: (input) => delegate.executeQuery(input),
+        selfTest: options?.selfTest,
+      };
+    },
+  };
 }
 
 runAdapterContractTests("IndexedDbAdapter", () => new IndexedDbAdapter({ dbName: freshDbName() }));
@@ -484,5 +517,171 @@ describe("IndexedDbAdapter — prefix search", () => {
   it("TV-IDB-CAP: capabilities include prefix: true", () => {
     const adapter = new IndexedDbAdapter();
     expect(adapter.capabilities.prefix).toBe(true);
+  });
+});
+
+describe("IndexedDbAdapter — engine selection", () => {
+  it("uses the TypeScript engine without touching the wasm loader when engine is ts", async () => {
+    let loaderCalls = 0;
+    const selections: Array<{ engine: "ts" | "wasm"; code: string }> = [];
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "ts",
+      wasmLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("loader should not run");
+      },
+      onEngineSelected: (info) => {
+        selections.push({ engine: info.engine, code: info.code });
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "hello world" } }],
+      });
+      expect(await adapter.search({ resource: "docs", query: "hello" })).toEqual(["1"]);
+      expect(loaderCalls).toBe(0);
+      expect(selections).toContainEqual({ engine: "ts", code: "explicit_ts" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("falls back to TypeScript in auto mode when no wasm loader is configured", async () => {
+    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const fallbackEvents: Array<{ code: string; reason: string; resource?: string }> = [];
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "auto",
+      onWasmFallback: (info) => {
+        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource });
+      },
+      onEngineSelected: (info) => {
+        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "fallback path" } }],
+      });
+      expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
+      expect(fallbackEvents).toContainEqual({
+        code: "auto_loader_missing",
+        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        resource: "docs"
+      });
+      expect(selections).toContainEqual({ engine: "ts", code: "auto_loader_missing", resource: "docs" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("emits fallback metadata when auto mode fails to initialize WASM", async () => {
+    const fallbackEvents: Array<{ code: string; reason: string; resource?: string; error?: unknown }> = [];
+    const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "auto",
+      wasmLoader: async () => {
+        throw new Error("boom");
+      },
+      onWasmFallback: (info) => {
+        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource, error: info.error });
+      },
+      onEngineSelected: (info) => {
+        selectionEvents.push({ engine: info.engine, code: info.code, resource: info.resource });
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "engine fallback" } }],
+      });
+      expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
+      expect(fallbackEvents).toContainEqual({
+        code: "auto_init_failed",
+        reason: "boom",
+        resource: "docs",
+        error: expect.any(Error)
+      });
+      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_init_failed", resource: "docs" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("fails fast in wasm mode when no wasm loader is configured", async () => {
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "wasm",
+    });
+
+    try {
+      await expect(
+        adapter.search({
+          resource: "docs",
+          query: "hello",
+        }),
+      ).rejects.toMatchObject({ code: "wasm_loader_missing" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("uses the provided WASM engine when initialization succeeds", async () => {
+    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "wasm",
+      wasmLoader: async () => createDelegatingWasmModule(),
+      onEngineSelected: (info) => {
+        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "wasm path" } }],
+      });
+      expect(await adapter.search({ resource: "docs", query: "wasm" })).toEqual(["1"]);
+      expect(selections).toContainEqual({ engine: "wasm", code: "explicit_wasm", resource: "docs" });
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("reuses a single wasmLoader result across resources", async () => {
+    let loaderCalls = 0;
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      engine: "wasm",
+      wasmLoader: async () => {
+        loaderCalls += 1;
+        return createDelegatingWasmModule();
+      },
+    });
+
+    try {
+      await adapter.index({
+        resource: "docs",
+        documents: [{ id: "1", fields: { title: "shared loader docs" } }],
+      });
+      await adapter.index({
+        resource: "notes",
+        documents: [{ id: "2", fields: { title: "shared loader notes" } }],
+      });
+
+      expect(await adapter.search({ resource: "docs", query: "shared" })).toEqual(["1"]);
+      expect(await adapter.search({ resource: "notes", query: "shared" })).toEqual(["2"]);
+      expect(loaderCalls).toBe(1);
+    } finally {
+      await adapter.dispose();
+    }
   });
 });
