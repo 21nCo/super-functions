@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runAdapterContractTests } from "./adapter-contract";
-import { TsSearchCoreEngine } from "@searchfn/core";
+import { TsSearchCoreEngine, encodeTermPostings } from "@searchfn/core";
 import { SearchAdapterError } from "@searchfn/adapter-contracts";
 import {
   IndexedDbAdapter,
@@ -16,6 +16,7 @@ function freshDbName(): string {
 function createDelegatingWasmModule(options?: {
   abiVersion?: number;
   selfTest?: () => Promise<void>;
+  binaryCodec?: boolean;
 }): SearchFnWasmModule {
   return {
     abiVersion: options?.abiVersion ?? 1,
@@ -32,7 +33,21 @@ function createDelegatingWasmModule(options?: {
         kind: "wasm",
         ingest: (record) => delegate.ingest(record),
         ingestBatch: (records) => delegate.ingestBatch(records),
-        encodePostings: (input) => delegate.encodePostings(input),
+        encodePostings: (input) => {
+          if (!options?.binaryCodec) {
+            return delegate.encodePostings(input);
+          }
+          const encoded = encodeTermPostings(input.postings);
+          return {
+            payload: encoded.buffer.buffer.slice(
+              encoded.buffer.byteOffset,
+              encoded.buffer.byteOffset + encoded.buffer.byteLength,
+            ) as ArrayBuffer,
+            encoding: encoded.encoding,
+            docFrequency: input.postings.length,
+            inverseDocumentFrequency: undefined,
+          };
+        },
         decodePostings: (input) => delegate.decodePostings(input),
         executeQuery: (input) => delegate.executeQuery(input),
         selfTest: options?.selfTest,
@@ -682,6 +697,29 @@ describe("IndexedDbAdapter — engine selection", () => {
       expect(loaderCalls).toBe(1);
     } finally {
       await adapter.dispose();
+    }
+  });
+
+  it("allows TypeScript fallback readers to query posting-bin-v1 data written by the WASM engine", async () => {
+    const dbName = freshDbName();
+    const wasmAdapter = new IndexedDbAdapter({
+      dbName,
+      engine: "wasm",
+      wasmLoader: async () => createDelegatingWasmModule({ binaryCodec: true }),
+    });
+
+    await wasmAdapter.index({
+      resource: "docs",
+      documents: [{ id: "1", fields: { title: "binary codec handoff" } }],
+    });
+    await wasmAdapter.dispose();
+
+    const tsAdapter = new IndexedDbAdapter({ dbName, engine: "ts" });
+    try {
+      const results = await tsAdapter.search({ resource: "docs", query: "binary" });
+      expect(results).toEqual(["1"]);
+    } finally {
+      await tsAdapter.dispose();
     }
   });
 });

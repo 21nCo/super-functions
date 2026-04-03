@@ -1,5 +1,6 @@
 import { DEFAULT_STORAGE_OPTIONS, STORE_NAMES, type StoreName } from "../config/defaults";
 import type {
+  PostingChunkEncoding,
   DocumentVectorRecord,
   MetadataRecord,
   StoredDocumentRecord,
@@ -22,7 +23,7 @@ interface TermChunkDbRecord {
   inverseDocumentFrequency?: number;
   accessCount?: number;
   lastAccessedAt?: number;
-  encoding: "delta-varint" | "json";
+  encoding: PostingChunkEncoding;
 }
 
 interface VectorDbRecord {

@@ -35,6 +35,7 @@ describe("@searchfn/core-wasm", () => {
       const encoded = engine.encodePostings({
         postings: [{ docId: "doc-1", termFrequency: 2 }]
       });
+      expect(encoded.encoding).toBe("posting-bin-v1");
 
       await storage.putTermChunk({
         key: { field: "title", term: "hello", chunk: 0 },
