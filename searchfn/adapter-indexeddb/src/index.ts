@@ -1,15 +1,14 @@
 import {
   PipelineEngine,
-  Indexer,
   DocumentStatsManager,
   IndexedDbManager,
-  QueryEngine,
   LruCache,
-  encodePostings,
   fuzzyExpand,
+  TsSearchCoreEngine,
 } from "@searchfn/core";
 import type {
   PipelineOptions,
+  SearchCoreEngine,
   StoredPostingChunk,
   TermCacheValue,
   VectorCacheValue,
@@ -50,11 +49,10 @@ interface DocTermEntry {
 interface ResourceEngine {
   storage: IndexedDbManager;
   pipeline: PipelineEngine;
-  indexer: Indexer;
   statsManager: DocumentStatsManager;
   termCache: LruCache<TermCacheValue>;
   vectorCache: LruCache<VectorCacheValue>;
-  queryEngine: QueryEngine;
+  coreEngine: SearchCoreEngine;
   postings: Map<string, Map<string, Map<string, PostingInfo>>>;
   dirtyPostings: Map<string, Set<string>>;
   fieldNames: Set<string>;
@@ -114,20 +112,20 @@ export class IndexedDbAdapter implements SearchAdapter {
         maxEntries: this.options.cache?.vectors ?? DEFAULT_VECTOR_CACHE_SIZE,
       });
       const statsManager = new DocumentStatsManager();
-      const queryEngine = new QueryEngine({
+      const coreEngine = new TsSearchCoreEngine({
         storage,
         termCache,
         vectorCache,
         stats: statsManager,
+        pipeline,
       });
       engine = {
         storage,
         pipeline,
-        indexer: new Indexer(pipeline),
         statsManager,
         termCache,
         vectorCache,
-        queryEngine,
+        coreEngine,
         postings: new Map(),
         dirtyPostings: new Map(),
         fieldNames: new Set(),
@@ -422,14 +420,13 @@ export class IndexedDbAdapter implements SearchAdapter {
           termFrequency: info.frequency,
           metadata: info.metadata,
         }));
-        const serialized = postingsArray.map((e) => JSON.stringify(e));
-        const { buffer, encoding } = encodePostings(serialized);
-        const payload = buffer.buffer as ArrayBuffer;
+        const { payload, encoding, docFrequency, inverseDocumentFrequency } =
+          engine.coreEngine.encodePostings({ postings: postingsArray });
         chunksToWrite.push({
           key: { field, term, chunk: 0 },
           payload,
-          docFrequency: postingsArray.length,
-          inverseDocumentFrequency: undefined,
+          docFrequency,
+          inverseDocumentFrequency,
           encoding,
         });
       }
@@ -525,7 +522,7 @@ export class IndexedDbAdapter implements SearchAdapter {
             await this.removeDocById(engine, docId);
           }
 
-          const ingest = engine.indexer.ingest({ docId, fields: doc.fields });
+          const ingest = engine.coreEngine.ingest({ docId, fields: doc.fields });
           if (ingest.totalLength === 0) continue;
 
           engine.statsManager.addDocument(docId, ingest.totalLength);
@@ -581,7 +578,7 @@ export class IndexedDbAdapter implements SearchAdapter {
     if (tokens.length === 0) return [];
 
     const limit = Math.max(1, params.limit ?? 10);
-    const result = await engine.queryEngine.execute(tokens, { limit });
+    const result = await engine.coreEngine.executeQuery({ tokens, limit });
     return result.documents.map((d: { docId: DocId }) => d.docId);
   }
 
@@ -655,7 +652,7 @@ export class IndexedDbAdapter implements SearchAdapter {
       );
       if (tokens.length === 0) continue;
 
-      const result = await engine.queryEngine.execute(tokens, { limit: limitPerResource });
+      const result = await engine.coreEngine.executeQuery({ tokens, limit: limitPerResource });
       for (const doc of result.documents) {
         allResults.push({ resource: resourceName, id: doc.docId, score: doc.score });
       }

@@ -9,3 +9,4 @@ export * from "./indexing/indexer";
 export * from "./indexing/document-accumulator";
 export * from "./cache";
 export * from "./query";
+export * from "./engine";

@@ -1,18 +1,19 @@
-import type { IndexedDbManager } from "../storage";
 import type { LruCache } from "../cache";
 import type {
   QueryToken,
   QueryOptions,
   RetrievedPostingChunk,
   ScoredDocument,
-  DocumentStatsProvider
+  DocumentStatsProvider,
+  QueryStorage
 } from "./types";
 import type { TermCacheValue, VectorCacheValue } from "../cache";
 import type { DocId, StoredPostingChunk } from "../types";
 import { scorePostings } from "./scoring";
+import type { TermPosting } from "../cache";
 
 export interface QueryEngineDependencies {
-  storage: IndexedDbManager;
+  storage: QueryStorage;
   termCache: LruCache<TermCacheValue>;
   vectorCache: LruCache<VectorCacheValue>;
   stats: DocumentStatsProvider;
@@ -36,7 +37,10 @@ export class QueryEngine {
         const termChunks = await this.loadAllTermChunks(token.field, token.term);
         if (termChunks.length === 0) continue;
         const decodedPostings = termChunks.flatMap((chunk) =>
-          this.deps.storage.decodeChunkPayload(chunk).postings.map((raw) => parsePosting(raw)).filter(Boolean),
+          this.deps.storage
+            .decodeChunkPayload(chunk)
+            .postings.map((raw) => parsePosting(raw))
+            .filter((posting): posting is TermPosting => posting !== null),
         );
         cached = {
           field: token.field,
@@ -109,7 +113,7 @@ export class QueryEngine {
   }
 }
 
-function parsePosting(raw: unknown): { docId: string; termFrequency: number; metadata?: Record<string, unknown> } {
+function parsePosting(raw: unknown): TermPosting | null {
   if (typeof raw === "string") {
     const parsed = safeJsonParse(raw);
     if (parsed && typeof parsed === "object" && "docId" in parsed) {
@@ -121,9 +125,8 @@ function parsePosting(raw: unknown): { docId: string; termFrequency: number; met
         const termFrequency = Number.isFinite(termFrequencyValue) && termFrequencyValue > 0 ? termFrequencyValue : 1;
         return { docId, termFrequency, metadata: parsedRecord.metadata as Record<string, unknown> | undefined };
       }
-      return { docId: String(docIdValue), termFrequency: 1 };
+      return null;
     } else {
-      // If it's a string but not valid JSON with docId, treat it as a simple docId
       return { docId: raw, termFrequency: 1 };
     }
   }
@@ -147,7 +150,7 @@ function parsePosting(raw: unknown): { docId: string; termFrequency: number; met
     }
   }
 
-  return { docId: String(raw), termFrequency: 1 };
+  return null;
 }
 
 function safeJsonParse(raw: string): unknown {

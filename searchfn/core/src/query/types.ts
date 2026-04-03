@@ -1,5 +1,6 @@
 import type { DocId } from "../types";
 import type { TermPosting } from "../cache";
+import type { ChunkDecodeResult, StoredPostingChunk, TermIdentifier } from "../types";
 
 export interface QueryToken {
   field: string;
@@ -24,6 +25,11 @@ export interface RetrievedPostingChunk {
 export interface ScoredDocument {
   docId: DocId;
   score: number;
+}
+
+export interface QueryStorage {
+  getTermChunk(key: TermIdentifier): Promise<StoredPostingChunk | undefined>;
+  decodeChunkPayload(chunk: StoredPostingChunk): ChunkDecodeResult;
 }
 
 export interface DocumentStatsProvider {
