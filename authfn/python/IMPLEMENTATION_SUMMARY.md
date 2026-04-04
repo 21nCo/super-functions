@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document provides a comprehensive summary of the authfn Python SDK implementation, which is a feature-complete port of the TypeScript SDK.
+This document provides a comprehensive summary of the authfn Python SDK implementation, which is a feature-complete port of the current TypeScript authfn packages.
 
 ## Implementation Status: ✅ COMPLETE
 
-All core features from the TypeScript SDK have been successfully implemented in Python.
+All core features from the current TypeScript authfn packages have been successfully implemented in Python.
 
 ## Project Structure
 
@@ -139,7 +139,7 @@ Implemented using Pydantic for runtime validation:
 10. ✅ test_revoke_key - Key revocation
 11. ✅ Mock database adapter implementation
 
-## Feature Parity with TypeScript SDK
+## Feature Parity with TypeScript authfn packages
 
 | Feature | TypeScript | Python | Notes |
 |---------|-----------|--------|-------|
@@ -217,7 +217,7 @@ can_access = await auth.provider.authorize(session, "resource-1")
 - **Usage:** DatabaseAdapter, Request, AuthProvider
 
 ### 3. Async/Await Throughout
-- **Reason:** Match TypeScript SDK and support modern frameworks
+- **Reason:** Match the TypeScript authfn packages and support modern frameworks
 - **Benefit:** Works with FastAPI, Starlette, aiohttp
 - **Requirement:** Python 3.10+ with asyncio
 
@@ -343,7 +343,7 @@ See [COMPARISON.md](COMPARISON.md) for detailed comparison.
 
 ## Conclusion
 
-The authfn Python SDK is a **complete, production-ready** implementation of the TypeScript SDK with:
+The authfn Python SDK is a **complete, production-ready** implementation of the current TypeScript authfn packages with:
 
 ✅ Full feature parity (except HTTP router)
 ✅ Comprehensive type safety
@@ -356,6 +356,6 @@ The implementation follows Python best practices and conventions while maintaini
 
 ## Credits
 
-- **Original TypeScript SDK:** 21n
-- **Python Implementation:** Port of TypeScript SDK
+- **Original TypeScript authfn packages:** 21n
+- **Python Implementation:** Port of the TypeScript authfn packages
 - **License:** MIT

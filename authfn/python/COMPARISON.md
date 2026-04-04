@@ -1,18 +1,19 @@
 # TypeScript to Python Implementation Comparison
 
-This document compares the TypeScript SDK implementation with the Python SDK implementation.
+This document compares the current TypeScript authfn package split with the Python implementation.
 
 ## Architecture Comparison
 
 ### TypeScript Structure
-```
-authfn/ts-sdk/
-├── src/
-│   ├── index.ts      # Main implementation
-│   ├── types.ts      # Type definitions
-│   └── schema.ts     # Database schema
-├── package.json
-└── README.md
+```text
+authfn/
+├── core/             # Server/runtime implementation
+│   ├── src/
+│   ├── package.json
+│   └── README.md
+├── client/           # Browser/client package
+├── svelte/           # Svelte integration layer
+└── examples/         # End-to-end package usage examples
 ```
 
 ### Python Structure
@@ -55,9 +56,9 @@ authfn/python/
 
 #### Creating an Instance
 
-**TypeScript:**
+**TypeScript (`@authfn/core`):**
 ```typescript
-import { createAuthFn } from 'authfn';
+import { createAuthFn } from '@authfn/core';
 
 const auth = createAuthFn({
   database: adapter,
@@ -406,7 +407,7 @@ If migrating from TypeScript to Python:
 
 ## Conclusion
 
-The Python implementation maintains feature parity with the TypeScript SDK while following Python conventions and best practices. Both implementations provide:
+The Python implementation maintains feature parity with the current TypeScript authfn packages while following Python conventions and best practices. Both implementations provide:
 
 - ✅ Type safety (compile-time in TS, compile + runtime in Python)
 - ✅ Async/await support

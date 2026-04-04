@@ -1,5 +1,7 @@
 [
-  { "slug": "authfn", "path": "authfn/ts-sdk", "name": "authfn" },
+  { "slug": "authfn-client", "path": "authfn/client", "name": "@authfn/client" },
+  { "slug": "authfn-core", "path": "authfn/core", "name": "@authfn/core" },
+  { "slug": "authfn-svelte", "path": "authfn/svelte", "name": "@authfn/svelte" },
   { "slug": "clifn", "path": "clifn/core", "name": "clifn" },
   { "slug": "datafn-cli", "path": "datafn/cli", "name": "@datafn/cli" },
   { "slug": "datafn-client", "path": "datafn/client", "name": "@datafn/client" },

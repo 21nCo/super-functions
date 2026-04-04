@@ -188,7 +188,7 @@ cryptography>=41.0.0   # Cryptographic operations
 - ✅ Ruff Linting
 - ✅ mypy Type Checking
 
-## Comparison with TypeScript SDK
+## Comparison with TypeScript authfn packages
 
 | Metric | TypeScript | Python |
 |--------|-----------|--------|
@@ -359,7 +359,7 @@ MIT License - See [LICENSE](LICENSE) file
 
 - **Repository:** https://github.com/21nCo/super-functions
 - **Issues:** https://github.com/21nCo/super-functions/issues
-- **TypeScript SDK:** ../ts-sdk/
+- **TypeScript Packages:** ../core/, ../client/, ../svelte/
 - **Documentation:** https://docs.superfunctions.dev/authfn
 
 ## Contact
