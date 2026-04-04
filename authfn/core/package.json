@@ -1,0 +1,57 @@
+{
+  "name": "@authfn/core",
+  "version": "0.0.1",
+  "description": "Core authfn contracts and plugin composition primitives",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "authfn",
+    "authentication",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "superfunctions": {
+    "initFunction": "createAuthFn",
+    "schemaVersion": 1,
+    "libraryNames": [
+      "authfn"
+    ]
+  },
+  "dependencies": {
+    "@superfunctions/auth": "*",
+    "@superfunctions/db": "*",
+    "@superfunctions/http": "*",
+    "@superfunctions/http-openapi": "*",
+    "@superfunctions/oauth-flow": "*",
+    "@superfunctions/oauth-http": "*",
+    "@superfunctions/oauth-providers": "*",
+    "@superfunctions/oauth-storage": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}
