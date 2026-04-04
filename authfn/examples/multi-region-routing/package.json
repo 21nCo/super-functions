@@ -1,0 +1,14 @@
+{
+  "name": "@authfn/examples-multi-region-routing",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:server": "npm --prefix ./server run dev",
+    "dev:client": "npm --prefix ./client run dev",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

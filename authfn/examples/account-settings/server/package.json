@@ -1,0 +1,33 @@
+{
+  "name": "@authfn/examples-account-settings-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:deps": "npm --prefix ../../../../ run build -- --filter=@authfn/examples-shared... --filter=@superfunctions/cli...",
+    "dev": "npm run build:deps && tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:test": "npm run build:deps && npm run build && npm run start",
+    "db:generate": "npm run build:deps && superfunctions generate-schema --config ./superfunctions.config.mjs --library authfn --adapter drizzle --output ./src/db/generated --force",
+    "db:push": "drizzle-kit push --config drizzle.config.ts"
+  },
+  "dependencies": {
+    "@authfn/core": "*",
+    "@authfn/examples-shared": "*",
+    "@superfunctions/db": "*",
+    "@superfunctions/http-express": "*",
+    "dotenv": "^17.2.2",
+    "drizzle-orm": "^0.45.1",
+    "express": "^4.21.2",
+    "postgres": "^3.4.8"
+  },
+  "devDependencies": {
+    "@superfunctions/cli": "*",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.20.6",
+    "typescript": "^5.6.0"
+  }
+}

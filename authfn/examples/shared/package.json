@@ -1,0 +1,40 @@
+{
+  "name": "@authfn/examples-shared",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared deterministic harness for authfn example apps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client/testids": {
+      "types": "./dist/client/testids.d.ts",
+      "default": "./dist/client/testids.js"
+    },
+    "./e2e/helpers": {
+      "types": "./dist/e2e/helpers.d.ts",
+      "default": "./dist/e2e/helpers.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "validate:ui-contract": "npm run build && node ./dist/e2e/validate-ui-contract.js",
+    "validate:no-external-network": "npm run build && node ./dist/e2e/validate-no-external-network.js"
+  },
+  "dependencies": {
+    "@authfn/core": "*",
+    "@superfunctions/http": "*",
+    "@superfunctions/http-express": "*",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

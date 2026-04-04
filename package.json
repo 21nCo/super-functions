@@ -8,6 +8,8 @@
     "botfn/*",
     "hostfn/*",
     "authfn/*",
+    "authfn/examples/*",
+    "authfn/examples/*/*",
     "extfn/*",
     "extfn/examples/*",
     "datafn/client",
