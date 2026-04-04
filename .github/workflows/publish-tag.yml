@@ -1,0 +1,63 @@
+name: Publish tagged package
+
+on:
+  push:
+    tags:
+      - '*-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag in the form <package-slug>-v<version>'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve publish target
+        id: resolve
+        run: node ./scripts/resolve-release-tag.mjs "${RELEASE_TAG}"
+
+      - name: Install package dependencies
+        working-directory: ${{ steps.resolve.outputs.pkg_path }}
+        run: npm install --workspaces=false --package-lock=false
+
+      - name: Build package
+        working-directory: ${{ steps.resolve.outputs.pkg_path }}
+        run: npm run build
+
+      - name: Test package
+        working-directory: ${{ steps.resolve.outputs.pkg_path }}
+        run: npm test
+
+      - name: Pack package
+        working-directory: ${{ steps.resolve.outputs.pkg_path }}
+        run: npm pack --json
+
+      - name: Publish package
+        working-directory: ${{ steps.resolve.outputs.pkg_path }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
