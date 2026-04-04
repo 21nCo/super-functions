@@ -1,0 +1,18 @@
+{
+  "name": "filefn-full-demo-server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm exec --yes --package=tsx@4.20.5 -- tsx watch src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@filefn/server": "*",
+    "@filefn/processing": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.0"
+  }
+}

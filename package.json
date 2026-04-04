@@ -19,13 +19,22 @@
     "datafn/svelte",
     "filefn/*",
     "clifn/*",
-    "packages/*"
+    "packages/*",
+    "filefn/*",
+    "filefn/examples/full-demo/*"
   ],
   "scripts": {
     "build": "turbo run build",
+    "build:filefn-swift": "swift build --package-path filefn/swift",
     "dev": "turbo run dev",
+    "dev:filefn-demo-server": "npm --prefix filefn/examples/full-demo/server run dev",
     "lint": "turbo run lint",
-    "test": "turbo run test",
+    "test": "node scripts/run-tests.mjs",
+    "test:filefn-server-contract": "npm exec --yes --package=vitest@3.2.4 vitest --run filefn/server/tests/client-contract.test.ts",
+    "test:filefn-swift": "swift test --package-path filefn/swift",
+    "test:filefn-swift-bridge-host": "swift test --package-path filefn/swift --filter FileFnWebViewBridgeHostTests",
+    "test:filefn-swift-bridge": "npm --workspace filefn/swift-bridge test",
+    "test:filefn-swift-integration": "FILEFN_BASE_URL=${FILEFN_BASE_URL:-http://127.0.0.1:3001/filefn} swift test --package-path filefn/swift --filter FileFnIntegrationTests",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules"

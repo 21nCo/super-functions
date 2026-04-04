@@ -1,0 +1,2858 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FileFn Client Contract",
+    "version": "v1",
+    "description": "Deterministic OpenAPI contract for the FileFn HTTP surface supported by the Swift client."
+  },
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "servers": [
+    {
+      "url": "/filefn",
+      "description": "Canonical FileFn base path"
+    }
+  ],
+  "tags": [
+    {
+      "name": "files"
+    },
+    {
+      "name": "uploads"
+    },
+    {
+      "name": "artifacts"
+    },
+    {
+      "name": "policies"
+    },
+    {
+      "name": "quota"
+    },
+    {
+      "name": "grants"
+    },
+    {
+      "name": "shares"
+    },
+    {
+      "name": "processing"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "List files",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque pagination cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of files to return",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/FilePage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}": {
+      "get": {
+        "summary": "Get file details",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/FileDetail"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a file",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/DeleteResponse"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/download": {
+      "get": {
+        "summary": "Resolve file download",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/DownloadDescriptor"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/render": {
+      "get": {
+        "summary": "Resolve renderable file representation",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "name": "intent",
+            "in": "query",
+            "required": true,
+            "description": "Requested render intent",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumbnail",
+                "preview",
+                "full",
+                "download"
+              ]
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "required": false,
+            "description": "Optional version override",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RenderDescriptor"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/versions": {
+      "get": {
+        "summary": "List file versions",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/VersionPage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/versions/{versionId}": {
+      "get": {
+        "summary": "Get version details",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/VersionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/VersionDetail"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/versions/{versionId}/download": {
+      "get": {
+        "summary": "Resolve version download",
+        "tags": [
+          "files"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/VersionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/DownloadDescriptor"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/init": {
+      "post": {
+        "summary": "Initialize an upload session",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UploadSession"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/status": {
+      "get": {
+        "summary": "Get upload session status",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UploadStatus"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/parts/{partNumber}/sign": {
+      "post": {
+        "summary": "Sign an upload part",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/PartNumber"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignPartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UploadPartSignature"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/parts/{partNumber}": {
+      "put": {
+        "summary": "Upload part bytes",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/PartNumber"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/UploadedPart"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/parts/{partNumber}/complete": {
+      "post": {
+        "summary": "Record upload part completion",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/PartNumber"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletePartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RecordedPart"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/complete": {
+      "post": {
+        "summary": "Complete an upload session",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/CompletedUpload"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload/{uploadSessionId}/abort": {
+      "post": {
+        "summary": "Abort an upload session",
+        "tags": [
+          "uploads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/UploadSessionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          },
+          {
+            "$ref": "#/components/parameters/XUploadSessionToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/AbortResponse"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/artifacts": {
+      "get": {
+        "summary": "List processing artifacts",
+        "tags": [
+          "artifacts"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ArtifactPage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/artifacts/{artifactId}/download": {
+      "get": {
+        "summary": "Resolve artifact download",
+        "tags": [
+          "artifacts"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/ArtifactID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/DownloadDescriptor"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/policies": {
+      "get": {
+        "summary": "List policies",
+        "tags": [
+          "policies"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PolicyPage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quota/storage": {
+      "get": {
+        "summary": "Get storage quota",
+        "tags": [
+          "quota"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/StorageQuota"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/permissions": {
+      "post": {
+        "summary": "Create a grant",
+        "tags": [
+          "grants"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGrantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PermissionGrant"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List grants",
+        "tags": [
+          "grants"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/GrantPage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/permissions/{permissionId}": {
+      "delete": {
+        "summary": "Revoke a grant",
+        "tags": [
+          "grants"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/PermissionID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RevokeResponse"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/share-links": {
+      "post": {
+        "summary": "Create a share link",
+        "tags": [
+          "shares"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ShareLink"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List share links",
+        "tags": [
+          "shares"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SharePage"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/share-links/{token}": {
+      "delete": {
+        "summary": "Revoke a share link",
+        "tags": [
+          "shares"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Token"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RevokeResponse"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/share-links/{token}/download": {
+      "get": {
+        "summary": "Resolve a share-link download",
+        "tags": [
+          "shares"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/Token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ShareDownloadDescriptor"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{fileId}/process": {
+      "post": {
+        "summary": "Trigger processing",
+        "tags": [
+          "processing"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestID"
+          },
+          {
+            "$ref": "#/components/parameters/XFileFnClientVersion"
+          },
+          {
+            "$ref": "#/components/parameters/FileID"
+          },
+          {
+            "$ref": "#/components/parameters/Authorization"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerProcessingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ProcessingEnvelope"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Canonical FileFn error envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "XRequestID": {
+        "name": "x-request-id",
+        "in": "header",
+        "required": false,
+        "description": "Opaque request correlation ID forwarded through FileFn envelopes.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "XFileFnClientVersion": {
+        "name": "x-filefn-client-version",
+        "in": "header",
+        "required": false,
+        "description": "Optional client version header emitted by FileFn clients.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Authorization": {
+        "name": "Authorization",
+        "in": "header",
+        "required": false,
+        "description": "Bearer or custom authorization header resolved by the host app.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "XIdempotencyKey": {
+        "name": "x-idempotency-key",
+        "in": "header",
+        "required": false,
+        "description": "Optional idempotency key used for upload initialization.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "XUploadSessionToken": {
+        "name": "x-upload-session-token",
+        "in": "header",
+        "required": false,
+        "description": "Anonymous upload-session token required by protected upload routes.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "FileID": {
+        "name": "fileId",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn file identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "VersionID": {
+        "name": "versionId",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn version identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "UploadSessionID": {
+        "name": "uploadSessionId",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn upload-session identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PermissionID": {
+        "name": "permissionId",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn permission grant identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ArtifactID": {
+        "name": "artifactId",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn artifact identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Token": {
+        "name": "token",
+        "in": "path",
+        "required": true,
+        "description": "Opaque FileFn share-link token.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PartNumber": {
+        "name": "partNumber",
+        "in": "path",
+        "required": true,
+        "description": "1-based multipart upload part number.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "schemas": {
+      "SuccessEnvelope": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": false
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ServerError"
+          }
+        },
+        "required": [
+          "ok",
+          "error"
+        ]
+      },
+      "ServerError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "JSONValue": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "object",
+            "additionalProperties": true
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "FileSummary": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          },
+          "currentVersionId": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JSONValue"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileId",
+          "currentVersionId",
+          "ownerId",
+          "tenantId",
+          "visibility",
+          "mimeType",
+          "size",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "FilePage": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "FileDetail": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          },
+          "currentVersionId": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileId",
+          "currentVersionId",
+          "ownerId",
+          "tenantId",
+          "visibility",
+          "mimeType",
+          "size",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "DeleteResponse": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ]
+      },
+      "DownloadDescriptor": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "ShareDownloadDescriptor": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "fileName",
+          "mimeType"
+        ]
+      },
+      "RenderDescriptor": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          },
+          "versionId": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "artifactId": {
+                "type": "string"
+              },
+              "artifactKind": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri-reference"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "placeholderKind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "fileId",
+          "versionId",
+          "intent",
+          "state",
+          "mimeType",
+          "name",
+          "size",
+          "source"
+        ]
+      },
+      "VersionSummary": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionId",
+          "size",
+          "mimeType",
+          "createdAt"
+        ]
+      },
+      "VersionPage": {
+        "type": "object",
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionSummary"
+            }
+          }
+        },
+        "required": [
+          "versions"
+        ]
+      },
+      "VersionDetail": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "versionId",
+          "fileId",
+          "size",
+          "mimeType",
+          "createdAt"
+        ]
+      },
+      "CreateUploadSessionRequest": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JSONValue"
+            }
+          }
+        },
+        "required": [
+          "policy",
+          "fileName",
+          "size",
+          "mimeType"
+        ]
+      },
+      "UploadSession": {
+        "type": "object",
+        "properties": {
+          "uploadSessionId": {
+            "type": "string"
+          },
+          "uploadSessionToken": {
+            "type": "string"
+          },
+          "uploadMode": {
+            "type": "string",
+            "enum": [
+              "multipart-signed-url",
+              "proxy"
+            ]
+          },
+          "chunkSizeBytes": {
+            "type": "integer"
+          },
+          "totalParts": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadSessionId",
+          "uploadMode",
+          "chunkSizeBytes",
+          "totalParts",
+          "expiresAt"
+        ]
+      },
+      "UploadStatus": {
+        "type": "object",
+        "properties": {
+          "uploadSessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "totalParts": {
+            "type": "integer"
+          },
+          "recordedParts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "uploadedParts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "chunkSizeBytes": {
+            "type": "integer"
+          },
+          "fileSize": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadSessionId",
+          "status",
+          "totalParts",
+          "recordedParts",
+          "uploadedParts",
+          "chunkSizeBytes",
+          "fileSize",
+          "expiresAt"
+        ]
+      },
+      "SignPartRequest": {
+        "type": "object",
+        "properties": {
+          "contentLength": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contentLength"
+        ]
+      },
+      "UploadPartSignature": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "headers",
+          "expiresAt"
+        ]
+      },
+      "CompletePartRequest": {
+        "type": "object",
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "etag",
+          "size"
+        ]
+      },
+      "UploadedPart": {
+        "type": "object",
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "etag",
+          "size",
+          "recorded"
+        ]
+      },
+      "RecordedPart": {
+        "type": "object",
+        "properties": {
+          "recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recorded"
+        ]
+      },
+      "CompletedUpload": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string"
+          },
+          "versionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileId",
+          "versionId"
+        ]
+      },
+      "AbortResponse": {
+        "type": "object",
+        "properties": {
+          "aborted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "aborted"
+        ]
+      },
+      "ArtifactDescriptor": {
+        "type": "object",
+        "properties": {
+          "artifactId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifactId",
+          "kind",
+          "mimeType",
+          "size",
+          "createdAt"
+        ]
+      },
+      "ArtifactPage": {
+        "type": "object",
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactDescriptor"
+            }
+          }
+        },
+        "required": [
+          "artifacts"
+        ]
+      },
+      "PolicySummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "maxSizeBytes": {
+            "type": "integer"
+          },
+          "contentTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "maxSizeBytes",
+          "contentTypes",
+          "visibility"
+        ]
+      },
+      "PolicyPage": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicySummary"
+            }
+          }
+        },
+        "required": [
+          "policies"
+        ]
+      },
+      "StorageQuota": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "limit"
+        ]
+      },
+      "CreateGrantRequest": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "canRead": {
+            "type": "boolean"
+          },
+          "canWrite": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "canShare": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        }
+      },
+      "PermissionGrant": {
+        "type": "object",
+        "properties": {
+          "permissionId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "canRead": {
+            "type": "boolean"
+          },
+          "canWrite": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "canShare": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "permissionId",
+          "fileId",
+          "canRead",
+          "canWrite",
+          "canDelete",
+          "canShare",
+          "createdAt"
+        ]
+      },
+      "GrantPage": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionGrant"
+            }
+          }
+        },
+        "required": [
+          "permissions"
+        ]
+      },
+      "RevokeResponse": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ]
+      },
+      "CreateShareLinkRequest": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "requiresAuth": {
+            "type": "boolean"
+          },
+          "maxDownloads": {
+            "type": "integer"
+          }
+        }
+      },
+      "ShareLink": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "versionId": {
+            "type": "string"
+          },
+          "requiresAuth": {
+            "type": "boolean"
+          },
+          "maxDownloads": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "ShareLinkSummary": {
+        "type": "object",
+        "properties": {
+          "tokenHashPrefix": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "versionId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "requiresAuth": {
+            "type": "boolean"
+          },
+          "maxDownloads": {
+            "type": "integer"
+          },
+          "downloads": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tokenHashPrefix",
+          "fileId",
+          "requiresAuth",
+          "downloads",
+          "createdAt"
+        ]
+      },
+      "SharePage": {
+        "type": "object",
+        "properties": {
+          "shares": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShareLinkSummary"
+            }
+          }
+        },
+        "required": [
+          "shares"
+        ]
+      },
+      "TriggerProcessingRequest": {
+        "type": "object",
+        "properties": {
+          "versionId": {
+            "type": "string"
+          },
+          "storageKey": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "processors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "storageKey",
+          "mimeType",
+          "size",
+          "fileName"
+        ]
+      },
+      "ProcessingStatus": {
+        "type": "object",
+        "properties": {
+          "started": {
+            "type": "boolean"
+          },
+          "enqueued": {
+            "type": "boolean"
+          },
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "started",
+          "enqueued"
+        ]
+      },
+      "ProcessingEnvelope": {
+        "type": "object",
+        "properties": {
+          "processing": {
+            "$ref": "#/components/schemas/ProcessingStatus"
+          }
+        },
+        "required": [
+          "processing"
+        ]
+      }
+    }
+  }
+}
