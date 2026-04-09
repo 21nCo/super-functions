@@ -1,0 +1,359 @@
+---
+title: Monorepo Deployment
+description: Deploy multiple services from a monorepo, with support for per-service servers, Nginx path routing, and selective deployment.
+---
+
+HostFn supports deploying multiple services from a single monorepo. Each service gets its own PM2 process, port, and remote directory. You can deploy all services at once or target a specific service with the `--service` flag.
+
+## Monorepo Configuration
+
+To enable monorepo deployment, add a `services` section to your `hostfn.config.json`. Each key is a service name, and its value describes the service's path within the monorepo, port, and optional settings.
+
+```json title="hostfn.config.json"
+{
+  "name": "myapp",
+  "runtime": "nodejs",
+  "version": "20",
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "instances": "max"
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "all"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "services": {
+    "account": {
+      "port": 3001,
+      "path": "services/account",
+      "domain": "account.example.com",
+      "instances": "max"
+    },
+    "auth": {
+      "port": 3002,
+      "path": "services/auth",
+      "domain": "auth.example.com",
+      "instances": 2
+    },
+    "notification": {
+      "port": 3003,
+      "path": "services/notification",
+      "domain": "notification.example.com"
+    },
+    "analytics": {
+      "port": 3004,
+      "path": "services/analytics"
+    }
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  }
+}
+```
+
+### Service Configuration Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `port` | `number` | Yes | Port this service listens on |
+| `path` | `string` | Yes | Relative path to the service directory within the monorepo |
+| `domain` | `string \| string[]` | No | Domain name(s) for Nginx/SSL |
+| `exposePath` | `string` | No | Nginx path prefix for routing (e.g., `"/api"`) |
+| `server` | `string` | No | Override server for this service (defaults to environment server) |
+| `instances` | `number \| "max"` | No | PM2 instances for this service |
+
+## Deploying All Services
+
+When a `services` section is present in your config, `hostfn deploy` automatically deploys all services in sequence:
+
+```bash
+hostfn deploy production
+```
+
+```
+$ hostfn deploy production
+
+  Deploy Application
+
+  Application          myapp
+  Environment          production
+  Services to deploy   account, auth, notification, analytics
+
+  ── Deploying Service: account ──
+
+  Path       services/account
+  Port       3001
+  Server     ubuntu@prod.example.com
+  Domain     account.example.com
+  Instances  max
+
+  ── Pre-flight Checks ──
+  ✔ rsync available
+  ✔ Connected to server
+  ...
+  ✔ Service 'account' deployed successfully
+
+  ── Deploying Service: auth ──
+
+  Path       services/auth
+  Port       3002
+  Server     ubuntu@prod.example.com
+  Domain     auth.example.com
+  Instances  2
+
+  ...
+  ✔ Service 'auth' deployed successfully
+
+  ── Deploying Service: notification ──
+  ...
+  ✔ Service 'notification' deployed successfully
+
+  ── Deploying Service: analytics ──
+  ...
+  ✔ Service 'analytics' deployed successfully
+
+  ── Deployment Summary ──
+
+  Total services  4
+  Successful      4
+  Failed          0
+  Duration        127s
+
+  All services deployed successfully!
+```
+
+### Partial Failure Behavior
+
+If one service fails to deploy, HostFn continues deploying the remaining services. A summary at the end shows which services succeeded and which failed:
+
+```
+  ── Deployment Summary ──
+
+  Total services  4
+  Successful      3
+  Failed          1
+
+  Successful deployments:
+    ✓ account
+    ✓ auth
+    ✓ notification
+
+  Failed deployments:
+    ✗ analytics: Build failed: ...
+```
+
+HostFn exits with a non-zero code if any service fails.
+
+## Deploying a Specific Service
+
+Use the `--service` flag to deploy only one service:
+
+```bash
+hostfn deploy production --service auth
+```
+
+This is useful when:
+
+- You only changed code in one service
+- You want faster deployments during development
+- A previous multi-service deploy had a partial failure and you want to retry just the failed service
+
+If the specified service name does not exist in your config, HostFn shows the available services:
+
+```
+Error: Service 'payments' not found in configuration
+Available services: account, auth, notification, analytics
+```
+
+## Remote Directory Naming
+
+Each service gets its own remote directory following the pattern `/var/www/{name}-{serviceName}-{env}`:
+
+| Service | Remote Directory |
+|---|---|
+| `account` | `/var/www/myapp-account-production` |
+| `auth` | `/var/www/myapp-auth-production` |
+| `notification` | `/var/www/myapp-notification-production` |
+| `analytics` | `/var/www/myapp-analytics-production` |
+
+Each service also gets its own PM2 process name: `myapp-account-production`, `myapp-auth-production`, etc.
+
+## Multi-Server Configuration
+
+By default, all services deploy to the server defined in the environment config. To deploy specific services to different servers, add a `server` field to individual service configs:
+
+```json title="hostfn.config.json"
+{
+  "name": "myapp",
+  "runtime": "nodejs",
+  "version": "18",
+  "environments": {
+    "production": {
+      "server": "ubuntu@shared.example.com",
+      "port": 3000,
+      "instances": "max"
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "services": {
+    "account": {
+      "port": 3001,
+      "path": "services/account",
+      "domain": "account.example.com",
+      "server": "ubuntu@account-server.example.com",
+      "instances": "max"
+    },
+    "auth": {
+      "port": 3002,
+      "path": "services/auth",
+      "domain": "auth.example.com",
+      "server": "ubuntu@auth-server.example.com",
+      "instances": 4
+    },
+    "notification": {
+      "port": 3003,
+      "path": "services/notification",
+      "domain": "notification.example.com"
+    },
+    "analytics": {
+      "port": 3004,
+      "path": "services/analytics",
+      "server": "ubuntu@analytics-server.example.com"
+    }
+  }
+}
+```
+
+In this example:
+
+- **account** deploys to `ubuntu@account-server.example.com`
+- **auth** deploys to `ubuntu@auth-server.example.com`
+- **notification** deploys to `ubuntu@shared.example.com` (inherits the environment default)
+- **analytics** deploys to `ubuntu@analytics-server.example.com`
+
+<Callout type="info">
+Services without a `server` field inherit the server from the environment configuration. This lets you mix shared and dedicated servers in the same config.
+</Callout>
+
+## Nginx Path Prefix Routing with `exposePath`
+
+When multiple services share the same domain, you can route traffic based on URL path prefixes using the `exposePath` field. This configures Nginx to proxy requests to different services based on the path.
+
+```json title="hostfn.config.json"
+{
+  "services": {
+    "web": {
+      "port": 3001,
+      "path": "services/web",
+      "domain": "example.com"
+    },
+    "api": {
+      "port": 3002,
+      "path": "services/api",
+      "domain": "example.com",
+      "exposePath": "/api"
+    },
+    "docs": {
+      "port": 3003,
+      "path": "services/docs",
+      "domain": "example.com",
+      "exposePath": "/docs"
+    }
+  }
+}
+```
+
+When you run `hostfn expose production`, this generates Nginx configuration with location blocks:
+
+- `example.com/api/*` routes to the `api` service on port 3002
+- `example.com/docs/*` routes to the `docs` service on port 3003
+- `example.com/*` (everything else) routes to the `web` service on port 3001
+
+The generated Nginx location block for a path-based service looks like:
+
+```nginx
+# api
+location /api {
+    proxy_pass http://localhost:3002;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 60s;
+    proxy_connect_timeout 60s;
+}
+```
+
+## Workspace Dependencies
+
+If your monorepo uses npm workspaces and services depend on shared packages, HostFn automatically detects and bundles workspace dependencies during deployment. Dependencies specified as `workspace:*` or `*` that match workspace packages are:
+
+1. Built locally (if they have a `build` script)
+2. Copied into a `__workspace__/` directory in the deployment bundle
+3. Referenced via `file:` paths in the rewritten `package.json`
+4. A lockfile is generated locally for deterministic installs on the server
+
+This happens transparently -- no extra configuration is needed.
+
+```
+monorepo/
+  ├── packages/
+  │   ├── shared-utils/     # workspace dependency
+  │   └── email/            # workspace dependency
+  └── services/
+      ├── account/          # depends on shared-utils
+      └── auth/             # depends on shared-utils, email
+```
+
+During deployment of the `auth` service:
+
+```
+  ── Workspace Bundling ──
+
+  Detected 2 workspace dependencies: @myapp/shared-utils, @myapp/email
+
+  → Building @myapp/shared-utils...
+  ✓ Bundled @myapp/shared-utils
+  → Building @myapp/email...
+  ✓ Bundled @myapp/email
+  ✔ Workspace dependencies bundled
+```
+
+## CI/CD with Monorepo
+
+In CI/CD pipelines, use the `--service` flag to deploy individual services. This is particularly useful when combined with change detection to only deploy services that have been modified:
+
+```bash
+# Deploy only the auth service
+hostfn deploy production --ci --service auth
+```
+
+See [CI/CD Integration](/docs/documentation/deployment/ci-cd) for a full GitHub Actions workflow example.
+
+## Next Steps
+
+- [CI/CD Integration](/docs/documentation/deployment/ci-cd) -- Automate monorepo deployments
+- [Configuration Reference](/docs/documentation/concepts/configuration) -- Full details on all configuration options
+- [Deployment Overview](/docs/documentation/deployment/overview) -- Understand the 7-phase lifecycle

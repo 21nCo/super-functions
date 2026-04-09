@@ -1,0 +1,130 @@
+---
+title: Environment Variables
+description: Understand how HostFn manages environment variables across your deployments.
+---
+
+Environment variables store sensitive configuration like database URLs, API keys, and secrets. HostFn provides a set of commands to manage these variables on your servers without exposing them in source control.
+
+## How Environment Variables Work
+
+In HostFn, environment variables are:
+
+1. **Stored as a `.env` file on the server** at `/var/www/{name}-{env}/.env`
+2. **Injected into your application** via the PM2 ecosystem configuration during deployment
+3. **Never included in rsync** -- `.env` files are excluded from file syncing by default
+
+For example, if your app is named `my-api` and you are deploying to the `production` environment, the `.env` file lives at:
+
+```
+/var/www/my-api-production/.env
+```
+
+### How Variables Reach Your Application
+
+During deployment, HostFn generates a PM2 ecosystem configuration that references the `.env` file. PM2 reads this file and injects all variables into the process environment, making them available via `process.env` in Node.js:
+
+```ts title="src/index.ts"
+const dbUrl = process.env.DATABASE_URL;
+const port = process.env.PORT || 3000;
+```
+
+## Available Commands
+
+HostFn provides five commands for managing environment variables:
+
+| Command | Description |
+|---|---|
+| `hostfn env list <env>` | List all variables on the server (values masked) |
+| `hostfn env set <env> <KEY> <VALUE>` | Set a single variable on the server |
+| `hostfn env push <env> <file>` | Upload an entire `.env` file to the server |
+| `hostfn env pull <env> <file>` | Download the `.env` file from the server |
+| `hostfn env validate <env>` | Check that all required variables are set |
+
+See [Push & Pull](/docs/documentation/environment/push-pull) for detailed usage of each command and [Validation](/docs/documentation/environment/validation) for the validation workflow.
+
+## Configuration
+
+In your `hostfn.config.json`, the `env` section defines which variables your application expects:
+
+```json title="hostfn.config.json"
+{
+  "env": {
+    "required": ["DATABASE_URL", "JWT_SECRET"],
+    "optional": ["REDIS_URL", "LOG_LEVEL", "SENTRY_DSN"]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `required` | `string[]` | Variables that must be present. `hostfn env validate` fails if any are missing. |
+| `optional` | `string[]` | Variables that are recognized but not required. For documentation purposes. |
+
+These lists are used by the `hostfn env validate` command to verify that your server has all necessary variables before you deploy. The `optional` list serves as documentation for your team so everyone knows which variables are available.
+
+## Typical Workflow
+
+A common workflow for managing environment variables:
+
+### Initial Setup
+
+```bash
+# 1. Create a local .env file (never commit this to git)
+echo 'DATABASE_URL=postgresql://user:pass@db.example.com:5432/myapp' > .env.production
+echo 'JWT_SECRET=my-secret-key-here' >> .env.production
+
+# 2. Push it to the server
+hostfn env push production .env.production
+
+# 3. Validate all required variables are present
+hostfn env validate production
+
+# 4. Deploy
+hostfn deploy production
+```
+
+### Updating a Single Variable
+
+```bash
+# Set one variable without touching the rest
+hostfn env set production LOG_LEVEL "debug"
+
+# Redeploy for the change to take effect
+hostfn deploy production
+```
+
+### Pulling for Review
+
+```bash
+# Download current variables to inspect them
+hostfn env pull production .env.production.bak
+
+# Review the file
+cat .env.production.bak
+
+# Clean up (do not commit this file)
+rm .env.production.bak
+```
+
+## Security Best Practices
+
+- **Never commit `.env` files to git.** Add `.env` and `.env.*` to your `.gitignore`.
+- **Use `hostfn env push`** to transfer variables securely over SSH rather than copy-pasting them.
+- **Values are masked when listed.** The `hostfn env list` command shows keys but replaces all values with `***`.
+- **Rotate secrets regularly.** Use `hostfn env set` to update individual secrets without rewriting the entire file.
+- **Use different variables per environment.** Each environment (production, staging, etc.) has its own `.env` file at its own path on the server.
+
+## File Location Reference
+
+| Environment | Server Path |
+|---|---|
+| `production` | `/var/www/{name}-production/.env` |
+| `staging` | `/var/www/{name}-staging/.env` |
+| `development` | `/var/www/{name}-development/.env` |
+
+The `{name}` placeholder is replaced with the `name` field from your `hostfn.config.json`.
+
+## Next Steps
+
+- [Push & Pull](/docs/documentation/environment/push-pull) -- Learn the full details of each env command
+- [Validation](/docs/documentation/environment/validation) -- Set up pre-deployment validation for required variables

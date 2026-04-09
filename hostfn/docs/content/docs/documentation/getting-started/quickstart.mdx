@@ -1,0 +1,129 @@
+---
+title: Quickstart
+description: Initialize HostFn in your project in under 5 minutes.
+---
+
+This guide walks you through initializing HostFn in an existing Node.js project.
+
+## Step 1: Initialize Your Project
+
+Navigate to your project directory and run:
+
+```bash
+hostfn init
+```
+
+HostFn will:
+
+1. **Detect your runtime** - Scans for `package.json` and identifies Node.js automatically
+2. **Prompt for configuration** - Asks for your app name, server details, and build/start commands
+3. **Generate `hostfn.config.json`** - Writes the configuration file to your project root
+
+### Example Interactive Session
+
+```
+$ hostfn init
+
+  Initialize hostfn
+
+  ✔ Detected nodejs (confidence: 95%)
+
+  ── Project Configuration ──
+
+  ? Application name: my-api
+  ? nodejs version: 20
+
+  ── Environment Configuration ──
+
+  ? Production server (user@host): ubuntu@my-server.com
+  ? Production port: 3000
+  ? Domain (optional): api.example.com
+
+  ── Build & Start Configuration ──
+
+  ? Build command: npm run build
+  ? Start command: npm start
+
+  ✔ Configuration created
+
+  ✅ hostfn initialized successfully!
+
+  Config file  hostfn.config.json
+  Runtime      nodejs
+  Environment  production
+
+  Next steps:
+  $ hostfn server setup ubuntu@my-server.com
+  $ hostfn deploy production
+```
+
+## Step 2: Review the Configuration
+
+After `hostfn init`, you'll have a `hostfn.config.json` file:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "runtime": "nodejs",
+  "version": "20",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "instances": "max",
+      "domain": "api.example.com"
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "all"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  },
+  "env": {
+    "required": [],
+    "optional": []
+  },
+  "sync": {
+    "exclude": [
+      "node_modules", ".git", ".github",
+      "dist", "build", ".env", ".env.*", "*.log"
+    ]
+  },
+  "backup": {
+    "keep": 5
+  }
+}
+```
+
+### Important: Health Endpoint
+
+HostFn verifies your app is running after each deployment by hitting a health endpoint. Make sure your application exposes one:
+
+```ts title="src/index.ts"
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+```
+
+## Step 3: Add to `.gitignore`
+
+You may want to keep your config in source control (it doesn't contain secrets), but make sure `.env` files are excluded:
+
+```bash title=".gitignore"
+.env
+.env.*
+```
+
+## Next Steps
+
+Continue to [Your First Deploy](/docs/documentation/getting-started/first-deploy) to set up your server and make your first deployment.

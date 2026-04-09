@@ -1,7 +1,7 @@
 {
   "name": "hostfn",
-  "version": "0.1.5",
-  "license": "Apache-2.0",
+  "version": "0.1.7",
+  "license": "MIT",
   "description": "Universal application deployment CLI",
   "type": "module",
   "bin": {
@@ -21,6 +21,7 @@
     "chalk": "^5.3.0",
     "ora": "^7.0.1",
     "inquirer": "^9.2.12",
+    "semver": "^7.7.2",
     "zod": "^3.22.4",
     "ssh2": "^1.15.0",
     "dotenv": "^16.3.1",
@@ -39,7 +40,8 @@
   "author": "21n",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/21nCo/super-functions.git"
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "hostfn/cli"
   },
   "bugs": {
     "url": "https://github.com/21nCo/super-functions/issues"
@@ -50,5 +52,13 @@
   ],
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "superfunctions": {
+    "initFunction": "hostFn",
+    "schemaVersion": 1,
+    "namespace": "hostfn"
   }
 }

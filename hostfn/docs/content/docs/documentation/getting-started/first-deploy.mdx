@@ -1,0 +1,152 @@
+---
+title: Your First Deploy
+description: Set up your server and deploy your application for the first time.
+---
+
+This guide continues from [Quickstart](/docs/documentation/getting-started/quickstart). You should already have a `hostfn.config.json` file in your project.
+
+## Step 1: Set Up the Server
+
+HostFn can automatically provision your server with everything needed for deployments:
+
+```bash
+hostfn server setup ubuntu@my-server.com
+```
+
+This installs:
+
+- **Node.js** (via nvm) at the version specified in your config
+- **PM2** process manager for running and monitoring your app
+- **Nginx** reverse proxy for handling HTTP traffic
+- **Certbot** for SSL certificates
+- **rsync** for file syncing
+- **UFW firewall** rules (ports 22, 80, 443)
+
+The setup takes 2-5 minutes and streams output to your terminal so you can follow progress.
+
+### Optional: Install Redis
+
+```bash
+hostfn server setup ubuntu@my-server.com --redis
+```
+
+## Step 2: Push Environment Variables
+
+If your app needs environment variables (database URLs, API keys, etc.), push them to the server before deploying:
+
+```bash
+# Push an entire .env file
+hostfn env push production .env.production
+
+# Or set individual variables
+hostfn env set production DATABASE_URL "postgresql://..."
+hostfn env set production JWT_SECRET "my-secret-key"
+```
+
+## Step 3: Deploy
+
+With the server ready and environment variables in place, deploy your application:
+
+```bash
+hostfn deploy production
+```
+
+HostFn executes a 7-phase deployment:
+
+```
+$ hostfn deploy production
+
+  Deploy Application
+
+  Application       my-api
+  Runtime           nodejs
+  Environment       production
+  Server            ubuntu@my-server.com
+  Port              3000
+
+  ── Pre-flight Checks ──
+
+  ✔ rsync available
+  ✔ Connected to server
+  ✔ Node.js v20.11.0 ready
+  ✔ Remote directory created
+  ✔ Deployment lock acquired
+
+  ── Syncing Files ──
+
+  ✔ Files synced successfully
+
+  ── Building Application ──
+
+  ✔ Dependencies installed
+  ✔ Build completed
+
+  ── Creating Backup ──
+
+  ℹ No existing deployment to backup
+
+  ── Deploying Service ──
+
+  ✔ Service started
+
+  ── Health Check ──
+
+  ✔ Health check passed
+
+  ✅ Deployment completed successfully!
+
+  Environment  production
+  Service      my-api-production
+  Duration     34s
+  Health URL   http://my-server.com:3000/health
+
+  Next steps:
+
+  1. Configure domain and SSL (if needed):
+  $ hostfn expose production
+
+  2. View logs:
+  $ hostfn logs production
+```
+
+## Step 4: Configure Domain and SSL
+
+If you have a domain configured, expose your service through Nginx with SSL:
+
+```bash
+hostfn expose production
+```
+
+This will:
+1. Generate an Nginx reverse proxy configuration
+2. Write it to the server
+3. Obtain an SSL certificate from Let's Encrypt
+4. Configure automatic HTTPS redirect
+
+After this, your app will be accessible at `https://api.example.com`.
+
+## Step 5: Verify
+
+Check your deployment status:
+
+```bash
+# View service status (memory, CPU, uptime)
+hostfn status production
+
+# View application logs
+hostfn logs production
+
+# View server information
+hostfn server info ubuntu@my-server.com
+```
+
+## What Happens on Subsequent Deploys
+
+After the first deployment, subsequent deploys are faster because:
+
+- The server is already set up
+- Dependencies are partially cached
+- PM2 performs a **zero-downtime reload** instead of a cold start
+- A backup is created before each deployment in case a rollback is needed
+
+Simply run `hostfn deploy production` again whenever you want to deploy new changes.

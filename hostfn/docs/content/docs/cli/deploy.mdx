@@ -1,0 +1,78 @@
+---
+title: hostfn deploy
+description: Deploy your application to a remote server.
+---
+
+## Usage
+
+```bash
+hostfn deploy [environment] [options]
+```
+
+## Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `environment` | Environment to deploy to | `production` |
+
+## Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--host <host>` | Override server host from config | From config |
+| `--ci` | CI/CD mode (non-interactive) | `false` |
+| `--local` | Local deployment mode (skip SSH, for self-hosted runners) | `false` |
+| `--dry-run` | Show what would be deployed without executing | `false` |
+| `--service <name>` | Deploy specific service in monorepo | All services |
+| `--all` | Deploy all services in monorepo (default behavior) | `false` |
+
+## Description
+
+Deploys your application to the configured server. The deployment follows an 8-phase lifecycle:
+
+1. **Pre-flight Checks** - Validates config, checks rsync, connects to server, verifies Node.js version, acquires deployment lock
+2. **Workspace Bundling** - (Monorepos only) Bundles workspace dependencies
+3. **File Sync** - Syncs project files via rsync
+4. **Build** - Installs dependencies and runs build command
+5. **Backup** - Creates timestamped backup of current deployment
+6. **PM2 Deploy** - Starts or reloads PM2 process with zero downtime
+7. **Health Check** - Polls health endpoint until service responds
+8. **Cleanup** - Removes old backups, releases lock
+
+If any step fails after backup, the deployment is automatically rolled back.
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `HOSTFN_HOST` | Override server host (useful in CI/CD) |
+| `HOSTFN_SSH_KEY` | Base64-encoded SSH private key |
+| `HOSTFN_SSH_PASSWORD` | SSH password authentication |
+
+## Examples
+
+```bash
+# Deploy to production
+hostfn deploy production
+
+# Deploy to staging
+hostfn deploy staging
+
+# Deploy with custom host
+hostfn deploy production --host ubuntu@custom-server.com
+
+# Dry run (show plan without executing)
+hostfn deploy production --dry-run
+
+# CI/CD mode
+hostfn deploy production --ci
+
+# Local mode (self-hosted runner)
+hostfn deploy production --local
+
+# Deploy specific monorepo service
+hostfn deploy production --service api
+
+# Deploy all monorepo services
+hostfn deploy production --all
+```

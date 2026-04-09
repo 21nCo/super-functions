@@ -134,7 +134,7 @@ export async function initCommand(): Promise<void> {
     build: {
       command: buildAnswers.buildCommand,
       directory: 'dist',
-      nodeModules: 'production',
+      nodeModules: 'all',
     },
     start: {
       command: buildAnswers.startCommand,

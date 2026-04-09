@@ -1,0 +1,77 @@
+---
+title: Installation
+description: Install HostFn and its prerequisites.
+---
+
+## Install HostFn
+
+HostFn is published on npm and can be installed globally:
+
+```bash
+npm install -g hostfn
+```
+
+Verify the installation:
+
+```bash
+hostfn --version
+```
+
+## Prerequisites
+
+Before using HostFn, make sure you have the following:
+
+### Local Machine
+
+| Requirement | Version | Check |
+|---|---|---|
+| Node.js | 18+ | `node --version` |
+| rsync | Any | `rsync --version` |
+| SSH key | — | `ls ~/.ssh/id_*` |
+
+**Installing rsync:**
+
+```bash
+# macOS
+brew install rsync
+
+# Ubuntu/Debian
+sudo apt-get install rsync
+
+# Windows (via WSL)
+sudo apt-get install rsync
+```
+
+### Remote Server
+
+You need a Linux server with:
+
+- **SSH access** configured with key authentication
+- **Root or sudo access** (for the initial server setup)
+- **Ubuntu 20.04+**, Debian 11+, CentOS 8+, or similar Linux distribution
+
+HostFn will install everything else (Node.js, PM2, Nginx) during `hostfn server setup`.
+
+## SSH Key Setup
+
+If you don't already have an SSH key:
+
+```bash
+# Generate a new SSH key
+ssh-keygen -t ed25519 -C "your-email@example.com"
+
+# Copy it to your server
+ssh-copy-id ubuntu@your-server.com
+```
+
+HostFn looks for SSH keys in this order:
+
+1. `HOSTFN_SSH_KEY` environment variable (base64-encoded, for CI/CD)
+2. SSH agent (`SSH_AUTH_SOCK`)
+3. `~/.ssh/id_ed25519`
+4. `~/.ssh/id_ecdsa`
+5. `~/.ssh/id_rsa`
+
+## Next Steps
+
+Once installed, continue to [Quickstart](/docs/documentation/getting-started/quickstart) to initialize your first project.

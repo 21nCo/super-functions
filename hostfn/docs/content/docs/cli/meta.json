@@ -1,0 +1,16 @@
+{
+  "title": "CLI",
+  "description": "Command-line reference",
+  "root": true,
+  "pages": [
+    "index",
+    "init",
+    "deploy",
+    "expose",
+    "status",
+    "logs",
+    "rollback",
+    "env",
+    "server"
+  ]
+}

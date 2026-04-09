@@ -1,0 +1,276 @@
+---
+title: Configuration Schema
+description: Complete reference for every field in the hostfn.config.json configuration file.
+---
+
+HostFn is configured via a `hostfn.config.json` file in your project root. This page documents every available field, organized by section.
+
+## Full Example
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "runtime": "nodejs",
+  "version": "20",
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "instances": "max",
+      "domain": "api.example.com",
+      "sslEmail": "admin@example.com"
+    },
+    "staging": {
+      "server": "ubuntu@staging.example.com",
+      "port": 3000,
+      "instances": 2
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "all"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  },
+  "env": {
+    "required": ["DATABASE_URL", "JWT_SECRET"],
+    "optional": ["REDIS_URL", "LOG_LEVEL"]
+  },
+  "sync": {
+    "exclude": [
+      "node_modules", ".git", ".github",
+      "dist", "build", ".env", ".env.*", "*.log",
+      ".turbo", ".wrangler"
+    ]
+  },
+  "backup": {
+    "keep": 5
+  },
+  "services": {
+    "api": {
+      "port": 3001,
+      "path": "services/api",
+      "domain": "api.example.com",
+      "instances": "max"
+    },
+    "web": {
+      "port": 3002,
+      "path": "services/web",
+      "domain": "example.com"
+    }
+  }
+}
+```
+
+## Top-Level Fields
+
+These are the root-level fields in the configuration file.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | `string` | Yes | -- | Application name. Used for remote directory (`/var/www/{name}-{env}`) and PM2 service name (`{name}-{env}`). |
+| `runtime` | `string` | Yes | -- | Application runtime. See [supported runtimes](#runtime-values) below. |
+| `version` | `string` | Yes | -- | Runtime version (e.g., `"20"` for Node.js 20). Installed via nvm on the server. |
+| `environments` | `object` | Yes | -- | Map of environment names to [environment configurations](#environments). |
+| `build` | `object` | No | -- | [Build configuration](#build). If omitted, no build step runs. |
+| `start` | `object` | Yes | -- | [Start configuration](#start). |
+| `health` | `object` | No | See defaults | [Health check configuration](#health). |
+| `env` | `object` | No | `{ required: [], optional: [] }` | [Environment variables configuration](#env). |
+| `sync` | `object` | No | See defaults | [File sync configuration](#sync). |
+| `backup` | `object` | No | `{ keep: 5 }` | [Backup configuration](#backup). |
+| `services` | `object` | No | -- | [Monorepo service configuration](#services). |
+
+### Runtime Values
+
+| Value | Status | Description |
+|---|---|---|
+| `nodejs` | Supported | Node.js application |
+| `python` | Planned | Python application |
+| `go` | Planned | Go application |
+| `ruby` | Planned | Ruby application |
+| `rust` | Planned | Rust application |
+| `docker` | Planned | Docker container |
+
+## Environments
+
+The `environments` object maps environment names (e.g., `"production"`, `"staging"`) to their configuration. You can define as many environments as you need.
+
+```json
+"environments": {
+  "production": { ... },
+  "staging": { ... },
+  "development": { ... }
+}
+```
+
+### Environment Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `server` | `string` | Yes | -- | SSH connection string. Format: `user@host` or `user@host:port`. |
+| `port` | `number` | Yes | -- | Port the application listens on. Must be a positive integer. |
+| `instances` | `number \| "max"` | No | `1` | Number of PM2 cluster instances. Set to `"max"` to use all available CPU cores. |
+| `domain` | `string \| string[]` | No | -- | Domain name(s) for Nginx reverse proxy and SSL certificates. It can be a single string or an array of strings. |
+| `sslEmail` | `string` | No | -- | Email address for Let's Encrypt certificate registration. Required if using SSL. |
+
+## Build
+
+Controls how the application is built on the remote server. This entire section is optional. If omitted, HostFn skips the build step and only installs production dependencies.
+
+```json
+"build": {
+  "command": "npm run build",
+  "directory": "dist",
+  "nodeModules": "all"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `command` | `string` | Yes | -- | Build command to run on the server (e.g., `"npm run build"`, `"npx tsc"`). |
+| `directory` | `string` | No | `"dist"` | Build output directory. |
+| `nodeModules` | `"all" \| "production" \| "none"` | No | `"all"` when `build.command` is set, otherwise `"production"` | Which dependencies to install. `"all"` includes devDependencies. |
+
+When `build.nodeModules` is omitted, HostFn defaults to installing all dependencies when `build.command` is present. Set `build.nodeModules` to `"production"` or `"none"` to override that behavior.
+
+## Start
+
+Defines how the application starts via PM2.
+
+```json
+"start": {
+  "command": "npm start",
+  "entry": "dist/index.js"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `command` | `string` | Yes | -- | Start command for the application. |
+| `entry` | `string` | No | `"dist/index.js"` | Entry point file. Used in the PM2 ecosystem config to determine which file to execute. |
+
+## Health
+
+Controls post-deployment health check behavior. If omitted, defaults are used.
+
+```json
+"health": {
+  "path": "/health",
+  "timeout": 60,
+  "retries": 10,
+  "interval": 3
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `path` | `string` | No | `"/health"` | HTTP path to check on the application (e.g., `"/health"`, `"/api/status"`). |
+| `timeout` | `number` | No | `60` | Per-attempt curl timeout in seconds. |
+| `retries` | `number` | No | `10` | Number of health check attempts before declaring failure. |
+| `interval` | `number` | No | `3` | Seconds to wait between health check attempts. |
+
+HostFn checks `http://localhost:{port}{path}` on the remote server using `curl -sf`. A successful curl exit code is considered healthy, which normally means a non-4xx/non-5xx response. Because HostFn does not pass `-L`, 3xx responses can count as healthy without curl following the redirect.
+
+## Env
+
+Declares which environment variables the application expects. Used by `hostfn env validate` to verify all required variables are set on the server before deployment.
+
+```json
+"env": {
+  "required": ["DATABASE_URL", "JWT_SECRET"],
+  "optional": ["REDIS_URL", "LOG_LEVEL"]
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `required` | `string[]` | No | `[]` | Environment variables that must be set. `hostfn env validate` exits with an error if any are missing. |
+| `optional` | `string[]` | No | `[]` | Environment variables that may be set. Informational only. |
+
+## Sync
+
+Controls which files are transferred to the server via rsync.
+
+```json
+"sync": {
+  "exclude": [
+    "node_modules", ".git", ".github",
+    "dist", "build", ".env", ".env.*", "*.log",
+    ".turbo", ".wrangler"
+  ],
+  "include": ["dist/static"]
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `exclude` | `string[]` | No | See below | Rsync exclude patterns. Files matching these patterns are not transferred. |
+| `include` | `string[]` | No | -- | Rsync include patterns. Used to override excludes for specific files. |
+
+**Default exclude patterns:**
+
+`node_modules`, `.git`, `.github`, `dist`, `build`, `.env`, `.env.*`, `*.log`, `.turbo`, `.wrangler`
+
+## Backup
+
+Controls deployment backup retention.
+
+```json
+"backup": {
+  "keep": 5
+}
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `keep` | `number` | No | `5` | Number of backups to retain. Older backups are deleted after each deployment. Must be a positive integer. |
+
+Backups are stored at `/var/www/{name}-{env}/backups/{timestamp}/` on the remote server.
+
+## Services
+
+For monorepo deployments, the `services` object defines individual services within the codebase. Each key is the service name, and the value is its configuration.
+
+```json
+"services": {
+  "api": {
+    "port": 3001,
+    "path": "services/api",
+    "domain": "api.example.com",
+    "server": "ubuntu@api-server.example.com",
+    "instances": "max"
+  },
+  "web": {
+    "port": 3002,
+    "path": "services/web",
+    "domain": "example.com",
+    "exposePath": "/app"
+  }
+}
+```
+
+### Service Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `port` | `number` | Yes | -- | Port this service listens on. Must be a positive integer. |
+| `path` | `string` | Yes | -- | Path to the service within the monorepo (relative to project root). |
+| `domain` | `string \| string[]` | No | -- | Domain name(s) for this service. It can be a single string or an array. |
+| `exposePath` | `string` | No | -- | Nginx path prefix for this service (e.g., `"/api"`, `"/docs"`). |
+| `server` | `string` | No | Environment server | Override server for this service. Defaults to the environment's `server` field. |
+| `instances` | `number \| "max"` | No | -- | PM2 cluster instances for this service. |
+
+When `services` is defined, `hostfn deploy` deploys all services by default. Use `--service <name>` to deploy a specific service.
+
+## Schema Validation
+
+The configuration file is validated against a [Zod](https://zod.dev/) schema when loaded. If there are validation errors, HostFn provides clear error messages indicating which fields are invalid and what values are expected.

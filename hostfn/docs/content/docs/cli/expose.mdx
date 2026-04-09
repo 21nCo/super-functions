@@ -1,0 +1,99 @@
+---
+title: hostfn expose
+description: Configure Nginx reverse proxy and SSL certificates.
+---
+
+## Usage
+
+```bash
+hostfn expose [environment] [options]
+```
+
+## Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `environment` | Environment to configure | `production` |
+
+## Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--host <host>` | Override server host | From config |
+| `--skip-ssl` | Skip SSL certificate setup | `false` |
+| `--force` | Overwrite existing Nginx configuration | `false` |
+
+## Description
+
+Configures Nginx as a reverse proxy for your deployed services and optionally sets up SSL certificates via Let's Encrypt (certbot).
+
+### What It Does
+
+1. Connects to the server via SSH
+2. Checks that Nginx and certbot are installed
+3. Auto-detects `sites-available` vs `conf.d` Nginx configuration system
+4. Generates Nginx configuration with WebSocket support
+5. Writes the configuration and enables the site
+6. Tests and reloads Nginx
+7. Obtains SSL certificate via certbot (if domain and sslEmail are configured)
+
+### Single Service
+
+For single-service deployments, generates a configuration that proxies all traffic to your app:
+
+```nginx
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Monorepo (Multiple Services)
+
+For monorepo deployments, routes traffic based on the `exposePath` configured for each service:
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+
+    # api service
+    location /api/ {
+        proxy_pass http://localhost:3001/;
+        ...
+    }
+
+    # web service (default)
+    location / {
+        proxy_pass http://localhost:3002;
+        ...
+    }
+}
+```
+
+## Examples
+
+```bash
+# Configure Nginx and SSL for production
+hostfn expose production
+
+# Skip SSL (HTTP only)
+hostfn expose production --skip-ssl
+
+# Force overwrite existing config
+hostfn expose production --force
+
+# Use custom host
+hostfn expose production --host ubuntu@other-server.com
+```

@@ -1,0 +1,209 @@
+---
+title: Server Setup
+description: Provision a new server with all dependencies needed for HostFn deployments.
+---
+
+The `hostfn server setup` command automates the full provisioning of a fresh Linux server, installing everything your Node.js application needs to run in production.
+
+## Usage
+
+```bash
+hostfn server setup <host>
+```
+
+The `<host>` argument is your SSH connection string in `user@host` format:
+
+```bash
+hostfn server setup ubuntu@my-server.com
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--env <environment>` | `production` | Environment name (used for directory and service naming) |
+| `--node-version <version>` | `20` | Node.js major version to install via nvm |
+| `--port <port>` | `3000` | Application port (used in the initial Nginx config) |
+| `--redis` | `false` | Also install and configure Redis |
+| `--password <password>` | — | SSH password (if not using key-based authentication) |
+
+### Examples
+
+```bash title="Basic setup"
+hostfn server setup ubuntu@my-server.com
+```
+
+```bash title="Custom Node.js version and port"
+hostfn server setup ubuntu@my-server.com --node-version 22 --port 8080
+```
+
+```bash title="Setup staging environment with Redis"
+hostfn server setup ubuntu@staging.example.com --env staging --redis
+```
+
+```bash title="Password-based SSH authentication"
+hostfn server setup ubuntu@my-server.com --password "my-ssh-password"
+```
+
+## What Gets Installed
+
+The setup script installs and configures the following software on your server:
+
+| Software | Purpose |
+|---|---|
+| **nvm** | Node Version Manager for installing and switching Node.js versions |
+| **Node.js** | JavaScript runtime (version specified via `--node-version`) |
+| **PM2** | Production process manager for running, monitoring, and restarting your app |
+| **Nginx** | Reverse proxy for handling HTTP/HTTPS traffic |
+| **Certbot** | Let's Encrypt client for SSL certificate provisioning |
+| **rsync** | Fast file synchronization used during deployments |
+| **build-essential** | C/C++ compiler toolchain needed by some npm packages |
+| **UFW** | Firewall configured to allow SSH (22), HTTP (80), and HTTPS (443) |
+
+When the `--redis` flag is passed, Redis is also installed and configured to start on boot.
+
+## How It Works
+
+The setup process follows these steps:
+
+1. **Script generation** -- HostFn generates a Bash setup script tailored to your options (Node.js version, port, Redis, etc.)
+2. **Confirmation prompt** -- You are asked whether to execute the script on the server now
+3. **Upload and execute** -- The script is uploaded to `/tmp/hostfn-setup.sh` on the server and executed over SSH
+4. **Streaming output** -- All output is streamed to your terminal in real time so you can follow progress
+
+If your `hostfn.config.json` file exists, the command reads the `runtime` field from it. Otherwise, it defaults to Node.js.
+
+### Declining Execution
+
+If you choose **not** to execute immediately, the script is saved to a local temporary file. HostFn shows you the commands to upload and run it manually:
+
+```
+Setup script saved at: /tmp/hostfn-setup.sh
+
+Run manually with:
+$ scp /tmp/hostfn-setup.sh ubuntu@my-server.com:~/hostfn-setup.sh
+$ ssh ubuntu@my-server.com 'bash ~/hostfn-setup.sh'
+```
+
+This is useful when you want to review the script before running it, or when you need to hand it off to someone with server access.
+
+## Example Output
+
+```
+$ hostfn server setup ubuntu@my-server.com --redis
+
+  Server Setup
+
+  Host         ubuntu@my-server.com
+  Environment  production
+  Port         3000
+  Redis        Yes
+
+  ✔ Setup script generated
+
+  ? Execute setup on server now? Yes
+
+  ── Executing Setup on Server ──
+
+  ✔ Connected to server
+  ✔ Setup script uploaded
+
+  Executing setup (this may take several minutes)...
+
+  ==========================================
+  Node.js Server Setup (hostfn)
+  Environment: production
+  ==========================================
+  Detected OS: Ubuntu 22.04.3 LTS
+
+  [1/8] Installing Node.js v20 via nvm...
+  Node.js v20.11.0 installed
+
+  [2/8] Installing PM2 process manager...
+  5.3.0
+
+  [3/8] Installing system dependencies...
+  nginx certbot rsync build-essential installed
+
+  [4/8] Configuring Nginx...
+  nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+  [5/8] Installing Redis...
+  redis-server installed and running
+
+  [6/8] Creating deployment directories...
+
+  [7/8] Configuring PM2 startup...
+  PM2 startup configured
+
+  [8/8] Configuring firewall...
+  Firewall rules updated
+
+  ==========================================
+  Server setup complete!
+  ==========================================
+  Node.js: v20.11.0
+  npm: 10.2.4
+  PM2: 5.3.0
+  Nginx: Running
+  Port: 3000
+  ==========================================
+
+  ✅ Server setup completed successfully!
+
+  Your server is ready for deployments.
+
+  Next steps:
+
+  1. Set environment variables (if needed):
+  $ hostfn env push production .env
+     Or set individual variables:
+  $ hostfn env set production KEY value
+
+  2. Deploy your application:
+  $ hostfn deploy production
+```
+
+## Setup Script Details
+
+The generated script performs work in numbered phases:
+
+1. **Node.js via nvm** -- Installs nvm if not present, then installs and activates the requested Node.js version. If nvm is already installed, it installs the requested version alongside any existing ones.
+
+2. **PM2** -- Installed globally via npm. PM2 startup is configured so your services restart automatically if the server reboots.
+
+3. **System dependencies** -- Uses the appropriate package manager (`apt-get`, `yum`, or `dnf`) to install Nginx, Certbot, rsync, curl, git, and build tools.
+
+4. **Nginx** -- A default reverse proxy configuration is written that proxies all traffic from port 80 to your application port. The script auto-detects whether the system uses `sites-available/sites-enabled` (Debian/Ubuntu) or `conf.d` (RHEL/CentOS).
+
+5. **Redis** (optional) -- When the `--redis` flag is used, Redis is installed and enabled to start on boot.
+
+6. **Deployment directories** -- Creates `/var/www` (owned by your SSH user) and `/var/log/pm2` for PM2 log files.
+
+7. **PM2 startup** -- Configures PM2 to start on system boot so your services survive server restarts.
+
+8. **Firewall** -- If UFW is available, opens ports 22 (SSH), 80 (HTTP), and 443 (HTTPS), then enables the firewall.
+
+All output is logged to `/tmp/hostfn-setup.log` on the server. If setup fails, HostFn downloads the last 50 lines of this log and displays them in your terminal.
+
+## Error Handling
+
+If the setup fails partway through:
+
+- The exit code and relevant log output are displayed in your terminal
+- The full log remains on the server at `/tmp/hostfn-setup.log`
+- You can inspect it manually:
+
+```bash
+ssh ubuntu@my-server.com 'cat /tmp/hostfn-setup.log'
+```
+
+If the SSH connection itself fails, the script is still saved locally so you can transfer and run it manually.
+
+## Next Steps
+
+Once setup completes:
+
+1. [Push environment variables](/docs/documentation/environment/push-pull) if your app needs them
+2. [Deploy your application](/docs/documentation/getting-started/first-deploy) with `hostfn deploy`
+3. [Configure domain and SSL](/docs/documentation/server-management/nginx-ssl) with `hostfn expose`

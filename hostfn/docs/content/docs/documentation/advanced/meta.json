@@ -1,0 +1,4 @@
+{
+  "title": "Advanced",
+  "pages": ["rollback", "backups", "health-checks", "deployment-locks", "ssh", "file-sync", "troubleshooting"]
+}

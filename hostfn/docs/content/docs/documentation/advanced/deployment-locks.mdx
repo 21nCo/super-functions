@@ -1,0 +1,146 @@
+---
+title: Deployment Locks
+description: How HostFn prevents concurrent deployments from conflicting with each other.
+---
+
+HostFn uses a file-based locking mechanism to prevent concurrent deployments to the same environment. This ensures that two developers (or CI/CD pipelines) cannot deploy to the same server at the same time, which could cause corrupted builds or unpredictable state.
+
+## How Locks Work
+
+When a deployment starts, HostFn creates a lock file on the remote server. If a lock file already exists and is not stale, the deployment is rejected with an error. When the deployment finishes (whether it succeeds or fails), the lock is released.
+
+### Lock Lifecycle
+
+```
+1. Deploy starts      → Lock acquired
+2. Sync, build, etc.  → Lock held
+3. Deploy completes   → Lock released
+   OR
+3. Deploy fails       → Lock released (auto-rollback runs first)
+```
+
+## Lock File Location
+
+The lock file is stored on the remote server at:
+
+```
+/var/www/{name}-{env}/.hostfn-deploy.lock
+```
+
+For example:
+
+```
+/var/www/my-api-production/.hostfn-deploy.lock
+```
+
+## Lock File Contents
+
+The lock file contains a JSON object with information about the deployment that created it:
+
+```json title=".hostfn-deploy.lock"
+{
+  "pid": 12345,
+  "user": "developer",
+  "timestamp": 1741700000000,
+  "hostname": "dev-laptop"
+}
+```
+
+| Field | Description |
+|---|---|
+| `pid` | Process ID of the deploying CLI instance |
+| `user` | Username of the person running the deployment (from `$USER`) |
+| `timestamp` | Unix timestamp (milliseconds) when the lock was acquired |
+| `hostname` | Hostname of the machine running the deployment (from `$HOSTNAME`) |
+
+This information helps you identify who started the deployment and when, which is useful for debugging lock conflicts.
+
+## Stale Lock Detection
+
+Locks automatically expire after **5 minutes** (300 seconds). If HostFn encounters an existing lock file that is older than 5 minutes, it treats it as stale, removes it, and proceeds with the deployment.
+
+This handles cases where a deployment process was killed without releasing the lock (e.g., the developer's machine lost network connectivity or the process was terminated with `kill -9`).
+
+```
+  ⠋ Acquiring deployment lock...
+  ⚠ Found stale lock file, removing...
+  ✔ Deployment lock acquired
+```
+
+## Lock Conflict
+
+When a valid (non-stale) lock is in place, HostFn displays information about the existing deployment and exits:
+
+```
+  ✗ Could not acquire deployment lock
+
+  ✗ Deployment is already in progress
+  ℹ Started by: developer
+  ℹ Started at: 3/11/2026, 2:30:00 PM
+  ℹ Age: 2 minute(s)
+
+  ⚠ Wait for the current deployment to finish or:
+    1. Wait for lock to expire (5 minutes)
+    2. Manually remove: ssh <host> rm /var/www/my-api-production/.hostfn-deploy.lock
+```
+
+## Manual Lock Removal
+
+If you know that no deployment is actually running (e.g., the deploying machine crashed), you can manually remove the lock file:
+
+```bash
+ssh ubuntu@your-server.com "rm /var/www/my-api-production/.hostfn-deploy.lock"
+```
+
+After removing the lock, you can deploy normally.
+
+## Lock Behavior in Error Scenarios
+
+HostFn releases the lock in its `finally` block whenever the process can still run cleanup logic:
+
+| Scenario | Lock Released |
+|---|---|
+| Successful deployment | Yes |
+| Build failure (with auto-rollback) | Yes |
+| Health check failure (with auto-rollback) | Yes |
+| SSH connection lost | No (expires after 5 minutes) |
+| CLI process killed (SIGKILL) | No (expires after 5 minutes) |
+| Lock file manually deleted during deploy | Deployment continues normally |
+
+## CI/CD Considerations
+
+In CI/CD pipelines, lock conflicts are more common because multiple pipelines might try to deploy the same environment simultaneously. Consider the following approaches:
+
+### Serialize Deployments
+
+Most CI/CD systems support concurrency limits. For example, in GitHub Actions:
+
+```yaml title=".github/workflows/deploy.yml"
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+```
+
+This ensures only one deployment workflow runs at a time for the `production` group.
+
+### Retry on Lock Conflict
+
+If your CI/CD pipeline encounters a lock conflict, add retry logic around the deploy command:
+
+```yaml title=".github/workflows/deploy.yml"
+- name: Deploy with retry
+  run: |
+    for attempt in 1 2 3; do
+      if hostfn deploy production --ci; then
+        exit 0
+      fi
+      if [ "$attempt" -lt 3 ]; then
+        sleep 120
+      fi
+    done
+    exit 1
+  env:
+    HOSTFN_SSH_KEY: ${{ secrets.SSH_KEY }}
+```
+
+The 5-minute stale lock timeout means any lock conflict will resolve itself within that window.

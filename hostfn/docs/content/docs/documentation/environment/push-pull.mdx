@@ -1,0 +1,228 @@
+---
+title: Push & Pull
+description: Upload, download, list, and set environment variables on your servers.
+---
+
+HostFn provides four commands for transferring and managing environment variables between your local machine and your servers. All communication happens over SSH.
+
+## Push a File
+
+The `hostfn env push` command uploads an entire `.env` file from your local machine to the server.
+
+```bash
+hostfn env push <environment> <file>
+```
+
+### How It Works
+
+1. Reads the local `.env` file and counts the variables
+2. Asks for confirmation before uploading
+3. Creates a backup of the existing `.env` on the server (if one exists)
+4. Uploads the new file to `/var/www/{name}-{env}/.env`
+
+### Example
+
+```bash
+hostfn env push production .env.production
+```
+
+```
+  Push Environment File - production
+
+  Local file  .env.production
+  Variables   5
+
+  ? Push 5 variables to production? Yes
+
+  ✔ Connected
+  ✔ Remote directory ready
+  ✔ Backup created
+  ✔ .env file uploaded
+
+  ✅ Environment file pushed successfully!
+
+  Backup saved at: /var/www/my-api-production/.env.backup
+
+  ⚠ Restart service for changes to take effect:
+  $ hostfn deploy production
+```
+
+### Backup Behavior
+
+Every time you push a new `.env` file, the previous version is saved as `.env.backup` at the same path on the server. This allows you to manually restore the old values if needed:
+
+```bash
+# On the server, restore the backup
+ssh ubuntu@my-server.com 'cp /var/www/my-api-production/.env.backup /var/www/my-api-production/.env'
+```
+
+### Important
+
+After pushing new environment variables, you need to redeploy for the changes to take effect. PM2 reads the `.env` file at startup time, so a running process will not pick up changes until it restarts.
+
+```bash
+hostfn deploy production
+```
+
+## Pull a File
+
+The `hostfn env pull` command downloads the `.env` file from the server to your local machine.
+
+```bash
+hostfn env pull <environment> <file>
+```
+
+### Example
+
+```bash
+hostfn env pull production .env.production.local
+```
+
+```
+  Pull Environment File - production
+
+  ✔ Connected
+  ✔ .env file downloaded
+
+  ✅ Environment file pulled successfully!
+
+  Saved to  .env.production.local
+
+  ⚠ This file contains sensitive data - do not commit to git!
+```
+
+### Security Warning
+
+Pulled `.env` files contain **unmasked secrets**. Take these precautions:
+
+- **Do not commit pulled files to git.** Ensure your `.gitignore` includes `.env` and `.env.*`.
+- **Delete the file when you are done reviewing it.** Do not leave copies of production secrets on your local machine.
+- **Use a descriptive filename** (e.g., `.env.production.local`) to avoid accidentally pushing it or confusing it with a template.
+
+```bash title=".gitignore"
+.env
+.env.*
+```
+
+### When the File Does Not Exist
+
+If no `.env` file exists on the server, the command reports this and exits without creating a local file:
+
+```
+  ⚠ No .env file found on server
+```
+
+## Set a Variable
+
+The `hostfn env set` command sets or updates a single environment variable on the server without modifying other variables.
+
+```bash
+hostfn env set <environment> <KEY> <VALUE>
+```
+
+### Example
+
+```bash
+hostfn env set production LOG_LEVEL "debug"
+```
+
+```
+  Set Environment Variable - production
+
+  Key    LOG_LEVEL
+  Value  ***
+
+  ✔ Connected
+  ✔ Variable updated
+
+  ✅ Environment variable set successfully!
+
+  ⚠ Restart service for changes to take effect:
+  $ hostfn deploy production
+```
+
+### Key Format
+
+Variable names must follow the standard convention: uppercase letters, numbers, and underscores, starting with a letter or underscore.
+
+```
+Valid:   DATABASE_URL, JWT_SECRET, API_KEY_V2, _INTERNAL
+Invalid: database-url, my.key, 2FAST
+```
+
+If the key format is invalid, the command exits with an error:
+
+```
+Error: Invalid key format. Must be uppercase, alphanumeric, and underscores only.
+```
+
+### Adding vs. Updating
+
+- If the key does not exist in the `.env` file, it is **appended** to the end
+- If the key already exists, the old value is **replaced** with the new one
+
+### Requires an Existing `.env` File
+
+The `env set` command requires that a `.env` file already exists on the server. If no file exists, push one first:
+
+```bash
+# Create a minimal .env and push it
+echo 'NODE_ENV=production' > .env.production
+hostfn env push production .env.production
+
+# Now you can set individual variables
+hostfn env set production DATABASE_URL "postgresql://..."
+```
+
+## List Variables
+
+The `hostfn env list` command displays all environment variables on the server with their values masked for security.
+
+```bash
+hostfn env list <environment>
+```
+
+### Example
+
+```bash
+hostfn env list production
+```
+
+```
+  Environment Variables - production
+
+  ✔ Connected
+
+  ── Environment Variables ──
+
+  DATABASE_URL=***
+  JWT_SECRET=***
+  REDIS_URL=***
+  LOG_LEVEL=***
+  NODE_ENV=***
+
+  Total: 5 variable(s)
+```
+
+### Masked Output
+
+Values are always displayed as `***`. This command is safe to run in shared terminals, screen recordings, or CI/CD logs. To see actual values, use `hostfn env pull` to download the file.
+
+## Command Summary
+
+| Command | What It Does | Requires Existing `.env` |
+|---|---|---|
+| `hostfn env push <env> <file>` | Upload entire `.env` file | No (creates one) |
+| `hostfn env pull <env> <file>` | Download `.env` file | Yes |
+| `hostfn env set <env> KEY VALUE` | Set one variable | Yes |
+| `hostfn env list <env>` | List variables (masked) | Yes |
+
+## Applying Changes
+
+Environment variable changes are **not applied to running services immediately**. After modifying variables with `push` or `set`, redeploy your application:
+
+```bash
+hostfn deploy production
+```
+
+During deployment, PM2 restarts the application and reads the updated `.env` file, making the new values available to your code.

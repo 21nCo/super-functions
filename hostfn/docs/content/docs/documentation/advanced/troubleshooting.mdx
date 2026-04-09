@@ -1,0 +1,334 @@
+---
+title: Troubleshooting
+description: Solutions to common issues encountered when deploying with HostFn.
+---
+
+This page covers common problems you might encounter when using HostFn and how to resolve them.
+
+## rsync Not Installed
+
+**Error:**
+
+```
+rsync is not installed on your system.
+```
+
+**Solution:** Install rsync on your local machine:
+
+| Platform | Command |
+|---|---|
+| macOS | `brew install rsync` |
+| Ubuntu / Debian | `sudo apt-get install rsync` |
+| CentOS / RHEL | `sudo yum install rsync` |
+| Windows | Install via [WSL](https://learn.microsoft.com/windows/wsl/install) and use `sudo apt-get install rsync` |
+
+For standard remote deployments, rsync needs to be installed on both your local machine and the remote server. Local mode (`--local`) is the path that avoids needing rsync on the remote host.
+
+## SSH Connection Failed
+
+**Error:**
+
+```
+SSH connection failed: connect ECONNREFUSED
+```
+
+**Possible causes and solutions:**
+
+1. **Wrong host or port** -- double-check the `server` field in your config:
+   ```json
+   "server": "ubuntu@your-server.com"
+   ```
+
+2. **SSH key not found** -- verify your key exists:
+   ```bash
+   ls -la ~/.ssh/id_ed25519 ~/.ssh/id_rsa ~/.ssh/id_ecdsa
+   ```
+
+3. **Key permissions too open** -- SSH keys must have restricted permissions:
+   ```bash
+   chmod 600 ~/.ssh/id_ed25519
+   chmod 700 ~/.ssh
+   ```
+
+4. **SSH agent not running** -- if using passphrase-protected keys:
+   ```bash
+   eval "$(ssh-agent -s)"
+   ssh-add ~/.ssh/id_ed25519
+   ```
+
+5. **Firewall blocking SSH** -- check the server's firewall:
+   ```bash
+   # On the server
+   sudo ufw status
+   sudo ufw allow 22
+   ```
+
+6. **Test the connection manually** -- verify you can connect outside of HostFn:
+   ```bash
+   ssh ubuntu@your-server.com "echo connected"
+   ```
+
+## Health Check Failed
+
+**Error:**
+
+```
+Health check failed after 10 attempts
+Service is not responding to health checks
+```
+
+**Possible causes and solutions:**
+
+1. **No health endpoint** -- make sure your application exposes a health endpoint:
+   ```ts title="src/index.ts"
+   app.get('/health', (req, res) => {
+     res.json({ status: 'ok' });
+   });
+   ```
+
+2. **Wrong port** -- verify the `port` in your config matches the port your application listens on:
+   ```json
+   "port": 3000
+   ```
+
+3. **Wrong health path** -- verify the `health.path` matches your endpoint:
+   ```json
+   "health": {
+     "path": "/health"
+   }
+   ```
+
+4. **Application crashing on startup** -- check the PM2 logs:
+   ```bash
+   hostfn logs production
+   ```
+   Or directly on the server:
+   ```bash
+   ssh ubuntu@your-server.com "pm2 logs my-api-production --lines 50"
+   ```
+
+5. **Application starts slowly** -- increase the retries and interval:
+   ```json title="hostfn.config.json"
+   {
+     "health": {
+       "retries": 20,
+       "interval": 5
+     }
+   }
+   ```
+
+6. **Missing environment variables** -- the app may crash because a required env var is not set:
+   ```bash
+   hostfn env validate production
+   ```
+
+## Deployment Lock
+
+**Error:**
+
+```
+Deployment is already in progress
+Started by: developer
+Started at: 3/11/2026, 2:30:00 PM
+Age: 2 minute(s)
+```
+
+**Solutions:**
+
+1. **Wait for the current deployment to finish** -- another deployment is genuinely in progress
+
+2. **Wait for the lock to expire** -- locks auto-expire after 5 minutes
+
+3. **Remove the lock manually** -- if you are certain no deployment is running:
+   ```bash
+   ssh ubuntu@your-server.com "rm /var/www/my-api-production/.hostfn-deploy.lock"
+   ```
+
+4. **Prevent concurrent deployments in CI/CD** -- use concurrency groups:
+   ```yaml title=".github/workflows/deploy.yml"
+   concurrency:
+     group: deploy-production
+     cancel-in-progress: false
+   ```
+
+## Build Failed
+
+**Error:**
+
+```
+Build failed: <error output>
+```
+
+**Possible causes and solutions:**
+
+1. **Missing dev dependencies** -- if your build requires devDependencies, make sure `build.command` is set in your config. HostFn installs all dependencies (including dev) when a build command is configured:
+   ```json
+   {
+     "build": {
+       "command": "npm run build"
+     }
+   }
+   ```
+
+2. **Wrong Node.js version** -- verify the `version` field matches what your project needs:
+   ```json
+   "version": "20"
+   ```
+
+3. **Build works locally but fails on server** -- platform-specific issues. Check for:
+   - Native binary dependencies (e.g., `sharp`, `better-sqlite3`)
+   - Path case sensitivity (Linux is case-sensitive, macOS is not by default)
+   - Environment variables needed during build
+
+4. **Out of memory** -- the server may not have enough RAM. Check with:
+   ```bash
+   ssh ubuntu@your-server.com "free -h"
+   ```
+
+## PM2 Start Failed
+
+**Error:**
+
+```
+PM2 start failed: <error output>
+```
+
+**Possible causes and solutions:**
+
+1. **Wrong entry point** -- verify `start.entry` points to the correct file:
+   ```json
+   {
+     "start": {
+       "command": "npm start",
+       "entry": "dist/index.js"
+     }
+   }
+   ```
+
+2. **Port already in use** -- another process is using the configured port:
+   ```bash
+   ssh ubuntu@your-server.com "lsof -i :3000"
+   ```
+   Kill the conflicting process or change the port in your config.
+
+3. **PM2 not installed** -- HostFn installs PM2 automatically, but if it fails:
+   ```bash
+   ssh ubuntu@your-server.com "npm install -g pm2"
+   ```
+
+4. **Check PM2 logs for the actual error**:
+   ```bash
+   ssh ubuntu@your-server.com "pm2 logs my-api-production --lines 100"
+   ```
+
+## Nginx Configuration Test Failed
+
+**Error:**
+
+```
+Nginx configuration test failed
+```
+
+**Possible causes and solutions:**
+
+1. **Syntax error in generated config** -- inspect the Nginx config:
+   ```bash
+   ssh ubuntu@your-server.com "cat /etc/nginx/sites-available/my-api-production"
+   ```
+
+2. **Port conflict** -- another Nginx server block is already listening on port 80/443 for the same domain:
+   ```bash
+   ssh ubuntu@your-server.com "nginx -t"
+   ```
+   The output will show the exact error location.
+
+3. **Nginx not installed** -- run server setup first:
+   ```bash
+   hostfn server setup ubuntu@your-server.com
+   ```
+
+4. **Test Nginx manually**:
+   ```bash
+   ssh ubuntu@your-server.com "sudo nginx -t"
+   ```
+
+## SSL Certificate Failed
+
+**Error:**
+
+```
+SSL certificate provisioning failed
+```
+
+**Possible causes and solutions:**
+
+1. **DNS not configured** -- your domain must point to the server's IP address before requesting an SSL certificate. Verify with:
+   ```bash
+   dig +short your-domain.com
+   ```
+   The result should be your server's IP address.
+
+2. **Let's Encrypt rate limits** -- Let's Encrypt limits certificate requests. If you hit the limit, wait and try again later. See [Let's Encrypt rate limits](https://letsencrypt.org/docs/rate-limits/).
+
+3. **Port 80 blocked** -- Let's Encrypt needs port 80 to be accessible for HTTP-01 challenges:
+   ```bash
+   ssh ubuntu@your-server.com "sudo ufw allow 80"
+   ```
+
+4. **Certbot not installed** -- run server setup:
+   ```bash
+   hostfn server setup ubuntu@your-server.com
+   ```
+
+## General Debugging Tips
+
+### Check the deployment from the server
+
+SSH into the server and inspect the deployment directory:
+
+```bash
+ssh ubuntu@your-server.com
+
+# Check the deployment directory
+ls -la /var/www/my-api-production/
+
+# Check PM2 processes
+pm2 list
+
+# Check PM2 logs
+pm2 logs my-api-production
+
+# Check Nginx status
+sudo systemctl status nginx
+
+# Check Nginx error logs
+sudo tail -f /var/log/nginx/error.log
+```
+
+### Test locally first
+
+Before deploying, make sure your application builds and runs locally:
+
+```bash
+npm run build
+npm start
+curl http://localhost:3000/health
+```
+
+### Use dry run mode
+
+Preview what a deployment would do without making changes:
+
+```bash
+hostfn deploy production --dry-run
+```
+
+### Check server resources
+
+Ensure the server has enough resources:
+
+```bash
+ssh ubuntu@your-server.com "df -h"    # Disk space
+ssh ubuntu@your-server.com "free -h"  # Memory
+ssh ubuntu@your-server.com "nproc"    # CPU cores
+```

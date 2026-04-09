@@ -178,7 +178,7 @@ Create `hostfn.config.json` in your project root:
   "build": {
     "command": "npm run build",
     "directory": "dist",
-    "nodeModules": "production"
+    "nodeModules": "all"
   },
   "start": {
     "command": "npm start",
@@ -1130,7 +1130,6 @@ hostfn --help
 ## License
 
 MIT
-
 
 
 

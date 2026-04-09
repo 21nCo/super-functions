@@ -1,0 +1,60 @@
+---
+title: hostfn logs
+description: View application logs from the server.
+---
+
+## Usage
+
+```bash
+hostfn logs [environment] [options]
+```
+
+## Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `environment` | Environment | `production` |
+
+## Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--lines <n>` | Number of lines to show | `100` |
+| `--errors` | Show only error lines | `false` |
+| `--output <file>` | Save logs to a local file | — |
+| `--service <name>` | View logs for specific monorepo service | — |
+
+## Description
+
+Retrieves PM2 logs from the remote server. Logs are streamed to your terminal in real-time unless `--output` is specified.
+
+### Error Filtering
+
+The `--errors` flag filters output to only show lines containing: `error`, `Error`, `ERROR`, `fail`, `Fail`, `FAIL`, `exception`, or `Exception`.
+
+### Monorepo
+
+For monorepo deployments, you must specify `--service`:
+
+```bash
+hostfn logs production --service api
+```
+
+## Examples
+
+```bash
+# View last 100 lines of production logs
+hostfn logs production
+
+# View last 500 lines
+hostfn logs production --lines 500
+
+# View only errors
+hostfn logs production --errors
+
+# Save logs to file
+hostfn logs production --output app.log
+
+# View specific monorepo service logs
+hostfn logs production --service api
+```

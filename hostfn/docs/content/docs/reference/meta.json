@@ -1,0 +1,10 @@
+{
+  "title": "Reference",
+  "description": "API & Configuration Reference",
+  "root": true,
+  "pages": [
+    "index",
+    "config-schema",
+    "environment-variables"
+  ]
+}

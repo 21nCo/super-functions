@@ -1,0 +1,273 @@
+---
+title: Single Service Deployment
+description: Walk through deploying a standard Node.js application to your VPS server with HostFn.
+---
+
+This guide covers deploying a single Node.js application -- the most common deployment scenario. If you have a monorepo with multiple services, see [Monorepo Deployment](/docs/documentation/deployment/monorepo) instead.
+
+## Prerequisites
+
+Before deploying, make sure you have:
+
+1. A `hostfn.config.json` file in your project root (run `hostfn init` to create one)
+2. A server set up with `hostfn server setup`
+3. Environment variables pushed to the server (if needed)
+4. A `/health` endpoint in your application
+
+## The Deploy Command
+
+```bash
+hostfn deploy production
+```
+
+The first argument is the environment name, which must match a key in your `environments` configuration. If omitted, it defaults to `production`.
+
+### Command Options
+
+| Flag | Description |
+|---|---|
+| `--host <host>` | Override the server host from config |
+| `--ci` | CI/CD mode (non-interactive) |
+| `--local` | Local deployment mode (skip SSH) |
+| `--dry-run` | Show deployment plan without executing |
+
+## Configuration
+
+A minimal single-service configuration looks like this:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "runtime": "nodejs",
+  "version": "20",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "instances": "max",
+      "domain": "api.example.com"
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "all"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  }
+}
+```
+
+## Port Configuration
+
+The `port` field in your environment config determines which port PM2 injects as the `PORT` environment variable. Your application should listen on this port:
+
+```ts title="src/index.ts"
+const port = process.env.PORT || 3000;
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+```
+
+HostFn writes the port into the PM2 ecosystem config, but values read from the server's `.env` file are merged afterward. If your remote `.env` also defines `PORT`, it can override the configured port.
+
+<Callout type="warn">
+Make sure no other service on the server is using the same port. Each application and environment should have a unique port number.
+</Callout>
+
+## Remote Directory Structure
+
+HostFn deploys your application to `/var/www/{name}-{env}` on the server. For a config with `"name": "my-api"` deployed to the `production` environment, the directory is:
+
+```
+/var/www/my-api-production/
+```
+
+After deployment, the remote directory contains:
+
+```
+/var/www/my-api-production/
+  ├── dist/                  # Built application output
+  ├── src/                   # Source files (synced from local)
+  ├── node_modules/          # Installed dependencies
+  ├── package.json           # Project manifest
+  ├── package-lock.json      # Lockfile (if present)
+  ├── ecosystem.config.cjs   # PM2 process configuration
+  ├── .env                   # Environment variables (pushed separately)
+  ├── logs/                  # PM2 log files
+  │   ├── out.log
+  │   └── err.log
+  └── backups/               # Timestamped deployment backups
+      ├── 2026-03-10T14-30-00-000Z/
+      └── 2026-03-11T09-15-00-000Z/
+```
+
+## PM2 Ecosystem Config
+
+HostFn generates an `ecosystem.config.cjs` file on the server during each deployment. This file tells PM2 how to run your application.
+
+Here is an example of the generated file:
+
+```js title="ecosystem.config.cjs"
+module.exports = {
+  apps: [{
+    name: 'my-api-production',
+    script: 'dist/index.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: "production",
+      PORT: 3000,
+      DATABASE_URL: "postgresql://...",
+      JWT_SECRET: "..."
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log',
+    time: true,
+    autorestart: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    max_memory_restart: '1G'
+  }]
+};
+```
+
+Key properties:
+
+| Property | Value | Description |
+|---|---|---|
+| `name` | `{name}-{env}` | Unique PM2 process identifier |
+| `script` | `dist/index.js` | Entry point (from `start.entry` config) |
+| `instances` | `"max"` | Current generated value for single-service PM2 config |
+| `exec_mode` | `"cluster"` | Enables Node.js cluster mode for multi-core usage |
+| `env` | `{ ... }` | Merged environment variables from the `.env` file on the server |
+| `max_memory_restart` | `"1G"` | Restart the process if it exceeds 1 GB of memory |
+| `autorestart` | `true` | Automatically restart the process if it crashes |
+
+### Environment Variables in the Ecosystem Config
+
+HostFn reads the `.env` file from the remote server during deployment and merges those values into the ecosystem config. It also injects `NODE_ENV` (set to the environment name) and `PORT` (set to the configured port). This means your `.env` file on the server is the source of truth for environment variables.
+
+## Full Deployment Example
+
+```
+$ hostfn deploy production
+
+  Deploy Application
+
+  Application       my-api
+  Runtime           nodejs
+  Environment       production
+  Server            ubuntu@my-server.com
+  Port              3000
+  Remote Directory  /var/www/my-api-production
+
+  ── Pre-flight Checks ──
+
+  ✔ rsync available
+  ✔ Connected to server
+  ✔ Node.js v20.11.0 ready
+  ✔ Remote directory created
+  ✔ Deployment lock acquired
+
+  ── Syncing Files ──
+
+  ✔ Files synced successfully
+
+  ── Building Application ──
+
+  ✔ Dependencies installed
+  ✔ Build completed
+
+  ── Creating Backup ──
+
+  ✔ Backup created: 2026-03-11T14-30-00-000Z
+
+  ── Deploying Service ──
+
+  ✔ Service reloaded
+
+  ── Health Check ──
+
+  ✔ Health check passed
+
+  Deployment completed successfully!
+
+  Environment  production
+  Service      my-api-production
+  Duration     38s
+  Health URL   http://my-server.com:3000/health
+
+  Next steps:
+
+  1. Configure domain and SSL (if needed):
+  $ hostfn expose production
+
+  2. View logs:
+  $ hostfn logs production
+```
+
+## Multiple Environments
+
+You can define multiple environments and deploy to any of them:
+
+```json title="hostfn.config.json"
+{
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "instances": "max",
+      "domain": "api.example.com"
+    },
+    "staging": {
+      "server": "ubuntu@staging.example.com",
+      "port": 3000,
+      "instances": 2
+    }
+  }
+}
+```
+
+```bash
+# Deploy to staging
+hostfn deploy staging
+
+# Deploy to production
+hostfn deploy production
+```
+
+Each environment deploys to its own directory on its own server (`/var/www/my-api-staging` and `/var/www/my-api-production`), with its own PM2 process and environment variables.
+
+## After Deployment
+
+Once deployed, you can manage your application with these commands:
+
+```bash
+# View service status (CPU, memory, uptime)
+hostfn status production
+
+# View application logs
+hostfn logs production
+
+# Configure Nginx reverse proxy and SSL
+hostfn expose production
+
+# Roll back to previous deployment
+hostfn rollback production
+```
+
+## Next Steps
+
+- [Monorepo Deployment](/docs/documentation/deployment/monorepo) -- Deploy multiple services from a single repository
+- [CI/CD Integration](/docs/documentation/deployment/ci-cd) -- Automate deployments with GitHub Actions
+- [Dry Run](/docs/documentation/deployment/dry-run) -- Preview what a deployment will do

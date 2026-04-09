@@ -1,0 +1,13 @@
+{
+  "title": "Documentation",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "concepts",
+    "deployment",
+    "server-management",
+    "environment",
+    "advanced"
+  ]
+}

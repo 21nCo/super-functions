@@ -1,0 +1,31 @@
+---
+title: CLI Reference
+description: Complete reference for all HostFn CLI commands.
+---
+
+HostFn provides a comprehensive CLI for managing application deployments. All commands are available after installing the `hostfn` package globally.
+
+```bash
+npm install -g hostfn
+```
+
+## Commands Overview
+
+| Command | Description |
+|---|---|
+| [`hostfn init`](/docs/cli/init) | Initialize HostFn configuration in current project |
+| [`hostfn deploy`](/docs/cli/deploy) | Deploy application to server |
+| [`hostfn expose`](/docs/cli/expose) | Configure Nginx and SSL for deployed services |
+| [`hostfn status`](/docs/cli/status) | Show application status |
+| [`hostfn logs`](/docs/cli/logs) | View application logs |
+| [`hostfn rollback`](/docs/cli/rollback) | Rollback to previous deployment |
+| [`hostfn env`](/docs/cli/env) | Manage environment variables |
+| [`hostfn server`](/docs/cli/server) | Server management commands |
+
+## Global Options
+
+```bash
+hostfn --version    # Show version number
+hostfn --help       # Show help
+hostfn <cmd> --help # Show help for a specific command
+```

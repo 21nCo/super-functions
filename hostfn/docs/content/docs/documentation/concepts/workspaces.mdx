@@ -1,0 +1,93 @@
+---
+title: Workspaces & Monorepos
+description: How HostFn handles npm workspaces and monorepo deployments.
+---
+
+HostFn has built-in support for npm workspaces (monorepos). When deploying a service that depends on other workspace packages, HostFn automatically bundles those dependencies into the deployment.
+
+## How Workspace Detection Works
+
+During deployment, HostFn walks up the directory tree looking for a `package.json` with a `workspaces` field. If found, it indexes all workspace packages and checks which ones your service depends on.
+
+```
+my-monorepo/
+  package.json          # Has "workspaces": ["packages/*", "services/*"]
+  packages/
+    shared-utils/       # Workspace package (@myorg/shared-utils)
+    email/              # Workspace package (@myorg/email)
+  services/
+    api/                # Your service - depends on @myorg/shared-utils
+    web/
+```
+
+## Workspace Bundling Process
+
+When workspace dependencies are detected, HostFn:
+
+1. **Creates a temporary bundle directory** in your system's temp folder
+2. **Copies your service** to the bundle (excluding `node_modules` and `.git`)
+3. **Copies workspace dependencies** to `__workspace__/{package-name}/` inside the bundle
+4. **Builds each dependency** if it has a `build` script
+5. **Rewrites `package.json`** to use `file:` references instead of `workspace:` references
+6. **Generates a fresh lockfile** so `npm ci` works on the server
+
+### Example
+
+If your service's `package.json` has:
+
+```json
+{
+  "dependencies": {
+    "@myorg/shared-utils": "workspace:*",
+    "express": "^4.18.0"
+  }
+}
+```
+
+HostFn rewrites it to:
+
+```json
+{
+  "dependencies": {
+    "@myorg/shared-utils": "file:./__workspace__/@myorg/shared-utils",
+    "express": "^4.18.0"
+  }
+}
+```
+
+The bundle directory layout:
+
+```
+/tmp/hostfn-bundle-xxxxx/
+  package.json              # Rewritten with file: references
+  package-lock.json         # Freshly generated
+  src/
+  __workspace__/
+    @myorg/
+      shared-utils/         # Copied workspace dependency
+        package.json
+        dist/               # Pre-built
+        src/
+```
+
+## Version Pinning
+
+When generating the lockfile for the bundle, HostFn pins direct dependencies to the exact versions resolved in the root monorepo lockfile. This prevents npm from upgrading dependencies when generating the lockfile, ensuring the deployment uses the same versions as your development environment.
+
+## Sync Behavior
+
+The `__workspace__/` directory is intentionally **not** placed inside `node_modules/`. This ensures:
+
+1. It's included in the rsync transfer (not excluded like `node_modules`)
+2. It's not wiped when `npm ci` cleans `node_modules` on the server
+
+The `dist` exclude pattern is anchored to the root (`/dist`) for workspace bundles so that compiled output inside `__workspace__/` packages (e.g., `__workspace__/@myorg/email/dist`) is preserved.
+
+## Configuration
+
+Workspace support requires no additional configuration. It activates automatically when:
+
+1. A parent `package.json` has a `workspaces` field
+2. Your service has dependencies using `workspace:` version specifiers (for example `workspace:*` or `workspace:^1.0.0`) or `*`
+
+For monorepo-specific deployment configuration (multiple services), see [Monorepo Deployment](/docs/documentation/deployment/monorepo).

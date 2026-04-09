@@ -1,0 +1,91 @@
+---
+title: hostfn server
+description: Server management commands for setup and information.
+---
+
+The `hostfn server` command group manages remote server provisioning and information.
+
+## Subcommands
+
+### `hostfn server setup <host>`
+
+Sets up a new server for deployments. Installs all necessary software and configures the server.
+
+```bash
+hostfn server setup ubuntu@my-server.com
+```
+
+#### Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--env <environment>` | Environment name | `production` |
+| `--node-version <version>` | Node.js version to install | `20` |
+| `--port <port>` | Service port for Nginx config | `3000` |
+| `--redis` | Also install Redis | `false` |
+| `--password <password>` | SSH password (if not using key auth) | — |
+
+#### What Gets Installed
+
+| Software | Purpose |
+|---|---|
+| nvm + Node.js | JavaScript runtime |
+| PM2 | Process manager |
+| Nginx | Reverse proxy |
+| Certbot | SSL certificates |
+| rsync | File synchronization |
+| build-essential | Native npm module compilation |
+| UFW | Firewall (ports 22, 80, 443) |
+| Redis | (optional) In-memory data store |
+
+#### How It Works
+
+1. Generates a setup shell script based on your runtime and options
+2. Asks for confirmation to execute on the server
+3. Uploads and executes the script over SSH with streaming output
+4. If you decline, saves the script locally for manual execution
+
+The setup takes 2-5 minutes depending on your server's connection speed.
+
+---
+
+### `hostfn server info <host>`
+
+Displays comprehensive information about a remote server.
+
+```bash
+hostfn server info ubuntu@my-server.com
+```
+
+#### Information Displayed
+
+| Section | Details |
+|---|---|
+| **System** | OS name/version, disk usage, memory usage |
+| **Runtime** | Node.js version, PM2 version, Nginx status |
+| **Services** | All running PM2 services with status, memory, CPU, and uptime |
+
+#### Example Output
+
+```
+  Server Information
+
+  Host  ubuntu@my-server.com
+
+  ✔ Connected
+
+  ── System ──
+  OS      Ubuntu 22.04.3 LTS
+  Disk    12G used / 50G total (24% used)
+  Memory  1.2G used / 4.0G total
+
+  ── Runtime ──
+  Node.js  v20.11.0
+  PM2      5.3.0
+  Nginx    active
+
+  ── Services ──
+    my-api-production
+      Status: online
+      Memory: 85MB  CPU: 2%  Uptime: 3d 12h
+```

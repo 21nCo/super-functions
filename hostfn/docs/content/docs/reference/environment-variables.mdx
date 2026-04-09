@@ -1,0 +1,164 @@
+---
+title: Environment Variables
+description: All environment variables that HostFn reads for SSH, CI/CD, and deployment configuration.
+---
+
+HostFn reads several environment variables to configure SSH connections, enable CI/CD mode, and override deployment settings. This page documents all of them.
+
+## Reference
+
+| Variable | Description | Example |
+|---|---|---|
+| `HOSTFN_HOST` | Override the server host from config | `ubuntu@staging-2.example.com` |
+| `HOSTFN_SSH_KEY` | Base64-encoded SSH private key | `LS0tLS1CRUdJTi...` |
+| `HOSTFN_SSH_PASSWORD` | SSH password for password authentication | `your-password` |
+| `HOSTFN_SSH_PASSPHRASE` | Passphrase for encrypted SSH key | `your-passphrase` |
+| `SSH_AUTH_SOCK` | SSH agent socket path (standard) | `/tmp/ssh-xxxxx/agent.12345` |
+
+## HOSTFN_HOST
+
+Overrides the `server` field from your `hostfn.config.json` for all SSH connections and rsync operations. This lets you deploy the same codebase to a different server without modifying the config file.
+
+```bash
+HOSTFN_HOST="ubuntu@staging-2.example.com" hostfn deploy staging
+```
+
+**Use case:** Deploying to dynamic environments in CI/CD, such as review apps or canary servers.
+
+```yaml title=".github/workflows/deploy.yml"
+- name: Deploy to staging
+  run: hostfn deploy staging --ci
+  env:
+    HOSTFN_HOST: ${{ vars.STAGING_HOST }}
+    HOSTFN_SSH_KEY: ${{ secrets.SSH_KEY }}
+```
+
+## HOSTFN_SSH_KEY
+
+A base64-encoded SSH private key. When set, HostFn uses this key for all SSH connections instead of looking for key files on disk. This is the primary way to provide SSH authentication in CI/CD environments.
+
+### Encoding Your Key
+
+```bash
+cat ~/.ssh/id_ed25519 | base64
+```
+
+Copy the output and store it as a CI/CD secret.
+
+### Usage
+
+```bash
+export HOSTFN_SSH_KEY="$(cat ~/.ssh/id_ed25519 | base64)"
+hostfn deploy production
+```
+
+### How It Works
+
+HostFn decodes the base64 string and uses the resulting key material directly for SSH connections (via the `ssh2` library). For rsync, it writes the decoded key to a temporary file with `0600` permissions, uses it for the sync, and then deletes it.
+
+If the key cannot be decoded, HostFn exits with an error:
+
+```
+Failed to decode HOSTFN_SSH_KEY from environment variable
+Make sure it's base64 encoded: cat ~/.ssh/id_rsa | base64
+```
+
+## HOSTFN_SSH_PASSWORD
+
+SSH password for servers that use password authentication instead of key-based authentication.
+
+```bash
+HOSTFN_SSH_PASSWORD="your-password" hostfn deploy production
+```
+
+This is equivalent to using the `--password` CLI option. Password authentication is less secure than key-based authentication and is not recommended for production use.
+
+**Priority:** If `HOSTFN_SSH_PASSWORD` is set, it takes precedence over key-based authentication methods.
+
+## HOSTFN_SSH_PASSPHRASE
+
+Passphrase for encrypted SSH private keys. Used in combination with `HOSTFN_SSH_KEY` or key files on disk.
+
+```bash
+export HOSTFN_SSH_KEY="$(cat ~/.ssh/id_ed25519 | base64)"
+export HOSTFN_SSH_PASSPHRASE="my-key-passphrase"
+hostfn deploy production
+```
+
+### CI/CD Usage
+
+```yaml title=".github/workflows/deploy.yml"
+- name: Deploy
+  run: hostfn deploy production --ci
+  env:
+    HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+    HOSTFN_SSH_PASSPHRASE: ${{ secrets.HOSTFN_SSH_PASSPHRASE }}
+```
+
+## SSH_AUTH_SOCK
+
+This is a standard environment variable set by `ssh-agent`, not specific to HostFn. When present, HostFn uses the SSH agent for authentication, which allows passphrase-protected keys to be used without re-entering the passphrase.
+
+```bash
+# Start the agent and add your key
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# The agent sets SSH_AUTH_SOCK automatically
+echo $SSH_AUTH_SOCK
+# /tmp/ssh-xxxxx/agent.12345
+
+# HostFn detects the agent and uses it
+hostfn deploy production
+```
+
+HostFn passes `SSH_AUTH_SOCK` to the `ssh2` library as the `agent` configuration option. This works alongside key file authentication -- if both are configured, the SSH client tries both methods.
+
+## Environment Variable Priority
+
+When multiple authentication methods are available, HostFn uses the following priority order:
+
+1. **`HOSTFN_SSH_PASSWORD`** (or `--password` option) -- password authentication
+2. **`HOSTFN_SSH_KEY`** -- base64-encoded key from environment
+3. **`SSH_AUTH_SOCK`** + key files -- SSH agent with local key files (`~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa`)
+
+The first available method is used. If no method succeeds, HostFn exits with an error explaining which key paths were tried.
+
+## CI/CD Quick Reference
+
+Here is a minimal GitHub Actions configuration using HostFn environment variables:
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g hostfn
+
+      - name: Deploy to production
+        run: hostfn deploy production --ci
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+```
+
+For deploying to a dynamic host:
+
+```yaml title=".github/workflows/deploy.yml"
+- name: Deploy to staging
+  run: hostfn deploy staging --ci
+  env:
+    HOSTFN_HOST: ${{ vars.STAGING_HOST }}
+    HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+    HOSTFN_SSH_PASSPHRASE: ${{ secrets.HOSTFN_SSH_PASSPHRASE }}
+```

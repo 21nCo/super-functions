@@ -1,0 +1,230 @@
+---
+title: Domain Configuration
+description: Configure custom domains and DNS for your HostFn deployments.
+---
+
+HostFn supports custom domain names for your deployed services. Domains are configured in your `hostfn.config.json` file and used by the [`hostfn expose`](/docs/documentation/server-management/nginx-ssl) command to generate Nginx configurations and obtain SSL certificates.
+
+## Single Domain
+
+To assign a single domain to an environment, set the `domain` field as a string:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "domain": "api.example.com",
+      "sslEmail": "admin@example.com"
+    }
+  }
+}
+```
+
+This configures Nginx with `server_name api.example.com` and obtains an SSL certificate for that domain.
+
+## Multiple Domains
+
+To assign multiple domains to a single environment, set the `domain` field as an array of strings:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-app",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "domain": ["example.com", "www.example.com"],
+      "sslEmail": "admin@example.com"
+    }
+  }
+}
+```
+
+This configures Nginx with `server_name example.com www.example.com` and obtains a single SSL certificate that covers both domains (a multi-domain or SAN certificate).
+
+A common use case is serving both the bare domain and the `www` subdomain from the same application.
+
+## SSL Email
+
+The `sslEmail` field specifies the email address used when registering with Let's Encrypt. This email receives:
+
+- Expiry warnings if automatic renewal fails
+- Important notices from Let's Encrypt about your certificates
+
+```json
+{
+  "sslEmail": "admin@example.com"
+}
+```
+
+SSL is only set up when **both** `domain` and `sslEmail` are present. If either is missing, `hostfn expose` configures Nginx for HTTP only.
+
+| Configuration | Result |
+|---|---|
+| `domain` + `sslEmail` present | Nginx + SSL (HTTPS) |
+| `domain` present, no `sslEmail` | Nginx HTTP only |
+| No `domain` | Nginx with catch-all `server_name _`, HTTP only |
+
+## Monorepo Routing
+
+In a monorepo configuration, `hostfn expose` applies environment-level domains to a single Nginx `server_name` set, then routes traffic to services by path:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-platform",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "domain": "example.com",
+      "sslEmail": "admin@example.com"
+    }
+  },
+  "services": {
+    "api": {
+      "port": 3001,
+      "path": "services/api",
+      "exposePath": "/api"
+    },
+    "web": {
+      "port": 3002,
+      "path": "services/web"
+    },
+    "docs": {
+      "port": 3003,
+      "path": "services/docs",
+      "exposePath": "/docs"
+    }
+  }
+}
+```
+
+Services without an `exposePath` become the default `/` route. All routed services share the environment's configured domain set.
+
+## Different Domains per Environment
+
+A common pattern is using different domains for production and staging:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "domain": "api.example.com",
+      "sslEmail": "admin@example.com"
+    },
+    "staging": {
+      "server": "ubuntu@staging.example.com",
+      "port": 3000,
+      "domain": "staging-api.example.com",
+      "sslEmail": "admin@example.com"
+    }
+  }
+}
+```
+
+Then expose each environment separately:
+
+```bash
+hostfn expose production
+hostfn expose staging
+```
+
+## DNS Setup
+
+Before running `hostfn expose`, you need to point your domain to your server's IP address. This is done by creating DNS records with your domain registrar or DNS provider.
+
+### Step 1: Find Your Server IP
+
+```bash
+hostfn server info ubuntu@my-server.com
+```
+
+Or SSH into the server and run:
+
+```bash
+curl -s ifconfig.me
+```
+
+### Step 2: Create an A Record
+
+Log in to your DNS provider and create an **A record** pointing your domain to the server's IP address:
+
+| Type | Name | Value | TTL |
+|---|---|---|---|
+| A | `api.example.com` | `203.0.113.10` | 300 |
+
+For bare domains (e.g., `example.com`) pointing directly to a server IP, use an **A** record. ALIAS or ANAME records are only relevant when your DNS provider asks you to point the apex at another hostname instead of an IP.
+
+### Step 3: Create Records for All Domains
+
+If you configured multiple domains, create an A record for each one:
+
+| Type | Name | Value | TTL |
+|---|---|---|---|
+| A | `example.com` | `203.0.113.10` | 300 |
+| A | `www.example.com` | `203.0.113.10` | 300 |
+
+### Step 4: Wait for Propagation
+
+DNS changes can take anywhere from a few minutes to 48 hours to propagate, although most providers update within 5-15 minutes. You can check propagation status with:
+
+```bash
+dig api.example.com +short
+```
+
+The output should show your server's IP address.
+
+### Step 5: Expose the Service
+
+Once DNS is pointing to your server, run the expose command:
+
+```bash
+hostfn expose production
+```
+
+Certbot validates domain ownership by making an HTTP request to your server. If DNS has not propagated yet, the SSL certificate step will fail. In that case, wait and try again:
+
+```bash
+# Re-run to retry SSL after DNS propagates
+hostfn expose production --force
+```
+
+## No Domain (IP Access)
+
+If you do not set a `domain` in your configuration, your app is still accessible via the server's IP address. HostFn generates an Nginx config with `server_name _` (catch-all), which responds to any hostname.
+
+This is fine for development, internal tools, or testing. For production applications accessed by users, a domain with SSL is strongly recommended.
+
+## Troubleshooting
+
+### SSL certificate fails to obtain
+
+**Cause:** DNS is not pointing to the server yet, or the domain is unreachable.
+
+**Fix:** Verify DNS with `dig your-domain.com +short` and ensure the result matches your server IP. Then re-run with `--force`:
+
+```bash
+hostfn expose production --force
+```
+
+### Certificate does not cover all domains
+
+**Cause:** You added a new domain after the initial certificate was obtained.
+
+**Fix:** Re-run `hostfn expose`. HostFn detects that the existing certificate is missing domains and uses Certbot's `--expand` flag to add them.
+
+### Nginx shows the default page instead of your app
+
+**Cause:** The default Nginx site is still enabled and taking precedence.
+
+**Fix:** HostFn automatically disables the default site when a custom domain is configured. If you still see the default page, re-run with `--force`:
+
+```bash
+hostfn expose production --force
+```

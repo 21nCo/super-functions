@@ -1,0 +1,63 @@
+---
+title: Local Deployment Mode
+description: Deploy without SSH for self-hosted runners and local servers.
+---
+
+Local deployment mode skips SSH and rsync entirely, copying files directly on the same machine. This is useful for **self-hosted CI/CD runners** that run on the deployment target.
+
+## Usage
+
+```bash
+hostfn deploy production --local
+```
+
+## When to Use Local Mode
+
+- **Self-hosted GitHub Actions runners** running directly on your VPS
+- **Local development servers** where the app runs on the same machine
+- **Testing deployment workflows** without needing a remote server
+
+## How It Differs from Remote Mode
+
+| Aspect | Remote Mode | Local Mode |
+|---|---|---|
+| Connection | SSH over network | Direct local execution |
+| File Transfer | rsync over SSH | Node.js `cpSync` |
+| Commands | Executed via SSH | Executed via `child_process.exec` |
+| rsync Required | Yes | No |
+| SSH Key Required | Yes | No |
+
+## How It Works
+
+1. Instead of establishing an SSH connection, HostFn creates a `LocalExecutor` that runs commands using Node.js `child_process`
+2. Files are copied using `fs.cpSync` instead of rsync, using local filtering based on the configured exclude list
+3. All other phases (build, PM2 deployment, health check) work identically
+
+## Example: Self-Hosted Runner
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g hostfn
+      - run: hostfn deploy production --local --ci
+```
+
+## Combining with CI Mode
+
+You can combine `--local` with `--ci` for non-interactive local deployments:
+
+```bash
+hostfn deploy production --local --ci
+```

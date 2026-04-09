@@ -1,0 +1,126 @@
+---
+title: Backups
+description: Understand how HostFn automatically backs up deployments and manages retention.
+---
+
+HostFn creates a timestamped backup before each deployment, giving you a safety net to roll back if something goes wrong. Backups are stored on the remote server and managed automatically.
+
+## How Backups Work
+
+During every deployment, HostFn creates a backup of the current `dist/` directory and `package.json` before replacing them with the new build. This happens in the backup phase of the deployment pipeline, after the build completes but before the PM2 process is restarted.
+
+```
+Phase 1: Pre-flight Checks
+Phase 2: File Sync
+Phase 3: Remote Build
+Phase 4: Install Dependencies
+Phase 5: Create Backup     ← backup happens here
+Phase 6: PM2 Deployment
+Phase 7: Health Check
+Phase 8: Cleanup
+```
+
+## Backup Storage Location
+
+Backups are stored on the remote server at:
+
+```
+/var/www/{name}-{env}/backups/{timestamp}/
+```
+
+For example, an application named `my-api` deployed to the `production` environment would store backups at:
+
+```
+/var/www/my-api-production/backups/2026-03-11T14-30-00-000Z/
+```
+
+Each backup directory contains:
+
+| File | Description |
+|---|---|
+| `dist/` | Complete copy of the build output directory |
+| `package.json` | Application manifest (if present) |
+
+## What Gets Backed Up
+
+HostFn backs up the files needed to restore a working deployment:
+
+- **`dist/` directory** -- the compiled build output that PM2 runs
+- **`package.json`** -- the dependency manifest (copied on a best-effort basis)
+
+Items that are **not** backed up:
+
+- `node_modules/` -- too large; rollback restores `dist/` only, so reinstall dependencies manually if your deployment state changed
+- `.env` files -- environment variables are managed separately
+- Nginx configuration -- server configuration is independent of deployments
+
+## Backup Retention
+
+By default, HostFn keeps the **5 most recent backups** and deletes older ones after each deployment. You can configure this with the `backup.keep` setting:
+
+```json title="hostfn.config.json"
+{
+  "backup": {
+    "keep": 10
+  }
+}
+```
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `backup.keep` | `number` | `5` | Number of backups to retain |
+
+Cleanup runs automatically at the end of each successful deployment. Backups are sorted by timestamp (most recent first), and any beyond the retention count are deleted.
+
+## Backup Naming
+
+Backup directories are named using ISO 8601 timestamps with special characters replaced by hyphens:
+
+```
+2026-03-11T14-30-00-000Z
+```
+
+This format ensures backups sort chronologically and are easy to identify. The most recent backup always appears first when listed.
+
+## Viewing Backups
+
+You can view available backups for an environment by starting the rollback command:
+
+```bash
+hostfn rollback production
+```
+
+This connects to the server and lists all available backups before prompting for selection.
+
+You can also check backups directly on the server:
+
+```bash
+ssh ubuntu@your-server.com "ls -la /var/www/my-api-production/backups/"
+```
+
+## First Deployment
+
+On the first deployment, there is no existing `dist/` directory to back up. HostFn detects this and skips the backup step:
+
+```
+  ── Creating Backup ──
+
+  ℹ No existing deployment to backup
+```
+
+This is normal and expected. Auto-rollback will not be available for the first deployment since there is no previous version to restore.
+
+## Manual Backup Management
+
+If you need to manually manage backups on the server, the backup directory structure is straightforward:
+
+```bash
+# List all backups
+ssh ubuntu@your-server.com "ls -la /var/www/my-api-production/backups/"
+
+# Delete a specific backup
+ssh ubuntu@your-server.com "rm -rf /var/www/my-api-production/backups/2026-03-07T08-20-33-000Z"
+
+# Delete all backups
+ssh ubuntu@your-server.com "rm -rf /var/www/my-api-production/backups/*"
+```

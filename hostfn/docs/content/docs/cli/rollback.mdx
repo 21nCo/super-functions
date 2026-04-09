@@ -1,0 +1,67 @@
+---
+title: hostfn rollback
+description: Rollback to a previous deployment.
+---
+
+## Usage
+
+```bash
+hostfn rollback [environment] [options]
+```
+
+## Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `environment` | Environment to rollback | `production` |
+
+## Options
+
+| Option | Description |
+|---|---|
+| `--to <timestamp>` | Rollback to a specific backup by name |
+
+## Description
+
+Restores a previous deployment from backup. HostFn creates a timestamped backup before each deployment, so you can easily go back to any recent version.
+
+### Interactive Mode
+
+Without `--to`, the command lists available backups and lets you choose:
+
+```
+  ── Available Backups ──
+    1. 2024-01-15T10-30-00-000Z
+    2. 2024-01-14T15-20-00-000Z
+    3. 2024-01-13T09-00-00-000Z
+
+  ? Select backup to restore: 1. 2024-01-15T10-30-00-000Z (latest)
+```
+
+### Rollback Process
+
+1. Fetches available backups from the server
+2. Restores the selected backup's `dist/` directory
+3. Reloads the PM2 process with the restored code
+
+## Examples
+
+```bash
+# Interactive rollback (select from list)
+hostfn rollback production
+
+# Rollback to specific backup
+hostfn rollback production --to 2024-01-15T10-30-00-000Z
+
+# Rollback staging
+hostfn rollback staging
+```
+
+## Automatic Rollback
+
+HostFn also performs automatic rollback during `hostfn deploy` when:
+
+- The health check fails after deployment
+- PM2 fails to start the service
+
+When rollback succeeds, this happens automatically. If rollback itself fails, HostFn reports that manual intervention is required.

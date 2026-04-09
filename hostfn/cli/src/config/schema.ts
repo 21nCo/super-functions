@@ -19,7 +19,7 @@ export type EnvironmentConfig = z.infer<typeof EnvironmentConfigSchema>;
 export const BuildConfigSchema = z.object({
   command: z.string().describe('Build command to run'),
   directory: z.string().default('dist').describe('Output directory'),
-  nodeModules: z.enum(['all', 'production', 'none']).default('production'),
+  nodeModules: z.enum(['all', 'production', 'none']).optional(),
 }).optional();
 
 export type BuildConfig = z.infer<typeof BuildConfigSchema>;

@@ -1,0 +1,74 @@
+---
+title: Dry Run
+description: Preview a deployment without executing any changes.
+---
+
+The dry run mode shows you exactly what a deployment would do, without making any changes to your server.
+
+## Usage
+
+```bash
+hostfn deploy production --dry-run
+```
+
+## What It Shows
+
+The dry run outputs a complete deployment plan:
+
+```
+  Deploy Application
+
+  Application  my-api
+  Runtime      nodejs
+  Environment  production
+  Server       ubuntu@my-server.com
+  Port         3000
+
+  ⚠ DRY RUN MODE - No changes will be made
+
+  Deployment Plan:
+
+  1. Pre-flight Checks
+     ✓ Check rsync availability
+     ✓ Connect to server
+     ✓ Verify remote directory
+
+  2. File Sync
+     → Sync /Users/you/my-api to /var/www/my-api-production
+     → Exclude: node_modules, .git, dist, .env, *.log
+
+  3. Remote Build
+     → npm ci --production
+     → npm run build
+
+  4. Backup
+     → Create timestamped backup of current deployment
+
+  5. PM2 Deployment
+     → Check if my-api-production exists
+     → Start/Reload PM2 process
+
+  6. Health Check
+     → Poll /health
+     → Retries: 10
+
+  7. Cleanup
+     → Keep last 5 backups
+```
+
+## When to Use
+
+- **Before first deployment** to verify configuration is correct
+- **Before major changes** to review what will happen
+- **In CI/CD pipelines** as a validation step before the actual deploy
+- **When debugging** configuration issues
+
+## Combining with Other Flags
+
+```bash
+# Dry run for a specific monorepo service
+hostfn deploy production --dry-run --service api
+
+# Dry run for staging
+hostfn deploy staging --dry-run
+```

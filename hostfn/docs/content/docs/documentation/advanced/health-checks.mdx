@@ -1,0 +1,174 @@
+---
+title: Health Checks
+description: Configure post-deployment health verification to ensure your application is running correctly.
+---
+
+After every deployment, HostFn verifies that your application is running and responding to requests. If the health check fails, HostFn automatically rolls back to the previous deployment.
+
+## How Health Checks Work
+
+HostFn runs health checks on the server using `curl` against your application's health endpoint:
+
+```bash
+curl -sf http://localhost:{port}{path}
+```
+
+The check runs over SSH on the remote server, hitting `localhost` directly. This means the health check works even before Nginx is configured or DNS is set up.
+
+A health check is considered **passing** when `curl` returns exit code `0` (which requires an HTTP `2xx` response due to the `-f` flag). Any non-2xx response or connection failure is treated as a failure.
+
+HostFn retries the health check multiple times with a configurable interval, giving your application time to start up.
+
+## Configuration
+
+Configure health checks in your `hostfn.config.json`:
+
+```json title="hostfn.config.json"
+{
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `path` | `string` | `"/health"` | HTTP path to check on the application |
+| `timeout` | `number` | `60` | Per-attempt curl timeout in seconds |
+| `retries` | `number` | `10` | Number of health check attempts before giving up |
+| `interval` | `number` | `3` | Seconds to wait between retry attempts |
+
+With the default settings, HostFn will attempt the health check up to 10 times, waiting 3 seconds between each attempt, with each curl request capped at 60 seconds.
+
+## Implementing a Health Endpoint
+
+Your application needs to expose an HTTP endpoint that returns a `2xx` status code when healthy. A minimal implementation:
+
+```ts title="src/index.ts"
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+```
+
+### Recommended: Deeper Health Checks
+
+For production applications, consider checking downstream dependencies in your health endpoint:
+
+```ts title="src/index.ts"
+app.get('/health', async (req, res) => {
+  try {
+    // Check database connectivity
+    await db.execute(sql`SELECT 1`);
+
+    // Check Redis if applicable
+    await redis.ping();
+
+    res.json({
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+```
+
+This approach ensures that your application is not only running but can actually serve requests.
+
+## Health Check During Deployment
+
+During deployment, the health check runs as **Phase 6**:
+
+```
+  ── Health Check ──
+
+  ⠋ Health check attempt 1/10...
+  ⠋ Health check attempt 2/10...
+  ✔ Health check passed
+```
+
+If all retries are exhausted without a successful response:
+
+```
+  ── Health Check ──
+
+  ⠋ Health check attempt 1/10...
+  ⠋ Health check attempt 2/10...
+  ...
+  ✗ Health check failed
+
+  ── Rolling Back ──
+
+  ✔ Rolled back to previous deployment
+```
+
+## Auto-Rollback on Failure
+
+When a health check fails, HostFn triggers an automatic rollback:
+
+1. The previous `dist/` directory is restored from the backup created earlier in the deployment
+2. PM2 is reloaded with the restored files
+3. The deployment is marked as failed
+
+This ensures your application stays available even when a new deployment has issues.
+
+## Tuning Health Check Settings
+
+### Slow-Starting Applications
+
+If your application takes a long time to start (loading large datasets, warming caches, etc.), increase the retries and interval:
+
+```json title="hostfn.config.json"
+{
+  "health": {
+    "path": "/health",
+    "timeout": 120,
+    "retries": 20,
+    "interval": 5
+  }
+}
+```
+
+This gives your application up to 100 seconds to become healthy.
+
+### Fast-Starting Applications
+
+For lightweight applications that start quickly, you can reduce the wait time:
+
+```json title="hostfn.config.json"
+{
+  "health": {
+    "path": "/health",
+    "timeout": 15,
+    "retries": 5,
+    "interval": 2
+  }
+}
+```
+
+### Custom Health Path
+
+If your application uses a different path for health checks, configure it:
+
+```json title="hostfn.config.json"
+{
+  "health": {
+    "path": "/api/status"
+  }
+}
+```
+
+## Best Practices
+
+1. **Always implement a `/health` endpoint** -- even a simple one that returns `200 OK` is better than none
+2. **Keep health checks fast** -- the endpoint should respond within a few hundred milliseconds
+3. **Check critical dependencies** -- database connections, external services your app cannot function without
+4. **Do not check optional dependencies** -- if your app can work without Redis caching, do not fail the health check when Redis is down
+5. **Return meaningful responses** -- include status information in the JSON body for debugging

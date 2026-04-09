@@ -1,0 +1,71 @@
+---
+title: hostfn status
+description: Show the status of your deployed application.
+---
+
+## Usage
+
+```bash
+hostfn status [environment] [options]
+```
+
+## Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `environment` | Environment to check | `production` |
+
+## Options
+
+| Option | Description |
+|---|---|
+| `--service <name>` | Show status for specific service in monorepo |
+
+## Description
+
+Connects to the server and displays the PM2 service status, including:
+
+- **Status** - online, stopped, errored
+- **PID** - Process ID
+- **Restarts** - Number of automatic restarts
+- **Memory** - Current memory usage
+- **CPU** - Current CPU usage
+- **Uptime** - Time since last restart
+- **Created** - When the service started
+
+For monorepo deployments without `--service`, shows status for all services.
+
+## Examples
+
+```bash
+# Check production status
+hostfn status production
+
+# Check specific monorepo service
+hostfn status production --service api
+
+# Check staging
+hostfn status staging
+```
+
+## Example Output
+
+```
+  Status - production
+
+  ✔ Connected
+
+  ── Service Information ──
+  Name      my-api-production
+  Status    online
+  PID       12345
+  Restarts  0
+
+  ── Resources ──
+  Memory    85MB
+  CPU       2%
+
+  ── Timing ──
+  Uptime    3d 12h 45m
+  Created   3/8/2026, 2:30:00 PM
+```

@@ -1,0 +1,106 @@
+---
+title: Runtimes
+description: How HostFn detects and manages application runtimes.
+---
+
+HostFn uses a pluggable runtime adapter system. Each runtime adapter handles detection, default configuration, server setup script generation, and process management.
+
+## Runtime Detection
+
+When you run `hostfn init`, HostFn scans your project directory to detect the runtime:
+
+```bash
+$ hostfn init
+✔ Detected nodejs (confidence: 95%)
+```
+
+### Node.js Detection
+
+The Node.js detector checks for:
+
+| Signal | Confidence |
+|---|---|
+| `package.json` exists | +50% |
+| `package.json` has a `start` script | +20% |
+| `package.json` has a `build` script | +15% |
+| `node_modules/` exists | +10% |
+| `tsconfig.json` exists | +5% |
+
+The detector also reads `package.json` to determine:
+
+- **Build command** - From `scripts.build`
+- **Start command** - From `scripts.start`
+- **Entry point** - Inferred from `main` field
+- **Node.js version** - From `engines.node`
+
+## Node.js Runtime
+
+The Node.js adapter is the primary supported runtime. It uses:
+
+- **nvm** for version management
+- **PM2** for process management (cluster mode, auto-restart, log management)
+- **npm** for dependency installation
+
+### Server Setup
+
+When you run `hostfn server setup`, the Node.js adapter generates a setup script that installs:
+
+1. **nvm** and the specified Node.js version
+2. **PM2** globally via npm
+3. **Nginx** web server
+4. **Certbot** for SSL certificates
+5. **rsync** for file transfers
+6. **build-essential** for native npm modules
+7. **UFW firewall** configuration (ports 22, 80, 443)
+
+Optionally:
+- **Redis** (with `--redis` flag)
+
+### PM2 Ecosystem Config
+
+For each deployment, HostFn generates a PM2 ecosystem configuration file:
+
+```js title="ecosystem.config.cjs"
+module.exports = {
+  apps: [{
+    name: 'my-app-production',
+    script: 'dist/index.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000,
+      DATABASE_URL: '...',
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log',
+    time: true,
+    autorestart: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    max_memory_restart: '1G'
+  }]
+};
+```
+
+Key features:
+- **Cluster mode** with configurable instances (defaults to `"max"` for all CPU cores)
+- **Auto-restart** on crashes with max restart limits
+- **Memory limit** restarts (1GB default)
+- **Timestamped logs** in `./logs/` directory
+- **Environment variables** from the server's `.env` file are injected into the config
+
+## Future Runtimes
+
+The runtime adapter interface is designed for extensibility. Planned runtimes include:
+
+| Runtime | Status | Process Manager |
+|---|---|---|
+| Node.js | Supported | PM2 |
+| Python | Planned | systemd / gunicorn |
+| Go | Planned | systemd |
+| Ruby | Planned | puma / systemd |
+| Rust | Planned | systemd |
+| Docker | Planned | docker-compose |
+
+Each runtime adapter implements the same interface, so the deployment workflow remains identical regardless of the runtime.

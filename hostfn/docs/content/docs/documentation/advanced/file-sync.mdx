@@ -1,0 +1,144 @@
+---
+title: File Sync
+description: How HostFn transfers files to your server using rsync over SSH.
+---
+
+HostFn uses `rsync` to transfer your project files to the remote server. Rsync is efficient because it only transfers files that have changed, making subsequent deployments significantly faster than the first.
+
+## How File Sync Works
+
+During **Phase 2** of deployment, HostFn runs rsync to sync your local project directory to the remote server:
+
+```bash
+rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no -o BatchMode=yes" \
+  /path/to/your/project/ \
+  ubuntu@your-server.com:/var/www/my-api-production
+```
+
+### Rsync Flags
+
+| Flag | Description |
+|---|---|
+| `-a` | Archive mode -- preserves permissions, timestamps, symlinks, and directory structure |
+| `-v` | Verbose -- shows transfer progress (captured internally, not displayed to user) |
+| `-z` | Compress -- compresses data during transfer to reduce bandwidth |
+| `--delete` | Deletes files on the remote that no longer exist locally |
+
+The `--delete` flag ensures the remote server mirrors your local project exactly. Files you remove locally are also removed from the server on the next deployment.
+
+## Exclude Patterns
+
+By default, HostFn excludes common files that should not be synced to the server. Configure exclude patterns in `hostfn.config.json`:
+
+```json title="hostfn.config.json"
+{
+  "sync": {
+    "exclude": [
+      "node_modules",
+      ".git",
+      ".github",
+      "dist",
+      "build",
+      ".env",
+      ".env.*",
+      "*.log",
+      ".turbo",
+      ".wrangler"
+    ]
+  }
+}
+```
+
+These are the default exclude patterns. You can override them by setting your own `sync.exclude` array.
+
+### Why Exclude `node_modules` and `dist`?
+
+- **`node_modules`** -- dependencies are installed on the server after syncing, ensuring platform-specific binaries (like `esbuild` or native addons) are compiled for the server's architecture
+- **`dist`** -- the build output is generated on the server after syncing source files, so there is no need to transfer it
+
+### Adding Custom Excludes
+
+Add any files or patterns you want to skip:
+
+```json title="hostfn.config.json"
+{
+  "sync": {
+    "exclude": [
+      "node_modules",
+      ".git",
+      ".github",
+      "dist",
+      "build",
+      ".env",
+      ".env.*",
+      "*.log",
+      "coverage",
+      "__tests__",
+      "*.test.ts",
+      "docs"
+    ]
+  }
+}
+```
+
+Patterns follow rsync's pattern matching rules. You can use `*` for wildcards and `**` for recursive matching.
+
+## Incremental Transfers
+
+Rsync is incremental by design. On the first deployment, all files are transferred. On subsequent deployments, only files that have changed (based on size and modification time) are sent. This makes deployments fast -- typically only a few seconds for the sync phase after the initial deployment.
+
+## Workspace Bundle Syncing
+
+When deploying from a monorepo with workspace dependencies, HostFn creates a temporary deployment bundle that includes the workspace packages your service depends on. During bundled syncing, the `dist` exclude pattern is anchored to the root (`/dist`) so it only excludes the service's own dist folder -- not the compiled output inside workspace dependencies that may be needed at runtime.
+
+For example, if your service depends on `@myorg/shared` which has compiled TypeScript in its `dist/` folder, the workspace bundle ensures that `@myorg/shared/dist/` is included in the sync while your service's root `dist/` is excluded (since it will be rebuilt on the server).
+
+## CI/CD Mode
+
+In CI/CD environments, HostFn creates a temporary SSH key file for rsync. When the `HOSTFN_SSH_KEY` environment variable is set:
+
+1. HostFn decodes the base64-encoded SSH key
+2. Writes it to a temporary file with `0600` permissions
+3. Passes it to rsync via the `-e` flag: `ssh -i /tmp/hostfn-ssh-xxxx/id_rsa`
+4. Cleans up the temporary key file after the sync completes (even if it fails)
+
+The SSH command in CI/CD mode also includes `-o StrictHostKeyChecking=no` and `-o UserKnownHostsFile=/dev/null` to avoid interactive prompts.
+
+## Rsync Installation
+
+Rsync must be installed on your **local machine** (where you run `hostfn deploy`). It is typically pre-installed on macOS and most Linux distributions.
+
+### Checking if rsync is installed
+
+HostFn checks for rsync availability during the pre-flight checks phase:
+
+```
+  ── Pre-flight Checks ──
+
+  ✔ rsync available
+```
+
+If rsync is not found:
+
+```
+  ✗ rsync not installed
+```
+
+### Installing rsync
+
+| Platform | Command |
+|---|---|
+| macOS | `brew install rsync` |
+| Ubuntu / Debian | `sudo apt-get install rsync` |
+| CentOS / RHEL | `sudo yum install rsync` |
+| Windows (WSL) | `sudo apt-get install rsync` |
+
+## Dry Run
+
+Use the `--dry-run` flag to see what would be synced without actually transferring files:
+
+```bash
+hostfn deploy production --dry-run
+```
+
+This shows the deployment plan, including which files would be excluded, without making any changes to the server.

@@ -1,0 +1,209 @@
+---
+title: Validation
+description: Validate that all required environment variables are set before deploying.
+---
+
+The `hostfn env validate` command checks your server to ensure all required environment variables are present. This helps catch missing configuration before a deployment fails at runtime.
+
+## Usage
+
+```bash
+hostfn env validate <environment>
+```
+
+### Example
+
+```bash
+hostfn env validate production
+```
+
+## How It Works
+
+1. Reads the `env.required` array from your `hostfn.config.json`
+2. Connects to the server and reads the `.env` file at `/var/www/{name}-{env}/.env`
+3. Parses the file to extract all defined variable names
+4. Compares the required list against the variables found on the server
+5. Reports a pass/fail result for each variable
+
+## Configuration
+
+Define your required variables in `hostfn.config.json`:
+
+```json title="hostfn.config.json"
+{
+  "env": {
+    "required": ["DATABASE_URL", "JWT_SECRET", "REDIS_URL"],
+    "optional": ["LOG_LEVEL", "SENTRY_DSN"]
+  }
+}
+```
+
+Only the `required` array is checked by `hostfn env validate`. The `optional` array is for documentation purposes and is not validated.
+
+## Example Output
+
+### All Variables Present
+
+```
+$ hostfn env validate production
+
+  Validate Environment Variables - production
+
+  Checking 3 required variable(s)...
+
+  ✔ Connected
+
+  ── Validation Results ──
+
+  ✓ DATABASE_URL
+  ✓ JWT_SECRET
+  ✓ REDIS_URL
+
+  ✅ All required environment variables are set!
+```
+
+The command exits with code `0` when all required variables are found.
+
+### Missing Variables
+
+```
+$ hostfn env validate production
+
+  Validate Environment Variables - production
+
+  Checking 3 required variable(s)...
+
+  ✔ Connected
+
+  ── Validation Results ──
+
+  ✓ DATABASE_URL
+  ✗ JWT_SECRET (missing)
+  ✗ REDIS_URL (missing)
+
+  ✗ Missing 2 required variable(s)
+
+  Set missing variables:
+  $ hostfn env set production JWT_SECRET "value"
+  $ hostfn env set production REDIS_URL "value"
+```
+
+The command exits with code `1` when any required variable is missing. This makes it straightforward to use in CI/CD pipelines where a non-zero exit code stops the pipeline.
+
+### No `.env` File Found
+
+If the server has no `.env` file at all, the command reports the error and suggests pushing one:
+
+```
+$ hostfn env validate production
+
+  Validate Environment Variables - production
+
+  Checking 3 required variable(s)...
+
+  ✔ Connected
+
+  ✗ No .env file found on server
+  Push environment variables first:
+  $ hostfn env push production .env
+```
+
+### No Required Variables Defined
+
+If the `env.required` array is empty or not defined in your config, the command warns you:
+
+```
+$ hostfn env validate production
+
+  Validate Environment Variables - production
+
+  ⚠ No required environment variables defined in config
+  Add them to hostfn.config.json under env.required
+```
+
+## Using in CI/CD Pipelines
+
+The `hostfn env validate` command is designed to work well in automated pipelines. Because it exits with code `1` on failure, you can add it as a pre-deployment check:
+
+### GitHub Actions
+
+```yaml title=".github/workflows/deploy.yml"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install HostFn
+        run: npm install -g hostfn
+
+      - name: Validate environment variables
+        run: hostfn env validate production
+
+      - name: Deploy
+        run: hostfn deploy production --ci
+```
+
+If validation fails, the pipeline stops before the deploy step runs, preventing a deployment with missing configuration.
+
+### GitLab CI
+
+```yaml title=".gitlab-ci.yml"
+deploy:
+  stage: deploy
+  script:
+    - npm install -g hostfn
+    - hostfn env validate production
+    - hostfn deploy production --ci
+```
+
+### Shell Script
+
+```bash title="deploy.sh"
+#!/bin/bash
+set -e
+
+echo "Validating environment..."
+hostfn env validate production
+
+echo "Deploying..."
+hostfn deploy production --ci
+```
+
+The `set -e` flag ensures the script exits on the first error, so a failed validation prevents the deployment.
+
+## Best Practices
+
+### Keep the Required List Up to Date
+
+When you add a new environment variable to your application code, add it to the `env.required` array in your config. This ensures validation catches it before deployment:
+
+```json title="hostfn.config.json"
+{
+  "env": {
+    "required": [
+      "DATABASE_URL",
+      "JWT_SECRET",
+      "REDIS_URL",
+      "STRIPE_SECRET_KEY"
+    ]
+  }
+}
+```
+
+### Validate Before Every Deploy
+
+Make `hostfn env validate` a mandatory step in your deployment process. Whether you deploy manually or through CI/CD, running validation first saves time debugging runtime errors caused by missing configuration.
+
+```bash
+hostfn env validate production && hostfn deploy production
+```
+
+### Use Different Required Lists Per Concern
+
+The `env.required` array applies to all environments. If your staging environment uses different services than production, consider using the same required list and providing stub values for services not in use:
+
+```bash
+# Staging does not use Stripe, but set a placeholder to pass validation
+hostfn env set staging STRIPE_SECRET_KEY "stripe_secret_placeholder"
+```

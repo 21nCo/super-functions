@@ -1,0 +1,67 @@
+---
+title: hostfn init
+description: Initialize HostFn configuration in your project.
+---
+
+## Usage
+
+```bash
+hostfn init
+```
+
+## Description
+
+Initializes a new `hostfn.config.json` configuration file in the current directory. This is an interactive command that:
+
+1. **Detects the project runtime** by scanning for `package.json` and other Node.js project signals
+2. **Prompts for project settings** including name, version, server, port, domain, build and start commands
+3. **Generates the configuration file** with smart defaults based on detection
+
+## Interactive Prompts
+
+| Prompt | Description | Default |
+|---|---|---|
+| Application name | Used for PM2 service name and remote directory | From `package.json` name |
+| Runtime version | Node.js major version | From `engines.node` or `18` |
+| Production server | SSH connection string | — |
+| Production port | Port the app listens on | `3000` |
+| Domain | Custom domain for Nginx | — |
+| Build command | Command to build the project | From `scripts.build` |
+| Start command | Command to start the project | From `scripts.start` |
+
+## Behavior
+
+- If `hostfn.config.json` already exists, prompts for confirmation before overwriting
+- Detects runtime with a confidence score (warns if below 80%)
+- Reads `package.json` to suggest smart defaults for Node.js projects
+
+## Example
+
+```bash
+$ hostfn init
+
+  Initialize hostfn
+
+  ✔ Detected nodejs (confidence: 95%)
+
+  ── Project Configuration ──
+  ? Application name: my-api
+  ? nodejs version: 20
+
+  ── Environment Configuration ──
+  ? Production server (user@host): ubuntu@my-server.com
+  ? Production port: 3000
+  ? Domain (optional): api.example.com
+
+  ── Build & Start Configuration ──
+  ? Build command: npm run build
+  ? Start command: npm start
+
+  ✔ Configuration created
+
+  ✅ hostfn initialized successfully!
+
+  Next steps:
+  $ hostfn server setup ubuntu@my-server.com
+  $ hostfn deploy production
+```

@@ -12,6 +12,31 @@ export interface SyncOptions {
  * Sync files to remote server using rsync
  */
 export class FileSync {
+  private static buildBaseArgs(options: SyncOptions = {}): string[] {
+    const args = [
+      '-avz',
+      '--delete',
+    ];
+
+    if (options.dryRun) {
+      args.push('--dry-run');
+    }
+
+    if (options.include && options.include.length > 0) {
+      for (const pattern of options.include) {
+        args.push('--include', pattern);
+      }
+    }
+
+    if (options.exclude && options.exclude.length > 0) {
+      for (const pattern of options.exclude) {
+        args.push('--exclude', pattern);
+      }
+    }
+
+    return args;
+  }
+
   /**
    * Sync local directory to remote server
    */
@@ -21,10 +46,7 @@ export class FileSync {
     sshConnection: string, // user@host
     options: SyncOptions = {}
   ): Promise<void> {
-    const args = [
-      '-avz', // archive, verbose, compress
-      '--delete', // delete files on remote that don't exist locally
-    ];
+    const args = this.buildBaseArgs(options);
 
     // Handle SSH authentication for CI/CD mode
     let tempKeyPath: string | undefined;
@@ -47,25 +69,6 @@ export class FileSync {
     } else {
       // Local mode: use default SSH config (respects ~/.ssh/config and ssh-agent)
       args.push('-e', 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes');
-    }
-
-    // Add dry-run flag
-    if (options.dryRun) {
-      args.push('--dry-run');
-    }
-
-    // Add exclude patterns
-    if (options.exclude && options.exclude.length > 0) {
-      for (const pattern of options.exclude) {
-        args.push('--exclude', pattern);
-      }
-    }
-
-    // Add include patterns
-    if (options.include && options.include.length > 0) {
-      for (const pattern of options.include) {
-        args.push('--include', pattern);
-      }
     }
 
     // Ensure trailing slash on source (rsync behavior)
@@ -108,6 +111,44 @@ export class FileSync {
           // Ignore cleanup errors
         }
       }
+    }
+  }
+
+  /**
+   * Sync local directory to another local directory using the same rsync rules
+   * as remote deploys.
+   */
+  static async syncLocal(
+    sourcePath: string,
+    destinationPath: string,
+    options: SyncOptions = {}
+  ): Promise<void> {
+    const args = this.buildBaseArgs(options);
+    const source = sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`;
+
+    args.push(source, destinationPath);
+
+    try {
+      const result = await execa('rsync', args, {
+        stdio: options.verbose ? 'inherit' : 'pipe',
+      });
+
+      if (result.exitCode !== 0) {
+        throw new Error(`rsync failed with exit code ${result.exitCode}`);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes('ENOENT') || error.message.includes('not found')) {
+          throw new Error(
+            'rsync is not installed on your system.\n' +
+            'Please install it:\n' +
+            '  - macOS: brew install rsync\n' +
+            '  - Ubuntu/Debian: apt-get install rsync\n' +
+            '  - Windows: Install via WSL or use Git Bash'
+          );
+        }
+      }
+      throw error;
     }
   }
 

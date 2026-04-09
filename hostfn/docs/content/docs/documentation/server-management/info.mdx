@@ -1,0 +1,136 @@
+---
+title: Server Information
+description: View system details and running services on your server.
+---
+
+The `hostfn server info` command connects to your server over SSH and displays a summary of system resources, installed runtimes, and all running PM2 services.
+
+## Usage
+
+```bash
+hostfn server info <host>
+```
+
+The `<host>` argument is your SSH connection string in `user@host` format:
+
+```bash
+hostfn server info ubuntu@my-server.com
+```
+
+## What It Shows
+
+The command gathers information in three categories:
+
+### System
+
+| Field | Source | Description |
+|---|---|---|
+| OS | `/etc/os-release` | Operating system name and version |
+| Disk | `df -h /` | Disk usage (used / total with percentage) |
+| Memory | `free -h` | RAM usage (used / total) |
+
+### Runtime
+
+| Field | Description |
+|---|---|
+| Node.js | Installed version (via nvm), or "not installed" |
+| PM2 | PM2 process manager version, or "not installed" |
+| Nginx | Service status (`active`, `inactive`, or `not running`) |
+
+### Services
+
+Lists every PM2-managed process with:
+
+| Field | Description |
+|---|---|
+| Name | The PM2 service name (e.g., `my-api-production`) |
+| Status | `online`, `stopped`, `errored`, etc. |
+| Memory | Current memory usage in MB |
+| CPU | Current CPU percentage |
+| Uptime | How long the service has been running (e.g., `3d 12h`, `45m`) |
+
+## Example Output
+
+```
+$ hostfn server info ubuntu@my-server.com
+
+  Server Information
+
+  Host  ubuntu@my-server.com
+
+  ✔ Connected
+
+  ✔ Information gathered
+
+  ── System ──
+
+  OS      Ubuntu 22.04.3 LTS
+  Disk    12G used / 50G total (24% used)
+  Memory  1.8G used / 4.0G total
+
+  ── Runtime ──
+
+  Node.js  v20.11.0
+  PM2      5.3.0
+  Nginx    active
+
+  ── Services ──
+
+  my-api-production
+    Status: online
+    Memory: 87MB  CPU: 0.2%  Uptime: 3d 12h
+
+  my-api-staging
+    Status: online
+    Memory: 64MB  CPU: 0.1%  Uptime: 1d 4h
+```
+
+### When No Services Are Running
+
+If PM2 has no managed processes, the Services section displays:
+
+```
+  ── Services ──
+
+  No PM2 services running
+```
+
+## How It Works
+
+The command connects over SSH and runs several commands in parallel to minimize latency:
+
+1. Reads `/etc/os-release` for the OS name
+2. Runs `node --version` (via nvm) for the Node.js version
+3. Runs `pm2 --version` for the PM2 version
+4. Checks `systemctl is-active nginx` for Nginx status
+5. Runs `df -h /` for disk usage
+6. Runs `free -h` for memory usage
+7. Runs `pm2 jlist` to get a JSON list of all managed services
+
+All queries execute concurrently, so the command typically completes in 1-2 seconds after the SSH connection is established.
+
+## Use Cases
+
+- **Pre-deployment check** -- Verify your server has the expected Node.js version and enough disk space before deploying
+- **Debugging** -- Quickly see if a service has crashed, is consuming too much memory, or has recently restarted
+- **Multi-server overview** -- Run the command against each of your servers to compare resource usage
+
+```bash title="Check multiple servers"
+hostfn server info ubuntu@prod-1.example.com
+hostfn server info ubuntu@prod-2.example.com
+hostfn server info ubuntu@staging.example.com
+```
+
+## Error Handling
+
+If the SSH connection fails, the command reports the error and exits:
+
+```
+✗ Failed to get server information
+Error: Connection refused
+```
+
+Common causes include:
+- Incorrect SSH credentials or key configuration
+- Server firewall blocking port 22
+- Server is offline or unreachable

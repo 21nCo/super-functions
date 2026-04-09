@@ -1,0 +1,298 @@
+---
+title: Nginx & SSL
+description: Configure Nginx reverse proxy and SSL certificates for your deployed services.
+---
+
+The `hostfn expose` command generates an Nginx reverse proxy configuration, writes it to your server, and optionally obtains SSL certificates from Let's Encrypt using Certbot.
+
+## Usage
+
+```bash
+hostfn expose [environment]
+```
+
+The environment defaults to `production` if not specified:
+
+```bash
+# Expose production services
+hostfn expose
+
+# Expose staging services
+hostfn expose staging
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--host <host>` | Config `server` value | Override the SSH connection string |
+| `--skip-ssl` | `false` | Skip SSL certificate setup (HTTP only) |
+| `--force` | `false` | Overwrite an existing Nginx configuration |
+
+### Examples
+
+```bash title="Default: Nginx + SSL"
+hostfn expose production
+```
+
+```bash title="HTTP only, no SSL"
+hostfn expose production --skip-ssl
+```
+
+```bash title="Overwrite existing config"
+hostfn expose production --force
+```
+
+```bash title="Override host"
+hostfn expose production --host ubuntu@different-server.com
+```
+
+## Prerequisites
+
+Before running `hostfn expose`, your server needs Nginx installed. Certbot is only required when SSL setup is enabled (domain + `sslEmail`, without `--skip-ssl`). Both can be installed automatically by [`hostfn server setup`](/docs/documentation/server-management/setup). The command checks for the required tools and shows a clear error if one is missing:
+
+```
+Error: Nginx is not installed on the server.
+Run: hostfn server setup <host> --env production
+```
+
+## How It Works
+
+### 1. Detect Nginx Config System
+
+HostFn auto-detects how your server organizes Nginx configurations:
+
+| System | Used By | Config Path |
+|---|---|---|
+| `sites-available` / `sites-enabled` | Debian, Ubuntu | `/etc/nginx/sites-available/hostfn-{env}` |
+| `conf.d` | RHEL, CentOS, Fedora | `/etc/nginx/conf.d/hostfn-{env}.conf` |
+
+On `sites-available` systems, the config is written to `sites-available` and symlinked into `sites-enabled`.
+
+### 2. Disable Default Site
+
+When using a `sites-available` system with a custom domain configured, HostFn automatically disables the default Nginx site by removing the `/etc/nginx/sites-enabled/default` symlink. This prevents conflicts between the default catch-all server block and your domain-specific configuration.
+
+### 3. Generate Reverse Proxy Config
+
+The generated Nginx configuration includes full WebSocket support and standard proxy headers:
+
+```nginx title="Generated Nginx config (single service)"
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.example.com;
+
+    # my-api-production
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+```
+
+### 4. Write and Reload
+
+After generating the configuration, HostFn:
+
+1. Writes the config file to the server
+2. Enables the site (on `sites-available` systems)
+3. Runs `nginx -t` to validate the configuration
+4. Reloads Nginx with `systemctl reload nginx`
+
+If the configuration test fails, the command stops and displays the Nginx error output.
+
+### 5. Obtain SSL Certificate
+
+If a domain and `sslEmail` are configured (and `--skip-ssl` is not set), HostFn runs Certbot to obtain an SSL certificate:
+
+```bash
+# Command executed on server
+sudo certbot --nginx -d api.example.com --email admin@example.com \
+  --non-interactive --agree-tos --redirect
+```
+
+Certbot modifies the Nginx config to add SSL directives and sets up an HTTP-to-HTTPS redirect automatically.
+
+## Single Service Configuration
+
+For a standard (non-monorepo) project, the `expose` command proxies all traffic on `/` to your application port:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "domain": "api.example.com",
+      "sslEmail": "admin@example.com"
+    }
+  }
+}
+```
+
+This creates one location block routing `/ -> localhost:3000`.
+
+## Monorepo Configuration
+
+For monorepo projects with multiple services, HostFn generates path-based routing using the `exposePath` field from each service configuration:
+
+```json title="hostfn.config.json"
+{
+  "name": "my-app",
+  "environments": {
+    "production": {
+      "server": "ubuntu@my-server.com",
+      "port": 3000,
+      "domain": "example.com",
+      "sslEmail": "admin@example.com"
+    }
+  },
+  "services": {
+    "api": {
+      "port": 3001,
+      "path": "services/api",
+      "exposePath": "/api"
+    },
+    "web": {
+      "port": 3002,
+      "path": "services/web"
+    }
+  }
+}
+```
+
+This generates:
+
+- `/api` proxied to `localhost:3001`
+- `/` (default) proxied to `localhost:3002`
+
+A service without an `exposePath` is treated as the default service and receives the `/` location block. Services with an `exposePath` get their own path-based location blocks, which take priority over the default.
+
+```nginx title="Generated Nginx config (monorepo)"
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com;
+
+    # my-app-api
+    location /api {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+
+    # my-app-web
+    location / {
+        proxy_pass http://localhost:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+```
+
+## SSL Certificate Handling
+
+### New Certificates
+
+When no certificate exists for the primary domain, Certbot obtains a new one and configures Nginx for HTTPS with an automatic HTTP redirect.
+
+### Existing Certificates
+
+If a certificate already exists for the primary domain, HostFn checks whether it covers all the required domains. If some domains are missing from the certificate, it uses Certbot's `--expand` flag to add them:
+
+```bash
+# Expansion command executed on server
+sudo certbot --nginx -d example.com -d www.example.com \
+  --email admin@example.com --non-interactive --agree-tos \
+  --redirect --expand
+```
+
+If all domains are already covered, HostFn triggers a certificate renewal instead (which is a no-op if the certificate is still valid).
+
+### HTTPS Configuration
+
+After Certbot runs, the final Nginx configuration includes:
+
+- SSL certificate and key paths pointing to `/etc/letsencrypt/live/{domain}/`
+- HTTP/2 support
+- Automatic HTTP-to-HTTPS redirect
+- Certbot-managed SSL parameters
+
+```nginx title="HTTPS server block (managed by Certbot)"
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        ...
+    }
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.example.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+```
+
+### Auto-Renewal
+
+Certbot automatically sets up a systemd timer (or cron job) for certificate renewal. You do not need to configure this manually. Certificates are renewed approximately 30 days before expiry.
+
+## Updating an Existing Configuration
+
+If you have already run `hostfn expose` and need to update the configuration (for example, after adding a domain), use the `--force` flag:
+
+```bash
+hostfn expose production --force
+```
+
+Without `--force`, the command detects the existing config and skips writing it. However, it will still update the configuration automatically if the `server_name` has changed (for example, from a catch-all `_` to a specific domain).
+
+## Without a Domain
+
+If no `domain` is set in your configuration, `hostfn expose` generates a config with `server_name _` (catch-all) so the server responds to any hostname or IP address. SSL is not configured in this case since Certbot requires a valid domain name.
+
+```bash title="Expose without domain"
+hostfn expose production --skip-ssl
+```
+
+Your app will be accessible at `http://<server-ip>`.

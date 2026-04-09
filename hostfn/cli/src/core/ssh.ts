@@ -35,6 +35,8 @@ export class SSHConnection {
       host: options.host,
       port: options.port || 22,
       username: options.username,
+      keepaliveInterval: 30000,  // Send keepalive every 30s to survive long npm installs
+      keepaliveCountMax: 10,
     };
 
     // Add authentication method

@@ -1,0 +1,317 @@
+---
+title: CI/CD Integration
+description: Automate HostFn deployments in your CI/CD pipeline with GitHub Actions, environment variables, and non-interactive mode.
+---
+
+HostFn is designed to work seamlessly in CI/CD pipelines. The `--ci` flag enables non-interactive mode, and SSH authentication is handled through environment variables so no interactive prompts are required.
+
+## The `--ci` Flag
+
+When running in a CI/CD environment, pass the `--ci` flag to disable interactive prompts:
+
+```bash
+hostfn deploy production --ci
+```
+
+In CI mode, HostFn:
+
+- Skips all interactive prompts (no confirmation dialogs)
+- Reads SSH credentials from environment variables instead of the local keychain
+- Outputs clean, machine-readable log lines
+
+## Environment Variables
+
+HostFn uses the following environment variables for CI/CD authentication:
+
+| Variable | Required | Description |
+|---|---|---|
+| `HOSTFN_HOST` | No | Override the server from config (format: `user@host`) |
+| `HOSTFN_SSH_KEY` | Yes (if using key auth) | Base64-encoded SSH private key |
+| `HOSTFN_SSH_PASSWORD` | Yes (if using password auth) | SSH password |
+| `HOSTFN_SSH_PASSPHRASE` | No | Passphrase for the SSH key (if encrypted) |
+
+### SSH Key Setup
+
+HostFn expects the SSH private key to be **base64-encoded** in the `HOSTFN_SSH_KEY` environment variable. This avoids issues with newlines and special characters in CI secret stores.
+
+To encode your SSH key:
+
+```bash
+base64 < ~/.ssh/id_rsa | tr -d '\n'
+```
+
+Copy the output and store it as a secret in your CI platform (e.g., GitHub Actions secret named `SSH_PRIVATE_KEY`).
+
+<Callout type="warn">
+Never commit SSH private keys to your repository. Always use your CI platform's secret management to store `HOSTFN_SSH_KEY`.
+</Callout>
+
+At runtime, HostFn decodes the key and uses it for both the SSH connection and rsync file transfers. A temporary key file is created with `0600` permissions during the rsync operation and deleted immediately afterward.
+
+### Password Authentication
+
+If your server uses password-based SSH authentication instead of keys, set `HOSTFN_SSH_PASSWORD`:
+
+```bash
+export HOSTFN_SSH_PASSWORD="your-ssh-password"
+hostfn deploy production --ci
+```
+
+### Host Override
+
+Use `HOSTFN_HOST` to override the server address from your config. This is useful when your CI environment connects to servers via different hostnames or IP addresses than your local development machine:
+
+```bash
+export HOSTFN_HOST="deploy@10.0.0.50"
+hostfn deploy production --ci
+```
+
+## GitHub Actions Workflow
+
+Here is a complete GitHub Actions workflow that deploys on every push to the `main` branch:
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install HostFn
+        run: npm install -g hostfn
+
+      - name: Deploy to production
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci
+```
+
+### Required GitHub Secrets
+
+Add the following secrets in your repository settings (Settings > Secrets and variables > Actions):
+
+| Secret Name | Value |
+|---|---|
+| `SSH_PRIVATE_KEY` | Base64-encoded SSH private key (`base64 < ~/.ssh/id_rsa \| tr -d '\n'`) |
+
+If your key has a passphrase, also add:
+
+| Secret Name | Value |
+|---|---|
+| `SSH_PASSPHRASE` | The passphrase for your SSH key |
+
+And update your workflow to include it:
+
+```yaml
+      - name: Deploy to production
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOSTFN_SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
+        run: hostfn deploy production --ci
+```
+
+## Monorepo CI Deployment
+
+For monorepos, use the `--service` flag to deploy individual services. This lets you set up separate deployment jobs or deploy only the services that changed.
+
+### Deploy All Services
+
+```yaml title=".github/workflows/deploy-all.yml"
+name: Deploy All Services
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy all services
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci
+```
+
+### Deploy Specific Services
+
+```yaml title=".github/workflows/deploy-services.yml"
+name: Deploy Services
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-account:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy account service
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci --service account
+
+  deploy-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy auth service
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci --service auth
+```
+
+### Deploy on Changed Paths
+
+To deploy services only when their code changes, use workflow path filters or a changed-files action instead of checking `github.event.head_commit.modified` directly:
+
+```yaml title=".github/workflows/deploy-on-change.yml"
+name: Deploy Changed Services
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      account: ${{ steps.filter.outputs.account }}
+      auth: ${{ steps.filter.outputs.auth }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            account:
+              - 'services/account/**'
+            auth:
+              - 'services/auth/**'
+
+  deploy-account:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.account == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy account service
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci --service account
+
+  deploy-auth:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.auth == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy auth service
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci --service auth
+```
+
+## Staging and Production Pipeline
+
+A common pattern is to deploy to staging first, then promote to production:
+
+```yaml title=".github/workflows/staged-deploy.yml"
+name: Staged Deployment
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy to staging
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy staging --ci
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm install -g hostfn
+      - name: Deploy to production
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci
+```
+
+The `needs: deploy-staging` ensures production only deploys after staging succeeds. The `environment: production` setting enables GitHub's environment protection rules (manual approval, required reviewers, etc.).
+
+## Dry Run in CI
+
+Use `--dry-run` in your CI pipeline to preview deployments without executing them. This is useful for pull request checks:
+
+```yaml
+      - name: Deployment dry run
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: hostfn deploy production --ci --dry-run
+```
+
+## Next Steps
+
+- [Local Deployment Mode](/docs/documentation/deployment/local-mode) -- Deploy from self-hosted runners
+- [Dry Run](/docs/documentation/deployment/dry-run) -- Preview deployments without executing
+- [Deployment Overview](/docs/documentation/deployment/overview) -- Understand the full deployment lifecycle

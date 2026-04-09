@@ -1,0 +1,125 @@
+---
+title: Rollback
+description: Roll back to a previous deployment version when something goes wrong.
+---
+
+HostFn provides both manual and automatic rollback capabilities. If a deployment fails, HostFn automatically restores the previous version. You can also manually roll back to any saved backup at any time.
+
+## Manual Rollback
+
+Use the `hostfn rollback` command to restore a previous deployment:
+
+```bash
+hostfn rollback <environment>
+```
+
+For example:
+
+```bash
+hostfn rollback production
+```
+
+This will:
+
+1. Connect to the server via SSH
+2. List all available backups (most recent first)
+3. Prompt you to select a backup to restore
+4. Ask for confirmation
+5. Restore the selected backup
+6. Reload the PM2 process
+
+### Interactive Backup Selection
+
+When you run `hostfn rollback` without the `--to` option, HostFn presents an interactive list of up to 10 available backups:
+
+```
+$ hostfn rollback production
+
+  Rollback - production
+
+  ✔ Connected
+  ✔ Found 5 backup(s)
+
+  ── Available Backups ──
+
+  1. 2026-03-11T14-30-00-000Z
+  2. 2026-03-10T09-15-22-000Z
+  3. 2026-03-09T18-45-10-000Z
+  4. 2026-03-08T12-00-05-000Z
+  5. 2026-03-07T08-20-33-000Z
+
+  ? Select backup to restore:
+  > 1. 2026-03-11T14-30-00-000Z (latest)
+    2. 2026-03-10T09-15-22-000Z
+    3. 2026-03-09T18-45-10-000Z
+```
+
+After selecting a backup, HostFn asks for confirmation before proceeding:
+
+```
+  ⚠ This will rollback to: 2026-03-11T14-30-00-000Z
+  ? Are you sure you want to rollback? (y/N)
+```
+
+### Rolling Back to a Specific Backup
+
+Use the `--to` option to skip the interactive prompt and go directly to a specific backup:
+
+```bash
+hostfn rollback production --to 2026-03-10T09-15-22-000Z
+```
+
+This is useful in scripts or when you already know which backup you want to restore.
+
+## Auto-Rollback on Failed Deployments
+
+The `hostfn deploy` command has built-in auto-rollback. If any of the following steps fail during deployment, HostFn automatically restores the previous version:
+
+- **Build failure** -- the build command returns a non-zero exit code
+- **PM2 start/reload failure** -- the process manager fails to start the application
+- **Health check failure** -- the application does not respond with a healthy status
+
+When auto-rollback triggers, HostFn:
+
+1. Restores the backup created at the start of the deployment
+2. Reloads the PM2 process with the previous version
+3. Reports the rollback result
+
+```
+  ✗ Health check failed
+
+  ── Rolling Back ──
+
+  ✔ Rolled back to previous deployment
+  ℹ Previous deployment restored successfully
+```
+
+Auto-rollback only activates when there is a previous deployment to restore. On the first deployment, there is no backup to fall back to.
+
+## After a Rollback
+
+After a successful rollback, verify the service is running correctly:
+
+```bash
+hostfn status production
+```
+
+Check the application logs for any issues:
+
+```bash
+hostfn logs production
+```
+
+## What Gets Rolled Back
+
+A rollback restores:
+
+| Item | Restored |
+|---|---|
+| `dist/` directory | Yes |
+| `package.json` | No |
+| `node_modules/` | No |
+| `.env` file | No |
+| Nginx configuration | No |
+
+The rollback replaces the `dist/` directory with the backup copy and reloads PM2. Environment variables, Nginx configuration, and installed dependencies are not affected.

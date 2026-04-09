@@ -1,0 +1,185 @@
+---
+title: SSH Configuration
+description: How HostFn connects to your server and manages SSH authentication.
+---
+
+HostFn connects to remote servers over SSH for all operations -- file syncing, remote commands, health checks, and process management. Understanding how SSH authentication works in HostFn helps with debugging connection issues and setting up CI/CD pipelines.
+
+## Connection String Format
+
+Server connections are specified in `hostfn.config.json` using the `server` field:
+
+```json title="hostfn.config.json"
+{
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000
+    }
+  }
+}
+```
+
+The connection string supports two formats:
+
+| Format | Example | Description |
+|---|---|---|
+| `user@host` | `ubuntu@prod.example.com` | Connect on default port 22 |
+| `user@host:port` | `ubuntu@prod.example.com:2222` | Connect on a custom SSH port |
+
+## SSH Key Lookup Order
+
+HostFn resolves SSH authentication in the following order:
+
+1. **Password authentication** -- if `--password` option or `HOSTFN_SSH_PASSWORD` env var is set
+2. **`HOSTFN_SSH_KEY` environment variable** -- base64-encoded private key (CI/CD mode)
+3. **SSH agent** -- if `SSH_AUTH_SOCK` is set, HostFn uses the SSH agent for authentication
+4. **`~/.ssh/id_rsa`** -- RSA key file
+5. **`~/.ssh/id_ed25519`** -- Ed25519 key file
+6. **`~/.ssh/id_ecdsa`** -- ECDSA key file
+
+HostFn checks these in order and uses the first one it finds. If using an SSH agent alongside a key file, both the agent and the key file are configured so passphrase-protected keys work automatically.
+
+## SSH Agent
+
+If you use passphrase-protected SSH keys, make sure your SSH agent is running and has your key loaded:
+
+```bash
+# Start the agent (if not running)
+eval "$(ssh-agent -s)"
+
+# Add your key
+ssh-add ~/.ssh/id_ed25519
+```
+
+HostFn detects the SSH agent via the `SSH_AUTH_SOCK` environment variable, which is set automatically when the agent is running.
+
+## Keepalive Settings
+
+HostFn configures SSH keepalive to prevent connections from dropping during long operations like `npm install` or large file syncs:
+
+| Setting | Value | Description |
+|---|---|---|
+| `keepaliveInterval` | 30 seconds | How often to send keepalive packets |
+| `keepaliveCountMax` | 10 | Maximum missed keepalives before disconnect |
+
+With these settings, a connection can survive up to 5 minutes of network inactivity before being dropped.
+
+## Password Authentication
+
+For commands that support password authentication, you can provide the password via a CLI flag or the `HOSTFN_SSH_PASSWORD` environment variable. For `hostfn deploy`, use the environment variable:
+
+```bash
+# Using the environment variable with deploy
+HOSTFN_SSH_PASSWORD="your-password" hostfn deploy production
+```
+
+Password authentication is less secure than key-based authentication and is not recommended for production environments. Use it only for initial server setup or testing.
+
+## CI/CD Mode
+
+In CI/CD environments (GitHub Actions, GitLab CI, etc.), SSH keys are typically stored as secrets. HostFn supports loading keys from environment variables.
+
+### Setting Up the SSH Key
+
+Base64-encode your private key and store it as a CI/CD secret:
+
+```bash
+cat ~/.ssh/id_ed25519 | base64
+```
+
+Set this as `HOSTFN_SSH_KEY` in your CI/CD environment.
+
+### GitHub Actions Example
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g hostfn
+
+      - name: Deploy to production
+        run: hostfn deploy production --ci
+        env:
+          HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+```
+
+### Passphrase-Protected Keys in CI/CD
+
+If your SSH key has a passphrase, set it with the `HOSTFN_SSH_PASSPHRASE` environment variable:
+
+```yaml title=".github/workflows/deploy.yml"
+- name: Deploy to production
+  run: hostfn deploy production --ci
+  env:
+    HOSTFN_SSH_KEY: ${{ secrets.HOSTFN_SSH_KEY }}
+    HOSTFN_SSH_PASSPHRASE: ${{ secrets.HOSTFN_SSH_PASSPHRASE }}
+```
+
+### Overriding the Server Host
+
+In CI/CD, you can override the server from the config file using the `HOSTFN_HOST` environment variable:
+
+```yaml
+env:
+  HOSTFN_HOST: ubuntu@staging-2.example.com
+```
+
+This is useful for deploying the same codebase to different servers without modifying the config file.
+
+## NVM in Non-Interactive SSH Sessions
+
+SSH sessions opened programmatically (as HostFn does) are non-interactive, which means shell profile files like `.bashrc` are not sourced. This can cause `node`, `npm`, and `pm2` to be unavailable.
+
+HostFn handles this automatically by sourcing NVM before every remote command:
+
+```bash
+export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && <your-command>
+```
+
+This ensures that the correct Node.js version is active regardless of the shell's initialization state. You do not need to configure anything for this to work -- it happens transparently.
+
+## Troubleshooting SSH Connections
+
+### Connection Refused
+
+```
+SSH connection failed: connect ECONNREFUSED
+```
+
+- Verify the server IP and port are correct
+- Check that the SSH daemon is running: `systemctl status sshd`
+- Check firewall rules: `ufw status` or `iptables -L`
+
+### Permission Denied
+
+```
+SSH connection failed: All configured authentication methods failed
+```
+
+- Verify your SSH key is in `~/.ssh/authorized_keys` on the server
+- Check key file permissions: `chmod 600 ~/.ssh/id_ed25519`
+- Check `.ssh` directory permissions: `chmod 700 ~/.ssh`
+- Try connecting manually: `ssh ubuntu@your-server.com`
+
+### Key Not Found
+
+```
+Failed to load SSH key from /Users/you/.ssh/id_rsa
+```
+
+- Check which key files exist: `ls -la ~/.ssh/`
+- If using a non-standard key name, start your SSH agent and add the key
+- In CI/CD, set the `HOSTFN_SSH_KEY` environment variable

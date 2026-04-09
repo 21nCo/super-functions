@@ -1,0 +1,252 @@
+---
+title: Configuration
+description: Understand the hostfn.config.json file and all available options.
+---
+
+All HostFn behavior is controlled by a single `hostfn.config.json` file in your project root. This file is validated against a Zod schema when loaded, giving you clear error messages for any misconfiguration.
+
+## Full Configuration Example
+
+```json title="hostfn.config.json"
+{
+  "name": "my-api",
+  "runtime": "nodejs",
+  "version": "20",
+  "environments": {
+    "production": {
+      "server": "ubuntu@prod.example.com",
+      "port": 3000,
+      "instances": "max",
+      "domain": "api.example.com",
+      "sslEmail": "admin@example.com"
+    },
+    "staging": {
+      "server": "ubuntu@staging.example.com",
+      "port": 3000,
+      "instances": 2
+    }
+  },
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "nodeModules": "all"
+  },
+  "start": {
+    "command": "npm start",
+    "entry": "dist/index.js"
+  },
+  "health": {
+    "path": "/health",
+    "timeout": 60,
+    "retries": 10,
+    "interval": 3
+  },
+  "env": {
+    "required": ["DATABASE_URL", "JWT_SECRET"],
+    "optional": ["REDIS_URL", "LOG_LEVEL"]
+  },
+  "sync": {
+    "exclude": [
+      "node_modules", ".git", ".github",
+      "dist", "build", ".env", ".env.*", "*.log",
+      ".turbo", ".wrangler"
+    ]
+  },
+  "backup": {
+    "keep": 5
+  }
+}
+```
+
+## Top-Level Fields
+
+### `name` (required)
+
+The application name. Used to derive the remote directory (`/var/www/{name}-{env}`) and the PM2 service name (`{name}-{env}`).
+
+```json
+"name": "my-api"
+```
+
+### `runtime` (required)
+
+The application runtime. Currently, HostFn executes the `nodejs` runtime. Other values are reserved in the schema for future adapters:
+
+| Value | Description |
+|---|---|
+| `nodejs` | Node.js application |
+| `python` | Planned |
+| `go` | Planned |
+| `ruby` | Planned |
+| `rust` | Planned |
+| `docker` | Planned |
+
+### `version` (required)
+
+The runtime version to use on the server. For Node.js, this is the major version number:
+
+```json
+"version": "20"
+```
+
+HostFn will install this version via nvm on the server and switch to it before each deployment.
+
+## Environment Configuration
+
+The `environments` object maps environment names to their settings. You can define as many environments as you need.
+
+```json
+"environments": {
+  "production": { ... },
+  "staging": { ... },
+  "development": { ... }
+}
+```
+
+### Environment Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `server` | `string` | Yes | — | SSH connection string (`user@host` or `user@host:port`) |
+| `port` | `number` | Yes | — | Port the application listens on |
+| `instances` | `number \| "max"` | No | `1` | PM2 cluster instances. `"max"` uses all CPU cores |
+| `domain` | `string \| string[]` | No | — | Domain name(s) for Nginx/SSL |
+| `sslEmail` | `string` | No | — | Email for Let's Encrypt certificate registration |
+
+### Multiple Domains
+
+You can assign multiple domains to a single environment:
+
+```json
+"domain": ["example.com", "www.example.com"]
+```
+
+## Build Configuration
+
+Controls how your application is built on the server.
+
+```json
+"build": {
+  "command": "npm run build",
+  "directory": "dist",
+  "nodeModules": "all"
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `command` | `string` | — | Build command to run (e.g., `npm run build`) |
+| `directory` | `string` | `"dist"` | Build output directory |
+| `nodeModules` | `"all" \| "production" \| "none"` | `"all"` when `build.command` is set, otherwise `"production"` | Which node_modules to install |
+
+If `build` is omitted, HostFn skips the build step and installs only production dependencies.
+
+When `build.nodeModules` is omitted, HostFn defaults to installing **all** dependencies when `build.command` is present. Set `build.nodeModules` to `"production"` or `"none"` to override that behavior.
+
+## Start Configuration
+
+Defines how the application starts.
+
+```json
+"start": {
+  "command": "npm start",
+  "entry": "dist/index.js"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | `string` | Yes | Start command |
+| `entry` | `string` | No | Entry point file (used in PM2 ecosystem config) |
+
+The `entry` field is the file PM2 will execute. If not specified, it defaults to `dist/index.js`.
+
+## Health Check Configuration
+
+Controls post-deployment health verification.
+
+```json
+"health": {
+  "path": "/health",
+  "timeout": 60,
+  "retries": 10,
+  "interval": 3
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `path` | `string` | `"/health"` | HTTP path to check |
+| `timeout` | `number` | `60` | Per-attempt curl timeout in seconds |
+| `retries` | `number` | `10` | Number of health check attempts |
+| `interval` | `number` | `3` | Seconds between retries |
+
+HostFn uses `curl --max-time {timeout} -sf` on the server to check `http://localhost:{port}{path}`. Success follows curl's `-f` exit-code behavior rather than an explicit `200-299` status check in HostFn itself, so 3xx responses can also count as healthy even though HostFn does not pass `-L` to follow redirects.
+
+## Environment Variables Configuration
+
+Defines which environment variables your application expects.
+
+```json
+"env": {
+  "required": ["DATABASE_URL", "JWT_SECRET"],
+  "optional": ["REDIS_URL", "LOG_LEVEL"]
+}
+```
+
+These are used by `hostfn env validate` to check that all required variables are set on the server before deployment.
+
+## Sync Configuration
+
+Controls which files are synced to the server via rsync.
+
+```json
+"sync": {
+  "exclude": [
+    "node_modules", ".git", ".github",
+    "dist", "build", ".env", ".env.*", "*.log",
+    ".turbo", ".wrangler"
+  ]
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `exclude` | `string[]` | See below | Patterns to exclude from rsync |
+| `include` | `string[]` | — | Patterns to explicitly include |
+
+Default exclude patterns: `node_modules`, `.git`, `.github`, `dist`, `build`, `.env`, `.env.*`, `*.log`, `.turbo`, `.wrangler`
+
+## Backup Configuration
+
+Controls deployment backup retention.
+
+```json
+"backup": {
+  "keep": 5
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `keep` | `number` | `5` | Number of backups to retain |
+
+## Monorepo Services
+
+For monorepo deployments, add a `services` section. See [Monorepo Deployment](/docs/documentation/deployment/monorepo) for details.
+
+```json
+"services": {
+  "api": {
+    "port": 3001,
+    "path": "services/api",
+    "domain": "api.example.com",
+    "instances": "max"
+  },
+  "web": {
+    "port": 3002,
+    "path": "services/web",
+    "domain": "example.com"
+  }
+}
+```
