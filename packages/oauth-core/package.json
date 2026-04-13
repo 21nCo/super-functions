@@ -1,0 +1,48 @@
+{
+  "name": "@superfunctions/oauth-core",
+  "version": "0.0.1",
+  "description": "Core OAuth types and service contracts for Superfunctions",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest --config ./vitest.config.ts --run",
+    "test:watch": "vitest --config ./vitest.config.ts --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "oauth",
+    "auth",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/oauth-core"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@superfunctions/oauth-storage": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

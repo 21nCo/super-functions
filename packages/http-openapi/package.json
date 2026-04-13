@@ -1,0 +1,48 @@
+{
+  "name": "@superfunctions/http-openapi",
+  "version": "0.0.1",
+  "description": "Deterministic OpenAPI generation for @superfunctions/http routers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && vitest",
+    "test:watch": "vitest --watch",
+    "lint": "echo 'lint not configured'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "http",
+    "openapi",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "packages/http-openapi"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@superfunctions/http": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

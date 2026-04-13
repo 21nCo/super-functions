@@ -31,8 +31,16 @@
   { "slug": "superfunctions-http-fastify", "path": "packages/http-fastify", "name": "@superfunctions/http-fastify" },
   { "slug": "superfunctions-http-hono", "path": "packages/http-hono", "name": "@superfunctions/http-hono" },
   { "slug": "superfunctions-http-next", "path": "packages/http-next", "name": "@superfunctions/http-next" },
+  { "slug": "superfunctions-http-openapi", "path": "packages/http-openapi", "name": "@superfunctions/http-openapi" },
   { "slug": "superfunctions-http-sveltekit", "path": "packages/http-sveltekit", "name": "@superfunctions/http-sveltekit" },
   { "slug": "superfunctions-metrics", "path": "packages/metrics", "name": "@superfunctions/metrics" },
+  { "slug": "superfunctions-oauth-core", "path": "packages/oauth-core", "name": "@superfunctions/oauth-core" },
+  { "slug": "superfunctions-oauth-flow", "path": "packages/oauth-flow", "name": "@superfunctions/oauth-flow" },
+  { "slug": "superfunctions-oauth-http", "path": "packages/oauth-http", "name": "@superfunctions/oauth-http" },
+  { "slug": "superfunctions-oauth-providers", "path": "packages/oauth-providers", "name": "@superfunctions/oauth-providers" },
+  { "slug": "superfunctions-oauth-router", "path": "packages/oauth-router", "name": "@superfunctions/oauth-router" },
+  { "slug": "superfunctions-oauth-storage", "path": "packages/oauth-storage", "name": "@superfunctions/oauth-storage" },
+  { "slug": "superfunctions-oauth-testing", "path": "packages/oauth-testing", "name": "@superfunctions/oauth-testing" },
   { "slug": "superfunctions-queue", "path": "packages/queue", "name": "@superfunctions/queue" },
   { "slug": "superfunctions-webhooks", "path": "packages/webhooks", "name": "@superfunctions/webhooks" }
 ]
