@@ -26,6 +26,7 @@
   { "slug": "superfunctions-extfn-cli", "path": "extfn/cli", "name": "@superfunctions/extfn-cli" },
   { "slug": "superfunctions-extfn-svelte", "path": "extfn/svelte", "name": "@superfunctions/extfn-svelte" },
   { "slug": "superfunctions-extfn-vite", "path": "extfn/vite", "name": "@superfunctions/extfn-vite" },
+  { "slug": "superfunctions-files", "path": "packages/files", "name": "@superfunctions/files" },
   { "slug": "superfunctions-http", "path": "packages/http", "name": "@superfunctions/http" },
   { "slug": "superfunctions-http-express", "path": "packages/http-express", "name": "@superfunctions/http-express" },
   { "slug": "superfunctions-http-fastify", "path": "packages/http-fastify", "name": "@superfunctions/http-fastify" },
@@ -34,6 +35,7 @@
   { "slug": "superfunctions-http-openapi", "path": "packages/http-openapi", "name": "@superfunctions/http-openapi" },
   { "slug": "superfunctions-http-sveltekit", "path": "packages/http-sveltekit", "name": "@superfunctions/http-sveltekit" },
   { "slug": "superfunctions-metrics", "path": "packages/metrics", "name": "@superfunctions/metrics" },
+  { "slug": "superfunctions-middleware", "path": "packages/middleware", "name": "@superfunctions/middleware" },
   { "slug": "superfunctions-oauth-core", "path": "packages/oauth-core", "name": "@superfunctions/oauth-core" },
   { "slug": "superfunctions-oauth-flow", "path": "packages/oauth-flow", "name": "@superfunctions/oauth-flow" },
   { "slug": "superfunctions-oauth-http", "path": "packages/oauth-http", "name": "@superfunctions/oauth-http" },
@@ -42,5 +44,12 @@
   { "slug": "superfunctions-oauth-storage", "path": "packages/oauth-storage", "name": "@superfunctions/oauth-storage" },
   { "slug": "superfunctions-oauth-testing", "path": "packages/oauth-testing", "name": "@superfunctions/oauth-testing" },
   { "slug": "superfunctions-queue", "path": "packages/queue", "name": "@superfunctions/queue" },
+  { "slug": "superfunctions-storage", "path": "packages/storage", "name": "@superfunctions/storage" },
+  { "slug": "superfunctions-storage-azure", "path": "packages/storage-azure", "name": "@superfunctions/storage-azure" },
+  { "slug": "superfunctions-storage-gcs", "path": "packages/storage-gcs", "name": "@superfunctions/storage-gcs" },
+  { "slug": "superfunctions-storage-local", "path": "packages/storage-local", "name": "@superfunctions/storage-local" },
+  { "slug": "superfunctions-storage-minio", "path": "packages/storage-minio", "name": "@superfunctions/storage-minio" },
+  { "slug": "superfunctions-storage-r2", "path": "packages/storage-r2", "name": "@superfunctions/storage-r2" },
+  { "slug": "superfunctions-storage-s3", "path": "packages/storage-s3", "name": "@superfunctions/storage-s3" },
   { "slug": "superfunctions-webhooks", "path": "packages/webhooks", "name": "@superfunctions/webhooks" }
 ]
