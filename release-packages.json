@@ -19,6 +19,9 @@
   { "slug": "superfunctions-auth", "path": "packages/auth", "name": "@superfunctions/auth" },
   { "slug": "superfunctions-cli", "path": "packages/cli", "name": "@superfunctions/cli" },
   { "slug": "superfunctions-db", "path": "packages/db", "name": "@superfunctions/db" },
+  { "slug": "superfunctions-config", "path": "packages/config", "name": "@superfunctions/config" },
+  { "slug": "superfunctions-envelope", "path": "packages/envelope", "name": "@superfunctions/envelope" },
+  { "slug": "superfunctions-errors", "path": "packages/errors", "name": "@superfunctions/errors" },
   { "slug": "superfunctions-extfn", "path": "extfn/core", "name": "@superfunctions/extfn" },
   { "slug": "superfunctions-extfn-cli", "path": "extfn/cli", "name": "@superfunctions/extfn-cli" },
   { "slug": "superfunctions-extfn-svelte", "path": "extfn/svelte", "name": "@superfunctions/extfn-svelte" },
@@ -28,5 +31,8 @@
   { "slug": "superfunctions-http-fastify", "path": "packages/http-fastify", "name": "@superfunctions/http-fastify" },
   { "slug": "superfunctions-http-hono", "path": "packages/http-hono", "name": "@superfunctions/http-hono" },
   { "slug": "superfunctions-http-next", "path": "packages/http-next", "name": "@superfunctions/http-next" },
-  { "slug": "superfunctions-http-sveltekit", "path": "packages/http-sveltekit", "name": "@superfunctions/http-sveltekit" }
+  { "slug": "superfunctions-http-sveltekit", "path": "packages/http-sveltekit", "name": "@superfunctions/http-sveltekit" },
+  { "slug": "superfunctions-metrics", "path": "packages/metrics", "name": "@superfunctions/metrics" },
+  { "slug": "superfunctions-queue", "path": "packages/queue", "name": "@superfunctions/queue" },
+  { "slug": "superfunctions-webhooks", "path": "packages/webhooks", "name": "@superfunctions/webhooks" }
 ]
