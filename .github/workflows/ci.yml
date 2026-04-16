@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - next
+      - main
+  pull_request:
+    branches:
+      - dev
+      - next
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      base_ref: ${{ steps.plan.outputs.base_ref }}
+      changed_files_count: ${{ steps.plan.outputs.changed_files_count }}
+      run_js: ${{ steps.plan.outputs.run_js }}
+      full_js: ${{ steps.plan.outputs.full_js }}
+      has_js_build: ${{ steps.plan.outputs.has_js_build }}
+      has_js_test: ${{ steps.plan.outputs.has_js_test }}
+      has_js_lint: ${{ steps.plan.outputs.has_js_lint }}
+      has_js_typecheck: ${{ steps.plan.outputs.has_js_typecheck }}
+      js_build_filters: ${{ steps.plan.outputs.js_build_filters }}
+      js_test_filters: ${{ steps.plan.outputs.js_test_filters }}
+      js_lint_filters: ${{ steps.plan.outputs.js_lint_filters }}
+      js_typecheck_filters: ${{ steps.plan.outputs.js_typecheck_filters }}
+      run_python: ${{ steps.plan.outputs.run_python }}
+      full_python: ${{ steps.plan.outputs.full_python }}
+      python_matrix: ${{ steps.plan.outputs.python_matrix }}
+      run_docs: ${{ steps.plan.outputs.run_docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Refresh common target branches
+        run: |
+          git fetch --no-tags --depth=1 origin dev || true
+          git fetch --no-tags --depth=1 origin next || true
+          git fetch --no-tags --depth=1 origin main || true
+
+      - name: Build CI plan
+        id: plan
+        run: node scripts/ci-plan.mjs
+
+  javascript:
+    name: JavaScript
+    needs: plan
+    if: needs.plan.outputs.run_js == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Show plan
+        run: |
+          echo "base: ${{ needs.plan.outputs.base_ref }}"
+          echo "changed files: ${{ needs.plan.outputs.changed_files_count }}"
+          echo "full js: ${{ needs.plan.outputs.full_js }}"
+          echo "build filters: ${{ needs.plan.outputs.js_build_filters }}"
+          echo "test filters: ${{ needs.plan.outputs.js_test_filters }}"
+          echo "lint filters: ${{ needs.plan.outputs.js_lint_filters }}"
+          echo "typecheck filters: ${{ needs.plan.outputs.js_typecheck_filters }}"
+
+      - name: Build
+        if: needs.plan.outputs.has_js_build == 'true'
+        run: |
+          if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
+            npx turbo run build
+          else
+            npx turbo run build ${{ needs.plan.outputs.js_build_filters }}
+          fi
+
+      - name: Typecheck
+        if: needs.plan.outputs.has_js_typecheck == 'true'
+        run: |
+          if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
+            npx turbo run typecheck
+          else
+            npx turbo run typecheck ${{ needs.plan.outputs.js_typecheck_filters }}
+          fi
+
+      - name: Test
+        if: needs.plan.outputs.has_js_test == 'true'
+        run: |
+          if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
+            npx turbo run test
+          else
+            npx turbo run test ${{ needs.plan.outputs.js_test_filters }}
+          fi
+
+      - name: Lint
+        if: needs.plan.outputs.has_js_lint == 'true'
+        run: |
+          if [ "${{ needs.plan.outputs.full_js }}" = "true" ]; then
+            npx turbo run lint
+          else
+            npx turbo run lint ${{ needs.plan.outputs.js_lint_filters }}
+          fi
+
+  python:
+    name: Python
+    needs: plan
+    if: needs.plan.outputs.run_python == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.plan.outputs.python_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            **/pyproject.toml
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip build
+
+      - name: Check package
+        run: node scripts/ci-run-python-package.mjs "${{ matrix.package.path }}"
+
+  docs:
+    name: Docs Guardrails
+    needs: plan
+    if: needs.plan.outputs.run_docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Docs checks
+        run: |
+          npm -w docs run build
+          npm -w docs run check:coverage
+          npm -w docs run check:content
+          npm -w docs run check:snippets
+          npm -w docs run check:links
