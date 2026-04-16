@@ -5,7 +5,7 @@ import { source } from "@/lib/source";
 type DocsLayoutProps = Parameters<typeof DocsLayout>[0];
 
 export default function Layout({ children }: { children: DocsLayoutProps["children"] }) {
-  const pageTree: DocsLayoutProps["tree"] = source.getPageTree();
+  const pageTree = source.getPageTree() as DocsLayoutProps["tree"];
 
   return (
     <DocsLayout

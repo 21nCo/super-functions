@@ -26,12 +26,6 @@
       "@/*": [
         "./*"
       ],
-      "@superfunctions/docs-theme": [
-        "../../packages/docs-theme/src/index.ts"
-      ],
-      "@superfunctions/docs-theme/tokens.css": [
-        "../../packages/docs-theme/src/tokens.css"
-      ],
       "fumadocs-mdx:collections/*": [
         "./.source/*"
       ]

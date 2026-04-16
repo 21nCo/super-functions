@@ -9,15 +9,14 @@ import defaultMdxComponents from "fumadocs-ui/mdx";
 import { notFound } from "next/navigation";
 import { gitConfig } from "@/app/layout.config";
 import { Mermaid } from "@/components/mdx/mermaid";
-import type { ComponentType } from "react";
-import type { TOCItemType } from "fumadocs-core/toc";
+import type { ComponentProps, ComponentType } from "react";
 
 interface DocsPageData {
   body: ComponentType<{ components?: Record<string, unknown> }>;
   description?: string;
   full?: boolean;
   title: string;
-  toc?: TOCItemType[];
+  toc?: ComponentProps<typeof DocsPage>["toc"];
 }
 
 export default async function Page(props: {

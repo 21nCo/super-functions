@@ -1,4 +1,4 @@
-export { DocsRootLayout } from "./layout.js";
-export { createBaseLayoutOptions } from "./config.js";
-export type { DocsRootLayoutProps } from "./layout.js";
-export type { DocsBaseLayoutProps, DocsGitConfig } from "./config.js";
+export { DocsRootLayout } from "./layout";
+export { createBaseLayoutOptions } from "./config";
+export type { DocsRootLayoutProps } from "./layout";
+export type { DocsBaseLayoutProps, DocsGitConfig } from "./config";

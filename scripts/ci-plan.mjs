@@ -129,11 +129,19 @@ function resolveDiffBase(event) {
 }
 
 function parseChangedEntries(baseRef) {
-  const output = execFileSync(
-    "git",
-    ["diff", "--name-status", "--find-renames", "-z", `${baseRef}...HEAD`],
-    { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
-  );
+  let output = "";
+
+  if (baseRef !== "HEAD") {
+    const range = gitOk(["merge-base", baseRef, "HEAD"])
+      ? `${baseRef}...HEAD`
+      : `${baseRef}..HEAD`;
+
+    output = execFileSync(
+      "git",
+      ["diff", "--name-status", "--find-renames", "-z", range],
+      { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+  }
 
   const tokens = output.split("\0").filter(Boolean);
   const entries = [];
