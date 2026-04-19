@@ -11,8 +11,8 @@ const mockSchema: DatafnSchema = {
       name: "tasks",
       version: 1,
       fields: [
-        { name: "title", type: "string" },
-        { name: "status", type: "string" },
+        { name: "title", type: "string", required: false },
+        { name: "status", type: "string", required: false },
       ],
     },
   ],
@@ -213,6 +213,7 @@ describe("executeSearchQuery", () => {
     const provider = {
       name: "chunked-search",
       search: vi.fn().mockResolvedValue(candidateIds),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
     } as SearchProvider;
     const chunkedStore: DataStore = {
       getRecords: () => candidateIds.map((id) => ({ id, title: id })),

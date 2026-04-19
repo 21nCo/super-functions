@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../../server.js";
+import type { DatafnSchema } from "../../../core-types.js";
 
 const namespace = "user:owner";
 const globalPermissionsTable = "__datafn_permissions_global";
@@ -37,7 +38,7 @@ const schema = {
     },
   ],
   relations: [],
-};
+} satisfies DatafnSchema;
 
 describe("share SPV2 mutation semantics", () => {
   let db: any;
@@ -300,6 +301,40 @@ describe("share SPV2 mutation semantics", () => {
 
     const grantsAfterUnshare = await listGlobalGrants();
     expect(grantsAfterUnshare).toHaveLength(0);
+  });
+
+  it("rejects resource scope share and unshare for non-owners", async () => {
+    actorId = "user:partner";
+
+    const share = await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "c5b",
+      mutationId: "m43",
+      scope: "resource",
+      shareWith: { principalId: "user:third-party", level: "viewer" },
+    });
+    expect(share.res.status).toBe(200);
+    expect(share.body.ok).toBe(true);
+    expect(share.body.result.ok).toBe(false);
+    expect(share.body.result.errors[0].code).toBe("FORBIDDEN");
+    expect(share.body.result.errors[0].message).toBe("Authorization denied");
+
+    const unshare = await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "unshare",
+      clientId: "c5b",
+      mutationId: "m44",
+      scope: "resource",
+      shareWith: { principalId: "user:third-party" },
+    });
+    expect(unshare.res.status).toBe(200);
+    expect(unshare.body.ok).toBe(true);
+    expect(unshare.body.result.ok).toBe(false);
+    expect(unshare.body.result.errors[0].code).toBe("FORBIDDEN");
+    expect(unshare.body.result.errors[0].message).toBe("Authorization denied");
   });
 
   it("enforces crossNsShareable=false with deterministic error", async () => {

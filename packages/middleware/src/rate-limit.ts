@@ -32,6 +32,12 @@ export interface RateLimiter {
   reset(key: string): Promise<void>;
 }
 
+interface KVSetInput {
+  key: string;
+  value: string;
+  ttlSeconds?: number;
+}
+
 interface FixedWindowState {
   count: number;
   windowStart: number;
@@ -90,7 +96,7 @@ function ensureKV(p: Adapter | KVStoreAdapter, now: () => number): KVStoreAdapte
         }
         return res.value;
       },
-      async set(input) {
+      async set(input: KVSetInput) {
         const expiresAt = input.ttlSeconds
           ? new Date(now() + input.ttlSeconds * 1000).toISOString()
           : undefined;
@@ -101,7 +107,7 @@ function ensureKV(p: Adapter | KVStoreAdapter, now: () => number): KVStoreAdapte
           update: { value: input.value, expiresAt },
         });
       },
-      async delete(key) {
+      async delete(key: string) {
         await p.delete({ model: 'rate_limits', where: [{ field: 'key', operator: 'eq', value: key }] });
       },
     };

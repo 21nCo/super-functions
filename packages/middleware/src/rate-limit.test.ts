@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRateLimiter, createInMemoryKVStore, type KVStoreAdapter } from './rate-limit.js';
 
+interface KVSetInput {
+  key: string;
+  value: string;
+  ttlSeconds?: number;
+}
+
 describe('rate-limit', () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -200,7 +206,7 @@ describe('rate-limit', () => {
         async get(key: string) {
           return internalStore.get(key) ?? null;
         },
-        async set(input) {
+        async set(input: KVSetInput) {
           internalStore.set(input.key, input.value);
         },
         async delete(key: string) {

@@ -11,11 +11,16 @@ from superfunctions.http import (
     OpenApiGenerationError,
     Response,
     Route,
+    RouteMeta,
     SetCookie,
     generate_openapi_document,
-    serialize_set_cookie,
     serialize_response_cookies,
+    serialize_set_cookie,
 )
+
+
+def make_route_meta(**kwargs: object) -> RouteMeta:
+    return RouteMeta.model_validate(kwargs)
 
 
 def test_generate_openapi_document_is_deterministic() -> None:
@@ -24,8 +29,8 @@ def test_generate_openapi_document_is_deterministic() -> None:
             method=HttpMethod.POST,
             path="/auth/session",
             handler=lambda request, context: Response(status=201, body={}),
-            meta={
-                "openapi": {
+            meta=make_route_meta(
+                openapi={
                     "operationId": "createSession",
                     "summary": "Create session",
                     "tags": ["session", "auth"],
@@ -47,18 +52,18 @@ def test_generate_openapi_document_is_deterministic() -> None:
                         }
                     },
                 }
-            },
+            ),
         ),
         Route(
             method=HttpMethod.GET,
             path="/users/:user_id",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={
-                "openapi": {
+            meta=make_route_meta(
+                openapi={
                     "operationId": "getUser",
                     "tags": ["users", "auth"],
                 }
-            },
+            ),
         ),
     ]
 
@@ -127,12 +132,12 @@ def test_generate_openapi_document_fails_for_missing_operation_id() -> None:
             method=HttpMethod.GET,
             path="/auth/session",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={
-                "openapi": {
+            meta=make_route_meta(
+                openapi={
                     "include": True,
                     "summary": "Read session",
                 }
-            },
+            ),
         )
     ]
 
@@ -149,13 +154,13 @@ def test_generate_openapi_document_skips_excluded_routes() -> None:
             method=HttpMethod.GET,
             path="/internal/health",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={"openapi": {"include": False}},
+            meta=make_route_meta(openapi={"include": False}),
         ),
         Route(
             method=HttpMethod.GET,
             path="/public/health",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={"openapi": {"operationId": "healthcheck"}},
+            meta=make_route_meta(openapi={"operationId": "healthcheck"}),
         ),
     ]
 
@@ -177,13 +182,13 @@ def test_generate_openapi_document_fails_for_duplicate_normalized_operations() -
             method=HttpMethod.GET,
             path="/users/:user_id",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={"openapi": {"operationId": "getUserByColonPath"}},
+            meta=make_route_meta(openapi={"operationId": "getUserByColonPath"}),
         ),
         Route(
             method=HttpMethod.GET,
             path="/users/{user_id}",
             handler=lambda request, context: Response(status=200, body={}),
-            meta={"openapi": {"operationId": "getUserByBracePath"}},
+            meta=make_route_meta(openapi={"operationId": "getUserByBracePath"}),
         ),
     ]
 
@@ -205,7 +210,9 @@ def test_generate_openapi_document_defaults_empty_response_schemas_to_success() 
             method=HttpMethod.GET,
             path="/users",
             handler=lambda request, context: Response(status=200, body=[]),
-            meta={"openapi": {"operationId": "listUsers", "responseSchemas": {}}},
+            meta=make_route_meta(
+                openapi={"operationId": "listUsers", "responseSchemas": {}}
+            ),
         )
     ]
 
@@ -219,8 +226,10 @@ def test_generate_openapi_document_defaults_empty_response_schemas_to_success() 
 def test_python_http_preserves_repeated_cookies_for_openapi_phase() -> None:
     response = Response(
         cookies=[
-            SetCookie(name="__Secure-authfn.session", value="opaque_1"),
-            SetCookie(name="authfn.csrf", value="csrf_1", httpOnly=False),
+            SetCookie.model_validate({"name": "__Secure-authfn.session", "value": "opaque_1"}),
+            SetCookie.model_validate(
+                {"name": "authfn.csrf", "value": "csrf_1", "httpOnly": False}
+            ),
         ]
     )
 
@@ -232,7 +241,9 @@ def test_python_http_preserves_repeated_cookies_for_openapi_phase() -> None:
 
 def test_set_cookie_validation_rejects_invalid_same_site() -> None:
     with pytest.raises(ValidationError):
-        SetCookie(name="authfn.session", value="opaque", sameSite="invalid")
+        SetCookie.model_validate(
+            {"name": "authfn.session", "value": "opaque", "sameSite": "invalid"}
+        )
 
 
 def test_http_not_implemented_error_uses_http_specific_name() -> None:
@@ -243,10 +254,19 @@ def test_http_not_implemented_error_uses_http_specific_name() -> None:
 
 
 def test_serialize_set_cookie_normalizes_expires_to_utc() -> None:
-    cookie = SetCookie(
-        name="session",
-        value="opaque",
-        expires=datetime(2026, 3, 28, 12, 30, tzinfo=timezone(timedelta(hours=5, minutes=30))),
+    cookie = SetCookie.model_validate(
+        {
+            "name": "session",
+            "value": "opaque",
+            "expires": datetime(
+                2026,
+                3,
+                28,
+                12,
+                30,
+                tzinfo=timezone(timedelta(hours=5, minutes=30)),
+            ),
+        }
     )
 
     assert serialize_set_cookie(cookie) == (

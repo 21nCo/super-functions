@@ -34,6 +34,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure Rollup native package
+        run: node ../../scripts/ci-install-rollup-native.mjs
+
       - name: Run tests
         run: npm test
-

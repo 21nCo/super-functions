@@ -330,8 +330,8 @@ describe("Phase 09: Server Sync Semantics", () => {
       expect(body1.ok).toBe(true);
       expect(body1.result.ok).toBe(true);
       expect(body1.result.changes).toHaveLength(1);
-      // After FIX-A, insert ops preserve op type in changelog (was "upsert", now "insert")
-      expect(body1.result.changes[0].op).toBe("insert");
+      // Pull normalizes non-delete resource changes to sync upserts.
+      expect(body1.result.changes[0].op).toBe("upsert");
       expect(body1.result.changes[0].id).toBe("task:1");
       expect(body1.result.changes[0].record.title).toBe("A");
       expect(body1.result.nextCursor).toBe("1");
@@ -457,12 +457,13 @@ describe("Phase 09: Server Sync Semantics", () => {
       const body2 = await res2.json();
       expect(body2.ok).toBe(true);
       expect(body2.result.ok).toBe(true);
-      expect(body2.result.changes.length).toBeGreaterThanOrEqual(1);
-      // The merge change should be present
-      const mergeChange = body2.result.changes.find((c: any) => c.op === "merge");
-      expect(mergeChange).toBeDefined();
-      expect(mergeChange.id).toBe("task:1");
-      expect(mergeChange.record.title).toBe("P");
+      expect(body2.result.changes.length).toBeGreaterThanOrEqual(2);
+      const taskUpserts = body2.result.changes.filter(
+        (c: any) => c.op === "upsert" && c.id === "task:1",
+      );
+      expect(taskUpserts).toHaveLength(2);
+      expect(taskUpserts[0].record.title).toBe("Initial");
+      expect(taskUpserts[1].record.title).toBe("P");
     });
 
     it("TV-SERVER-PUSH-002: Missing clientId is rejected", async () => {

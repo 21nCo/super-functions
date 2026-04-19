@@ -1,4 +1,3 @@
-import { NotFoundError } from "@superfunctions/db";
 import type { Adapter, WhereClause } from "@superfunctions/db";
 import type {
   OAuthConsentRecord,
@@ -156,7 +155,7 @@ export class DbAdapterOAuthStateStore implements OAuthStateStore {
 
       return mapStateRowToRecord(updated);
     } catch (error) {
-      if (error instanceof NotFoundError) {
+      if (isAdapterNotFoundError(error)) {
         return null;
       }
       throw error;
@@ -169,6 +168,15 @@ export class DbAdapterOAuthStateStore implements OAuthStateStore {
       where: [{ field: "expires_at", operator: "lt", value: before }]
     });
   }
+}
+
+function isAdapterNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const raw = error as { code?: unknown; name?: unknown };
+  return raw.code === "ADAPTER_NOT_FOUND" || raw.name === "NotFoundError";
 }
 
 export class DbAdapterTokenVault implements TokenVault {

@@ -209,9 +209,9 @@ describe("sync push capability injection", () => {
     expect(row.trashedBy).toBe("user:bob");
 
     const pullResult = await pullLegacy("0");
-    const mergeChange = pullResult.changes.find(
-      (change: any) => change.id === "todo:2" && change.op === "merge",
-    );
+    const mergeChange = pullResult.changes
+      .filter((change: any) => change.id === "todo:2" && change.op === "upsert")
+      .at(-1);
     expect(mergeChange).toBeDefined();
     expect(mergeChange.record.text).toBe("trash me");
     expect(mergeChange.record.trashedBy).toBe("user:bob");
@@ -255,9 +255,9 @@ describe("sync push capability injection", () => {
     expect(row.isArchived).toBe(true);
 
     const pullResult = await pullLegacy("0");
-    const mergeChange = pullResult.changes.find(
-      (change: any) => change.id === "todo:3" && change.op === "merge",
-    );
+    const mergeChange = pullResult.changes
+      .filter((change: any) => change.id === "todo:3" && change.op === "upsert")
+      .at(-1);
     expect(mergeChange).toBeDefined();
     expect(mergeChange.record.isArchived).toBe(true);
     expect(mergeChange.record.text).toBe("archive me");
@@ -522,8 +522,14 @@ describe("sync push capability injection", () => {
       expect(shared.body.result.errors).toHaveLength(0);
 
       const permissionAfterShare = await shareDb.findOne({
-        model: "__datafn_permissions_docs",
-        where: [{ field: "id", operator: "eq", value: "doc:1:user:viewer" }],
+        model: "__datafn_permissions_global",
+        where: [
+          {
+            field: "id",
+            operator: "eq",
+            value: "docs:ns:share:doc:1:user:viewer",
+          },
+        ],
         namespace: "ns:share",
       });
       expect(permissionAfterShare).not.toBeNull();
@@ -545,8 +551,14 @@ describe("sync push capability injection", () => {
       expect(unshared.body.result.errors).toHaveLength(0);
 
       const permissionAfterUnshare = await shareDb.findOne({
-        model: "__datafn_permissions_docs",
-        where: [{ field: "id", operator: "eq", value: "doc:1:user:viewer" }],
+        model: "__datafn_permissions_global",
+        where: [
+          {
+            field: "id",
+            operator: "eq",
+            value: "docs:ns:share:doc:1:user:viewer",
+          },
+        ],
         namespace: "ns:share",
       });
       expect(permissionAfterUnshare).toBeNull();

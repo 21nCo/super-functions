@@ -401,9 +401,14 @@ describe("oauth-router route factories", () => {
     });
     const router = createRouter({ routes });
 
-    await expect(
-      router.handle(new Request("https://app.example/auth/social/callback/google"))
-    ).rejects.toThrow("redirectUri");
+    const response = await router.handle(
+      new Request("https://app.example/auth/social/callback/google")
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "redirectUri is required",
+      code: "OAUTH_ROUTE_INVALID_INPUT",
+    });
   });
 
   it("rejects invalid disconnect payload fields before calling disconnect", async () => {
@@ -415,18 +420,21 @@ describe("oauth-router route factories", () => {
     });
     const router = createRouter({ routes });
 
-    await expect(
-      router.handle(
-        new Request("http://localhost/oauth/connections/disconnect/google", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            connectionId: "conn_01",
-            revokeRemote: "false"
-          })
+    const response = await router.handle(
+      new Request("http://localhost/oauth/connections/disconnect/google", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          connectionId: "conn_01",
+          revokeRemote: "false"
         })
-      )
-    ).rejects.toThrow("revokeRemote");
+      })
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "revokeRemote must be a boolean",
+      code: "OAUTH_ROUTE_INVALID_INPUT",
+    });
     expect(disconnect).not.toHaveBeenCalled();
   });
 
@@ -439,18 +447,21 @@ describe("oauth-router route factories", () => {
     });
     const router = createRouter({ routes });
 
-    await expect(
-      router.handle(
-        new Request("http://localhost/oauth/connections/disconnect/google", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            connectionId: 123,
-            revokeRemote: true
-          })
+    const response = await router.handle(
+      new Request("http://localhost/oauth/connections/disconnect/google", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          connectionId: 123,
+          revokeRemote: true
         })
-      )
-    ).rejects.toThrow("connectionId");
+      })
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "connectionId is required",
+      code: "OAUTH_ROUTE_INVALID_INPUT",
+    });
     expect(disconnect).not.toHaveBeenCalled();
   });
 
@@ -463,18 +474,21 @@ describe("oauth-router route factories", () => {
     });
     const router = createRouter({ routes });
 
-    await expect(
-      router.handle(
-        new Request("http://localhost/auth/social/disconnect/google", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            connectionId: "conn_01",
-            tokenTypeHint: "bad_hint"
-          })
+    const response = await router.handle(
+      new Request("http://localhost/auth/social/disconnect/google", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          connectionId: "conn_01",
+          tokenTypeHint: "bad_hint"
         })
-      )
-    ).rejects.toThrow("tokenTypeHint");
+      })
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "tokenTypeHint must be access_token or refresh_token",
+      code: "OAUTH_ROUTE_INVALID_INPUT",
+    });
     expect(disconnect).not.toHaveBeenCalled();
   });
 
@@ -487,15 +501,18 @@ describe("oauth-router route factories", () => {
     });
     const router = createRouter({ routes });
 
-    await expect(
-      router.handle(
-        new Request("http://localhost/auth/social/disconnect/google", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "null"
-        })
-      )
-    ).rejects.toThrow("disconnect body");
+    const response = await router.handle(
+      new Request("http://localhost/auth/social/disconnect/google", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null"
+      })
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "disconnect body must be a JSON object",
+      code: "OAUTH_ROUTE_INVALID_INPUT",
+    });
     expect(disconnect).not.toHaveBeenCalled();
   });
 });

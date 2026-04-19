@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Callable, Dict, List
+from enum import Enum
+from typing import Any, Callable, Dict, List, Sequence, cast
 
-from fastapi import APIRouter, Request as FastAPIRequest
-from fastapi.responses import JSONResponse, Response as FastAPIResponse
+from fastapi import APIRouter
+from fastapi import Request as FastAPIRequest
+from fastapi.responses import JSONResponse
+from fastapi.responses import Response as FastAPIResponse
+from fastapi.routing import APIRoute
 from superfunctions.http import (
     HttpError,
-    HttpMethod,
-    Request,
     Response,
     Route,
     RouteContext,
@@ -65,13 +67,15 @@ class FastAPIRequestAdapter:
 def to_fastapi_response(response: Response) -> FastAPIResponse:
     """
     Convert superfunctions.http.Response to FastAPI Response.
-    
+
     Args:
         response: superfunctions Response object
-    
+
     Returns:
         FastAPI Response object
     """
+    fastapi_response: FastAPIResponse
+
     if isinstance(response.body, (dict, list)):
         fastapi_response = JSONResponse(
             content=response.body,
@@ -130,11 +134,11 @@ def _internal_error_response() -> FastAPIResponse:
 def create_handler(handler: Callable, route: Route):
     """
     Create a FastAPI handler from a superfunctions handler.
-    
+
     Args:
         handler: superfunctions route handler
         path: Route path for extracting path parameters
-    
+
     Returns:
         FastAPI-compatible async handler
     """
@@ -143,7 +147,7 @@ def create_handler(handler: Callable, route: Route):
         try:
             # Create adapted request
             adapted_request = FastAPIRequestAdapter(request)
-            
+
             # Create context
             context = RouteContext(
                 params=dict(request.path_params),
@@ -152,17 +156,17 @@ def create_handler(handler: Callable, route: Route):
                 url=str(request.url),
                 method=request.method,
             )
-            
+
             # Call handler
             response = await handler(adapted_request, context)
-            
+
             # Convert response
             return to_fastapi_response(response)
-        
+
         except HttpError as e:
             # Convert HTTP errors to responses
             return to_fastapi_response(e.to_response())
-        
+
         except Exception:
             logger.exception("Unhandled error while processing FastAPI route")
             return _internal_error_response()
@@ -172,36 +176,40 @@ def create_handler(handler: Callable, route: Route):
     return fastapi_handler
 
 
-def create_router(routes: List[Route], prefix: str = "", tags: List[str] = None) -> APIRouter:
+def create_router(
+    routes: List[Route],
+    prefix: str = "",
+    tags: Sequence[str | Enum] | None = None,
+) -> APIRouter:
     """
     Create a FastAPI router from superfunctions routes.
-    
+
     Args:
         routes: List of superfunctions Route objects
         prefix: URL prefix for all routes
         tags: List of tags for OpenAPI documentation
-    
+
     Returns:
         FastAPI APIRouter instance
-    
+
     Example:
         >>> from superfunctions.http import Route, HttpMethod, Response
         >>> from superfunctions_fastapi import create_router
-        >>> 
+        >>>
         >>> async def get_user(request, context):
         ...     user_id = context.params["id"]
         ...     return Response(status=200, body={"id": user_id})
-        >>> 
+        >>>
         >>> routes = [
         ...     Route(method=HttpMethod.GET, path="/users/{id}", handler=get_user)
         ... ]
-        >>> 
+        >>>
         >>> router = create_router(routes, prefix="/api")
-        >>> 
+        >>>
         >>> # Use with FastAPI app
         >>> app.include_router(router)
     """
-    router = APIRouter(prefix=prefix, tags=tags or [])
+    router = APIRouter(prefix=prefix, tags=list(tags) if tags is not None else None)
 
     for route in routes:
         # Convert superfunctions path to FastAPI path
@@ -215,6 +223,7 @@ def create_router(routes: List[Route], prefix: str = "", tags: List[str] = None)
 
         # Register route based on method
         method_lower = route.method.value.lower()
+        routes_before = len(router.routes)
 
         if method_lower == "get":
             router.get(fastapi_path)(handler)
@@ -231,9 +240,12 @@ def create_router(routes: List[Route], prefix: str = "", tags: List[str] = None)
         elif method_lower == "head":
             router.head(fastapi_path)(handler)
 
-        if router.routes:
-            setattr(router.routes[-1].endpoint, SUPERFUNCTIONS_ROUTE_ATTR, route)
-            setattr(router.routes[-1].endpoint, SUPERFUNCTIONS_ROUTE_META_ATTR, route.meta)
+        if len(router.routes) == routes_before:
+            raise ValueError(f"Unsupported HTTP method: {route.method.value}")
+
+        registered_route = cast(APIRoute, router.routes[-1])
+        setattr(registered_route.endpoint, SUPERFUNCTIONS_ROUTE_ATTR, route)
+        setattr(registered_route.endpoint, SUPERFUNCTIONS_ROUTE_META_ATTR, route.meta)
 
     return router
 
@@ -241,25 +253,25 @@ def create_router(routes: List[Route], prefix: str = "", tags: List[str] = None)
 def to_fastapi_handler(handler: Callable) -> Callable:
     """
     Convert a single superfunctions handler to FastAPI handler.
-    
+
     This is useful for adding handlers directly to FastAPI routes.
-    
+
     Args:
         handler: superfunctions route handler
-    
+
     Returns:
         FastAPI-compatible handler
-    
+
     Example:
         >>> from fastapi import FastAPI
         >>> from superfunctions_fastapi import to_fastapi_handler
         >>> from superfunctions.http import Response
-        >>> 
+        >>>
         >>> app = FastAPI()
-        >>> 
+        >>>
         >>> async def get_user(request, context):
         ...     return Response(status=200, body={"id": context.params["id"]})
-        >>> 
+        >>>
         >>> @app.get("/users/{id}")
         >>> async def route(request: Request, id: str):
         ...     return await to_fastapi_handler(get_user)(request, id=id)
@@ -274,7 +286,7 @@ def to_fastapi_handler(handler: Callable) -> Callable:
             url=str(request.url),
             method=request.method,
         )
-        
+
         try:
             response = await handler(adapted_request, context)
             return to_fastapi_response(response)

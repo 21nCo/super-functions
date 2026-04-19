@@ -2,7 +2,7 @@
  * DataFn Envelope Utilities
  */
 
-import type { DatafnEnvelope, DatafnError } from "./errors.js";
+import type { DatafnEnvelope } from "./errors.js";
 
 /**
  * Unwraps a DatafnEnvelope, returning the result for ok:true

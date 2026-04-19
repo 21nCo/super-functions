@@ -42,7 +42,8 @@ It is not a production runtime package and should not be used as your durable OA
 - If you need production routing, use `@superfunctions/oauth-router`.
 - If you need production token persistence, use `@superfunctions/oauth-storage` and prefer `EncryptedTokenVault`.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-testing.mdx](../../docs/content/docs/authentication/oauth-testing.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- Shared storage: [../oauth-storage/README.md](../oauth-storage/README.md)
+- Flow orchestration: [../oauth-flow/README.md](../oauth-flow/README.md)
+- Route factories: [../oauth-router/README.md](../oauth-router/README.md)

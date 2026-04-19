@@ -48,7 +48,8 @@ It does not own state validation, token persistence, or route generation. Pair i
 - Tune retries for provider-specific 429/5xx behavior instead of wrapping token calls with ad hoc fetch logic.
 - Treat provider revocation as best effort unless your product contract requires remote confirmation before local cleanup.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-http.mdx](../../docs/content/docs/authentication/oauth-http.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)
+- Provider descriptors: [../oauth-providers/README.md](../oauth-providers/README.md)
+- Route factories: [../oauth-router/README.md](../oauth-router/README.md)

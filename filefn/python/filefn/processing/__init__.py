@@ -55,13 +55,17 @@ def create_thumbnail_processor(config: Optional[ThumbnailConfig] = None) -> Proc
 
 
 def create_pdf_preview_processor(config: Optional[PdfPreviewConfig] = None) -> Processor:
-    from .processors.pdf_preview import create_pdf_preview_processor as _create_pdf_preview_processor
+    from .processors.pdf_preview import (
+        create_pdf_preview_processor as _create_pdf_preview_processor,
+    )
 
     return _create_pdf_preview_processor(config)
 
 
 def create_compression_processor(config: Optional[CompressionConfig] = None) -> Processor:
-    from .processors.compression import create_compression_processor as _create_compression_processor
+    from .processors.compression import (
+        create_compression_processor as _create_compression_processor,
+    )
 
     return _create_compression_processor(config)
 
@@ -76,7 +80,9 @@ def create_ocr_processor(config: Optional[OCRConfig] = None) -> Processor:
 
 
 def create_image_transform_processor(config: ImageTransformConfig) -> Processor:
-    from .processors.image_transform import create_image_transform_processor as _create_image_transform_processor
+    from .processors.image_transform import (
+        create_image_transform_processor as _create_image_transform_processor,
+    )
 
     return _create_image_transform_processor(config)
 

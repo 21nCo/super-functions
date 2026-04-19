@@ -6,13 +6,13 @@ import asyncio
 import logging
 import re
 import threading
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Coroutine, Dict, List, cast
 
-from flask import Blueprint, Request as FlaskRequest, Response as FlaskResponse, jsonify, request
+from flask import Blueprint, jsonify, request
+from flask import Request as FlaskRequest
+from flask import Response as FlaskResponse
 from superfunctions.http import (
     HttpError,
-    HttpMethod,
-    Request,
     Response,
     Route,
     RouteContext,
@@ -66,10 +66,10 @@ class FlaskRequestAdapter:
 def to_flask_response(response: Response) -> FlaskResponse:
     """
     Convert superfunctions.http.Response to Flask Response.
-    
+
     Args:
         response: superfunctions Response object
-    
+
     Returns:
         Flask Response object
     """
@@ -89,7 +89,7 @@ def to_flask_response(response: Response) -> FlaskResponse:
         )
     else:
         flask_response = FlaskResponse(status=response.status)
-    
+
     # Add headers
     for key, value in response.headers.items():
         flask_response.headers[key] = value
@@ -106,7 +106,7 @@ def to_flask_response(response: Response) -> FlaskResponse:
             httponly=cookie.http_only,
             samesite=cookie.same_site,
         )
-    
+
     return flask_response
 
 
@@ -128,7 +128,7 @@ def _run_async_handler(factory: Callable[[], Awaitable[Response]]) -> Response:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(factory())
+        return asyncio.run(cast(Coroutine[Any, Any, Response], factory()))
 
     result: dict[str, Response] = {}
     error: dict[str, BaseException] = {}
@@ -157,7 +157,7 @@ def _run_async_handler(factory: Callable[[], Awaitable[Response]]) -> Response:
 
 
 def _create_request_context(path_params: Dict[str, Any]) -> tuple[FlaskRequestAdapter, RouteContext]:
-    current_request = request._get_current_object()
+    current_request = cast(FlaskRequest, cast(Any, request)._get_current_object())
     adapted_request = FlaskRequestAdapter(current_request)
     context = RouteContext(
         params=path_params,
@@ -189,10 +189,10 @@ def _invoke_flask_handler(
 def create_handler(handler: Callable, route: Route):
     """
     Create a Flask handler from a superfunctions handler.
-    
+
     Args:
         handler: superfunctions route handler
-    
+
     Returns:
         Flask-compatible handler
     """
@@ -212,29 +212,29 @@ def create_blueprint(
 ) -> Blueprint:
     """
     Create a Flask Blueprint from superfunctions routes.
-    
+
     Args:
         routes: List of superfunctions Route objects
         name: Blueprint name
         url_prefix: URL prefix for all routes
-    
+
     Returns:
         Flask Blueprint instance
-    
+
     Example:
         >>> from superfunctions.http import Route, HttpMethod, Response
         >>> from superfunctions_flask import create_blueprint
-        >>> 
+        >>>
         >>> async def get_user(request, context):
         ...     user_id = context.params["id"]
         ...     return Response(status=200, body={"id": user_id})
-        >>> 
+        >>>
         >>> routes = [
         ...     Route(method=HttpMethod.GET, path="/users/<id>", handler=get_user)
         ... ]
-        >>> 
+        >>>
         >>> blueprint = create_blueprint(routes, url_prefix="/api")
-        >>> 
+        >>>
         >>> # Use with Flask app
         >>> app.register_blueprint(blueprint)
     """
@@ -269,25 +269,25 @@ def create_blueprint(
 def to_flask_handler(handler: Callable) -> Callable:
     """
     Convert a single superfunctions handler to Flask handler.
-    
+
     This is useful for adding handlers directly to Flask routes.
-    
+
     Args:
         handler: superfunctions route handler
-    
+
     Returns:
         Flask-compatible handler
-    
+
     Example:
         >>> from flask import Flask
         >>> from superfunctions_flask import to_flask_handler
         >>> from superfunctions.http import Response
-        >>> 
+        >>>
         >>> app = Flask(__name__)
-        >>> 
+        >>>
         >>> async def get_user(request, context):
         ...     return Response(status=200, body={"id": context.params["id"]})
-        >>> 
+        >>>
         >>> @app.route("/users/<id>")
         >>> def route(id):
         ...     return to_flask_handler(get_user)(id=id)

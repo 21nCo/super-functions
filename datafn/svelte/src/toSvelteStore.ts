@@ -15,17 +15,19 @@ export type ClientRef<C> = {
   subscribe(fn: (client: C) => void): () => void;
 };
 
-/**
- * Store type that wraps signal value with state properties.
- * Returned by both overloads.
- */
-export type DatafnSvelteStore<T> = Readable<{
+export type DatafnSvelteValue<T> = {
   data: T | undefined;
   loading: boolean;
   error: DatafnError | null;
   refreshing: boolean;
   nextCursor: string | null;
-}>;
+};
+
+/**
+ * Store type that wraps signal value with state properties.
+ * Returned by both overloads.
+ */
+export type DatafnSvelteStore<T> = Readable<DatafnSvelteValue<T>>;
 
 /**
  * Convert a lifecycle-aware DataFn signal directly to a Svelte readable store.
@@ -76,7 +78,7 @@ export function toSvelteStore<T, C = any>(
  * deduplicated signal safely.
  */
 function toSvelteStoreDirect<T>(signal: DatafnSignal<T>): DatafnSvelteStore<T> {
-  return readable(
+  return readable<DatafnSvelteValue<T>>(
     {
       data: signal.get(),
       loading: signal.loading,
@@ -110,7 +112,7 @@ function toSvelteStoreFactory<T, C>(
   clientRef: ClientRef<C>,
   signalFactory: (client: C) => DatafnSignal<T>,
 ): DatafnSvelteStore<T> {
-  return readable(
+  return readable<DatafnSvelteValue<T>>(
     {
       data: undefined,
       loading: true,

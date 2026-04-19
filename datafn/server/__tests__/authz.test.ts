@@ -71,7 +71,7 @@ describe("Server Authorization (AUTH-001)", () => {
     const body = await res.json();
     expect(body.ok).toBe(false);
     expect(body.error.code).toBe("FORBIDDEN");
-    expect(body.error.message).toBe("Authorization denied");
+    expect(body.error.message).toBe("Read access denied");
     expect(body.error.details.path).toBe("select[1]");
   });
 

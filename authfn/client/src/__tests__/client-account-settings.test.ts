@@ -13,22 +13,34 @@ import { createAuthFnClient } from '../index.js';
 
 const TEST_NOW = new Date('2026-03-25T00:00:00.000Z');
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const TEST_2FA_KEY = Buffer.alloc(32, 7);
 const ACCOUNT_EMAIL = 'bea@example.com';
 const ACCOUNT_PASSWORD = 'Sup3rSecurePassphrase!';
 
-function createAccountSettingsConfig(): AuthFnConfig {
+function createClock(start: Date = TEST_NOW) {
+  let current = new Date(start);
+  return {
+    now: () => new Date(current),
+    advanceSeconds: (seconds: number) => {
+      current = new Date(current.getTime() + (seconds * 1000));
+    }
+  };
+}
+
+function createAccountSettingsConfig(now: () => Date = () => TEST_NOW): AuthFnConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
       authFnPasswordPlugin(),
       authFnApiKeyPlugin({
-        now: () => TEST_NOW
+        now
       }),
       authFnTwoFactorPlugin({
         issuer: 'authfn-client-tests',
-        now: () => TEST_NOW,
-        recoveryCodeCount: 3
+        now,
+        recoveryCodeCount: 3,
+        encryptionKeyResolver: () => TEST_2FA_KEY
       })
     ]
   };
@@ -206,7 +218,11 @@ function generateTotp(secret: string, now: Date = TEST_NOW, digits = 6, periodSe
 
 describe('@authfn/client account-settings flows', () => {
   it('covers 2fa challenge/disable and the api key lifecycle via typed methods', async () => {
-    const { auth, client } = createClient(createAccountSettingsConfig(), 'https://account.example.com/auth');
+    const clock = createClock();
+    const { auth, client } = createClient(
+      createAccountSettingsConfig(clock.now),
+      'https://account.example.com/auth'
+    );
 
     const signUp = await client.signUpWithPassword({
       email: ACCOUNT_EMAIL,
@@ -239,9 +255,10 @@ describe('@authfn/client account-settings flows', () => {
     }
     expect(gated.error.code).toBe('AUTHFN_2FA_REQUIRED');
 
+    clock.advanceSeconds(30);
     const challenge = await client.completeTwoFactorChallenge({
       challengeId: String(gated.error.details?.challengeId),
-      code: generateTotp(enrollment.data.secret)
+      code: generateTotp(enrollment.data.secret, clock.now())
     });
     expect(challenge.ok).toBe(true);
     if (challenge.ok) {
@@ -283,8 +300,9 @@ describe('@authfn/client account-settings flows', () => {
     });
     expect(revokedKey.ok).toBe(true);
 
+    clock.advanceSeconds(30);
     const disabled = await client.disableTwoFactor({
-      code: generateTotp(enrollment.data.secret)
+      code: generateTotp(enrollment.data.secret, clock.now())
     });
     expect(disabled.ok).toBe(true);
     if (disabled.ok) {

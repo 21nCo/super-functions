@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../../server.js";
+import type { DatafnSchema } from "../../../core-types.js";
 import type { DatafnLogger } from "../../../logger.js";
 import {
   backfillLegacyPermissionsToSpv2,
@@ -26,7 +27,7 @@ const schema = {
     },
   ],
   relations: [],
-};
+} satisfies DatafnSchema;
 
 type Harness = {
   db: any;

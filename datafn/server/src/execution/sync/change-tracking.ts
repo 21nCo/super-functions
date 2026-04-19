@@ -13,6 +13,7 @@
  */
 
 import type { Adapter } from "@superfunctions/db";
+import type { InternalWhereClause } from "@superfunctions/db/types";
 import type { SequenceStore } from "./sequence-store.js";
 import { ensureInternalTable } from "../internal-tables.js";
 import type { DatafnLogger } from "../../logger.js";
@@ -492,7 +493,7 @@ export class ChangeTrackingService {
       this.changesEnsured = true;
     }
     try {
-      const where: Array<{ field: string; op: string; value: unknown }> = [
+      const where: InternalWhereClause[] = [
         { field: "namespace", op: "eq", value: this.namespace },
         { field: "resource", op: "eq", value: params.resource },
         { field: "record_id", op: "eq", value: params.id },

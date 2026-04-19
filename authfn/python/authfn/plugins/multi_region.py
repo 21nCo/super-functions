@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 from ..types import (
     AuthFnConfig,
-    AuthFnCookieConfig,
     AuthFnPlugin,
     AuthFnRuntimeResolution,
     RegionMismatchError,
@@ -278,7 +277,7 @@ def authfn_multi_region_plugin(config: Optional[MultiRegionPluginConfig] = None)
             {"method": "GET", "path": "/runtime"},
         ],
     )
-    setattr(plugin, "_authfn_config", resolved)
+    plugin._authfn_config = resolved
     return plugin
 
 
@@ -295,7 +294,7 @@ def _coerce_runtime(value: Any) -> AuthFnRuntimeResolution:
         region_id = getattr(value, "region_id", None)
     return AuthFnRuntimeResolution.model_validate(
         {
-            "issuer": getattr(value, "issuer"),
+            "issuer": value.issuer,
             "baseUrl": base_url,
             "regionId": region_id,
             "cookie": getattr(value, "cookie", None),

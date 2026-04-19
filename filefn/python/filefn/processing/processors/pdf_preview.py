@@ -1,9 +1,16 @@
 import io
 import struct
 import zlib
-from typing import Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
-from ..types import PdfPreviewConfig, Processor, ProcessorInput, ProcessorOutputArtifact, ProcessorResult, ThumbnailSize
+from ..types import (
+    PdfPreviewConfig,
+    Processor,
+    ProcessorInput,
+    ProcessorOutputArtifact,
+    ProcessorResult,
+    ThumbnailSize,
+)
 
 DEFAULT_SIZES = [
     ThumbnailSize(name='small', width=150, height=150),
@@ -26,7 +33,7 @@ class PdfPreviewProcessor:
         self.name = 'pdf-preview'
         self.supportedMimeTypes = SUPPORTED_MIME_TYPES
 
-    async def process(self, input: ProcessorInput, get_data) -> ProcessorResult:
+    async def process(self, input: ProcessorInput, get_data: Callable[[], Any]) -> ProcessorResult:
         if input.mimeType not in self.supportedMimeTypes:
             return ProcessorResult(success=False, artifacts=[], error=UNSUPPORTED_MIME_TYPE_ERROR)
 
@@ -67,8 +74,8 @@ class PdfPreviewProcessor:
             from PIL import Image
 
             with io.BytesIO(pdf_data) as f:
-                with Image.open(f) as img:
-                    img = img.copy()
+                with Image.open(f) as opened_image:
+                    img = opened_image.copy()
                     img.thumbnail((size.width, size.height), Image.Resampling.LANCZOS)
                     out_buffer = io.BytesIO()
                     img.save(out_buffer, format='PNG')
@@ -120,7 +127,8 @@ class PdfPreviewProcessor:
         try:
             from PIL import Image
 
-            with Image.open(io.BytesIO(preview_png)) as img:
+            with Image.open(io.BytesIO(preview_png)) as opened_image:
+                img = opened_image.copy()
                 out_buffer = io.BytesIO()
                 fmt = self.format.upper()
                 if fmt == 'JPG':

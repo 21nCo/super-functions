@@ -4,6 +4,7 @@ import type {
   DatafnSchema,
 } from "../../core-types.js";
 import { getJoinTableName, normalizeRelationPayload, resolveCapabilities } from "@datafn/core";
+import type { CapabilityEntry, ShareableCapability } from "@datafn/core";
 import type { Adapter } from "@superfunctions/db";
 import type { DFQLMutation } from "../mutation/dfql.js";
 import { getPermissionsTable } from "../mutation/share.js";
@@ -80,6 +81,10 @@ function pickResourceName(name: string | string[]): string {
   return Array.isArray(name) ? name[0] : name;
 }
 
+function isShareableCapability(entry: CapabilityEntry): entry is ShareableCapability {
+  return typeof entry === "object" && entry !== null && "shareable" in entry;
+}
+
 function getResource(schema: DatafnSchema, resourceName: string): DatafnResourceSchema | undefined {
   return schema.resources.find((resource) => resource.name === resourceName);
 }
@@ -97,20 +102,7 @@ function getInheritanceConfig(schema: DatafnSchema, resourceName: string): {
     schema.capabilities as any,
     resource.capabilities as any,
   );
-  const shareable = resolvedCapabilities.find(
-    (entry: unknown): entry is {
-      shareable: {
-        relationInheritance?: {
-          enabled: boolean;
-          relations?: string[];
-          requireRelateConsent?: boolean;
-        };
-      };
-    } =>
-      typeof entry === "object" &&
-      entry !== null &&
-      "shareable" in (entry as Record<string, unknown>),
-  );
+  const shareable = resolvedCapabilities.find(isShareableCapability);
   const relationInheritance = shareable?.shareable.relationInheritance;
   if (!relationInheritance?.enabled) {
     return null;
@@ -118,7 +110,7 @@ function getInheritanceConfig(schema: DatafnSchema, resourceName: string): {
 
   const configuredNames = new Set(
     (relationInheritance.relations ?? []).filter(
-      (name): name is string => typeof name === "string" && name.length > 0,
+      (name: string): name is string => typeof name === "string" && name.length > 0,
     ),
   );
 
@@ -724,4 +716,3 @@ export async function applyRelationInheritanceForUnrelate(input: {
   await deletePermissionRows(input.db, input.namespace, rowsToDelete);
   return { ok: true };
 }
-

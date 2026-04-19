@@ -9,25 +9,25 @@ from .config import get_plugin, get_plugin_config, normalize_config, resolve_run
 from .http import create_authfn_openapi, create_authfn_routes
 from .plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from .plugins.email_otp import EmailOtpPluginConfig, EmailOtpService
+from .plugins.multi_region import (
+    MultiRegionPluginConfig,
+    MultiRegionRegionConfig,
+    MultiRegionService,
+)
 from .plugins.social_oauth import (
     SocialOAuthPluginConfig,
     SocialOAuthService,
     SocialProviderConfig,
 )
 from .plugins.two_factor import TwoFactorPluginConfig, TwoFactorService
-from .plugins.multi_region import (
-    MultiRegionPluginConfig,
-    MultiRegionRegionConfig,
-    MultiRegionService,
-)
 from .schema import AUTHFN_SCHEMA_VERSION, get_schema
 from .types import (
     ApiKey,
     ApiKeyCreate,
     ApiKeyResponse,
+    ApiKeyRevokedError,
     ApiKeySanitized,
     ApiKeySession,
-    ApiKeyRevokedError,
     AuthFnConfig,
     AuthFnCookieConfig,
     AuthFnError,
@@ -51,13 +51,13 @@ from .types import (
     InvalidCredentialsError,
     NotFoundError,
     NotImplementedAuthError,
-    OtpExpiredError,
-    OtpInvalidError,
-    OtpReplayedError,
     OAuthCallbackInvalidError,
     OAuthProviderUnsupportedError,
     OAuthStateInvalidError,
     OAuthStateReplayedError,
+    OtpExpiredError,
+    OtpInvalidError,
+    OtpReplayedError,
     PluginAbortedError,
     RateLimitedError,
     RedirectUriDisallowedError,
@@ -91,14 +91,14 @@ __all__ = [
     "ApiKeyService",
     "EmailOtpPluginConfig",
     "EmailOtpService",
-    "SocialOAuthPluginConfig",
-    "SocialOAuthService",
-    "SocialProviderConfig",
     "TwoFactorPluginConfig",
     "TwoFactorService",
     "MultiRegionPluginConfig",
     "MultiRegionRegionConfig",
     "MultiRegionService",
+    "SocialOAuthPluginConfig",
+    "SocialOAuthService",
+    "SocialProviderConfig",
     "AuthFnConfig",
     "AuthFnCookieConfig",
     "AuthFnEvent",
@@ -158,3 +158,20 @@ __all__ = [
     "authfn_multi_region_plugin",
     "get_schema",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name in {"SocialOAuthPluginConfig", "SocialOAuthService", "SocialProviderConfig"}:
+        from .plugins.social_oauth import (
+            SocialOAuthPluginConfig,
+            SocialOAuthService,
+            SocialProviderConfig,
+        )
+
+        values = {
+            "SocialOAuthPluginConfig": SocialOAuthPluginConfig,
+            "SocialOAuthService": SocialOAuthService,
+            "SocialProviderConfig": SocialProviderConfig,
+        }
+        return values[name]
+    raise AttributeError(name)

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional, Protocol
 
 from pydantic import BaseModel, Field
-
 from superfunctions.auth import AuthSubject
-from superfunctions.db import OrderBy as OrderByClause, TableSchema, WhereClause
+from superfunctions.db import OrderBy as OrderByClause
+from superfunctions.db import TableSchema, WhereClause
 
 
 class ApiKeySession(BaseModel):
@@ -109,6 +109,14 @@ class AuthFnRuntimeResolution(BaseModel):
 
     class Config:
         populate_by_name = True
+
+    @property
+    def baseUrl(self) -> str:
+        return self.base_url
+
+    @property
+    def regionId(self) -> Optional[str]:
+        return self.region_id
 
 
 class AuthFnSession(BaseModel):
@@ -260,6 +268,7 @@ class AuthFnPlugin:
     routes_factory: Optional[Callable[[AuthFnPluginRuntimeContext], List[Dict[str, Any]]]] = None
     hooks: Optional[AuthFnHooks] = None
     validate_config: Optional[Callable[[AuthFnConfig], None]] = None
+    _authfn_config: Any = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def schema(self, config: AuthFnConfig) -> List[TableSchema]:
         return self.schema_factory(config) if self.schema_factory else []
@@ -563,7 +572,7 @@ def authfn_password_plugin() -> AuthFnPlugin:
             {"method": "POST", "path": "/sign-in/password"},
         ],
     )
-    setattr(plugin, "_authfn_config", {})
+    plugin._authfn_config = {}
     return plugin
 
 

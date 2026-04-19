@@ -7,6 +7,7 @@ import type { DatafnSchema } from "../../../core-types.js";
 const NAMESPACE = "org:acme";
 const ACTOR_FEED_CURSOR_KEY = "__datafn_actor_feed__";
 const MEMBERSHIPS_TABLE = "__datafn_principal_memberships";
+const PERMISSIONS_TABLE = "__datafn_permissions_global";
 
 const schema: DatafnSchema = {
   resources: [
@@ -285,6 +286,25 @@ describe("SPV2 sync visibility (PHASE_07)", () => {
   it("TV-SYNC-004-P/N: actor feed includes relevant membership changes and excludes unrelated updates", async () => {
     harness.actor.current = "alice";
 
+    await harness.db.create({
+      model: PERMISSIONS_TABLE,
+      namespace: NAMESPACE,
+      data: {
+        id: `accounts:${NAMESPACE}:*:user:alice`,
+        resourceType: "accounts",
+        resourceNs: NAMESPACE,
+        resourceId: null,
+        principalId: "user:alice",
+        level: "owner",
+        grantKind: "scope",
+        sourceRef: null,
+        grantedBy: "system",
+        grantedAt: Date.now(),
+        revokedAt: null,
+        __ns: NAMESPACE,
+      },
+    });
+
     await callEndpoint(harness.server, "mutation", {
       resource: "accounts",
       version: 1,
@@ -295,7 +315,7 @@ describe("SPV2 sync visibility (PHASE_07)", () => {
       record: { name: "Ops" },
     });
 
-    await callEndpoint(harness.server, "mutation", {
+    const shareResult = await callEndpoint(harness.server, "mutation", {
       resource: "accounts",
       version: 1,
       operation: "share",
@@ -304,6 +324,8 @@ describe("SPV2 sync visibility (PHASE_07)", () => {
       scope: "resource",
       shareWith: { principalId: "team:fin", level: "viewer" },
     });
+    expect(shareResult.status).toBe(200);
+    expect(shareResult.body.result.ok).toBe(true);
 
     harness.actor.current = "bob";
     const baselinePull = await callEndpoint(harness.server, "pull", {

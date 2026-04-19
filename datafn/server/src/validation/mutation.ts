@@ -5,6 +5,7 @@
 
 import type { SchemaIndex, ValidationResult, ValidationError } from "./schema.js";
 import { resolveCapabilities } from "@datafn/core";
+import type { CapabilityEntry, ShareableCapability } from "@datafn/core";
 import {
   vOk,
   vErr,
@@ -51,16 +52,12 @@ const RECORD_REQUIRED_OPERATIONS = new Set(["insert", "merge", "replace"]);
 
 type ShareScope = "record" | "resource";
 
-type ShareableCapability = {
-  shareable: {
-    levels: string[];
-    default: "private" | "shared";
-    supportsScopeGrants?: boolean;
-  };
-};
-
 const DFQL_SHARE_SCOPE_INVALID_CODE = "DFQL_SHARE_SCOPE_INVALID" as any;
 const DFQL_PRINCIPAL_INVALID_CODE = "DFQL_PRINCIPAL_INVALID" as any;
+
+function isShareableCapability(entry: CapabilityEntry): entry is ShareableCapability {
+  return typeof entry === "object" && entry !== null && "shareable" in entry;
+}
 
 function normalizeNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -165,12 +162,7 @@ export function validateMutation(
   const hasArchivableCapability = resolvedCapabilities.some(
     (capability: unknown) => capability === "archivable",
   );
-  const shareableCapability = resolvedCapabilities.find(
-    (capability: unknown): capability is ShareableCapability =>
-      typeof capability === "object" &&
-      capability !== null &&
-      "shareable" in (capability as Record<string, unknown>),
-  );
+  const shareableCapability = resolvedCapabilities.find(isShareableCapability);
   const isShareOperation = m.operation === "share" || m.operation === "unshare";
 
   if ((m.operation === "trash" || m.operation === "restore") && !hasTrashCapability) {
@@ -315,7 +307,7 @@ export function validateMutation(
         );
       }
       const allowedLevels = shareableCapability?.shareable.levels ?? [];
-      if (!allowedLevels.includes(shareWith.level)) {
+      if (!allowedLevels.some((candidate) => candidate === shareWith.level)) {
         return vErr(
           "DFQL_INVALID",
           `Invalid DFQL: shareWith.level must be one of [${allowedLevels.join(", ")}]`,

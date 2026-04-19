@@ -5,6 +5,8 @@ import {
   createAudioProcessor,
   type VideoConfig,
   type AudioConfig,
+  type VideoProcessorProvider,
+  type AudioProcessorProvider,
 } from '@filefn/processing';
 import type { StorageAdapter } from '@superfunctions/storage';
 import type { Adapter } from '@superfunctions/db';
@@ -143,6 +145,118 @@ function createMockAudioData(size: number = 3000): Uint8Array {
   return data;
 }
 
+function createMockVideoProvider(): VideoProcessorProvider {
+  return {
+    async generatePoster(request) {
+      return new TextEncoder().encode(
+        `POSTER:${request.timestamp}:${request.width}:${request.height}:${request.format}:${request.quality}`,
+      );
+    },
+    async transcode(request) {
+      const mimeType = request.codec === 'vp9' || request.codec === 'av1' ? 'video/webm' : 'video/mp4';
+      const extension = mimeType === 'video/webm' ? 'webm' : 'mp4';
+      return {
+        data: new TextEncoder().encode(
+          `VIDEO:${request.codec}:${request.resolution}:${request.bitrate}:${request.fps}`,
+        ),
+        mimeType,
+        extension,
+      };
+    },
+    async extractMetadata(request) {
+      return {
+        duration: 1.25,
+        width: 320,
+        height: 240,
+        codec: 'h264',
+        fps: '24/1',
+        bitrate: '220000',
+        audioCodec: null,
+        audioSampleRate: null,
+        audioChannels: null,
+        fileSize: request.videoData.length,
+        container: 'mov,mp4,m4a,3gp,3g2,mj2',
+        creationTime: '2026-04-02T00:00:00.000Z',
+      };
+    },
+  };
+}
+
+function createMockAudioProvider(): AudioProcessorProvider {
+  return {
+    async transcode(request) {
+      const extensionMap = {
+        mp3: 'mp3',
+        aac: 'm4a',
+        opus: 'opus',
+        vorbis: 'ogg',
+        flac: 'flac',
+      } as const;
+      const mimeTypeMap = {
+        mp3: 'audio/mpeg',
+        aac: 'audio/mp4',
+        opus: 'audio/opus',
+        vorbis: 'audio/ogg',
+        flac: 'audio/flac',
+      } as const;
+
+      return {
+        data: new TextEncoder().encode(
+          `AUDIO:${request.codec}:${request.bitrate}:${request.sampleRate}:${request.channels}`,
+        ),
+        extension: extensionMap[request.codec],
+        mimeType: mimeTypeMap[request.codec],
+      };
+    },
+    async extractMetadata(request) {
+      return {
+        duration: 245.8,
+        codec: 'aac',
+        bitrate: '192000',
+        sampleRate: 44100,
+        channels: 2,
+        fileSize: request.audioData.length,
+        format: 'mp4',
+        title: 'Audio Track',
+        artist: 'Unknown Artist',
+        album: 'Unknown Album',
+        year: '2024',
+        genre: 'Unknown',
+        creationTime: '2026-04-02T00:00:00.000Z',
+      };
+    },
+    async generateWaveform(request) {
+      const sampleCount = request.samples ?? 100;
+      const samples = Array.from({ length: sampleCount }, (_, index) => {
+        const offset = Math.min(
+          request.audioData.length - 1,
+          Math.floor((index / sampleCount) * request.audioData.length),
+        );
+        return Number(((request.audioData[offset] ?? 0) / 255).toFixed(4));
+      });
+      return {
+        samples,
+        peakAmplitude: Math.max(...samples),
+        duration: 245.8,
+      };
+    },
+  };
+}
+
+function createTestVideoProcessor(config: VideoConfig = {}) {
+  return createVideoProcessor({
+    ...config,
+    provider: config.provider ?? createMockVideoProvider(),
+  });
+}
+
+function createTestAudioProcessor(config: AudioConfig = {}) {
+  return createAudioProcessor({
+    ...config,
+    provider: config.provider ?? createMockAudioProvider(),
+  });
+}
+
 describe('Video Processing Integration', () => {
   let db: Adapter;
   let storage: StorageAdapter & { setData: (key: string, data: Uint8Array) => void };
@@ -167,7 +281,7 @@ describe('Video Processing Integration', () => {
         transcode: false,
       };
 
-      const processor = createVideoProcessor(videoConfig);
+      const processor = createTestVideoProcessor(videoConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -213,7 +327,7 @@ describe('Video Processing Integration', () => {
         },
       };
 
-      const processor = createVideoProcessor(videoConfig);
+      const processor = createTestVideoProcessor(videoConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -252,7 +366,7 @@ describe('Video Processing Integration', () => {
         extractMetadata: true,
       };
 
-      const processor = createVideoProcessor(videoConfig);
+      const processor = createTestVideoProcessor(videoConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -290,7 +404,7 @@ describe('Video Processing Integration', () => {
         extractMetadata: true,
       };
 
-      const processor = createVideoProcessor(videoConfig);
+      const processor = createTestVideoProcessor(videoConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -325,13 +439,13 @@ describe('Video Processing Integration', () => {
     });
 
     it('should transcode to multiple resolutions', async () => {
-      const processor720 = createVideoProcessor({
+      const processor720 = createTestVideoProcessor({
         generatePoster: false,
         transcode: true,
         transcodeOptions: { resolution: '720p' },
       });
 
-      const processor480 = createVideoProcessor({
+      const processor480 = createTestVideoProcessor({
         generatePoster: false,
         transcode: true,
         transcodeOptions: { resolution: '480p' },
@@ -392,7 +506,7 @@ describe('Audio Processing Integration', () => {
         },
       };
 
-      const processor = createAudioProcessor(audioConfig);
+      const processor = createTestAudioProcessor(audioConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -432,7 +546,7 @@ describe('Audio Processing Integration', () => {
         extractMetadata: true,
       };
 
-      const processor = createAudioProcessor(audioConfig);
+      const processor = createTestAudioProcessor(audioConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -469,7 +583,7 @@ describe('Audio Processing Integration', () => {
         generateWaveform: true,
       };
 
-      const processor = createAudioProcessor(audioConfig);
+      const processor = createTestAudioProcessor(audioConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -507,7 +621,7 @@ describe('Audio Processing Integration', () => {
         generateWaveform: true,
       };
 
-      const processor = createAudioProcessor(audioConfig);
+      const processor = createTestAudioProcessor(audioConfig);
       const service = createProcessingService({
         db,
         storage,
@@ -542,12 +656,12 @@ describe('Audio Processing Integration', () => {
     });
 
     it('should transcode to multiple formats', async () => {
-      const processorAAC = createAudioProcessor({
+      const processorAAC = createTestAudioProcessor({
         transcode: true,
         transcodeOptions: { codec: 'aac', bitrate: '128k' },
       });
 
-      const processorMP3 = createAudioProcessor({
+      const processorMP3 = createTestAudioProcessor({
         transcode: true,
         transcodeOptions: { codec: 'mp3', bitrate: '192k' },
       });
@@ -596,8 +710,8 @@ describe('Combined Video and Audio Processing', () => {
   });
 
   it('should handle mixed media processing with video and audio processors', async () => {
-    const videoProcessor = createVideoProcessor({ generatePoster: true, transcode: false });
-    const audioProcessor = createAudioProcessor({ transcode: true, extractMetadata: false });
+    const videoProcessor = createTestVideoProcessor({ generatePoster: true, transcode: false });
+    const audioProcessor = createTestAudioProcessor({ transcode: true, extractMetadata: false });
 
     const service = createProcessingService({
       db,
@@ -649,8 +763,8 @@ describe('Combined Video and Audio Processing', () => {
   });
 
   it('should retrieve video and audio artifact download URLs', async () => {
-    const videoProcessor = createVideoProcessor({ generatePoster: true, transcode: false });
-    const audioProcessor = createAudioProcessor({ transcode: true });
+    const videoProcessor = createTestVideoProcessor({ generatePoster: true, transcode: false });
+    const audioProcessor = createTestAudioProcessor({ transcode: true });
 
     const service = createProcessingService({
       db,

@@ -1,8 +1,16 @@
 import io
 import struct
 import zlib
-from typing import Any, List, Optional, Tuple
-from ..types import Processor, ProcessorInput, ProcessorResult, ProcessorOutputArtifact, ThumbnailConfig, ThumbnailSize
+from typing import Any, Dict, Optional, Tuple
+
+from ..types import (
+    Processor,
+    ProcessorInput,
+    ProcessorOutputArtifact,
+    ProcessorResult,
+    ThumbnailConfig,
+    ThumbnailSize,
+)
 
 DEFAULT_SIZES = [
     ThumbnailSize(name='small', width=150, height=150),
@@ -44,7 +52,7 @@ class ThumbnailProcessor:
                     elif self.format == 'webp':
                         output_mime_type = 'image/webp'
                         extension = 'webp'
-                
+
                 base_key = input.storageKey.rsplit('.', 1)[0]
                 storage_key = f"{base_key}-thumb-{size.name}.{extension}"
 
@@ -76,8 +84,8 @@ class ThumbnailProcessor:
             from PIL import Image
 
             with io.BytesIO(image_data) as f:
-                with Image.open(f) as img:
-                    img = img.copy()
+                with Image.open(f) as opened_image:
+                    img = opened_image.copy()
 
                     if self.format == 'jpeg' and img.mode in ('RGBA', 'P'):
                         img = img.convert('RGB')
@@ -89,7 +97,7 @@ class ThumbnailProcessor:
                     if fmt == 'JPG':
                         fmt = 'JPEG'
 
-                    save_args = {'format': fmt, 'quality': self.quality}
+                    save_args: Dict[str, Any] = {'format': fmt, 'quality': self.quality}
                     if fmt == 'PNG':
                         save_args['optimize'] = True
                         del save_args['quality']
@@ -128,7 +136,8 @@ class ThumbnailProcessor:
         try:
             from PIL import Image
 
-            with Image.open(io.BytesIO(placeholder_png)) as img:
+            with Image.open(io.BytesIO(placeholder_png)) as opened_image:
+                img = opened_image.copy()
                 out_buffer = io.BytesIO()
                 fmt = self.format.upper()
                 if fmt == 'JPG':

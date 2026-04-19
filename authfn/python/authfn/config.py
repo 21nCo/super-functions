@@ -91,7 +91,7 @@ def _coerce_runtime(value: Any) -> AuthFnRuntimeResolution:
         region_id = getattr(value, "region_id", None)
     return AuthFnRuntimeResolution.model_validate(
         {
-            "issuer": getattr(value, "issuer"),
+            "issuer": value.issuer,
             "baseUrl": base_url,
             "regionId": region_id,
             "cookie": getattr(value, "cookie", None),

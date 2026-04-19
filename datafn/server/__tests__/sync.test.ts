@@ -256,12 +256,8 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     expect(body2.result.changes).toHaveLength(1);
     expect(body2.result.changes[0].id).toBe("tag:3");
     
-    // nextCursor might be null or set to the last one if we didn't hit limit
-    // Implementation: if length < limit, nextCursor is null?
-    // Let's check implementation details: 
-    // "if (mappedChanges.length === limit) nextCursor = ... else null"
-    // Here length 1 < limit 2, so nextCursor should be null
-    expect(body2.result.nextCursor).toBeNull();
+    // Pull now returns the latest server cursor even on a short final page.
+    expect(body2.result.nextCursor).toBe("3");
   });
 
   it("PROTO-PULL-001: Pull validates cursor", async () => {

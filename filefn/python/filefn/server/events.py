@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Generic, Union
+from typing import Any, Callable, Dict, List, Optional
+
 from pydantic import BaseModel
 
 SAFE_IDENTIFIER_KEYS = {
@@ -108,7 +109,7 @@ def create_file_deleted_event(data: Dict[str, Any], request_id: Optional[str] = 
     )
 
 class FileFnEventEmitter:
-    def __init__(self):
+    def __init__(self) -> None:
         self._listeners: Dict[str, List[Callable[[Any], None]]] = {}
 
     def on(self, event_type: str, listener: Callable[[Any], None]) -> 'FileFnEventEmitter':

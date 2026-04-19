@@ -1147,19 +1147,12 @@ function mapToOAuthFlowError(error: unknown): OAuthFlowError {
     return error;
   }
 
-  if (error instanceof OAuthCoreError) {
-    return new OAuthFlowError(error.code as OAuthFlowErrorCode, error.message, {
-      status: error.status,
-      retryable: error.retryable,
-      details: sanitizeDetails(error.details)
-    });
-  }
-
-  if (error instanceof OAuthHttpError) {
-    return new OAuthFlowError(error.code as OAuthFlowErrorCode, error.message, {
-      status: error.status,
-      retryable: error.retryable,
-      details: sanitizeDetails(error.details)
+  const libraryError = readOAuthLibraryError(error);
+  if (libraryError) {
+    return new OAuthFlowError(libraryError.code, libraryError.message, {
+      status: libraryError.status,
+      retryable: libraryError.retryable,
+      details: sanitizeDetails(libraryError.details)
     });
   }
 
@@ -1167,6 +1160,57 @@ function mapToOAuthFlowError(error: unknown): OAuthFlowError {
     status: 500,
     retryable: false
   });
+}
+
+function readOAuthLibraryError(error: unknown): {
+  code: OAuthFlowErrorCode;
+  message: string;
+  status: number;
+  retryable: boolean;
+  details?: Record<string, unknown>;
+} | null {
+  if (error instanceof OAuthCoreError || error instanceof OAuthHttpError) {
+    return {
+      code: error.code as OAuthFlowErrorCode,
+      message: error.message,
+      status: error.status ?? 400,
+      retryable: error.retryable ?? false,
+      details: error.details
+    };
+  }
+
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const raw = error as {
+    code?: unknown;
+    message?: unknown;
+    status?: unknown;
+    retryable?: unknown;
+    details?: unknown;
+  };
+
+  if (
+    typeof raw.code !== "string" ||
+    typeof raw.message !== "string" ||
+    typeof raw.status !== "number" ||
+    typeof raw.retryable !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    code: raw.code as OAuthFlowErrorCode,
+    message: raw.message,
+    status: raw.status,
+    retryable: raw.retryable,
+    details: isRecord(raw.details) ? raw.details : undefined
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeDetails(details: Record<string, unknown> | undefined): Record<string, unknown> | undefined {

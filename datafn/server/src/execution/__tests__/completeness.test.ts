@@ -12,8 +12,8 @@ const schema: DatafnSchema = {
       fields: [
         { name: "username", type: "string", required: true },
         { name: "email", type: "string", required: true, encrypt: true },
-        { name: "profile", type: "object" }, // Nested object
-        { name: "score", type: "number" },
+        { name: "profile", type: "object", required: false }, // Nested object
+        { name: "score", type: "number", required: false },
       ],
     },
   ],

@@ -170,10 +170,13 @@ class FileService:
                 continue
             if self._is_grant_expired(grant.get("expiresAt")):
                 continue
+            grant_file_id = grant.get("fileId")
+            if not isinstance(grant_file_id, str):
+                continue
             if grant.get("userId") == ctx.principalId:
-                readable.add(grant.get("fileId"))
+                readable.add(grant_file_id)
             elif grant.get("tenantId") and grant.get("tenantId") == ctx.tenantId:
-                readable.add(grant.get("fileId"))
+                readable.add(grant_file_id)
         return readable
 
     @staticmethod

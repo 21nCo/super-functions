@@ -4,7 +4,6 @@ import { checkPrototypePollution, validateFieldValue } from "../src/validate.js"
 describe("checkPrototypePollution", () => {
   // TV-SEC-025 — top-level __proto__
   it("rejects top-level __proto__", () => {
-    const result = checkPrototypePollution({ __proto__: {} });
     // Note: __proto__ on object literals is special in JS — test with Object.create(null)
     const obj = Object.create(null);
     obj["__proto__"] = {};
@@ -58,9 +57,6 @@ describe("checkPrototypePollution", () => {
   });
 
   it("rejects deeply nested disallowed keys", () => {
-    const result = checkPrototypePollution({
-      level1: { level2: { level3: { __proto__: {} } } },
-    });
     // Again need to use Object.create(null) for __proto__
     const level3 = Object.create(null);
     level3["__proto__"] = {};

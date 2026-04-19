@@ -9,7 +9,7 @@ const hostfnDir = join(docsDir, '..');
 const repoRoot = join(hostfnDir, '..');
 const hostfnNodeModules = join(hostfnDir, 'node_modules');
 
-const candidateBases = [
+const defaultCandidateBases = [
   repoRoot,
   join(repoRoot, 'datafn', 'docs'),
   join(repoRoot, 'datafn'),
@@ -17,10 +17,20 @@ const candidateBases = [
   join(repoRoot, 'searchfn'),
 ];
 
-const moduleNames = ['fumadocs-mdx', 'styled-jsx'];
+const candidateBasesByModule = {
+  zod: [
+    join(repoRoot, 'datafn', 'docs'),
+    join(repoRoot, 'searchfn', 'docs'),
+    join(repoRoot, 'searchfn'),
+    repoRoot,
+  ],
+};
+
+const moduleNames = ['fumadocs-mdx', 'styled-jsx', 'zod'];
 const entryCandidates = {
   'fumadocs-mdx': ['fumadocs-mdx/next', 'fumadocs-mdx'],
   'styled-jsx': ['styled-jsx', 'styled-jsx/index.js'],
+  zod: ['zod'],
 };
 
 const require = createRequire(import.meta.url);
@@ -52,6 +62,7 @@ function findPackageRoot(resolvedPath, moduleName) {
 
 function resolveModuleDir(moduleName) {
   const entries = entryCandidates[moduleName] ?? [moduleName];
+  const candidateBases = candidateBasesByModule[moduleName] ?? defaultCandidateBases;
 
   for (const base of candidateBases) {
     for (const entry of entries) {

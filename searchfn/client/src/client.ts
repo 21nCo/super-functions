@@ -1,12 +1,10 @@
 import type {
-  SearchAdapter,
   IndexParams,
   SearchParams,
   SearchAllParams,
   SearchAllResult,
   InitializeParams,
 } from "@searchfn/adapter-contracts";
-import { SearchAdapterError } from "@searchfn/adapter-contracts";
 import type { SearchClient, SearchClientConfig, SearchClientDefaults } from "./types";
 
 const MAX_QUERY_LENGTH = 1000;

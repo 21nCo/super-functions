@@ -58,7 +58,7 @@ function isNestedSelectToken(token: string): boolean {
   }
   if (parts.length === 2) {
     const child = parts[1];
-    return child !== "*" && child !== "#" && child !== "*#";
+    return child !== "*" && child !== "**" && child !== "#" && child !== "*#";
   }
   return true;
 }

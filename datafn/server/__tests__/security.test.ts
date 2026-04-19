@@ -858,7 +858,7 @@ describe("SEC-016: Search query length enforcement", () => {
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.ok).toBe(false);
-    expect(body.error.code).toBe("DFQL_INVALID");
+    expect(body.error.code).toBe("LIMIT_EXCEEDED");
   });
 
   it("search query within 1000 chars is accepted", async () => {
@@ -1253,7 +1253,11 @@ describe("SEC-001/002: WebSocket auth and server-derived namespace", () => {
     // Cursor broadcast reaches client in correct namespace
     manager.broadcastCursor("100", "tenant:alice");
     expect(client.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "cursor", cursor: "100" }),
+      JSON.stringify({
+        type: "cursor",
+        cursor: "100",
+        targeting: { mode: "namespace-broadcast", degraded: false },
+      }),
     );
   });
 

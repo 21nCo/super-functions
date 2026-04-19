@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../../server.js";
+import type { DatafnSchema } from "../../../core-types.js";
 
 const schema = {
   resources: [
@@ -24,13 +25,13 @@ const schema = {
     },
   ],
   relations: [],
-};
+} satisfies DatafnSchema;
 
 describe("share and unshare operations", () => {
   let db: any;
   let server: any;
   let actorId: string | undefined;
-  const permissionsTable = "__datafn_permissions_docs";
+  const permissionsTable = "__datafn_permissions_global";
 
   const mutation = async (payload: Record<string, unknown>) => {
     const req = new Request("http://localhost/datafn/mutation", {
@@ -96,7 +97,7 @@ describe("share and unshare operations", () => {
 
     const rows = await listPermissions("doc:1");
     expect(rows).toHaveLength(1);
-    expect(rows[0].userId).toBe("user:alice");
+    expect(rows[0].principalId).toBe("user:alice");
     expect(rows[0].level).toBe("editor");
     expect(rows[0].grantedBy).toBe("user:bob");
     expect(typeof rows[0].grantedAt).toBe("number");
@@ -278,7 +279,7 @@ describe("share and unshare operations", () => {
       model: permissionsTable,
       where: [
         { field: "resourceId", operator: "eq", value: "doc:5" },
-        { field: "userId", operator: "eq", value: "user:bob" },
+        { field: "principalId", operator: "eq", value: "user:bob" },
       ],
       namespace: "ns:1",
     });

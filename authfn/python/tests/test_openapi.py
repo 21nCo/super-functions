@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from flask import Flask
-import pytest
 
 TESTS_DIR = os.path.dirname(__file__)
 AUTHFN_PYTHON_ROOT = os.path.abspath(os.path.join(TESTS_DIR, ".."))
@@ -24,6 +24,11 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT, PYTHON_FASTAPI_ROOT, PYTHON_F
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from superfunctions.http import Response, Route
+from superfunctions.http.types import HttpMethod
+from superfunctions_fastapi.adapter import create_router
+from superfunctions_flask.adapter import create_blueprint
+
 from authfn import (
     AuthFnConfig,
     authfn_api_key_plugin,
@@ -39,11 +44,6 @@ from authfn.http import create_authfn_openapi
 from authfn.plugins.email_otp import EmailOtpPluginConfig
 from authfn.plugins.multi_region import MultiRegionPluginConfig, MultiRegionRegionConfig
 from authfn.plugins.social_oauth import SocialOAuthPluginConfig, SocialProviderConfig
-from superfunctions.http import Response, Route
-from superfunctions.http.openapi import OpenApiGenerationError
-from superfunctions.http.types import HttpMethod
-from superfunctions_fastapi.adapter import create_router
-from superfunctions_flask.adapter import create_blueprint
 
 from .support import InMemoryDatabaseAdapter
 

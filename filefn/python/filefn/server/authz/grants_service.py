@@ -1,11 +1,12 @@
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+from typing import Any, List, Optional
+
 from pydantic import BaseModel
 
-from superfunctions.db import Adapter
-from ..models import FileProviderContext, FileRecord, FilePermissionRecord
 from .. import errors
+from ..models import FilePermissionRecord, FileProviderContext, FileRecord
+
 
 class CreateGrantInput(BaseModel):
     fileId: str
@@ -21,7 +22,7 @@ class CreateGrantInput(BaseModel):
 class GrantsServiceConfig(BaseModel):
     db: Any # Adapter
     namespace: str = 'filefn'
-    
+
     class Config:
         arbitrary_types_allowed = True
 

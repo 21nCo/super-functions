@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../server.js";
+import type { DatafnSchema } from "../../core-types.js";
 
 const schema = {
   capabilities: ["timestamps", "audit"],
@@ -21,7 +22,7 @@ const schema = {
     },
   ],
   relations: [],
-};
+} satisfies DatafnSchema;
 
 describe("capabilities end-to-end lifecycle", () => {
   let db: any;

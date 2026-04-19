@@ -68,8 +68,8 @@ Keep `OAUTH_TOKEN_ENCRYPTION_KEY_HEX` as a deployment secret with 32 random byte
 - Repo-root gate: `npm run gate:packages-oauth-shared`
 - Package-local tests: `npm test --workspace @superfunctions/oauth-flow`
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-flow.mdx](../../docs/content/docs/authentication/oauth-flow.mdx)
-- Route factories: [docs/content/docs/authentication/oauth-router.mdx](../../docs/content/docs/authentication/oauth-router.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)
+- Shared storage: [../oauth-storage/README.md](../oauth-storage/README.md)
+- Route factories: [../oauth-router/README.md](../oauth-router/README.md)

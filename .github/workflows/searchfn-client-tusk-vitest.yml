@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure Rollup native package
+        run: node ../../scripts/ci-install-rollup-native.mjs
+
       - name: Start runner
         uses: Use-Tusk/test-runner@c83efabca725843d6cdb5d3e9c4083baf7c8282e
         with:

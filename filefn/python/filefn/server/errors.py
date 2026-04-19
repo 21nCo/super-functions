@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 
+
 class FileFnError(Exception):
     def __init__(self, code: str, message: str, status: int = 400, details: Optional[Dict[str, Any]] = None):
         super().__init__(message)

@@ -7,13 +7,13 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ..config import resolve_runtime
 from ..observability import emit_auth_event, event_request_id
 from ..types import (
-    AuthFnError,
     AuthFnConfig,
+    AuthFnError,
     AuthFnHookContext,
     AuthFnPlugin,
     DeliveryFailedError,
@@ -518,7 +518,7 @@ def authfn_email_otp_plugin(config: Optional[EmailOtpPluginConfig] = None) -> Au
         hooks=None,
         validate_config=None,
     )
-    setattr(plugin, "_authfn_config", resolved)
+    plugin._authfn_config = resolved
     return plugin
 
 

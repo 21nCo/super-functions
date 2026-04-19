@@ -459,7 +459,11 @@ describe("Data-Level Namespace Isolation (Phase 03)", () => {
       // Broadcast a cursor update to Alice's namespace
       mgr.broadcastCursor("42", aliceNs);
 
-      const expectedMsg = JSON.stringify({ type: "cursor", cursor: "42" });
+      const expectedMsg = JSON.stringify({
+        type: "cursor",
+        cursor: "42",
+        targeting: { mode: "namespace-broadcast", degraded: false },
+      });
 
       // Alice's clients receive the cursor
       expect(aliceC1.send).toHaveBeenCalledWith(expectedMsg);
@@ -486,7 +490,11 @@ describe("Data-Level Namespace Isolation (Phase 03)", () => {
       // Broadcast cursor to Bob's namespace
       mgr.broadcastCursor("99", bobNs);
 
-      const expectedMsg = JSON.stringify({ type: "cursor", cursor: "99" });
+      const expectedMsg = JSON.stringify({
+        type: "cursor",
+        cursor: "99",
+        targeting: { mode: "namespace-broadcast", degraded: false },
+      });
 
       // Bob receives
       expect(bobC.send).toHaveBeenCalledWith(expectedMsg);
@@ -510,7 +518,11 @@ describe("Data-Level Namespace Isolation (Phase 03)", () => {
 
       mgr.broadcastCursor("10", ns);
 
-      const expectedMsg = JSON.stringify({ type: "cursor", cursor: "10" });
+      const expectedMsg = JSON.stringify({
+        type: "cursor",
+        cursor: "10",
+        targeting: { mode: "namespace-broadcast", degraded: false },
+      });
       // c1 removed — must NOT receive
       expect(c1.send).not.toHaveBeenCalled();
       // c2 still connected — must receive
@@ -535,7 +547,11 @@ describe("Data-Level Namespace Isolation (Phase 03)", () => {
       // After the attempted override, broadcast to Alice's namespace still reaches this client
       mgr.broadcastCursor("55", serverNs);
       expect(client.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: "cursor", cursor: "55" }),
+        JSON.stringify({
+          type: "cursor",
+          cursor: "55",
+          targeting: { mode: "namespace-broadcast", degraded: false },
+        }),
       );
 
       // Broadcast to Bob's namespace does NOT reach this client (SEC-002)

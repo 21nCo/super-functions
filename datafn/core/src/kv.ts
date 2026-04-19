@@ -34,12 +34,29 @@ export function ensureBuiltinKv(schema: DatafnSchema): DatafnSchema {
   const existingKv = schema.resources.find((r) => r.name === KV_RESOURCE_NAME);
 
   if (existingKv) {
+    if (isBuiltinKvPlaceholder(existingKv)) {
+      const canonicalKv = createBuiltinKvResource();
+      return {
+        ...schema,
+        resources: schema.resources.map((resource) =>
+          resource.name === KV_RESOURCE_NAME ? canonicalKv : resource,
+        ),
+      };
+    }
+
     validateBuiltinKv(existingKv);
     return schema;
   }
 
   // Append KV resource definition
-  const kvResource: DatafnResourceSchema = {
+  return {
+    ...schema,
+    resources: [...schema.resources, createBuiltinKvResource()],
+  };
+}
+
+function createBuiltinKvResource(): DatafnResourceSchema {
+  return {
     name: KV_RESOURCE_NAME,
     version: 1,
     idPrefix: KV_RESOURCE_NAME,
@@ -61,11 +78,34 @@ export function ensureBuiltinKv(schema: DatafnSchema): DatafnSchema {
       write: { fields: ["id", "value"] },
     },
   };
+}
 
-  return {
-    ...schema,
-    resources: [...schema.resources, kvResource],
-  };
+function isBuiltinKvPlaceholder(resource: DatafnResourceSchema): boolean {
+  const fields = resource.fields ?? [];
+  const hasNoIdField = !fields.some((field) => field.name === "id");
+  const hasOnlyLegacyValueField =
+    fields.length === 1 &&
+    fields[0]?.name === "value" &&
+    fields[0]?.required === false &&
+    (fields[0]?.type === "string" ||
+      fields[0]?.type === "json" ||
+      fields[0]?.type === "object");
+  const hasEmptyIndices =
+    resource.indices == null ||
+    (Array.isArray(resource.indices) && resource.indices.length === 0) ||
+    (!Array.isArray(resource.indices) &&
+      (resource.indices.base?.length ?? 0) === 0 &&
+      (resource.indices.search?.length ?? 0) === 0 &&
+      (resource.indices.vector?.length ?? 0) === 0);
+
+  return (
+    resource.version === 1 &&
+    hasNoIdField &&
+    (fields.length === 0 || hasOnlyLegacyValueField) &&
+    resource.idPrefix == null &&
+    hasEmptyIndices &&
+    resource.permissions == null
+  );
 }
 
 function validateBuiltinKv(resource: DatafnResourceSchema): void {

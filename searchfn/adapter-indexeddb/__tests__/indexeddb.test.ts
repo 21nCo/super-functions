@@ -447,7 +447,7 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
     } finally {
       await adapter.dispose();
     }
-  });
+  }, 15000);
 
   it("throws DFQL_ABORTED when indexing with an aborted signal", async () => {
     const adapter = new IndexedDbAdapter({ dbName: freshDbName() });

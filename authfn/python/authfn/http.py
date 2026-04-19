@@ -6,8 +6,8 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional
-from urllib.parse import parse_qs, urlencode, urlparse
+from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
+from urllib.parse import parse_qs, urlparse
 
 from superfunctions.http import HttpMethod, Response, Route, RouteContext, SetCookie
 
@@ -16,14 +16,14 @@ from .errors import to_authfn_error
 from .observability import (
     emit_auth_event,
     event_request_id,
+)
+from .observability import (
     resolve_request_id as resolve_observability_request_id,
 )
 from .plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from .plugins.email_otp import EmailOtpPluginConfig, EmailOtpService
 from .plugins.multi_region import MultiRegionPluginConfig, MultiRegionService
-from .plugins.social_oauth import SocialOAuthPluginConfig, SocialOAuthService
 from .plugins.two_factor import TwoFactorPluginConfig, TwoFactorService
-from .schema import get_schema
 from .types import (
     AuthFnConfig,
     AuthFnError,
@@ -840,6 +840,8 @@ async def _handle_verify_otp(config: AuthFnConfig, request: Any, _context: Route
 
 
 async def _handle_social_start(config: AuthFnConfig, request: Any, _context: RouteContext) -> Response:
+    from .plugins.social_oauth import SocialOAuthPluginConfig, SocialOAuthService
+
     body = await _read_json(request)
     plugin_config = get_plugin_config(config, "socialOAuth", SocialOAuthPluginConfig())
     service = SocialOAuthService(config, plugin_config)
@@ -853,6 +855,8 @@ async def _handle_social_start(config: AuthFnConfig, request: Any, _context: Rou
 
 
 async def _handle_social_callback(config: AuthFnConfig, request: Any, context: RouteContext) -> Response:
+    from .plugins.social_oauth import SocialOAuthPluginConfig, SocialOAuthService
+
     parsed = urlparse(_best_effort_url(request))
     query = parse_qs(parsed.query)
     provider = context.params["provider"]
@@ -896,6 +900,8 @@ async def _handle_social_callback(config: AuthFnConfig, request: Any, context: R
 
 
 async def _handle_social_disconnect(config: AuthFnConfig, request: Any, context: RouteContext) -> Response:
+    from .plugins.social_oauth import SocialOAuthPluginConfig, SocialOAuthService
+
     state = await require_cookie_session(config, request)
     _assert_valid_csrf(request, state)
     plugin_config = get_plugin_config(config, "socialOAuth", SocialOAuthPluginConfig())
@@ -1197,7 +1203,17 @@ async def _run_after_user_create_hook(
     if hook is None:
         return
     try:
-        await _maybe_await(hook(AuthFnHookContext(config=config, request=request, runtime=runtime, actorId=user["id"]), user))
+        await _maybe_await(
+            hook(
+                AuthFnHookContext(
+                    config=config,
+                    request=request,
+                    runtime=runtime,
+                    actor_id=user["id"],
+                ),
+                user,
+            )
+        )
     except Exception:  # noqa: BLE001
         await emit_auth_event(
             config,
@@ -1231,7 +1247,7 @@ async def _run_before_session_issue_hook(
                     config=config,
                     request=request,
                     runtime=runtime,
-                    actorId=payload["userId"],
+                    actor_id=payload["userId"],
                 ),
                 payload,
             )
@@ -1275,7 +1291,7 @@ async def _run_after_session_issue_hook(
                     config=config,
                     request=request,
                     runtime=runtime,
-                    actorId=session.actor_id,
+                    actor_id=session.actor_id,
                     session=session,
                 ),
                 session,
@@ -1406,11 +1422,11 @@ def _parse_cookies(header: str) -> Dict[str, str]:
 async def _read_json(request: Any) -> Dict[str, Any]:
     try:
         payload = await request.json()
-    except Exception:  # noqa: BLE001
+    except Exception as err:  # noqa: BLE001
         raw = await request.text()
         if not raw:
             return {}
-        raise ValidationError("Request body must be valid JSON")
+        raise ValidationError("Request body must be valid JSON") from err
     if payload is None:
         return {}
     if not isinstance(payload, dict):
@@ -1558,16 +1574,16 @@ def _with_url(request: Any, url: str) -> Any:
             self.url = resolved_url
 
         @property
-        def method(self) -> str:
-            return getattr(self._base, "method")
+        def method(self) -> Optional[str]:
+            return getattr(self._base, "method", None)
 
         @property
-        def path(self) -> str:
-            return getattr(self._base, "path")
+        def path(self) -> Optional[str]:
+            return getattr(self._base, "path", None)
 
         @property
         def headers(self) -> Dict[str, str]:
-            return getattr(self._base, "headers")
+            return cast(Dict[str, str], getattr(self._base, "headers", {}))
 
         @property
         def query_params(self) -> Dict[str, Any]:

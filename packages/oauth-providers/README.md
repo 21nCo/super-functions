@@ -46,7 +46,8 @@ It does not perform token exchange, persist OAuth tokens, or expose routes.
 - Registry methods that persist policy state are async because store writes are now part of the contract.
 - If you need a provider not bundled here, pass your own descriptor into `@superfunctions/oauth-core` or `@superfunctions/oauth-flow`.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-providers.mdx](../../docs/content/docs/authentication/oauth-providers.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)
+- Flow orchestration: [../oauth-flow/README.md](../oauth-flow/README.md)
+- Route factories: [../oauth-router/README.md](../oauth-router/README.md)

@@ -7,7 +7,6 @@ import pytest
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine, event
 from sqlalchemy.exc import OperationalError
 
-
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 package_root_str = str(PACKAGE_ROOT)
 if package_root_str not in sys.path:
@@ -23,6 +22,7 @@ from superfunctions.db import (  # noqa: E402
     UpdateParams,
     WhereClause,
 )
+
 from superfunctions_sqlalchemy import create_adapter  # noqa: E402
 
 

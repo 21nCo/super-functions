@@ -447,7 +447,7 @@ def authfn_two_factor_plugin(config: Optional[TwoFactorPluginConfig] = None) -> 
             {"method": "POST", "path": "/2fa/disable"},
         ],
     )
-    setattr(plugin, "_authfn_config", resolved)
+    plugin._authfn_config = resolved
     return plugin
 
 

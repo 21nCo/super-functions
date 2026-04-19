@@ -64,7 +64,8 @@ It does not decide when to start OAuth, exchange tokens, or expose HTTP endpoint
 - Prefer `EncryptedTokenVault` for durable token storage so plaintext token JSON never becomes the long-lived record format.
 - If you already use a custom token table/model name, keep passing `models.oauthTokenVault` until your schema migration is complete.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-storage.mdx](../../docs/content/docs/authentication/oauth-storage.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)
+- Flow orchestration: [../oauth-flow/README.md](../oauth-flow/README.md)
+- Test fixtures: [../oauth-testing/README.md](../oauth-testing/README.md)

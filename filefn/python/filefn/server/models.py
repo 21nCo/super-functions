@@ -1,6 +1,8 @@
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
 from enum import Enum
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel
+
 
 class Visibility(str, Enum):
     PRIVATE = 'private'

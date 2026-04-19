@@ -47,7 +47,13 @@ describe("SEC-001/002: WebSocket Auth", () => {
 
     // Broadcast to namespace — client should receive
     manager.broadcastCursor("100", "tenant:abc");
-    expect(client.send).toHaveBeenCalledWith(JSON.stringify({ type: "cursor", cursor: "100" }));
+    expect(client.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "cursor",
+        cursor: "100",
+        targeting: { mode: "namespace-broadcast", degraded: false },
+      }),
+    );
   });
 
   it("client namespace in hello message is ignored (SEC-002)", () => {

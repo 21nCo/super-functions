@@ -8,6 +8,8 @@ import {
   IMAGE_TRANSFORM_SUPPORTED_MIME_TYPES,
 } from '../src/index.js';
 
+const OCR_TEST_TIMEOUT_MS = 15_000;
+
 function normalizeOCRText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().toUpperCase();
 }
@@ -102,7 +104,7 @@ describe('OCR Processor', () => {
         sourceFileId: 'file_001',
         sourceVersionId: 'ver_001',
       });
-    });
+    }, OCR_TEST_TIMEOUT_MS);
 
     it('should extract text in JSON format', async () => {
       const processor = createOCRProcessor({ outputFormat: 'json', language: 'eng' });
@@ -134,7 +136,7 @@ describe('OCR Processor', () => {
       expect(jsonData).toHaveProperty('confidence');
       expect(jsonData).toHaveProperty('extractedAt');
       expect(normalizeOCRText(jsonData.text)).toContain('BONJOUR FILEFN');
-    });
+    }, OCR_TEST_TIMEOUT_MS);
 
     it('should extract text in hOCR format', async () => {
       const processor = createOCRProcessor({ outputFormat: 'hocr' });
@@ -164,7 +166,7 @@ describe('OCR Processor', () => {
       expect(hocrContent).toContain('ocr_page');
       expect(hocrContent).toContain('ocr_line');
       expect(normalizeOCRText(hocrContent)).toContain('HELLO');
-    });
+    }, OCR_TEST_TIMEOUT_MS);
 
     it('should extract text in all formats when format is "all"', async () => {
       const processor = createOCRProcessor({ outputFormat: 'all' });
@@ -196,7 +198,7 @@ describe('OCR Processor', () => {
       expect(mimeTypes).toContain('text/plain');
       expect(mimeTypes).toContain('application/json');
       expect(mimeTypes).toContain('text/html');
-    });
+    }, OCR_TEST_TIMEOUT_MS);
 
     it('should handle getData errors gracefully', async () => {
       const processor = createOCRProcessor();

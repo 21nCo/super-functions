@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@superfunctions/http": "^0.1.2",
-    "@searchfn/adapter-contracts": "^0.1.0"
+    "@searchfn/adapter-contracts": "^0.3.0"
   },
   "devDependencies": {
     "@searchfn/adapter-memory": "^0.1.0",

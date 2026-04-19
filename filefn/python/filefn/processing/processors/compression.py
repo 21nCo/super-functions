@@ -1,7 +1,14 @@
 import gzip
 import io
-from typing import Any, Optional, List
-from ..types import Processor, ProcessorInput, ProcessorResult, ProcessorOutputArtifact, CompressionConfig
+from typing import Any, Optional
+
+from ..types import (
+    CompressionConfig,
+    Processor,
+    ProcessorInput,
+    ProcessorOutputArtifact,
+    ProcessorResult,
+)
 
 SUPPORTED_MIME_TYPES = ['*/*']
 UNSUPPORTED_ALGORITHM_ERROR = 'FILEFN_PROCESSING_UNSUPPORTED_COMPRESSION_ALGORITHM'
@@ -21,13 +28,13 @@ class CompressionProcessor:
 
         try:
             data = await get_data()
-            
+
             out_buffer = io.BytesIO()
             with gzip.GzipFile(fileobj=out_buffer, mode='wb', compresslevel=self.level) as f:
                 f.write(data)
-            
+
             compressed_data = out_buffer.getvalue()
-            
+
             artifacts = [ProcessorOutputArtifact(
                 kind='compressed',
                 data=compressed_data,

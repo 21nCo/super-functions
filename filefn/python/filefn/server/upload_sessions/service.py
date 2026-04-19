@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import secrets
+from datetime import datetime, timedelta, timezone
 from tempfile import SpooledTemporaryFile
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, cast
 
 from pydantic import BaseModel
 
@@ -15,7 +15,12 @@ from ..events import (
     create_upload_started_event,
 )
 from ..models import FileProviderContext, UploadSessionRecord
-from ..policies import compute_storage_path, matches_content_type, resolve_storage_target
+from ..policies import (
+    PolicyStoragePathContext,
+    compute_storage_path,
+    matches_content_type,
+    resolve_storage_target,
+)
 from ..routed_storage import get_storage_capabilities
 
 
@@ -115,14 +120,14 @@ class UploadSessionService:
     def _extract_upload_session_token(self, ctx: Any) -> Optional[str]:
         for attr in ("uploadSessionToken", "upload_session_token", "sessionToken", "session_token"):
             value = getattr(ctx, attr, None)
-            if value:
+            if isinstance(value, str) and value:
                 return value
 
         headers = getattr(ctx, "headers", None)
         if isinstance(headers, dict):
             for key in ("x-upload-session-token", "X-Upload-Session-Token", "x_upload_session_token"):
                 value = headers.get(key)
-                if value:
+                if isinstance(value, str) and value:
                     return value
 
         return None
@@ -203,7 +208,7 @@ class UploadSessionService:
         )
         if not session_data:
             raise errors.session_not_found()
-        return session_data
+        return cast(Dict[str, Any], session_data)
 
     async def create_session(self, input: CreateSessionInput, ctx: FileProviderContext) -> Dict[str, Any]:
         warnings: List[str] = []
@@ -223,7 +228,7 @@ class UploadSessionService:
                 if existing.idempotencyPayloadHash != expected_hash:
                     raise errors.idempotency_conflict()
 
-                result = {
+                result: Dict[str, Any] = {
                     "uploadSessionId": existing.uploadSessionId,
                     "fileId": existing.fileId,
                     "uploadMode": existing.uploadMode,
@@ -233,10 +238,10 @@ class UploadSessionService:
                     "warnings": [],
                 }
                 if existing.ownerId == "anonymous":
-                    upload_session_token = await self._issue_anonymous_session_token(
+                    issued_upload_session_token = await self._issue_anonymous_session_token(
                         existing.uploadSessionId,
                     )
-                    result["uploadSessionToken"] = upload_session_token
+                    result["uploadSessionToken"] = issued_upload_session_token
                 return result
 
         policy = self.policies.get(input.policy)
@@ -282,11 +287,7 @@ class UploadSessionService:
         file_id = input.fileId or f"file_{secrets.token_urlsafe(12)}"
         version_id = f"ver_{secrets.token_urlsafe(12)}"
 
-        class StoragePathContext:
-            def __init__(self, **kwargs: Any):
-                self.__dict__.update(kwargs)
-
-        storage_ctx = StoragePathContext(
+        storage_ctx = PolicyStoragePathContext(
             fileName=input.fileName,
             principalId=ctx.principalId,
             tenantId=ctx.tenantId,
@@ -295,13 +296,16 @@ class UploadSessionService:
         )
         storage_key = compute_storage_path(policy, storage_ctx)
 
-        storage_upload_id = None
+        storage_upload_id: Optional[str] = None
         if upload_mode == "multipart-signed-url":
-            storage_upload_id = await self.storage.create_multipart_upload(
+            storage_upload_id = cast(
+                str,
+                await self.storage.create_multipart_upload(
                 key=storage_key,
                 metadata={"contentType": input.mimeType},
                 content_type=input.mimeType,
                 target=storage_target,
+                ),
             )
 
         upload_session_token: Optional[str] = None
@@ -355,7 +359,7 @@ class UploadSessionService:
             ),
         )
 
-        result: Dict[str, Any] = {
+        session_result: Dict[str, Any] = {
             "uploadSessionId": upload_session_id,
             "fileId": file_id,
             "uploadMode": upload_mode,
@@ -365,8 +369,8 @@ class UploadSessionService:
             "warnings": warnings,
         }
         if upload_session_token:
-            result["uploadSessionToken"] = upload_session_token
-        return result
+            session_result["uploadSessionToken"] = upload_session_token
+        return session_result
 
     async def get_session_status(self, upload_session_id: str, ctx: Any) -> Dict[str, Any]:
         session_data = await self._get_session_data(upload_session_id)
@@ -424,13 +428,16 @@ class UploadSessionService:
 
         policy = self.policies.get(session.policy)
         storage_target = resolve_storage_target(policy)
-        result = await self.storage.sign_multipart_upload_part_url(
+        result = cast(
+            Dict[str, Any],
+            await self.storage.sign_multipart_upload_part_url(
             key=session.storageKey,
             upload_id=session.storageUploadId,
             part_number=part_number,
             expires_in_seconds=self.signed_url_ttl_seconds,
             constraints={"contentLength": content_length},
             target=storage_target,
+            ),
         )
 
         expires_at = (datetime.now(timezone.utc) + timedelta(seconds=self.signed_url_ttl_seconds)).isoformat()
@@ -585,9 +592,14 @@ class UploadSessionService:
         session = UploadSessionRecord(**session_data)
 
         if session.status == "completed":
+            completed_file_id = session.fileId or ""
+            completion_version_id = cast(
+                str,
+                session_data.get("completionVersionId") or session_data.get("versionId") or "",
+            )
             return {
-                "fileId": session.fileId,
-                "versionId": session_data.get("completionVersionId") or session_data.get("versionId"),
+                "fileId": completed_file_id,
+                "versionId": completion_version_id,
             }
 
         if self._is_expired(session.expiresAt):
@@ -623,7 +635,7 @@ class UploadSessionService:
             await self._finalize_proxy_upload(session, parts_data)
 
         now_str = datetime.now(timezone.utc).isoformat()
-        file_id = session.fileId
+        file_id = session.fileId or f"file_{secrets.token_urlsafe(12)}"
         version_id = f"ver_{secrets.token_urlsafe(12)}"
         metadata = session_data.get("metadata") or {}
 
@@ -818,7 +830,6 @@ class UploadSessionService:
         preserved_completed_sessions = len(completed_sessions)
 
         for session_data in sessions:
-            status = session_data.get("status")
             expires_at_raw = session_data.get("expiresAt")
             if not expires_at_raw:
                 continue

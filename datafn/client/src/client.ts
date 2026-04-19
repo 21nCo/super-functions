@@ -862,7 +862,19 @@ function _buildRawClient<S extends DatafnSchema>(
         ) {
           // Emit only events for subscriptions owned by this client.
           eventBus.emit(delivery.event);
+          return;
         }
+
+        // Subscription responses and fanout events can arrive in the same tick.
+        // Re-check after pending subscribe promises settle before dropping the event.
+        setTimeout(() => {
+          if (
+            !extensionSubscriptionManager ||
+            extensionSubscriptionManager.ownsSubscriptionId(delivery.subscriptionId)
+          ) {
+            eventBus.emit(delivery.event);
+          }
+        }, 0);
       });
     }
   } else if (config.sync?.remote) {

@@ -1,11 +1,25 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Request as FastAPIRequest
+from fastapi import FastAPI
+from fastapi import Request as FastAPIRequest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+from superfunctions.http import (
+    HttpError,
+    HttpMethod,
+    Response,
+    Route,
+    RouteMeta,
+    SetCookie,
+    generate_openapi_document,
+)
 
-from superfunctions.http import HttpError, HttpMethod, Response, Route, SetCookie, generate_openapi_document
 from superfunctions_fastapi import create_router, to_fastapi_handler
 from superfunctions_fastapi.adapter import SUPERFUNCTIONS_ROUTE_ATTR
+
+
+def make_route_meta(**kwargs: object) -> RouteMeta:
+    return RouteMeta.model_validate(kwargs)
 
 
 def test_fastapi_adapter_preserves_repeated_cookies_and_route_metadata() -> None:
@@ -36,14 +50,14 @@ def test_fastapi_adapter_preserves_repeated_cookies_and_route_metadata() -> None
             method=HttpMethod.POST,
             path="/auth/session",
             handler=create_session,
-            meta={
-                "auth": {"mode": "cookie-session", "csrf": True},
-                "openapi": {
+            meta=make_route_meta(
+                auth={"mode": "cookie-session", "csrf": True},
+                openapi={
                     "operationId": "createSession",
                     "summary": "Create session",
                     "tags": ["auth", "session"],
                 },
-            },
+            ),
         )
     ]
     app = FastAPI()
@@ -62,7 +76,11 @@ def test_fastapi_adapter_preserves_repeated_cookies_and_route_metadata() -> None
     assert "SameSite=strict" in set_cookie_headers[1]
     assert "HttpOnly" not in set_cookie_headers[1]
 
-    registered_route = next(route for route in app.router.routes if route.path == "/api/auth/session")
+    registered_route = next(
+        route
+        for route in app.router.routes
+        if isinstance(route, APIRoute) and route.path == "/api/auth/session"
+    )
     preserved = getattr(registered_route.endpoint, SUPERFUNCTIONS_ROUTE_ATTR)
     assert preserved.meta is not None
     assert preserved.meta.openapi is not None

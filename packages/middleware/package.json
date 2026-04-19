@@ -40,6 +40,7 @@
     "@superfunctions/db": { "optional": true }
   },
   "devDependencies": {
+    "@superfunctions/db": "^0.1.3",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.2.4"

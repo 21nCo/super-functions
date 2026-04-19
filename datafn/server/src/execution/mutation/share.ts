@@ -1,5 +1,6 @@
 import type { Adapter } from "@superfunctions/db";
 import type { DatafnLogger } from "../../logger.js";
+import { hasResourceScopeOwnerAccess } from "../../validation/authz.js";
 import {
   emitLegacyShareDeprecationWarning,
   mirrorGrantToLegacyV1,
@@ -261,7 +262,14 @@ export async function executeShare(
     if (!ownerCheck.ok) {
       return ownerCheck;
     }
-  } else if (!actorId) {
+  } else if (
+    !(await hasResourceScopeOwnerAccess(
+      db,
+      mutation.resource,
+      actorId,
+      namespace,
+    ))
+  ) {
     return {
       ok: false,
       code: "FORBIDDEN",
@@ -453,7 +461,14 @@ export async function executeUnshare(
     if (!ownerCheck.ok) {
       return ownerCheck;
     }
-  } else if (!actorId) {
+  } else if (
+    !(await hasResourceScopeOwnerAccess(
+      db,
+      mutation.resource,
+      actorId,
+      namespace,
+    ))
+  ) {
     return {
       ok: false,
       code: "FORBIDDEN",

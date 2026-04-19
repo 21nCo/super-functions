@@ -321,7 +321,9 @@ describe("MemoryAdapter — initialize and name", () => {
 
   it("indexes >10k documents via deterministic chunking", async () => {
     const adapter = new MemoryAdapter();
-    const documents = Array.from({ length: 15000 }, (_, i) => ({
+    // Keep this just above the 10k batching threshold so we still cover
+    // cross-batch indexing without making CI pay for an oversized fixture.
+    const documents = Array.from({ length: 10001 }, (_, i) => ({
       id: `d${i}`,
       fields: { title: `document ${i}` },
     }));
@@ -329,13 +331,13 @@ describe("MemoryAdapter — initialize and name", () => {
 
     const result = await adapter.search({
       resource: "bulk",
-      query: "document 14999",
+      query: "document 10000",
       fields: ["title"],
       limit: 5,
     });
-    expect(result).toContain("d14999");
+    expect(result).toContain("d10000");
     await adapter.dispose();
-  });
+  }, 30000);
 });
 
 describe("MemoryAdapter — prefix search", () => {

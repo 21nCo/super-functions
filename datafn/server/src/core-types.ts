@@ -4,6 +4,17 @@
  * emitting declarations that reference types from @datafn/core.
  * These shapes must stay compatible with the core package.
  */
+import type {
+  CapabilityEntry,
+  DatafnFieldSchema as CoreDatafnFieldSchema,
+  DatafnHookContext as CoreDatafnHookContext,
+  DatafnLogger as CoreDatafnLogger,
+  DatafnPlugin as CoreDatafnPlugin,
+  DatafnRelationSchema as CoreDatafnRelationSchema,
+  DatafnResourceSchema as CoreDatafnResourceSchema,
+  DatafnSchema as CoreDatafnSchema,
+} from "@datafn/core";
+
 export type DatafnErrorCode =
   | "SCHEMA_INVALID"
   | "INVALID_CAPABILITY"
@@ -40,73 +51,17 @@ export type DatafnPermissionsPolicy = {
   ownerField?: string;
 };
 
-export type DatafnFieldSchema = {
-  name: string;
-  type: "string" | "number" | "boolean" | "object" | "array" | "date" | "file" | "json";
-  required?: boolean;
-  nullable?: boolean;
-  readonly?: boolean;
-  default?: unknown;
-  enum?: unknown[];
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  unique?: boolean | string;
-  encrypt?: boolean;
-  volatile?: boolean;
-};
+export type DatafnFieldSchema = CoreDatafnFieldSchema;
 
-export type DatafnResourceSchema = {
-  name: string;
-  version: number;
-  idPrefix?: string;
-  isRemoteOnly?: boolean;
-  fields: DatafnFieldSchema[];
-  indices?:
-    | {
-        base?: string[];
-        search?: string[];
-        vector?: string[];
-      }
-    | string[];
-  permissions?: DatafnPermissionsPolicy;
-  capabilities?: unknown;
-};
+export type DatafnResourceSchema = CoreDatafnResourceSchema;
 
-export type DatafnRelationSchema = {
-  from: string | string[];
-  to: string | string[];
-  type: "one-many" | "many-one" | "many-many" | "htree";
-  relation?: string;
-  inverse?: string;
-  cache?: boolean;
-  metadata?: Array<{
-    name: string;
-    type: "string" | "number" | "boolean" | "date" | "object" | "json";
-  }>;
-  fkField?: string;
-  pathField?: string;
-  joinTable?: string;
-  joinColumns?: { from: string; to: string };
-  /** Relation-level capabilities (e.g. "timestamps", "audit") for many-many join rows. */
-  capabilities?: string[];
-};
+export type DatafnRelationSchema = CoreDatafnRelationSchema;
 
-export type DatafnSchema = {
+export type DatafnSchema = CoreDatafnSchema & {
   version?: number;
-  capabilities?: unknown;
-  resources: DatafnResourceSchema[];
-  relations?: DatafnRelationSchema[];
-  namespaced?: boolean;
 };
 
-export type DatafnHookContext = {
-  env: "client" | "server";
-  schema: DatafnSchema;
-  context?: unknown;
-};
+export type DatafnHookContext = CoreDatafnHookContext;
 
 export interface HookError {
   code: string;
@@ -118,36 +73,7 @@ export type BeforeHookResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: HookError };
 
-export type DatafnPlugin = {
-  name: string;
-  runsOn: Array<"client" | "server">;
-  beforeQuery?: (ctx: DatafnHookContext, q: unknown) => Promise<unknown> | unknown;
-  afterQuery?: (
-    ctx: DatafnHookContext,
-    q: unknown,
-    result: unknown,
-  ) => Promise<unknown> | unknown;
-  beforeMutation?: (
-    ctx: DatafnHookContext,
-    m: unknown | unknown[],
-  ) => Promise<unknown> | unknown;
-  afterMutation?: (
-    ctx: DatafnHookContext,
-    m: unknown | unknown[],
-    result: unknown,
-  ) => Promise<void> | void;
-  beforeSync?: (
-    ctx: DatafnHookContext,
-    phase: "seed" | "clone" | "pull" | "push" | "cloneUp" | "reconcile",
-    payload: unknown,
-  ) => Promise<unknown> | unknown;
-  afterSync?: (
-    ctx: DatafnHookContext,
-    phase: "seed" | "clone" | "pull" | "push" | "cloneUp" | "reconcile",
-    payload: unknown,
-    result: unknown,
-  ) => Promise<void> | void;
-};
+export type DatafnPlugin = CoreDatafnPlugin;
 
 export type SortTerm = {
   field: string;
@@ -193,5 +119,6 @@ export interface ObservabilityConfig {
   onTiming?: (event: import("./middleware/timing.js").ExecutionTimingEvent) => void;
 }
 
-// Re-export for convenience — canonical definition lives in logger.ts
-export type { DatafnLogger } from "./logger.js";
+export type DatafnLogger = CoreDatafnLogger;
+
+export type { CapabilityEntry };

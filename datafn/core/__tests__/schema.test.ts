@@ -220,11 +220,26 @@ describe("validateSchema — relation from/to resource validation (CLI-004)", ()
     }
   });
 
-  it("rejects fields without a valid type or required flag", () => {
+  it("normalizes legacy field shorthands and still rejects invalid types", () => {
     const missingRequired = validateSchema({
       resources: [{ name: "task", version: 1, fields: [{ name: "title", type: "string" }] }],
     });
-    expect(missingRequired.ok).toBe(false);
+    expect(missingRequired.ok).toBe(true);
+    if (missingRequired.ok) {
+      expect(missingRequired.result.resources[0]?.fields).toEqual([
+        { name: "title", type: "string", required: false },
+      ]);
+    }
+
+    const legacyIdAlias = validateSchema({
+      resources: [{ name: "task", version: 1, fields: [{ name: "id", type: "id" }] }],
+    });
+    expect(legacyIdAlias.ok).toBe(true);
+    if (legacyIdAlias.ok) {
+      expect(legacyIdAlias.result.resources[0]?.fields).toEqual([
+        { name: "id", type: "string", required: true },
+      ]);
+    }
 
     const invalidType = validateSchema({
       resources: [{ name: "task", version: 1, fields: [{ name: "title", type: "wat", required: true }] }],

@@ -818,8 +818,8 @@ describe("IN_MEMORY targeted secondary loading", () => {
     expect(joinCalls).toHaveLength(0);
   });
 
-  it("TV-INMEM-SEC-006: unknown relation type — falls back to full secondary load with warning", async () => {
-    // Schema with an unsupported relation type triggers INMEM-004 fallback
+  it("TV-INMEM-SEC-006: unknown relation type is rejected during schema validation", async () => {
+    // Invalid relation types are rejected before query execution.
     const unknownRelSchema = {
       resources: [
         { name: "task",    version: 1, fields: [{ name: "title", type: "string", required: true }, { name: "status", type: "string", required: true }] },
@@ -850,33 +850,14 @@ describe("IN_MEMORY targeted secondary loading", () => {
       debug: () => {},
     };
 
-    const server = await createDatafnServer({ allowUnknownResources: true,
-      schema: unknownRelSchema,
-      limits: { maxLimit: 100 },
-      db,
-      logger: mockLogger,
-    });
-
-    const res = await server.router.handle(
-      queryReq({
-        resource: "task",
-        version: 1,
-        filters: {
-          status:  { $eq: "active" },
-          mystery: { $any: { data: { $eq: "secret" } } },
-        },
-        select: ["title"],
+    await expect(
+      createDatafnServer({ allowUnknownResources: true,
+        schema: unknownRelSchema,
+        limits: { maxLimit: 100 },
+        db,
+        logger: mockLogger,
       }),
-      {},
-    );
-
-    const body = await res.json();
-    expect(res.status).toBe(200);
-    expect(body.ok).toBe(true);
-
-    // EXE-022: Warning must have been emitted via logger (no full scan, empty result instead)
-    expect(warnLogs).toContain(
-      "Unhandled relation type for secondary resource; returning empty set instead of full scan",
-    );
+    ).rejects.toThrow(/relation\.type must be one of one-many, many-one, many-many, htree/i);
+    expect(warnLogs).toHaveLength(0);
   });
 });

@@ -63,7 +63,8 @@ It does not own HTTP transport, token persistence, or route exposure. Use:
 - Use durable storage for issued state records in multi-instance deployments.
 - Prefer `@superfunctions/oauth-flow` unless you intentionally need custom orchestration.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-core.mdx](../../docs/content/docs/authentication/oauth-core.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- Shared storage: [../oauth-storage/README.md](../oauth-storage/README.md)
+- Flow orchestration: [../oauth-flow/README.md](../oauth-flow/README.md)
+- Route factories: [../oauth-router/README.md](../oauth-router/README.md)

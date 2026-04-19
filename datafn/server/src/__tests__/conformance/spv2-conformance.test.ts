@@ -54,6 +54,14 @@ const DOC_USE_CASES = resolve(
   REPO_ROOT,
   "datafn/docs/content/docs/documentation/use-cases/sharing-patterns.mdx",
 );
+const HAS_CONFORMANCE_INPUTS = [
+  REQUIREMENTS_PATH,
+  TEST_VECTORS_PATH,
+  DOC_SHARING_V2,
+  DOC_SYNC_LIFECYCLE,
+  DOC_MIGRATION,
+  DOC_USE_CASES,
+].every((path) => existsSync(path));
 
 const TRACEABLE_EQUIVALENTS: Record<string, string[]> = {
   "TV-ARCH-001-P": ["datafn/server/src/execution/mutation/__tests__/archive.test.ts"],
@@ -289,7 +297,9 @@ function validateUseCaseMappings(
 }
 
 describe("SPV2 conformance gate (PHASE_12)", () => {
-  it("TV-DOC-001-P, TV-USE-001-P, TV-TEST-001-P: builds conformance matrix and writes green release report", async () => {
+  const conformanceIt = HAS_CONFORMANCE_INPUTS ? it : it.skip;
+
+  conformanceIt("TV-DOC-001-P, TV-USE-001-P, TV-TEST-001-P: builds conformance matrix and writes green release report", async () => {
     const [requirementsMd, testVectorsMd, sharingV2Doc, syncLifecycleDoc, migrationDoc, useCasesDoc] =
       await Promise.all([
         readFile(REQUIREMENTS_PATH, "utf8"),

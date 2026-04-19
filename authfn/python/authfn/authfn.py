@@ -5,7 +5,9 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from superfunctions.db import Adapter as DatabaseAdapter, OrderBy, WhereClause
+from superfunctions.db import Adapter as DatabaseAdapter
+from superfunctions.db import OrderBy, WhereClause
+
 from .config import get_plugin_config, normalize_config
 from .http import authenticate_request, create_authfn_openapi, create_authfn_routes
 from .plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
@@ -103,15 +105,15 @@ class AuthFn:
         """Get the auth provider."""
         return self._provider
 
-    def get_routes(self):
+    def get_routes(self) -> Any:
         """Return authfn HTTP routes."""
         return self.router
 
-    def get_schema(self):
+    def get_schema(self) -> Any:
         """Return the deterministic authfn schema."""
         return get_schema(self.config)
 
-    def open_api(self):
+    def open_api(self) -> Any:
         """Return the authfn OpenAPI document."""
         return create_authfn_openapi(self.config)
 

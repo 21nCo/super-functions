@@ -10,12 +10,15 @@ const schema: DatafnSchema = {
     {
       name: "tasks",
       version: 1,
-      fields: [{ name: "title", type: "string" }, { name: "status", type: "string" }],
+      fields: [
+        { name: "title", type: "string", required: false },
+        { name: "status", type: "string", required: false },
+      ],
     },
     {
       name: "notes",
       version: 1,
-      fields: [{ name: "body", type: "string" }],
+      fields: [{ name: "body", type: "string", required: false }],
     },
   ],
 };

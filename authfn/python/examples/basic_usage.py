@@ -1,11 +1,10 @@
 """Basic usage example for authfn."""
 
 import asyncio
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from authfn import create_authfn, AuthFnConfig
-from authfn.types import ApiKeyCreate, WhereClause, OrderByClause
+from authfn import AuthFnConfig, create_authfn
+from authfn.types import ApiKeyCreate, OrderByClause, WhereClause
 
 
 class SimpleDatabaseAdapter:
@@ -126,7 +125,7 @@ async def main():
             metadata={"environment": "development"},
         )
     )
-    print(f"✓ Created API key")
+    print("✓ Created API key")
     print(f"  ID: {result.id}")
     print(f"  Key: {result.key[:20]}... (truncated)")
     print()
@@ -135,9 +134,9 @@ async def main():
     print("3. Authenticating with the API key...")
     request = SimpleRequest(result.key)
     session = await auth.provider.authenticate(request)
-    
+
     if session:
-        print(f"✓ Authentication successful!")
+        print("✓ Authentication successful!")
         print(f"  Session ID: {session.id}")
         print(f"  Name: {session.name}")
         print(f"  Type: {session.type}")
@@ -196,7 +195,7 @@ async def main():
     print("8. Getting specific API key details...")
     key_details = await auth.get_key(result.id)
     if key_details:
-        print(f"✓ Key details:")
+        print("✓ Key details:")
         print(f"  Name: {key_details.name}")
         print(f"  Resources: {key_details.resource_ids}")
         print(f"  Created: {key_details.created_at}")

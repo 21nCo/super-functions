@@ -1,5 +1,7 @@
-from typing import Any, Dict, List, Optional, Protocol, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Protocol, Union
+
 from pydantic import BaseModel
+
 
 class ProcessorInput(BaseModel):
     fileId: str

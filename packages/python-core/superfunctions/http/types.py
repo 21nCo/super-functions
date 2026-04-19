@@ -8,7 +8,6 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Prot
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ============================================================================
 # HTTP Methods
 # ============================================================================

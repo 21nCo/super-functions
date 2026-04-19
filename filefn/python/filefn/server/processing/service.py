@@ -1,7 +1,7 @@
 import asyncio
-from datetime import datetime, timezone
 import secrets
-from typing import Any, Callable, Dict, List, Optional, Protocol, Set
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional, Protocol, Set, cast
 
 from pydantic import BaseModel
 
@@ -353,7 +353,7 @@ class ProcessingService:
             order_by=[{"field": "createdAt", "direction": "desc"}],
             namespace=self.namespace,
         )
-        return artifacts
+        return cast(List[Dict[str, Any]], artifacts)
 
     async def get_artifact_download_url(
         self,

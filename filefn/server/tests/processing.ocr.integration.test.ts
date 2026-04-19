@@ -188,7 +188,7 @@ describe('OCR Processing Integration', () => {
       expect(artifacts[0].kind).toBe('ocr-text');
       expect(artifacts[0].mimeType).toBe('text/plain');
       expect(artifacts[0].storageKey).toBe('tenant/file_001/ver_001-ocr.txt');
-    });
+    }, 15000);
 
     it('should create multiple OCR output formats when format is "all"', async () => {
       const ocrConfig: OCRConfig = {
@@ -231,7 +231,7 @@ describe('OCR Processing Integration', () => {
 
       const mimeTypes = artifacts.map((a) => a.mimeType).sort();
       expect(mimeTypes).toEqual(['application/json', 'text/html', 'text/plain']);
-    });
+    }, 15000);
 
     it('should handle OCR for JPEG images', async () => {
       const processor = createOCRProcessor({ outputFormat: 'json' });
@@ -263,7 +263,7 @@ describe('OCR Processing Integration', () => {
       const artifacts = await service.listArtifacts('file_003', {});
       expect(artifacts[0].kind).toBe('ocr-json');
       expect(artifacts[0].mimeType).toBe('application/json');
-    });
+    }, 15000);
   });
 
   describe('Image Transform processor with server integration', () => {

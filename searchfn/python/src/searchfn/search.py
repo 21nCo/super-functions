@@ -38,7 +38,7 @@ async def search_index(
         token_matches = await db.find_many(index_table, where_clause)
         matches.extend(token_matches)
 
-    scores = defaultdict(lambda: {"score": 0, "matches": set()})
+    scores: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"score": 0, "matches": set()})
     for match in matches:
         key = f"{match['model']}:{match['recordId']}"
         entry = scores[key]

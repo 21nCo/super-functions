@@ -11,7 +11,7 @@ const schema: DatafnSchema = {
       version: 1,
       fields: [
         { name: "title", type: "string", required: true },
-        { name: "status", type: "string" },
+        { name: "status", type: "string", required: false },
       ],
     },
   ],

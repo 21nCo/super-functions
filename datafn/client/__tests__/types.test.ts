@@ -60,9 +60,13 @@ describe("DatafnClient Types", () => {
     });
 
     const q: DfqlQueryFragment = { select: ["id"] };
-    client.tasks.query(q);
+    const queryFn: (query: DfqlQueryFragment) => unknown = client.tasks.query;
+
+    expectTypeOf(q).toMatchTypeOf<DfqlQueryFragment>();
+    expectTypeOf(queryFn).toBeFunction();
 
     // @ts-expect-error - invalid fragment key
-    client.tasks.query({ unknownKey: 123 });
+    const invalidQuery: DfqlQueryFragment = { unknownKey: 123 };
+    expectTypeOf(invalidQuery).toMatchTypeOf<DfqlQueryFragment>();
   });
 });

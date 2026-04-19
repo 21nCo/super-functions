@@ -42,7 +42,8 @@ It does not create framework servers, resolve sessions, or persist OAuth state b
 - Override route metadata explicitly when your app requires stronger auth or different OpenAPI annotations.
 - Keep callback routes reachable without session enforcement unless your app handles provider callbacks through another trust boundary.
 
-## Docs
+## Related Packages
 
-- Canonical docs: [docs/content/docs/authentication/oauth-router.mdx](../../docs/content/docs/authentication/oauth-router.mdx)
-- Stack overview: [docs/content/docs/architecture/oauth-flow-architecture.mdx](../../docs/content/docs/architecture/oauth-flow-architecture.mdx)
+- OAuth core primitives: [../oauth-core/README.md](../oauth-core/README.md)
+- Flow orchestration: [../oauth-flow/README.md](../oauth-flow/README.md)
+- HTTP primitives: [../oauth-http/README.md](../oauth-http/README.md)

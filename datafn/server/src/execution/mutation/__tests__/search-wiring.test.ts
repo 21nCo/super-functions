@@ -12,7 +12,7 @@ const schema: DatafnSchema = {
       version: 1,
       fields: [
         { name: "title", type: "string", required: true },
-        { name: "status", type: "string" },
+        { name: "status", type: "string", required: false },
       ],
     },
   ],
@@ -221,7 +221,7 @@ describe("TV-INIT-001: searchProvider.initialize is called on server startup", (
         {
           name: "notes",
           version: 1,
-          fields: [{ name: "body", type: "string" }],
+          fields: [{ name: "body", type: "string", required: false }],
         },
       ],
       relations: [],

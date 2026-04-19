@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 import os
 import sys
+from datetime import datetime
 
 import pytest
 
@@ -28,7 +28,7 @@ class DeliveryRecorder:
 
     async def send(self, payload):
         self.sent.append(payload)
-        return {"sent": True, "metadata": {"provider": "test"}} 
+        return {"sent": True, "metadata": {"provider": "test"}}
 
 
 def _route(auth, method: str, path: str):

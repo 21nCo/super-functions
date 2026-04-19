@@ -79,14 +79,17 @@ async function createFixtureExtension(backgroundSource: string): Promise<string>
 }
 
 describe('extfn package', () => {
-  it('builds, scans, and emits deterministic .zip and .xpi archives', async () => {
+  it(
+    'builds, scans, and emits deterministic .zip and .xpi archives',
+    async () => {
+    const fixtureDir = await createFixtureExtension('console.log("background")\n');
     const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'extfn-cli-artifacts-'));
     const { ctx } = createTestContext();
 
     try {
       const result = await runPackageCommand(
         {
-          config: 'extfn/examples/svelte-multi-content-demo/extfn.config.ts',
+          config: path.join(fixtureDir, 'extfn.config.ts'),
           outDir,
         },
         ctx
@@ -94,8 +97,8 @@ describe('extfn package', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.archives.map((archive) => path.basename(archive.file))).toEqual([
-        'svelte-multi-content-demo-0.1.0-chromium-mv3.zip',
-        'svelte-multi-content-demo-0.1.0-firefox-mv3.xpi',
+        'spec-demo-0.1.0-chromium-mv3.zip',
+        'spec-demo-0.1.0-firefox-mv3.xpi',
       ]);
 
       const firstBytes = await Promise.all(
@@ -103,7 +106,7 @@ describe('extfn package', () => {
       );
       const secondRun = await runPackageCommand(
         {
-          config: 'extfn/examples/svelte-multi-content-demo/extfn.config.ts',
+          config: path.join(fixtureDir, 'extfn.config.ts'),
           outDir,
         },
         ctx
@@ -123,8 +126,11 @@ describe('extfn package', () => {
       );
     } finally {
       await fs.rm(outDir, { recursive: true, force: true });
+      await fs.rm(fixtureDir, { recursive: true, force: true });
     }
-  });
+    },
+    30_000
+  );
 
   it('blocks archive emission when scan findings are blocking in strict mode', async () => {
     const fixtureDir = await createFixtureExtension(

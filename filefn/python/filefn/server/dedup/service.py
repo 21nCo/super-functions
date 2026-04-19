@@ -1,17 +1,18 @@
-import hashlib
 import base64
-from typing import Any, Optional, AsyncGenerator, Dict, Protocol
+import hashlib
+from typing import Any, AsyncGenerator, Optional
+
 from pydantic import BaseModel
-from superfunctions.db import Adapter
 
 from ..policies import resolve_storage_target
+
 
 class DeduplicationServiceConfig(BaseModel):
     db: Any # Adapter
     policies: Optional[Any] = None
     namespace: str = 'filefn'
     enabled: bool = True
-    
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -71,7 +72,7 @@ class DeduplicationService:
         if tenant_id:
             where_conditions.append({'field': 'tenantId', 'operator': 'eq', 'value': tenant_id})
         else:
-             where_conditions.append({'field': 'tenantId', 'operator': 'eq', 'value': None})
+            where_conditions.append({'field': 'tenantId', 'operator': 'is-null'})
 
         existing_versions = await self.db.find_many(
             model='fileVersions',
@@ -81,7 +82,10 @@ class DeduplicationService:
 
         for existing_version in existing_versions:
             if storage_target is not None:
-                existing_target = await self._resolve_version_storage_target(existing_version.get('fileId'))
+                existing_file_id = existing_version.get('fileId')
+                if not isinstance(existing_file_id, str):
+                    continue
+                existing_target = await self._resolve_version_storage_target(existing_file_id)
                 if existing_target != storage_target:
                     continue
             return DeduplicationResult(
@@ -114,16 +118,16 @@ class DeduplicationService:
 
         stream = await storage.open_download_stream(key=storage_key, target=storage_target)
         checksum = await self.compute_hash_from_stream(stream)
-        
+
         return await self.check_for_duplicate(checksum, tenant_id, storage_target)
 
     async def verify_hash(self, storage_key: str, expected_hash: str, storage: Any, storage_target: Optional[str] = None) -> bool:
         if not hasattr(storage, 'open_download_stream'):
             return False
-            
+
         stream = await storage.open_download_stream(key=storage_key, target=storage_target)
         actual_hash = await self.compute_hash_from_stream(stream)
-        
+
         return actual_hash == expected_hash
 
 def create_deduplication_service(config: DeduplicationServiceConfig) -> DeduplicationService:

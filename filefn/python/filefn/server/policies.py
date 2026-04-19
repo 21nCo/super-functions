@@ -1,6 +1,5 @@
-from typing import Callable, List, Optional, Protocol, Dict, Union, Any
-from dataclasses import dataclass, field
-from pydantic import BaseModel
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Protocol, Union
 
 DEFAULT_STORAGE_TARGET = "durable"
 NUCLEUS_MAX_SIZE_BYTES = 100 * 1024 * 1024
@@ -22,8 +21,8 @@ class PolicyStoragePathContext:
     tenantId: Optional[str] = None
 
 class Policy:
-    def __init__(self, 
-                 name: str, 
+    def __init__(self,
+                 name: str,
                  contentTypes: Optional[List[str]] = None,
                  maxSizeBytes: Optional[int] = None,
                  visibility: Optional[str] = None, # 'public' | 'private' | 'shared'
@@ -46,10 +45,10 @@ class PolicyRegistry(Protocol):
     def get(self, name: str) -> Optional[Policy]: ...
     def register(self, policy: Policy) -> None: ...
     def list(self) -> List[Policy]: ...
-    def define(self, name: str, policy: Dict[str, Any]) -> None: ...
+    def define(self, name: str, policy: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None: ...
 
 class InMemoryPolicyRegistry:
-    def __init__(self, initial_policies: List[Policy] = None):
+    def __init__(self, initial_policies: Optional[List[Policy]] = None):
         self._policies: Dict[str, Policy] = {}
         if initial_policies:
             for p in initial_policies:
@@ -61,23 +60,23 @@ class InMemoryPolicyRegistry:
     def register(self, policy: Policy) -> None:
         self._policies[policy.name] = policy
 
-    def define(self, name: str, policy: Optional[Dict[str, Any]] = None, **kwargs) -> None:
-        payload = dict(policy or {})
+    def define(self, name: str, policy: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+        payload: Dict[str, Any] = dict(policy or {})
         payload.update(kwargs)
-        policy = Policy(name=name, **payload)
-        self._policies[name] = policy
+        resolved_policy = Policy(name=name, **payload)
+        self._policies[name] = resolved_policy
 
     def list(self) -> List[Policy]:
         return list(self._policies.values())
 
-def create_policy_registry(initial_policies: List[Policy] = None) -> InMemoryPolicyRegistry:
+def create_policy_registry(initial_policies: Optional[List[Policy]] = None) -> InMemoryPolicyRegistry:
     return InMemoryPolicyRegistry(initial_policies)
 
 def validate_policy_constraints(policy: Policy, mime_type: str, size: int) -> Dict[str, Union[bool, str]]:
     if policy.contentTypes and len(policy.contentTypes) > 0:
         if not any(matches_content_type(pattern, mime_type) for pattern in policy.contentTypes):
             return {'valid': False, 'error': f"Content type '{mime_type}' not allowed by policy '{policy.name}'"}
-    
+
     if policy.maxSizeBytes is not None and size > policy.maxSizeBytes:
         return {'valid': False, 'error': f"Size {size} exceeds max {policy.maxSizeBytes} for policy '{policy.name}'"}
 
@@ -86,10 +85,12 @@ def validate_policy_constraints(policy: Policy, mime_type: str, size: int) -> Di
 def compute_storage_path(policy: Policy, ctx: PolicyStoragePathContext) -> str:
     if policy.storagePath:
         return policy.storagePath(ctx)
-    
+
     parts = []
-    if ctx.tenantId: parts.append(ctx.tenantId)
-    if ctx.principalId: parts.append(ctx.principalId)
+    if ctx.tenantId:
+        parts.append(ctx.tenantId)
+    if ctx.principalId:
+        parts.append(ctx.principalId)
     parts.append(ctx.fileId)
     parts.append(f"{ctx.versionId}-{ctx.fileName}")
     return "/".join(parts)

@@ -5,12 +5,12 @@ Example:
     >>> from fastapi import FastAPI
     >>> from superfunctions_fastapi import create_router
     >>> from superfunctions.http import Response
-    >>> 
+    >>>
     >>> app = FastAPI()
-    >>> 
+    >>>
     >>> async def get_user(request, context):
     ...     return Response(status=200, body={"id": context.params["id"]})
-    >>> 
+    >>>
     >>> router = create_router([
     ...     Route(method=HttpMethod.GET, path="/users/{id}", handler=get_user)
     ... ])

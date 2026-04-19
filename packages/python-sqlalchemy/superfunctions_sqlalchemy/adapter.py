@@ -41,7 +41,7 @@ class SQLAlchemyAdapter:
     def __init__(self, engine: Engine, namespace_prefix: str = ""):
         """
         Initialize SQLAlchemy adapter.
-        
+
         Args:
             engine: SQLAlchemy Engine
             namespace_prefix: Prefix for table names (for namespacing)
@@ -50,7 +50,7 @@ class SQLAlchemyAdapter:
         self.namespace_prefix = namespace_prefix
         self.metadata = MetaData()
         self._start_time = time.time()
-        
+
         # Metadata
         self.id = "sqlalchemy"
         self.name = "SQLAlchemy Adapter"
@@ -123,10 +123,10 @@ class SQLAlchemyAdapter:
     def _get_table(self, model: str, namespace: Optional[str] = None) -> Table:
         """Get or reflect table from database."""
         table_name = self._get_table_name(model, namespace)
-        
+
         if table_name in self.metadata.tables:
             return self.metadata.tables[table_name]
-        
+
         # Reflect table from database
         return Table(table_name, self.metadata, autoload_with=self.engine)
 
@@ -210,6 +210,17 @@ class SQLAlchemyAdapter:
 
         return and_(*conditions) if len(conditions) > 1 else conditions[0]
 
+    def _resolve_target_where_clause(self, table: Table, row_data: Dict[str, Any], fallback_clause: Any) -> Any:
+        primary_key_clause = self._build_primary_key_where_clause(table, row_data)
+        if primary_key_clause is not None:
+            return primary_key_clause
+
+        data_clause = self._build_data_where_clause(table, row_data)
+        if data_clause is not None:
+            return data_clause
+
+        return fallback_clause
+
     def _coerce_params(self, param_type: Any, params: Any = None, kwargs: Optional[Dict[str, Any]] = None) -> Any:
         kwargs = kwargs or {}
         if params is not None and kwargs:
@@ -256,7 +267,7 @@ class SQLAlchemyAdapter:
 
             with self.engine.begin() as managed_conn:
                 return await self._create(params, managed_conn)
-        
+
         except IntegrityError as e:
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
                 raise DuplicateKeyError(str(e), cause=e)
@@ -301,15 +312,15 @@ class SQLAlchemyAdapter:
             table = self._get_table(params.model, params.namespace)
             where_clause = self._build_where_clause(table, params.where) if params.where else None
             query = self._apply_where(self._apply_select(table, params), where_clause)
-            
+
             if params.order_by:
                 for order in params.order_by:
                     column = self._get_column(table, order.field, "order by")
                     query = query.order_by(column.desc() if order.direction == "desc" else column)
-            
+
             if params.limit is not None:
                 query = query.limit(params.limit)
-            
+
             if params.offset is not None:
                 query = query.offset(params.offset)
 
@@ -341,11 +352,7 @@ class SQLAlchemyAdapter:
                 existing = self._fetch_one_by_clause(conn, table, where_clause)
                 if existing is None:
                     raise NotFoundError("Record not found for update")
-                target_where_clause = (
-                    self._build_primary_key_where_clause(table, existing)
-                    or self._build_data_where_clause(table, existing)
-                    or where_clause
-                )
+                target_where_clause = self._resolve_target_where_clause(table, existing, where_clause)
                 conn.execute(update(table).where(target_where_clause).values(**params.data))
                 updated_row = {**existing, **params.data}
                 refreshed = self._fetch_one_by_primary_key(conn, table, updated_row, params.select)
@@ -355,7 +362,7 @@ class SQLAlchemyAdapter:
 
             with self.engine.begin() as managed_conn:
                 return await self._update(params, managed_conn)
-        
+
         except NotFoundError:
             raise
         except IntegrityError as e:
@@ -381,11 +388,7 @@ class SQLAlchemyAdapter:
                 existing = self._fetch_one_by_clause(conn, table, where_clause)
                 if existing is None:
                     raise NotFoundError("Record not found for deletion")
-                target_where_clause = (
-                    self._build_primary_key_where_clause(table, existing)
-                    or self._build_data_where_clause(table, existing)
-                    or where_clause
-                )
+                target_where_clause = self._resolve_target_where_clause(table, existing, where_clause)
                 result = conn.execute(delete(table).where(target_where_clause))
                 if result.rowcount == 0:
                     raise NotFoundError("Record not found for deletion")
@@ -393,14 +396,14 @@ class SQLAlchemyAdapter:
             else:
                 with self.engine.begin() as managed_conn:
                     await self._delete(params, managed_conn)
-        
+
         except NotFoundError:
             raise
         except IntegrityError as e:
             raise ConstraintViolationError(str(e), cause=e)
         except OperationalError as e:
             raise ConnectionError(str(e), cause=e)
-        except ConnectionError:
+        except (ConstraintViolationError, ConnectionError, QueryFailedError):
             raise
         except Exception as e:
             raise QueryFailedError(f"Delete failed: {str(e)}", cause=e)
@@ -427,7 +430,7 @@ class SQLAlchemyAdapter:
                         )
                     )
                 return created_rows
-        
+
         except (DuplicateKeyError, ConstraintViolationError, ConnectionError, QueryFailedError):
             raise
         except IntegrityError as e:
@@ -445,11 +448,11 @@ class SQLAlchemyAdapter:
             where_clause = self._build_where_clause(table, normalized.where)
             if where_clause is None:
                 raise QueryFailedError("UpdateMany failed: update_many requires a where clause")
-            
+
             with self.engine.begin() as conn:
                 result = conn.execute(update(table).where(where_clause).values(**normalized.data))
                 return result.rowcount
-        
+
         except QueryFailedError:
             raise
         except IntegrityError as e:
@@ -467,11 +470,11 @@ class SQLAlchemyAdapter:
             where_clause = self._build_where_clause(table, normalized.where)
             if where_clause is None:
                 raise QueryFailedError("DeleteMany failed: delete_many requires a where clause")
-            
+
             with self.engine.begin() as conn:
                 result = conn.execute(delete(table).where(where_clause))
                 return result.rowcount
-        
+
         except QueryFailedError:
             raise
         except IntegrityError as e:
@@ -493,7 +496,7 @@ class SQLAlchemyAdapter:
                 namespace=normalized.namespace,
             )
         )
-        
+
         if existing:
             return await self.update(
                 UpdateParams(
@@ -530,11 +533,11 @@ class SQLAlchemyAdapter:
         try:
             table = self._get_table(normalized.model, normalized.namespace)
             query = select(func.count()).select_from(table)
-            
+
             if normalized.where:
                 where_clause = self._build_where_clause(table, normalized.where)
                 query = query.where(where_clause)
-            
+
             with self.engine.connect() as conn:
                 result = conn.execute(query)
                 return result.scalar() or 0
@@ -567,7 +570,7 @@ class SQLAlchemyAdapter:
         try:
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            
+
             return HealthStatus(
                 healthy=True,
                 uptime=int(time.time() - self._start_time),
@@ -634,18 +637,18 @@ class SQLAlchemyTransactionAdapter:
 def create_adapter(engine: Engine, namespace_prefix: str = "") -> Adapter:
     """
     Create a SQLAlchemy adapter.
-    
+
     Args:
         engine: SQLAlchemy Engine
         namespace_prefix: Optional prefix for table names
-    
+
     Returns:
         SQLAlchemy adapter instance
-    
+
     Example:
         >>> from sqlalchemy import create_engine
         >>> from superfunctions_sqlalchemy import create_adapter
-        >>> 
+        >>>
         >>> engine = create_engine("postgresql://localhost/mydb")
         >>> adapter = create_adapter(engine)
     """

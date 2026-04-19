@@ -219,6 +219,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     }
 
     const fieldNames = new Set<string>();
+    const normalizedFields: DatafnResourceSchema["fields"] = [];
     for (const field of r.fields) {
       if (typeof field !== "object" || field === null || Array.isArray(field)) {
         return err("SCHEMA_INVALID", "Invalid schema: field must be object", {
@@ -240,14 +241,22 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
           { path: "resources" }
         );
       }
-      if (!FIELD_TYPES.has(f.type as DatafnFieldSchema["type"])) {
+      const normalizedType =
+        f.type === "id" ? "string" : (f.type as DatafnFieldSchema["type"]);
+      if (!FIELD_TYPES.has(normalizedType)) {
         return err(
           "SCHEMA_INVALID",
           `Invalid schema: field.type must be one of ${[...FIELD_TYPES].join(", ")}`,
           { path: `resources.${r.name}.fields.${f.name}.type` }
         );
       }
-      if (typeof f.required !== "boolean") {
+      let normalizedRequired: boolean;
+      if (typeof f.required === "boolean") {
+        normalizedRequired = f.required;
+      } else if (f.required === undefined) {
+        // Preserve legacy shorthand: `required` defaulted to false, except for `id`.
+        normalizedRequired = f.name === "id";
+      } else {
         return err(
           "SCHEMA_INVALID",
           "Invalid schema: field.required must be boolean",
@@ -255,6 +264,12 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
         );
       }
       fieldNames.add(f.name);
+      normalizedFields.push({
+        ...(f as Omit<DatafnFieldSchema, "type" | "required">),
+        name: f.name,
+        type: normalizedType,
+        required: normalizedRequired,
+      });
     }
 
     const resourceCapsResult = parseResourceCapabilities(r.capabilities);
@@ -347,7 +362,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     normalizedResources.push({
       ...r,
       capabilities: resourceCapsResult.result as DatafnResourceSchema["capabilities"],
-      fields: [...(r.fields as DatafnResourceSchema["fields"]), ...injectedFields],
+      fields: [...normalizedFields, ...injectedFields],
       indices: normalizedIndices,
     } as DatafnResourceSchema);
   }

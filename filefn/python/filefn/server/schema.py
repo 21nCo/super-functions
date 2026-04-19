@@ -1,5 +1,7 @@
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel
+
 
 class FieldSchema(BaseModel):
     type: str

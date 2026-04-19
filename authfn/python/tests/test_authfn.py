@@ -2,9 +2,10 @@
 
 import os
 import sys
-import pytest
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+import pytest
 
 TESTS_DIR = os.path.dirname(__file__)
 AUTHFN_PYTHON_ROOT = os.path.abspath(os.path.join(TESTS_DIR, ".."))
@@ -16,7 +17,7 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from authfn import create_authfn, AuthFnConfig, ApiKeyCreate
+from authfn import ApiKeyCreate, AuthFnConfig, create_authfn
 from authfn.types import (
     ApiKeyRevokedError,
     ExpiredCredentialsError,

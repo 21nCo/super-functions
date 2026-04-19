@@ -49,6 +49,8 @@ function createMemoryInternalCrud(): InternalCrud {
       switch (w.op) {
         case 'eq': return val === w.value;
         case 'ne': return val !== w.value;
+        case 'in':
+          return Array.isArray(w.value) && w.value.includes(val);
         case 'gt': return (val as number) > (w.value as number);
         case 'gte': return (val as number) >= (w.value as number);
         case 'lt': return (val as number) < (w.value as number);
