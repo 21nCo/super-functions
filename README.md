@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Super functions</h1>
-  <p>DX self deployed.</p>
+  <p>Self deployed super stack for building modern software.</p>
 </div>
 <div align="center">
 
@@ -11,12 +11,30 @@
 
 </div>
 
+# Functions
+
+
+## Data and storage
+
+| Function | Description | Comparable to | Packages |
+| --- | --- | --- | --- |
+| [dataFn](https://datafn.dev) | Full stack data management framework with offline-first sync, reactive signals, sharing capability, and auto REST API. | — | [npm](https://www.npmjs.com/package/@datafn/client) · [PyPI](https://pypi.org/project/datafn/) |
+| [fileFn](https://filefn.com) | Complete file management with resumability, multi-part uploads, security, processing, versioning, storage quota and analytics. | TUS + UploadThing | [npm](https://www.npmjs.com/package/@filefn/client) · [PyPI](https://pypi.org/project/filefn/) |
+| [searchFn](https://searchfn.com) | Adapter-first full-text search for browser, native mobile apps and server with offline IndexedDB and DataFn integration. | — | [npm](https://www.npmjs.com/package/@searchfn/client) |
+
+## Application core
+
+| Function | Description | Comparable to | Packages |
+| --- | --- | --- | --- |
+| [authFn](https://authfn.com) | Drop-in authentication and user management. Social logins, magic links, session handling, AI agent authentication and more. | Clerk or Auth0 | [npm](https://www.npmjs.com/package/@authfn/client) · [PyPI](https://pypi.org/project/authfn/) |
+| [billFn](https://billfn.com) | Complete billing infrastructure. Subscriptions, one-time payments, usage-based billing, analytics, store integrations and invoicing. | Stripe Billing + Metronome + RevenueCat | [npm](https://www.npmjs.com/package/billfn) |
+
 ### License
 
 This project is licensed under the MIT license. See the [LICENSE](LICENSE) file for details.
 
 ### Contact
 
-For any questions, security reporting or feedback, please contact us at [hello@21n.org](mailto:hello@21n.org).
+For any questions, security reporting or feedback, please contact us at [hello@21n.co](mailto:hello@21n.co).
 
 ❤️ We extend our deepest gratitude to all the [OSS libraries and tools](https://github.com/21nCo/super-functions/network/dependencies) that made this project possible.
