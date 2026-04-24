@@ -1,0 +1,85 @@
+---
+title: Troubleshooting
+description: Common BillFn setup and integration failures grounded in the current implementation.
+---
+
+## Dodo webhooks fail immediately
+
+If Dodo webhook requests fail before processing, check these first:
+
+- `webhookSecret` must be configured on `createDodoProvider()`
+- the signature must arrive in the configured header
+- the raw body must be valid JSON
+
+Common errors:
+
+- `BILLFN_VALIDATION_ERROR`
+- `BILLFN_WEBHOOK_SIGNATURE_INVALID`
+
+## Apple verification fails with a validation error
+
+Apple verification requires a `transactionId` or `originalTransactionId` in the verification payload.
+
+```ts
+await billfn.verifyCheckout({
+  subject: { principalId: "user_apple" },
+  checkoutSessionId: "chk_123",
+  payload: {
+    transactionId: "200000001",
+  },
+});
+```
+
+If that value is missing, the adapter raises `BILLFN_VALIDATION_ERROR`.
+
+## A provider operation is unsupported
+
+Some provider operations intentionally return `BILLFN_PROVIDER_UNSUPPORTED` in Phase 1.
+
+Current examples:
+
+- Apple server-side cancellation
+- Apple webhook parsing
+
+If you need that capability, keep the route or UI flow provider-aware instead of assuming every provider supports every action.
+
+## Entitlements or usage return empty state
+
+BillFn only has something meaningful to project once it can resolve a billing account and there is subscription state to read.
+
+Check:
+
+- the subject actually includes `principalId`, `actorId`, `organizationId`, or `tenantId`
+- your auth resolver returns the subject you expect
+- the checkout was verified and projected into subscription and entitlement state
+
+## TypeScript client fails before it sees a BillFn response
+
+The TypeScript client can synthesize these envelope errors:
+
+- `BILLFN_NETWORK_ERROR`
+- `BILLFN_EMPTY_RESPONSE`
+- `BILLFN_INVALID_RESPONSE`
+
+These usually point to:
+
+- the wrong `baseUrl`
+- a proxy or route that returned no body
+- a non-JSON upstream response
+
+## Python local setup fails
+
+The Python package requires Python `3.10+`.
+
+For monorepo development:
+
+```bash
+cd billfn/python
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ../../packages/python-core
+pip install -e ".[dev]"
+```
+
+If you use an older default `python3`, editable installation can fail before the package even imports.

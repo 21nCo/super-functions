@@ -1,0 +1,68 @@
+---
+title: Swift
+description: Native Apple and embedded-web integration with BillFn.
+---
+
+BillFn Phase 2 adds a native Apple surface instead of forcing embedded apps to push billing through a web-only client.
+
+## Packages
+
+| Package | Purpose |
+| --- | --- |
+| `BillFnClient` | Direct HTTP-backed lifecycle calls |
+| `BillFnStoreKit` | Apple-managed subscription helpers |
+| `BillFnWebViewBridgeHost` | Native owner for embedded web apps |
+| `@billfn/swift-bridge` | JavaScript bridge protocol and client wrapper |
+
+## Native Apple example
+
+```swift
+import BillFnClient
+import BillFnStoreKit
+import Foundation
+
+let client = BillFnClient(
+    configuration: BillFnClientConfiguration(
+        baseURL: URL(string: "https://billfn.example.test/billfn/")!
+    )
+)
+
+let manageAction = BillFnStoreKit.makeManageSubscriptionAction()
+print(manageAction.url ?? "")
+```
+
+The full sample lives in [native-apple.swift](</Users/serro/Documents/dev/n/superfunctions-billfn/billfn/swift/examples/native-apple.swift>).
+
+## Embedded web example
+
+```swift
+import BillFnWebViewBridgeHost
+
+let dispatcher = BillFnBridgeDispatcher(
+    configuration: BillFnBridgeConfiguration(
+        baseURL: "https://billfn.example.test/billfn"
+    )
+)
+```
+
+The full sample lives in [embedded-web.swift](</Users/serro/Documents/dev/n/superfunctions-billfn/billfn/swift/examples/embedded-web.swift>).
+
+## Bridge protocol
+
+The bridge protocol is `billfn-bridge/v1`.
+
+Methods:
+
+- `handshake`
+- `billing.status`
+- `entitlements.get`
+- `usage.get`
+- `checkout.create`
+- `checkout.verify`
+- `purchase.restore`
+- `subscription.sync`
+- `subscription.cancel`
+- `subscription.change`
+- `subscription.resume`
+- `subscription.manage`
+- `health.check`

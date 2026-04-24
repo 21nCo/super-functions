@@ -1,0 +1,106 @@
+---
+title: Setup
+description: Configure the BillFn core service, router, account resolution, and provider adapters.
+---
+
+`@billfn/core` is the server-side heart of BillFn. You create it with `createBillFn(config)` and then either mount its `router` or call the service methods directly.
+
+## Config Surface
+
+```ts
+type BillFnConfig = {
+  db: Adapter;
+  catalog: BillFnCatalog;
+  namespace?: string;
+  basePath?: string;
+  providers?: Partial<Record<BillingProviderName, BillFnProviderAdapter>>;
+  billingAccountResolver?: BillingAccountResolver;
+  metrics?: MetricsEmitter;
+  queue?: QueueAdapter<{ type: "webhook-event"; provider: BillingProviderName; providerEventId: string }>;
+  auth?: {
+    resolveSubject?: (request: Request) => Promise<BillableSubject | null> | BillableSubject | null;
+  };
+  now?: () => Date;
+  generateId?: (prefix: string) => string;
+};
+```
+
+## Recommended Production Wiring
+
+```ts
+import { createBillFn, type BillingAccountResolver } from "@billfn/core";
+import { createDodoProvider } from "@billfn/provider-dodo";
+
+const billingAccountResolver: BillingAccountResolver = {
+  async resolve(subject) {
+    if (subject.organizationId) {
+      return {
+        billingAccountId: `ba_org_${subject.organizationId}`,
+        ownerType: "organization",
+        ownerId: subject.organizationId,
+      };
+    }
+
+    if (subject.principalId) {
+      return {
+        billingAccountId: `ba_user_${subject.principalId}`,
+        ownerType: "user",
+        ownerId: subject.principalId,
+      };
+    }
+
+    return null;
+  },
+};
+
+const billfn = createBillFn({
+  db,
+  catalog,
+  billingAccountResolver,
+  auth: {
+    resolveSubject: async (request) => {
+      return request.headers.get("x-principal-id")
+        ? { principalId: request.headers.get("x-principal-id") ?? undefined }
+        : null;
+    },
+  },
+  providers: {
+    dodo: createDodoProvider({
+      apiKey: process.env.DODO_API_KEY!,
+      webhookSecret: process.env.DODO_WEBHOOK_SECRET!,
+    }),
+  },
+});
+```
+
+## Subject Precedence
+
+When both an authenticated subject resolver and a request body subject are present, the auth-resolved subject wins. That avoids spoofing another account by passing a different `subject` payload.
+
+## What `createBillFn()` Returns
+
+The instance exposes:
+
+- `router`
+- `getSchema()`
+- `getCatalog()`
+- `createCheckout()`
+- `verifyCheckout()`
+- `cancelSubscription()`
+- `syncSubscription()`
+- `restorePurchases()`
+- `getEntitlements()`
+- `getUsage()`
+- `handleWebhook()`
+- `subscriptionProvider`
+- `quotaProvider`
+
+## Integrating the Router
+
+The router is built with `@superfunctions/http` and uses `basePath` with `/billfn` as the default.
+
+```ts
+const router = billfn.router;
+```
+
+If your app already has its own routing layer, you can also call the service methods directly and wrap them in your own transport.

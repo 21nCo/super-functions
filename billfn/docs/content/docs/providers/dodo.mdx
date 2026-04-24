@@ -1,0 +1,70 @@
+---
+title: Dodo
+description: Dodo adapter setup and operational behavior in Phase 2.
+---
+
+`@billfn/provider-dodo` is the most complete BillFn provider in Phase 2.
+
+## Install
+
+```bash
+npm install @billfn/provider-dodo
+```
+
+## Create the Adapter
+
+```ts
+import { createDodoProvider } from "@billfn/provider-dodo";
+
+const dodo = createDodoProvider({
+  apiKey: process.env.DODO_API_KEY!,
+  webhookSecret: process.env.DODO_WEBHOOK_SECRET!,
+});
+```
+
+Optional config:
+
+- `baseUrl`
+- `fetch`
+- `webhookSignatureHeader`
+
+The default API base URL is `https://test.dodopayments.com`.
+The default webhook signature header is `x-dodo-signature`.
+
+## What the Adapter Does
+
+- creates subscription or one-time checkout requests
+- verifies checkouts by subscription or payment id
+- syncs subscriptions
+- cancels subscriptions
+- attempts direct subscription changes and falls back to replacement-checkout orchestration
+- resumes subscriptions when the provider allows it
+- creates refunds
+- restores purchases
+- verifies webhook signatures and parses webhook events
+
+## Webhook Behavior
+
+Dodo webhooks fail closed in Phase 1:
+
+- `webhookSecret` must be configured
+- invalid signatures raise `BILLFN_WEBHOOK_SIGNATURE_INVALID`
+- malformed JSON becomes a BillFn validation error
+- parsed events carry `signatureVerified: true`
+
+Webhook receipts are then deduped in core by provider plus provider event id.
+
+## Status Mapping
+
+Dodo statuses are normalized into BillFn statuses such as:
+
+- `active`
+- `trialing`
+- `paused`
+- `grace`
+- `canceled`
+- `expired`
+- `failed`
+- `pending`
+
+That normalization lets the rest of the system stay provider-neutral.

@@ -1,0 +1,27 @@
+---
+title: Production Readiness
+description: What BillFn Phase 2 supports today and where providers still differ.
+---
+
+BillFn Phase 2 is designed to replace the legacy Nucleus Dodo and Apple billing core for the main entitlement and lifecycle flows.
+
+## Production-ready surfaces
+
+- lifecycle operations for cancel, change, resume, refund, sync, and restore
+- normalized entitlement snapshots and quota checks
+- Dodo checkout, verification, sync, refund, cancellation, change fallback, and webhooks
+- Apple checkout handoff, verification, sync, restore, App Store Server Notifications v2 ingestion, notification history backfill, and Apple-managed lifecycle fallbacks
+- reconciliation jobs, replayable webhook projection, and queue-driven worker execution
+- TypeScript, Python, Svelte, Swift, and embedded web bridge entry points
+
+## Provider differences that remain intentional
+
+- Apple only performs server-side cancel and revoke when Advanced Commerce is configured and eligible.
+- When Advanced Commerce is unavailable, Apple lifecycle actions return `requires_action` with `clientAction.type = "manage-subscription"`.
+- Dodo change flows attempt direct provider updates first and fall back to replacement-checkout orchestration when the provider cannot mutate the subscription in place.
+
+## Still out of scope
+
+- Google Play and Microsoft Store production adapters
+- tax, invoicing, accounting export, and seat-based enterprise billing
+- internal schedulers or cron daemons; reconciliation is exposed so you can drive it with your own job runner

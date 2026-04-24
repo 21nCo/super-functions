@@ -1,0 +1,69 @@
+---
+title: TypeScript
+description: Use the typed HTTP client for browser or server-side consumers.
+---
+
+`@billfn/client` wraps the HTTP routes with a typed transport surface and keeps the server’s envelope shape intact.
+
+## Install
+
+```bash
+npm install @billfn/client
+```
+
+## Create a Client
+
+```ts
+import { createBillFnClient } from "@billfn/client";
+
+const client = createBillFnClient({
+  baseUrl: "https://billing.example.com/billfn",
+});
+```
+
+The default `baseUrl` is `/billfn`.
+The default `credentials` mode is `"include"`.
+
+## Example: Create a Checkout
+
+```ts
+const response = await client.createCheckout({
+  subject: { principalId: "user_123" },
+  planKey: "pro",
+  provider: "dodo",
+  interval: "month",
+});
+
+if (response.ok) {
+  window.location.href = response.data.checkoutSession.checkoutUrl!;
+}
+```
+
+## Available Methods
+
+- `getCatalog()`
+- `getEntitlements(query?)`
+- `getUsage(query?)`
+- `createCheckout(input)`
+- `verifyCheckout(input)`
+- `cancelSubscription(input)`
+- `syncSubscription(input)`
+- `restorePurchases(input)`
+
+## Error Handling
+
+The client returns the same envelope shape as the server:
+
+```ts
+if (!response.ok) {
+  console.error(response.error.code, response.error.message);
+}
+```
+
+That makes it easier to surface provider or validation errors without losing metadata such as `status` and `retryable`.
+
+The HTTP client also synthesizes a few transport-level envelopes when no valid BillFn response is available:
+
+- `BILLFN_NETWORK_ERROR`
+- `BILLFN_EMPTY_RESPONSE`
+- `BILLFN_INVALID_RESPONSE`

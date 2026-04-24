@@ -1,0 +1,42 @@
+{
+  "name": "billfn",
+  "version": "0.0.1",
+  "description": "Core billfn contracts, persistence, router, and entitlements",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@superfunctions/db": "*",
+    "@superfunctions/envelope": "*",
+    "@superfunctions/errors": "*",
+    "@superfunctions/http": "*",
+    "@superfunctions/metrics": "*",
+    "@superfunctions/queue": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

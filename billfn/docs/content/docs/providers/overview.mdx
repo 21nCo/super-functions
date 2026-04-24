@@ -1,0 +1,38 @@
+---
+title: Overview
+description: Provider adapters translate payment-system behavior into normalized BillFn billing state.
+---
+
+Provider adapters sit at the edge of BillFn. They own provider-specific API calls, webhook parsing, and status mapping, then return normalized `BillFnVerifiedBillingState` objects back to core.
+
+## Why Adapters Live Outside Core
+
+Provider logic tends to sprawl:
+
+- SDK auth and request shapes
+- webhook signature verification
+- receipt and transaction parsing
+- provider-specific status models
+- restore and reconciliation quirks
+
+Keeping that code outside `@billfn/core` makes the billing domain easier to evolve.
+
+## Phase 1 Provider Matrix
+
+| Provider | Checkout | Verify | Sync | Cancel | Restore | Webhooks |
+| --- | --- | --- | --- | --- | --- | --- |
+| Dodo | Yes | Yes | Yes | Yes | Yes | Yes |
+| Apple | Client handoff | Yes | Yes | No | Yes | No |
+
+## Shared Adapter Contract
+
+Adapters implement some or all of:
+
+- `createCheckout()`
+- `verifyCheckout()`
+- `fetchSubscription()`
+- `cancelSubscription()`
+- `restorePurchases()`
+- `parseWebhook()`
+
+The core package decides what is required for a given route based on provider capabilities and returns `BILLFN_PROVIDER_UNSUPPORTED` when an operation is not available.

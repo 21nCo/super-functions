@@ -1,0 +1,55 @@
+---
+title: Svelte
+description: Svelte context and store helpers for BillFn clients.
+---
+
+`@billfn/svelte` is intentionally small. It helps you pass a shared `BillFnClient` through component context and expose entitlement reads through a store.
+
+## Install
+
+```bash
+npm install @billfn/client @billfn/svelte
+```
+
+## Provide the Client
+
+```svelte
+<script lang="ts">
+  import { createBillFnClient } from "@billfn/client";
+  import { createBillFnClientContext } from "@billfn/svelte";
+
+  const client = createBillFnClient({ baseUrl: "/billfn" });
+  createBillFnClientContext(client);
+</script>
+```
+
+## Read It in a Child Component
+
+```svelte
+<script lang="ts">
+  import { getBillFnClientContext } from "@billfn/svelte";
+
+  const { client } = getBillFnClientContext();
+</script>
+```
+
+## Entitlements Store
+
+```svelte
+<script lang="ts">
+  import { createBillFnEntitlementsStore, getBillFnClientContext } from "@billfn/svelte";
+
+  const { client } = getBillFnClientContext();
+  const entitlements = createBillFnEntitlementsStore(client);
+
+  $: entitlements.refresh({ principalId: "user_123" });
+</script>
+
+{#if $entitlements?.ok}
+  <p>Plan: {$entitlements.data.entitlements?.planKey ?? "none"}</p>
+{:else if $entitlements}
+  <p>{$entitlements.error.message}</p>
+{/if}
+```
+
+The store preserves error envelopes rather than pretending failures are successful entitlement payloads, so UI code can handle unhappy paths explicitly.

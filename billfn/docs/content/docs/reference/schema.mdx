@@ -1,0 +1,44 @@
+---
+title: Schema
+description: The normalized BillFn persistence model in Phase 1.
+---
+
+`getSchema()` returns version `1` with eight table definitions.
+
+## Tables
+
+| Table | Purpose |
+| --- | --- |
+| `billingAccounts` | Stable internal owners for user or organization billing state |
+| `subscriptions` | Normalized provider subscription snapshots |
+| `checkoutSessions` | Checkout lifecycle and provider reference ids |
+| `entitlementSnapshots` | Current feature and limit projection for an account |
+| `usageMeters` | Current usage per billing account and resource |
+| `usageLedger` | Append-only usage deltas |
+| `webhookReceipts` | Dedupe and audit trail for provider webhook deliveries |
+| `billingEvents` | Internal normalized billing event stream |
+
+## Important Indexes
+
+Phase 1 relies on a few critical indexes:
+
+- `subscriptions.provider + providerSubscriptionId`
+- `subscriptions.provider + providerChargeId`
+- `checkoutSessions.provider + providerCheckoutId`
+- `checkoutSessions.provider + providerSubscriptionId`
+- `checkoutSessions.provider + providerChargeId`
+- `entitlementSnapshots.billingAccountId` as a unique current snapshot
+- `usageMeters.billingAccountId + resource` as a unique usage meter
+- `webhookReceipts.provider + providerEventId` as a unique dedupe key
+
+## Example
+
+```ts
+import { getSchema } from "@billfn/core";
+
+const schema = getSchema();
+console.log(schema.version);
+console.log(schema.schemas.map((table) => table.modelName));
+```
+
+The Python SDK mirrors the same schema version and table layout through `get_schema()`.
