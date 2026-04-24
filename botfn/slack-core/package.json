@@ -1,0 +1,35 @@
+{
+  "name": "@botfn/slack-core",
+  "version": "0.0.1",
+  "description": "Slack integration core utilities",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "@types/crypto-js": "^4.2.0"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "botfn/slack-core"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

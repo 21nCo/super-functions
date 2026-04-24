@@ -23,6 +23,7 @@ export function generateTypes(schemaInput: unknown): string {
   const lines: string[] = [];
 
   // Preamble
+  lines.push("// @ts-nocheck");
   lines.push(
     `import type { DatafnClient, DatafnTable } from "@datafn/client";`,
   );
@@ -40,7 +41,7 @@ export function generateTypes(schemaInput: unknown): string {
     lines.push(`export interface ${pascalName} {`);
 
     // Sort fields for stability
-    const fields = [...resource.fields].sort((a, b) =>
+    const fields = ensureIdField(resource.fields).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
     const hasShareable =
@@ -167,6 +168,17 @@ function renderTsPropertyName(name: string): string {
   return isValidTsIdentifier(name) ? name : JSON.stringify(name);
 }
 
+function ensureIdField(fields: DatafnFieldSchema[]): DatafnFieldSchema[] {
+  if (fields.some((field) => field.name === "id")) {
+    return [...fields];
+  }
+
+  return [
+    { name: "id", type: "string", required: true, readonly: true },
+    ...fields,
+  ];
+}
+
 function isValidTsIdentifier(name: string): boolean {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
 }
@@ -190,7 +202,7 @@ function mapBaseType(type: string): string {
     case "array":
       return "unknown[]";
     case "date":
-      return "number"; // timestamp
+      return "number"; // epoch milliseconds
     case "file":
       return "string"; // url or id
     case "json":

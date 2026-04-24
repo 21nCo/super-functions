@@ -17,6 +17,7 @@ const testSchema: DatafnSchema = {
     {
       name: "task",
       version: 1,
+      capabilities: ["audit"],
       fields: [
         { name: "title", type: "string", required: true },
       ],
@@ -152,6 +153,64 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
       (w: any) => w.field === "tenant_id" && w.operator === "eq" && w.value === "user:alice",
     );
     expect(hasCustomCol).toBe(true);
+
+    server.close();
+  });
+
+  it("passes request context into namespace and actor providers", async () => {
+    const server = await createDatafnServer<{ actorId: string }>({
+      allowUnknownResources: true,
+      schema: testSchema,
+      db: memoryAdapter({ debug: false }),
+      context: (request) => ({
+        actorId: request.headers.get("x-actor-id") ?? "anonymous",
+      }),
+      namespaceProvider: {
+        getNamespace: (ctx) => `workspace:${ctx.actorId}`,
+        getActorId: (ctx) => ctx.actorId,
+      },
+    });
+
+    const mutation = await server.router.handle(new Request("http://localhost/datafn/mutation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-actor-id": "usr_alice",
+      },
+      body: JSON.stringify({
+        clientId: "test-client",
+        mutationId: "test-context-actor",
+        resource: "task",
+        version: 1,
+        operation: "insert",
+        id: "task:context",
+        record: { title: "Context actor" },
+      }),
+    }));
+    const query = await server.router.handle(new Request("http://localhost/datafn/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-actor-id": "usr_alice",
+      },
+      body: JSON.stringify({
+        resource: "task",
+        version: 1,
+        filters: { id: "task:context" },
+        select: ["id", "createdBy"],
+      }),
+    }));
+
+    expect(await mutation.json()).toMatchObject({
+      ok: true,
+      result: { ok: true },
+    });
+    expect(await query.json()).toMatchObject({
+      ok: true,
+      result: {
+        data: [{ id: "task:context", createdBy: "usr_alice" }],
+      },
+    });
 
     server.close();
   });

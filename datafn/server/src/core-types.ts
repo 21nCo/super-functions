@@ -1,67 +1,17 @@
-/**
- * Server-local types compatible with @datafn/core.
- * Defined here to avoid TS2709 ("Cannot use namespace as a type") when
- * emitting declarations that reference types from @datafn/core.
- * These shapes must stay compatible with the core package.
- */
-import type {
-  CapabilityEntry,
-  DatafnFieldSchema as CoreDatafnFieldSchema,
-  DatafnHookContext as CoreDatafnHookContext,
-  DatafnLogger as CoreDatafnLogger,
-  DatafnPlugin as CoreDatafnPlugin,
-  DatafnRelationSchema as CoreDatafnRelationSchema,
-  DatafnResourceSchema as CoreDatafnResourceSchema,
-  DatafnSchema as CoreDatafnSchema,
-} from "@datafn/core";
-
-export type DatafnErrorCode =
-  | "SCHEMA_INVALID"
-  | "INVALID_CAPABILITY"
-  | "INVALID_CAPABILITY_CONFIG"
-  | "CAPABILITY_FIELD_COLLISION"
-  | "CAPABILITY_DEPENDENCY"
-  | "DFQL_INVALID"
-  | "DFQL_UNKNOWN_RESOURCE"
-  | "DFQL_UNKNOWN_FIELD"
-  | "DFQL_UNKNOWN_RELATION"
-  | "DFQL_UNSUPPORTED"
-  | "DFQL_ABORTED"
-  | "LIMIT_EXCEEDED"
-  | "FORBIDDEN"
-  | "NOT_FOUND"
-  | "CONFLICT"
-  | "INTERNAL"
-  | "TRANSACTION_ROLLED_BACK"
-  | "TRANSPORT_ERROR";
-
-export type DatafnError = {
-  code: DatafnErrorCode;
-  message: string;
-  details?: unknown;
-};
-
-export type DatafnEnvelope<T> =
-  | { ok: true; result: T }
-  | { ok: false; error: DatafnError };
-
-export type DatafnPermissionsPolicy = {
-  read?: { fields: string[] };
-  write?: { fields: string[] };
-  ownerField?: string;
-};
-
-export type DatafnFieldSchema = CoreDatafnFieldSchema;
-
-export type DatafnResourceSchema = CoreDatafnResourceSchema;
-
-export type DatafnRelationSchema = CoreDatafnRelationSchema;
-
-export type DatafnSchema = CoreDatafnSchema & {
-  version?: number;
-};
-
-export type DatafnHookContext = CoreDatafnHookContext;
+export type {
+  DatafnFieldSchema,
+  DatafnHookContext,
+  DatafnLogger,
+  DatafnPermissionsPolicy,
+  DatafnPlugin,
+  DatafnRelationSchema,
+  DatafnResourceSchema,
+  DatafnSchema,
+} from "@datafn/core/types";
+export type { CapabilityEntry } from "@datafn/core/capabilities";
+export type { DatafnEnvelope, DatafnError, DatafnErrorCode } from "@datafn/core/errors";
+export type { NormalizedRelation } from "@datafn/core/relations";
+export type { SortTerm } from "@datafn/core/sort";
 
 export interface HookError {
   code: string;
@@ -72,18 +22,6 @@ export interface HookError {
 export type BeforeHookResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: HookError };
-
-export type DatafnPlugin = CoreDatafnPlugin;
-
-export type SortTerm = {
-  field: string;
-  direction: "asc" | "desc";
-};
-
-export type NormalizedRelation = {
-  toId: string;
-  metadata: Record<string, unknown>;
-};
 
 export interface RetentionConfig {
   /** Number of days to retain change log entries. Default: unlimited. */
@@ -118,7 +56,3 @@ export interface ObservabilityConfig {
   /** Custom timing event handler. Default: console.debug. */
   onTiming?: (event: import("./middleware/timing.js").ExecutionTimingEvent) => void;
 }
-
-export type DatafnLogger = CoreDatafnLogger;
-
-export type { CapabilityEntry };

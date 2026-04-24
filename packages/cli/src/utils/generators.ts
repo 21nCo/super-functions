@@ -3,7 +3,7 @@
  */
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
-import type { TableDiff, MigrationPlan } from './schema-diff.js';
+import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
 
 export type Dialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -91,7 +91,8 @@ function escapeSqlString(value: string, dialect: Dialect): string {
 function generateCreateTableSQL(
   schema: TableSchema,
   dialect: Dialect,
-  ifNotExists: boolean = true
+  ifNotExists: boolean = true,
+  tableName: string = schema.modelName
 ): string {
   const columns: string[] = [];
 
@@ -127,7 +128,20 @@ function generateCreateTableSQL(
   }
 
   const ifNotExistsClause = ifNotExists ? 'IF NOT EXISTS ' : '';
-  return `CREATE TABLE ${ifNotExistsClause}${schema.modelName} (\n${columns.join(',\n')}\n);`;
+  return `CREATE TABLE ${ifNotExistsClause}${tableName} (\n${columns.join(',\n')}\n);`;
+}
+
+function findSchemaForTable(
+  schemas: TableSchema[],
+  namespace: string,
+  tableName: string
+): TableSchema | undefined {
+  return schemas.find((schema) => {
+    return (
+      schema.modelName === tableName
+      || resolvePhysicalTableName(namespace, schema.modelName) === tableName
+    );
+  });
 }
 
 /**
@@ -218,13 +232,13 @@ export function generateDrizzleMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
-        statements.push(generateCreateTableSQL(schema, dialect));
+        statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         const alterStatements = generateAlterTableSQL(diff, schema, dialect);
         statements.push(...alterStatements);
@@ -278,13 +292,13 @@ export function generatePrismaMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
-        statements.push(generateCreateTableSQL(schema, dialect));
+        statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         const alterStatements = generateAlterTableSQL(diff, schema, dialect);
         statements.push(...alterStatements);
@@ -336,11 +350,11 @@ export function generateKyselyMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         // Up: create table
         upStatements.push(
-          `  await db.schema.createTable('${schema.modelName}')`,
+          `  await db.schema.createTable('${diff.tableName}')`,
         );
 
         for (const [fieldName, field] of Object.entries(schema.fields)) {
@@ -356,10 +370,10 @@ export function generateKyselyMigration(
         upStatements.push(`    .execute();`);
 
         // Down: drop table
-        downStatements.push(`  await db.schema.dropTable('${schema.modelName}').execute();`);
+        downStatements.push(`  await db.schema.dropTable('${diff.tableName}').execute();`);
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema && diff.missingColumns) {
         for (const colName of diff.missingColumns) {
           const field = Object.entries(schema.fields).find(

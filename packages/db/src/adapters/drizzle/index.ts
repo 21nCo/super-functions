@@ -6,6 +6,7 @@
  * Consumers must pass schema to drizzle() constructor.
  */
 
+import { createRequire } from 'node:module';
 import type {
   Adapter,
   AdapterImplementation,
@@ -27,21 +28,9 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createDrizzleInternalCrud } from './internal.js';
 
-// Import Drizzle helpers loosely to avoid strict peer typing
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-// These are type-unsafe on purpose to avoid hard binding to a specific driver.
-// Drizzle exports these from 'drizzle-orm'.
-// We fall back to minimal shims if not present at runtime.
-let drizzleOps: any = {};
-try {
-  // dynamic import to keep peer dep optional
-  // @ts-ignore
-  drizzleOps = await import('drizzle-orm');
-} catch {
-  // no-op: will throw if used without drizzle installed
-}
-
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
+
+const require = createRequire(import.meta.url);
 
 export interface DrizzleAdapterConfig {
   db: any; // Drizzle database instance
@@ -62,7 +51,21 @@ function escapeLikeWildcards(value: string): string {
   return value.replace(/[%_]/g, '\\$&');
 }
 
-function buildWhere(tbl: any, where: WhereClause[] | undefined) {
+function loadDrizzleOps(): typeof import('drizzle-orm') {
+  try {
+    return require('drizzle-orm') as typeof import('drizzle-orm');
+  } catch {
+    throw new Error(
+      'drizzleAdapter requires the optional peer dependency "drizzle-orm". Install drizzle-orm to use this adapter.'
+    );
+  }
+}
+
+function buildWhere(
+  drizzleOps: typeof import('drizzle-orm'),
+  tbl: any,
+  where: WhereClause[] | undefined,
+) {
   if (!where || where.length === 0) return undefined;
   const { and, or, not, eq, ne, gt, gte, lt, lte, inArray, isNull, isNotNull, sql } = drizzleOps;
   const parts = where.map((clause) => {
@@ -115,7 +118,11 @@ function buildWhere(tbl: any, where: WhereClause[] | undefined) {
   return combined;
 }
 
-function buildOrder(tbl: any, orderBy: OrderBy[] | undefined) {
+function buildOrder(
+  drizzleOps: typeof import('drizzle-orm'),
+  tbl: any,
+  orderBy: OrderBy[] | undefined,
+) {
   if (!orderBy || orderBy.length === 0) return undefined;
   const { asc, desc } = drizzleOps;
   return orderBy.map((o) => {
@@ -126,7 +133,7 @@ function buildOrder(tbl: any, orderBy: OrderBy[] | undefined) {
 
 export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
   if (!config?.db) throw new Error('drizzleAdapter: config.db is required');
-  if (!drizzleOps?.eq) throw new Error('drizzle-orm is required as a peerDependency to use drizzleAdapter');
+  const drizzleOps = loadDrizzleOps();
 
   const createImpl = (ctx: any): AdapterImplementation => {
     const { db, dialect, schemaVersionsTable } = config;
@@ -201,7 +208,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const tbl = resolveTable(model);
         const selection = select && select.length > 0 ? Object.fromEntries(select.map((k) => [k, (tbl as any)[k]])) : undefined;
         const q = db.select(selection as any).from(tbl);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         const rows = await q.where(cond).limit(1).execute();
         return rows?.[0] ?? null;
       },
@@ -210,9 +217,9 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
         const tbl = resolveTable(model);
         const selection = select && select.length > 0 ? Object.fromEntries(select.map((k) => [k, (tbl as any)[k]])) : undefined;
         let q = db.select(selection as any).from(tbl);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         if (cond) q = q.where(cond) as any;
-        const order = buildOrder(tbl, orderBy);
+        const order = buildOrder(drizzleOps, tbl, orderBy);
         if (order && order.length > 0) q = q.orderBy(...order) as any;
         if (typeof limit === 'number') q = q.limit(limit) as any;
         if (typeof offset === 'number') q = q.offset(offset) as any;
@@ -222,7 +229,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
         const tbl = resolveTable(model);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         const q = db.update(tbl).set(data as any).where(cond);
         if (dialect === 'mysql') {
           await q.execute();
@@ -240,7 +247,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async updateMany({ model, where, data }: UpdateManyParams): Promise<number> {
         const tbl = resolveTable(model);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         const q = db.update(tbl).set(data as any).where(cond);
         const result = await q.execute();
         // drizzle returns driver-dependent result; for better-sqlite3 it's { changes: N, lastInsertRowid: X }
@@ -250,13 +257,13 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async delete({ model, where }: DeleteParams): Promise<void> {
         const tbl = resolveTable(model);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         await db.delete(tbl).where(cond).execute();
       },
 
       async deleteMany({ model, where }: DeleteManyParams): Promise<number> {
         const tbl = resolveTable(model);
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         const res = await db.delete(tbl).where(cond).execute();
         const n = (res as any)?.changes ?? (res as any)?.rowsAffected ?? (res as any)?.rowCount ?? 0;
         return typeof n === 'number' ? n : 0;
@@ -338,7 +345,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       async count({ model, where }: CountParams): Promise<number> {
         const tbl = resolveTable(model);
         const { sql } = drizzleOps;
-        const cond = buildWhere(tbl, where);
+        const cond = buildWhere(drizzleOps, tbl, where);
         const rows = await db
           .select({ value: sql<number>`count(*)`.as('value') })
           .from(tbl)
@@ -487,6 +494,6 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
   });
 
   const adapter = factory({});
-  const internalCrud = createDrizzleInternalCrud(config.db, config.dialect);
+  const internalCrud = createDrizzleInternalCrud(config.db, config.dialect, drizzleOps.sql);
   return Object.assign(adapter, { internal: internalCrud });
 }

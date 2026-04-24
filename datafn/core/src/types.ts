@@ -11,6 +11,7 @@ import type {
 } from "./capabilities.js";
 
 export type DatafnSchema = {
+  version?: number;
   capabilities?: SchemaCapabilities;
   resources: DatafnResourceSchema[];
   relations?: DatafnRelationSchema[];

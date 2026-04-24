@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import type {
   InternalCrud,
   InternalColumnDef,
@@ -15,13 +16,16 @@ import {
 
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
 
-let drizzleSql: any;
-let drizzleImportError: unknown;
-try {
-  const mod = await import('drizzle-orm');
-  drizzleSql = mod.sql;
-} catch (error) {
-  drizzleImportError = error;
+const require = createRequire(import.meta.url);
+
+function loadDrizzleSql() {
+  try {
+    return (require('drizzle-orm') as typeof import('drizzle-orm')).sql;
+  } catch {
+    throw new Error(
+      'drizzleAdapter requires the optional peer dependency "drizzle-orm". Install drizzle-orm to use this adapter.'
+    );
+  }
 }
 
 function buildWhereClause(
@@ -33,7 +37,7 @@ function buildWhereClause(
   }
 
   assertInternalWhereClauses(where);
-  const sql = getDrizzleSql();
+  const sql = loadDrizzleSql();
 
   function buildCondition(clause: InternalWhereClause): any {
     const fieldSql = sql.raw(quoteInternalIdentifier(clause.field, dialect));
@@ -57,18 +61,13 @@ function buildWhereClause(
   return { fragment: combined, empty: false };
 }
 
-function getDrizzleSql(): any {
-  if (!drizzleSql) {
-    throw new Error(
-      `drizzle-orm is required as a peerDependency to use Drizzle internal CRUD helpers${drizzleImportError ? `: ${String(drizzleImportError)}` : ''}`,
-    );
-  }
-  return drizzleSql;
-}
-
-export function createDrizzleInternalCrud(db: any, dialect: DrizzleDialect): InternalCrud {
+export function createDrizzleInternalCrud(
+  db: any,
+  dialect: DrizzleDialect,
+  drizzleSqlImpl: ReturnType<typeof loadDrizzleSql> = loadDrizzleSql(),
+): InternalCrud {
   const ensurePromises = new Map<string, Promise<void>>();
-  const sql = getDrizzleSql();
+  const sql = drizzleSqlImpl;
 
   // Dialect-aware execution helpers
   const isSQLite = dialect === 'sqlite';

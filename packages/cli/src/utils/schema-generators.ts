@@ -3,10 +3,67 @@
  */
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
+import { resolvePhysicalTableName } from './schema-diff.js';
 
 interface AbstractSchema {
   version: number;
   schemas: TableSchema[];
+}
+
+export class CliSchemaGenerationError extends Error {
+  readonly code: "CLI_SCHEMA_GENERATION_ERROR";
+  readonly details?: Record<string, unknown>;
+
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "CliSchemaGenerationError";
+    this.code = "CLI_SCHEMA_GENERATION_ERROR";
+    this.details = details;
+  }
+}
+
+export async function generateLibraryAbstractSchema(
+  libraryPackage: { getSchema?: (config: unknown) => AbstractSchema | Promise<AbstractSchema> },
+  config: unknown
+): Promise<AbstractSchema> {
+  if (typeof libraryPackage.getSchema !== "function") {
+    throw new CliSchemaGenerationError("library does not export getSchema", {
+      reason: "missing-get-schema"
+    });
+  }
+
+  const generated = await Promise.resolve(libraryPackage.getSchema(config));
+  return normalizeAbstractSchema(generated);
+}
+
+export function normalizeAbstractSchema(abstractSchema: AbstractSchema): AbstractSchema {
+  return {
+    version: abstractSchema.version,
+    schemas: abstractSchema.schemas.map((schema) => ({
+      modelName: schema.modelName,
+      fields: Object.fromEntries(
+        Object.entries(schema.fields)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([fieldName, field]) => [fieldName, normalizeFieldSchema(field)])
+      ),
+      indexes: schema.indexes
+        ? [...schema.indexes]
+            .map((index) => ({
+              ...index,
+              fields: [...index.fields]
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name))
+        : undefined,
+      constraints: schema.constraints
+        ? [...schema.constraints]
+            .map((constraint) => ({
+              ...constraint,
+              fields: [...constraint.fields]
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name))
+        : undefined
+    }))
+  };
 }
 
 // ============================================================================
@@ -19,6 +76,7 @@ export function generateDrizzleSchemaFile(
   namespace: string,
   dialect: 'postgres' | 'mysql' | 'sqlite' = 'postgres'
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   const imports = new Set<string>();
   const tables: string[] = [];
 
@@ -32,9 +90,9 @@ export function generateDrizzleSchemaFile(
   const { builder: tableBuilder, core: coreModule } = dialectMap[dialect];
   imports.add(`import { ${tableBuilder}, text, integer, boolean, timestamp, json, bigint } from '${coreModule}';`);
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const tableName = table.modelName;
-    const tableNameSnakeCase = toSnakeCase(namespace + '_' + tableName);
+    const tableNameSnakeCase = resolvePhysicalTableName(namespace, tableName);
 
     const fields: string[] = [];
 
@@ -44,12 +102,11 @@ export function generateDrizzleSchemaFile(
       const fieldName = field.fieldName || fieldKey;
       const drizzleType = mapTypeToDrizzle(field.type);
 
-      // For timestamp fields, add mode: 'string' to handle ISO string dates
+      // Drizzle's default timestamp mode accepts Date objects, which is what
+      // Superfunctions runtime packages persist through the shared DB adapter.
       // For bigint fields, add mode: 'bigint' for full precision
       let typeConfig = '';
-      if (field.type === 'date') {
-        typeConfig = "{ mode: 'string' }";
-      } else if (field.type === 'bigint') {
+      if (field.type === 'bigint') {
         typeConfig = "{ mode: 'bigint' }";
       }
       let fieldDef = `  ${fieldKey}: ${drizzleType}('${fieldName}'${typeConfig ? `, ${typeConfig}` : ''})`;
@@ -129,9 +186,10 @@ export function generatePrismaSchemaFile(
   libraryName: string,
   namespace: string
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   const models: string[] = [];
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const modelName = capitalize(table.modelName);
     const fields: string[] = [];
 
@@ -167,7 +225,7 @@ export function generatePrismaSchemaFile(
 model ${modelName} {
 ${fields.join('\n')}
   
-  @@map("${namespace}_${toSnakeCase(table.modelName)}")
+  @@map("${resolvePhysicalTableName(namespace, table.modelName)}")
 }`;
 
     models.push(modelCode);
@@ -221,10 +279,11 @@ export function generateKyselySchemaFile(
   libraryName: string,
   _namespace: string
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   // Kysely uses TypeScript interfaces for schema
   const interfaces: string[] = [];
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const interfaceName = capitalize(table.modelName) + 'Table';
     const fields: string[] = [];
 
@@ -244,7 +303,7 @@ ${fields.join('\n')}
   }
 
   // Generate Database interface
-  const tableNames = abstractSchema.schemas.map(t => t.modelName);
+  const tableNames = normalizedSchema.schemas.map(t => t.modelName);
   const dbInterface = `
 export interface Database {
 ${tableNames.map(name => `  ${name}: ${capitalize(name)}Table;`).join('\n')}
@@ -282,16 +341,16 @@ function mapTypeToTypeScript(type: string): string {
   }
 }
 
+function normalizeFieldSchema(field: FieldSchema): FieldSchema {
+  return {
+    ...field,
+    references: field.references ? { ...field.references } : undefined
+  };
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function toSnakeCase(str: string): string {
-  return str
-    .replace(/([A-Z])/g, '_$1')
-    .toLowerCase()
-    .replace(/^_/, '');
-}
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);

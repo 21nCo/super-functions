@@ -4,6 +4,7 @@ export type {
   DatafnResourceSchema,
   DatafnFieldSchema,
   DatafnRelationSchema,
+  DatafnPermissionsPolicy,
   RelationSimpleCapability,
   DatafnEvent,
   DatafnEventFilter,

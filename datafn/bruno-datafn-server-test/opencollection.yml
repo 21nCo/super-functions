@@ -1,0 +1,10 @@
+opencollection: 1.0.0
+
+info:
+  name: bruno-datafn-server-test
+
+bundled: false
+extensions:
+  ignore:
+    - node_modules
+    - .git

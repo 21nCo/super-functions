@@ -12,6 +12,31 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "require": "./dist/types.cjs"
+    },
+    "./capabilities": {
+      "types": "./dist/capabilities.d.ts",
+      "import": "./dist/capabilities.js",
+      "require": "./dist/capabilities.cjs"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js",
+      "require": "./dist/errors.cjs"
+    },
+    "./relations": {
+      "types": "./dist/relations.d.ts",
+      "import": "./dist/relations.js",
+      "require": "./dist/relations.cjs"
+    },
+    "./sort": {
+      "types": "./dist/sort.d.ts",
+      "import": "./dist/sort.js",
+      "require": "./dist/sort.cjs"
     }
   },
   "files": [

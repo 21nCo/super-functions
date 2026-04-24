@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { drizzleAdapter } from "@superfunctions/db/adapters/drizzle";
 import { schema } from "./datafn-schema.drizzle.js";
 import { mkdirSync } from "node:fs";
 

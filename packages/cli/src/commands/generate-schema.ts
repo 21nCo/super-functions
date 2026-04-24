@@ -10,6 +10,7 @@ import { parseLibraryInitializations } from "../utils/parse-library-init.js";
 import {
   getSuperfunctionsRegistry,
   discoverSuperfunctionsPackages,
+  findNearestNodeModulesPath,
 } from "../utils/discover-packages.js";
 import { autoDiscoverLibraryFiles } from "../utils/auto-discover.js";
 import {
@@ -131,10 +132,17 @@ export async function generateSchemas(
         resolvedPath = require.resolve(init.packageName);
       } catch {
         // If require.resolve fails (e.g., ESM with exports), construct the path manually
-        const nodeModulesPath = path.join(process.cwd(), 'node_modules', init.packageName);
-        const pkgJson = JSON.parse(fs.readFileSync(path.join(nodeModulesPath, 'package.json'), 'utf-8'));
-        const mainExport = pkgJson.exports?.['.']?.import || pkgJson.exports?.['.'] || pkgJson.main || 'index.js';
-        resolvedPath = path.join(nodeModulesPath, typeof mainExport === 'string' ? mainExport : mainExport.import);
+        const nearestNodeModulesPath = findNearestNodeModulesPath(process.cwd());
+        if (!nearestNodeModulesPath) {
+          throw new Error(`Unable to locate node_modules for ${init.packageName}`);
+        }
+
+        const packageRoot = path.join(nearestNodeModulesPath, init.packageName);
+        const pkgJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf-8'));
+        resolvedPath = path.join(
+          packageRoot,
+          resolveLibraryPackageEntryPoint(pkgJson)
+        );
       }
       const libraryPackage = await import(resolvedPath);
 
@@ -220,4 +228,38 @@ export async function generateSchemas(
   console.log(
     "   3. Pass ORM instance to adapter (no schema parameter needed)"
   );
+}
+
+export function resolveLibraryPackageEntryPoint(
+  packageJson: Record<string, any>
+): string {
+  const exportRoot = packageJson.exports?.['.'];
+  const resolvedExport = resolvePackageExportTarget(exportRoot);
+
+  if (resolvedExport) {
+    return resolvedExport;
+  }
+
+  if (typeof packageJson.main === 'string' && packageJson.main.length > 0) {
+    return packageJson.main;
+  }
+
+  return 'index.js';
+}
+
+function resolvePackageExportTarget(target: unknown): string | null {
+  if (typeof target === 'string' && target.length > 0) {
+    return target;
+  }
+
+  if (!target || typeof target !== 'object') {
+    return null;
+  }
+
+  const candidate =
+    (target as Record<string, unknown>).import
+    ?? (target as Record<string, unknown>).default
+    ?? (target as Record<string, unknown>).require;
+
+  return resolvePackageExportTarget(candidate);
 }

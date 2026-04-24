@@ -28,6 +28,13 @@
     "directory": "filefn/server"
   },
   "publishConfig": { "access": "public" },
+  "superfunctions": {
+    "initFunction": "createFileFn",
+    "schemaVersion": 1,
+    "libraryNames": [
+      "filefn"
+    ]
+  },
   "dependencies": {
     "@superfunctions/storage": "*",
     "@superfunctions/files": "*",

@@ -4,11 +4,22 @@ import type { DatabaseTable } from './introspection.js';
 /**
  * Convert string to snake_case
  */
-function toSnakeCase(str: string): string {
+export function toSnakeCase(str: string): string {
   return str
     .replace(/([A-Z])/g, '_$1')
     .toLowerCase()
     .replace(/^_/, '');
+}
+
+export function resolvePhysicalTableName(namespace: string, modelName: string): string {
+  const normalizedNamespace = toSnakeCase(namespace);
+  const normalizedModelName = toSnakeCase(modelName);
+
+  if (!normalizedNamespace || normalizedModelName.startsWith(`${normalizedNamespace}_`)) {
+    return normalizedModelName;
+  }
+
+  return `${normalizedNamespace}_${normalizedModelName}`;
 }
 
 /**
@@ -110,7 +121,7 @@ export function diffTables(
   // Map required tables to their actual DB names (namespace_snake_case)
   const requiredMap = new Map(
     required.map((t) => {
-      const dbName = `${namespace}_${toSnakeCase(t.modelName)}`;
+      const dbName = resolvePhysicalTableName(namespace, t.modelName);
       return [dbName, t];
     })
   );
@@ -194,7 +205,7 @@ export function diffTables(
 
     if (missingColumns.length > 0 || extraColumns.length > 0 || columnChanges.length > 0) {
       diffs.push({
-        tableName: `${namespace}_${toSnakeCase(reqTable.modelName)}`,
+        tableName: dbName,
         action: 'alter',
         missingColumns,
         extraColumns,
