@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@billfn/client": "^0.0.1",
+    "@billfn/core": "^0.0.1",
     "@types/node": "^22.0.0",
     "svelte": "^5.0.0",
     "typescript": "^5.6.0",

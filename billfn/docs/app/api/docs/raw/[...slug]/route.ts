@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 
 export async function GET(
   _request: Request,
@@ -7,13 +7,29 @@ export async function GET(
 ) {
   const { slug } = await context.params;
   const docsRoot = resolve(process.cwd(), "content", "docs");
-  if (!Array.isArray(slug) || slug.length === 0 || slug.some((segment) => segment === "..")) {
+  if (
+    !Array.isArray(slug) ||
+    slug.length === 0 ||
+    slug.some(
+      (segment) =>
+        typeof segment !== "string" ||
+        segment.length === 0 ||
+        segment.startsWith(".") ||
+        segment.includes("/") ||
+        segment.includes("\\") ||
+        segment.includes("\0"),
+    )
+  ) {
     return new Response("Not found", { status: 404 });
   }
 
   const filePath = resolve(docsRoot, ...slug);
   const relativePath = relative(docsRoot, filePath);
-  if (relativePath.startsWith("..")) {
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    (!relativePath.endsWith(".md") && !relativePath.endsWith(".mdx"))
+  ) {
     return new Response("Not found", { status: 404 });
   }
 

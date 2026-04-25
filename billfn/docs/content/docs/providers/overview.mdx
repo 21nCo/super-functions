@@ -17,12 +17,12 @@ Provider logic tends to sprawl:
 
 Keeping that code outside `@billfn/core` makes the billing domain easier to evolve.
 
-## Phase 1 Provider Matrix
+## Provider Matrix
 
 | Provider | Checkout | Verify | Sync | Cancel | Restore | Webhooks |
 | --- | --- | --- | --- | --- | --- | --- |
 | Dodo | Yes | Yes | Yes | Yes | Yes | Yes |
-| Apple | Client handoff | Yes | Yes | No | Yes | No |
+| Apple | Client handoff | Yes | Yes | Yes | Yes | Yes |
 
 ## Shared Adapter Contract
 

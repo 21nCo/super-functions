@@ -35,7 +35,10 @@ const response = await client.createCheckout({
 });
 
 if (response.ok) {
-  window.location.href = response.data.checkoutSession.checkoutUrl!;
+  const checkoutUrl = response.data.checkoutSession.checkoutUrl;
+  if (checkoutUrl) {
+    window.location.href = checkoutUrl;
+  }
 }
 ```
 
@@ -47,8 +50,14 @@ if (response.ok) {
 - `createCheckout(input)`
 - `verifyCheckout(input)`
 - `cancelSubscription(input)`
+- `changeSubscription(input)`
+- `resumeSubscription(input)`
+- `refundCharge(input)`
 - `syncSubscription(input)`
 - `restorePurchases(input)`
+- `enqueueReconciliationJob(input)`
+- `getReconciliationJob(jobId)`
+- `runReconciliationJob(jobId)`
 
 ## Error Handling
 

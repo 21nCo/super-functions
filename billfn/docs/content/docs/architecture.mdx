@@ -87,9 +87,9 @@ Restore is intentionally ownership-sensitive. Phase 1 restore paths only succeed
 
 Phase 1 is intentionally conservative:
 
-- Apple cancellation is left to Apple-managed surfaces
-- Apple webhook ingestion is not implemented
-- only Dodo ingests server webhooks today
+- Apple can cancel or revoke server-side only when Advanced Commerce is configured and the app is eligible
+- Apple webhook ingestion uses App Store Server Notifications v2 plus notification history backfill
+- Dodo and Apple both ingest provider webhook or notification state into the core read model
 - Python mirrors the HTTP and schema surface, but it is not a second billing engine
 
 Those constraints keep the domain model clean while leaving room for future provider packages.

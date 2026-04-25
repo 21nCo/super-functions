@@ -1,9 +1,9 @@
 ---
 title: Schema
-description: The normalized BillFn persistence model in Phase 1.
+description: The normalized BillFn persistence model in the current TypeScript core.
 ---
 
-`getSchema()` returns version `1` with eight table definitions.
+`getSchema()` in `@billfn/core` currently returns version `2` with twelve table definitions.
 
 ## Tables
 
@@ -17,6 +17,10 @@ description: The normalized BillFn persistence model in Phase 1.
 | `usageLedger` | Append-only usage deltas |
 | `webhookReceipts` | Dedupe and audit trail for provider webhook deliveries |
 | `billingEvents` | Internal normalized billing event stream |
+| `refunds` | Normalized refund and revoke operations |
+| `subscriptionChangeRequests` | Subscription change intent and fallback tracking |
+| `reconciliationJobs` | Operational replay and sync jobs |
+| `reconciliationCursors` | Provider backfill cursors |
 
 ## Important Indexes
 
@@ -41,4 +45,4 @@ console.log(schema.version);
 console.log(schema.schemas.map((table) => table.modelName));
 ```
 
-The Python SDK mirrors the same schema version and table layout through `get_schema()`.
+The Python SDK does **not** mirror schema v2 yet. `billfn/python/billfn/schema.py` still exposes schema version `1` with the original eight-table layout, so treat the Python helper as an older compatibility snapshot until it is upgraded.

@@ -1,7 +1,7 @@
 ## Metadata
 
 - timestamp: `2026-04-20T10:27:26Z`
-- agent_name: `unknown-agent`
+- agent_name: `codex`
 - model: `gpt-5.4`
 - launcher: `Codex desktop`
 - workspace/project path: `repo root`
@@ -34,12 +34,14 @@ Excluded from behavioral pass/fail:
 
 Intent / notes audited:
 
-- external intent note outside repo: `agent/intent/billfn/ai-notes/architecture.md`
+- `billfn/README.md`
+- `billfn/docs/content/docs/architecture.mdx`
+- `billfn/docs/content/docs/getting-started.mdx`
 
 Spec bundles audited:
 
-- no in-repo spec bundle or REQUIREMENTS.md was provided for `billfn`
-- this audit therefore treats the architecture note as the authoritative intent/spec hybrid for pass/fail on core requirements
+- no standalone in-repo spec bundle or REQUIREMENTS.md was provided for `billfn`
+- this audit therefore uses the repo-local README and docs architecture/getting-started pages as the authoritative intent/spec baseline for pass/fail on core requirements
 
 Implementation inputs audited:
 

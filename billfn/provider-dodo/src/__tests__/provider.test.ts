@@ -52,7 +52,7 @@ describe('@billfn/provider-dodo', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test.dodopayments.com/subscriptions',
+      'https://live.dodopayments.com/subscriptions',
       expect.objectContaining({
         method: 'POST'
       })
@@ -93,7 +93,7 @@ describe('@billfn/provider-dodo', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://test.dodopayments.com/refunds',
+      'https://live.dodopayments.com/refunds',
       expect.objectContaining({
         method: 'POST'
       })
@@ -186,5 +186,71 @@ describe('@billfn/provider-dodo', () => {
     expect(response?.raw).toMatchObject({
       fallback: 'replacement-checkout'
     });
+  });
+
+  it('surfaces transient change failures instead of canceling the live subscription', async () => {
+    const fetchMock = vi.fn(async () => new Response('upstream error', { status: 503 })) as typeof fetch;
+
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      fetch: fetchMock
+    });
+
+    await expect(
+      provider.changeSubscription?.({
+        subscription: {
+          id: 'sub_local',
+          billingAccountId: 'ba_user_123',
+          planKey: 'pro',
+          priceId: 'price_old',
+          provider: 'dodo',
+          providerSubscriptionId: 'sub_123',
+          status: 'active',
+          autoRenew: true,
+          createdAt: '2026-04-20T00:00:00.000Z',
+          updatedAt: '2026-04-20T00:00:00.000Z'
+        },
+        currentPlan: {
+          productKey: 'nucleus',
+          planKey: 'pro',
+          displayName: 'Pro',
+          features: {},
+          limits: {},
+          prices: []
+        },
+        currentPrice: {
+          priceId: 'price_old',
+          provider: 'dodo',
+          providerProductId: 'pdt_old',
+          amount: 12,
+          currency: 'USD',
+          interval: 'month',
+          kind: 'subscription'
+        },
+        targetPlan: {
+          productKey: 'nucleus',
+          planKey: 'pro',
+          displayName: 'Pro',
+          features: {},
+          limits: {},
+          prices: []
+        },
+        targetPrice: {
+          priceId: 'price_new',
+          provider: 'dodo',
+          providerProductId: 'pdt_new',
+          amount: 120,
+          currency: 'USD',
+          interval: 'year',
+          kind: 'subscription'
+        },
+        effectiveAt: 'immediate',
+        prorationBehavior: 'provider_default'
+      })
+    ).rejects.toMatchObject({
+      code: 'BILLFN_PROVIDER_ERROR'
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -31,7 +31,7 @@ export function errorResponse(error: Error): Response {
   return jsonResponse(
     err({
       code: 'BILLFN_INTERNAL_ERROR',
-      message: error.message || 'Unexpected billfn error',
+      message: 'Unexpected billfn error',
       status: 500,
       retryable: false
     }),
@@ -40,5 +40,11 @@ export function errorResponse(error: Error): Response {
 }
 
 function isSuperfunctionError(value: Error): value is SuperfunctionError {
-  return 'code' in value && 'status' in value && 'retryable' in value;
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { code?: unknown }).code === 'string' &&
+    typeof (value as { status?: unknown }).status === 'number' &&
+    typeof (value as { retryable?: unknown }).retryable === 'boolean'
+  );
 }

@@ -8,7 +8,7 @@ struct BillFnClientTests {
     func buildsEndpointURLs() throws {
         let client = BillFnClient(
             configuration: BillFnClientConfiguration(
-                baseURL: URL(string: "https://billfn.example.test/billfn/")!
+                baseURL: URL(string: "https://billfn.example.test/billfn")!
             )
         )
 

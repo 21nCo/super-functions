@@ -33,25 +33,25 @@ public final class BillFnBridgeDispatcher: @unchecked Sendable {
         switch request.method {
         case "handshake":
             return .success(id: request.id, result: [
-                "bridgeVersion": "1",
-                "billingOwner": "native",
-                "authOwner": configuration.authOwner,
-                "baseURL": configuration.baseURL,
-                "capabilities": configuration.capabilities.joined(separator: ",")
+                "bridgeVersion": .integer(1),
+                "billingOwner": .string("native"),
+                "authOwner": .string(configuration.authOwner),
+                "baseURL": .string(configuration.baseURL),
+                "capabilities": .array(configuration.capabilities.map(BillFnBridgeValue.string))
             ])
         case "subscription.manage":
             return .success(id: request.id, result: [
-                "type": "manage-subscription",
-                "url": BillFnStoreKit.manageSubscriptionsURL().absoluteString
+                "type": .string("manage-subscription"),
+                "url": .string(BillFnStoreKit.manageSubscriptionsURL().absoluteString)
             ])
         case "health.check":
-            return .success(id: request.id, result: ["status": "ok"])
+            return .success(id: request.id, result: ["status": .string("ok")])
         default:
-            return .success(id: request.id, result: [:])
+            return .failure(id: request.id, code: "BRIDGE_METHOD_UNSUPPORTED", message: "Unsupported bridge method")
         }
     }
 
     public func readyEvent() -> BillFnBridgeEventEnvelope {
-        BillFnBridgeEventEnvelope(event: "bridge.ready", payload: ["baseURL": configuration.baseURL])
+        BillFnBridgeEventEnvelope(event: "bridge.ready", payload: ["baseURL": .string(configuration.baseURL)])
     }
 }

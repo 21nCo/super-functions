@@ -1,5 +1,5 @@
 {
-  "name": "billfn",
+  "name": "@billfn/core",
   "version": "0.0.1",
   "description": "Core billfn contracts, persistence, router, and entitlements",
   "type": "module",

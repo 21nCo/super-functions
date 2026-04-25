@@ -4,7 +4,7 @@ export interface BillFnSchemaOptions {
   namespace?: string;
 }
 
-export function getSchema(_options: BillFnSchemaOptions = {}): { version: number; schemas: TableSchema[] } {
+export function getSchema(options: BillFnSchemaOptions = {}): { version: number; schemas: TableSchema[] } {
   const billingAccounts: TableSchema = {
     modelName: 'billingAccounts',
     fields: {
@@ -236,26 +236,44 @@ export function getSchema(_options: BillFnSchemaOptions = {}): { version: number
     ]
   };
 
+  const schemas = [
+    billingAccounts,
+    subscriptions,
+    checkoutSessions,
+    entitlementSnapshots,
+    usageMeters,
+    usageLedger,
+    webhookReceipts,
+    billingEvents,
+    refunds,
+    subscriptionChangeRequests,
+    reconciliationJobs,
+    reconciliationCursors
+  ].map((schema) => namespaceSchema(schema, options.namespace));
+
   return {
     version: 2,
-    schemas: [
-      billingAccounts,
-      subscriptions,
-      checkoutSessions,
-      entitlementSnapshots,
-      usageMeters,
-      usageLedger,
-      webhookReceipts,
-      billingEvents,
-      refunds,
-      subscriptionChangeRequests,
-      reconciliationJobs,
-      reconciliationCursors
-    ]
+    schemas
   };
 }
 
 export function getSchemaMap(options: BillFnSchemaOptions = {}): TableSchemaMap {
   const { schemas } = getSchema(options);
   return Object.fromEntries(schemas.map((schema) => [schema.modelName, schema]));
+}
+
+function namespaceSchema(schema: TableSchema, namespace: string | undefined): TableSchema {
+  if (!namespace) {
+    return schema;
+  }
+
+  const prefix = `${namespace}_`;
+  return {
+    ...schema,
+    modelName: `${prefix}${schema.modelName}`,
+    indexes: schema.indexes?.map((index) => ({
+      ...index,
+      name: `${prefix}${index.name}`
+    }))
+  };
 }

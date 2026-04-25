@@ -25,7 +25,7 @@ These routes require `operations.authorize(request)` to succeed.
 
 ## Worker
 
-Use `createBillFnReconciliationWorker()` with the same BillFn config you mount in your server.
+Use `createBillFnReconciliationWorker(config)` with the same BillFn config you mount in your server.
 
 ```ts
 import { createBillFnReconciliationWorker } from "@billfn/core";

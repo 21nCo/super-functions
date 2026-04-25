@@ -2,20 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "baseUrl": ".",
     "lib": [
       "ES2022",
       "DOM"
     ],
     "moduleResolution": "bundler",
-    "paths": {
-      "@billfn/client": [
-        "../client/dist/index.d.ts"
-      ],
-      "@billfn/core": [
-        "../core/dist/index.d.ts"
-      ]
-    },
     "resolveJsonModule": true,
     "outDir": "./dist",
     "rootDir": "./src",

@@ -117,15 +117,15 @@ export function createBillFnService(config: BillFnConfig) {
 
   const subscriptionProvider = {
     getActiveSubscription: async (subject: BillableSubject) => {
-      const { billingAccount, existed } = await getOrCreateBillingAccount(deps, requireSubject(subject));
-      if (!existed) {
+      const billingAccount = await findBillingAccountForSubject(deps, requireSubject(subject));
+      if (!billingAccount) {
         return null;
       }
       return findActiveSubscription(deps, billingAccount.id);
     },
     getEntitlementSnapshot: async (subject: BillableSubject) => {
-      const { billingAccount, existed } = await getOrCreateBillingAccount(deps, requireSubject(subject));
-      if (!existed) {
+      const billingAccount = await findBillingAccountForSubject(deps, requireSubject(subject));
+      if (!billingAccount) {
         return null;
       }
       return findEntitlementSnapshot(deps, billingAccount.id);
@@ -196,9 +196,9 @@ export function createBillFnService(config: BillFnConfig) {
         principalId,
         tenantId
       };
-      const { billingAccount, existed } = await getOrCreateBillingAccount(deps, requireSubject(subject));
-      const meter = existed ? await findUsageMeter(deps, billingAccount.id, resource) : null;
-      const entitlements = existed ? await findEntitlementSnapshot(deps, billingAccount.id) : null;
+      const billingAccount = await findBillingAccountForSubject(deps, requireSubject(subject));
+      const meter = billingAccount ? await findUsageMeter(deps, billingAccount.id, resource) : null;
+      const entitlements = billingAccount ? await findEntitlementSnapshot(deps, billingAccount.id) : null;
       return {
         current: meter?.current ?? 0,
         limit: entitlements?.limits[resource] ?? 0
@@ -324,7 +324,7 @@ export function createBillFnService(config: BillFnConfig) {
 
     try {
       await processReconciliationJob(deps, job);
-      job = await deps.db.update<BillFnReconciliationJob>({
+      await deps.db.update<BillFnReconciliationJob>({
         model: TABLES.reconciliationJobs,
         where: [{ field: 'id', operator: 'eq', value: job.id }],
         data: {
@@ -831,10 +831,11 @@ export function createBillFnService(config: BillFnConfig) {
       });
     },
     async getEntitlements(subject: BillableSubject): Promise<BillFnEntitlementsResponse> {
-      const { billingAccount, existed } = await getOrCreateBillingAccount(deps, requireSubject(subject));
-      if (!existed) {
+      const resolved = await resolveBillingAccountReference(deps, requireSubject(subject));
+      const billingAccount = await getBillingAccountById(deps, resolved.billingAccountId);
+      if (!billingAccount) {
         return ok({
-          billingAccount,
+          billingAccount: buildVirtualBillingAccount(resolved, deps),
           entitlements: null,
           subscription: null
         });
@@ -849,22 +850,25 @@ export function createBillFnService(config: BillFnConfig) {
       return ok(response);
     },
     async getUsage(subject: BillableSubject, resource?: string): Promise<BillFnUsageResponse> {
-      const { billingAccount } = await getOrCreateBillingAccount(deps, requireSubject(subject));
-      const entitlements = await findEntitlementSnapshot(deps, billingAccount.id);
-      const meters = resource
-        ? await findUsageMeters(deps, billingAccount.id, resource)
-        : await deps.db.findMany<BillFnUsageMeter>({
-            model: TABLES.usageMeters,
-            where: [{ field: 'billingAccountId', operator: 'eq', value: billingAccount.id }],
-            namespace: deps.namespace
-          });
+      const resolved = await resolveBillingAccountReference(deps, requireSubject(subject));
+      const billingAccount = await getBillingAccountById(deps, resolved.billingAccountId);
+      const entitlements = billingAccount ? await findEntitlementSnapshot(deps, billingAccount.id) : null;
+      const meters = billingAccount
+        ? resource
+          ? await findUsageMeters(deps, billingAccount.id, resource)
+          : await deps.db.findMany<BillFnUsageMeter>({
+              model: TABLES.usageMeters,
+              where: [{ field: 'billingAccountId', operator: 'eq', value: billingAccount.id }],
+              namespace: deps.namespace
+            })
+        : [];
       const usage = meters.map((meter) => ({
         resource: meter.resource,
         current: meter.current,
         limit: entitlements?.limits[meter.resource] ?? 0
       }));
       const response: BillFnUsageResponseData = {
-        billingAccount,
+        billingAccount: billingAccount ?? buildVirtualBillingAccount(resolved, deps),
         usage
       };
       return ok(response);
@@ -878,6 +882,16 @@ export function createBillFnService(config: BillFnConfig) {
       let processed = 0;
 
       for (const event of events) {
+        if (!event.signatureVerified) {
+          deps.metrics.track('webhook.signature.invalid', {
+            provider: input.provider
+          });
+          throw createBillFnError({
+            code: 'BILLFN_WEBHOOK_SIGNATURE_INVALID',
+            message: 'Webhook signature verification failed'
+          });
+        }
+
         const receiptId = buildWebhookReceiptId(input.provider, event.providerEventId);
         const receipt: BillFnWebhookReceipt = {
           id: receiptId,
@@ -891,15 +905,12 @@ export function createBillFnService(config: BillFnConfig) {
           },
           createdAt: toIsoString(deps.now())
         };
-        let created = false;
-
         try {
           await deps.db.create({
             model: TABLES.webhookReceipts,
             data: receipt,
             namespace: deps.namespace
           });
-          created = true;
         } catch (error) {
           if (!isDuplicateRecordError(error)) {
             throw error;
@@ -927,9 +938,7 @@ export function createBillFnService(config: BillFnConfig) {
           await runReconciliationJobInternal(job.id);
         }
 
-        if (created) {
-          processed += 1;
-        }
+        processed += 1;
       }
 
       const response: BillFnWebhookResponseData = {
@@ -1113,7 +1122,18 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
             throw error;
           }
         }
-        await processParsedWebhookEvent(deps, job.provider, event);
+        try {
+          await processParsedWebhookEvent(deps, job.provider, event);
+        } catch (error) {
+          if (!isBillFnNotFoundError(error)) {
+            throw error;
+          }
+          deps.metrics.track('reconciliation.event.skipped', {
+            provider: job.provider,
+            providerEventId: event.providerEventId,
+            reason: 'billing_account_not_found'
+          });
+        }
         await deps.db.update({
           model: TABLES.webhookReceipts,
           where: [{ field: 'id', operator: 'eq', value: receiptId }],
@@ -1170,14 +1190,7 @@ async function getOrCreateBillingAccount(
   deps: ServiceDeps,
   subject: BillableSubject
 ): Promise<{ billingAccount: BillFnBillingAccount; existed: boolean }> {
-  const resolved = await deps.resolveBillingAccount.resolve(subject);
-  if (!resolved) {
-    throw createBillFnError({
-      code: 'BILLFN_VALIDATION_ERROR',
-      message: 'Unable to resolve a billing account from the provided subject'
-    });
-  }
-
+  const resolved = await resolveBillingAccountReference(deps, subject);
   const existing = await deps.db.findOne<BillFnBillingAccount>({
     model: TABLES.billingAccounts,
     where: [{ field: 'id', operator: 'eq', value: resolved.billingAccountId }],
@@ -1199,15 +1212,66 @@ async function getOrCreateBillingAccount(
     updatedAt: timestamp
   };
 
-  await deps.db.create({
-    model: TABLES.billingAccounts,
-    data: created,
-    namespace: deps.namespace
-  });
+  try {
+    await deps.db.create({
+      model: TABLES.billingAccounts,
+      data: created,
+      namespace: deps.namespace
+    });
+  } catch (error) {
+    if (!isDuplicateRecordError(error)) {
+      throw error;
+    }
+    const duplicate = await deps.db.findOne<BillFnBillingAccount>({
+      model: TABLES.billingAccounts,
+      where: [{ field: 'id', operator: 'eq', value: resolved.billingAccountId }],
+      namespace: deps.namespace
+    });
+    if (duplicate) {
+      return {
+        billingAccount: duplicate,
+        existed: true
+      };
+    }
+    throw error;
+  }
 
   return {
     billingAccount: created,
     existed: false
+  };
+}
+
+async function resolveBillingAccountReference(deps: ServiceDeps, subject: BillableSubject) {
+  const resolved = await deps.resolveBillingAccount.resolve(subject);
+  if (!resolved) {
+    throw createBillFnError({
+      code: 'BILLFN_VALIDATION_ERROR',
+      message: 'Unable to resolve a billing account from the provided subject'
+    });
+  }
+  return resolved;
+}
+
+async function findBillingAccountForSubject(deps: ServiceDeps, subject: BillableSubject) {
+  const resolved = await resolveBillingAccountReference(deps, subject);
+  return getBillingAccountById(deps, resolved.billingAccountId);
+}
+
+function buildVirtualBillingAccount(
+  resolved: Awaited<ReturnType<BillingAccountResolver['resolve']>> extends infer T ? Exclude<T, null> : never,
+  deps: ServiceDeps
+): BillFnBillingAccount {
+  const timestamp = toIsoString(deps.now());
+  return {
+    id: resolved.billingAccountId,
+    ownerType: resolved.ownerType,
+    ownerId: resolved.ownerId,
+    metadata: {
+      virtual: true
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp
   };
 }
 
@@ -2045,6 +2109,14 @@ function isOptimisticUsageConflict(error: unknown) {
   return (
     error instanceof NotFoundError ||
     (error instanceof Error && 'code' in error && (error as { code?: string }).code === AdapterErrorCode.NOT_FOUND)
+  );
+}
+
+function isBillFnNotFoundError(error: unknown) {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error as { code?: string }).code === 'BILLFN_NOT_FOUND'
   );
 }
 

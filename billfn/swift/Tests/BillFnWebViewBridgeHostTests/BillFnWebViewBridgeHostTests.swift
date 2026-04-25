@@ -19,8 +19,8 @@ struct BillFnWebViewBridgeHostTests {
         )
 
         #expect(response.ok)
-        #expect(response.result?["bridgeVersion"] == "1")
-        #expect(response.result?["billingOwner"] == "native")
+        #expect(response.result?["bridgeVersion"] == .integer(1))
+        #expect(response.result?["billingOwner"] == .string("native"))
     }
 
     @Test("Subscription manage routes to the Apple-managed URL")
@@ -34,7 +34,7 @@ struct BillFnWebViewBridgeHostTests {
         )
 
         #expect(response.ok)
-        #expect(response.result?["type"] == "manage-subscription")
-        #expect(response.result?["url"] == "https://apps.apple.com/account/subscriptions")
+        #expect(response.result?["type"] == .string("manage-subscription"))
+        #expect(response.result?["url"] == .string("https://apps.apple.com/account/subscriptions"))
     }
 }

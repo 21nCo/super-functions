@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type {
   BillFnCatalog,
   BillFnPlanDefinition,
@@ -20,7 +21,7 @@ export function toIsoString(value: Date): string {
 }
 
 export function defaultIdFactory(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  return `${prefix}_${randomBytes(16).toString('base64url')}`;
 }
 
 export function createDefaultBillingAccountResolver(): BillingAccountResolver {

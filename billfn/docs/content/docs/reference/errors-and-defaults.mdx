@@ -13,7 +13,7 @@ These defaults come from the live implementation:
 | Router base path | `"/billfn"` |
 | TypeScript client base URL | `"/billfn"` |
 | TypeScript client credentials | `"include"` |
-| Dodo base URL | `https://test.dodopayments.com` |
+| Dodo base URL | `https://live.dodopayments.com` |
 | Dodo webhook signature header | `x-dodo-signature` |
 | Apple environment | `"production"` |
 
@@ -38,6 +38,7 @@ The core error registry currently defines:
 - `BILLFN_VALIDATION_ERROR`
 - `BILLFN_NOT_FOUND`
 - `BILLFN_CONFLICT`
+- `BILLFN_UNAUTHORIZED`
 - `BILLFN_PROVIDER_ERROR`
 - `BILLFN_PROVIDER_UNSUPPORTED`
 - `BILLFN_WEBHOOK_SIGNATURE_INVALID`
@@ -66,7 +67,4 @@ The Python client raises:
 
 When a route asks a provider to do something it does not support, core returns `BILLFN_PROVIDER_UNSUPPORTED`.
 
-Two Phase 1 examples:
-
-- Apple server-side cancellation
-- Apple webhook parsing
+Typical examples are custom adapters that only implement checkout and verification, or future provider names that exist in the shared types but do not have a mounted adapter in your deployment.

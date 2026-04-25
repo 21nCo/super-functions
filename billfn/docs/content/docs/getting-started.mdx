@@ -12,7 +12,7 @@ BillFn needs three things to start:
 ## Install the Packages You Need
 
 ```bash
-npm install @billfn/core @billfn/provider-dodo
+npm install @billfn/core @billfn/provider-dodo @superfunctions/db
 ```
 
 Add the client surfaces as needed:
@@ -57,7 +57,7 @@ const catalog: BillFnCatalog = {
   ],
 };
 
-const db = /* your @superfunctions/db adapter */;
+const db = undefined as unknown as Parameters<typeof createBillFn>[0]["db"];
 
 const billfn = createBillFn({
   db,

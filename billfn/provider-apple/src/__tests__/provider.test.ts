@@ -10,8 +10,8 @@ function encodePayload(payload: Record<string, unknown>): string {
 describe('@billfn/provider-apple', () => {
   it('maps subscription verification responses to normalized billfn state with prod-to-sandbox fallback', async () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
-      const value = String(url);
-      if (value.includes('api.storekit.apple.com')) {
+      const value = new URL(String(url));
+      if (value.hostname === 'api.storekit.apple.com') {
         return new Response('not found', { status: 404 });
       }
       return new Response(

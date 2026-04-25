@@ -35,7 +35,12 @@ public final class BillFnClient: @unchecked Sendable {
     }
 
     public func endpoint(_ path: String) throws -> URL {
-        guard let url = URL(string: path, relativeTo: configuration.baseURL) else {
+        let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        let base = configuration.baseURL.absoluteString.hasSuffix("/")
+            ? configuration.baseURL
+            : configuration.baseURL.appendingPathComponent("")
+        let url = base.appendingPathComponent(trimmedPath)
+        guard url.scheme != nil else {
             throw BillFnClientError.invalidBaseURL
         }
         return url

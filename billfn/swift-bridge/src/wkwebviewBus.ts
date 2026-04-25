@@ -81,12 +81,12 @@ export function createWKWebViewBridgeBus(
         );
       }
 
-      const postMessage =
+      const messageHandler =
         typeof window !== 'undefined'
-          ? window.webkit?.messageHandlers?.[handlerName]?.postMessage
+          ? window.webkit?.messageHandlers?.[handlerName]
           : undefined;
 
-      if (typeof postMessage !== 'function') {
+      if (typeof messageHandler?.postMessage !== 'function') {
         return createBridgeErrorResponse(
           message.id,
           'BRIDGE_UNAVAILABLE',
@@ -112,7 +112,7 @@ export function createWKWebViewBridgeBus(
         }, timeoutMs);
 
         pendingRequests.set(message.id, { resolve, timer });
-        postMessage(message);
+        messageHandler.postMessage(message);
       });
     },
     subscribe(handler) {

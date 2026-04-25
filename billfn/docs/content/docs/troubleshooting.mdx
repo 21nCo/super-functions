@@ -34,14 +34,12 @@ If that value is missing, the adapter raises `BILLFN_VALIDATION_ERROR`.
 
 ## A provider operation is unsupported
 
-Some provider operations intentionally return `BILLFN_PROVIDER_UNSUPPORTED` in Phase 1.
+`BILLFN_PROVIDER_UNSUPPORTED` now usually means one of two things:
 
-Current examples:
+- you mounted a custom adapter that does not implement the requested capability
+- you are calling a provider that is not yet shipped in this repo and the route is still provider-aware in your app
 
-- Apple server-side cancellation
-- Apple webhook parsing
-
-If you need that capability, keep the route or UI flow provider-aware instead of assuming every provider supports every action.
+Do not assume every provider supports every lifecycle action. Check the mounted adapter capabilities and keep your route or UI flow provider-aware where needed.
 
 ## Entitlements or usage return empty state
 

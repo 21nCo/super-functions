@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   BillFnCancelSubscriptionInput,
   BillFnChangeSubscriptionInput,
@@ -26,7 +27,7 @@ export interface DodoProviderConfig {
 
 export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAdapter {
   const fetchImpl = config.fetch ?? fetch;
-  const baseUrl = (config.baseUrl ?? 'https://test.dodopayments.com').replace(/\/$/, '');
+  const baseUrl = (config.baseUrl ?? 'https://live.dodopayments.com').replace(/\/$/, '');
   const webhookSignatureHeader = (config.webhookSignatureHeader ?? 'x-dodo-signature').toLowerCase();
 
   return {
@@ -131,7 +132,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         method: 'PATCH',
         headers: createHeaders(config.apiKey),
         body: JSON.stringify({
-          status: 'cancelled'
+          cancel_at_next_billing_date: true
         })
       });
       return {
@@ -167,11 +168,19 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         } satisfies BillFnProviderOperationResult;
       }
 
+      if (!shouldFallbackToReplacementCheckout(attempted.error.status)) {
+        throw createBillFnError({
+          code: 'BILLFN_PROVIDER_ERROR',
+          message: `Dodo change subscription failed with status ${attempted.error.status}`,
+          details: attempted.error
+        });
+      }
+
       const cancellation = await requestJson(fetchImpl, `${baseUrl}/subscriptions/${providerSubscriptionId}`, {
         method: 'PATCH',
         headers: createHeaders(config.apiKey),
         body: JSON.stringify({
-          status: 'cancelled'
+          cancel_at_next_billing_date: true
         })
       });
 
@@ -302,7 +311,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         });
       }
       const type = readString(payload, ['type', 'event']) ?? 'unknown';
-      const eventId = readString(payload, ['id', 'event_id']) ?? `dodo_evt_${Date.now()}`;
+      const eventId = readString(payload, ['id', 'event_id']) ?? `dodo_evt_${createHash('sha256').update(input.rawBody).digest('hex')}`;
       const data = asRecord(payload.data) ?? payload;
       const isSubscription = Boolean(readString(data, ['subscription_id'])) || type.includes('subscription');
 
@@ -323,7 +332,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
   };
 }
 
-function createHeaders(apiKey: string): HeadersInit {
+function createHeaders(apiKey: string): Record<string, string> {
   return {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json'
@@ -413,6 +422,10 @@ function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none') 
     default:
       return 'provider_default';
   }
+}
+
+function shouldFallbackToReplacementCheckout(status: number) {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 function readString(record: Record<string, unknown>, keys: string[]): string | undefined {

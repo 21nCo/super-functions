@@ -59,11 +59,57 @@ public struct BillFnBridgeRequestEnvelope: Codable, Sendable, Equatable {
     }
 }
 
+public enum BillFnBridgeValue: Codable, Sendable, Equatable {
+    case string(String)
+    case integer(Int)
+    case bool(Bool)
+    case array([BillFnBridgeValue])
+    case object([String: BillFnBridgeValue])
+    case null
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let integer = try? container.decode(Int.self) {
+            self = .integer(integer)
+        } else if let bool = try? container.decode(Bool.self) {
+            self = .bool(bool)
+        } else if let array = try? container.decode([BillFnBridgeValue].self) {
+            self = .array(array)
+        } else if let object = try? container.decode([String: BillFnBridgeValue].self) {
+            self = .object(object)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported bridge JSON value")
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .integer(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        case .null:
+            try container.encodeNil()
+        }
+    }
+}
+
 public struct BillFnBridgeResponseEnvelope: Codable, Sendable, Equatable {
     public let protocolVersion: String
     public let id: String
     public let ok: Bool
-    public let result: [String: String]?
+    public let result: [String: BillFnBridgeValue]?
     public let error: BillFnBridgeError?
 
     enum CodingKeys: String, CodingKey {
@@ -74,7 +120,7 @@ public struct BillFnBridgeResponseEnvelope: Codable, Sendable, Equatable {
         case error
     }
 
-    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, id: String, ok: Bool, result: [String: String]? = nil, error: BillFnBridgeError? = nil) {
+    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, id: String, ok: Bool, result: [String: BillFnBridgeValue]? = nil, error: BillFnBridgeError? = nil) {
         self.protocolVersion = protocolVersion
         self.id = id
         self.ok = ok
@@ -82,7 +128,7 @@ public struct BillFnBridgeResponseEnvelope: Codable, Sendable, Equatable {
         self.error = error
     }
 
-    public static func success(id: String, result: [String: String] = [:]) -> Self {
+    public static func success(id: String, result: [String: BillFnBridgeValue] = [:]) -> Self {
         Self(id: id, ok: true, result: result, error: nil)
     }
 
@@ -94,7 +140,7 @@ public struct BillFnBridgeResponseEnvelope: Codable, Sendable, Equatable {
 public struct BillFnBridgeEventEnvelope: Codable, Sendable, Equatable {
     public let protocolVersion: String
     public let event: String
-    public let payload: [String: String]
+    public let payload: [String: BillFnBridgeValue]
 
     enum CodingKeys: String, CodingKey {
         case protocolVersion = "protocol"
@@ -102,7 +148,7 @@ public struct BillFnBridgeEventEnvelope: Codable, Sendable, Equatable {
         case payload
     }
 
-    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, event: String, payload: [String: String] = [:]) {
+    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, event: String, payload: [String: BillFnBridgeValue] = [:]) {
         self.protocolVersion = protocolVersion
         self.event = event
         self.payload = payload

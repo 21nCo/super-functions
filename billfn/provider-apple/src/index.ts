@@ -503,13 +503,17 @@ function mapAppleHistoryResponse(payload: Record<string, unknown>): BillFnVerifi
       message: 'Apple history response did not contain any transactions'
     });
   }
+  const expiresAt = millisToIso(readString(transaction, ['expiresDate'])) ?? undefined;
+  const revokedAt = millisToIso(readString(transaction, ['revocationDate'])) ?? undefined;
+  const isExpired = Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+  const subscriptionStatus = revokedAt ? 'canceled' : isExpired ? 'expired' : 'active';
   return {
-    subscriptionStatus: transaction.expiresDate ? 'active' : 'active',
-    checkoutStatus: 'succeeded',
+    subscriptionStatus,
+    checkoutStatus: subscriptionStatus === 'expired' ? 'failed' : 'succeeded',
     providerSubscriptionId: readString(transaction, ['originalTransactionId']) ?? undefined,
     providerChargeId: readString(transaction, ['transactionId']) ?? undefined,
     currentPeriodStart: millisToIso(readString(transaction, ['purchaseDate'])) ?? undefined,
-    currentPeriodEnd: millisToIso(readString(transaction, ['expiresDate'])) ?? undefined,
+    currentPeriodEnd: expiresAt,
     autoRenew: false,
     raw: payload
   };
