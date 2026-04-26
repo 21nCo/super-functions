@@ -629,6 +629,99 @@ describe('@billfn/core', () => {
     expect(jobAfter.data.job.status).toBe('succeeded');
   });
 
+  it('skips already processed notification-history receipts during replay', async () => {
+    const db = memoryAdapter({ debug: false });
+    let providerSubscriptionId = '';
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async fetchNotificationHistory() {
+        return {
+          events: [
+            {
+              providerEventId: 'evt_history_processed',
+              type: 'subscription.updated',
+              signatureVerified: true,
+              billingState: {
+                subscriptionStatus: 'active',
+                checkoutStatus: 'succeeded',
+                providerSubscriptionId,
+                providerChargeId: 'charge_123',
+                currentPeriodStart: '2026-04-20T00:00:00.000Z',
+                currentPeriodEnd: '2026-05-20T00:00:00.000Z',
+                autoRenew: true
+              },
+              raw: {
+                ok: true
+              }
+            }
+          ],
+          nextCursor: 'cursor_next'
+        };
+      }
+    };
+    const billfn = createBillFn({
+      db,
+      catalog,
+      providers: {
+        dodo: provider
+      }
+    });
+
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'user_history' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    const verified = await billfn.verifyCheckout({
+      subject: { principalId: 'user_history' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+    if (!verified.ok) {
+      throw new Error('expected success');
+    }
+    providerSubscriptionId = verified.data.subscription.providerSubscriptionId ?? '';
+
+    const first = await billfn.enqueueReconciliationJob({
+      kind: 'notification-history-backfill',
+      provider: 'dodo'
+    });
+    if (!first.ok) {
+      throw new Error('expected success');
+    }
+    await billfn.runReconciliationJob({ jobId: first.data.job.id });
+    const eventsAfterFirst = await db.findMany({
+      model: 'billingEvents',
+      where: [],
+      namespace: 'billfn'
+    });
+    const subscriptionEventsAfterFirst = eventsAfterFirst.filter(
+      (event) => event.billingAccountId === 'ba_user_user_history'
+    );
+
+    const second = await billfn.enqueueReconciliationJob({
+      kind: 'notification-history-backfill',
+      provider: 'dodo'
+    });
+    if (!second.ok) {
+      throw new Error('expected success');
+    }
+    await billfn.runReconciliationJob({ jobId: second.data.job.id });
+    const eventsAfterSecond = await db.findMany({
+      model: 'billingEvents',
+      where: [],
+      namespace: 'billfn'
+    });
+    const subscriptionEventsAfterSecond = eventsAfterSecond.filter(
+      (event) => event.billingAccountId === 'ba_user_user_history'
+    );
+
+    expect(subscriptionEventsAfterSecond).toHaveLength(subscriptionEventsAfterFirst.length);
+  });
+
   it('retries concurrent usage updates and rejects negative usage deltas', async () => {
     const billfn = createBillFn({
       db: memoryAdapter({ debug: false }),

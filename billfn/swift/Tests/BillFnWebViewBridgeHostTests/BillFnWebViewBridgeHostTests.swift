@@ -12,9 +12,9 @@ struct BillFnWebViewBridgeHostTests {
 
         let response = dispatcher.handle(
             BillFnBridgeRequestEnvelope(id: "req_1", method: "handshake", payload: [
-                "clientId": "client_1",
-                "mode": "native-backed",
-                "baseURL": "https://billfn.example.test/billfn",
+                "clientId": .string("client_1"),
+                "mode": .string("native-backed"),
+                "baseURL": .string("https://billfn.example.test/billfn"),
             ])
         )
 
@@ -36,5 +36,18 @@ struct BillFnWebViewBridgeHostTests {
         #expect(response.ok)
         #expect(response.result?["type"] == .string("manage-subscription"))
         #expect(response.result?["url"] == .string("https://apps.apple.com/account/subscriptions"))
+    }
+
+    @Test("Bridge values round-trip fractional numbers")
+    func bridgeValuesSupportFractionalNumbers() throws {
+        let envelope = BillFnBridgeResponseEnvelope.success(id: "req_3", result: [
+            "usage": .double(12.5),
+            "active": .bool(true),
+        ])
+        let encoded = try JSONEncoder().encode(envelope)
+        let decoded = try JSONDecoder().decode(BillFnBridgeResponseEnvelope.self, from: encoded)
+
+        #expect(decoded.result?["usage"] == .double(12.5))
+        #expect(decoded.result?["active"] == .bool(true))
     }
 }

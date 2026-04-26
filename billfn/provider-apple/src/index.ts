@@ -174,7 +174,13 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
       } satisfies BillFnProviderOperationResult;
     },
     async restorePurchases(input: BillFnRestorePurchasesInput) {
-      const response = await requestStoreKitWithFallback(fetchImpl, config, `/history/${input.purchaseReference}`);
+      const response = await requestStoreKitWithFallback(
+        fetchImpl,
+        config,
+        input.price.kind === 'subscription'
+          ? `/subscriptions/${input.purchaseReference}`
+          : `/history/${input.purchaseReference}`
+      );
       return [input.price.kind === 'subscription' ? mapAppleSubscriptionResponse(response.payload) : mapAppleHistoryResponse(response.payload)];
     },
     async parseWebhook(input): Promise<BillFnParsedWebhookEvent[]> {
@@ -337,7 +343,7 @@ function shouldFallbackToSandbox(error: unknown, environment: 'production' | 'sa
       typeof error === 'object' &&
       'details' in error &&
       typeof (error as { details?: { status?: unknown } }).details?.status === 'number' &&
-      [400, 401, 404].includes((error as { details: { status: number } }).details.status)
+      [400, 404].includes((error as { details: { status: number } }).details.status)
   );
 }
 

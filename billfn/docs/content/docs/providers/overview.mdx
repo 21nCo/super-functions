@@ -19,10 +19,10 @@ Keeping that code outside `@billfn/core` makes the billing domain easier to evol
 
 ## Provider Matrix
 
-| Provider | Checkout | Verify | Sync | Cancel | Restore | Webhooks |
-| --- | --- | --- | --- | --- | --- | --- |
-| Dodo | Yes | Yes | Yes | Yes | Yes | Yes |
-| Apple | Client handoff | Yes | Yes | Yes | Yes | Yes |
+| Provider | Checkout | Verify | Sync | Cancel | Change | Resume | Refund | Restore | Webhooks | Notification History |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Dodo | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No |
+| Apple | Client handoff | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ## Shared Adapter Contract
 
@@ -32,7 +32,11 @@ Adapters implement some or all of:
 - `verifyCheckout()`
 - `fetchSubscription()`
 - `cancelSubscription()`
+- `changeSubscription()`
+- `resumeSubscription()`
+- `refundCharge()`
 - `restorePurchases()`
 - `parseWebhook()`
+- `fetchNotificationHistory()`
 
 The core package decides what is required for a given route based on provider capabilities and returns `BILLFN_PROVIDER_UNSUPPORTED` when an operation is not available.

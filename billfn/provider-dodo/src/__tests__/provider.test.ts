@@ -253,4 +253,52 @@ describe('@billfn/provider-dodo', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('resumes subscriptions by clearing the next-billing cancellation flag', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          subscription_id: 'sub_123',
+          status: 'active'
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      )
+    ) as typeof fetch;
+
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      fetch: fetchMock
+    });
+
+    const response = await provider.resumeSubscription?.({
+      subscription: {
+        id: 'sub_local',
+        billingAccountId: 'ba_user_123',
+        planKey: 'pro',
+        priceId: 'price_old',
+        provider: 'dodo',
+        providerSubscriptionId: 'sub_123',
+        status: 'active',
+        autoRenew: false,
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      }
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://live.dodopayments.com/subscriptions/sub_123',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          cancel_at_next_billing_date: false
+        })
+      })
+    );
+    expect(response?.operationStatus).toBe('applied');
+  });
 });

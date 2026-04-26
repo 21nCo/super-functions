@@ -25,6 +25,7 @@
   },
   "peerDependencies": {
     "@billfn/client": "^0.0.1",
+    "@billfn/core": "^0.0.1",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

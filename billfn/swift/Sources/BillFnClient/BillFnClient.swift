@@ -36,11 +36,19 @@ public final class BillFnClient: @unchecked Sendable {
 
     public func endpoint(_ path: String) throws -> URL {
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        let base = configuration.baseURL.absoluteString.hasSuffix("/")
-            ? configuration.baseURL
-            : configuration.baseURL.appendingPathComponent("")
-        let url = base.appendingPathComponent(trimmedPath)
-        guard url.scheme != nil else {
+        let parts = trimmedPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let pathPart = parts.first.map(String.init) ?? ""
+        let queryPart = parts.count > 1 ? String(parts[1]) : nil
+
+        guard var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false) else {
+            throw BillFnClientError.invalidBaseURL
+        }
+
+        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        components.path = pathPart.isEmpty ? basePath : "\(basePath)/\(pathPart)"
+        components.percentEncodedQuery = queryPart
+
+        guard let url = components.url, url.scheme != nil else {
             throw BillFnClientError.invalidBaseURL
         }
         return url

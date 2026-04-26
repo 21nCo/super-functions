@@ -58,11 +58,8 @@ export function createWKWebViewBridgeBus(
     activeBridgeReceivers.add(bridgeReceiver);
   };
 
-  ensureReceiverRegistered();
-
   return {
     async request(message) {
-      ensureReceiverRegistered();
       if (message.protocol !== BILLFN_BRIDGE_PROTOCOL) {
         return createBridgeErrorResponse(
           message.id,
@@ -112,12 +109,13 @@ export function createWKWebViewBridgeBus(
         }, timeoutMs);
 
         pendingRequests.set(message.id, { resolve, timer });
+        ensureReceiverRegistered();
         messageHandler.postMessage(message);
       });
     },
     subscribe(handler) {
-      ensureReceiverRegistered();
       eventHandlers.add(handler);
+      ensureReceiverRegistered();
       return () => {
         eventHandlers.delete(handler);
         if (pendingRequests.size === 0 && eventHandlers.size === 0) {

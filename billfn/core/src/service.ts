@@ -324,7 +324,7 @@ export function createBillFnService(config: BillFnConfig) {
 
     try {
       await processReconciliationJob(deps, job);
-      await deps.db.update<BillFnReconciliationJob>({
+      job = await deps.db.update<BillFnReconciliationJob>({
         model: TABLES.reconciliationJobs,
         where: [{ field: 'id', operator: 'eq', value: job.id }],
         data: {
@@ -1111,15 +1111,33 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
           createdAt: toIsoString(deps.now()),
           processedAt: undefined
         };
-        try {
-          await deps.db.create({
-            model: TABLES.webhookReceipts,
-            data: receipt,
-            namespace: deps.namespace
-          });
-        } catch (error) {
-          if (!isDuplicateRecordError(error)) {
-            throw error;
+        const existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+          model: TABLES.webhookReceipts,
+          where: [{ field: 'id', operator: 'eq', value: receiptId }],
+          namespace: deps.namespace
+        });
+        if (existingReceipt?.processedAt) {
+          continue;
+        }
+        if (!existingReceipt) {
+          try {
+            await deps.db.create({
+              model: TABLES.webhookReceipts,
+              data: receipt,
+              namespace: deps.namespace
+            });
+          } catch (error) {
+            if (!isDuplicateRecordError(error)) {
+              throw error;
+            }
+            const duplicatedReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+              model: TABLES.webhookReceipts,
+              where: [{ field: 'id', operator: 'eq', value: receiptId }],
+              namespace: deps.namespace
+            });
+            if (duplicatedReceipt?.processedAt) {
+              continue;
+            }
           }
         }
         try {

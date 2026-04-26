@@ -94,6 +94,125 @@ describe('@billfn/provider-apple', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('does not fall back to sandbox when production auth fails', async () => {
+    const fetchMock = vi.fn(async () => new Response('unauthorized', { status: 401 })) as typeof fetch;
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'expired-token'
+    });
+
+    await expect(
+      provider.verifyCheckout?.({
+        checkoutSession: {
+          checkoutSessionId: 'chk_123',
+          billingAccountId: 'ba_user_123',
+          planKey: 'pro',
+          priceId: 'price_apple',
+          provider: 'apple',
+          status: 'requires_action',
+          createdAt: '2026-04-20T00:00:00.000Z',
+          updatedAt: '2026-04-20T00:00:00.000Z'
+        },
+        billingAccount: {
+          id: 'ba_user_123',
+          ownerType: 'user',
+          ownerId: 'user_123',
+          createdAt: '2026-04-20T00:00:00.000Z',
+          updatedAt: '2026-04-20T00:00:00.000Z'
+        },
+        plan: {
+          productKey: 'nucleus',
+          planKey: 'pro',
+          displayName: 'Pro',
+          features: {},
+          limits: {},
+          prices: []
+        },
+        price: {
+          priceId: 'price_apple',
+          provider: 'apple',
+          providerProductId: 'apple.pro.month',
+          amount: 12,
+          currency: 'USD',
+          interval: 'month',
+          kind: 'subscription'
+        },
+        payload: {
+          transactionId: 'txn_123'
+        }
+      })
+    ).rejects.toMatchObject({
+      code: 'BILLFN_PROVIDER_ERROR'
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the subscriptions endpoint when restoring Apple subscription purchases', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              lastTransactions: [
+                {
+                  signedTransactionInfo: encodePayload({
+                    originalTransactionId: 'orig_restore',
+                    transactionId: 'txn_restore',
+                    purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
+                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+                    status: 1
+                  })
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      )
+    ) as typeof fetch;
+
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'token'
+    });
+
+    const restored = await provider.restorePurchases?.({
+      billingAccount: {
+        id: 'ba_user_123',
+        ownerType: 'user',
+        ownerId: 'user_123',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: {
+        productKey: 'nucleus',
+        planKey: 'pro',
+        displayName: 'Pro',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      price: {
+        priceId: 'price_apple',
+        provider: 'apple',
+        providerProductId: 'apple.pro.month',
+        amount: 12,
+        currency: 'USD',
+        interval: 'month',
+        kind: 'subscription'
+      },
+      purchaseReference: 'orig_restore'
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/subscriptions/orig_restore');
+    expect(restored?.[0]?.subscriptionStatus).toBe('active');
+  });
+
   it('parses App Store Server Notifications v2 payloads using the configured verifier', async () => {
     const provider = createAppleProvider({
       tokenProvider: async () => 'token',

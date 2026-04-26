@@ -215,7 +215,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         method: 'PATCH',
         headers: createHeaders(config.apiKey),
         body: JSON.stringify({
-          status: 'active'
+          cancel_at_next_billing_date: false
         })
       });
 

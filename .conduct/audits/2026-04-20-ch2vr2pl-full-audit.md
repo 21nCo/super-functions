@@ -10,7 +10,7 @@
 - git:
   - branch: `codex/billfn-phase1`
   - commit: `db99dadc8ec500377bf181931075c3ea0bbe8e0e`
-  - dirty: `yes`
+  - dirty: `no`
 
 ## Audit scope
 

@@ -57,7 +57,9 @@ const catalog: BillFnCatalog = {
   ],
 };
 
-const db = undefined as unknown as Parameters<typeof createBillFn>[0]["db"];
+declare function createYourDbAdapter(): Parameters<typeof createBillFn>[0]["db"];
+
+const db = createYourDbAdapter();
 
 const billfn = createBillFn({
   db,

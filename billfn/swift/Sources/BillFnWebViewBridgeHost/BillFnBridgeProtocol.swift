@@ -42,7 +42,7 @@ public struct BillFnBridgeRequestEnvelope: Codable, Sendable, Equatable {
     public let protocolVersion: String
     public let id: String
     public let method: String
-    public let payload: [String: String]?
+    public let payload: [String: BillFnBridgeValue]?
 
     enum CodingKeys: String, CodingKey {
         case protocolVersion = "protocol"
@@ -51,7 +51,7 @@ public struct BillFnBridgeRequestEnvelope: Codable, Sendable, Equatable {
         case payload
     }
 
-    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, id: String, method: String, payload: [String: String]? = nil) {
+    public init(protocolVersion: String = BILLFN_BRIDGE_PROTOCOL, id: String, method: String, payload: [String: BillFnBridgeValue]? = nil) {
         self.protocolVersion = protocolVersion
         self.id = id
         self.method = method
@@ -62,6 +62,7 @@ public struct BillFnBridgeRequestEnvelope: Codable, Sendable, Equatable {
 public enum BillFnBridgeValue: Codable, Sendable, Equatable {
     case string(String)
     case integer(Int)
+    case double(Double)
     case bool(Bool)
     case array([BillFnBridgeValue])
     case object([String: BillFnBridgeValue])
@@ -71,12 +72,14 @@ public enum BillFnBridgeValue: Codable, Sendable, Equatable {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
-        } else if let string = try? container.decode(String.self) {
-            self = .string(string)
-        } else if let integer = try? container.decode(Int.self) {
-            self = .integer(integer)
         } else if let bool = try? container.decode(Bool.self) {
             self = .bool(bool)
+        } else if let integer = try? container.decode(Int.self) {
+            self = .integer(integer)
+        } else if let double = try? container.decode(Double.self) {
+            self = .double(double)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
         } else if let array = try? container.decode([BillFnBridgeValue].self) {
             self = .array(array)
         } else if let object = try? container.decode([String: BillFnBridgeValue].self) {
@@ -92,6 +95,8 @@ public enum BillFnBridgeValue: Codable, Sendable, Equatable {
         case .string(let value):
             try container.encode(value)
         case .integer(let value):
+            try container.encode(value)
+        case .double(let value):
             try container.encode(value)
         case .bool(let value):
             try container.encode(value)
