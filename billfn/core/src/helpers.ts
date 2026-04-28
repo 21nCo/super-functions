@@ -96,6 +96,7 @@ export async function resolveRequestSubject(
     if (resolved && hasSomeSubjectField(resolved)) {
       return resolved;
     }
+    return {};
   }
 
   if (bodySubject && hasSomeSubjectField(bodySubject)) {

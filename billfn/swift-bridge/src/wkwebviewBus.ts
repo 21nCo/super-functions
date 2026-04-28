@@ -18,7 +18,7 @@ type PendingRequest = {
 const activeBridgeReceivers = new Set<(message: unknown) => void>();
 
 function installGlobalReceiver() {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.__billfnBridgeReceive__ === 'undefined') {
     window.__billfnBridgeReceive__ = (message: unknown) => {
       activeBridgeReceivers.forEach((receiver) => receiver(message));
     };
@@ -110,7 +110,26 @@ export function createWKWebViewBridgeBus(
 
         pendingRequests.set(message.id, { resolve, timer });
         ensureReceiverRegistered();
-        messageHandler.postMessage(message);
+        try {
+          messageHandler.postMessage(message);
+        } catch (error) {
+          clearTimeout(timer);
+          pendingRequests.delete(message.id);
+          if (pendingRequests.size === 0 && eventHandlers.size === 0) {
+            activeBridgeReceivers.delete(bridgeReceiver);
+          }
+          resolve(
+            createBridgeErrorResponse(
+              message.id,
+              'BRIDGE_UNAVAILABLE',
+              'Native bridge postMessage failed',
+              {
+                path: `window.webkit.messageHandlers.${handlerName}`,
+                reason: error instanceof Error ? error.message : String(error)
+              }
+            )
+          );
+        }
       });
     },
     subscribe(handler) {

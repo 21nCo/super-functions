@@ -46,7 +46,9 @@ public final class BillFnClient: @unchecked Sendable {
 
         let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
         components.path = pathPart.isEmpty ? basePath : "\(basePath)/\(pathPart)"
-        components.percentEncodedQuery = queryPart
+        if let queryPart {
+            components.percentEncodedQuery = queryPart
+        }
 
         guard let url = components.url, url.scheme != nil else {
             throw BillFnClientError.invalidBaseURL
@@ -54,10 +56,19 @@ public final class BillFnClient: @unchecked Sendable {
         return url
     }
 
-    public func makeRequest(path: String, method: String = "GET") throws -> URLRequest {
+    public func makeRequest(path: String, method: String = "GET", body: Data? = nil, headers: [String: String]? = nil, accept: String? = nil) throws -> URLRequest {
         var request = URLRequest(url: try endpoint(path))
         request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        if let accept {
+            request.setValue(accept, forHTTPHeaderField: "Accept")
+        }
+        headers?.forEach { key, value in
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         return request
     }
 }

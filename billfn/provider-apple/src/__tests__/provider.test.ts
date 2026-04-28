@@ -11,7 +11,7 @@ describe('@billfn/provider-apple', () => {
   it('maps subscription verification responses to normalized billfn state with prod-to-sandbox fallback', async () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
       const value = new URL(String(url));
-      if (value.hostname === 'api.storekit.apple.com') {
+      if (value.hostname === 'api.storekit.itunes.apple.com') {
         return new Response('not found', { status: 404 });
       }
       return new Response(
@@ -91,6 +91,8 @@ describe('@billfn/provider-apple', () => {
 
     expect(verified?.subscriptionStatus).toBe('active');
     expect(verified?.providerChargeId).toBe('txn_123');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('https://api.storekit.itunes.apple.com/inApps/v1/subscriptions/txn_123');
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions/txn_123');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -209,8 +211,65 @@ describe('@billfn/provider-apple', () => {
       purchaseReference: 'orig_restore'
     });
 
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/subscriptions/orig_restore');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/inApps/v1/subscriptions/orig_restore');
     expect(restored?.[0]?.subscriptionStatus).toBe('active');
+  });
+
+  it('uses the v2 history endpoint for non-subscription purchase restoration', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          signedTransactions: [
+            encodePayload({
+              originalTransactionId: 'orig_lifetime',
+              transactionId: 'txn_lifetime',
+              purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z'))
+            })
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      )
+    ) as typeof fetch;
+
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'token'
+    });
+
+    await provider.restorePurchases?.({
+      billingAccount: {
+        id: 'ba_user_123',
+        ownerType: 'user',
+        ownerId: 'user_123',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: {
+        productKey: 'nucleus',
+        planKey: 'lifetime',
+        displayName: 'Lifetime',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      price: {
+        priceId: 'price_lifetime',
+        provider: 'apple',
+        providerProductId: 'apple.lifetime',
+        amount: 120,
+        currency: 'USD',
+        kind: 'one_time',
+        interval: 'lifetime'
+      },
+      purchaseReference: 'txn_lifetime'
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/inApps/v2/history/txn_lifetime');
   });
 
   it('parses App Store Server Notifications v2 payloads using the configured verifier', async () => {
@@ -313,6 +372,14 @@ describe('@billfn/provider-apple', () => {
       limit: 10
     });
 
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/inApps/v1/notifications/history?paginationToken=cursor_1');
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST'
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      startDate: expect.any(Number),
+      endDate: expect.any(Number)
+    });
     expect(page?.events).toHaveLength(1);
     expect(page?.events[0]?.billingState?.subscriptionStatus).toBe('expired');
     expect(page?.nextCursor).toBe('cursor_next');

@@ -336,7 +336,7 @@ export function createBillFnService(config: BillFnConfig) {
       });
       return job;
     } catch (error) {
-      job = await deps.db.update<BillFnReconciliationJob>({
+      await deps.db.update<BillFnReconciliationJob>({
         model: TABLES.reconciliationJobs,
         where: [{ field: 'id', operator: 'eq', value: job.id }],
         data: {
@@ -803,10 +803,7 @@ export function createBillFnService(config: BillFnConfig) {
         }
 
         if (projection.billingAccount.id !== billingAccount.id) {
-          throw createBillFnError({
-            code: 'BILLFN_CONFLICT',
-            message: 'Restored purchase is linked to a different billing account'
-          });
+          continue;
         }
 
         const applied = await applyVerificationState(deps, {
@@ -1118,6 +1115,12 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
         });
         if (existingReceipt?.processedAt) {
           continue;
+        }
+        if (!event.signatureVerified) {
+          throw createBillFnError({
+            code: 'BILLFN_WEBHOOK_SIGNATURE_INVALID',
+            message: 'Notification history event signature verification failed'
+          });
         }
         if (!existingReceipt) {
           try {
@@ -1621,11 +1624,30 @@ async function upsertReconciliationCursor(
       namespace: deps.namespace
     });
   }
-  return deps.db.create<BillFnReconciliationCursor>({
-    model: TABLES.reconciliationCursors,
-    data: record,
-    namespace: deps.namespace
-  });
+  try {
+    return await deps.db.create<BillFnReconciliationCursor>({
+      model: TABLES.reconciliationCursors,
+      data: record,
+      namespace: deps.namespace
+    });
+  } catch (error) {
+    if (!isDuplicateRecordError(error)) {
+      throw error;
+    }
+    const duplicate = await findReconciliationCursor(deps, input.provider, input.cursorKey);
+    if (!duplicate) {
+      throw error;
+    }
+    return deps.db.update<BillFnReconciliationCursor>({
+      model: TABLES.reconciliationCursors,
+      where: [{ field: 'id', operator: 'eq', value: duplicate.id }],
+      data: {
+        ...record,
+        id: duplicate.id
+      },
+      namespace: deps.namespace
+    });
+  }
 }
 
 function mapSubscriptionToEntitlementStatus(status: SubscriptionStatus): EntitlementStatus {
@@ -1766,11 +1788,31 @@ async function upsertEntitlements(
     });
   }
 
-  return deps.db.create<BillFnEntitlementSnapshot>({
-    model: TABLES.entitlementSnapshots,
-    data: snapshot,
-    namespace: deps.namespace
-  });
+  try {
+    return await deps.db.create<BillFnEntitlementSnapshot>({
+      model: TABLES.entitlementSnapshots,
+      data: snapshot,
+      namespace: deps.namespace
+    });
+  } catch (error) {
+    if (!isDuplicateRecordError(error)) {
+      throw error;
+    }
+    const duplicate = await findEntitlementSnapshot(deps, billingAccountId);
+    if (!duplicate) {
+      throw error;
+    }
+    return deps.db.update<BillFnEntitlementSnapshot>({
+      model: TABLES.entitlementSnapshots,
+      where: [{ field: 'billingAccountId', operator: 'eq', value: billingAccountId }],
+      data: {
+        ...snapshot,
+        id: duplicate.id,
+        createdAt: duplicate.createdAt
+      },
+      namespace: deps.namespace
+    });
+  }
 }
 
 async function recordBillingEvent(deps: ServiceDeps, event: BillFnBillingEvent) {

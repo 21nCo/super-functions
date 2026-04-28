@@ -74,12 +74,12 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
         const response = await requestStoreKitWithFallback(
           fetchImpl,
           config,
-          `/subscriptions/${transactionId}`
+          `/inApps/v1/subscriptions/${transactionId}`
         );
         return mapAppleSubscriptionResponse(response.payload);
       }
 
-      const response = await requestStoreKitWithFallback(fetchImpl, config, `/history/${transactionId}`);
+      const response = await requestStoreKitWithFallback(fetchImpl, config, `/inApps/v2/history/${transactionId}`);
       return mapAppleHistoryResponse(response.payload);
     },
     async fetchSubscription(input: BillFnSyncSubscriptionInput) {
@@ -90,7 +90,7 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
           message: 'Apple subscription sync requires a provider subscription reference'
         });
       }
-      const response = await requestStoreKitWithFallback(fetchImpl, config, `/subscriptions/${transactionId}`);
+      const response = await requestStoreKitWithFallback(fetchImpl, config, `/inApps/v1/subscriptions/${transactionId}`);
       return mapAppleSubscriptionResponse(response.payload);
     },
     async cancelSubscription(input: BillFnCancelSubscriptionInput) {
@@ -178,8 +178,8 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
         fetchImpl,
         config,
         input.price.kind === 'subscription'
-          ? `/subscriptions/${input.purchaseReference}`
-          : `/history/${input.purchaseReference}`
+          ? `/inApps/v1/subscriptions/${input.purchaseReference}`
+          : `/inApps/v2/history/${input.purchaseReference}`
       );
       return [input.price.kind === 'subscription' ? mapAppleSubscriptionResponse(response.payload) : mapAppleHistoryResponse(response.payload)];
     },
@@ -213,7 +213,11 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
       const response = await requestStoreKitWithFallback(
         fetchImpl,
         config,
-        buildNotificationHistoryPath(input.cursor, input.limit)
+        buildNotificationHistoryPath(input.cursor),
+        {
+          method: 'POST',
+          body: JSON.stringify(buildNotificationHistoryRequest())
+        }
       );
       const notifications = Array.isArray(response.payload.notificationHistory)
         ? response.payload.notificationHistory
@@ -249,7 +253,8 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
 async function requestStoreKitWithFallback(
   fetchImpl: typeof fetch,
   config: AppleProviderConfig,
-  path: string
+  path: string,
+  init: RequestInit = {}
 ) {
   const initial = config.environment ?? 'production';
   const environments: Array<'production' | 'sandbox'> = initial === 'production' ? ['production', 'sandbox'] : ['sandbox'];
@@ -257,7 +262,7 @@ async function requestStoreKitWithFallback(
 
   for (const environment of environments) {
     try {
-      const payload = await requestJson(fetchImpl, buildStoreKitBaseUrl(environment) + path, await config.tokenProvider());
+      const payload = await requestJson(fetchImpl, buildStoreKitBaseUrl(environment) + path, await config.tokenProvider(), init);
       return {
         environment,
         payload
@@ -302,12 +307,14 @@ async function requestAdvancedCommerce(
   return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
 }
 
-async function requestJson(fetchImpl: typeof fetch, url: string, token: string) {
+async function requestJson(fetchImpl: typeof fetch, url: string, token: string, init: RequestInit = {}) {
   const response = await fetchImpl(url, {
-    method: 'GET',
+    ...init,
+    method: init.method ?? 'GET',
     headers: {
       authorization: `Bearer ${token}`,
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      ...(init.headers ?? {})
     }
   });
   const raw = await response.text();
@@ -330,8 +337,8 @@ function createProviderError(status: number, body: string) {
 
 function buildStoreKitBaseUrl(environment: 'production' | 'sandbox') {
   return environment === 'production'
-    ? 'https://api.storekit.apple.com/inApps/v1'
-    : 'https://api.storekit-sandbox.apple.com/inApps/v1';
+    ? 'https://api.storekit.itunes.apple.com'
+    : 'https://api.storekit-sandbox.itunes.apple.com';
 }
 
 function shouldFallbackToSandbox(error: unknown, environment: 'production' | 'sandbox') {
@@ -379,15 +386,21 @@ async function decodeNotificationPayload(
   };
 }
 
-function buildNotificationHistoryPath(cursor?: string, limit?: number) {
-  const url = new URL('https://apple.example.test/notifications/history');
+function buildNotificationHistoryPath(cursor?: string) {
+  const params = new URLSearchParams();
   if (cursor) {
-    url.searchParams.set('paginationToken', cursor);
+    params.set('paginationToken', cursor);
   }
-  if (typeof limit === 'number' && Number.isFinite(limit)) {
-    url.searchParams.set('limit', String(limit));
-  }
-  return `${url.pathname}${url.search}`;
+  const query = params.toString();
+  return query ? `/inApps/v1/notifications/history?${query}` : '/inApps/v1/notifications/history';
+}
+
+function buildNotificationHistoryRequest() {
+  const endDate = Date.now();
+  return {
+    startDate: endDate - 24 * 60 * 60 * 1000,
+    endDate
+  };
 }
 
 function mapAppleNotificationEvent(

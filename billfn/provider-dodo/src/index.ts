@@ -150,13 +150,14 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         });
       }
 
-      const attempted = await tryRequestJson(fetchImpl, `${baseUrl}/subscriptions/${providerSubscriptionId}`, {
-        method: 'PATCH',
+      const attempted = await tryRequestJson(fetchImpl, `${baseUrl}/subscriptions/${providerSubscriptionId}/change-plan`, {
+        method: 'POST',
         headers: createHeaders(config.apiKey),
         body: JSON.stringify({
           product_id: input.targetPrice.providerProductId,
-          proration_behavior: normalizeDodoProration(input.prorationBehavior),
-          effective_at: input.effectiveAt
+          proration_billing_mode: normalizeDodoProration(input.prorationBehavior),
+          quantity: 1,
+          effective_at: normalizeDodoEffectiveAt(input.effectiveAt)
         })
       });
 
@@ -416,12 +417,16 @@ function normalizeDodoStatus(status: string): BillFnVerifiedBillingState['subscr
 function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none') {
   switch (value) {
     case 'prorate':
-      return 'prorate';
+      return 'prorated_immediately';
     case 'none':
-      return 'none';
+      return 'do_not_bill';
     default:
-      return 'provider_default';
+      return 'prorated_immediately';
   }
+}
+
+function normalizeDodoEffectiveAt(value: 'immediate' | 'next_renewal') {
+  return value === 'next_renewal' ? 'next_billing_date' : 'immediately';
 }
 
 function shouldFallbackToReplacementCheckout(status: number) {

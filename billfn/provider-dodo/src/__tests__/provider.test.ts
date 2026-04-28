@@ -105,10 +105,12 @@ describe('@billfn/provider-dodo', () => {
   it('falls back to replacement checkout when direct change is unsupported', async () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
       const value = String(url);
-      if (value.endsWith('/subscriptions/sub_123')) {
+      if (value.endsWith('/subscriptions/sub_123/change-plan')) {
         if (fetchMock.mock.calls.length === 1) {
           return new Response('unsupported', { status: 405 });
         }
+      }
+      if (value.endsWith('/subscriptions/sub_123')) {
         return new Response(
           JSON.stringify({
             subscription_id: 'sub_123',
@@ -186,6 +188,93 @@ describe('@billfn/provider-dodo', () => {
     expect(response?.raw).toMatchObject({
       fallback: 'replacement-checkout'
     });
+  });
+
+  it('uses Dodo change-plan endpoint and schema for direct plan changes', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          subscription_id: 'sub_123',
+          status: 'active'
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        }
+      )
+    ) as typeof fetch;
+
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      fetch: fetchMock
+    });
+
+    const response = await provider.changeSubscription?.({
+      subscription: {
+        id: 'sub_local',
+        billingAccountId: 'ba_user_123',
+        planKey: 'pro',
+        priceId: 'price_old',
+        provider: 'dodo',
+        providerSubscriptionId: 'sub_123',
+        status: 'active',
+        autoRenew: true,
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      currentPlan: {
+        productKey: 'nucleus',
+        planKey: 'pro',
+        displayName: 'Pro',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      currentPrice: {
+        priceId: 'price_old',
+        provider: 'dodo',
+        providerProductId: 'pdt_old',
+        amount: 12,
+        currency: 'USD',
+        interval: 'month',
+        kind: 'subscription'
+      },
+      targetPlan: {
+        productKey: 'nucleus',
+        planKey: 'pro',
+        displayName: 'Pro',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      targetPrice: {
+        priceId: 'price_new',
+        provider: 'dodo',
+        providerProductId: 'pdt_new',
+        amount: 120,
+        currency: 'USD',
+        interval: 'year',
+        kind: 'subscription'
+      },
+      effectiveAt: 'next_renewal',
+      prorationBehavior: 'none'
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://live.dodopayments.com/subscriptions/sub_123/change-plan',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          product_id: 'pdt_new',
+          proration_billing_mode: 'do_not_bill',
+          quantity: 1,
+          effective_at: 'next_billing_date'
+        })
+      })
+    );
+    expect(response?.operationStatus).toBe('applied');
   });
 
   it('surfaces transient change failures instead of canceling the live subscription', async () => {
