@@ -1,0 +1,309 @@
+---
+title: "Getting Started"
+description: "Get up and running with DataFn in minutes."
+audience: landing
+applies_to: both
+---
+
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+
+DataFn has two halves that talk to each other: a set of **route handlers** you mount on your backend, and a **client** that runs in the browser (or a native app) with an optional offline-first storage. They share one **schema**, so types and validation stay in sync end-to-end.
+
+This guide walks through a minimal end-to-end setup.
+
+## 1. Add DataFn to your backend
+
+DataFn plugs into the backend you already have. You give it a database adapter and a schema, and it hands you back route handlers (`/datafn/query`, `/datafn/mutation`, `/datafn/sync/*`, etc.) that you mount on your existing app: Hono, Express, Bun, FastAPI, Starlette, anything that speaks HTTP.
+
+Install the DataFn packages alongside your current backend dependencies:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```bash
+    npm install @datafn/server @datafn/core
+    ```
+
+    `@datafn/core` holds the shared primitives (schema definition, types, query language) used by both client and server.
+
+    `createDatafnServer()` validates your schema, wires up a database adapter, and returns a `router` you mount on your HTTP framework. Here it is mounted on Hono via the `@superfunctions/http-hono` adapter — equivalent helpers exist for Express and other frameworks:
+
+    ```typescript
+    import { Hono } from "hono";
+    import { createDatafnServer } from "@datafn/server";
+    import { drizzleAdapter } from "@superfunctions/db/adapters";
+    import { toHono } from "@superfunctions/http-hono";
+    import { schema } from "./schema"; // we'll define this in step 2
+
+    const app = new Hono(); // your existing app
+
+    const datafn = await createDatafnServer({
+      schema,
+      db: drizzleAdapter({ db: drizzleInstance, dialect: "postgres" }),
+      rest: true, // also exposes a REST API auto-generated from your schema
+    });
+
+    // Mount DataFn's routes onto your existing Hono app
+    app.route("/", toHono(datafn.router));
+
+    export default app;
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```bash
+    pip install datafn
+    ```
+
+    `create_datafn_server()` validates your schema and returns a dictionary of route handlers keyed by `"METHOD /path"`. You wire those handlers into your existing FastAPI / Starlette / Flask app — DataFn doesn't run its own web server:
+
+    ```python
+    from fastapi import FastAPI, Request
+    from datafn import create_datafn_server
+    from .schema import schema  # we'll define this in step 2
+
+    app = FastAPI()  # your existing app
+
+    datafn = create_datafn_server({
+        "schema": schema,
+        "db": my_db_adapter,         # SQLAlchemy-based adapter
+        "authorize": my_authorize_fn,
+    })
+
+    # Mount DataFn's handlers on your existing routes
+    @app.post("/datafn/query")
+    async def datafn_query(request: Request):
+        ctx = {"user": request.state.user}
+        return await datafn["routes"]["POST /datafn/query"](ctx, await request.json())
+
+    @app.post("/datafn/mutation")
+    async def datafn_mutation(request: Request):
+        ctx = {"user": request.state.user}
+        return await datafn["routes"]["POST /datafn/mutation"](ctx, await request.json())
+    ```
+  </Tab>
+</Tabs>
+
+That's the minimum. For production you'll add `authorize`, `namespaceProvider` (multi-tenancy), and `rateLimit` — see [Server Setup](/docs/documentation/server/setup).
+
+## 2. Define your schema
+
+The schema is the single source of truth for what data exists and how it behaves. Define it once in a shared file (e.g. `schema.ts`) and import it from both server and client:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  // Capabilities add system fields and built-in operations to every resource:
+  // - timestamps → adds createdAt, updatedAt
+  // - audit      → adds createdBy, updatedBy
+  // - trash      → enables soft-delete via trash() / restore()
+  capabilities: ["timestamps", "audit", "trash"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk", // every row gets an id like "tsk:abc123"
+      capabilities: ["archivable"], // adds archive() / unarchive() to tasks
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+        { name: "priority", type: "number", required: false, min: 1, max: 5 },
+      ],
+      // Indices make these fields fast to filter and sort on.
+      indices: { base: ["title", "completed", "priority"] },
+    },
+  ],
+  relations: [],
+});
+```
+
+DataFn uses this to generate types, validate inputs, drive sync, and (with the CLI) generate ORM (Drizzle/Prisma/Kysely) table definitions.
+
+## 3. Set up the client
+
+The client runs in the user's browser or a native iOS/macOS app. It stores data locally for offline use, syncs with the server in the background, and exposes a reactive API for your UI.
+
+<Tabs items={["TypeScript", "Swift"]}>
+  <Tab value="TypeScript">
+    Install the client and core packages:
+
+    ```bash
+    npm install @datafn/client @datafn/core
+    ```
+
+    Create a client with `createDatafnClient()`. Point it at your server, give it a storage adapter, and pass the same schema you defined in step 2:
+
+    ```typescript
+    import { createDatafnClient, IndexedDbStorageAdapter } from "@datafn/client";
+    import { schema } from "./schema";
+
+    const client = createDatafnClient({
+      schema,
+      clientId: "device-1", // a stable id for this device — used to dedupe sync
+      storage: new IndexedDbStorageAdapter("my-app-db"), // persistent local storage
+      sync: {
+        remote: "http://localhost:3000/datafn",
+        offlinability: true, // queue mutations while offline, replay when back online
+        ws: true,            // open a WebSocket for live updates from other clients
+      },
+    });
+    ```
+
+    For tests or short-lived sessions, swap `IndexedDbStorageAdapter` for `MemoryStorageAdapter`.
+  </Tab>
+  <Tab value="Swift">
+    Add the DataFn Apple package via Swift Package Manager (in `Package.swift` or Xcode → Add Packages):
+
+    ```swift
+    .package(url: "https://github.com/21nCo/super-functions", from: "0.1.0"),
+    // then depend on the product:
+    .product(name: "DatafnAppleRuntime", package: "super-functions"),
+    ```
+
+    The Swift runtime is the equivalent of `createDatafnClient`: it owns a CoreData store for local persistence and talks to your DataFn server over HTTP and WebSocket. Pass it the same schema you defined in step 2 (exported as JSON — typically generated from your TS schema and bundled with the app):
+
+    ```swift
+    import DatafnAppleRuntime
+
+    let configuration = DatafnAppleRuntimeConfiguration(
+      schemaJSON: schemaData,         // Data loaded from a bundled schema.json
+      schemaHash: "my-app-schema-v1", // bump when the schema changes
+      namespace: "org-1:user-1",
+      clientID: "device-1",           // stable per-device id, used to dedupe sync
+      storeRootURL: FileManager.default
+        .applicationSupportDirectory
+        .appendingPathComponent("datafn-store", isDirectory: true),
+      syncBackend: .datafnServer(
+        DatafnServerSyncConfiguration(
+          baseURL: URL(string: "http://localhost:3000/datafn")!,
+          websocketURL: URL(string: "ws://localhost:3000/datafn/ws")!,
+          profileID: "default"
+        )
+      )
+    )
+
+    let runtime = try await DatafnAppleRuntime(configuration: configuration)
+    try await runtime.start()
+    ```
+
+    Prefer to skip your DataFn server entirely and sync via iCloud?
+
+
+    Swap `.datafnServer(...)` for `.iCloud(DatafnCloudKitConfiguration(...))` — same client API, CloudKit private database as the backend.
+  </Tab>
+</Tabs>
+
+## 4. Query and mutate
+
+You read and write data through three primitives: **mutations** that write, **queries** that read once, and **reactive observers** that auto-update as data changes. All three run against local storage first and reconcile with the server in the background, so your UI stays responsive even on a flaky network.
+
+<Tabs items={["TypeScript", "Swift"]}>
+  <Tab value="TypeScript">
+    On the web client, every operation is reached through `client.table("<name>")`:
+
+    ```typescript
+    // Write — insert a new task
+    await client.table("tasks").mutate({
+      operation: "insert",
+      record: { title: "Ship v1", completed: false, priority: 1 },
+    });
+
+    // Read once — fetch incomplete tasks, highest priority first
+    const result = await client.table("tasks").query({
+      filters: { completed: { $eq: false } },
+      sort: ["priority:asc", "id:asc"],
+      limit: 20,
+    });
+
+    // Subscribe — get a live value that re-emits whenever matching rows change,
+    // whether the change came from this device, another tab, or another user.
+    const signal = client.table("tasks").signal({
+      filters: { completed: { $eq: false } },
+    });
+
+    signal.subscribe((value) => {
+      console.log("Active tasks:", value);
+    });
+    ```
+  </Tab>
+  <Tab value="Swift">
+    On Apple platforms, you read through `DatafnRuntimeObservationSource` and observe reactively with `DatafnObservedQuery` (an `@Observable @MainActor` class — drop it straight into a SwiftUI view):
+
+    ```swift
+    import SwiftUI
+    import DatafnAppleRuntime
+
+    let source = await runtime.makeObservationSource()
+
+    // Read once
+    let tasks = try source.listRecords(resource: "tasks")
+
+    // Reactive observer — re-loads automatically when "tasks" changes
+    @MainActor
+    struct TaskListView: View {
+      let source: DatafnRuntimeObservationSource
+
+      @State private var query = DatafnObservedQuery<[DatafnJSONObject]>(
+        resource: "tasks",
+        source: source
+      )
+
+      var body: some View {
+        List(query.value, id: \.self) { row in
+          Text(String(describing: row["title"] ?? ""))
+        }
+      }
+    }
+    ```
+
+    Mutations from native Swift today flow through the WebView bridge — call `runtime.makeBridgeHost(handlerName:)` to get a `DatafnWKWebViewBridgeHost` and dispatch mutations from your JavaScript layer. A first-class native `mutate()` API is on the roadmap; see [Native Setup](/docs/documentation/client/setup) for the current bridge pattern.
+  </Tab>
+</Tabs>
+
+## 5. Use capabilities
+
+The capabilities you declared in step 2 unlock extra operations on the matching tables. Because `trash` was enabled globally every resource can be soft-deleted, and because `archivable` was enabled on `tasks` they can also be archived.
+
+<Tabs items={["TypeScript", "Swift"]}>
+  <Tab value="TypeScript">
+    Each enabled capability adds methods directly on the table handle:
+
+    ```typescript
+    // Soft-delete (from the "trash" capability) — row is hidden but recoverable
+    await client.table("tasks").trash("tsk:1");
+    await client.table("tasks").restore("tsk:1");
+
+    // Archive (from the "archivable" capability on tasks) — keep around but out of view
+    await client.table("tasks").archive("tsk:1");
+    await client.table("tasks").unarchive("tsk:1");
+
+    // Queries skip archived and trashed rows by default. Opt them back in explicitly:
+    await client.table("tasks").query({
+      metadata: { includeArchived: true, includeTrashed: true },
+    });
+    ```
+  </Tab>
+  <Tab value="Swift">
+    On Apple, the runtime already understands every capability you declared in your schema — it injects the same system fields (`trashedAt`, `archivedAt`, `createdAt`, etc.) into the local CoreData store, and observers respect them automatically. Today, capability operations themselves (`trash`, `restore`, `archive`, `unarchive`) are issued through the WebView bridge alongside other mutations:
+
+    ```swift
+    // Reads honor capabilities out of the box — trashed/archived rows are
+    // already hidden from listRecords without any extra flags.
+    let activeTasks = try source.listRecords(resource: "tasks")
+    ```
+
+    Native Swift convenience methods for capability operations (e.g. `runtime.table("tasks").trash(...)`) are on the roadmap. Track progress in [Capabilities](/docs/documentation/capabilities).
+  </Tab>
+</Tabs>
+
+Capabilities keep boilerplate (timestamps, soft-delete, audit trails, sharing) out of your application code. See [Capabilities](/docs/documentation/capabilities) for the full list.
+
+## Next Steps
+
+- [Documentation Overview](/docs/documentation) -- architecture and data model.
+- [Capabilities](/docs/documentation/capabilities) -- capability declarations, field ownership, and operations.
+- [Schema](/docs/dfql/schema) -- full schema contract.
+- [Resources](/docs/dfql/schema/resources) -- resource-level config and capability overrides.
+- [System Fields](/docs/dfql/schema/system-fields) -- capability-injected lifecycle fields.
+- [Mutations](/docs/dfql/mutations) -- operation-level DFQL reference.
+- [Client Setup](/docs/documentation/client/setup) -- client runtime configuration.
+- [Server Setup](/docs/documentation/server/setup) -- server runtime configuration.

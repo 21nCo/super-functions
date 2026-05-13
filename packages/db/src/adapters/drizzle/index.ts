@@ -6,9 +6,10 @@
  * Consumers must pass schema to drizzle() constructor.
  */
 
-import { createRequire } from 'node:module';
+import * as drizzleOrm from 'drizzle-orm';
 import type {
   Adapter,
+  AdapterSchemaInput,
   AdapterImplementation,
   AdapterFactoryOptions,
   CreateParams,
@@ -27,10 +28,9 @@ import type {
 import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createDrizzleInternalCrud } from './internal.js';
+import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
-
-const require = createRequire(import.meta.url);
 
 export interface DrizzleAdapterConfig {
   db: any; // Drizzle database instance
@@ -39,6 +39,7 @@ export interface DrizzleAdapterConfig {
   upsertKeys?: Record<string, string | string[]>;
   // Optional Drizzle table for schema version tracking; if omitted, schema version methods will be no-ops.
   schemaVersionsTable?: any;
+  adapterSchema?: AdapterSchemaInput;
   namespace?: AdapterFactoryOptions['config']['namespace'];
   debug?: boolean;
 }
@@ -52,13 +53,7 @@ function escapeLikeWildcards(value: string): string {
 }
 
 function loadDrizzleOps(): typeof import('drizzle-orm') {
-  try {
-    return require('drizzle-orm') as typeof import('drizzle-orm');
-  } catch {
-    throw new Error(
-      'drizzleAdapter requires the optional peer dependency "drizzle-orm". Install drizzle-orm to use this adapter.'
-    );
-  }
+  return drizzleOrm;
 }
 
 function buildWhere(
@@ -493,7 +488,9 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
     adapter: createImpl,
   });
 
-  const adapter = factory({});
+  const adapter = factory({
+    schema: normalizeAdapterSchema(config.adapterSchema),
+  });
   const internalCrud = createDrizzleInternalCrud(config.db, config.dialect, drizzleOps.sql);
   return Object.assign(adapter, { internal: internalCrud });
 }

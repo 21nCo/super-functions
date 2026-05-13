@@ -13,7 +13,8 @@ import {
   ensureRegionAlignmentForUser,
   getMultiRegionPluginConfig,
   rememberMultiRegionPluginConfig,
-  registerUserRegion
+  registerUserRegion,
+  unregisterRegionLookupForIdentifier
 } from '../core/regions.js';
 import { resolveRuntime } from '../core/runtime.js';
 import { createAuthFnRouteMeta } from '../http/router.js';
@@ -25,6 +26,9 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
     name: 'multiRegion',
     schema: () => config.schema ?? createMultiRegionSchema(),
     routes: (ctx) => createMultiRegionRoutes(ctx),
+    hookFailurePolicy: {
+      afterUserCreate: 'fail'
+    },
     hooks: {
       beforeUserCreate: async (ctx, input) => {
         const authConfig = ctx.config;
@@ -74,6 +78,15 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
           ...input,
           regionId: alignment.regionId ?? readOptionalString(input.regionId)
         };
+      },
+      afterAccountDelete: async (ctx, result) => {
+        const authConfig = ctx.config;
+        const primaryEmail = readOptionalString(result.primaryEmail);
+        if (!authConfig || !primaryEmail) {
+          return;
+        }
+
+        await unregisterRegionLookupForIdentifier(authConfig, config, primaryEmail);
       }
     }
   };

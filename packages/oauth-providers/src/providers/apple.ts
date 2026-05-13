@@ -7,9 +7,13 @@ export const appleOAuthProviderDescriptor: OAuthProviderDescriptor = {
   tokenUrl: "https://appleid.apple.com/auth/token",
   revocationUrl: "https://appleid.apple.com/auth/revoke",
   defaultScopes: ["name", "email"],
-  supportsPkce: true,
+  responseType: "code",
+  supportsPkce: false,
   supportsRefreshToken: true,
   scopeSeparator: " ",
+  extraAuthParams: {
+    response_mode: "form_post"
+  },
   tokenAuthMethod: "client_secret_post"
 };
 

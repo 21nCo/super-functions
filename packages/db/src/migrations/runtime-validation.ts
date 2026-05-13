@@ -17,7 +17,8 @@ function validateField(fieldKey: string, field: any, value: unknown): string | n
     case 'boolean':
       return typeof value === 'boolean' ? null : `Field ${fieldKey} must be a boolean`;
     case 'date':
-      return value instanceof Date || typeof value === 'string' ? null : `Field ${fieldKey} must be a date or ISO string`;
+    case 'datetime':
+      return validateDateField(fieldKey, field, value);
     case 'json':
       try { JSON.stringify(value); return null; } catch { return `Field ${fieldKey} must be JSON-serializable`; }
     case 'bigint':
@@ -25,6 +26,35 @@ function validateField(fieldKey: string, field: any, value: unknown): string | n
     default:
       return null;
   }
+}
+
+function validateDateField(fieldKey: string, field: any, value: unknown): string | null {
+  switch (field.dateValueType ?? 'date') {
+    case 'date':
+      return isValidDateInput(value)
+        ? null
+        : `Field ${fieldKey} must be a Date, ISO string, or epoch milliseconds`;
+    case 'iso-string':
+      return typeof value === 'string' && isValidDateInput(value)
+        ? null
+        : `Field ${fieldKey} must be an ISO date string`;
+    case 'epoch-ms':
+      return typeof value === 'number' && Number.isFinite(value)
+        ? null
+        : `Field ${fieldKey} must be epoch milliseconds`;
+    default:
+      return null;
+  }
+}
+
+function isValidDateInput(value: unknown): boolean {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime());
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    return Number.isFinite(new Date(value).getTime());
+  }
+  return false;
 }
 
 export function validateRecordAgainstSchema(schema: TableSchema, record: Record<string, unknown>): ValidationResult {

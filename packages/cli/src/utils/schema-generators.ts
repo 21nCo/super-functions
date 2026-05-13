@@ -78,6 +78,7 @@ export function generateDrizzleSchemaFile(
 ): string {
   const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   const imports = new Set<string>();
+  const drizzleImports = new Set<string>();
   const tables: string[] = [];
 
   // Map dialect to Drizzle table builder and core module
@@ -88,7 +89,7 @@ export function generateDrizzleSchemaFile(
   };
 
   const { builder: tableBuilder, core: coreModule } = dialectMap[dialect];
-  imports.add(`import { ${tableBuilder}, text, integer, boolean, timestamp, json, bigint } from '${coreModule}';`);
+  drizzleImports.add(tableBuilder);
 
   for (const table of normalizedSchema.schemas) {
     const tableName = table.modelName;
@@ -100,16 +101,10 @@ export function generateDrizzleSchemaFile(
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      const drizzleType = mapTypeToDrizzle(field.type);
+      const drizzleField = mapFieldToDrizzle(field, dialect);
+      drizzleImports.add(drizzleField.type);
 
-      // Drizzle's default timestamp mode accepts Date objects, which is what
-      // Superfunctions runtime packages persist through the shared DB adapter.
-      // For bigint fields, add mode: 'bigint' for full precision
-      let typeConfig = '';
-      if (field.type === 'bigint') {
-        typeConfig = "{ mode: 'bigint' }";
-      }
-      let fieldDef = `  ${fieldKey}: ${drizzleType}('${fieldName}'${typeConfig ? `, ${typeConfig}` : ''})`;
+      let fieldDef = `  ${fieldKey}: ${drizzleField.type}('${fieldName}'${drizzleField.config ? `, ${drizzleField.config}` : ''})`;
 
       // Add constraints
       if (fieldKey === 'id') {
@@ -135,14 +130,33 @@ export function generateDrizzleSchemaFile(
       fields.push(fieldDef);
     }
 
+    const indexes = renderDrizzleIndexes(table);
+    if (indexes.length > 0) {
+      drizzleImports.add('index');
+      drizzleImports.add('uniqueIndex');
+    }
+
     // Generate table
-    const tableCode = `
+    const tableCode = indexes.length > 0
+      ? `
+export const ${tableName} = ${tableBuilder}(
+  '${tableNameSnakeCase}',
+  {
+${fields.join('\n')}
+  },
+  (table) => ({
+${indexes.join(',\n')}
+  })
+);`
+      : `
 export const ${tableName} = ${tableBuilder}('${tableNameSnakeCase}', {
 ${fields.join('\n')}
 });`;
 
     tables.push(tableCode);
   }
+
+  imports.add(`import { ${Array.from(drizzleImports).sort().join(', ')} } from '${coreModule}';`);
 
   // Generate file content
   const header = `/**
@@ -158,22 +172,75 @@ ${fields.join('\n')}
   return header + '\n' + Array.from(imports).join('\n') + '\n' + tables.join('\n\n');
 }
 
-function mapTypeToDrizzle(type: string): string {
-  switch (type) {
+function renderDrizzleIndexes(table: TableSchema): string[] {
+  const usedKeys = new Set<string>();
+  return (table.indexes ?? []).map((schemaIndex) => {
+    const key = uniqueObjectKey(toCamelCase(schemaIndex.name), usedKeys);
+    const builder = schemaIndex.unique ? 'uniqueIndex' : 'index';
+    const columns = schemaIndex.fields.map((field) => `table.${field}`).join(', ');
+    return `    ${key}: ${builder}('${schemaIndex.name}').on(${columns})`;
+  });
+}
+
+function uniqueObjectKey(base: string, usedKeys: Set<string>): string {
+  const root = base || 'idx';
+  let candidate = root;
+  let counter = 2;
+  while (usedKeys.has(candidate)) {
+    candidate = `${root}${counter}`;
+    counter += 1;
+  }
+  usedKeys.add(candidate);
+  return candidate;
+}
+
+function toCamelCase(value: string): string {
+  return value
+    .replace(/^[^a-zA-Z_$]+/, '')
+    .replace(/[^a-zA-Z0-9_$]+([a-zA-Z0-9_$])/g, (_, char: string) => char.toUpperCase())
+    .replace(/[^a-zA-Z0-9_$]/g, '');
+}
+
+function mapFieldToDrizzle(
+  field: FieldSchema,
+  dialect: 'postgres' | 'mysql' | 'sqlite'
+): { type: string; config?: string } {
+  if (isDateField(field)) {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+        return dialect === 'sqlite'
+          ? { type: 'integer', config: "{ mode: 'timestamp_ms' }" }
+          : { type: 'timestamp' };
+      case 'timestamptz':
+        return dialect === 'sqlite'
+          ? { type: 'integer', config: "{ mode: 'timestamp_ms' }" }
+          : dialect === 'postgres'
+            ? { type: 'timestamp', config: '{ withTimezone: true }' }
+            : { type: 'timestamp' };
+      case 'iso-text':
+        return { type: 'text' };
+      case 'epoch-ms-integer':
+        return { type: 'integer' };
+      case 'epoch-ms-bigint':
+        return dialect === 'sqlite'
+          ? { type: 'integer' }
+          : { type: 'bigint', config: "{ mode: 'number' }" };
+    }
+  }
+
+  switch (field.type) {
     case 'string':
-      return 'text';
+      return { type: 'text' };
     case 'number':
-      return 'integer';
+      return { type: 'integer' };
     case 'bigint':
-      return 'bigint';
+      return { type: 'bigint', config: "{ mode: 'bigint' }" };
     case 'boolean':
-      return 'boolean';
-    case 'date':
-      return 'timestamp';
+      return { type: 'boolean' };
     case 'json':
-      return 'json';
+      return { type: 'json' };
     default:
-      return 'text';
+      return { type: 'text' };
   }
 }
 
@@ -196,7 +263,7 @@ export function generatePrismaSchemaFile(
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      const prismaType = mapTypeToPrisma(field.type);
+      const prismaType = mapFieldToPrisma(field);
       const optionalMarker = field.required ? '' : '?';
 
       let fieldDef = `  ${fieldName} ${prismaType}${optionalMarker}`;
@@ -251,8 +318,22 @@ datasource db {
   return header + '\n' + models.join('\n\n');
 }
 
-function mapTypeToPrisma(type: string): string {
-  switch (type) {
+function mapFieldToPrisma(field: FieldSchema): string {
+  if (isDateField(field)) {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+      case 'timestamptz':
+        return 'DateTime';
+      case 'iso-text':
+        return 'String';
+      case 'epoch-ms-integer':
+        return 'Int';
+      case 'epoch-ms-bigint':
+        return 'BigInt';
+    }
+  }
+
+  switch (field.type) {
     case 'string':
       return 'String';
     case 'number':
@@ -261,8 +342,6 @@ function mapTypeToPrisma(type: string): string {
       return 'BigInt';
     case 'boolean':
       return 'Boolean';
-    case 'date':
-      return 'DateTime';
     case 'json':
       return 'Json';
     default:
@@ -289,7 +368,7 @@ export function generateKyselySchemaFile(
 
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
-      const tsType = mapTypeToTypeScript(field.type);
+      const tsType = mapFieldToTypeScript(field);
       const optional = field.required ? '' : '?';
       fields.push(`  ${fieldKey}${optional}: ${tsType};`);
     }
@@ -322,8 +401,19 @@ ${tableNames.map(name => `  ${name}: ${capitalize(name)}Table;`).join('\n')}
   return header + '\n' + interfaces.join('\n\n') + '\n' + dbInterface;
 }
 
-function mapTypeToTypeScript(type: string): string {
-  switch (type) {
+function mapFieldToTypeScript(field: FieldSchema): string {
+  if (isDateField(field)) {
+    switch (resolveDateValueType(field)) {
+      case 'date':
+        return 'Date';
+      case 'iso-string':
+        return 'string';
+      case 'epoch-ms':
+        return 'number';
+    }
+  }
+
+  switch (field.type) {
     case 'string':
       return 'string';
     case 'number':
@@ -332,12 +422,33 @@ function mapTypeToTypeScript(type: string): string {
       return 'bigint';
     case 'boolean':
       return 'boolean';
-    case 'date':
-      return 'Date';
     case 'json':
       return 'unknown';
     default:
       return 'unknown';
+  }
+}
+
+function isDateField(field: FieldSchema): boolean {
+  return field.type === 'date' || field.type === 'datetime';
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
   }
 }
 

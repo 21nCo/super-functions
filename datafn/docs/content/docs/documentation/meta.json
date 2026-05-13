@@ -3,7 +3,9 @@
   "root": true,
   "pages": [
     "index",
-    "concepts",
+    "capabilities",
+    "namespaces",
+    "sharing",
     "client",
     "server",
     "sync",

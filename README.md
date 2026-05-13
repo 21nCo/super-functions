@@ -13,6 +13,9 @@
 
 # Functions
 
+## Swift Platform Requirements
+
+The Swift package in `Package.swift` targets iOS 16 or later and macOS 13 or later.
 
 ## Data and storage
 

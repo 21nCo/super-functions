@@ -2,6 +2,8 @@ import { authFnApiKeyPlugin } from './plugins/api-keys.js';
 import { authFnEmailOtpPlugin } from './plugins/email-otp.js';
 import { authFnPasswordPlugin } from './plugins/email-password.js';
 import { authFnMultiRegionPlugin } from './plugins/multi-region.js';
+import { authFnNativeHandoffPlugin } from './plugins/native-handoff.js';
+import { authFnSchemaPlugin } from './plugins/schema-only.js';
 import { authFnSocialOAuthPlugin } from './plugins/social-oauth.js';
 import { authFnTwoFactorPlugin } from './plugins/two-factor.js';
 import { AuthFnConfigError } from './types.js';
@@ -20,8 +22,12 @@ const BUNDLED_PLUGIN_FACTORIES: Record<string, BundledPluginFactory> = {
     authFnEmailOtpPlugin(args[0] as Parameters<typeof authFnEmailOtpPlugin>[0]),
   authFnMultiRegionPlugin: (...args) =>
     authFnMultiRegionPlugin(args[0] as Parameters<typeof authFnMultiRegionPlugin>[0]),
+  authFnNativeHandoffPlugin: (...args) =>
+    authFnNativeHandoffPlugin(args[0] as Parameters<typeof authFnNativeHandoffPlugin>[0]),
   authFnPasswordPlugin: (...args) =>
     authFnPasswordPlugin(args[0] as Parameters<typeof authFnPasswordPlugin>[0]),
+  authFnSchemaPlugin: (...args) =>
+    authFnSchemaPlugin(args[0] as Parameters<typeof authFnSchemaPlugin>[0]),
   authFnSocialOAuthPlugin: (...args) =>
     authFnSocialOAuthPlugin(args[0] as Parameters<typeof authFnSocialOAuthPlugin>[0]),
   authFnTwoFactorPlugin: (...args) =>

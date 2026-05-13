@@ -1,6 +1,6 @@
 {
   "name": "@authfn/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Core authfn contracts and plugin composition primitives",
   "type": "module",
   "main": "./dist/index.js",
@@ -47,7 +47,8 @@
     "@superfunctions/oauth-flow": "*",
     "@superfunctions/oauth-http": "*",
     "@superfunctions/oauth-providers": "*",
-    "@superfunctions/oauth-storage": "*"
+    "@superfunctions/oauth-storage": "*",
+    "jose": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

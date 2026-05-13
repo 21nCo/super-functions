@@ -4,6 +4,7 @@ export interface OAuthProviderDescriptor {
   tokenUrl: string;
   revocationUrl?: string;
   defaultScopes: string[];
+  responseType?: string;
   supportsPkce: boolean;
   supportsRefreshToken: boolean;
   scopeSeparator?: " " | ",";

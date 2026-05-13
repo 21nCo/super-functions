@@ -1,5 +1,6 @@
 export type AuthFnActorType = 'user' | 'api-key';
 export type AuthFnSocialProviderId = 'google' | 'apple' | 'github';
+export type AuthFnOtpPurpose = 'verify-email' | 'sign-in' | 'sign-up' | 'reset-password';
 export type AuthFnAuthMethod =
   | 'password'
   | 'email-otp'
@@ -50,11 +51,51 @@ export interface AuthFnErrorEnvelope {
 
 export interface AuthFnSessionEnvelope extends AuthFnSuccessEnvelope<{
   session: AuthFnSession | null;
+  token?: string;
 }> {}
 
 export interface AuthFnListSessionsEnvelope extends AuthFnSuccessEnvelope<{
   sessions: AuthFnSession[];
   currentSessionId?: string;
+}> {}
+
+export interface AuthFnAccountOAuthAccount {
+  id: string;
+  provider: AuthFnSocialProviderId;
+  email?: string;
+  profile?: Record<string, unknown>;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface AuthFnAccountDetails {
+  user: {
+    id: string;
+    primaryEmail?: string;
+    emailVerifiedAt?: Date | string | null;
+    metadata?: Record<string, unknown>;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+  };
+  hasPassword: boolean;
+  twoFactorEnabled: boolean;
+  oauthAccounts: AuthFnAccountOAuthAccount[];
+  methods: {
+    password: boolean;
+    emailOtp: boolean;
+    oauth: AuthFnSocialProviderId[];
+    twoFactor: boolean;
+  };
+  regionId?: string;
+}
+
+export interface AuthFnAccountDetailsEnvelope extends AuthFnSuccessEnvelope<AuthFnAccountDetails> {}
+
+export interface AuthFnDeleteAccountEnvelope extends AuthFnSuccessEnvelope<{
+  deleted: true;
+  userId: string;
+  primaryEmail?: string;
+  counts: Record<string, number>;
 }> {}
 
 export interface AuthFnOtpEnvelope extends AuthFnSuccessEnvelope<{
@@ -89,6 +130,21 @@ export interface AuthFnRegionLookupResult {
   redirectTo?: string;
 }
 
+export type AuthFnEmailAuthFlow = 'sign-up' | 'sign-in' | 'password-reset';
+
+export interface AuthFnRegionalEmailAuthPreparation {
+  identifier: string;
+  flow: AuthFnEmailAuthFlow;
+  selectedRegionId: string;
+  regionId: string;
+  authority?: string;
+  domain?: string;
+  userId?: string;
+  existingAccount: boolean;
+  continueLocally: boolean;
+  redirectTo?: string;
+}
+
 export interface AuthFnRuntimeResolution {
   issuer: string;
   baseUrl: string;
@@ -114,29 +170,36 @@ export interface AuthFnRuntimeResolution {
 
 export interface AuthFnClient {
   getSession(): Promise<AuthFnSessionEnvelope | AuthFnErrorEnvelope>;
+  getAccountDetails(): Promise<AuthFnAccountDetailsEnvelope | AuthFnErrorEnvelope>;
+  deleteAccount(): Promise<AuthFnDeleteAccountEnvelope | AuthFnErrorEnvelope>;
   signUpWithPassword(input: {
     email: string;
     password: string;
     profile?: Record<string, unknown>;
+    sessionMode?: 'cookie' | 'bearer' | 'hybrid';
   }): Promise<AuthFnSessionEnvelope | AuthFnErrorEnvelope>;
   signInWithPassword(input: {
     email: string;
     password: string;
+    sessionMode?: 'cookie' | 'bearer' | 'hybrid';
   }): Promise<AuthFnSessionEnvelope | AuthFnErrorEnvelope>;
   signOut(input?: { allSessions?: boolean }): Promise<AuthFnSuccessEnvelope<{ revoked: boolean; allSessions: boolean; }> | AuthFnErrorEnvelope>;
   listSessions(): Promise<AuthFnListSessionsEnvelope | AuthFnErrorEnvelope>;
   revokeSession(input: { sessionId: string }): Promise<AuthFnSuccessEnvelope<{ revoked: boolean; sessionId: string; }> | AuthFnErrorEnvelope>;
   sendOtp(input: {
-    purpose: 'verify-email' | 'sign-in' | 'reset-password';
+    purpose: AuthFnOtpPurpose;
     email: string;
+    metadata?: Record<string, unknown>;
   }): Promise<AuthFnOtpEnvelope | AuthFnErrorEnvelope>;
   startPasswordReset(input: {
     email: string;
   }): Promise<AuthFnOtpEnvelope | AuthFnErrorEnvelope>;
   verifyOtp(input: {
-    purpose: 'verify-email' | 'sign-in' | 'reset-password';
+    purpose: AuthFnOtpPurpose;
     email: string;
     code: string;
+    profile?: Record<string, unknown>;
+    sessionMode?: 'cookie' | 'bearer' | 'hybrid';
   }): Promise<AuthFnSessionEnvelope | AuthFnVerifyOtpEnvelope | AuthFnErrorEnvelope>;
   completePasswordReset(input: {
     email: string;
@@ -146,7 +209,8 @@ export interface AuthFnClient {
   startSocialSignIn(input: {
     provider: AuthFnSocialProviderId;
     returnTo?: string;
-    callbackMode?: 'json';
+    callbackMode?: 'redirect' | 'json';
+    handoffMode?: 'none' | 'session-token';
   }): Promise<AuthFnSuccessEnvelope<{
     provider: AuthFnSocialProviderId;
     redirectTo: string;
@@ -158,6 +222,18 @@ export interface AuthFnClient {
   }): Promise<AuthFnSuccessEnvelope<{
     disconnected: boolean;
     provider: AuthFnSocialProviderId;
+  }> | AuthFnErrorEnvelope>;
+  startNativeHandoff(): Promise<AuthFnSuccessEnvelope<{
+    code: string;
+    regionId: string;
+    expiresAt: string;
+  }> | AuthFnErrorEnvelope>;
+  startWebHandoff(input?: {
+    returnTo?: string;
+  }): Promise<AuthFnSuccessEnvelope<{
+    consumeUrl: string;
+    code: string;
+    expiresAt: string;
   }> | AuthFnErrorEnvelope>;
   createApiKey(input: {
     name?: string;
@@ -203,10 +279,76 @@ export interface AuthFnClient {
   getRuntime(): Promise<AuthFnSuccessEnvelope<AuthFnRuntimeResolution> | AuthFnErrorEnvelope>;
 }
 
+export interface AuthFnCachedRegion {
+  identifier: string;
+  regionId: string;
+  authority: string;
+  domain?: string;
+  cachedAt: number;
+  expiresAt: number;
+}
+
+export interface AuthFnRegionStorage {
+  get(identifier: string): Promise<AuthFnCachedRegion | null>;
+  set(identifier: string, value: AuthFnCachedRegion): Promise<void>;
+  delete(identifier: string): Promise<void>;
+}
+
+export interface AuthFnRegionalClientOptions {
+  defaultRegionId: string;
+  resolveBaseUrl(regionId: string): string;
+  storage?: AuthFnRegionStorage;
+  cacheTtlMs?: number;
+  onRegionChanged?(event: {
+    identifier: string;
+    fromRegionId?: string;
+    toRegionId: string;
+    authority: string;
+  }): void;
+  clientOptions?: Omit<AuthFnClientOptions, 'baseUrl'>;
+}
+
+export interface AuthFnRegionalClient extends AuthFnClient {
+  prepareEmailAuth(input: {
+    email: string;
+    flow: AuthFnEmailAuthFlow;
+    preferredRegionId?: string;
+  }): Promise<AuthFnSuccessEnvelope<AuthFnRegionalEmailAuthPreparation> | AuthFnErrorEnvelope>;
+  resolveRegion(input: { identifier: string; forceRefresh?: boolean }): Promise<AuthFnCachedRegion | null>;
+  clearRegion(input: { identifier: string }): Promise<void>;
+  getCurrentRegionId(): string;
+  setCurrentRegionId(regionId: string): void;
+}
+
+export interface AuthFnClientRequestMetric {
+  method: string;
+  path: string;
+  url: string;
+  status?: number;
+  ok: boolean;
+  durationMs: number;
+  requestId?: string;
+  serverTiming?: string;
+  dbDurationMs?: string;
+  dbCallCount?: string;
+  cacheDurationMs?: string;
+  cacheCallCount?: string;
+  lookupDurationMs?: string;
+  lookupCallCount?: string;
+  workerColo?: string;
+  accountRegion?: string;
+  error?: {
+    name?: string;
+    message: string;
+  };
+}
+
 export interface AuthFnClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
+  bearerToken?: string | (() => string | undefined | null | Promise<string | undefined | null>);
   cookieAccessor?: () => string | undefined;
   cookiePrefix?: string;
   credentials?: RequestCredentials;
+  onRequestMetric?(metric: AuthFnClientRequestMetric): void;
 }

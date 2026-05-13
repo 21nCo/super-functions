@@ -6,7 +6,11 @@ import { getSchema } from '../../../../authfn/core/src/index.js';
 import { resolveLibraryPackageEntryPoint } from '../commands/generate-schema.js';
 import { discoverSuperfunctionsPackages, getSuperfunctionsRegistry } from '../utils/discover-packages.js';
 import { parseLibraryInitializations } from '../utils/parse-library-init.js';
-import { CliSchemaGenerationError, generateLibraryAbstractSchema } from '../utils/schema-generators.js';
+import {
+  CliSchemaGenerationError,
+  generateDrizzleSchemaFile,
+  generateLibraryAbstractSchema
+} from '../utils/schema-generators.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../../..');
@@ -88,7 +92,7 @@ describe('authfn scoped schema discovery', () => {
     );
 
     const registry = getSuperfunctionsRegistry(testDir);
-    expect(registry).toEqual({
+    expect(registry).toMatchObject({
       createAuthFn: {
         packageName: '@authfn/core',
         libraryName: 'authfn'
@@ -162,6 +166,11 @@ describe('authfn scoped schema discovery', () => {
       'primaryEmail',
       'updatedAt'
     ]);
+
+    const drizzleSchema = generateDrizzleSchemaFile(schema, 'authfn', 'authfn_pw_demo');
+    expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_users_primary_email').on(table.primaryEmail)");
+    expect(drizzleSchema).toContain("uniqueIndex('idx_authfn_sessions_token_hash').on(table.tokenHash)");
+    expect(drizzleSchema).toContain("index('idx_authfn_sessions_user_id_created_at').on(table.userId, table.createdAt)");
   });
 
   it('resolves the published @authfn/core default export entry point for CLI imports', () => {

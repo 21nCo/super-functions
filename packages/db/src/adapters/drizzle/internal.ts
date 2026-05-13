@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module';
+import { sql as drizzleSql } from 'drizzle-orm';
 import type {
   InternalCrud,
   InternalColumnDef,
@@ -16,16 +16,8 @@ import {
 
 export type DrizzleDialect = 'postgres' | 'mysql' | 'sqlite';
 
-const require = createRequire(import.meta.url);
-
 function loadDrizzleSql() {
-  try {
-    return (require('drizzle-orm') as typeof import('drizzle-orm')).sql;
-  } catch {
-    throw new Error(
-      'drizzleAdapter requires the optional peer dependency "drizzle-orm". Install drizzle-orm to use this adapter.'
-    );
-  }
+  return drizzleSql;
 }
 
 function buildWhereClause(

@@ -2,7 +2,9 @@ import type { Route } from '@superfunctions/http';
 import type {
   AuthFnConfig,
   AuthFnError,
+  AuthFnAccountDeletionResult,
   AuthFnHookContext,
+  AuthFnHookFailurePolicy,
   AuthFnHooks,
   AuthFnPlugin,
   AuthFnPluginRuntimeContext,
@@ -15,14 +17,16 @@ const BEFORE_HOOK_NAMES = [
   'beforeUserCreate',
   'beforeSessionIssue',
   'beforeChallengeSend',
-  'beforeOAuthStart'
+  'beforeOAuthStart',
+  'beforeAccountDelete'
 ] as const;
 
 const AFTER_HOOK_NAMES = [
   'afterUserCreate',
   'afterSessionIssue',
   'afterChallengeSend',
-  'afterOAuthCallback'
+  'afterOAuthCallback',
+  'afterAccountDelete'
 ] as const;
 
 type BeforeHookName = (typeof BEFORE_HOOK_NAMES)[number];
@@ -70,6 +74,8 @@ export function composePluginHooks(config: AuthFnConfig): Partial<AuthFnHooks> {
       runBeforeHooks(config.plugins, config, config.hooks, 'beforeChallengeSend', ctx, input),
     beforeOAuthStart: async (ctx, input) =>
       runBeforeHooks(config.plugins, config, config.hooks, 'beforeOAuthStart', ctx, input),
+    beforeAccountDelete: async (ctx, input) =>
+      runBeforeHooks(config.plugins, config, config.hooks, 'beforeAccountDelete', ctx, input),
     afterUserCreate: async (ctx, user) =>
       runAfterHooks(config.plugins, config, config.hooks, 'afterUserCreate', ctx, user),
     afterSessionIssue: async (ctx, session) =>
@@ -77,7 +83,9 @@ export function composePluginHooks(config: AuthFnConfig): Partial<AuthFnHooks> {
     afterChallengeSend: async (ctx, result) =>
       runAfterHooks(config.plugins, config, config.hooks, 'afterChallengeSend', ctx, result),
     afterOAuthCallback: async (ctx, result) =>
-      runAfterHooks(config.plugins, config, config.hooks, 'afterOAuthCallback', ctx, result)
+      runAfterHooks(config.plugins, config, config.hooks, 'afterOAuthCallback', ctx, result),
+    afterAccountDelete: async (ctx, result) =>
+      runAfterHooks(config.plugins, config, config.hooks, 'afterAccountDelete', ctx, result)
   };
 }
 
@@ -182,7 +190,7 @@ async function runAfterHooks(
   configHooks: Partial<AuthFnHooks> | undefined,
   hookName: AfterHookName,
   ctx: AuthFnHookContext,
-  payload: Record<string, unknown> | AuthFnSession
+  payload: Record<string, unknown> | AuthFnSession | AuthFnAccountDeletionResult
 ): Promise<void> {
   for (const plugin of plugins) {
     const hook = plugin.hooks?.[hookName];
@@ -193,18 +201,32 @@ async function runAfterHooks(
     try {
       await hook({ ...ctx, config: ctx.config, pluginName: plugin.name }, payload as never);
     } catch (error) {
+      const failurePolicy = getAfterHookFailurePolicy(plugin, hookName);
       await emitAuthEvent(config, {
         type: 'authfn.plugin.failed',
         requestId: eventRequestId(ctx.request),
         actorId: ctx.actorId,
         pluginName: plugin.name,
         hookName,
-        outcome: 'observed',
+        outcome: failurePolicy === 'fail' ? 'aborted' : 'observed',
         metadata: {
           errorCode: readErrorCode(error),
           retriable: readRetryable(error)
         }
       });
+
+      if (failurePolicy === 'fail') {
+        if (isAuthFnError(error)) {
+          throw error;
+        }
+
+        throw new AuthFnPluginAbortedError(`${plugin.name}.${hookName} aborted authfn execution`, {
+          pluginName: plugin.name,
+          hookName,
+          actorId: ctx.actorId,
+          cause: error instanceof Error ? error.message : String(error)
+        });
+      }
     }
   }
 
@@ -229,6 +251,13 @@ async function runAfterHooks(
       }
     });
   }
+}
+
+function getAfterHookFailurePolicy(
+  plugin: AuthFnPlugin,
+  hookName: AfterHookName
+): AuthFnHookFailurePolicy {
+  return plugin.hookFailurePolicy?.[hookName] ?? 'observe';
 }
 
 function isAuthFnError(error: unknown): error is AuthFnError {

@@ -42,6 +42,9 @@ export type {
   LibraryOptions,
   Logger,
   AdapterImplementation,
+  AdapterSchemaInput,
+  DateFieldStorageType,
+  DateFieldValueType,
   KVStoreAdapter,
   KVStoreAdapterFactory,
   RedisAdapter,
@@ -81,3 +84,10 @@ export type { NamespaceConfig } from './utils/namespace.js';
 export { SchemaTracker, createSchemaTracker } from './migrations/schema-tracker.js';
 export type { SchemaVersion } from './migrations/schema-tracker.js';
 export { validateRecordAgainstSchema } from './migrations/runtime-validation.js';
+export {
+  normalizeAdapterSchema,
+  transformRecordForRuntime,
+  transformRecordForStorage,
+  transformWhereForStorage,
+  wrapWithSchema,
+} from './adapter/schema-codecs.js';

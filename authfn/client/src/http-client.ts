@@ -13,6 +13,15 @@ export function createAuthFnHttpClient(options: AuthFnClientOptions = {}) {
   const credentials = options.credentials ?? 'include';
   const cookieAccessor = options.cookieAccessor ?? defaultCookieAccessor;
   const cookiePrefix = options.cookiePrefix?.trim();
+  const resolveBearerToken = async (): Promise<string | undefined> => {
+    if (!options.bearerToken) {
+      return undefined;
+    }
+    const token = typeof options.bearerToken === 'function'
+      ? await options.bearerToken()
+      : options.bearerToken;
+    return token?.trim() || undefined;
+  };
   const buildTransportError = (error: unknown): AuthFnErrorEnvelope => ({
     ok: false,
     error: {
@@ -38,33 +47,74 @@ export function createAuthFnHttpClient(options: AuthFnClientOptions = {}) {
   return {
     requestJson: async <T>(request: RequestOptions): Promise<T | AuthFnErrorEnvelope> => {
       const headers = new Headers();
+      const url = `${baseUrl}${request.path}`;
+      const startedAt = now();
 
       if (request.body !== undefined) {
         headers.set('content-type', 'application/json');
       }
 
-      if (request.csrf) {
-        const cookieHeader = cookieAccessor();
-        const csrfToken = readCookieValue(
-          cookieHeader,
-          `${cookiePrefix || readCookiePrefix(cookieHeader)}.csrf`
-        );
-        if (csrfToken) {
-          headers.set('x-authfn-csrf', csrfToken);
-        }
-      }
-
       let response: Response;
       try {
-        response = await fetchImpl(`${baseUrl}${request.path}`, {
+        const bearerToken = await resolveBearerToken();
+        if (bearerToken) {
+          headers.set('authorization', `Bearer ${bearerToken}`);
+        }
+
+        if (request.csrf) {
+          const cookieHeader = cookieAccessor();
+          const csrfToken = readCookieValue(
+            cookieHeader,
+            `${cookiePrefix || readCookiePrefix(cookieHeader)}.csrf`
+          );
+          if (csrfToken) {
+            headers.set('x-authfn-csrf', csrfToken);
+          }
+        }
+
+        response = await fetchImpl(url, {
           method: request.method,
           headers,
           credentials,
           body: request.body !== undefined ? JSON.stringify(request.body) : undefined
         });
       } catch (error) {
+        options.onRequestMetric?.({
+          method: request.method,
+          path: request.path,
+          url,
+          ok: false,
+          durationMs: now() - startedAt,
+          error: error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message
+              }
+            : {
+                message: String(error)
+              }
+        });
         return buildTransportError(error);
       }
+
+      options.onRequestMetric?.({
+        method: request.method,
+        path: request.path,
+        url,
+        status: response.status,
+        ok: response.ok,
+        durationMs: now() - startedAt,
+        requestId: response.headers.get('x-request-id') ?? undefined,
+        serverTiming: response.headers.get('server-timing') ?? undefined,
+        dbDurationMs: response.headers.get('x-account-db-duration-ms') ?? undefined,
+        dbCallCount: response.headers.get('x-account-db-call-count') ?? undefined,
+        cacheDurationMs: response.headers.get('x-account-cache-duration-ms') ?? undefined,
+        cacheCallCount: response.headers.get('x-account-cache-call-count') ?? undefined,
+        lookupDurationMs: response.headers.get('x-account-lookup-duration-ms') ?? undefined,
+        lookupCallCount: response.headers.get('x-account-lookup-call-count') ?? undefined,
+        workerColo: response.headers.get('x-account-worker-colo') ?? undefined,
+        accountRegion: response.headers.get('x-account-region') ?? undefined
+      });
 
       if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
         return {
@@ -141,6 +191,12 @@ export function createAuthFnHttpClient(options: AuthFnClientOptions = {}) {
       }
     }
   };
+}
+
+function now(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
 }
 
 function isAuthFnEnvelope(value: unknown): value is { ok: boolean; requestId: string } {

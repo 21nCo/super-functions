@@ -396,4 +396,28 @@ describe('@authfn/client account-settings flows', () => {
       expect(disconnect.error.code).toBe('AUTHFN_NOT_FOUND');
     }
   });
+
+  it('deletes the signed-in account via the typed client method', async () => {
+    const { client } = createClient(createAccountSettingsConfig(), 'https://account.example.com/auth');
+
+    const signUp = await client.signUpWithPassword({
+      email: ACCOUNT_EMAIL,
+      password: ACCOUNT_PASSWORD
+    });
+    expect(signUp.ok).toBe(true);
+
+    const deletion = await client.deleteAccount();
+    expect(deletion.ok).toBe(true);
+    if (deletion.ok) {
+      expect(deletion.data.deleted).toBe(true);
+      expect(deletion.data.primaryEmail).toBe(ACCOUNT_EMAIL);
+      expect(deletion.data.counts.users).toBe(1);
+    }
+
+    const session = await client.getSession();
+    expect(session.ok).toBe(true);
+    if (session.ok) {
+      expect(session.data.session).toBeNull();
+    }
+  });
 });

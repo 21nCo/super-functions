@@ -31,13 +31,9 @@ export interface PackageRegistry {
 export function discoverSuperfunctionsPackages(
   cwd: string = process.cwd()
 ): SuperfunctionsPackageMetadata[] {
-  const discovered: SuperfunctionsPackageMetadata[] = [];
   const nodeModulesPaths = findNodeModulesPaths(cwd);
+  const discovered: SuperfunctionsPackageMetadata[] = [];
   const seenPackageNames = new Set<string>();
-
-  if (nodeModulesPaths.length === 0) {
-    return discovered;
-  }
 
   for (const nodeModulesPath of nodeModulesPaths) {
     scanDirectory(nodeModulesPath, discovered, seenPackageNames);

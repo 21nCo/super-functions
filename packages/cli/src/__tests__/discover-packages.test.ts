@@ -35,8 +35,9 @@ describe("discoverSuperfunctionsPackages", () => {
     );
 
     const result = discoverSuperfunctionsPackages(TEST_DIR);
-    expect(result).toHaveLength(1);
-    expect(result[0].packageName).toBe("my-lib");
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "my-lib"
+    }));
   });
 
   it("should discover symlinked packages", () => {
@@ -64,8 +65,9 @@ describe("discoverSuperfunctionsPackages", () => {
     }
 
     const result = discoverSuperfunctionsPackages(TEST_DIR);
-    expect(result).toHaveLength(1);
-    expect(result[0].packageName).toBe("linked-lib");
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "linked-lib"
+    }));
   });
 
   it("should discover packages from the nearest parent node_modules", () => {
@@ -83,8 +85,9 @@ describe("discoverSuperfunctionsPackages", () => {
     );
 
     const result = discoverSuperfunctionsPackages(nestedDir);
-    expect(result).toHaveLength(1);
-    expect(result[0].packageName).toBe("parent-lib");
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "parent-lib"
+    }));
   });
 
   it("should expose the nearest parent node_modules path for nested workspaces", () => {

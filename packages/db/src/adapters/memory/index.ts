@@ -6,6 +6,7 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import type {
   Adapter,
+  AdapterSchemaInput,
   CreateParams,
   FindOneParams,
   FindManyParams,
@@ -25,8 +26,10 @@ import type {
   InternalCrud,
   InternalColumnDef,
 } from '../../adapter/types.js';
+import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export interface MemoryAdapterConfig {
+  adapterSchema?: AdapterSchemaInput;
   namespace?: {
     enabled: boolean;
     separator?: string;
@@ -512,7 +515,9 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  const adapter = factory({});
+  const adapter = factory({
+    schema: normalizeAdapterSchema(config?.adapterSchema),
+  });
   const internalCrud = createMemoryInternalCrud();
   return Object.assign(adapter, { internal: internalCrud });
 }

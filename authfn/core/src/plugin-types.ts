@@ -49,6 +49,11 @@ export interface TwoFactorPluginConfig extends AuthFnBundledPluginConfig {
   encryptionKeyResolver?: (keyRef: string) => Promise<Buffer> | Buffer;
 }
 
+export interface NativeHandoffPluginConfig extends AuthFnBundledPluginConfig {
+  codeTtlSeconds?: number;
+  now?: () => Date;
+}
+
 export interface AuthFnMultiRegionRegionConfig {
   regionId: string;
   authority: string;
@@ -83,6 +88,26 @@ export interface AuthFnMultiRegionRegistrationInput {
   runtime: AuthFnRuntimeResolution;
 }
 
+export interface AuthFnRegionLookupRecord {
+  identifier: string;
+  userId?: string;
+  regionId: string;
+  authority: string;
+  domain?: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface AuthFnRegionLookupStore {
+  getByIdentifier(identifier: string): Promise<AuthFnRegionLookupRecord | null>;
+  putIfAbsent(record: AuthFnRegionLookupRecord): Promise<{
+    inserted: boolean;
+    existing?: AuthFnRegionLookupRecord;
+  }>;
+  update(record: AuthFnRegionLookupRecord): Promise<AuthFnRegionLookupRecord>;
+  deleteByIdentifier(identifier: string): Promise<void>;
+}
+
 export interface AuthFnMultiRegionDirectory {
   lookupByIdentifier(
     input: AuthFnMultiRegionLookupInput
@@ -95,6 +120,10 @@ export interface AuthFnMultiRegionDirectory {
 export interface MultiRegionPluginConfig extends AuthFnBundledPluginConfig {
   regions?: AuthFnMultiRegionRegionConfig[];
   defaultRegionId?: string;
+  lookupStore?: AuthFnRegionLookupStore;
+  /**
+   * @deprecated Use lookupStore. Retained as a fallback for existing local plugins.
+   */
   directory?: AuthFnMultiRegionDirectory;
 }
 

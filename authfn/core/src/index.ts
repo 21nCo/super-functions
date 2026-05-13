@@ -1,4 +1,5 @@
 import type { AuthProvider } from '@superfunctions/auth';
+import { wrapWithSchema } from '@superfunctions/db';
 import { createPluginRunner } from './plugin-runner.js';
 import { createAuthFnRouter } from './http/router.js';
 import { authenticateRequest } from './core/sessions.js';
@@ -15,9 +16,11 @@ export type * from './plugin-types.js';
 export type * from './types.js';
 export type {
   AuthFnApiKeyRecord,
+  AuthFnAccountDeletionResult,
   AuthFnConfig,
   AuthFnErrorEnvelope,
   AuthFnInstance,
+  AuthFnNativeHandoffCodeRecord,
   AuthFnPasswordCredentialRecord,
   AuthFnPlugin,
   AuthFnSchemaDefinition,
@@ -27,6 +30,9 @@ export type {
   AuthFnUserRecord
 } from './types.js';
 export {
+  AuthFnAdminAmbiguousUserError,
+  AuthFnAdminConfigError,
+  AuthFnAdminUnauthorizedError,
   AuthFnApiKeyRevokedError,
   AuthFnConfigError,
   AuthFnConflictError,
@@ -101,7 +107,8 @@ export {
   registerUserRegion,
   rememberMultiRegionPluginConfig,
   resolveMultiRegionRuntimeOverride,
-  resolveRegionForRequest
+  resolveRegionForRequest,
+  unregisterRegionLookupForIdentifier
 } from './core/regions.js';
 export {
   assertValidCsrf,
@@ -148,17 +155,39 @@ export {
   findOAuthAccountByConnectionId,
   findOAuthAccountByProviderAccountId,
   findOAuthAccountForUser,
+  listOAuthAccountsForUser,
   requireOAuthAccountForUser,
   upsertOAuthAccount
 } from './core/oauth-accounts.js';
+export {
+  deleteAccountForUser,
+  getAccountDetailsForUser,
+  type AuthFnAccountDetails,
+  type AuthFnAccountOAuthAccount
+} from './core/account.js';
+export {
+  deleteAuthFnAdminUserById,
+  deleteAuthFnAdminUsersByEmail,
+  listAuthFnAdminUsers,
+  type AuthFnAdminDeleteUserInput,
+  type AuthFnAdminDeleteUsersByEmailInput,
+  type AuthFnAdminDeleteUsersByEmailResult,
+  type AuthFnAdminListUsersDirection,
+  type AuthFnAdminListUsersInput,
+  type AuthFnAdminListUsersResult,
+  type AuthFnAdminUserSummary
+} from './core/admin-users.js';
 export { createUser, findUserById, findUserByPrimaryEmail, markUserEmailVerified } from './core/users.js';
-export { createAuthFnRouter, createBaseRoutes } from './http/router.js';
+export { createAuthFnRouteMeta, createAuthFnRouter, createBaseRoutes } from './http/router.js';
 export { authFnPasswordPlugin } from './plugins/email-password.js';
 export { authFnEmailOtpPlugin } from './plugins/email-otp.js';
 export { authFnSocialOAuthPlugin } from './plugins/social-oauth.js';
 export { authFnApiKeyPlugin } from './plugins/api-keys.js';
 export { authFnTwoFactorPlugin } from './plugins/two-factor.js';
 export { authFnMultiRegionPlugin } from './plugins/multi-region.js';
+export { authFnNativeHandoffPlugin } from './plugins/native-handoff.js';
+export { authFnSchemaPlugin } from './plugins/schema-only.js';
+export type { AuthFnSchemaOnlyPluginConfig } from './plugins/schema-only.js';
 export {
   errorEnvelope,
   jsonError,
@@ -174,11 +203,17 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
     throw new AuthFnConfigError('authfn plugins must be provided as an array');
   }
 
-  const runner = createPluginRunner(config);
-  const router = createAuthFnRouter(config, runner.hooks, runner.routes);
+  const schema = getSchema(config);
+  const resolvedConfig: AuthFnConfig = {
+    ...config,
+    database: wrapWithSchema(config.database, schema)
+  };
+
+  const runner = createPluginRunner(resolvedConfig);
+  const router = createAuthFnRouter(resolvedConfig, runner.hooks, runner.routes);
 
   const provider: AuthProvider<AuthFnSession> = {
-    authenticate: async (request) => authenticateRequest(config, request),
+    authenticate: async (request) => authenticateRequest(resolvedConfig, request),
     authorize: async () => false,
     revoke: async () => undefined
   };
@@ -186,11 +221,11 @@ export function createAuthFn(config: AuthFnConfig): AuthFnInstance {
   const instance: AuthFnInstance = {
     router,
     provider,
-    getSchema: () => getSchema(config)
+    getSchema: () => schema
   };
 
   if (config.openApi) {
-    instance.openApi = () => createAuthFnOpenApiDocument(config, router);
+    instance.openApi = () => createAuthFnOpenApiDocument(resolvedConfig, router);
   }
 
   return instance;

@@ -13,6 +13,10 @@ export type Dialect = 'postgres' | 'mysql' | 'sqlite';
 function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
   const baseType = field.type;
 
+  if (isDateField(field)) {
+    return dateFieldToSQL(field, dialect);
+  }
+
   switch (dialect) {
     case 'postgres':
       switch (baseType) {
@@ -24,8 +28,6 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'BIGINT';
         case 'boolean':
           return 'BOOLEAN';
-        case 'date':
-          return 'TIMESTAMP';
         case 'json':
           return 'JSONB';
         default:
@@ -42,8 +44,6 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'BIGINT';
         case 'boolean':
           return 'BOOLEAN';
-        case 'date':
-          return 'DATETIME';
         case 'json':
           return 'JSON';
         default:
@@ -59,13 +59,49 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'INTEGER';
         case 'boolean':
           return 'INTEGER'; // SQLite uses INTEGER for boolean
-        case 'date':
-          return 'TEXT'; // SQLite stores dates as TEXT
         case 'json':
           return 'TEXT'; // SQLite stores JSON as TEXT
         default:
           return 'TEXT';
       }
+  }
+}
+
+function dateFieldToSQL(field: FieldSchema, dialect: Dialect): string {
+  switch (resolveDateStorageType(field)) {
+    case 'timestamp':
+      return dialect === 'mysql' ? 'DATETIME' : dialect === 'sqlite' ? 'INTEGER' : 'TIMESTAMP';
+    case 'timestamptz':
+      return dialect === 'postgres' ? 'TIMESTAMPTZ' : dialect === 'sqlite' ? 'INTEGER' : 'TIMESTAMP';
+    case 'iso-text':
+      return 'TEXT';
+    case 'epoch-ms-integer':
+      return 'BIGINT';
+    case 'epoch-ms-bigint':
+      return 'BIGINT';
+  }
+}
+
+function isDateField(field: FieldSchema): boolean {
+  return field.type === 'date' || field.type === 'datetime';
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
   }
 }
 

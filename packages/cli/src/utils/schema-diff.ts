@@ -25,15 +25,47 @@ export function resolvePhysicalTableName(namespace: string, modelName: string): 
 /**
  * Map FieldSchema type to generic SQL type for comparison
  */
-function mapFieldTypeToSQLType(type: FieldSchema['type']): string {
-  switch (type) {
+function mapFieldTypeToSQLType(field: FieldSchema): string {
+  if (field.type === 'date' || field.type === 'datetime') {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+      case 'timestamptz':
+        return 'timestamp';
+      case 'iso-text':
+        return 'text';
+      case 'epoch-ms-integer':
+        return 'integer';
+      case 'epoch-ms-bigint':
+        return 'bigint';
+    }
+  }
+
+  switch (field.type) {
     case 'string': return 'text';
     case 'number': return 'integer';
     case 'bigint': return 'bigint';
     case 'boolean': return 'boolean';
-    case 'date': return 'timestamp';
     case 'json': return 'json';
     default: return 'text';
+  }
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
   }
 }
 
@@ -170,7 +202,7 @@ export function diffTables(
 
         // Check for type changes
         // Map FieldSchema types to SQL types for comparison
-        const expectedType = mapFieldTypeToSQLType(fieldSchema.type);
+        const expectedType = mapFieldTypeToSQLType(fieldSchema);
         const actualType = normalizeColumnType(curCol.dataType);
 
         if (expectedType !== actualType) {

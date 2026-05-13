@@ -22,6 +22,10 @@
       "types": "./dist/adapters/memory/index.d.ts",
       "default": "./dist/adapters/memory/index.js"
     },
+    "./adapters/cloudflare-kv": {
+      "types": "./dist/adapters/cloudflare-kv/index.d.ts",
+      "default": "./dist/adapters/cloudflare-kv/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"

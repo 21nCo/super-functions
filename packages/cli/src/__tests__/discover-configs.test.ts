@@ -5,31 +5,34 @@ import { fileURLToPath } from 'node:url';
 import { discoverLibraryConfigs } from '../utils/discover-configs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const mockSuperfunctionsPackages = vi.hoisted(() => [
+  {
+    packageName: '@superfunctions/conduct',
+    initFunction: 'createConduct',
+    schemaVersion: 1,
+    libraryNames: ['conduct'],
+  },
+  {
+    packageName: '@superfunctions/authfn',
+    initFunction: 'createAuthFn',
+    schemaVersion: 1,
+    libraryNames: ['authfn'],
+  },
+]);
 
 vi.mock('../utils/discover-packages.js', () => ({
-  discoverSuperfunctionsPackages: vi.fn(() => [
-    {
-      packageName: '@superfunctions/conduct',
-      initFunction: 'createConduct',
-      schemaVersion: 1,
-      libraryNames: ['conduct'],
-    },
-    {
-      packageName: '@superfunctions/authfn',
-      initFunction: 'createAuthFn',
-      schemaVersion: 1,
-      libraryNames: ['authfn'],
-    },
-  ]),
+  discoverSuperfunctionsPackages: vi.fn(() => mockSuperfunctionsPackages),
 }));
 
 describe('discoverLibraryConfigs', () => {
   let testDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Create a temporary test directory
     testDir = path.join(__dirname, `test-temp-${Date.now()}`);
     fs.mkdirSync(testDir, { recursive: true });
+    const { discoverSuperfunctionsPackages } = await import('../utils/discover-packages.js');
+    vi.mocked(discoverSuperfunctionsPackages).mockReturnValue(mockSuperfunctionsPackages);
   });
 
   afterEach(() => {

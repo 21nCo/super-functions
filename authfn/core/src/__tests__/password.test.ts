@@ -5,8 +5,10 @@ import {
   createAuthFn,
   createUser,
   getPasswordCredentialByUserId,
+  issueSession,
   signInWithPassword,
   updatePasswordCredential,
+  type AuthFnEvent,
   type AuthFnConfig
 } from '../index.js';
 
@@ -216,5 +218,74 @@ describe('@authfn/core password plugin', () => {
         id: user.id
       }
     });
+  });
+
+  it('links a password credential only for the authenticated same verified user', async () => {
+    const events: AuthFnEvent[] = [];
+    const config: AuthFnConfig = {
+      database: memoryAdapter({ debug: false }),
+      namespace: 'authfn',
+      accountLinking: {
+        passwordForAuthenticatedUser: true
+      },
+      observability: {
+        emit: (event) => events.push(event)
+      },
+      plugins: [authFnPasswordPlugin()]
+    };
+    const auth = createAuthFn(config);
+    const user = await createUser(config, {
+      primaryEmail: 'ada@example.com',
+      emailVerifiedAt: new Date('2026-03-22T00:00:00.000Z')
+    });
+
+    const unauthenticated = await auth.router.handle(
+      new Request('https://account.example.com/auth/sign-up/password', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: 'ada@example.com',
+          password: 'Sup3rSecurePassphrase!'
+        })
+      })
+    );
+    expect(unauthenticated.status).toBe(409);
+    expect((await unauthenticated.json()).error.details.linking.required).toBe('authenticated-session');
+
+    const issued = await issueSession(config, {}, {
+      userId: user.id,
+      primaryEmail: user.primaryEmail,
+      methods: ['email-otp']
+    });
+    const linked = await auth.router.handle(
+      new Request('https://account.example.com/auth/sign-up/password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${issued.sessionToken}`
+        },
+        body: JSON.stringify({
+          email: 'ada@example.com',
+          password: 'Sup3rSecurePassphrase!'
+        })
+      })
+    );
+
+    expect(linked.status).toBe(200);
+    const body = await linked.json();
+    expect(body.data.session.actorId).toBe(user.id);
+    expect(body.data.session.methods).toEqual(['password']);
+    await expect(
+      signInWithPassword(config, {
+        email: 'ada@example.com',
+        password: 'Sup3rSecurePassphrase!'
+      })
+    ).resolves.toMatchObject({
+      user: {
+        id: user.id
+      }
+    });
+    expect(events.some((event) => event.type === 'authfn.account_linked')).toBe(true);
+    expect(events.some((event) => event.type === 'authfn.account_linking.conflict')).toBe(true);
   });
 });

@@ -7,6 +7,7 @@
 
 import type {
   Adapter,
+  AdapterSchemaInput,
   AdapterImplementation,
   CreateParams,
   FindOneParams,
@@ -25,11 +26,13 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createPrismaInternalCrud } from './internal.js';
 import type { PrismaProvider } from './internal.js';
+import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export interface PrismaAdapterConfig {
   prisma: any; // PrismaClient instance
   provider?: PrismaProvider;
   modelMap: Record<string, string>; // model name -> Prisma model name (e.g., 'users' -> 'user')
+  adapterSchema?: AdapterSchemaInput;
   schemaVersionsTable?: string; // optional model name for schema versions
   namespace?: any;
   debug?: boolean;
@@ -333,7 +336,9 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
     adapter: createImpl,
   });
 
-  const adapter = factory({});
+  const adapter = factory({
+    schema: normalizeAdapterSchema(config.adapterSchema),
+  });
   const internalCrud = createPrismaInternalCrud(config.prisma, config.provider);
   return Object.assign(adapter, { internal: internalCrud });
 }

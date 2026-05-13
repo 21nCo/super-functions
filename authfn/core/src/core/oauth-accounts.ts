@@ -53,6 +53,17 @@ export async function findOAuthAccountForUser(
   });
 }
 
+export async function listOAuthAccountsForUser(
+  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  userId: string
+): Promise<AuthFnOAuthAccountRecord[]> {
+  return config.database.findMany<AuthFnOAuthAccountRecord>({
+    model: 'oauth_accounts',
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
+    namespace: namespace(config)
+  });
+}
+
 export async function findOAuthAccountByConnectionId(
   config: Pick<AuthFnConfig, 'database' | 'namespace'>,
   connectionId: string
