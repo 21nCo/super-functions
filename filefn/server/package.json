@@ -1,6 +1,6 @@
 {
   "name": "@filefn/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "FileFn server SDK for file upload/download handling",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,11 +36,11 @@
     ]
   },
   "dependencies": {
-    "@superfunctions/storage": "*",
-    "@superfunctions/files": "*",
-    "@superfunctions/db": "*",
-    "@superfunctions/http": "*",
-    "@superfunctions/middleware": "*"
+    "@superfunctions/storage": "0.1.0",
+    "@superfunctions/files": "0.1.0",
+    "@superfunctions/db": "0.1.4",
+    "@superfunctions/http": "0.1.3",
+    "@superfunctions/middleware": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

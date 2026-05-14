@@ -1,6 +1,6 @@
 {
   "name": "@filefn/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "FileFn client SDK for browser file uploads",
   "type": "module",
   "main": "./dist/index.js",

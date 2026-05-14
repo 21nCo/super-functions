@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-storage": "*"
+    "@superfunctions/oauth-storage": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

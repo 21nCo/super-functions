@@ -34,7 +34,7 @@
   },
   "publishConfig": { "access": "public" },
   "peerDependencies": {
-    "@superfunctions/db": "*"
+    "@superfunctions/db": "0.1.4"
   },
   "peerDependenciesMeta": {
     "@superfunctions/db": { "optional": true }

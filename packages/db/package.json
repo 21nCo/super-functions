@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/db",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Shared database adapter system for building useful backend libraries",
   "type": "module",
   "main": "./dist/index.js",

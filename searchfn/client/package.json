@@ -62,7 +62,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@searchfn/core": "^0.3.0",
+    "@searchfn/core": "0.3.0",
     "@searchfn/adapter-contracts": "^0.3.0",
     "@searchfn/adapter-memory": "^0.1.0",
     "@searchfn/adapter-indexeddb": "^0.1.0"

@@ -38,9 +38,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/oauth-core": "*",
-    "@superfunctions/oauth-http": "*",
-    "@superfunctions/oauth-storage": "*"
+    "@superfunctions/oauth-core": "0.0.1",
+    "@superfunctions/oauth-http": "0.0.1",
+    "@superfunctions/oauth-storage": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

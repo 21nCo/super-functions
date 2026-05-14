@@ -29,7 +29,7 @@
   },
   "publishConfig": { "access": "public" },
   "dependencies": {
-    "@superfunctions/storage": "^0.1.0"
+    "@superfunctions/storage": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

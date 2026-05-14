@@ -34,7 +34,7 @@
     "svelte": "^5.0.0"
   },
   "dependencies": {
-    "@superfunctions/extfn": "*"
+    "@superfunctions/extfn": "0.1.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.4",

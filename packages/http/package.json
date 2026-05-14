@@ -1,6 +1,6 @@
 {
   "name": "@superfunctions/http",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Framework-agnostic HTTP abstraction layer for Superfunctions libraries",
   "type": "module",
   "main": "./dist/index.js",

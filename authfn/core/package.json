@@ -40,14 +40,14 @@
     ]
   },
   "dependencies": {
-    "@superfunctions/auth": "*",
-    "@superfunctions/db": "*",
-    "@superfunctions/http": "*",
-    "@superfunctions/http-openapi": "*",
-    "@superfunctions/oauth-flow": "*",
-    "@superfunctions/oauth-http": "*",
-    "@superfunctions/oauth-providers": "*",
-    "@superfunctions/oauth-storage": "*",
+    "@superfunctions/auth": "0.1.2",
+    "@superfunctions/db": "0.1.4",
+    "@superfunctions/http": "0.1.3",
+    "@superfunctions/http-openapi": "0.0.1",
+    "@superfunctions/oauth-flow": "0.0.1",
+    "@superfunctions/oauth-http": "0.0.1",
+    "@superfunctions/oauth-providers": "0.0.1",
+    "@superfunctions/oauth-storage": "0.0.1",
     "jose": "^5.10.0"
   },
   "devDependencies": {

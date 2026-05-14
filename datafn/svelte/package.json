@@ -1,6 +1,6 @@
 {
   "name": "@datafn/svelte",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "description": "Svelte adapter for DataFn signals",
   "main": "./dist/index.cjs",
@@ -19,7 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@datafn/core": "^0.0.2"
+    "@datafn/core": "0.0.3"
   },
   "devDependencies": {
     "svelte": "^4.0.0",

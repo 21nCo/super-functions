@@ -30,7 +30,7 @@
   "publishConfig": { "access": "public" },
   "dependencies": {
     "@google-cloud/storage": "^7.0.0",
-    "@superfunctions/storage": "^0.1.0"
+    "@superfunctions/storage": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

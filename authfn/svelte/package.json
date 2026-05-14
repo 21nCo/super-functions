@@ -24,7 +24,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@authfn/client": "^0.1.0",
+    "@authfn/client": "0.1.0",
     "svelte": "^5.0.0"
   },
   "devDependencies": {
