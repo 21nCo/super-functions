@@ -1,5 +1,5 @@
 {
-  "name": "@superfunctions/extfn-cli",
+  "name": "@extfn/cli",
   "version": "0.1.0",
   "description": "Canonical extfn CLI for development and release workflows",
   "type": "module",
@@ -34,9 +34,9 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@superfunctions/extfn": "0.1.0",
-    "@superfunctions/extfn-vite": "0.1.0",
+    "@extfn/vite": "0.1.0",
     "@clifn/core": "0.1.0",
+    "extfn": "0.1.0",
     "commander": "^12.1.0",
     "fflate": "^0.8.2",
     "vite": "^5.4.21"

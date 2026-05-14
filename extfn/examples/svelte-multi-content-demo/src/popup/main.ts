@@ -1,5 +1,5 @@
-import { createRuntime } from '@superfunctions/extfn/runtime';
-import { mountSveltePage } from '@superfunctions/extfn-svelte';
+import { createRuntime } from 'extfn/runtime';
+import { mountSveltePage } from '@extfn/svelte';
 
 import PopupApp from './App.svelte';
 

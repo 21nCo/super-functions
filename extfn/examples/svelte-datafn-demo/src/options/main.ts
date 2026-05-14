@@ -1,4 +1,4 @@
-import { mountSveltePage } from "@superfunctions/extfn-svelte";
+import { mountSveltePage } from "@extfn/svelte";
 import OptionsApp from "./OptionsApp.svelte";
 
 mountSveltePage(OptionsApp, {

@@ -1,4 +1,4 @@
-import { mountSvelteContent } from '@superfunctions/extfn-svelte';
+import { mountSvelteContent } from '@extfn/svelte';
 
 import TwitterBadge from './TwitterBadge.svelte';
 

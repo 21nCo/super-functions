@@ -10,9 +10,9 @@
   "dependencies": {
     "@datafn/core": "*",
     "@datafn/extfn": "*",
-    "@superfunctions/extfn": "*",
-    "@superfunctions/extfn-svelte": "*",
-    "@superfunctions/extfn-vite": "*",
+    "extfn": "*",
+    "@extfn/svelte": "*",
+    "@extfn/vite": "*",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

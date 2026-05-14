@@ -1,6 +1,6 @@
 import type {
   BackgroundHandlerDefinition,
-} from "@superfunctions/extfn";
+} from "extfn";
 import type { DatafnSchema } from "@datafn/core";
 import type { DatafnExtfnAuthority } from "./authority.js";
 import {

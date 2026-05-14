@@ -8,12 +8,12 @@ import {
   type BrowserTarget,
   type ExtensionConfig,
   SUPPORTED_BROWSER_TARGETS,
-} from '@superfunctions/extfn';
+} from 'extfn';
 import {
   extfnVite,
   getTargetOutputDir,
   loadExtensionConfig,
-} from '@superfunctions/extfn-vite';
+} from '@extfn/vite';
 import {
   createDiagnostic,
   redactValue,

@@ -33,7 +33,7 @@
   "dependencies": {
     "@datafn/client": "0.0.3",
     "@datafn/core": "0.0.3",
-    "@superfunctions/extfn": "0.1.0"
+    "extfn": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

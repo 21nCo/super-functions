@@ -1,4 +1,4 @@
-import { defineExtension } from '@superfunctions/extfn';
+import { defineExtension } from 'extfn';
 
 export default defineExtension({
   name: 'Svelte Multi Content Demo',

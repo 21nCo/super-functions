@@ -1,4 +1,4 @@
-import type { BrowserTarget } from '@superfunctions/extfn';
+import type { BrowserTarget } from 'extfn';
 
 export const FIREFOX_TARGET: BrowserTarget = 'firefox-mv3';
 

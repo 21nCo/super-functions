@@ -1,4 +1,4 @@
-import { defineBackgroundHandler } from '@superfunctions/extfn';
+import { defineBackgroundHandler } from 'extfn';
 
 export default defineBackgroundHandler({
   namespace: 'demo',

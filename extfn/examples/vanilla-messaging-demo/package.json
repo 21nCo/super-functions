@@ -8,8 +8,8 @@
     "dev": "vite dev"
   },
   "dependencies": {
-    "@superfunctions/extfn": "*",
-    "@superfunctions/extfn-vite": "*"
+    "extfn": "*",
+    "@extfn/vite": "*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

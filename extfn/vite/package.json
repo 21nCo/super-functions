@@ -1,5 +1,5 @@
 {
-  "name": "@superfunctions/extfn-vite",
+  "name": "@extfn/vite",
   "version": "0.1.0",
   "description": "Vite plugin entry for Superfunctions extfn",
   "type": "module",
@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@superfunctions/cli": "0.1.4",
-    "@superfunctions/extfn": "0.1.0"
+    "extfn": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

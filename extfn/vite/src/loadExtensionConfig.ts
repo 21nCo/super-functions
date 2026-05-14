@@ -7,7 +7,7 @@ import {
   resolveExtensionConfig,
   type ExtensionConfig,
   type ResolvedExtensionConfig,
-} from '@superfunctions/extfn';
+} from 'extfn';
 
 const EXTENSION_CONFIG_CANDIDATES = [
   'extfn.config.ts',

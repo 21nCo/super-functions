@@ -7,7 +7,7 @@ This guide documents the repository pattern used by the example extensions for m
 Use one service worker plus directories for handlers.
 
 ```ts
-import { defineExtension } from "@superfunctions/extfn";
+import { defineExtension } from "extfn";
 
 export default defineExtension({
   name: "Handler Demo",
@@ -24,7 +24,7 @@ export default defineExtension({
 Message handler:
 
 ```ts
-import { defineBackgroundHandler } from "@superfunctions/extfn";
+import { defineBackgroundHandler } from "extfn";
 
 export default defineBackgroundHandler({
   namespace: "demo",
@@ -36,7 +36,7 @@ export default defineBackgroundHandler({
 Port handler:
 
 ```ts
-import { defineBackgroundPortHandler } from "@superfunctions/extfn";
+import { defineBackgroundPortHandler } from "extfn";
 
 export default defineBackgroundPortHandler({
   channel: "demo-stream",
@@ -105,7 +105,7 @@ Mount modes:
 The Svelte adapter stays thin. Mount from the content entrypoint and keep DOM policy in your extension config.
 
 ```ts
-import { mountSvelteContent } from "@superfunctions/extfn-svelte";
+import { mountSvelteContent } from "@extfn/svelte";
 import Badge from "./Badge.svelte";
 
 for (const anchor of document.querySelectorAll("[data-extfn-anchor]")) {

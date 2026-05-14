@@ -172,7 +172,7 @@ describe('buildManifest', () => {
 
     try {
       const loaded = await loadExtensionConfig(path.join(cwd, 'extfn.config.ts'));
-      const resolved = await import('@superfunctions/extfn').then((module) =>
+      const resolved = await import('extfn').then((module) =>
         module.resolveExtensionConfig(loaded.config, {
           configPath: loaded.configPath,
         })

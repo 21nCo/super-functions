@@ -56,8 +56,8 @@ describe('extfn dev', () => {
       )
     ).toBe(true);
     expect(packageJson.bin.extfn).toBe('./dist/cli.js');
-    expect(packageJson.dependencies.clifn).toBe('*');
-    expect(packageJson.dependencies['@superfunctions/extfn-vite']).toBe('*');
+    expect(packageJson.dependencies['@clifn/core']).toBe('0.1.0');
+    expect(packageJson.dependencies['@extfn/vite']).toBe('0.1.0');
     expect(
       Object.keys(packageJson.dependencies).some((name) => name.startsWith('hostfn'))
     ).toBe(false);

@@ -1,5 +1,5 @@
 import { loadConfigModule } from '@superfunctions/cli';
-import { discoverBackgroundPortHandlersInDirectory } from '@superfunctions/extfn';
+import { discoverBackgroundPortHandlersInDirectory } from 'extfn';
 
 export async function discoverBackgroundPorts(
   directoryPath: string

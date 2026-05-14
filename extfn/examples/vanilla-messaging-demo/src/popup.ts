@@ -1,4 +1,4 @@
-import { createRuntime } from '@superfunctions/extfn/runtime';
+import { createRuntime } from 'extfn/runtime';
 
 const runtime = createRuntime({
   globals: globalThis as never,

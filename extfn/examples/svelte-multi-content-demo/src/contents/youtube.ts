@@ -1,4 +1,4 @@
-import { mountSvelteContent } from '@superfunctions/extfn-svelte';
+import { mountSvelteContent } from '@extfn/svelte';
 
 import YoutubeBadge from './YoutubeBadge.svelte';
 

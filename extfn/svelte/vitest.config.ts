@@ -9,7 +9,7 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: '@superfunctions/extfn',
+        find: 'extfn',
         replacement: resolve(root, '../core/src/index.ts'),
       },
     ],
