@@ -36,6 +36,7 @@
     ]
   },
   "dependencies": {
+    "@filefn/processing": "0.1.1",
     "@superfunctions/storage": "0.1.0",
     "@superfunctions/files": "0.1.0",
     "@superfunctions/db": "0.1.4",
