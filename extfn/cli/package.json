@@ -34,7 +34,7 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@extfn/vite": "0.1.1",
+    "@extfn/vite": "0.1.2",
     "@clifn/core": "0.1.0",
     "@extfn/core": "0.1.0",
     "commander": "^12.1.0",

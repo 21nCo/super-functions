@@ -27,6 +27,7 @@ import {
   formatReloadDecisionLog,
 } from './dev/reloadPolicy.js';
 import { buildManifest, createTargetBuildOutputs } from './manifest/buildManifest.js';
+import { loadConfigModule } from './loadConfigModule.js';
 import { loadExtensionConfig } from './loadExtensionConfig.js';
 
 export interface ExtfnViteOptions {
@@ -47,6 +48,12 @@ export async function prepareResolvedExtensionConfig(
     const { resolveExtensionConfig } = await import('@extfn/core');
     const resolved = await resolveExtensionConfig(options.extension, {
       configPath,
+      loadModule: async (modulePath) =>
+        (
+          await loadConfigModule(modulePath, {
+            resolveFunctions: false,
+          })
+        ).module,
     });
     return {
       configPath: await realpathIfExists(configPath),
