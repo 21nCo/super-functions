@@ -4,7 +4,7 @@ import {
   type RunnerActionResult,
   type RunnerContext,
   type RunnerOptions,
-} from 'clifn/runner';
+} from '@clifn/core/runner';
 
 import {
   executeBuildCommand,

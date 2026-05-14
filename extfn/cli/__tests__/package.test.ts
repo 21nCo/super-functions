@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 
 import { unzipSync } from 'fflate';
-import { createExec } from 'clifn/exec';
-import { createOutput } from 'clifn/output';
+import { createExec } from '@clifn/core/exec';
+import { createOutput } from '@clifn/core/output';
 
 import { runPackageCommand } from '../src/index.js';
 

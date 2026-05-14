@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { BrowserTarget } from '@superfunctions/extfn';
 import { createExtfnError } from '@superfunctions/extfn';
 import { getTargetOutputDir } from '@superfunctions/extfn-vite';
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

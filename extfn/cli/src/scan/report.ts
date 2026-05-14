@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { redactValue } from 'clifn/diagnostics';
+import { redactValue } from '@clifn/core/diagnostics';
 
 export type ScanSeverity = 'error' | 'warning' | 'info';
 export type ScanCategory =

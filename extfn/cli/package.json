@@ -36,7 +36,7 @@
   "dependencies": {
     "@superfunctions/extfn": "0.1.0",
     "@superfunctions/extfn-vite": "0.1.0",
-    "clifn": "0.1.0",
+    "@clifn/core": "0.1.0",
     "commander": "^12.1.0",
     "fflate": "^0.8.2",
     "vite": "^5.4.21"

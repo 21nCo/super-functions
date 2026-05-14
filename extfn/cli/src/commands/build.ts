@@ -17,9 +17,9 @@ import {
 import {
   createDiagnostic,
   redactValue,
-} from 'clifn/diagnostics';
-import { readStringEnv } from 'clifn/env';
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+} from '@clifn/core/diagnostics';
+import { readStringEnv } from '@clifn/core/env';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

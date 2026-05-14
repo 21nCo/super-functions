@@ -2,7 +2,7 @@
   { "slug": "authfn-client", "path": "authfn/client", "name": "@authfn/client" },
   { "slug": "authfn-core", "path": "authfn/core", "name": "@authfn/core" },
   { "slug": "authfn-svelte", "path": "authfn/svelte", "name": "@authfn/svelte" },
-  { "slug": "clifn", "path": "clifn/core", "name": "clifn" },
+  { "slug": "clifn-core", "path": "clifn/core", "name": "@clifn/core" },
   { "slug": "datafn-cli", "path": "datafn/cli", "name": "@datafn/cli" },
   { "slug": "datafn-client", "path": "datafn/client", "name": "@datafn/client" },
   { "slug": "datafn-core", "path": "datafn/core", "name": "@datafn/core" },

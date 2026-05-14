@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

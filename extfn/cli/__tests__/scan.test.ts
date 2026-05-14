@@ -4,8 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 
-import { createExec } from 'clifn/exec';
-import { createOutput } from 'clifn/output';
+import { createExec } from '@clifn/core/exec';
+import { createOutput } from '@clifn/core/output';
 
 import { runScanCommand, shouldFailScan, toStructuredLogEvent } from '../src/index.js';
 
