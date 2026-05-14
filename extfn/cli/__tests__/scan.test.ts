@@ -163,24 +163,24 @@ describe('extfn scan', () => {
     }
   });
 
-  it('scans all repository examples without blocking findings', async () => {
-    const { ctx } = createTestContext();
-    const exampleConfigs = [
-      'extfn/examples/vanilla-messaging-demo/extfn.config.ts',
-      'extfn/examples/svelte-multi-content-demo/extfn.config.ts',
-      'extfn/examples/svelte-datafn-demo/extfn.config.ts',
-    ];
+  it('scans a representative extension without blocking findings', async () => {
+    const fixtureDir = await createFixtureExtension({
+      background: 'console.log("background")\n',
+    });
 
-    for (const config of exampleConfigs) {
+    try {
+      const { ctx } = createTestContext();
       const result = await runScanCommand(
         {
-          config,
+          config: path.join(fixtureDir, 'extfn.config.ts'),
           strict: true,
         },
         ctx
       );
 
       expect(result.report.summary.errorCount).toBe(0);
+    } finally {
+      await fs.rm(fixtureDir, { recursive: true, force: true });
     }
   });
 

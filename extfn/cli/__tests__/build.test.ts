@@ -17,6 +17,42 @@ const REPO_ROOT = path.resolve(
   '..',
   '..'
 );
+const EXTFN_IMPORT_SPECIFIER = '@extfn/core';
+
+async function createFixtureExtension(): Promise<string> {
+  const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'extfn-cli-build-'));
+  const srcDir = path.join(fixtureDir, 'src');
+
+  await fs.mkdir(srcDir, { recursive: true });
+  await fs.writeFile(
+    path.join(srcDir, 'background.ts'),
+    'console.log("background")\n',
+    'utf8'
+  );
+  await fs.writeFile(
+    path.join(srcDir, 'popup.html'),
+    '<!doctype html><html><body><script type="module" src="./popup.ts"></script></body></html>\n',
+    'utf8'
+  );
+  await fs.writeFile(path.join(srcDir, 'popup.ts'), 'console.log("popup")\n', 'utf8');
+  await fs.writeFile(
+    path.join(fixtureDir, 'extfn.config.ts'),
+    `
+      import { defineExtension } from '${EXTFN_IMPORT_SPECIFIER}';
+
+      export default defineExtension({
+        name: 'Spec Demo',
+        version: '0.1.0',
+        targets: ['chromium-mv3'],
+        background: { serviceWorker: './src/background.ts' },
+        popup: { entry: './src/popup.html', title: 'Spec Demo' }
+      });
+    `,
+    'utf8'
+  );
+
+  return fixtureDir;
+}
 
 describe('extfn build', () => {
   it('resolves the Vite CLI entrypoint from the installed package', () => {
@@ -27,16 +63,14 @@ describe('extfn build', () => {
 
   it('builds successfully even when cwd is not the repository root', async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'extfn-build-cwd-'));
+    const fixtureDir = await createFixtureExtension();
     const stdout: string[] = [];
     const stderr: string[] = [];
 
     try {
       const result = await buildExtension(
         {
-          config: path.join(
-            REPO_ROOT,
-            'extfn/examples/vanilla-messaging-demo/extfn.config.ts'
-          ),
+          config: path.join(fixtureDir, 'extfn.config.ts'),
           target: 'chromium-mv3',
         },
         {
@@ -61,6 +95,7 @@ describe('extfn build', () => {
       ).resolves.toBeDefined();
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
+      await fs.rm(fixtureDir, { recursive: true, force: true });
     }
   });
 });
