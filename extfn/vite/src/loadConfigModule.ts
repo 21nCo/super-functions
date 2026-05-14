@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export interface LoadConfigModuleOptions {
   fallbackToModule?: boolean;
@@ -24,6 +25,7 @@ const SUPPORTED_CONFIG_EXTENSIONS = new Set([
 ]);
 
 const require = createRequire(import.meta.url);
+const currentModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export async function loadConfigModule(
   configPath: string,
@@ -69,11 +71,15 @@ async function importConfigModule(
     const createJiti = require('jiti') as (
       id?: string,
       options?: {
+        alias?: Record<string, string>;
         interopDefault?: boolean;
         extensions?: string[];
       }
     ) => (id: string) => unknown;
     const loader = createJiti(path.dirname(resolvedPath), {
+      alias: {
+        '@extfn/core': resolveExtfnCoreEntry(),
+      },
       interopDefault: false,
       extensions: ['.ts', '.js', '.mjs', '.cjs', '.json'],
     });
@@ -85,6 +91,31 @@ async function importConfigModule(
     string,
     unknown
   >;
+}
+
+function resolveExtfnCoreEntry(): string {
+  let current = currentModuleDir;
+
+  while (true) {
+    const candidate = path.join(
+      current,
+      'node_modules',
+      '@extfn',
+      'core',
+      'dist',
+      'index.js'
+    );
+
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return '@extfn/core';
+    }
+    current = parent;
+  }
 }
 
 function selectExport(
