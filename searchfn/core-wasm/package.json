@@ -15,8 +15,7 @@
     }
   },
   "files": [
-    "dist",
-    "rust"
+    "dist"
   ],
   "scripts": {
     "build": "npm run build:wasm && tsup && npm run copy:wasm",
