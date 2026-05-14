@@ -14,7 +14,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "build:watch": "tsup --watch",
@@ -24,13 +26,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@searchfn/adapter-contracts": "file:../adapter-contracts",
-    "@searchfn/adapter-elasticsearch": "file:../adapter-elasticsearch"
+    "@searchfn/adapter-contracts": "0.3.0",
+    "@searchfn/adapter-elasticsearch": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

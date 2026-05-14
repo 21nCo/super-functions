@@ -18,8 +18,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@datafn/client": "^0.0.2",
-    "@datafn/core": "^0.0.2"
+    "@datafn/client": "0.0.3",
+    "@datafn/core": "0.0.3"
   },
   "files": [
     "dist"
@@ -27,5 +27,8 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

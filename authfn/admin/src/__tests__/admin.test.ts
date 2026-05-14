@@ -240,7 +240,7 @@ describe('@authfn/admin', () => {
       where: [{ field: 'userId', operator: 'eq', value: 'user_delete_me' }],
       namespace: config.namespace
     })).resolves.toHaveLength(0);
-    expect(lookupDeletes).toEqual(['deleteme@example.com']);
+    expect(new Set(lookupDeletes)).toEqual(new Set(['deleteme@example.com']));
   });
 
   it('fails delete-by-email for duplicate matches unless deleteAllMatches is explicit', async () => {

@@ -18,6 +18,15 @@ const wasmTargetPath = join(
 const wasmOutputDir = join(packageRoot, ".wasm");
 const wasmOutputPath = join(wasmOutputDir, "searchfn_core_wasm.wasm");
 
+try {
+  const { stdout } = await execFileAsync("rustup", ["target", "list", "--installed"]);
+  if (!stdout.split(/\s+/).includes("wasm32-unknown-unknown")) {
+    await execFileAsync("rustup", ["target", "add", "wasm32-unknown-unknown"]);
+  }
+} catch {
+  // If rustup is unavailable, continue and let cargo surface the actionable error.
+}
+
 await execFileAsync("cargo", ["build", "--target", "wasm32-unknown-unknown", "--release"], {
   cwd: rustRoot
 });

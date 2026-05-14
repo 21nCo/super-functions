@@ -54,5 +54,16 @@
   { "slug": "superfunctions-storage-minio", "path": "packages/storage-minio", "name": "@superfunctions/storage-minio" },
   { "slug": "superfunctions-storage-r2", "path": "packages/storage-r2", "name": "@superfunctions/storage-r2" },
   { "slug": "superfunctions-storage-s3", "path": "packages/storage-s3", "name": "@superfunctions/storage-s3" },
-  { "slug": "superfunctions-webhooks", "path": "packages/webhooks", "name": "@superfunctions/webhooks" }
+  { "slug": "superfunctions-webhooks", "path": "packages/webhooks", "name": "@superfunctions/webhooks" },
+  { "slug": "authfn-lookup-cloudflare-do", "path": "authfn/adapters/lookup-cloudflare-do", "name": "@authfn/lookup-cloudflare-do" },
+  { "slug": "authfn-lookup-dynamodb", "path": "authfn/adapters/lookup-dynamodb", "name": "@authfn/lookup-dynamodb" },
+  { "slug": "authfn-admin", "path": "authfn/admin", "name": "@authfn/admin" },
+  { "slug": "datafn-swift-bridge", "path": "datafn/swift-bridge", "name": "@datafn/swift-bridge" },
+  { "slug": "filefn-swift-bridge", "path": "filefn/swift-bridge", "name": "@filefn/swift-bridge" },
+  { "slug": "searchfn-adapter-elasticsearch", "path": "searchfn/adapter-elasticsearch", "name": "@searchfn/adapter-elasticsearch" },
+  { "slug": "searchfn-adapter-meilisearch", "path": "searchfn/adapter-meilisearch", "name": "@searchfn/adapter-meilisearch" },
+  { "slug": "searchfn-adapter-opensearch", "path": "searchfn/adapter-opensearch", "name": "@searchfn/adapter-opensearch" },
+  { "slug": "searchfn-adapter-postgres", "path": "searchfn/adapter-postgres", "name": "@searchfn/adapter-postgres" },
+  { "slug": "searchfn-core-wasm", "path": "searchfn/core-wasm", "name": "@searchfn/core-wasm" },
+  { "slug": "searchfn-server", "path": "searchfn/server", "name": "@searchfn/server" }
 ]
