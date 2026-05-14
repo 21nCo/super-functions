@@ -1,13 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { loadConfigModule } from '@superfunctions/cli';
 import {
   ExtfnError,
   resolveExtensionConfig,
   type ExtensionConfig,
   type ResolvedExtensionConfig,
 } from '@extfn/core';
+import { loadConfigModule } from './loadConfigModule.js';
 
 const EXTENSION_CONFIG_CANDIDATES = [
   'extfn.config.ts',
