@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "npm --prefix ../core run build && npm --prefix ../client run build && tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
