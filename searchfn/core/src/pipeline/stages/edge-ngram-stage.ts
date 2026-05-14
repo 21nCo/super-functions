@@ -81,7 +81,7 @@ function generateNGrams(tokens: Token[], minGram: number, maxGram: number): Toke
           ...token.metadata,
           isPrefix,
           originalTerm: term
-        } as EdgeNGramMetadata
+        }
       });
     }
   }
