@@ -8,7 +8,7 @@
     "dev": "vite dev"
   },
   "dependencies": {
-    "extfn": "*",
+    "@extfn/core": "*",
     "@extfn/svelte": "*",
     "@extfn/vite": "*",
     "svelte": "^5.0.0"

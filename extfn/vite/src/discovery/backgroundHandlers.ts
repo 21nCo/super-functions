@@ -1,5 +1,5 @@
 import { loadConfigModule } from '@superfunctions/cli';
-import { discoverBackgroundHandlersInDirectory } from 'extfn';
+import { discoverBackgroundHandlersInDirectory } from '@extfn/core';
 
 export async function discoverBackgroundHandlers(
   directoryPath: string

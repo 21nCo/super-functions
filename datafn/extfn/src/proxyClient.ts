@@ -9,7 +9,7 @@ import type {
   MessageBus,
 } from "@datafn/client";
 import type { DatafnSchema } from "@datafn/core";
-import type { RuntimeAddress } from "extfn";
+import type { RuntimeAddress } from "@extfn/core";
 import type {
   BrowserRuntimeLike,
   DatafnExtfnBridge,

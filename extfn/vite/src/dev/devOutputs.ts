@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { BrowserTarget } from 'extfn';
+import type { BrowserTarget } from '@extfn/core';
 
 export type ExtfnOutputMode = 'build' | 'dev';
 

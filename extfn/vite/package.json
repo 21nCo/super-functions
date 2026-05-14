@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@superfunctions/cli": "0.1.4",
-    "extfn": "0.1.0"
+    "@extfn/core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

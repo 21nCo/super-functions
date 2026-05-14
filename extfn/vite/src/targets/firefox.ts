@@ -1,4 +1,4 @@
-import type { BrowserTarget } from 'extfn';
+import type { BrowserTarget } from '@extfn/core';
 
 export const FIREFOX_TARGET: BrowserTarget = 'firefox-mv3';
 

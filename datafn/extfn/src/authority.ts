@@ -10,7 +10,7 @@ import {
 import type { DatafnSchema } from "@datafn/core";
 import type {
   RuntimeAddress,
-} from "extfn";
+} from "@extfn/core";
 import type { DatafnExtfnOptions } from "./plugin.js";
 import { DatafnExtfnSubscriptions } from "./subscriptions.js";
 import {

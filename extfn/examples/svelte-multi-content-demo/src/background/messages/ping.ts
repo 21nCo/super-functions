@@ -1,4 +1,4 @@
-import { defineBackgroundHandler } from 'extfn';
+import { defineBackgroundHandler } from '@extfn/core';
 
 export default defineBackgroundHandler({
   namespace: 'demo',

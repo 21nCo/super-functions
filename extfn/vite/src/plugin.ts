@@ -5,8 +5,8 @@ import type {
   BrowserTarget,
   ExtensionConfig,
   ResolvedExtensionConfig,
-} from 'extfn';
-import { ExtfnError } from 'extfn';
+} from '@extfn/core';
+import { ExtfnError } from '@extfn/core';
 import type {
   Plugin,
   ResolvedConfig as ViteResolvedConfig,
@@ -44,7 +44,7 @@ export async function prepareResolvedExtensionConfig(
 ): Promise<LoadedResolvedConfig> {
   if (options.extension) {
     const configPath = options.configPath ?? path.resolve('extfn.config.ts');
-    const { resolveExtensionConfig } = await import('extfn');
+    const { resolveExtensionConfig } = await import('@extfn/core');
     const resolved = await resolveExtensionConfig(options.extension, {
       configPath,
     });

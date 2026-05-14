@@ -1,7 +1,7 @@
 import path from 'node:path';
 
-import type { BrowserTarget } from 'extfn';
-import { createExtfnError } from 'extfn';
+import type { BrowserTarget } from '@extfn/core';
+import { createExtfnError } from '@extfn/core';
 import { getTargetOutputDir } from '@extfn/vite';
 import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {

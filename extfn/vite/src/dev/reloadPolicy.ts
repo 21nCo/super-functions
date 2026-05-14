@@ -7,7 +7,7 @@ import {
   type ResolvedExtensionConfig,
   type ResolvedPageSurface,
   type RuntimeContextKind,
-} from 'extfn';
+} from '@extfn/core';
 
 export type ExtfnReloadStrategy = 'hmr' | 'reinject' | 'full-reload';
 

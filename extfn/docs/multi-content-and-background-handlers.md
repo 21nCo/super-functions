@@ -7,7 +7,7 @@ This guide documents the repository pattern used by the example extensions for m
 Use one service worker plus directories for handlers.
 
 ```ts
-import { defineExtension } from "extfn";
+import { defineExtension } from "@extfn/core";
 
 export default defineExtension({
   name: "Handler Demo",
@@ -24,7 +24,7 @@ export default defineExtension({
 Message handler:
 
 ```ts
-import { defineBackgroundHandler } from "extfn";
+import { defineBackgroundHandler } from "@extfn/core";
 
 export default defineBackgroundHandler({
   namespace: "demo",
@@ -36,7 +36,7 @@ export default defineBackgroundHandler({
 Port handler:
 
 ```ts
-import { defineBackgroundPortHandler } from "extfn";
+import { defineBackgroundPortHandler } from "@extfn/core";
 
 export default defineBackgroundPortHandler({
   channel: "demo-stream",

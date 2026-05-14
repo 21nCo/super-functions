@@ -30,7 +30,7 @@
 Every extension is described by one `extfn.config.ts` file that default-exports `defineExtension(...)`.
 
 ```ts
-import { defineExtension } from "extfn";
+import { defineExtension } from "@extfn/core";
 
 export default defineExtension({
   name: "My Extension",
@@ -67,7 +67,7 @@ export default defineExtension({
 Use the root package exports for runtime setup and browser access.
 
 ```ts
-import { createRuntime } from "extfn";
+import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
   globals: globalThis as never,

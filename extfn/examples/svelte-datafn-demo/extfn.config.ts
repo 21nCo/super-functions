@@ -1,4 +1,4 @@
-import { defineExtension } from "extfn";
+import { defineExtension } from "@extfn/core";
 
 export default defineExtension({
   name: "Svelte DataFn Demo",

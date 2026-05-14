@@ -25,7 +25,7 @@
   { "slug": "superfunctions-config", "path": "packages/config", "name": "@superfunctions/config" },
   { "slug": "superfunctions-envelope", "path": "packages/envelope", "name": "@superfunctions/envelope" },
   { "slug": "superfunctions-errors", "path": "packages/errors", "name": "@superfunctions/errors" },
-  { "slug": "extfn", "path": "extfn/core", "name": "extfn" },
+  { "slug": "extfn-core", "path": "extfn/core", "name": "@extfn/core" },
   { "slug": "extfn-cli", "path": "extfn/cli", "name": "@extfn/cli" },
   { "slug": "extfn-svelte", "path": "extfn/svelte", "name": "@extfn/svelte" },
   { "slug": "extfn-vite", "path": "extfn/vite", "name": "@extfn/vite" },

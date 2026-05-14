@@ -8,7 +8,7 @@ import {
   type BrowserTarget,
   type ExtensionConfig,
   SUPPORTED_BROWSER_TARGETS,
-} from 'extfn';
+} from '@extfn/core';
 import {
   extfnVite,
   getTargetOutputDir,

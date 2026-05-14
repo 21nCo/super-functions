@@ -6,7 +6,7 @@ import type {
   ResolvedContentScriptConfig,
   ResolvedExtensionConfig,
   ResolvedPageSurface,
-} from 'extfn';
+} from '@extfn/core';
 
 import { applyChromiumTargetManifest } from '../targets/chromium.js';
 import { applyFirefoxTargetManifest } from '../targets/firefox.js';
