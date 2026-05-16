@@ -1,6 +1,6 @@
 {
   "name": "@authfn/admin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Framework-neutral admin routes and operations for AuthFn",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@authfn/core": "0.1.0",
+    "@authfn/core": "0.1.1",
     "@superfunctions/db": "0.1.4",
     "@superfunctions/http": "0.1.3"
   },

@@ -618,6 +618,148 @@ describe('@authfn/core multi-region plugin', () => {
     });
   });
 
+  it('treats product-specific account aliases for the same region as locally aligned', async () => {
+    const records = new Map<string, AuthFnRegionLookupRecord>();
+    const config: AuthFnConfig = {
+      database: memoryAdapter({ debug: false }),
+      namespace: 'authfn',
+      runtime: createRuntimeResolver(),
+      plugins: [
+        authFnPasswordPlugin(),
+        authFnMultiRegionPlugin({
+          regions: [
+            {
+              regionId: 'insouth',
+              authority: 'https://account-insouth-dev.nucleum.app',
+              hosts: ['account-insouth-dev.nucleum.app'],
+              domain: '.nucleum.app'
+            },
+            {
+              regionId: 'useast',
+              authority: 'https://account-useast-dev.nucleum.app',
+              hosts: ['account-useast-dev.nucleum.app'],
+              domain: '.nucleum.app'
+            },
+            {
+              regionId: 'insouth',
+              authority: 'https://account-insouth-dev.memotron.app',
+              hosts: ['account-insouth-dev.memotron.app'],
+              domain: '.memotron.app'
+            },
+            {
+              regionId: 'useast',
+              authority: 'https://account-useast-dev.memotron.app',
+              hosts: ['account-useast-dev.memotron.app'],
+              domain: '.memotron.app'
+            }
+          ],
+          lookupStore: {
+            async getByIdentifier(identifier) {
+              return records.get(identifier) ?? null;
+            },
+            async putIfAbsent(record) {
+              const existing = records.get(record.identifier);
+              if (existing) {
+                return {
+                  inserted: false,
+                  existing
+                };
+              }
+              records.set(record.identifier, record);
+              return {
+                inserted: true
+              };
+            },
+            async update(record) {
+              records.set(record.identifier, record);
+              return record;
+            },
+            async deleteByIdentifier(identifier) {
+              records.delete(identifier);
+            }
+          }
+        })
+      ]
+    };
+    const auth = createAuthFn(config);
+
+    const signUp = await auth.router.handle(
+      new Request('https://account-insouth-dev.nucleum.app/auth/sign-up/password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: 'shared@example.com',
+          password: 'Sup3rSecurePassphrase!'
+        })
+      })
+    );
+    expect(signUp.status).toBe(200);
+    expect(records.get('shared@example.com')).toMatchObject({
+      regionId: 'insouth',
+      authority: 'https://account-insouth-dev.nucleum.app'
+    });
+
+    const memotronSameRegionLookup = await auth.router.handle(
+      new Request('https://account-insouth-dev.memotron.app/auth/regions/lookup', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          identifier: 'shared@example.com'
+        })
+      })
+    );
+    expect(memotronSameRegionLookup.status).toBe(200);
+    expect(await memotronSameRegionLookup.json()).toMatchObject({
+      ok: true,
+      data: {
+        regionId: 'insouth',
+        authority: 'https://account-insouth-dev.memotron.app',
+        continueLocally: true
+      }
+    });
+
+    const memotronCrossRegionLookup = await auth.router.handle(
+      new Request('https://account-useast-dev.memotron.app/auth/regions/lookup', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          identifier: 'shared@example.com'
+        })
+      })
+    );
+    expect(memotronCrossRegionLookup.status).toBe(200);
+    expect(await memotronCrossRegionLookup.json()).toMatchObject({
+      ok: true,
+      data: {
+        regionId: 'insouth',
+        authority: 'https://account-insouth-dev.memotron.app',
+        redirectTo: 'https://account-insouth-dev.memotron.app',
+        continueLocally: false
+      }
+    });
+
+    const memotronSignIn = await auth.router.handle(
+      new Request('https://account-insouth-dev.memotron.app/auth/sign-in/password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: 'shared@example.com',
+          password: 'Sup3rSecurePassphrase!'
+        })
+      })
+    );
+    expect(memotronSignIn.status).toBe(200);
+    expect(memotronSignIn.headers.getSetCookie().some((cookie) => cookie.includes('Domain=.memotron.app'))).toBe(true);
+  });
+
   it('keeps built-in plugins on the normal hook contract with before* fail-closed, after* fail-open, and deterministic ordering', async () => {
     const hookOrder: string[] = [];
     const customBeforePlugin: AuthFnPlugin = {

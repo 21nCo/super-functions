@@ -201,9 +201,10 @@ export async function buildLookupResult(
     };
   }
 
+  const currentRegionId = input.runtime.regionId ?? pluginConfig.defaultRegionId;
   const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = normalizeAuthority(lookup.authority);
-  const continueLocally = currentAuthority === targetAuthority;
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
+  const continueLocally = lookup.regionId === currentRegionId || currentAuthority === targetAuthority;
 
   return {
     identifier,
@@ -245,8 +246,8 @@ export async function ensureRegionAlignmentForUser(
   }
 
   const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = normalizeAuthority(lookup.authority);
-  if (currentAuthority !== targetAuthority) {
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
+  if (lookup.regionId !== input.runtime.regionId && currentAuthority !== targetAuthority) {
     throw new AuthFnRegionMismatchError('Request must continue on a different region authority', {
       userId: user.id,
       regionId: lookup.regionId,
@@ -284,8 +285,8 @@ export async function ensureRegionAlignmentForIdentifier(
   }
 
   const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = normalizeAuthority(lookup.authority);
-  if (currentAuthority !== targetAuthority) {
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
+  if (lookup.regionId !== input.runtime.regionId && currentAuthority !== targetAuthority) {
     throw new AuthFnRegionMismatchError('Request must continue on a different region authority', {
       identifier,
       userId: lookup.userId,
@@ -454,8 +455,41 @@ function recordsReferToSameRegionUser(
 ): boolean {
   return normalizeIdentifier(existing.identifier) === expected.identifier
     && existing.regionId === expected.regionId
-    && normalizeAuthority(existing.authority) === normalizeAuthority(expected.authority)
     && (!existing.userId || existing.userId === expected.userId);
+}
+
+function resolveLookupAuthorityForRequest(
+  pluginConfig: MultiRegionPluginConfig,
+  lookup: AuthFnRegionLookup,
+  request: Request | undefined,
+  runtime: AuthFnRuntimeResolution
+): string {
+  const productPeer = request
+    ? findRegionPeerForRequest(pluginConfig, lookup.regionId, request, runtime)
+    : undefined;
+  return normalizeAuthority(productPeer?.baseUrl ?? productPeer?.authority ?? lookup.authority);
+}
+
+function findRegionPeerForRequest(
+  pluginConfig: MultiRegionPluginConfig,
+  targetRegionId: string,
+  request: Request,
+  runtime: AuthFnRuntimeResolution
+): AuthFnMultiRegionRegionConfig | undefined {
+  const currentRegion = resolveRegionForRequest(pluginConfig, request, runtime);
+  if (!currentRegion) {
+    return findConfiguredRegion(pluginConfig, targetRegionId);
+  }
+
+  const currentDomain = normalizeOptionalString(currentRegion.domain ?? currentRegion.cookie?.domain);
+  const sameProduct = (pluginConfig.regions ?? []).find((candidate) => {
+    const candidateDomain = normalizeOptionalString(candidate.domain ?? candidate.cookie?.domain);
+    return candidate.regionId === targetRegionId
+      && currentDomain
+      && candidateDomain === currentDomain;
+  });
+
+  return sameProduct ?? findConfiguredRegion(pluginConfig, targetRegionId);
 }
 
 function shouldRefreshExistingLookup(
