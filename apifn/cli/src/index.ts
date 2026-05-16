@@ -401,7 +401,7 @@ export async function runCli(
     });
 
   cli.help();
-  cli.version("0.0.1");
+  cli.version("0.0.2");
 
   try {
     cli.parse(["node", "apifn", ...argv], { run: false });

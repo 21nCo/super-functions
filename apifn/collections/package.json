@@ -1,6 +1,6 @@
 {
   "name": "@apifn/collections",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OpenCollection YAML read/write/run for ApiFn",
   "type": "module",
   "main": "dist/index.cjs",
@@ -20,7 +20,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@apifn/core": "0.0.1",
+    "@apifn/core": "0.0.2",
     "dotenv": "^16.6.1",
     "glob": "^11.0.3",
     "yaml": "^2.8.1"

@@ -1,6 +1,6 @@
 {
   "name": "@apifn/docsfn",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "docsfn plugin for ApiFn API reference",
   "type": "module",
   "main": "dist/index.cjs",
@@ -19,9 +19,9 @@
     "test": "vitest --run"
   },
   "dependencies": {
-    "@apifn/core": "0.0.1",
-    "@apifn/react": "0.0.1",
-    "@apifn/svelte": "0.0.1"
+    "@apifn/core": "0.0.2",
+    "@apifn/react": "0.0.2",
+    "@apifn/svelte": "0.0.2"
   },
   "peerDependencies": {
     "docsfn": "*"

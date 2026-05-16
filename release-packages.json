@@ -1,4 +1,12 @@
 [
+  { "slug": "apifn-cli", "path": "apifn/cli", "name": "@apifn/cli" },
+  { "slug": "apifn-collections", "path": "apifn/collections", "name": "@apifn/collections" },
+  { "slug": "apifn-core", "path": "apifn/core", "name": "@apifn/core" },
+  { "slug": "apifn-docsfn", "path": "apifn/docsfn", "name": "@apifn/docsfn" },
+  { "slug": "apifn-mock", "path": "apifn/mock", "name": "@apifn/mock" },
+  { "slug": "apifn-react", "path": "apifn/react", "name": "@apifn/react" },
+  { "slug": "apifn-snippets", "path": "apifn/snippets", "name": "@apifn/snippets" },
+  { "slug": "apifn-svelte", "path": "apifn/svelte", "name": "@apifn/svelte" },
   { "slug": "authfn-client", "path": "authfn/client", "name": "@authfn/client" },
   { "slug": "authfn-core", "path": "authfn/core", "name": "@authfn/core" },
   { "slug": "authfn-svelte", "path": "authfn/svelte", "name": "@authfn/svelte" },
