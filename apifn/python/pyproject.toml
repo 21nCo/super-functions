@@ -1,0 +1,25 @@
+[project]
+name = "apifn"
+version = "0.0.1"
+description = "Self-hosted API development platform — Python SDK"
+license = "MIT"
+authors = [
+    { name = "21n" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+fastapi = ["fastapi", "uvicorn"]
+flask = ["flask"]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"

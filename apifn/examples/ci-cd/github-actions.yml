@@ -1,0 +1,18 @@
+name: API Contract Check
+
+on:
+  pull_request:
+    paths:
+      - "apifn/**"
+      - ".apifn/**"
+
+jobs:
+  api-check:
+    uses: ./apifn/.github/workflows/api-check.yml
+    with:
+      spec_path: .apifn/openapi.yml
+      collection_dir: .apifn/collection
+      environment: development
+      base_branch: main
+      fail_on_breaking: true
+      post_pr_comment: true

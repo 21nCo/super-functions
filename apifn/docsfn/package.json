@@ -1,0 +1,56 @@
+{
+  "name": "@apifn/docsfn",
+  "version": "0.0.1",
+  "description": "docsfn plugin for ApiFn API reference",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@apifn/core": "0.0.1",
+    "@apifn/react": "0.0.1",
+    "@apifn/svelte": "0.0.1"
+  },
+  "peerDependencies": {
+    "docsfn": "*"
+  },
+  "peerDependenciesMeta": {
+    "docsfn": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "apifn/docsfn"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ]
+}
