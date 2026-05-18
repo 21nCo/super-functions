@@ -1,11 +1,16 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const docsfnSvelteSrc = path.resolve(dirname, "../../node_modules/@docsfn/svelte/src");
+const require = createRequire(import.meta.url);
+const docsfnSvelteSrc = path.join(
+  path.dirname(path.dirname(require.resolve("@docsfn/svelte/theme.css"))),
+  "src"
+);
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
