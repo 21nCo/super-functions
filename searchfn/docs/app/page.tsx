@@ -1,5 +1,10 @@
-import { redirect } from "next/navigation";
-
 export default function HomePage() {
-  redirect("/docs");
+  return (
+    <main>
+      <meta httpEquiv="refresh" content="0; url=/docs" />
+      <p>
+        Continue to <a href="/docs">SearchFn docs</a>.
+      </p>
+    </main>
+  );
 }

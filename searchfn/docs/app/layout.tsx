@@ -44,10 +44,14 @@ export const metadata: Metadata = {
 };
 
 type DocsRootLayoutProps = Parameters<typeof DocsRootLayout>[0];
+type RootProviderProps = Parameters<typeof RootProvider>[0];
+
 export default function Layout({ children }: { children: DocsRootLayoutProps["children"] }) {
+  const providerChildren = children as RootProviderProps["children"];
+
   return (
     <DocsRootLayout>
-      <RootProvider>{children}</RootProvider>
+      <RootProvider>{providerChildren}</RootProvider>
     </DocsRootLayout>
   );
 }

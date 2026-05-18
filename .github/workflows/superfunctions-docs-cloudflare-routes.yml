@@ -1,0 +1,50 @@
+name: Superfunctions Docs Cloudflare Routes
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: Docs product routes to sync
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - datafn
+          - filefn
+          - searchfn
+          - authfn
+      environment:
+        description: Docs route environment
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - live
+
+jobs:
+  routes:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    concurrency:
+      group: superfunctions-docs-cloudflare-routes-${{ github.event.inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync Cloudflare docs routes
+        env:
+          CLOUDFLARE_ROUTES_TOKEN: ${{ secrets.CLOUDFLARE_ROUTES_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID_DATAFN_DEV: ${{ vars.CLOUDFLARE_ZONE_ID_DATAFN_DEV }}
+          CLOUDFLARE_ZONE_ID_FILEFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_FILEFN_COM }}
+          CLOUDFLARE_ZONE_ID_SEARCHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_SEARCHFN_COM }}
+          CLOUDFLARE_ZONE_ID_AUTHFN_COM: ${{ vars.CLOUDFLARE_ZONE_ID_AUTHFN_COM }}
+        run: node scripts/cloudflare-docs/sync-routes.mjs ${{ github.event.inputs.environment }} --products=${{ github.event.inputs.product }}

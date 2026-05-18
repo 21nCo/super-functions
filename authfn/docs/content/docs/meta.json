@@ -1,0 +1,14 @@
+{
+  "title": "authfn",
+  "pages": [
+    "index",
+    "getting-started",
+    "core-concepts",
+    "core",
+    "client",
+    "svelte",
+    "python",
+    "adapters",
+    "api"
+  ]
+}
