@@ -25,6 +25,11 @@ export default defineConfig({
       { find: "@site/docs-toc", replacement: path.join(docsfnSvelteSrc, "DocsToc.svelte") },
       { find: "@site/api-reference-renderer", replacement: path.join(docsfnSvelteSrc, "ApiReferenceRenderer.svelte") },
       { find: "@site/docs-search", replacement: path.join(docsfnSvelteSrc, "DocsSearch.svelte") },
+      { find: "@searchfn/client", replacement: path.resolve(dirname, "../../searchfn/client/src/index.ts") },
+      { find: "@searchfn/core", replacement: path.resolve(dirname, "../../searchfn/core/src/index.ts") },
+      { find: "@searchfn/adapter-contracts", replacement: path.resolve(dirname, "../../searchfn/adapter-contracts/src/index.ts") },
+      { find: "@searchfn/adapter-memory", replacement: path.resolve(dirname, "../../searchfn/adapter-memory/src/index.ts") },
+      { find: "@searchfn/adapter-indexeddb", replacement: path.resolve(dirname, "../../searchfn/adapter-indexeddb/src/index.ts") },
     ],
   },
 });
