@@ -1,0 +1,5 @@
+{
+  "title": "Python",
+  "description": "SearchFn Python — DataFn companion plugin",
+  "pages": ["index", "setup", "indexing", "search", "http-mount"]
+}

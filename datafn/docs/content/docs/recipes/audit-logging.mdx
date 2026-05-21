@@ -1,0 +1,144 @@
+---
+title: "Recipe: Audit Logging"
+description: "Capability-driven audit fields plus outbound logging to your audit pipeline."
+audience: guide
+applies_to: both
+---
+
+DataFn ships two complementary audit primitives:
+
+1. The **`audit` capability** that injects `createdBy` and `updatedBy` on every resource.
+2. The **plugin hook system** that runs after every mutation, perfect for pushing audit events to your logging pipeline.
+
+For compliance use cases (SOC 2, HIPAA, ISO 27001) you want both. The capability gives you a quick "who changed this row" answer in the database; the outbound stream gives you an immutable append-only log that survives database tampering.
+
+## Step 1: Enable the audit capability
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    { name: "documents", version: 1, idPrefix: "doc", fields: [/* ... */] },
+  ],
+});
+```
+
+This injects `createdBy` and `updatedBy` (managed system fields). To populate them, supply a `namespaceProvider` with `getActorId`:
+
+```typescript
+namespaceProvider: {
+  getNamespace: (ctx) => ns(ctx.session.orgId),
+  getActorId:  (ctx) => ctx.session.userId,
+},
+```
+
+Now every row carries the user id of the last writer. Reading is free:
+
+```typescript
+const docs = await client.table("documents").query({
+  filters: { id: { $eq: docId } },
+  select: ["id", "title", "createdBy", "updatedBy", "updatedAt"],
+});
+```
+
+## Step 2: Push to an outbound log
+
+Audit-grade systems want an **append-only** log that's hard to tamper with. Use a `afterMutation` hook:
+
+```typescript
+import type { DatafnPlugin } from "@datafn/core";
+import { logToSiem } from "./siem"; // your audit pipeline
+
+export const auditPlugin: DatafnPlugin = {
+  name: "audit-log",
+  hooks: [
+    {
+      event: "afterMutation",
+      handler: async (ctx) => {
+        const mut = ctx.payload as DfqlMutation;
+        await logToSiem({
+          ts: Date.now(),
+          actor: ctx.ctx?.session?.userId,
+          namespace: ctx.ctx?.session?.orgId,
+          resource: ctx.resource,
+          operation: mut.operation,
+          recordId: mut.id ?? mut.record?.id,
+          before: ctx.meta?.before,    // if your hook captured it
+          after: mut.record,
+        });
+      },
+    },
+    {
+      event: "beforeMutation",
+      handler: async (ctx) => {
+        const mut = ctx.payload as DfqlMutation;
+        if (mut.id) {
+          const before = await server.db.findOne(ctx.resource, mut.id);
+          ctx.meta = { ...ctx.meta, before };
+        }
+      },
+    },
+  ],
+};
+```
+
+Drop into the server config:
+
+```typescript
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  plugins: [auditPlugin],
+  namespaceProvider,
+});
+```
+
+## Step 3: Choose a sink
+
+| Sink | When |
+| --- | --- |
+| Cloud-native (CloudWatch, GCP Audit Logs, Azure Monitor) | You're already in that cloud; want minimal infra. |
+| SIEM (Splunk, Datadog Cloud SIEM, Panther) | You have a security team; want correlation. |
+| Append-only DB (DynamoDB with conditional writes, S3+Athena, BigQuery) | You need long retention and analytical queries. |
+| Blockchain anchoring (rare; for highest tamper resistance) | Regulatory requirement. |
+
+For most teams, a managed SIEM is the right call.
+
+## Step 4: Read access logging
+
+For some audits you need "who **read** this row" too. Add an `afterQuery` hook:
+
+```typescript
+{
+  event: "afterQuery",
+  filter: { resource: ["patients", "financials"] },
+  handler: async (ctx) => {
+    const result = ctx.payload as { data: any[] };
+    if (!result.data.length) return;
+    await logToSiem({
+      ts: Date.now(),
+      actor: ctx.ctx?.session?.userId,
+      action: "read",
+      resource: ctx.resource,
+      ids: result.data.map((r) => r.id),
+    });
+  },
+}
+```
+
+This pattern is heavy — every read produces a log entry. Use it only on truly sensitive resources, not as a general default.
+
+## What not to do
+
+- **Don't store audit logs in DataFn.** It's an OLTP sync layer, not a log store. Append-only writes at audit scale will balloon your changelog table.
+- **Don't trust client-supplied actor ids.** Always derive `actor` from server-side context (`ctx.session.userId`).
+- **Don't log sensitive payloads in plaintext.** Encrypt `before`/`after` if they include PII, or store only field-level diffs without values.
+
+## See also
+
+- [Capabilities](/docs/documentation/capabilities)
+- [Custom Plugins](/docs/documentation/plugins/custom-plugins)
+- [Encryption at rest](/docs/recipes/encryption-at-rest)
+- [Security overview](/docs/documentation/security)

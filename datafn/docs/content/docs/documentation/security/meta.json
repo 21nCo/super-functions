@@ -1,0 +1,16 @@
+{
+  "title": "Security",
+  "description": "Authentication, authorization, isolation, hardening",
+  "pages": [
+    "index",
+    "layered-model",
+    "request-authz",
+    "field-level-authz",
+    "namespace-isolation",
+    "rate-limiting",
+    "payload-limits",
+    "input-sanitization",
+    "websocket-security",
+    "production-checklist"
+  ]
+}

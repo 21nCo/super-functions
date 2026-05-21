@@ -1,0 +1,21 @@
+{
+  "title": "Recipes",
+  "description": "Working patterns for common SearchFn use cases",
+  "pages": [
+    "index",
+    "autocomplete",
+    "snippet-highlighting",
+    "multi-language",
+    "multi-tenant",
+    "hybrid-local-remote",
+    "cross-resource-ranking",
+    "backfill-from-db",
+    "reindex-no-downtime",
+    "partial-reindex",
+    "index-snapshot-restore",
+    "relevance-testing",
+    "datafn-integration",
+    "authfn-integration",
+    "filefn-integration"
+  ]
+}

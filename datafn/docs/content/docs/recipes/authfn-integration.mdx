@@ -1,0 +1,164 @@
+---
+title: "Recipe: AuthFn Integration"
+description: "Wire AuthFn sessions into DataFn's authorize and namespaceProvider."
+audience: guide
+applies_to: server
+---
+
+AuthFn is the auth layer in the Superfunctions stack. It handles sign-in, session management, organizations, and roles. DataFn doesn't ship its own auth — it asks two callbacks for the relevant facts:
+
+- `authorize(ctx, action, payload)` → can this request happen?
+- `namespaceProvider.getNamespace(ctx)` / `getActorId(ctx)` → who's the actor and which tenant?
+
+This recipe shows the canonical wiring.
+
+## 1. Middleware: populate ctx.session
+
+The Hono pattern (other frameworks are analogous — see the [Quickstart](/docs/quickstart) per framework):
+
+```typescript
+import { Hono } from "hono";
+import { authfnSession } from "@authfn/server";
+
+const app = new Hono();
+
+app.use("*", async (c, next) => {
+  const session = await authfnSession(c.req.raw);
+  c.set("session", session ?? undefined);
+  await next();
+});
+```
+
+The shape of `session` from AuthFn:
+
+```typescript
+type AuthfnSession = {
+  userId: string;
+  orgId?: string;
+  email: string;
+  roles: string[]; // e.g. ["owner", "billing-admin"]
+  expiresAt: number;
+};
+```
+
+## 2. authorize: gate per action
+
+```typescript
+import { createDatafnServer } from "@datafn/server";
+
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  authorize: async (ctx, action, payload) => {
+    const session = ctx.get("session") as AuthfnSession | undefined;
+    if (!session) return false;
+
+    // Free actions: status, search
+    if (action === "status" || action === "search") return true;
+
+    // Write actions need at least one role
+    if (["mutation", "transact", "push"].includes(action) && session.roles.length === 0) {
+      return false;
+    }
+
+    // Resource-level rules
+    if (payload?.resource === "billing" && !session.roles.includes("billing-admin")) {
+      return false;
+    }
+
+    return true;
+  },
+  namespaceProvider: {
+    getNamespace: (ctx) => {
+      const session = ctx.get("session") as AuthfnSession | undefined;
+      return session?.orgId ? `org:${session.orgId}` : `user:${session?.userId}`;
+    },
+    getActorId: (ctx) => (ctx.get("session") as AuthfnSession | undefined)?.userId,
+  },
+});
+
+app.route("/", toHono(datafn.router));
+```
+
+## 3. Personal vs organization context
+
+Most apps need both modes. A user has a personal workspace plus zero-or-more orgs they belong to. The `orgId` switch happens in your AuthFn middleware (typically driven by a header or subdomain). The DataFn namespace then follows automatically — no changes needed in DataFn config.
+
+## 4. Sharing across orgs
+
+By default `crossNsShareable` is `false`, so a user in org A can't share with a user in org B. When you want cross-org sharing (e.g. external reviewers):
+
+```typescript
+{
+  name: "documents",
+  capabilities: [
+    {
+      name: "shareable",
+      config: { crossNsShareable: true, roles: ["viewer", "editor"] },
+    },
+  ],
+},
+```
+
+Now `share` operations with a principal id from another namespace succeed. The shared user sees the document in their own namespace's view.
+
+## 5. Field-level authz
+
+Some fields shouldn't be readable by all members. Use a `permissions` policy on the resource:
+
+```typescript
+{
+  name: "users",
+  permissions: {
+    read: {
+      "*": (ctx) => true,                     // any field by default
+      "email": (ctx) => {
+        const session = ctx.get("session") as AuthfnSession;
+        return session.roles.includes("owner");
+      },
+      "salary": (ctx, row) => {
+        const session = ctx.get("session") as AuthfnSession;
+        return session.userId === row.id || session.roles.includes("owner");
+      },
+    },
+  },
+},
+```
+
+DataFn applies `permissions.read` per row, per field. Forbidden fields are silently elided from the response (not 403'd) — this is correct for list views where partial data is acceptable.
+
+## 6. Sign-out
+
+AuthFn handles sign-out. On the DataFn side, you typically:
+
+1. Stop the client (`client.stop()` or `client.close()`).
+2. Clear the IndexedDB store (`indexedDB.deleteDatabase("my-app-db")`) if the user is on a shared device.
+3. Recreate the client on next sign-in.
+
+The DataFn client doesn't have a "sign-out" call; the unit of identity is the `clientId`, which you assign at construction. For per-user devices, regenerate it on sign-in.
+
+## 7. Testing the integration
+
+```typescript
+import { authfnTesting } from "@authfn/server/testing";
+
+const session = authfnTesting.makeSession({ userId: "u_test", orgId: "o_test", roles: ["owner"] });
+const ctx = new Map([["session", session]]);
+
+const env = await datafn.router.fetch(
+  new Request("http://t/datafn/query", {
+    method: "POST",
+    headers: { "x-test-context": JSON.stringify({ session }) },
+    body: JSON.stringify({ resource: "tasks", version: 1 }),
+  }),
+);
+```
+
+For a thicker integration test, use `authfnTesting.signIn(...)` to produce a real session token and exercise the middleware path.
+
+## See also
+
+- [AuthFn docs](https://authfn.21n.co/docs)
+- [Namespaces](/docs/documentation/namespaces)
+- [Authorization](/docs/documentation/server/authorization)
+- [Multi-tenant SaaS](/docs/recipes/multi-tenant-saas)

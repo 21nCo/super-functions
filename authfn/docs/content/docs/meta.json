@@ -3,12 +3,17 @@
   "pages": [
     "index",
     "getting-started",
+    "quickstart",
     "core-concepts",
-    "core",
-    "client",
-    "svelte",
-    "python",
+    "plugins",
+    "sdk",
     "adapters",
+    "frameworks",
+    "recipes",
+    "admin",
+    "examples",
+    "ai-resources",
+    "reference",
     "api"
   ]
 }

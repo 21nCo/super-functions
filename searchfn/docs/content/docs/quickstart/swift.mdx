@@ -1,0 +1,105 @@
+---
+title: Swift
+description: SearchFn on iOS, macOS, watchOS — in-memory or SQLite-backed local search.
+---
+
+The Swift package is standalone — it doesn't require the SearchFn TypeScript server. Same engine concepts: tokenize, BM25, fuzzy, optional persistence.
+
+## 1. Add the package
+
+In `Package.swift`:
+
+```swift
+.package(url: "https://github.com/21nCo/super-functions", from: "0.2.0"),
+.product(name: "SearchFnConvenience", package: "super-functions"),
+```
+
+Or in Xcode → File → Add Packages → `https://github.com/21nCo/super-functions`.
+
+## 2. In-memory client
+
+```swift
+import SearchFnConvenience
+import SearchFnAdapterContracts
+
+let search = InMemorySearchFn(
+    defaults: SearchFnDefaults(
+        limit: 20,
+        limitPerResource: 10,
+        fuzzy: .enabled,
+        prefix: true
+    )
+)
+
+let client = search.client()
+
+try await client.initialize(SearchFnInitializeParams(
+    resources: [
+        SearchFnInitializeResourceConfig(name: "tasks", searchFields: ["title", "body"])
+    ]
+))
+
+try await client.index(SearchFnIndexParams(
+    resource: "tasks",
+    documents: [
+        SearchFnDocument(id: "t-1", fields: ["title": "Hybrid search", "body": "Swift local index"]),
+        SearchFnDocument(id: "t-2", fields: ["title": "Groceries", "body": "Milk and bread"]),
+    ]
+))
+
+let ids = try await client.search(
+    SearchFnSearchParams(resource: "tasks", query: "hybrid")
+)
+```
+
+## 3. SQLite-backed (persistent)
+
+```swift
+import Foundation
+import SearchFnConvenience
+import SearchFnSQLiteAdapter
+
+let rootURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("searchfn-store", isDirectory: true)
+
+let search = try SearchFn(sqlite: SearchFnSQLiteAdapterConfiguration(
+    rootURL: rootURL,
+    indexKey: "project-docs"
+))
+
+let client = search.client()
+// initialize, index, search the same way
+```
+
+The SQLite adapter persists the inverted index under `<rootURL>/<indexKey-hashed>/searchfn.sqlite`. Reopening with the same `indexKey` resumes from where you left off.
+
+## 4. SwiftUI
+
+```swift
+import SwiftUI
+import SearchFnConvenience
+
+struct SearchView: View {
+    let client: SearchFnClient
+    @State private var query = ""
+    @State private var ids: [String] = []
+
+    var body: some View {
+        TextField("Search", text: $query)
+            .onChange(of: query) { _, new in
+                Task {
+                    let result = try await client.search(
+                        SearchFnSearchParams(resource: "tasks", query: new)
+                    )
+                    ids = result.map(String.init(describing:))
+                }
+            }
+        List(ids, id: \.self) { Text($0) }
+    }
+}
+```
+
+## Next steps
+
+- [Apple runtime deep-dive](/docs/documentation/apple/index)
+- [Swift reference](/docs/reference/swift)

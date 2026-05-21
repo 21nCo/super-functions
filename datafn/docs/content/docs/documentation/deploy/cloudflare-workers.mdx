@@ -1,0 +1,195 @@
+---
+title: "Deploy to Cloudflare Workers"
+description: "Run DataFn at the edge with D1, Hyperdrive, or your own Postgres."
+audience: guide
+applies_to: server
+---
+
+Cloudflare Workers run DataFn close to your users. The tradeoffs are real — limited CPU, specific runtime constraints — but for read-heavy global apps it's hard to beat the latency.
+
+## Tradeoffs
+
+- **Excellent**: Sub-50ms latency worldwide. Zero cold starts. Per-request billing.
+- **Good**: WebSockets work via the WebSocket API (Hibernatable WebSocket if you want them suspended between messages).
+- **Watch out**: 30s CPU limit per request (10s on free tier). Some Node-only adapters don't work; pick edge-compatible drivers.
+
+## Database options
+
+| Option | When |
+| --- | --- |
+| **D1** (Cloudflare's SQLite) | Read-heavy global apps; you can shard writes by namespace. |
+| **Hyperdrive + your Postgres** | You want Postgres, with edge-cached connection pooling. |
+| **Turso** (libSQL) | You want SQLite semantics with multi-region replication. |
+| **Neon** (over Hyperdrive) | Postgres with branch-per-preview and edge pooling. |
+
+D1 is the lowest-friction; Hyperdrive is the right answer for most production apps. The DataFn Drizzle adapter supports all four.
+
+## 1. Project scaffold
+
+```bash
+npx wrangler init my-app
+cd my-app
+npm install @datafn/server @datafn/core @datafn/client
+npm install drizzle-orm hono
+```
+
+For D1:
+
+```bash
+npx wrangler d1 create my-app-db
+```
+
+Add the binding to `wrangler.jsonc`:
+
+```jsonc
+{
+  "name": "my-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "my-app-db", "database_id": "<your-id>" }
+  ]
+}
+```
+
+## 2. Worker entry
+
+```typescript
+import { Hono } from "hono";
+import { drizzle } from "drizzle-orm/d1";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toHono } from "@superfunctions/http-hono";
+import { schema } from "../shared/schema";
+
+type Env = {
+  DB: D1Database;
+};
+
+export default {
+  async fetch(req: Request, env: Env) {
+    const db = drizzle(env.DB);
+    const datafn = await createDatafnServer({
+      schema,
+      db: drizzleAdapter({ db, dialect: "sqlite" }),
+      authorize: async () => true,
+    });
+    const app = new Hono();
+    app.route("/", toHono(datafn.router));
+    return app.fetch(req);
+  },
+};
+```
+
+The server is constructed per-request. That sounds expensive — and it is, ~1–2ms — but D1 caches the schema validation at the V8 isolate level, so subsequent requests are sub-millisecond.
+
+For higher throughput, hoist the construction:
+
+```typescript
+let datafnPromise: ReturnType<typeof createDatafnServer> | null = null;
+
+export default {
+  async fetch(req: Request, env: Env) {
+    if (!datafnPromise) {
+      datafnPromise = createDatafnServer({
+        schema,
+        db: drizzleAdapter({ db: drizzle(env.DB), dialect: "sqlite" }),
+        authorize: async () => true,
+      });
+    }
+    const datafn = await datafnPromise;
+    const app = new Hono();
+    app.route("/", toHono(datafn.router));
+    return app.fetch(req);
+  },
+};
+```
+
+The hoisted version uses module-level state, which is per-isolate, not per-request. Works fine in Workers.
+
+## 3. Migrations
+
+For D1:
+
+```bash
+npx @datafn/cli drizzle-codegen --schema shared/schema.ts --out src/db.ts
+npx drizzle-kit generate --config drizzle.config.ts
+npx wrangler d1 migrations apply my-app-db
+```
+
+For Hyperdrive + Postgres, point Drizzle Kit at the same Postgres connection (not at Hyperdrive — migrations need a direct connection).
+
+## 4. WebSockets
+
+Cloudflare Workers support WebSockets via the Durable Object API. The DataFn WS handler is compatible:
+
+```typescript
+import { DatafnServer } from "@datafn/server";
+
+export class DatafnWsRoom {
+  constructor(private state: DurableObjectState, private datafn: DatafnServer) {}
+
+  async fetch(req: Request) {
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    server.accept();
+    this.datafn.websocketHandler.addClient(server as any, {/* auth */});
+    server.addEventListener("message", (e) =>
+      this.datafn.websocketHandler.handleMessage(server as any, (e as MessageEvent).data),
+    );
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+}
+```
+
+Use **Hibernatable WebSockets** for cost-effective long-lived connections — the DO suspends between messages, no CPU charged while idle.
+
+## 5. Environment variables
+
+Set via `wrangler secret put`:
+
+```bash
+echo $DATABASE_URL | npx wrangler secret put DATABASE_URL
+```
+
+Access via `env.DATABASE_URL` in the worker.
+
+## 6. Deploy
+
+```bash
+npx wrangler deploy
+```
+
+That's it. Logs are at `wrangler tail`; the dashboard has analytics.
+
+## Where it falls down
+
+- **No filesystem** — anything that wants to read a file at startup won't work. Bundle the schema as a TypeScript import, not a JSON file read.
+- **No native Node modules** — `better-sqlite3` won't work. Use D1 or Turso.
+- **30s CPU limit** — large `/datafn/clone` calls may need pagination via the `next` cursor.
+- **No long-running schedulers** — use Cron Triggers for retention pruning:
+
+```jsonc
+{
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}
+```
+
+```typescript
+export default {
+  async fetch(req: Request, env: Env) { /* ... */ },
+  async scheduled(event: ScheduledEvent, env: Env) {
+    // run prune logic
+  },
+};
+```
+
+## See also
+
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Drizzle adapter](/docs/documentation/database/drizzle)

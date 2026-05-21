@@ -1,0 +1,103 @@
+---
+title: "Quickstart: Flask"
+description: "Mount DataFn on Flask in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+DataFn's Python handlers are async coroutines. Flask is synchronous by default, so we use Flask's built-in `flask[async]` support to await the handlers.
+
+## 1. Scaffold
+
+```bash
+mkdir flask-datafn && cd flask-datafn
+python -m venv .venv
+source .venv/bin/activate
+pip install "flask[async]" datafn sqlalchemy psycopg2-binary
+```
+
+## 2. Schema
+
+`schema.py`:
+
+```python
+schema = {
+    "capabilities": ["timestamps", "audit"],
+    "resources": [
+        {
+            "name": "tasks",
+            "version": 1,
+            "idPrefix": "tsk",
+            "fields": [
+                {"name": "title", "type": "string", "required": True},
+                {"name": "completed", "type": "boolean", "required": True, "default": False},
+            ],
+            "indices": {"base": ["title", "completed"]},
+        }
+    ],
+}
+```
+
+## 3. Server
+
+`app.py`:
+
+```python
+from flask import Flask, request, jsonify
+from datafn import create_datafn_server
+from datafn.adapters.sqlalchemy import sqlalchemy_adapter
+from sqlalchemy import create_engine
+from schema import schema
+
+engine = create_engine("postgresql://localhost/datafn_dev")
+db = sqlalchemy_adapter(engine, dialect="postgres")
+
+datafn = create_datafn_server({
+    "schema": schema,
+    "db": db,
+    "authorize": lambda ctx, action, payload: True,
+})
+
+app = Flask(__name__)
+
+ROUTES = [
+    "/datafn/query",
+    "/datafn/mutation",
+    "/datafn/transact",
+    "/datafn/seed",
+    "/datafn/clone",
+    "/datafn/pull",
+    "/datafn/push",
+]
+
+def make_view(path: str):
+    handler = datafn["routes"][f"POST {path}"]
+
+    async def view():
+        payload = request.get_json()
+        ctx = {"user": getattr(request, "user", None)}
+        return jsonify(await handler(ctx, payload))
+
+    view.__name__ = path.replace("/", "_")
+    return view
+
+for path in ROUTES:
+    app.add_url_rule(path, view_func=make_view(path), methods=["POST"])
+```
+
+## 4. Run
+
+```bash
+flask --app app run --port 3000
+```
+
+```bash
+curl -X POST http://localhost:3000/datafn/query \
+  -H 'content-type: application/json' \
+  -d '{"resource":"tasks","version":1,"limit":10}'
+```
+
+## Where to next
+
+- Inject `request.user` via a `before_request` handler to honor Flask's session conventions.
+- See [Authorization](/docs/documentation/server/authorization) for tying `ctx.user` to DataFn's authz callback.

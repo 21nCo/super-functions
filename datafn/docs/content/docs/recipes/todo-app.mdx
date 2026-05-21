@@ -1,0 +1,155 @@
+---
+title: "Recipe: Todo App"
+description: "The minimum viable end-to-end DataFn app: schema, server, client, optimistic UI."
+audience: guide
+applies_to: both
+---
+
+This is the canonical starting point: a single `tasks` resource with create / toggle-complete / soft-delete. By the end you'll have offline-capable optimistic UI and live updates across tabs.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit", "trash"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true, maxLength: 200 },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["completed", "createdAt"] },
+    },
+  ],
+});
+```
+
+## Server
+
+```typescript
+import { Hono } from "hono";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toHono } from "@superfunctions/http-hono";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import { schema } from "../shared/schema.js";
+
+const db = drizzle(new Database("dev.db"));
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "sqlite" }),
+  authorize: async (ctx) => Boolean(ctx.session?.userId),
+  namespaceProvider: {
+    getNamespace: (ctx) => `user:${ctx.session.userId}`,
+    getActorId: (ctx) => ctx.session.userId,
+  },
+});
+
+const app = new Hono();
+app.use("*", attachSession); // your auth middleware
+app.route("/", toHono(datafn.router));
+
+export default app;
+```
+
+`attachSession` is your existing auth middleware; it must populate `ctx.session.userId`.
+
+## Client
+
+```typescript
+import { createDatafnClient, IndexedDbStorageAdapter } from "@datafn/client";
+import { schema } from "./schema";
+
+export const client = createDatafnClient({
+  schema,
+  clientId: crypto.randomUUID(),
+  storage: new IndexedDbStorageAdapter("todos-db"),
+  sync: { remote: "/datafn", offlinability: true, ws: true },
+});
+```
+
+## UI (React)
+
+```tsx
+import { useEffect, useState } from "react";
+import { client } from "./client";
+
+export function Todos() {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    const signal = client.table("tasks").signal({
+      filters: { completed: { $eq: false } },
+      sort: ["createdAt:desc"],
+      limit: 50,
+    });
+    return signal.subscribe((value) => setTasks(value ?? []));
+  }, []);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    await client.table("tasks").mutate({
+      operation: "insert",
+      record: { title, completed: false },
+    });
+    setTitle("");
+  }
+
+  async function toggle(id: string, completed: boolean) {
+    await client.table("tasks").mutate({
+      operation: "merge",
+      id,
+      record: { completed: !completed },
+    });
+  }
+
+  async function remove(id: string) {
+    await client.table("tasks").trash(id);
+  }
+
+  return (
+    <main>
+      <form onSubmit={add}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <button>Add</button>
+      </form>
+      <ul>
+        {tasks.map((t) => (
+          <li key={t.id}>
+            <input
+              type="checkbox"
+              checked={t.completed}
+              onChange={() => toggle(t.id, t.completed)}
+            />
+            {t.title}
+            <button onClick={() => remove(t.id)}>×</button>
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}
+```
+
+## What you get for free
+
+- **Optimistic UI**: `mutate(...)` updates local IndexedDB and notifies signals synchronously. The server round-trip is in the background.
+- **Live updates**: open the app in two tabs — toggling a task in one tab updates the other within ~100ms via the WebSocket cursor + pull.
+- **Offline writes**: kill the network, add tasks, restore the network — they replay automatically. The `offlinability` flag does this.
+- **Soft-delete**: `trash(id)` hides the row from default queries but keeps it recoverable via `restore(id)`.
+- **Audit**: `createdBy` and `updatedBy` are filled in automatically via the `audit` capability + `getActorId`.
+
+## Where to go next
+
+- [Optimistic UI](/docs/recipes/optimistic-ui) — handle errors when the server rejects a mutation.
+- [Offline conflicts](/docs/recipes/offline-conflicts) — what happens if two clients toggle the same task while offline.
+- [AuthFn integration](/docs/recipes/authfn-integration) — replace the placeholder `attachSession` with a real auth integration.

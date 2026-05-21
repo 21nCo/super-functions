@@ -1,0 +1,112 @@
+---
+title: Relevance Testing
+description: Make search quality measurable, not anecdotal.
+---
+
+You'll get reports that "search is broken" with no reproduction. Relevance tests turn vibes into a regression suite — every behavior the team cares about becomes an assertion.
+
+## Pattern
+
+Define a corpus and a set of `(query, expected top results)` pairs. Run the corpus through the adapter under test, run each query, assert the top N matches.
+
+## Example
+
+```typescript
+import { describe, it, expect, beforeAll } from "vitest";
+import { createMemorySearchClient } from "@searchfn/client";
+
+const client = createMemorySearchClient({ defaults: { limit: 10 } });
+
+const corpus = [
+  { id: "1", fields: { title: "Search engine tuning", body: "BM25 and ranking" } },
+  { id: "2", fields: { title: "Database indexes", body: "B-tree, hash, GIN" } },
+  { id: "3", fields: { title: "Full-text search in Postgres", body: "tsvector and tsquery" } },
+  { id: "4", fields: { title: "Vector search basics", body: "embeddings and cosine similarity" } },
+];
+
+beforeAll(async () => {
+  await client.initialize?.({
+    resources: [{ name: "articles", searchFields: ["title", "body"] }],
+  });
+  await client.index({ resource: "articles", documents: corpus });
+});
+
+describe("relevance", () => {
+  it("ranks title match over body match", async () => {
+    const ids = await client.search({ resource: "articles", query: "search" });
+    expect(ids[0]).toBe("1"); // title contains "search"
+  });
+
+  it("BM25 query returns the most relevant doc first", async () => {
+    const ids = await client.search({ resource: "articles", query: "BM25" });
+    expect(ids[0]).toBe("1");
+  });
+
+  it("vector keyword finds vector doc", async () => {
+    const ids = await client.search({ resource: "articles", query: "vector" });
+    expect(ids).toContain("4");
+  });
+
+  it("fuzzy catches typos", async () => {
+    const ids = await client.search({ resource: "articles", query: "tuneing", fuzzy: true });
+    expect(ids).toContain("1");
+  });
+});
+```
+
+## Golden corpus
+
+For production-scale apps, keep a fixed "golden corpus" — a small sample of representative documents — separate from production data. Run relevance assertions against the golden corpus on every commit.
+
+```
+fixtures/
+  golden-corpus.json    # 50 documents, never edited
+  golden-queries.json   # 100 queries with expected top results
+```
+
+When relevance changes, the test fails and forces a conversation. Sometimes the new ranking is correct (better than before), in which case you bump the expected results. Either way, no silent regressions.
+
+## Metrics, not just ordering
+
+Per-query checks ("doc X must be first") are fragile — small tokenizer tweaks can shuffle the top results. Pair with metrics:
+
+```typescript
+function ndcg(actualIds: string[], expectedIds: string[], k = 10): number {
+  // Normalized Discounted Cumulative Gain
+  let dcg = 0;
+  for (let i = 0; i < Math.min(k, actualIds.length); i++) {
+    const relevance = expectedIds.includes(actualIds[i]) ? 1 : 0;
+    dcg += relevance / Math.log2(i + 2);
+  }
+  const idealDcg = Array.from({ length: Math.min(k, expectedIds.length) }, (_, i) => 1 / Math.log2(i + 2)).reduce((a, b) => a + b, 0);
+  return idealDcg ? dcg / idealDcg : 0;
+}
+
+it("maintains nDCG@10 above 0.7 for production queries", async () => {
+  const scores = await Promise.all(
+    productionQueries.map(async (q) => {
+      const ids = await client.search({ resource: "articles", query: q.text });
+      return ndcg(ids as string[], q.expectedRelevant);
+    })
+  );
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  expect(avg).toBeGreaterThan(0.7);
+});
+```
+
+This is more robust to minor reranking than per-query top-1 checks.
+
+## Recording user feedback
+
+Once relevance tests exist, real user signals become the data source:
+
+- When a user clicks a result, record the (query, clicked id) pair.
+- When a user immediately re-queries with a similar string, mark the original as a miss.
+- Aggregate weekly into the golden corpus.
+
+The relevance test suite grows from your actual users' needs rather than developer guesses.
+
+## See also
+
+- [BM25 scoring](/docs/documentation/core/bm25)
+- [Index snapshot and restore](/docs/recipes/index-snapshot-restore) — for repeatable test fixtures

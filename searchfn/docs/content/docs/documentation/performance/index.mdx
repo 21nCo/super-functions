@@ -1,0 +1,51 @@
+---
+title: Performance
+sidebarTitle: Overview
+description: Where to look when SearchFn is slow.
+---
+
+Performance work on SearchFn falls into three buckets. The right move depends on which bucket your workload is in.
+
+| Symptom | Bucket | Read |
+| --- | --- | --- |
+| Indexing takes hours | Indexing throughput | [Indexing throughput](/docs/documentation/performance/indexing-throughput) |
+| Search latency over budget | Query latency | [Query latency](/docs/documentation/performance/query-latency) |
+| Memory or storage growing too fast | Cache tuning | [Cache tuning](/docs/documentation/performance/cache-tuning) |
+
+## Profile before tuning
+
+Before changing constants, measure:
+
+- Server `durationMs` p50 / p95 / p99 per operation (from the structured logger).
+- Backend latency (Postgres EXPLAIN ANALYZE, Meilisearch slow-query log, ES profile API).
+- Memory usage during indexing.
+
+A 30-minute profiling session beats a week of guessing.
+
+## Targets
+
+For most apps:
+
+- Query p99 `<100 ms`.
+- Indexing throughput `>1000 docs/sec` per server.
+- Memory usage stable under sustained load.
+
+If you're way off these numbers, something's wrong before tuning — almost always (a) wrong adapter pick, (b) missing index on Postgres, or (c) indexing too many fields.
+
+## When the engine is the bottleneck
+
+The built-in engine (`@searchfn/core`) is fast but not Rust-fast. Practical limits:
+
+- ~50k docs/sec indexing on a single core (text-only, average field size).
+- ~10k queries/sec exact match, single core, warm cache.
+- Fuzzy queries are 5–20x slower than exact.
+
+If you need more than that out of the JS engine, look at:
+
+- `@searchfn/core-wasm` (Rust+WASM build of the same engine — see [WASM core](/docs/documentation/core-wasm/index)).
+- Switching to an external adapter (Postgres / Meilisearch / Elasticsearch).
+
+## See also
+
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Core engine overview](/docs/documentation/core/index)

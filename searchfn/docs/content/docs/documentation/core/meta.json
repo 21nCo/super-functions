@@ -1,0 +1,12 @@
+{
+  "title": "Core Engine",
+  "description": "Inside @searchfn/core",
+  "pages": [
+    "index",
+    "pipeline",
+    "inverted-index",
+    "bm25",
+    "fuzzy",
+    "customization"
+  ]
+}

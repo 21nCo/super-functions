@@ -1,0 +1,14 @@
+{
+  "title": "Production & Deploy",
+  "description": "Platform-by-platform deploy guides and scaling patterns",
+  "pages": [
+    "index",
+    "vercel",
+    "cloudflare-workers",
+    "fly",
+    "railway",
+    "docker",
+    "kubernetes",
+    "scaling"
+  ]
+}

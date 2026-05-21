@@ -1,0 +1,86 @@
+---
+title: "Input Sanitization"
+description: "Prototype pollution, path traversal, and type confusion — what DataFn rejects."
+audience: reference
+applies_to: server
+---
+
+Beyond rate-limit, payload-size, and schema validation, DataFn runs three sanitization sub-layers on every mutation payload. These exist for defense-in-depth against attack patterns that even a strict schema can't catch.
+
+## Prototype pollution
+
+JavaScript objects share a prototype chain. A malicious payload like `{ "__proto__": { "isAdmin": true } }` can mutate `Object.prototype` and inject properties into every object in the process.
+
+DataFn rejects any mutation record (or nested object) containing the keys:
+
+- `__proto__`
+- `constructor`
+- `prototype`
+
+The check is recursive — nested objects, arrays of objects, all subtrees. Rejections return `DFQL_INVALID` with `details.path` pointing at the offending key:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "DFQL_INVALID",
+    "message": "Prototype pollution key rejected",
+    "details": { "path": "record.metadata.__proto__" }
+  }
+}
+```
+
+## REST path traversal
+
+The auto-generated REST surface (`/datafn/rest/<resource>/<id>`) sanitizes path segments before forwarding to the DFQL layer. Rejected patterns:
+
+- `..` segments (after URL decoding).
+- Null bytes (`\0`).
+- Encoded slashes (`%2f`, `%5c`).
+- Empty segments inside the path (unlikely to be benign).
+
+A request like `GET /datafn/rest/tasks/..%2fadmin%2fusers` is rejected at the router layer before reaching the database adapter. There's no way to escape the resource through URL encoding.
+
+## Field value type validation
+
+Every field value in a mutation record is checked against its declared schema type. This catches:
+
+- A string field receiving an object: `{ "title": { "__proto__": ... } }`
+- An object field receiving a function: `{ "metadata": function() {} }` (impossible over JSON, but covered for defense-in-depth)
+- A number field receiving `NaN` or `Infinity`.
+- A boolean field receiving `"true"` (string) instead of `true`.
+
+Rejections return `DFQL_INVALID` with `details.path` pointing at the offending field:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "DFQL_INVALID",
+    "message": "Expected string for field 'title', got object",
+    "details": { "path": "record.title", "expected": "string", "actual": "object" }
+  }
+}
+```
+
+## What's not covered
+
+- **SQL injection** — DataFn never builds raw SQL from user input. The Drizzle / SQLAlchemy / custom adapter contracts use parameterized statements. There is no DFQL feature that interpolates user input into SQL.
+- **NoSQL injection** — same: DFQL is compiled to typed queries, never to string templates.
+- **Server-side template injection** — DataFn is a data layer, not a template engine. No string interpolation runs server-side.
+- **XSS** — DataFn stores whatever values come in. If you store user-supplied HTML, sanitize at read time in your UI (the standard escaping rules apply).
+
+## Plugins and untrusted input
+
+Plugin hooks (`beforeMutation`, `afterQuery`, etc.) receive the same sanitized payloads as the execution layer. If your plugin treats `payload` as code (e.g. `eval(payload.metadata.script)`), DataFn cannot help you — write sanitizing checks inside the plugin.
+
+Don't do this. Don't run user-supplied JavaScript server-side, ever.
+
+## Disabling for tests
+
+There is no off-switch. Sanitization runs on every mutation. If a test needs to inject deeply abnormal data (e.g. to exercise an old migration), do it via the database adapter directly, not through DFQL.
+
+## See also
+
+- [Layered model](/docs/documentation/security/layered-model)
+- [Field-level authz](/docs/documentation/security/field-level-authz)

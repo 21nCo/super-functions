@@ -1,0 +1,45 @@
+---
+title: Codex Setup
+description: Use SearchFn with OpenAI Codex CLI and Codex agents.
+---
+
+## Codex CLI
+
+In `~/.codex/AGENTS.md`:
+
+```markdown
+## SearchFn
+
+Documentation: https://searchfn.com/llms-full.txt
+
+When working in a repo with @searchfn/* dependencies:
+- Pick adapters from this matrix:
+  - In-process, tests, CLIs → @searchfn/adapter-memory
+  - Browser, offline-first → @searchfn/adapter-indexeddb
+  - Server + Postgres → @searchfn/adapter-postgres
+  - Dedicated search → @searchfn/adapter-meilisearch
+  - Large scale → @searchfn/adapter-elasticsearch / @searchfn/adapter-opensearch
+- Always call `initialize({ resources: [...] })` before indexing.
+- Don't hand-roll a tokenizer; use @searchfn/core.
+- DataFn integration: @searchfn/datafn-provider, never custom.
+- Errors follow envelopes: { ok: true, result } or { ok: false, error: { code, message } }.
+
+Patterns to copy:
+- Server bootstrap: createSearchFnServer({ adapter, basePath, authorize, logger })
+- Client bootstrap: createSearchClient({ adapter, defaults })
+- Provider bootstrap: createSearchProvider(adapter, { resourceFields })
+```
+
+## Pinning specific docs
+
+Have the agent fetch `https://searchfn.com/llms.txt` first to get the outline, then specific pages as needed:
+
+```
+@web https://searchfn.com/docs/quickstart/hono
+@web https://searchfn.com/docs/reference/adapters/postgres
+```
+
+## See also
+
+- [MCP server](/docs/ai-resources/mcp)
+- [llms.txt](/docs/ai-resources/llms-txt)

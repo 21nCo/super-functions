@@ -1,0 +1,122 @@
+---
+title: Query Latency
+description: Where the milliseconds go and how to claw them back.
+---
+
+A typical SearchFn query budget:
+
+| Stage | Memory adapter | Postgres adapter | Meilisearch |
+| --- | --- | --- | --- |
+| Network in | 1–5 ms | 1–5 ms | 1–5 ms |
+| Validate | `<1 ms` | `<1 ms` | `<1 ms` |
+| Authorize | 0–5 ms | 0–5 ms | 0–5 ms |
+| Adapter | 1–10 ms | 5–50 ms | 5–30 ms |
+| Network out | 1–5 ms | 1–5 ms | 1–5 ms |
+| **Total p99** | **5–30 ms** | **10–80 ms** | **10–50 ms** |
+
+The adapter time is where you'll spend most of your tuning budget.
+
+## Fuzzy is expensive
+
+A 2-edit fuzzy on a 100k-vocab corpus typically adds 30–100 ms per query. If fuzzy is on by default, turn it off for autocomplete (where prefix is correct) and reserve fuzzy for the final "no results" fallback.
+
+```typescript
+// First try exact
+let ids = await client.search({ resource: "articles", query });
+
+// Only if no results, try fuzzy
+if (ids.length === 0 && query.length >= 4) {
+  ids = await client.search({ resource: "articles", query, fuzzy: 1 });
+}
+```
+
+## Limit the result size
+
+```typescript
+// 10k results means 10k records scored, sorted, serialized
+await client.search({ resource: "articles", query, limit: 10000 });
+
+// 10 results — same scoring work, but tiny serialization
+await client.search({ resource: "articles", query, limit: 10 });
+```
+
+The scoring stage doesn't short-circuit at `limit` (it has to score all candidates to rank them), but serialization, network, and downstream record fetching scale linearly with the limit.
+
+For UI: `limit: 50` is almost always enough.
+
+## fieldBoosts and field restriction
+
+```typescript
+// Search all fields
+await client.search({ resource: "articles", query });
+
+// Only title — faster, more relevant
+await client.search({ resource: "articles", query, fields: ["title"] });
+```
+
+Field restriction is a 2–10x speedup for queries that don't actually want body matches.
+
+## Cache hits
+
+The built-in engine (Memory, IndexedDB) reads postings through an LRU cache. Hits are O(1); misses go to IndexedDB or the underlying map.
+
+```typescript
+new IndexedDbAdapter({
+  dbName: "search",
+  cache: { terms: 4096, postings: 8192 },
+});
+```
+
+Default caches handle most workloads. Bump them if you see cold queries dominating p99.
+
+For Postgres, the OS file cache holds index pages. After ~30 minutes of representative load, the cache is warm. Cold-cache p99 is 5–10x higher.
+
+## searchAll merge cost
+
+```typescript
+await client.searchAll({
+  query,
+  resources: ["articles", "products", "users", "categories"], // 4 resources
+});
+```
+
+Per-resource searches run in parallel (up to 10 concurrent in the default fallback). The merge sort is O(N log N) where N is total results. With `limitPerResource: 10` and 10 resources, that's 100 results sorted — trivial.
+
+The cost goes up if resources differ wildly in size — large resources can dominate the merge. See [cross-resource ranking](/docs/recipes/cross-resource-ranking).
+
+## Postgres EXPLAIN
+
+If a Postgres-adapter query is slow:
+
+```sql
+EXPLAIN ANALYZE
+SELECT id, ts_rank(search_tsv, plainto_tsquery('english', 'ranking')) AS score
+FROM _searchfn_articles
+WHERE search_tsv @@ plainto_tsquery('english', 'ranking')
+ORDER BY score DESC
+LIMIT 10;
+```
+
+What you want to see: `Bitmap Heap Scan` on the GIN index. If you see `Seq Scan`, the GIN index is missing or the query plan is off — vacuum/analyze the table.
+
+## Meilisearch latency
+
+Meilisearch has built-in latency in its task queue. Search queries don't go through the task queue, but index writes do. If the queue is backed up, query latency stays low but writes take seconds-to-minutes.
+
+Monitor via `/stats` and `/tasks?status=processing`.
+
+## Elasticsearch profile
+
+ES has a profile API:
+
+```json
+{ "query": { ... }, "profile": true }
+```
+
+The profile shows per-shard breakdown. Look for high `rewrite_time_in_nanos` (often a sign of bad query shape).
+
+## See also
+
+- [BM25 scoring](/docs/documentation/core/bm25)
+- [Cache tuning](/docs/documentation/performance/cache-tuning)
+- [Indexing throughput](/docs/documentation/performance/indexing-throughput)

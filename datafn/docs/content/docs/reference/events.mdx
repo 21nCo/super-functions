@@ -1,0 +1,167 @@
+---
+title: "Events Reference"
+description: "Plugin hook events fired during query, mutation, and sync execution."
+audience: reference
+applies_to: both
+---
+
+DataFn plugins receive structured events. The same event shape is used on client and server so the same hook can run in both places.
+
+## DatafnEvent
+
+```typescript
+type DatafnEvent =
+  | "beforeQuery"  | "afterQuery"
+  | "beforeMutation" | "afterMutation"
+  | "beforeTransact" | "afterTransact"
+  | "beforeSync" | "afterSync";
+```
+
+| Event | Fires when | Mutating? |
+| --- | --- | --- |
+| `beforeQuery` | A `/datafn/query` (or local read) is about to execute | yes — return a modified query to alter the request |
+| `afterQuery` | A query finished | yes — return a modified result set |
+| `beforeMutation` | A `/datafn/mutation` (or local write) is about to execute | yes — return a modified mutation or `{ abort: { code, message } }` |
+| `afterMutation` | A mutation finished | no — observation only |
+| `beforeTransact` | A `/datafn/transact` is about to execute | yes — modify steps |
+| `afterTransact` | A transaction finished | no |
+| `beforeSync` | A sync push or pull is about to execute | yes — see hook semantics below |
+| `afterSync` | A sync round-trip finished | no |
+
+## DatafnEventFilter
+
+Plugins may scope their hooks to specific resources or operations:
+
+```typescript
+type DatafnEventFilter = {
+  resource?: string | string[];
+  operation?: DfqlOperation | DfqlOperation[];
+};
+```
+
+`undefined` matches everything.
+
+## DatafnHookContext
+
+The argument passed to each hook:
+
+```typescript
+type DatafnHookContext = {
+  event: DatafnEvent;
+  resource?: string;
+  payload: unknown; // event-specific (DfqlQuery, DfqlMutation, …)
+  ctx?: unknown;    // server request context (e.g. ctx.user)
+  meta?: Record<string, unknown>;
+};
+```
+
+## Defining a plugin
+
+```typescript
+import type { DatafnPlugin } from "@datafn/core";
+
+export const myPlugin: DatafnPlugin = {
+  name: "log-mutations",
+  hooks: [
+    {
+      event: "beforeMutation",
+      filter: { resource: ["tasks", "projects"] },
+      handler: async (ctx) => {
+        console.log("mutation", ctx.payload);
+        return undefined; // pass through unchanged
+      },
+    },
+    {
+      event: "afterMutation",
+      handler: async (ctx) => {
+        // observation only; don't return a value
+        await metrics.record("mutation", { resource: ctx.resource });
+      },
+    },
+  ],
+};
+```
+
+Register on the server via `plugins: [myPlugin]` in `createDatafnServer`, and on the client via `plugins: [myPlugin]` in `createDatafnClient`.
+
+## Return values
+
+### before* hooks
+
+A before-hook may return:
+
+- `undefined` → pass through unchanged.
+- A modified payload of the same shape → the modified value replaces the original (for example a `beforeQuery` may extend `filters`).
+- `{ abort: { code: DatafnErrorCode; message: string; details?: unknown } }` → abort execution and return that error to the caller.
+
+Multiple before-hooks are run in registration order; the first abort short-circuits the rest.
+
+### after* hooks
+
+After-hooks are observation only. Return value is ignored. Throwing aborts subsequent after-hooks but does **not** roll back the executed mutation. Use throwing only to fail-fast in development.
+
+## Common patterns
+
+### Field redaction
+
+```typescript
+{
+  event: "afterQuery",
+  filter: { resource: "users" },
+  handler: async (ctx) => {
+    const result = ctx.payload as { data: any[] };
+    return {
+      ...result,
+      data: result.data.map((row) => {
+        if (ctx.ctx?.user?.role !== "admin") delete row.email;
+        return row;
+      }),
+    };
+  },
+}
+```
+
+### Computed timestamps
+
+```typescript
+{
+  event: "beforeMutation",
+  filter: { resource: "tasks", operation: ["insert", "merge"] },
+  handler: async (ctx) => {
+    const mut = ctx.payload as DfqlMutation;
+    return {
+      ...mut,
+      record: { ...mut.record, dueDateMs: new Date(mut.record.dueDate as string).getTime() },
+    };
+  },
+}
+```
+
+### Outbound webhooks
+
+```typescript
+{
+  event: "afterMutation",
+  filter: { resource: "orders" },
+  handler: async (ctx) => {
+    await sendWebhook("https://hooks.example.com/orders", ctx.payload);
+  },
+}
+```
+
+### Hard abort
+
+```typescript
+{
+  event: "beforeMutation",
+  filter: { resource: "tasks" },
+  handler: async (ctx) => {
+    const mut = ctx.payload as DfqlMutation;
+    if (mut.operation === "delete" && !ctx.ctx?.user?.isAdmin) {
+      return { abort: { code: "FORBIDDEN", message: "Only admins can delete tasks" } };
+    }
+  },
+}
+```
+
+See [Plugins → Custom Plugins](/docs/documentation/plugins/custom-plugins) for narrative coverage.

@@ -1,0 +1,17 @@
+{
+  "title": "Quickstart",
+  "description": "Get DataFn running with your stack in under 10 minutes",
+  "root": true,
+  "pages": [
+    "index",
+    "hono",
+    "express",
+    "bun",
+    "sveltekit",
+    "nextjs",
+    "fastapi",
+    "starlette",
+    "flask",
+    "swift"
+  ]
+}

@@ -1,0 +1,95 @@
+---
+title: Fuzzy Matching
+description: How SearchFn handles typos — Levenshtein distance with vocabulary expansion.
+---
+
+Fuzzy matching answers: "the user typed `serachfn`, did they mean `searchfn`?" The engine catches this by expanding each query term against the vocabulary and matching anything within an edit distance threshold.
+
+## Enabling
+
+```typescript
+// At construction
+const client = createMemorySearchClient({
+  defaults: { fuzzy: true }, // boolean = max edit distance 2
+});
+
+// Per query
+await client.search({ resource: "articles", query: "serachfn", fuzzy: 1 });
+```
+
+| `fuzzy` value | Behavior |
+| --- | --- |
+| `false` | Disabled (default unless set in defaults) |
+| `true` | Max edit distance 2 |
+| `0` | Disabled (alias for `false`) |
+| `1` | Max edit distance 1 |
+| `2` | Max edit distance 2 |
+| `3` | Max edit distance 3 (max allowed) |
+
+Edit distances above 3 are rejected with `DFQL_INVALID` — anything looser stops being useful and starts dominating the result set.
+
+## Algorithm
+
+For each query term `qt`:
+
+1. Pre-filter by length: candidate terms must have `|len(t) - len(qt)| <= maxDistance`.
+2. Run Wagner-Fischer Levenshtein on each candidate.
+3. Accept terms with `distance <= maxDistance`.
+4. Expand the query term into the set of accepted candidates.
+5. Run normal scoring; fuzzy-expanded matches receive a `fuzzyPenalty` multiplier (default 0.5).
+
+## Cost
+
+Fuzzy expansion is linear in vocabulary size, gated by the length pre-filter. For a vocab of 100k terms and a 5-char query, the pre-filter typically reduces candidates to a few thousand, and Levenshtein on each runs in O(`m * n`) where `m, n` are term lengths.
+
+Empirically: a fuzzy search is 5–20x slower than an exact search on the same corpus.
+
+For latency-sensitive UI (autocomplete), prefer prefix matching (edge n-grams) which is exact and faster.
+
+## Per-field fuzzy
+
+Fuzzy applies to the whole query. To restrict it to specific fields, run two queries and merge:
+
+```typescript
+const exactHits = await client.search({ resource: "articles", query: "title:term", fields: ["title"] });
+const fuzzyHits = await client.search({ resource: "articles", query: "term", fields: ["body"], fuzzy: 1 });
+```
+
+(The current query parser doesn't support field-scoped fuzzy syntax; this pattern is the workaround.)
+
+## When fuzzy is wrong
+
+Fuzzy is often overused. It's the right tool for:
+
+- Search-as-you-type with users known to make typos
+- Long-form text where users approximate terms
+- Multilingual content where users spell phonetically
+
+It's the **wrong** tool for:
+
+- Structured fields (product SKUs, IDs, enum values)
+- Code identifiers (where `foo` and `bar` are different things, not variants)
+- Geographic names (a 2-edit fuzzy on "Paris" hits "Parts" and "Paros")
+
+For structured fields, disable fuzzy at the field level by restricting `fields:` to the unstructured ones only.
+
+## Configuration
+
+```typescript
+new MemoryAdapter({
+  fuzzy: {
+    maxDistance: 2,
+    minTermLength: 4,    // skip fuzzy for terms shorter than this
+    maxExpansionsPerTerm: 50, // cap how many candidates each term expands into
+    fuzzyPenalty: 0.5,
+  },
+});
+```
+
+`maxExpansionsPerTerm` is a critical knob in pathological cases. Without it, a 2-edit fuzzy on a 4-character common term can expand into hundreds of candidates, dominating the result set.
+
+## See also
+
+- [Pipeline (stop words and stemmer come first)](/docs/documentation/core/pipeline)
+- [BM25](/docs/documentation/core/bm25)
+- [Performance: query latency](/docs/documentation/performance/query-latency)

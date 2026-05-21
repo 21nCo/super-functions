@@ -1,0 +1,154 @@
+---
+title: "Conflict Resolution"
+description: "How DataFn resolves competing writes: last-writer-wins, version guards, and explicit merge policies."
+audience: reference
+applies_to: both
+---
+
+Two clients write to the same row before either has pushed. When their mutations arrive, who wins? DataFn ships three policies. Pick per-resource based on what the user expects.
+
+## Default: last-writer-wins (LWW)
+
+The default policy is **last writer by server timestamp**. When two mutations target the same row, the server applies them in `serverSeq` order — the later one wins, the earlier one is silently overwritten.
+
+This is the right answer for:
+
+- Status toggles (`completed: true`)
+- Display preferences (`themePreference: "dark"`)
+- Numeric flags where the most recent intent matters
+
+For most fields, you don't need anything else.
+
+## Optimistic concurrency: version guards
+
+For fields where you want to **refuse** the second writer instead of silently losing data, use `if` guards on the mutation:
+
+```typescript
+const task = await client.table("tasks").get(taskId);
+
+await client.table("tasks").mutate({
+  operation: "merge",
+  id: taskId,
+  record: { title: newTitle },
+  if: { updatedAt: { $eq: task.updatedAt } },
+});
+```
+
+The server evaluates the guard atomically with the write. If `updatedAt` has changed since `task` was loaded, the mutation fails with `CONFLICT`. The losing client is informed; the user can retry, merge, or discard.
+
+Use guards for:
+
+- Singular fields where data loss matters: title, body, name
+- Counter fields where you can't tolerate a missed increment
+- Permission lists, tag sets, settings
+
+## Explicit merge (server-side hook)
+
+When you want to preserve information from both writers — accumulator fields, set unions — handle the merge in a `beforeMutation` plugin:
+
+```typescript
+{
+  event: "beforeMutation",
+  filter: { resource: "items", operation: "merge" },
+  handler: async (ctx) => {
+    const mut = ctx.payload as DfqlMutation;
+    if (!mut.id) return;
+
+    const current = await server.db.findOne("items", mut.id);
+    if (!current) return;
+
+    return {
+      ...mut,
+      record: {
+        ...mut.record,
+        tags: union(current.tags ?? [], mut.record.tags ?? []),       // set union
+        views: (current.views ?? 0) + (mut.record.viewsDelta ?? 0),   // accumulator
+        version: (current.version ?? 0) + 1,
+      },
+    };
+  },
+}
+```
+
+This runs server-side against the canonical state. Use it for:
+
+- Set-shaped fields (tags, categories, watcher lists)
+- Counters (only correct when you compute deltas, not absolute values)
+- Anything where "lose less data" is more important than "fail fast"
+
+## Per-shape recommendations
+
+| Shape | Recommended policy |
+| --- | --- |
+| Single value (status, priority, name) | LWW for low-stakes; guard for high-stakes |
+| Counter (view count, like count) | Server-side hook with atomic INCR (Redis) |
+| Set (tags) | Server-side merge (union) |
+| Ordered list (kanban positions) | Fractional indexing — see [Kanban recipe](/docs/recipes/kanban-board) |
+| Bag of children | Model children as separate records |
+| Boolean flag | LWW |
+| User-typed text | Guard + UI conflict prompt |
+
+## What about CRDTs?
+
+For genuine concurrent text editing, DataFn pairs with a CRDT library (Yjs, Automerge, Loro). The CRDT handles concurrent edits; DataFn handles persistence and broadcast. See [Document collab recipe](/docs/recipes/document-collab).
+
+DataFn doesn't ship a CRDT engine because there's no single right CRDT for every use case — different libraries optimize for different shapes (text, JSON, lists).
+
+## Observing conflicts
+
+For ongoing visibility:
+
+```typescript
+const datafn = await createDatafnServer({
+  ...,
+  plugins: [
+    {
+      name: "conflict-metrics",
+      hooks: [
+        {
+          event: "afterMutation",
+          handler: async (ctx) => {
+            const mut = ctx.payload as DfqlMutation;
+            if (mut.if) {
+              metrics.increment("guard.applied", { resource: ctx.resource });
+            }
+          },
+        },
+      ],
+    },
+  ],
+});
+```
+
+Track guard-related `CONFLICT` errors separately from validation errors:
+
+```typescript
+authorize: async (ctx, action) => {
+  // ...
+},
+logger: {
+  warn: (msg, ctx) => {
+    if (ctx?.error?.code === "CONFLICT") {
+      metrics.increment("conflict", { resource: ctx.resource });
+    }
+  },
+}
+```
+
+## Pull-side reconciliation
+
+Pull responses include three buckets:
+
+- `records` — new rows from the server.
+- `merged` — rows the server modified (e.g. capability fields filled).
+- `deleted` — rows removed.
+
+The client applies them in order, then re-emits affected signals. If a local row was modified after the cursor but the server has a newer version, the server's version wins on the pull — your local optimistic write is reverted.
+
+This is consistent with LWW. To preserve local edits while syncing, use the offline buffer (mutations are queued, not lost) and the [Optimistic UI](/docs/recipes/optimistic-ui) pattern.
+
+## See also
+
+- [Sync overview](/docs/documentation/sync/overview)
+- [Offline conflicts recipe](/docs/recipes/offline-conflicts)
+- [Guards](/docs/documentation/advanced/guards)

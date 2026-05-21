@@ -1,0 +1,238 @@
+---
+title: "Kubernetes"
+description: "Production-shaped DataFn on Kubernetes with Helm, HPA, and graceful rollouts."
+audience: guide
+applies_to: server
+---
+
+DataFn on Kubernetes looks like any other stateless HTTP service with one shared sequence store. The non-obvious bits are graceful shutdown and the migration-as-Job pattern.
+
+## Manifest
+
+```yaml
+# datafn-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datafn
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: datafn }
+  template:
+    metadata:
+      labels: { app: datafn }
+    spec:
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: datafn
+          image: ghcr.io/your-org/datafn-app:latest
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: datafn-secrets, key: database-url } } }
+            - { name: REDIS_URL,    valueFrom: { secretKeyRef: { name: datafn-secrets, key: redis-url } } }
+            - { name: NODE_ENV, value: production }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1,    memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /datafn/status, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /datafn/status, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]  # let load balancers detach
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datafn
+spec:
+  selector: { app: datafn }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+```
+
+A few notes:
+
+- **`terminationGracePeriodSeconds: 15`** matches DataFn's `shutdownTimeoutMs: 10_000` plus a 5s buffer.
+- **`preStop: sleep 5`** is the standard "let kube-proxy / your ingress detach me before I start refusing requests" trick.
+- **Readiness probe** hits `/datafn/status` — make sure `authorize` allows the status action without auth.
+
+## Migrations as a Job
+
+```yaml
+# migrate-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: datafn-migrate-{{ .Release.Revision }}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/your-org/datafn-app:latest
+          command: ["node", "dist/migrate.js"]
+          env:
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: datafn-secrets, key: database-url } } }
+  backoffLimit: 1
+```
+
+Run the Job before rolling out the new Deployment. With Argo CD or Flux, configure the Job as a pre-sync hook.
+
+## HPA
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: datafn }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: datafn
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+    - type: Resource
+      resource: { name: memory, target: { type: Utilization, averageUtilization: 75 } }
+```
+
+DataFn is mostly CPU-bound during DFQL validation. Scaling on CPU at 60% utilization is a reasonable default.
+
+## Pod disruption budget
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: datafn }
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: datafn }
+```
+
+Prevents kube from draining all replicas during cluster maintenance.
+
+## Postgres
+
+You have three choices:
+
+1. **Managed Postgres** (recommended): RDS, Cloud SQL, Azure Postgres. Outside the cluster.
+2. **CloudNativePG operator**: high-availability Postgres inside the cluster.
+3. **Single-node Postgres in a StatefulSet**: cheap, fragile. Hobby only.
+
+If you go with option 2 or 3, also run [PgBouncer](https://www.pgbouncer.org/) as a Deployment in front of Postgres — connection pool exhaustion is the typical first failure mode.
+
+## Redis
+
+For the sequence store and rate limiter:
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: redis }
+spec:
+  serviceName: redis
+  replicas: 1
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports: [{ name: redis, containerPort: 6379 }]
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 10Gi } }
+```
+
+For HA Redis, use the Redis Operator (`redis-operator` or `kvrocks-operator`) or a managed service.
+
+## Helm chart
+
+A minimal `Chart.yaml`:
+
+```yaml
+apiVersion: v2
+name: datafn-app
+version: 0.1.0
+appVersion: "0.3.0"
+```
+
+Put the manifests in `templates/`. Helm values cover the typical knobs:
+
+```yaml
+# values.yaml
+image:
+  repository: ghcr.io/your-org/datafn-app
+  tag: latest
+replicas: 3
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 1,    memory: 512Mi }
+postgres:
+  url: postgres://...
+redis:
+  url: redis://redis:6379
+```
+
+## WebSocket ingress
+
+For Nginx Ingress:
+
+```yaml
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: datafn
+```
+
+For Traefik / Contour / GKE Ingress, the defaults usually work — check your ingress's docs for "WebSocket" support.
+
+## Observability
+
+Wire DataFn's metrics into your monitoring:
+
+```typescript
+import client from "prom-client";
+
+const httpRequests = new client.Counter({ name: "datafn_requests_total", help: "..." });
+const httpDuration = new client.Histogram({ name: "datafn_request_duration_seconds", help: "..." });
+
+const datafn = await createDatafnServer({
+  ...,
+  observability: {
+    timing: true,
+    onTiming: (event) => {
+      httpRequests.inc({ endpoint: event.endpoint });
+      httpDuration.observe({ endpoint: event.endpoint }, event.durationMs / 1000);
+    },
+  },
+});
+
+const app = new Hono();
+app.get("/metrics", async (c) => c.text(await client.register.metrics()));
+```
+
+Prometheus scrapes `/metrics`; Grafana renders.
+
+## See also
+
+- [Docker](/docs/documentation/deploy/docker)
+- [Scaling](/docs/documentation/deploy/scaling)

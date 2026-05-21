@@ -7,17 +7,22 @@
     "dev": "vite dev --port 6005",
     "build": "vite build",
     "preview": "vite preview --port 6005",
-    "test": "vitest"
+    "test": "vitest",
+    "generate:openapi": "node scripts/generate-openapi.mjs",
+    "generate:llms": "node scripts/generate-llms.mjs",
+    "prebuild": "npm run generate:openapi && npm run generate:llms"
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",
-    "@docsfn/core": "0.0.3",
+    "@docsfn/core": "0.0.4",
     "@docsfn/provider-fs": "0.0.2",
     "@docsfn/svelte": "0.0.3",
     "@docsfn/sveltekit": "0.0.2"
   },
   "devDependencies": {
+    "@authfn/core": "0.1.1",
     "@docsfn/cli": "0.0.2",
+    "@superfunctions/db": "0.1.4",
     "@sveltejs/adapter-auto": "^3.0.0",
     "@sveltejs/adapter-cloudflare": "^7.0.0",
     "@sveltejs/kit": "^2.0.0",

@@ -1,0 +1,62 @@
+---
+title: Fastify
+description: SearchFn on Fastify with a single route registration.
+---
+
+## 1. Install
+
+```bash
+npm install fastify @searchfn/server @searchfn/adapter-memory
+```
+
+## 2. Register the route
+
+```typescript
+import Fastify from "fastify";
+import { createSearchFnServer } from "@searchfn/server";
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+const sf = await createSearchFnServer({
+  adapter: new MemoryAdapter(),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [{ name: "books", searchFields: ["title", "author"] }],
+});
+
+const app = Fastify({ bodyLimit: 2 * 1024 * 1024 });
+
+app.all("/searchfn/*", async (request, reply) => {
+  const response = await sf.router.handle({
+    method: request.method,
+    url: request.url,
+    headers: new Headers(request.headers as Record<string, string>),
+    body: request.body ? JSON.stringify(request.body) : undefined,
+  });
+  reply.status(response.status);
+  response.headers.forEach((v, k) => reply.header(k, v));
+  return response.text();
+});
+
+await app.listen({ port: 3000 });
+```
+
+## 3. Smoke test
+
+```bash
+curl -X POST http://localhost:3000/searchfn/index \
+  -H 'content-type: application/json' \
+  -d '{ "resource": "books", "documents": [{ "id": "b-1", "fields": { "title": "Gödel Escher Bach", "author": "Hofstadter" } }] }'
+
+curl -X POST http://localhost:3000/searchfn/search \
+  -H 'content-type: application/json' \
+  -d '{ "resource": "books", "query": "godel" }'
+```
+
+Fuzzy matching is on by default — the typo-corrected hit comes back.
+
+## Next steps
+
+- [Server reference](/docs/reference/server)
+- [Adapters](/docs/reference/adapters)

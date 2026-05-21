@@ -4,7 +4,7 @@ const config: DocsConfig = {
   schemaVersion: 1,
   site: {
     title: "authfn",
-    description: "Self-hosted authentication for superfunctions — sessions, OTP, passwords, and social login.",
+    description: "Self-hosted authentication for any stack. Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region. TypeScript, Python, and Swift SDKs.",
     basePath: "/docs",
     canonicalUrl: "https://authfn.superfunctions.dev",
     showFooter: false,

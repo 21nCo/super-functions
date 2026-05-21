@@ -1,0 +1,36 @@
+---
+title: Apple Runtime
+sidebarTitle: Overview
+description: SearchFn on iOS, macOS, watchOS, and tvOS — standalone Swift package.
+---
+
+The Swift package is a standalone search runtime. It ships:
+
+- `SearchFnCore` — the BM25 engine, ported to Swift.
+- `SearchFnMemoryAdapter` — in-memory adapter.
+- `SearchFnSQLiteAdapter` — SQLite-backed persistent adapter.
+- `SearchFnClient` — validating client facade.
+- `SearchFnConvenience` — one-liner constructors.
+
+It does **not** depend on DataFn or the TypeScript server. You can use it standalone, or pair it with DataFn's Apple runtime via the WebView bridge.
+
+## When to use which adapter
+
+| Use case | Adapter |
+| --- | --- |
+| Tests / CLI tools | `SearchFnMemoryAdapter` |
+| App with persistent search | `SearchFnSQLiteAdapter` |
+| App embedded in a WebView with DataFn | `SearchFnSQLiteAdapter` under the DataFn Apple runtime |
+
+## Sub-pages
+
+- [Setup](/docs/documentation/apple/setup) — installation and bootstrap.
+- [Memory adapter](/docs/documentation/apple/memory-adapter) — ephemeral, in-process.
+- [SQLite adapter](/docs/documentation/apple/sqlite-adapter) — persistent storage.
+- [SwiftUI](/docs/documentation/apple/swiftui) — binding search results into a SwiftUI view.
+- [Diagnostics](/docs/documentation/apple/diagnostics) — opt-in observability.
+
+## See also
+
+- [Swift quickstart](/docs/quickstart/swift)
+- [Swift reference](/docs/reference/swift)

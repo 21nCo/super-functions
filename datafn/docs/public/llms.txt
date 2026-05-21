@@ -1,0 +1,209 @@
+# DataFn Documentation
+
+> Self-hosted data sync SDK with offline-first storage, reactive signals, capability-driven schemas, and a structured query language (DFQL). Works with TypeScript, Python, and Swift.
+
+This document is intended for large language models and agentic developer tools. It contains an outline of the DataFn documentation with deep-links to each page; for the full content see `llms-full.txt`.
+
+## Ai Resources
+
+- [Claude](https://datafn.21n.co/docs/ai-resources/claude): Wire DataFn into Claude Code and Claude Desktop with project memory, raw-markdown lookups, and MCP.
+- [Codex / GPT-based assistants](https://datafn.21n.co/docs/ai-resources/codex): Wire DataFn into OpenAI Codex, GitHub Copilot, and Continue.dev.
+- [Cursor](https://datafn.21n.co/docs/ai-resources/cursor): Wire DataFn into Cursor with project rules, raw-markdown lookups, and MCP.
+- [llms.txt / llms-full.txt](https://datafn.21n.co/docs/ai-resources/llms-txt): Machine-readable artifacts that turn the DataFn documentation into a prompt-friendly corpus.
+- [MCP Server (Experimental)](https://datafn.21n.co/docs/ai-resources/mcp): Expose the DataFn documentation and schema as Model Context Protocol tools for agentic clients.
+- [Skills](https://datafn.21n.co/docs/ai-resources/skills): Drop-in instruction files that teach AI coding assistants how to use DataFn correctly.
+
+## Top Level
+
+- [AI Resources](https://datafn.21n.co/docs/ai-resources): LLM-ready artifacts and agent affordances for working with DataFn through Claude, Cursor, ChatGPT, and other assistants.
+- [CLI Overview](https://datafn.21n.co/docs/cli): Command-line tools for DataFn schema management and code generation.
+- [Comparison](https://datafn.21n.co/docs/comparison): Where DataFn sits relative to Replicache, ElectricSQL, PowerSync, RxDB, WatermelonDB, InstantDB, Convex, TinyBase, and a Drizzle+TanStack Query stack.
+- [DFQL Overview](https://datafn.21n.co/docs/dfql): DataFn Query Language - a JSON-based query and mutation language.
+- [Overview](https://datafn.21n.co/docs/documentation): What DataFn is, what it ships, and how the pieces fit together.
+- [Examples](https://datafn.21n.co/docs/examples): Working reference apps that ship with DataFn — clone, run, copy what you need.
+- [Getting Started](https://datafn.21n.co/docs/getting-started): Get up and running with DataFn in minutes.
+- [DataFn](https://datafn.21n.co/docs/index): Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
+- [Quickstart](https://datafn.21n.co/docs/quickstart): Pick your stack and ship a working DataFn integration in 10 minutes.
+- [Recipes](https://datafn.21n.co/docs/recipes): Production-tested patterns for shipping with DataFn. Each recipe is self-contained: the schema, the server config, and the client glue.
+- [API Reference](https://datafn.21n.co/docs/reference): Complete API reference for all DataFn packages.
+
+## Cli
+
+- [CI Integration](https://datafn.21n.co/docs/cli/ci-integration): GitHub Actions, GitLab CI, and CircleCI recipes for DataFn schema validation and migration.
+- [Drizzle Schema Generation](https://datafn.21n.co/docs/cli/drizzle-codegen): Generate Drizzle ORM table definitions from your schema.
+- [Environment Profiles](https://datafn.21n.co/docs/cli/env-profiles): Manage dev, staging, and production configuration with the CLI.
+- [Generate](https://datafn.21n.co/docs/cli/generate): Generate TypeScript types and database schemas from your DataFn schema.
+- [Multi-Environment Workflows](https://datafn.21n.co/docs/cli/multi-env): Promote schemas and migrations across dev → staging → production safely.
+- [datafn schema-diff](https://datafn.21n.co/docs/cli/schema-diff): Compare two schema versions and produce a structured diff.
+- [datafn schema-migrate](https://datafn.21n.co/docs/cli/schema-migrate): Generate and apply schema migration plans.
+- [Type Generation](https://datafn.21n.co/docs/cli/type-codegen): Generate TypeScript interfaces from your schema.
+- [Validate](https://datafn.21n.co/docs/cli/validate): Validate your DataFn schema file.
+
+## Dfql
+
+- [Aggregations](https://datafn.21n.co/docs/dfql/aggregations): Compute aggregate values over record sets.
+- [Filters](https://datafn.21n.co/docs/dfql/filters): Filter records with comparison, set, string, and logical operators.
+- [Mutations](https://datafn.21n.co/docs/dfql/mutations): DFQL write operations, including capability-aware lifecycle and sharing mutations.
+- [Pagination](https://datafn.21n.co/docs/dfql/pagination): Paginate query results with limit/offset or cursors.
+- [Queries](https://datafn.21n.co/docs/dfql/queries): Retrieve data with DFQL queries.
+- [Fields](https://datafn.21n.co/docs/dfql/schema/fields): Configure field types, validation constraints, and behavior.
+- [Schema Definition](https://datafn.21n.co/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
+- [Relations](https://datafn.21n.co/docs/dfql/schema/relations): Define, query, and mutate relationships between resources.
+- [Resources](https://datafn.21n.co/docs/dfql/schema/resources): Define resources, permissions, and per-resource capabilities.
+- [System Fields](https://datafn.21n.co/docs/dfql/schema/system-fields): Capability-injected lifecycle fields and server ownership rules.
+- [Search](https://datafn.21n.co/docs/dfql/search): Provider-backed full-text search for DFQL and client cross-resource search.
+- [Select and Expand](https://datafn.21n.co/docs/dfql/select): Control which fields are returned and expand relations.
+- [Sorting](https://datafn.21n.co/docs/dfql/sorting): Sort query results by one or more fields.
+- [Transactions](https://datafn.21n.co/docs/dfql/transactions): Execute atomic sequences of queries and mutations.
+
+## Documentation
+
+- [Change Tracking](https://datafn.21n.co/docs/documentation/advanced/change-tracking): Track mutations for incremental sync.
+- [Debouncing](https://datafn.21n.co/docs/documentation/advanced/debouncing): Coalesce rapid mutations for better performance.
+- [Error Handling](https://datafn.21n.co/docs/documentation/advanced/error-handling): Structured error handling across client and server.
+- [Guards](https://datafn.21n.co/docs/documentation/advanced/guards): Optimistic concurrency control with conditional mutations.
+- [Idempotency](https://datafn.21n.co/docs/documentation/advanced/idempotency): Prevent duplicate mutations with idempotency tracking.
+- [Security](https://datafn.21n.co/docs/documentation/advanced/security): Security measures built into DataFn.
+- [Background Sync](https://datafn.21n.co/docs/documentation/apple/background): Background app refresh, silent push, and sync-on-resume for the Apple runtime.
+- [CloudKit Sync](https://datafn.21n.co/docs/documentation/apple/cloudkit): Replace the DataFn server with iCloud — same client API, Apple-managed sync.
+- [CoreData Store](https://datafn.21n.co/docs/documentation/apple/coredata): Where DataFn keeps records on Apple devices, and how the schema maps to CoreData entities.
+- [Apple Runtime](https://datafn.21n.co/docs/documentation/apple): DataFn on iOS, macOS, watchOS, and tvOS — CoreData persistence, SwiftUI observation, and optional CloudKit sync.
+- [App Intents](https://datafn.21n.co/docs/documentation/apple/intents): Expose DataFn records to Siri, Shortcuts, Focus filters, and Spotlight via App Intents.
+- [Observation](https://datafn.21n.co/docs/documentation/apple/observation): DatafnRuntimeObservationSource and DatafnObservedQuery — how SwiftUI sees DataFn records.
+- [Apple Runtime Setup](https://datafn.21n.co/docs/documentation/apple/setup): Bootstrap DatafnAppleRuntime in an iOS or macOS app.
+- [SwiftUI Integration](https://datafn.21n.co/docs/documentation/apple/swiftui): Drop DataFn observed queries into SwiftUI views, bind to forms, and handle navigation.
+- [WebView Bridge](https://datafn.21n.co/docs/documentation/apple/webview-bridge): DatafnWKWebViewBridgeHost — let a WebView dispatch mutations into native CoreData.
+- [Capabilities](https://datafn.21n.co/docs/documentation/capabilities): Opt-in resource behaviors for lifecycle fields, mutation operations, auto-filters, and sharing.
+- [Events](https://datafn.21n.co/docs/documentation/client/events): Subscribe to mutation and sync events.
+- [Framework Adapters](https://datafn.21n.co/docs/documentation/client/frameworks): Connect DataFn to your UI framework with thin adapter packages.
+- [Key-Value Store](https://datafn.21n.co/docs/documentation/client/kv): A built-in key-value API with signals and debounce support.
+- [Mutations](https://datafn.21n.co/docs/documentation/client/mutations): Execute core and capability-aware mutations from the DataFn client.
+- [Queries](https://datafn.21n.co/docs/documentation/client/queries): Query data from the server or local storage.
+- [Client Setup](https://datafn.21n.co/docs/documentation/client/setup): Create and configure a DataFn client instance.
+- [Signals](https://datafn.21n.co/docs/documentation/client/signals): Reactive query results that auto-refresh on mutations.
+- [Tables](https://datafn.21n.co/docs/documentation/client/tables): Per-resource handles with capability-gated methods.
+- [Transactions](https://datafn.21n.co/docs/documentation/client/transactions): Execute atomic sequences of queries and mutations.
+- [Database Adapters](https://datafn.21n.co/docs/documentation/database/adapters): Connect DataFn to your database.
+- [Drizzle Adapter](https://datafn.21n.co/docs/documentation/database/drizzle): Use Drizzle ORM as your database backend.
+- [Database Transactions](https://datafn.21n.co/docs/documentation/database/transactions): Atomic operations with database transactions.
+- [Deploy to Cloudflare Workers](https://datafn.21n.co/docs/documentation/deploy/cloudflare-workers): Run DataFn at the edge with D1, Hyperdrive, or your own Postgres.
+- [Docker](https://datafn.21n.co/docs/documentation/deploy/docker): Run DataFn in a container. Foundation for self-hosted, on-prem, or bring-your-own platform.
+- [Deploy to Fly.io](https://datafn.21n.co/docs/documentation/deploy/fly): Run DataFn on Fly with managed Postgres and multi-region scaling.
+- [Production & Deploy](https://datafn.21n.co/docs/documentation/deploy): Where DataFn fits in your hosting stack and how to deploy it on the major platforms.
+- [Kubernetes](https://datafn.21n.co/docs/documentation/deploy/kubernetes): Production-shaped DataFn on Kubernetes with Helm, HPA, and graceful rollouts.
+- [Deploy to Railway](https://datafn.21n.co/docs/documentation/deploy/railway): Zero-config DataFn deploys on Railway with managed Postgres and Redis.
+- [Scaling](https://datafn.21n.co/docs/documentation/deploy/scaling): Sequence store, WebSocket broadcasting, multi-region, and the bottleneck pattern.
+- [Deploy to Vercel](https://datafn.21n.co/docs/documentation/deploy/vercel): Run DataFn on Vercel with Next.js or SvelteKit and a managed Postgres.
+- [SPV2 Migration](https://datafn.21n.co/docs/documentation/migrations/spv2): Roll out Sharing Permissions V2 safely with backfill, dual-read, dual-write, and rollback controls.
+- [Namespaces](https://datafn.21n.co/docs/documentation/namespaces): Isolate data between tenants, users, or any grouping with composable namespace strings.
+- [Client Search Plugin](https://datafn.21n.co/docs/documentation/plugins/client-search): Built-in plugin for client-side full-text search with provider-backed or legacy MiniSearch mode.
+- [Custom Plugins](https://datafn.21n.co/docs/documentation/plugins/custom-plugins): Build your own DataFn plugins.
+- [Plugin System](https://datafn.21n.co/docs/documentation/plugins/overview): Extend DataFn with pluggable hooks.
+- [Field-Level Authorization](https://datafn.21n.co/docs/documentation/security/field-level-authz): Declarative per-field access control via the permissions policy on each resource.
+- [Security](https://datafn.21n.co/docs/documentation/security): DataFn's security model: layered defenses from rate limiting through field-level authorization.
+- [Input Sanitization](https://datafn.21n.co/docs/documentation/security/input-sanitization): Prototype pollution, path traversal, and type confusion — what DataFn rejects.
+- [Layered Security Model](https://datafn.21n.co/docs/documentation/security/layered-model): How DataFn's seven defense layers chain together — and why each layer exists.
+- [Namespace Isolation](https://datafn.21n.co/docs/documentation/security/namespace-isolation): Row-level multi-tenancy that's automatic, transparent, and impossible to bypass through DFQL.
+- [Payload Limits](https://datafn.21n.co/docs/documentation/security/payload-limits): Body size, complexity caps, and per-request resource limits.
+- [Production Checklist](https://datafn.21n.co/docs/documentation/security/production-checklist): The minimum security configuration for a production DataFn deployment.
+- [Rate Limiting](https://datafn.21n.co/docs/documentation/security/rate-limiting): Per-endpoint rate limits backed by Redis or memory.
+- [Request Authorization](https://datafn.21n.co/docs/documentation/security/request-authz): The authorize callback — coarse-grained gating per request.
+- [WebSocket Security](https://datafn.21n.co/docs/documentation/security/websocket-security): How DataFn protects WebSocket connections: auth at upgrade, namespace lock, connection caps, and heartbeats.
+- [Authorization](https://datafn.21n.co/docs/documentation/server/authorization): Control access to resources and fields.
+- [Observability](https://datafn.21n.co/docs/documentation/server/observability): Monitor server performance with timing events.
+- [Rate Limiting](https://datafn.21n.co/docs/documentation/server/rate-limiting): Protect your server with configurable rate limits.
+- [REST API](https://datafn.21n.co/docs/documentation/server/rest-api): Optional RESTful endpoint wrappers.
+- [Routes](https://datafn.21n.co/docs/documentation/server/routes): HTTP endpoints provided by the DataFn server.
+- [Server Setup](https://datafn.21n.co/docs/documentation/server/setup): Create and configure a DataFn server.
+- [Validation](https://datafn.21n.co/docs/documentation/server/validation): Request validation and schema compliance checks.
+- [WebSockets](https://datafn.21n.co/docs/documentation/server/websockets): Real-time updates via WebSocket connections.
+- [Sharing](https://datafn.21n.co/docs/documentation/sharing): Guide to Sharing Permissions: namespace, principal, visibility, scope grants, relation inheritance, and compatibility behavior.
+- [Custom Storage](https://datafn.21n.co/docs/documentation/storage/custom): Implement your own storage adapter.
+- [IndexedDB](https://datafn.21n.co/docs/documentation/storage/indexeddb): Persistent browser storage via IndexedDB.
+- [Memory Storage](https://datafn.21n.co/docs/documentation/storage/memory): In-memory storage for testing and SSR.
+- [Storage Overview](https://datafn.21n.co/docs/documentation/storage/overview): Persistent offline storage adapters.
+- [Clone Up](https://datafn.21n.co/docs/documentation/sync/clone-up): Upload offline changes to the remote server.
+- [Clone](https://datafn.21n.co/docs/documentation/sync/clone): Full dataset retrieval for initial client setup.
+- [Conflict Resolution](https://datafn.21n.co/docs/documentation/sync/conflict-resolution): How DataFn resolves competing writes: last-writer-wins, version guards, and explicit merge policies.
+- [Cross-Tab Sync](https://datafn.21n.co/docs/documentation/sync/cross-tab): Synchronize state between browser tabs.
+- [Hydration](https://datafn.21n.co/docs/documentation/sync/hydration): Configure startup data loading strategy.
+- [Offline-First](https://datafn.21n.co/docs/documentation/sync/offline-first): Build applications that work without a network connection.
+- [Ordering Guarantees](https://datafn.21n.co/docs/documentation/sync/ordering-guarantees): What DataFn promises about the order of operations across clients.
+- [Sync Overview](https://datafn.21n.co/docs/documentation/sync/overview): Understand the DataFn synchronization architecture.
+- [Pull and Push](https://datafn.21n.co/docs/documentation/sync/pull-push): Incremental synchronization between client and server.
+- [Retry and Backoff](https://datafn.21n.co/docs/documentation/sync/retry-and-backoff): How the DataFn client retries failed sync operations, and how to tune it.
+- [Schema Migration](https://datafn.21n.co/docs/documentation/sync/schema-migration): Evolving the schema while clients are connected — adding, renaming, deprecating fields.
+- [Sequence Store](https://datafn.21n.co/docs/documentation/sync/sequence-store): Where serverSeq lives, why it matters, and how to pick the right backend.
+- [Sharing Sync Lifecycle](https://datafn.21n.co/docs/documentation/sync/sharing-sync-lifecycle): How offline clients observe grant, revoke, backfill, push, and pull behavior in Sharing Permissions V2.
+- [Troubleshooting](https://datafn.21n.co/docs/documentation/troubleshooting): The 15 failure modes you'll hit in production — and how to fix them.
+- [Sharing Patterns](https://datafn.21n.co/docs/documentation/use-cases/sharing-patterns): Canonical namespace, visibility, grant, and sync patterns for Collections, Memotron, Selftron, Pointron, Finatron, Feedtron, and Compoundum.
+
+## Examples
+
+- [Example: Apple WebView Host](https://datafn.21n.co/docs/examples/apple-webview-host): Reference SwiftUI host that embeds a web view, owns CoreData, and demonstrates three topologies.
+- [Example: Sharing App](https://datafn.21n.co/docs/examples/sharing-app): Multi-actor, multi-workspace sharing semantics with deterministic E2E tests.
+- [Example: Todo App](https://datafn.21n.co/docs/examples/todo-app): The dual-mode reference app — same Svelte UI, three deployment topologies.
+
+## Quickstart
+
+- [Quickstart: Bun](https://datafn.21n.co/docs/quickstart/bun): Mount DataFn directly on Bun.serve in 5 minutes.
+- [Quickstart: Express](https://datafn.21n.co/docs/quickstart/express): Mount DataFn on Express with Postgres in 5 minutes.
+- [Quickstart: FastAPI](https://datafn.21n.co/docs/quickstart/fastapi): Mount DataFn on FastAPI with SQLAlchemy in 5 minutes.
+- [Quickstart: Flask](https://datafn.21n.co/docs/quickstart/flask): Mount DataFn on Flask in 5 minutes.
+- [Quickstart: Hono](https://datafn.21n.co/docs/quickstart/hono): Mount DataFn on Hono with SQLite in 5 minutes.
+- [Quickstart: Next.js](https://datafn.21n.co/docs/quickstart/nextjs): Full-stack DataFn on Next.js App Router with the official adapter.
+- [Quickstart: Starlette](https://datafn.21n.co/docs/quickstart/starlette): Mount DataFn on Starlette in 5 minutes.
+- [Quickstart: SvelteKit](https://datafn.21n.co/docs/quickstart/sveltekit): Full-stack DataFn on SvelteKit with the official adapter.
+- [Quickstart: Swift](https://datafn.21n.co/docs/quickstart/swift): Launch a SwiftUI app backed by DataFn's Apple runtime in 5 minutes.
+
+## Recipes
+
+- [Recipe: Audit Logging](https://datafn.21n.co/docs/recipes/audit-logging): Capability-driven audit fields plus outbound logging to your audit pipeline.
+- [Recipe: AuthFn Integration](https://datafn.21n.co/docs/recipes/authfn-integration): Wire AuthFn sessions into DataFn's authorize and namespaceProvider.
+- [Recipe: Chat App](https://datafn.21n.co/docs/recipes/chat-app): Append-only messages, cursor pagination, WebSocket live updates.
+- [Recipe: Document Collaboration](https://datafn.21n.co/docs/recipes/document-collab): Per-document presence, conflict-free edits, and a roadmap to true CRDT collaboration.
+- [Recipe: Encryption at Rest](https://datafn.21n.co/docs/recipes/encryption-at-rest): Field-level encryption via plugins, with the server holding only ciphertext.
+- [Recipe: FileFn Integration](https://datafn.21n.co/docs/recipes/filefn-integration): Attach files to DataFn records — uploads, lifecycle, deletion.
+- [Recipe: Kanban Board](https://datafn.21n.co/docs/recipes/kanban-board): Ordered lists with drag-and-drop, position fields, and atomic moves via transact.
+- [Recipe: Multi-tenant SaaS](https://datafn.21n.co/docs/recipes/multi-tenant-saas): Namespace per tenant; deriving namespaces from auth; cross-tenant query isolation.
+- [Recipe: Offline Conflict Resolution](https://datafn.21n.co/docs/recipes/offline-conflicts): Last-writer-wins, version guards, and explicit merge policies for offline-first writes.
+- [Recipe: Optimistic UI](https://datafn.21n.co/docs/recipes/optimistic-ui): Snappy mutations with deterministic rollback when the server rejects.
+- [Recipe: Presence and Live Cursors](https://datafn.21n.co/docs/recipes/presence-cursors): Ephemeral state alongside DataFn's persisted state.
+- [Recipe: SearchFn Integration](https://datafn.21n.co/docs/recipes/searchfn-integration): Cross-resource search via the SearchProvider interface, backed by SearchFn.
+- [Recipe: Sharing Flows](https://datafn.21n.co/docs/recipes/sharing-flows): Invite-by-email, link-share, share-with-role — all on top of the shareable capability.
+- [Recipe: Testing Patterns](https://datafn.21n.co/docs/recipes/testing): Deterministic sync, fixture seeding, and mock clients for unit and integration tests.
+- [Recipe: Todo App](https://datafn.21n.co/docs/recipes/todo-app): The minimum viable end-to-end DataFn app: schema, server, client, optimistic UI.
+- [Recipe: List Virtualization](https://datafn.21n.co/docs/recipes/virtualization): Subscriptions over windowed slices for large lists.
+
+## Reference
+
+- [Changelog](https://datafn.21n.co/docs/reference/changelog): Notable changes to DataFn across releases.
+- [Client Configuration](https://datafn.21n.co/docs/reference/client/config): Full configuration reference for createDatafnClient.
+- [Event Bus](https://datafn.21n.co/docs/reference/client/events): Event bus reference.
+- [Mutation Execution](https://datafn.21n.co/docs/reference/client/mutation): Client mutation pipeline, including capability sanitization and optimistic injection.
+- [Query Execution](https://datafn.21n.co/docs/reference/client/query): Client query execution internals.
+- [Signal API](https://datafn.21n.co/docs/reference/client/signal): Reactive signal system reference.
+- [Storage Adapter](https://datafn.21n.co/docs/reference/client/storage): Storage adapter interface reference.
+- [@datafn/svelte](https://datafn.21n.co/docs/reference/client/svelte): API reference for the DataFn Svelte adapter package.
+- [Sync Engine](https://datafn.21n.co/docs/reference/client/sync): Sync engine internals reference.
+- [Transport](https://datafn.21n.co/docs/reference/client/transport): HTTP transport and remote adapter reference.
+- [Configuration Reference](https://datafn.21n.co/docs/reference/configuration): Every option accepted by createDatafnServer and createDatafnClient, end to end.
+- [Date Utilities](https://datafn.21n.co/docs/reference/core/date): Date conversion between formats.
+- [Error Types](https://datafn.21n.co/docs/reference/core/errors): Error codes and envelope types.
+- [Filter Utilities](https://datafn.21n.co/docs/reference/core/filters): Filter evaluation and operator utilities.
+- [Hook Utilities](https://datafn.21n.co/docs/reference/core/hooks): Plugin hook execution utilities.
+- [KV Utilities](https://datafn.21n.co/docs/reference/core/kv): Built-in key-value resource utilities.
+- [Normalization](https://datafn.21n.co/docs/reference/core/normalize): DFQL normalization for caching and comparison.
+- [Schema Utilities](https://datafn.21n.co/docs/reference/core/schema): Schema validation, capability resolution, and schema indexing helpers.
+- [SearchProvider](https://datafn.21n.co/docs/reference/core/search-provider): Interface contract for pluggable search providers in DataFn.
+- [Core Types](https://datafn.21n.co/docs/reference/core/types): Type definitions exported by @datafn/core.
+- [Envelopes Reference](https://datafn.21n.co/docs/reference/envelopes): Every DataFn response is a DatafnEnvelope. Here is the shape and the helpers.
+- [Errors Reference](https://datafn.21n.co/docs/reference/errors): Canonical error code matrix: what each code means, what causes it, and how to fix it.
+- [Events Reference](https://datafn.21n.co/docs/reference/events): Plugin hook events fired during query, mutation, and sync execution.
+- [HTTP Routes Reference](https://datafn.21n.co/docs/reference/routes): Canonical reference for every route exposed by the DataFn server: method, path, request shape, response shape, and error codes.
+- [Server Configuration](https://datafn.21n.co/docs/reference/server/config): Full configuration reference for createDatafnServer.
+- [Execution Engine](https://datafn.21n.co/docs/reference/server/execution): Query and mutation execution internals.
+- [Middleware](https://datafn.21n.co/docs/reference/server/middleware): Rate limiting and timing middleware reference.
+- [Route Handlers](https://datafn.21n.co/docs/reference/server/routes): Server route lifecycle and capability-aware execution notes.
+- [WebSocket Manager](https://datafn.21n.co/docs/reference/server/websocket): WebSocket manager reference.
+

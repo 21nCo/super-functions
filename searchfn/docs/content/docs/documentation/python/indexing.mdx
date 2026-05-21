@@ -1,0 +1,116 @@
+---
+title: Indexing
+description: How index_data walks DataFn models and populates the inverted index.
+---
+
+`index_data` is the core indexer. It scans DataFn models for string fields, tokenizes their values, and writes rows to the `<prefix>index` table.
+
+## Signature
+
+```python
+async def index_data(
+    schema,
+    db,
+    model: Optional[str] = None,
+    table_prefix: str = "_searchfn_"
+) -> dict
+```
+
+Returns:
+
+```python
+{ "totalIndexed": int, "totalTerms": int }
+```
+
+## Single model vs full
+
+```python
+# Index every model with string fields
+await index_data(schema, db)
+
+# Index only "articles"
+await index_data(schema, db, model="articles")
+```
+
+The model-scoped variant is what you call from background jobs after writing a record — see [partial reindex](/docs/recipes/partial-reindex).
+
+## Pipeline
+
+For each model:
+
+1. Read schema fields, pick the ones with `"type": "string"`.
+2. `db.find_many(model_name, [])` — fetch all records.
+3. For each record:
+   - Delete prior index rows for `(model, recordId)` to avoid stale terms.
+   - For each string field, tokenize and `db.create` one row per (term, model, recordId, field).
+
+## Tokenization
+
+```python
+def tokenize(value: str) -> Iterable[str]:
+    return (
+        token
+        for token in re.split(r"[^a-z0-9]+", value.lower())
+        if len(token) > 1
+    )
+```
+
+Lowercase, split on non-alphanumeric runs, keep tokens of 2+ characters. Whitespace, punctuation, accents stripped. (Accents stripped means "café" → "caf" — fine for English-leaning content; for full unicode support, swap to ICU or trim before passing.)
+
+## Duplicate handling
+
+If the index already has a row with `(term, model, recordId, field)`, the insert is treated as a duplicate and skipped silently. SearchFn detects this via the error message:
+
+```python
+def _is_duplicate_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "duplicate" in message
+        or "unique constraint" in message
+        or "already exists" in message
+    )
+```
+
+This makes re-indexing the same content idempotent.
+
+## Performance
+
+Indexing is single-threaded and per-document. Rough numbers on Postgres:
+
+| Corpus | Time |
+| --- | --- |
+| 1k docs, 5 string fields × 100 words | ~5s |
+| 10k docs | ~50s |
+| 100k docs | ~10 min |
+
+For large datasets, the bottleneck is per-row `INSERT`s. To accelerate:
+
+- Use Postgres `COPY` directly for the first load (bypass the abstraction).
+- Run indexing in parallel batches if your DataFn adapter is thread-safe.
+- Avoid re-indexing fields that haven't changed (partial reindex).
+
+## Read consistency
+
+`index_data` does not lock. If records are written during indexing:
+
+- Records that exist when `find_many` runs are indexed.
+- Newer writes are not seen by the current run.
+
+For correctness under concurrent writes, prefer the [partial reindex pattern](/docs/recipes/partial-reindex) — re-index single records on write, run a full re-index only periodically.
+
+## Errors
+
+The function raises non-duplicate exceptions. Wrap calls:
+
+```python
+try:
+    result = await index_data(schema, db)
+except Exception as e:
+    logger.exception("indexing failed", exc_info=e)
+```
+
+## See also
+
+- [Search](/docs/documentation/python/search)
+- [Partial reindex](/docs/recipes/partial-reindex)
+- [Backfill from DB](/docs/recipes/backfill-from-db)

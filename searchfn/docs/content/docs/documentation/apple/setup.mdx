@@ -1,0 +1,70 @@
+---
+title: Setup
+description: Add SearchFn to a Swift project.
+---
+
+## Package.swift
+
+```swift
+.package(url: "https://github.com/21nCo/super-functions", from: "0.2.0"),
+.product(name: "SearchFnConvenience", package: "super-functions"),
+```
+
+`SearchFnConvenience` re-exports the adapter types and provides the one-liner constructors. For lower-level control, import the products you need directly:
+
+```swift
+.product(name: "SearchFnClient", package: "super-functions"),
+.product(name: "SearchFnSQLiteAdapter", package: "super-functions"),
+.product(name: "SearchFnAdapterContracts", package: "super-functions"),
+```
+
+## In Xcode
+
+File → Add Package Dependencies → enter `https://github.com/21nCo/super-functions`. Pick the products you need.
+
+## Min platform
+
+- iOS 17 / macOS 14 (Observation framework dependency for SwiftUI binding).
+- iOS 16 / macOS 13 (without SwiftUI bindings — pure client).
+
+Older platforms aren't supported. SearchFn relies on Swift 5.9 features.
+
+## App permissions
+
+None required. SearchFn writes to the app's container; no external network or capability needed.
+
+For SQLite mode, ensure the app supports write access to the path you choose:
+
+```swift
+let rootURL = FileManager.default
+    .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("searchfn-store", isDirectory: true)
+```
+
+Application Support is the standard location. iCloud Backup includes it by default; if you want to exclude:
+
+```swift
+var url = rootURL
+try url.setResourceValues({
+  var v = URLResourceValues()
+  v.isExcludedFromBackup = true
+  return v
+}())
+```
+
+## Build verification
+
+From the repo root:
+
+```bash
+swift test --package-path searchfn/swift
+swift build --package-path searchfn/swift --target SearchFnInMemoryExample
+swift build --package-path searchfn/swift --target SearchFnSQLiteExample
+```
+
+These compile and execute the in-package examples.
+
+## See also
+
+- [Memory adapter](/docs/documentation/apple/memory-adapter)
+- [SQLite adapter](/docs/documentation/apple/sqlite-adapter)

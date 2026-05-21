@@ -1,0 +1,102 @@
+---
+title: "Recipe: Presence and Live Cursors"
+description: "Ephemeral state alongside DataFn's persisted state."
+audience: guide
+applies_to: both
+---
+
+Persistent records are wrong for cursor positions, "is typing", and "Alice is viewing this document". Those signals decay in seconds and don't need history. The pattern is **ephemeral broadcasts on the WebSocket** plus optimistic local state.
+
+## Two layers
+
+1. **Ephemeral state** — typing, cursors, selection, viewport. Broadcast over the WebSocket. Decay client-side.
+2. **Persistent state** — messages, documents. Use DataFn as usual.
+
+Don't put presence in DFQL. The sync engine doesn't optimize for high-frequency ephemeral writes, and the changelog table will balloon.
+
+## Side-channel design
+
+The DataFn WebSocket connection already carries cursor notifications. You can multiplex presence messages on the same socket:
+
+```typescript
+// Client opens DataFn WS via the client; reuse it.
+const ws = client.transport.websocket; // implementation detail; subject to change.
+ws.send(JSON.stringify({
+  type: "presence",
+  scope: "documents/doc_42",
+  payload: { cursor: { x: 120, y: 80 } },
+}));
+```
+
+This pattern bypasses DataFn's protocol, which means you also handle authorization on the side-channel server. For most apps, the existing `authorize` callback on the WebSocket upgrade handles it.
+
+## Standalone presence server
+
+If you want stronger separation, run a tiny presence server. PartyKit, Liveblocks, or a hand-rolled WebSocket service all work. DataFn handles persistence; the presence server handles ephemerality. They don't need to know about each other.
+
+## Client API shape
+
+A simple presence hook:
+
+```typescript
+type Presence = { userId: string; cursor?: { x: number; y: number }; selection?: string };
+
+const presenceMap = new Map<string, Presence>();
+
+ws.addEventListener("message", (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === "presence") {
+    presenceMap.set(msg.userId, { userId: msg.userId, ...msg.payload });
+    notify();
+  }
+});
+
+function setLocalPresence(p: Partial<Presence>) {
+  ws.send(JSON.stringify({ type: "presence", payload: p }));
+}
+```
+
+Decay locally: prune entries that haven't updated in 30 seconds. The server doesn't need to track session lifetime.
+
+## Throttling
+
+Cursor positions can fire 60 Hz. Throttle to 10 Hz before sending:
+
+```typescript
+let pending = false;
+function setCursor(x: number, y: number) {
+  pending = pending || setTimeout(() => {
+    setLocalPresence({ cursor: { x, y } });
+    pending = false;
+  }, 100);
+}
+```
+
+## When you do want to persist
+
+Some signals are "ephemeral but should outlive a tab close" — for example, "Alice was last seen at 4:32pm". Those are short-lived persistent state. Use a DataFn resource with a retention plugin:
+
+```typescript
+// A resource that auto-deletes records older than 5 minutes.
+plugins: [
+  {
+    name: "presence-retention",
+    hooks: [
+      {
+        event: "beforeQuery",
+        filter: { resource: "presence" },
+        handler: async (ctx) => {
+          await server.db.deleteOlderThan("presence", Date.now() - 5 * 60 * 1000);
+        },
+      },
+    ],
+  },
+],
+```
+
+(Real-world: do the deletion on a timer, not on every query.)
+
+## See also
+
+- [WebSockets](/docs/documentation/server/websockets) — the underlying transport.
+- [Chat app](/docs/recipes/chat-app) — combines persistent messages with typing indicators.

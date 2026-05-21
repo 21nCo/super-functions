@@ -1,0 +1,133 @@
+---
+title: "Field-Level Authorization"
+description: "Declarative per-field access control via the permissions policy on each resource."
+audience: guide
+applies_to: server
+---
+
+Field-level authorization is the fine-grained companion to `authorize`. While `authorize` answers "can this caller act?", `permissions` answers "which fields can they read or write on this resource?"
+
+## Defining a policy
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+defineSchema({
+  resources: [
+    {
+      name: "users",
+      version: 1,
+      fields: [
+        { name: "id",     type: "string", required: true },
+        { name: "name",   type: "string", required: true },
+        { name: "email",  type: "string", required: true },
+        { name: "ssn",    type: "string" },
+        { name: "salary", type: "number" },
+      ],
+      permissions: {
+        read:  { fields: ["id", "name", "email"] },
+        write: { fields: ["name"] },
+      },
+    },
+  ],
+});
+```
+
+With this policy:
+
+- Queries can `select`, `filter`, `sort`, or aggregate on `id`, `name`, `email`. Selecting `ssn` returns `FORBIDDEN`.
+- Mutations can write `name`. Writing `email` or `ssn` returns `FORBIDDEN`.
+- `id` is implicit for identity — always available even if missing from `read.fields`.
+
+## Deny by default
+
+A resource without a `permissions` block is **forbidden**. Every operation returns `FORBIDDEN`. This is intentional: a new resource without an explicit policy can't accidentally leak.
+
+```typescript
+// This resource is unreachable until a permissions block is added.
+{ name: "secret_data", version: 1, fields: [{ name: "value", type: "string" }] }
+```
+
+If you're prototyping and want all-fields-readable temporarily, set `allowUnknownResources: true` in `createDatafnServer`. Never enable this in production.
+
+## What field-level authz covers
+
+| DFQL feature | Checked against |
+| --- | --- |
+| `select` fields | `permissions.read.fields` |
+| `filters` keys | `permissions.read.fields` |
+| `sort` fields | `permissions.read.fields` |
+| `aggregations` field references | `permissions.read.fields` |
+| `groupBy` fields | `permissions.read.fields` |
+| `having` field references | `permissions.read.fields` |
+| `search.fields` | `permissions.read.fields` |
+| `record` keys (mutations) | `permissions.write.fields` |
+| Relation mutation names | `permissions.write.fields` |
+
+If you can't even filter by a field, you can't enumerate its values by side channel. This is why filter keys are gated, not just select projections.
+
+## Capability-injected fields
+
+Capability fields (`createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `trashedAt`, `archivedAt`, `shares`, `visibility`) are subject to the same policy. To allow clients to read them, list them in `read.fields`:
+
+```typescript
+permissions: {
+  read: { fields: ["id", "name", "email", "createdAt", "updatedAt", "createdBy"] },
+  write: { fields: ["name"] },
+},
+```
+
+To write them — don't. Capability fields are managed by DataFn. Adding them to `write.fields` does nothing; they're stripped on the way in.
+
+## Per-request policies
+
+The static `permissions` shape covers the common case. For per-request rules (e.g. "users can read their own email but not others'"), use a custom resolver. The pattern:
+
+```typescript
+permissions: {
+  read: {
+    fields: ({ ctx, row }) => {
+      const base = ["id", "name"];
+      if (ctx.session?.userId === row?.id) base.push("email", "phone");
+      if (ctx.session?.role === "admin") base.push("ssn");
+      return base;
+    },
+  },
+  write: { fields: ["name"] },
+},
+```
+
+DataFn evaluates the function on every request and (for queries) per row. The performance cost is real — keep the function fast.
+
+## Error disclosure
+
+In production (`debug: false`), `FORBIDDEN` errors return a generic message without field names. In development, the response includes the offending path:
+
+```json
+// dev
+{ "ok": false, "error": { "code": "FORBIDDEN", "message": "Field 'ssn' not readable", "details": { "path": "select[1]" } } }
+// prod
+{ "ok": false, "error": { "code": "FORBIDDEN", "message": "Authorization denied",        "details": { "path": "$" } } }
+```
+
+Set `debug: false` (or rely on `NODE_ENV=production`) for the production behavior.
+
+## When policy-only isn't enough
+
+For row-level rules (e.g. "users can only delete their own posts"), the `authorize` callback or the `shareable` capability is the right place. Field-level policies don't know about row contents at policy-evaluation time. Stack the two:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (action === "mutation" && payload?.resource === "posts" && payload?.operation === "delete") {
+    const post = await server.getRecord("posts", payload.id);
+    return post?.authorId === ctx.session?.userId;
+  }
+  return Boolean(ctx.session?.userId);
+};
+```
+
+## See also
+
+- [Layered model](/docs/documentation/security/layered-model)
+- [Capabilities](/docs/documentation/capabilities)
+- [Sharing](/docs/documentation/sharing)

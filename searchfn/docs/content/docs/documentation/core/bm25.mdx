@@ -1,0 +1,99 @@
+---
+title: BM25 Scoring
+description: The formula, the constants, and when to tune them.
+---
+
+BM25 is a relevance scoring function. For each (document, query) pair, it produces a number; higher is better. SearchFn ranks results by this score.
+
+## Formula
+
+For a query `Q = {q1, q2, ..., qn}` and a document `D`:
+
+```
+score(D, Q) = Σ IDF(qi) * TF(qi, D)
+```
+
+where:
+
+```
+IDF(qi) = log((N - df(qi) + 0.5) / (df(qi) + 0.5) + 1)
+```
+
+- `N` = total documents in the resource
+- `df(qi)` = number of documents containing `qi`
+
+```
+TF(qi, D) = f(qi, D) * (k1 + 1) / (f(qi, D) + k1 * (1 - b + b * |D| / avgdl))
+```
+
+- `f(qi, D)` = term frequency of `qi` in `D`
+- `|D|` = length of `D` (in tokens)
+- `avgdl` = average document length
+- `k1` = term frequency saturation (default `1.2`)
+- `b` = length normalization (default `0.75`)
+
+## Constants
+
+| Constant | Default | What it controls |
+| --- | --- | --- |
+| `k1` | `1.2` | How much TF matters past the first occurrence. Higher = more weight on repetition. |
+| `b` | `0.75` | How much document length normalizes scores. `1.0` = full normalization; `0` = no normalization. |
+| `prefixPenalty` | `0.7` | Multiplier for prefix/edge-n-gram matches. Below 1 to keep exact matches ranked first. |
+| `fuzzyPenalty` | `0.5` | Multiplier for fuzzy-expanded matches. |
+
+These are exposed via:
+
+```typescript
+new MemoryAdapter({
+  scoring: {
+    k1: 1.5,
+    b: 0.5,
+    prefixPenalty: 0.6,
+    fuzzyPenalty: 0.4,
+  },
+});
+```
+
+## When to tune
+
+- **Titles vs bodies.** If you have very short titles and very long bodies, the default `b = 0.75` may over-normalize titles. Lowering `b` to `0.5` helps short fields rank higher when relevant.
+- **Repeated keywords in spam.** If users stuff a keyword 50 times in body text, raise `k1` slightly — but the smarter fix is to detect and drop spam upstream.
+- **Autocomplete UX.** If you find prefix matches showing up too high, lower `prefixPenalty` to `0.5`.
+
+## Field boosts
+
+Per-field boosts are applied multiplicatively after BM25:
+
+```
+final(D, Q) = Σ boost(field) * BM25(D[field], Q)
+```
+
+```typescript
+await client.search({
+  resource: "articles",
+  query: "ranking",
+  fieldBoosts: { title: 3.0, subtitle: 1.5, body: 1.0 },
+});
+```
+
+A `3.0` boost means a title match is roughly 3x more relevant than a body match. Pick boosts by intuition first, then tune against [relevance tests](/docs/recipes/relevance-testing).
+
+## Score interpretation
+
+BM25 scores are not bounded — a score of `5.2` doesn't mean "52% relevant". The number is only meaningful as a relative ranking within a single query. Don't show scores to end users; use them to sort.
+
+## Cross-resource scoring
+
+For `searchAll` across multiple resources, scores are produced independently per resource. The combined ranking merges them — by default sorted by `score DESC, resource ASC, id ASC` for determinism.
+
+If your resources have very different scoring distributions (e.g. one has long bodies and many docs, another has short titles and few docs), the merge can favor one resource unfairly. Workarounds:
+
+- Normalize scores per resource (divide by max).
+- Use `limitPerResource` to enforce diversity.
+- Rerank manually after fetching results.
+
+## See also
+
+- [Inverted index](/docs/documentation/core/inverted-index)
+- [Fuzzy](/docs/documentation/core/fuzzy)
+- [Relevance testing recipe](/docs/recipes/relevance-testing)

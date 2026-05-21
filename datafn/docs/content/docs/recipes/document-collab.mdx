@@ -1,0 +1,157 @@
+---
+title: "Recipe: Document Collaboration"
+description: "Per-document presence, conflict-free edits, and a roadmap to true CRDT collaboration."
+audience: guide
+applies_to: both
+---
+
+DataFn is a sync engine, not a CRDT engine. For genuine concurrent text editing you want a CRDT library (Yjs, Automerge, Loro) layered on top — DataFn's job is to persist and broadcast the document state. This recipe shows the working pattern.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "documents",
+      version: 1,
+      idPrefix: "doc",
+      capabilities: ["shareable"],
+      fields: [
+        { name: "title", type: "string", required: true },
+        // Snapshot: the latest serialized CRDT state, base64-encoded
+        { name: "snapshot", type: "string", required: true },
+        // Snapshot generation — monotonically increasing
+        { name: "snapshotVersion", type: "number", required: true, default: 0 },
+      ],
+    },
+    {
+      name: "documentOps",
+      version: 1,
+      idPrefix: "op",
+      fields: [
+        { name: "documentId", type: "string", required: true, references: { resource: "documents" } },
+        { name: "op", type: "string", required: true }, // base64-encoded CRDT update
+      ],
+      indices: { base: ["documentId", "createdAt"] },
+    },
+  ],
+});
+```
+
+Two resources: `documents` for stable state and `documentOps` for the granular update log.
+
+## The flow
+
+1. Client loads `documents` row → restores Yjs/Automerge state from `snapshot`.
+2. Client subscribes to `documentOps` filtered to this document.
+3. As the user types, the CRDT emits binary updates; the client inserts each into `documentOps`.
+4. Other clients receive the new ops via the WebSocket cursor → pull → signal.
+5. Periodically (every 1k ops, or every 60s) one client wins a coordination dance and writes a fresh `snapshot` + truncates older ops.
+
+## Loading a document
+
+```typescript
+import * as Y from "yjs";
+
+async function openDocument(docId: string): Promise<Y.Doc> {
+  const docs = await client.table("documents").query({
+    filters: { id: { $eq: docId } },
+  });
+  const ydoc = new Y.Doc();
+  if (docs.result.ok && docs.result.result.data[0]) {
+    Y.applyUpdate(ydoc, base64Decode(docs.result.result.data[0].snapshot));
+  }
+
+  // Replay any ops written after the snapshot
+  const ops = await client.table("documentOps").query({
+    filters: {
+      documentId: { $eq: docId },
+      createdAt: { $gt: docs.result.result.data[0]?.updatedAt ?? 0 },
+    },
+    sort: ["createdAt:asc"],
+  });
+
+  for (const op of ops.result.result.data) {
+    Y.applyUpdate(ydoc, base64Decode(op.op));
+  }
+
+  return ydoc;
+}
+```
+
+## Writing edits
+
+```typescript
+ydoc.on("update", (update: Uint8Array) => {
+  client.table("documentOps").mutate({
+    operation: "insert",
+    record: {
+      documentId: docId,
+      op: base64Encode(update),
+    },
+  });
+});
+```
+
+Every Y.js update becomes one DataFn mutation. Mutations are batched by the sync engine, so high-frequency typing doesn't generate a flood of requests.
+
+## Subscribing to remote ops
+
+```typescript
+const opSignal = client.table("documentOps").signal({
+  filters: { documentId: { $eq: docId }, createdAt: { $gt: openedAt } },
+  sort: ["createdAt:asc"],
+});
+
+opSignal.subscribe((ops) => {
+  for (const op of ops ?? []) {
+    if (op.createdBy === client.clientId) continue; // skip echoes
+    Y.applyUpdate(ydoc, base64Decode(op.op));
+  }
+});
+```
+
+The `createdBy === clientId` skip is essential — without it you'll apply your own updates twice.
+
+## Snapshotting
+
+When `documentOps` grows past 1000 rows, snapshot:
+
+```typescript
+async function snapshot(docId: string, ydoc: Y.Doc) {
+  const newSnapshot = base64Encode(Y.encodeStateAsUpdate(ydoc));
+  await client.transact({
+    steps: [
+      {
+        type: "mutation",
+        mutation: {
+          resource: "documents",
+          version: 1,
+          operation: "merge",
+          id: docId,
+          record: { snapshot: newSnapshot, snapshotVersion: nextVersion },
+          if: { snapshotVersion: { $eq: currentVersion } },
+        },
+      },
+    ],
+  });
+}
+```
+
+The `if` guard prevents two clients from racing to snapshot.
+
+After the snapshot, older `documentOps` can be deleted by a server-side retention plugin — or left in place and queried only for the last snapshot's window.
+
+## Presence
+
+Cursor positions are ephemeral. Don't persist them — use the WebSocket directly. See [Presence and cursors](/docs/recipes/presence-cursors).
+
+## Limitations
+
+- DataFn doesn't yet have a binary field type, so CRDT state lives base64-encoded in a string field. Not the fastest. A binary type is on the roadmap.
+- For very large documents, the snapshot field will exceed `limits.maxPayloadBytes`. Raise the limit or split the document.
+- True multi-region presence under network partition is beyond DataFn's scope; pair with a presence server (PartyKit, Liveblocks).

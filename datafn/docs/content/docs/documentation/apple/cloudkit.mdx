@@ -1,0 +1,124 @@
+---
+title: "CloudKit Sync"
+description: "Replace the DataFn server with iCloud — same client API, Apple-managed sync."
+audience: guide
+applies_to: client
+---
+
+For Apple-only apps where data stays per-user and you don't need a web client, CloudKit is a viable replacement for the DataFn server. The Apple runtime's client API is identical — you change the `syncBackend` and skip running a server.
+
+## When this fits
+
+- iOS / macOS / iPadOS / watchOS / tvOS apps.
+- Per-user data (no sharing between users).
+- You don't need a web client.
+- You don't need a server you control.
+- You want Apple to handle multi-device sync and durability.
+
+When this **doesn't** fit:
+
+- You need a web client → use the DataFn server.
+- You need sharing between users → use the DataFn server + the `shareable` capability.
+- You need cross-platform sync (Android) → use the DataFn server.
+- You need analytics or back-office access to user data → use the DataFn server.
+
+## Configuration
+
+```swift
+import DatafnAppleRuntime
+
+let config = DatafnAppleRuntimeConfiguration(
+    schemaJSON: schemaData,
+    schemaHash: "my-app-schema-v1",
+    namespace: "user:\(currentUserID)",
+    clientID: UUID().uuidString,
+    storeRootURL: storeRoot,
+    syncBackend: .iCloud(
+        DatafnCloudKitConfiguration(
+            containerIdentifier: "iCloud.com.example.MyApp",
+            databaseScope: .private,
+            subscriptionId: "datafn-default"
+        )
+    )
+)
+
+let runtime = try await DatafnAppleRuntime(configuration: config)
+try await runtime.start()
+```
+
+That's the only change vs the DataFn-server configuration.
+
+## Container setup
+
+Before the app can use CloudKit:
+
+1. Enable the **iCloud capability** in your app target.
+2. Check **CloudKit** under iCloud.
+3. Add a container identifier (`iCloud.com.example.MyApp`).
+4. In CloudKit Dashboard, create the container's private database schema. The runtime auto-creates record types on first sync, but you'll want to inspect the schema there during development.
+
+Production builds need a signed container identifier matching the team's iCloud entitlement.
+
+## CloudKit semantics
+
+CloudKit's data model differs from DataFn's in a few ways the runtime smooths over:
+
+- **Record types** map to DataFn resources 1:1.
+- **System fields** (`createdAt`, `updatedAt`, etc.) are stored as DataFn-managed fields, not CloudKit's built-in metadata.
+- **References** (relations) become CloudKit `CKRecord.Reference`s.
+- **Vector data** is stored as `CKAsset` for blobs > 1 MB.
+
+The Apple runtime's adapter handles all the marshalling. From your application code, everything looks the same as the DataFn-server backend.
+
+## Sharing through CloudKit
+
+CloudKit Sharing is a separate model from DataFn's `shareable` capability. The runtime maps `shareable` operations to `CKShare` objects on the underlying records:
+
+```swift
+// Roadmap: not yet shipped.
+try await runtime.share(resource: "documents", id: "doc:42")
+```
+
+For now, sharing is **not** supported through CloudKit-backed mode. Use the DataFn-server backend if your app needs sharing.
+
+## Quotas
+
+CloudKit's per-user quota covers the user's iCloud storage. Apple-managed, free to you. The current quota is `5 GB` free + up to `2 TB` paid. For most apps this is plenty.
+
+If a user is out of quota, writes fail with `ICLOUD_UNAVAILABLE`. The runtime surfaces this through the `onSyncEvent` callback.
+
+## Subscriptions
+
+The runtime subscribes to CloudKit silent push notifications for cross-device sync. The user must:
+
+- Be signed into iCloud on every device.
+- Have iCloud Drive enabled.
+- Be online (CloudKit doesn't sync over cellular without permission unless granted).
+
+CloudKit's silent push works in the background — your app receives `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` and the runtime catches it.
+
+## Failure modes
+
+| Error | Cause | Fix |
+| --- | --- | --- |
+| `ICLOUD_UNAVAILABLE` | User signed out, network down, or quota exceeded. | Surface to user; the runtime auto-retries when conditions improve. |
+| `NATIVE_SYNC_CONFLICT` | CoreData couldn't resolve a CloudKit conflict. | Inspect logs; conflict policy is the runtime's `NSMergePolicy.mergeByPropertyObjectTrump`. |
+| `BRIDGE_UNAVAILABLE` | Hybrid app with no bridge host. | Wire the bridge before starting the runtime. |
+| `SEARCH_INDEX_REBUILD_FAILED` | Disk full or permissions. | Check device storage. |
+
+## Migration path: CloudKit → DataFn server
+
+If you start with CloudKit and later need a server:
+
+1. Stand up a DataFn server with the same schema.
+2. Ship a new app version with both `syncBackend.iCloud(...)` and `syncBackend.datafnServer(...)` selected by a flag.
+3. On first launch with the new mode, the runtime clones from the server. This overwrites the local store with the server's view.
+4. Migration script on the server side: ingest CloudKit data via the iCloud API and replay into the server.
+
+In practice, most teams start with the DataFn server even for Apple-only apps. It's easier to add CloudKit later than to remove the server later.
+
+## See also
+
+- [Setup](/docs/documentation/apple/setup)
+- [CoreData store](/docs/documentation/apple/coredata)
+- [Apple WebView Host example](/docs/examples/apple-webview-host)

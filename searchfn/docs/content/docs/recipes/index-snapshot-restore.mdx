@@ -1,0 +1,122 @@
+---
+title: Index Snapshot and Restore
+description: Capture the SearchFn index state for backup, fixtures, or seeding new environments.
+---
+
+Indexes are derived state — you can always rebuild them from your primary store. But "always" can take hours; sometimes you want to snapshot the index and replay it quickly.
+
+## When to snapshot
+
+- **Tests** — Seed integration tests with a known index state.
+- **Local dev** — Avoid running a full backfill every time a new contributor joins.
+- **DR** — Restore quickly while a primary backfill runs in the background.
+
+## Memory adapter — JSON dump
+
+```typescript
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+async function snapshot(adapter: MemoryAdapter): Promise<string> {
+  return JSON.stringify(await adapter.dumpSnapshot());
+}
+
+async function restore(adapter: MemoryAdapter, json: string) {
+  await adapter.loadSnapshot(JSON.parse(json));
+}
+```
+
+`dumpSnapshot()` / `loadSnapshot()` serialize the entire in-memory state. The output is compact but still ~10-30% of raw text size — fine for fixtures, not for production-scale dumps.
+
+## IndexedDB — export and import
+
+```typescript
+import { IndexedDbAdapter } from "@searchfn/adapter-indexeddb";
+
+async function exportToBlob(adapter: IndexedDbAdapter): Promise<Blob> {
+  const snapshot = await adapter.dumpSnapshot();
+  return new Blob([JSON.stringify(snapshot)], { type: "application/json" });
+}
+
+async function importFromBlob(adapter: IndexedDbAdapter, blob: Blob) {
+  const text = await blob.text();
+  await adapter.loadSnapshot(JSON.parse(text));
+}
+```
+
+For tests, ship the JSON as a fixture file and import it on every test boot.
+
+## Postgres — pg_dump
+
+Use Postgres's native dump:
+
+```bash
+pg_dump --table='_searchfn_*' -Fc search_db > search-backup.dump
+```
+
+Restore:
+
+```bash
+pg_restore -d search_db search-backup.dump
+```
+
+Captures all SearchFn tables (`_searchfn_articles`, `_searchfn_vocab`, etc.) in one consistent snapshot.
+
+## Meilisearch — snapshots API
+
+Meilisearch has [first-class snapshots](https://www.meilisearch.com/docs/learn/configuration/snapshots):
+
+```typescript
+await meili.createSnapshot();
+```
+
+The `MeilisearchAdapter` exposes this via `adapter.createSnapshot()`. Backups land in Meili's `snapshots/` directory.
+
+## Elasticsearch / OpenSearch — snapshot repositories
+
+ES/OS have [snapshot and restore](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshot-restore.html) backed by S3, GCS, Azure Blob, or local filesystem. Use the backend SDK directly — `ElasticsearchAdapter` doesn't surface a SearchFn-specific snapshot API.
+
+## Snapshot versioning
+
+Pipeline changes break older snapshots. The serialized JSON includes a `schemaVersion`; the adapter refuses to `loadSnapshot` a version it doesn't understand. Versioning convention:
+
+- Bump when changing the tokenizer, normalizer, or stemmer.
+- Bump when changing the inverted index storage format.
+- Don't bump for pure adapter config (cache sizes, etc.).
+
+## Snapshot size
+
+Approximate sizes for typical corpora:
+
+| Corpus | Snapshot size |
+| --- | --- |
+| 1k tasks (titles only) | ~50 KB |
+| 100k articles (title + body) | ~50 MB |
+| 1M chat messages (body only) | ~500 MB |
+
+Memory snapshots use straight JSON. For larger sizes, use Postgres or Elasticsearch native dumps.
+
+## Tests — using snapshots
+
+```typescript
+import { beforeAll, beforeEach } from "vitest";
+import { readFile } from "node:fs/promises";
+
+const fixture = JSON.parse(await readFile("./fixtures/articles-index.json", "utf-8"));
+
+beforeAll(async () => {
+  await adapter.initialize({ resources: [{ name: "articles", searchFields: ["title", "body"] }] });
+});
+
+beforeEach(async () => {
+  await adapter.clear("articles");
+  await adapter.loadSnapshot(fixture);
+});
+```
+
+Every test starts from the same known state. Search assertions are deterministic.
+
+## See also
+
+- [Backfill from DB](/docs/recipes/backfill-from-db)
+- [Reindex with no downtime](/docs/recipes/reindex-no-downtime)
+- [Relevance testing](/docs/recipes/relevance-testing)

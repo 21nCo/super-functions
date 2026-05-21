@@ -1,0 +1,97 @@
+---
+title: Snippet Highlighting
+description: Return matched fragments with the hit terms wrapped in HTML mark tags.
+---
+
+SearchFn returns IDs, not document content. Snippet highlighting happens after you've fetched the records — either using the search query directly or via a small utility that mirrors the SearchFn pipeline.
+
+## Minimal client-side highlight
+
+```typescript
+function highlight(text: string, query: string): string {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  let result = text;
+  for (const term of terms) {
+    const re = new RegExp(`(${escapeRegex(term)})`, "ig");
+    result = result.replace(re, "<mark>$1</mark>");
+  }
+  return result;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+```
+
+Use it after fetching the record:
+
+```typescript
+const ids = await client.search({ resource: "articles", query });
+const records = await db.articles.findMany({ where: { id: { in: ids } } });
+
+const highlighted = records.map((r) => ({
+  ...r,
+  titleHtml: highlight(r.title, query),
+  bodyHtml: highlight(r.body, query),
+}));
+```
+
+## Matching SearchFn's pipeline
+
+The naive highlighter above misses stems. A search for "running" finds "run" in the index, but the regex above only highlights "running" in the text. To highlight properly, build a parallel pipeline-aware highlighter:
+
+```typescript
+import { tokenize, normalize, stem } from "@searchfn/core";
+
+function highlightPipeline(text: string, query: string): string {
+  const queryStems = new Set(
+    tokenize(query).map(normalize).map(stem)
+  );
+
+  return text.replace(/(\b[\p{L}\p{N}]+\b)/gu, (word) => {
+    const wordStem = stem(normalize(word));
+    return queryStems.has(wordStem) ? `<mark>${word}</mark>` : word;
+  });
+}
+```
+
+Now `query="running"` highlights `runs`, `running`, and `ran`.
+
+## Snippet windowing
+
+For long body text, return only a window around the first match:
+
+```typescript
+function snippet(text: string, query: string, window = 80): string {
+  const lc = text.toLowerCase();
+  const idx = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => lc.indexOf(t))
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b)[0];
+
+  if (idx == null) return text.slice(0, window * 2) + "...";
+
+  const start = Math.max(0, idx - window);
+  const end = Math.min(text.length, idx + window);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < text.length ? "..." : "";
+  return prefix + text.slice(start, end) + suffix;
+}
+```
+
+Combine: `highlight(snippet(body, query), query)`.
+
+## Server-side highlighting
+
+For Meilisearch / Elasticsearch backends, the backends themselves can return highlighted snippets. SearchFn's adapters don't surface this today — use the backend SDK directly when you need backend-native highlighting.
+
+## XSS
+
+`<mark>` is safe; arbitrary text isn't. Sanitize record content **before** highlighting and rendering. Most templating engines (React, Svelte, Solid) escape by default, so render `{ snippetHtml }` only via `dangerouslySetInnerHTML` / `@html` after running through a sanitizer like DOMPurify.
+
+## See also
+
+- [Pipeline](/docs/documentation/core/pipeline)
+- [Cross-resource ranking](/docs/recipes/cross-resource-ranking)

@@ -14,6 +14,15 @@ const docsfnSvelteSrc = path.join(
 
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
+  ssr: {
+    // Force @docsfn/core through Vite's transform pipeline so the
+    // `@searchfn/client` alias below resolves the workspace source in dev.
+    // Without this, the dynamic `import("@searchfn/client")` inside
+    // @docsfn/core is externalized and resolved by Node, which fails because
+    // @searchfn/client is not installed as a dependency and its dist is not
+    // built in the monorepo.
+    noExternal: ["@docsfn/core"],
+  },
   resolve: {
     alias: [
       { find: "@site/docs-content", replacement: path.join(docsfnSvelteSrc, "DocsContent.svelte") },

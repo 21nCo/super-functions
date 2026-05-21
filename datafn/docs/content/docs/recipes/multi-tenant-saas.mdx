@@ -1,0 +1,142 @@
+---
+title: "Recipe: Multi-tenant SaaS"
+description: "Namespace per tenant; deriving namespaces from auth; cross-tenant query isolation."
+audience: guide
+applies_to: both
+---
+
+Multi-tenancy in DataFn is a single configuration knob: the `namespaceProvider`. Every read, write, and sync operation is scoped to the namespace the provider returns. There's no need to filter by `orgId` in every query — it's automatic at the row level.
+
+## Schema
+
+Multi-tenancy works with any schema. The example below is a simple project management SaaS:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit", "trash"],
+  resources: [
+    { name: "projects", version: 1, idPrefix: "prj",
+      fields: [
+        { name: "name", type: "string", required: true },
+        { name: "status", type: "string", required: true, enum: ["active", "archived"] },
+      ],
+    },
+    { name: "tasks", version: 1, idPrefix: "tsk",
+      fields: [
+        { name: "projectId", type: "string", required: true, references: { resource: "projects" } },
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+    },
+  ],
+});
+```
+
+Nothing about this schema mentions tenants. That's the point.
+
+## Wire the namespace provider
+
+```typescript
+import { createDatafnServer } from "@datafn/server";
+import { ns } from "@datafn/core";
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "postgres" }),
+  authorize: async (ctx, action) => Boolean(ctx.session?.userId),
+  namespaceProvider: {
+    getNamespace: (ctx) => ns(ctx.session.orgId), // every request scoped to ctx.session.orgId
+    getActorId:  (ctx) => ctx.session.userId,     // who did the write (audit)
+  },
+});
+```
+
+`ns(orgId)` is a helper that produces a stable namespace string. You can compose namespaces — `ns(orgId, "production")` for an org-plus-environment isolation, or `ns(orgId, "billing")` for a per-feature sandbox.
+
+## What this gives you for free
+
+- Every row is stored with an opaque namespace column derived from `getNamespace`.
+- Every query filters by namespace automatically. There is no way to read another tenant's data through DFQL.
+- Every write writes the namespace alongside the row. There is no way to write into another tenant's namespace through DFQL.
+- Sync (`/datafn/clone`, `/datafn/pull`, `/datafn/push`) only ever sees one tenant's data per request.
+
+## Cross-tenant operations
+
+Admin operations need to step outside the namespace. Two options:
+
+### Option 1: bypass for service contexts
+
+Inject a sentinel into your context and short-circuit `namespaceProvider`:
+
+```typescript
+namespaceProvider: {
+  getNamespace: (ctx) => {
+    if (ctx.session?.role === "platform-admin") return ns("__platform__");
+    return ns(ctx.session.orgId);
+  },
+  getActorId: (ctx) => ctx.session.userId,
+},
+```
+
+Then queries from a platform admin see only the `__platform__` namespace, not all tenants. To intentionally read across tenants, perform a query with no `namespaceProvider` short-circuit and `rowLevelNamespace: false`:
+
+### Option 2: a separate admin-only DataFn instance
+
+For platform-side dashboards, run a second DataFn instance with `rowLevelNamespace: false` mounted on an admin-only path (`/admin/datafn/*`). This is the cleanest way to keep tenant-scoped APIs cleanly separated from cross-tenant analytics.
+
+## Per-user isolation inside a tenant
+
+Sometimes you want per-user state inside a tenant — drafts, preferences. Compose the namespace:
+
+```typescript
+getNamespace: (ctx) => ns(ctx.session.orgId, ctx.session.userId);
+```
+
+Then every row is scoped to the user, and an admin who switches between users will see a different slice.
+
+If different resources need different isolation levels (e.g. `projects` scoped to org, `drafts` scoped to user), encode that in the namespace and use the resource name in the namespace function:
+
+```typescript
+getNamespace: (ctx) => {
+  // Future-proofing: the namespaceProvider may receive resource hints in the next minor.
+  return ns(ctx.session.orgId);
+}
+```
+
+For now, mix-and-match isolation per resource is via a second namespace prefix — store `userDrafts` as `ns(orgId, "drafts:" + userId)`.
+
+## Authentication patterns
+
+The `ctx` object is whatever your HTTP middleware populates. With AuthFn:
+
+```typescript
+import { authfnSession } from "@authfn/server";
+
+app.use("*", async (c, next) => {
+  c.set("session", await authfnSession(c.req.raw));
+  await next();
+});
+```
+
+Then in `createDatafnServer`'s `authorize` and `namespaceProvider`, read from `ctx.session`. See the [AuthFn integration](/docs/recipes/authfn-integration) recipe for the full wiring.
+
+## Provisioning a new tenant
+
+There's nothing to do. The first row written under a new namespace creates it implicitly. To pre-warm a tenant (seed default projects, default permissions), use `/datafn/seed` and a `clientId` derived from the org:
+
+```typescript
+await fetch("/datafn/seed", {
+  method: "POST",
+  body: JSON.stringify({ clientId: `provision:${orgId}` }),
+});
+```
+
+`/datafn/seed` is idempotent — calling it repeatedly during onboarding is safe.
+
+## See also
+
+- [Namespaces](/docs/documentation/namespaces) — the full namespace contract.
+- [Authorization](/docs/documentation/server/authorization) — pairing namespaces with field-level authz.
+- [AuthFn integration](/docs/recipes/authfn-integration) — concrete wiring with AuthFn.

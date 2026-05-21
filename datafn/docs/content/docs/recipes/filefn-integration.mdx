@@ -1,0 +1,148 @@
+---
+title: "Recipe: FileFn Integration"
+description: "Attach files to DataFn records — uploads, lifecycle, deletion."
+audience: guide
+applies_to: both
+---
+
+FileFn handles file uploads, storage adapters (S3, R2, GCS, Azure, local), pre-signed URLs, and lifecycle policies. DataFn manages the relational records that own those files. The connection is a `string` field in your schema that stores the FileFn file id.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "attachments",
+      version: 1,
+      idPrefix: "att",
+      fields: [
+        { name: "ownerType", type: "string", required: true }, // "document" | "comment"
+        { name: "ownerId", type: "string", required: true },
+        { name: "fileId", type: "string", required: true },    // FileFn file id
+        { name: "filename", type: "string", required: true },
+        { name: "mime", type: "string", required: true },
+        { name: "size", type: "number", required: true },
+      ],
+      indices: { base: ["ownerType", "ownerId"] },
+    },
+  ],
+});
+```
+
+You can also embed `fileId` directly on a resource (`avatarFileId` on `users`, `coverFileId` on `posts`). The dedicated `attachments` table is correct for many-to-one relationships.
+
+## Upload flow
+
+```typescript
+import { filefnClient } from "@filefn/client";
+
+async function attachFile(ownerType: string, ownerId: string, file: File) {
+  // 1. Upload via FileFn (returns the file id + URL)
+  const fileRecord = await filefnClient.upload({
+    file,
+    folder: `${ownerType}/${ownerId}`,
+  });
+
+  // 2. Create the DataFn attachment row
+  await client.table("attachments").mutate({
+    operation: "insert",
+    record: {
+      ownerType,
+      ownerId,
+      fileId: fileRecord.id,
+      filename: file.name,
+      mime: file.type,
+      size: file.size,
+    },
+  });
+}
+```
+
+The two operations don't need to be transactional in most cases — a failed DataFn insert just leaves an orphan file (cleaned up by FileFn's retention policy). If you want strict consistency, wrap them in a try/catch and call FileFn's delete on the catch path.
+
+## Download / display
+
+For images and small files, render directly from FileFn's CDN:
+
+```tsx
+<img src={filefnClient.url(att.fileId)} alt={att.filename} />
+```
+
+For private files, request a short-lived signed URL:
+
+```tsx
+const [src, setSrc] = useState<string>();
+useEffect(() => {
+  filefnClient.signedUrl(att.fileId, { expiresIn: 60 }).then(setSrc);
+}, [att.fileId]);
+return <img src={src} alt={att.filename} />;
+```
+
+## Lifecycle: delete attachment
+
+```typescript
+async function detachFile(attachmentId: string, fileId: string) {
+  await client.transact({
+    steps: [
+      {
+        type: "mutation",
+        mutation: {
+          resource: "attachments",
+          version: 1,
+          operation: "delete",
+          id: attachmentId,
+        },
+      },
+    ],
+  });
+  // After the DataFn delete succeeds, queue the FileFn delete
+  await filefnClient.delete(fileId);
+}
+```
+
+Why do them sequentially? The DataFn delete might fail (authz, conflict). If it does, you don't want to have already deleted the file.
+
+## Cascade delete
+
+When the parent (document, comment) is trashed or hard-deleted, you want the attachments to follow. Two options:
+
+1. **Server-side hook** — `afterMutation` on the parent resource that fans out to attachments. Clean, but you're now doing work the database could do.
+2. **FK + cascade in the database** — declare a foreign key on the underlying table that cascades on delete. This is the canonical option if you control the schema migrations.
+
+For soft-deletes via the `trash` capability, neither cascades automatically — by design. You either bake the cascade into your UI ("trash this document and its 3 attachments") or accept that re-restoring the parent should also restore its attachments.
+
+## Quota and limits
+
+DataFn doesn't enforce file size limits — that's FileFn's job. Coordinate the two:
+
+```typescript
+filefnClient.configure({
+  maxFileSize: 25 * 1024 * 1024,
+  allowedMimes: ["image/*", "application/pdf"],
+});
+
+// In DataFn schema:
+{ name: "size", type: "number", required: true, max: 25 * 1024 * 1024 }
+```
+
+The `max` validator on the `size` field gives you a server-side double-check.
+
+## Searching by file metadata
+
+If you need to search by filename or mime type, index those fields:
+
+```typescript
+indices: { base: ["ownerType", "ownerId", "filename"], search: ["filename"] },
+```
+
+For full-text search across file *contents*, you need a search provider that indexes file bodies (Tantivy via a worker, ElasticSearch). See [SearchFn integration](/docs/recipes/searchfn-integration).
+
+## See also
+
+- [FileFn docs](https://filefn.21n.co/docs)
+- [Custom Plugins](/docs/documentation/plugins/custom-plugins)
+- [Capabilities](/docs/documentation/capabilities)

@@ -1,0 +1,112 @@
+---
+title: "Deploy: Docker"
+description: Containerize SearchFn — multi-stage build, production image, compose for local stack.
+---
+
+## Multi-stage Dockerfile
+
+```dockerfile
+# syntax=docker/dockerfile:1.6
+
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
+FROM node:20-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY . .
+RUN npm run build
+
+FROM node:20-slim AS runtime
+WORKDIR /app
+RUN useradd --no-create-home --uid 1001 searchfn
+
+COPY --from=deps --chown=searchfn:searchfn /app/node_modules /app/node_modules
+COPY --from=build --chown=searchfn:searchfn /app/dist /app/dist
+COPY --chown=searchfn:searchfn package*.json ./
+
+USER searchfn
+ENV NODE_ENV=production
+EXPOSE 8080
+CMD ["node", "dist/server.js"]
+```
+
+## docker-compose.yml — full local stack
+
+```yaml
+services:
+  searchfn:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      SEARCH_DB_URL: postgres://searchfn:searchfn@db:5432/searchfn
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: searchfn
+      POSTGRES_PASSWORD: searchfn
+      POSTGRES_DB: searchfn
+    volumes: ["db_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U searchfn"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  meili:
+    image: getmeili/meilisearch:v1.6
+    ports: ["7700:7700"]
+    environment:
+      MEILI_MASTER_KEY: dev-master-key
+      MEILI_NO_ANALYTICS: "true"
+    volumes: ["meili_data:/meili_data"]
+
+volumes:
+  db_data:
+  meili_data:
+```
+
+`docker compose up` brings up SearchFn, Postgres, and a Meilisearch sidecar.
+
+## Healthcheck
+
+```dockerfile
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:8080/searchfn/status || exit 1
+```
+
+The `status` endpoint returns 200 only when the adapter is reachable, so it's a real readiness probe.
+
+## Logs
+
+Default `node` images log to stdout. With JSON output from your logger, `docker logs` and any aggregator (Docker → Fluentd, Loki, Datadog) just work.
+
+## Multi-arch builds
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t myorg/searchfn:0.2.0 --push .
+```
+
+The base image (`node:20-slim`) is multi-arch. SearchFn is pure TypeScript so portable across architectures.
+
+## Image size
+
+A typical build is ~150 MB:
+
+- ~80 MB base image
+- ~50 MB node_modules (production deps)
+- ~20 MB app code
+
+For smaller images, switch the base to `node:20-alpine` (Alpine + musl). Test thoroughly — some Node native modules don't ship Alpine binaries.
+
+## See also
+
+- [Kubernetes](/docs/documentation/deploy/kubernetes)
+- [Production checklist](/docs/documentation/security/production-checklist)

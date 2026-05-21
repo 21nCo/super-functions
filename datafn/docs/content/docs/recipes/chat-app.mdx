@@ -1,0 +1,152 @@
+---
+title: "Recipe: Chat App"
+description: "Append-only messages, cursor pagination, WebSocket live updates."
+audience: guide
+applies_to: both
+---
+
+A chat app is almost a special-case kanban: append-only inserts, ordered reads, and live tail. The pattern that matters is **cursor pagination** so an active conversation doesn't page-shift under the user.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "rooms",
+      version: 1,
+      idPrefix: "rm",
+      capabilities: ["shareable"],
+      fields: [
+        { name: "name", type: "string", required: true },
+      ],
+    },
+    {
+      name: "messages",
+      version: 1,
+      idPrefix: "msg",
+      fields: [
+        { name: "roomId", type: "string", required: true, references: { resource: "rooms" } },
+        { name: "body", type: "string", required: true, maxLength: 2000 },
+      ],
+      indices: { base: ["roomId", "createdAt"] },
+    },
+  ],
+});
+```
+
+Rooms are `shareable` so we can invite participants without an extra membership table. Messages have no soft-delete by default — add `trash` if you want it.
+
+## Posting a message
+
+```typescript
+async function send(roomId: string, body: string) {
+  await client.table("messages").mutate({
+    operation: "insert",
+    record: { roomId, body },
+  });
+}
+```
+
+The `audit` capability fills in `createdBy` automatically (so you know who sent the message), and `timestamps` fills in `createdAt`.
+
+## Loading the conversation
+
+Use cursor pagination — never offset. Offset shifts under inserts; cursor doesn't.
+
+```typescript
+const initial = await client.table("messages").query({
+  filters: { roomId: { $eq: roomId } },
+  sort: ["createdAt:desc", "id:desc"],
+  limit: 30,
+});
+
+async function loadOlder(cursor: string) {
+  return client.table("messages").query({
+    filters: { roomId: { $eq: roomId } },
+    sort: ["createdAt:desc", "id:desc"],
+    limit: 30,
+    cursor,
+  });
+}
+```
+
+In the UI, render `initial.data.reverse()` (newest at the bottom) and prepend `loadOlder` results to the top of the list.
+
+## Live tail
+
+```typescript
+const tail = client.table("messages").signal({
+  filters: { roomId: { $eq: roomId } },
+  sort: ["createdAt:desc"],
+  limit: 30,
+});
+
+tail.subscribe((value) => setMessages(value?.toReversed() ?? []));
+```
+
+The signal updates whenever a new message arrives — locally, from another tab, or from another participant via the WebSocket.
+
+## Typing indicators
+
+Typing indicators are ephemeral; don't persist them. Either:
+
+1. **Use the WebSocket directly** — DataFn exposes the underlying WS for custom events. Send `{ type: "typing", roomId, userId }` and decay client-side after 5s.
+2. **Use a tiny ephemeral resource** with a 60s TTL via a retention policy — heavier-weight but fits into the DFQL model.
+
+For most apps, option 1 is correct. See [Presence and cursors](/docs/recipes/presence-cursors).
+
+## Authorization
+
+For room-level access control, use the `shareable` capability on `rooms`. Then in `messages`, defer to the parent room's visibility:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (payload?.resource === "messages") {
+    const roomId =
+      action === "query"
+        ? payload.filters?.roomId?.$eq
+        : payload.record?.roomId ?? payload.id;
+    if (!roomId) return false;
+    return userCanAccessRoom(ctx.user, roomId); // your function
+  }
+  return true;
+};
+```
+
+The authorize callback can run DFQL itself to check the room's `shareable.principals`.
+
+## Editing and deletion
+
+Most chat apps support a 15-minute edit window. Use a server-side hook:
+
+```typescript
+plugins: [
+  {
+    name: "edit-window",
+    hooks: [
+      {
+        event: "beforeMutation",
+        filter: { resource: "messages", operation: ["merge", "replace", "delete"] },
+        handler: async (ctx) => {
+          const mut = ctx.payload as DfqlMutation;
+          const original = await server.db.findOne("messages", mut.id);
+          if (!original) return;
+          if (Date.now() - original.createdAt > 15 * 60 * 1000) {
+            return { abort: { code: "FORBIDDEN", message: "Edit window expired" } };
+          }
+        },
+      },
+    ],
+  },
+],
+```
+
+## See also
+
+- [Sharing flows](/docs/recipes/sharing-flows)
+- [WebSockets](/docs/documentation/server/websockets)
+- [Pagination](/docs/dfql/pagination)

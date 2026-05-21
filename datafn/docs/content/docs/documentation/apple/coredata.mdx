@@ -1,0 +1,121 @@
+---
+title: "CoreData Store"
+description: "Where DataFn keeps records on Apple devices, and how the schema maps to CoreData entities."
+audience: reference
+applies_to: client
+---
+
+`DatafnAppleRuntime` uses a CoreData store as its local persistence layer. The store is constructed at startup from the bundled schema; every resource becomes a CoreData entity, every field becomes an attribute.
+
+## Why CoreData
+
+Three reasons:
+
+1. **SwiftUI integration**. `@FetchRequest` and `NSPersistentContainer` are native; the runtime can hand observed results straight into SwiftUI without wrapping.
+2. **CloudKit interop**. If you want CloudKit sync, the store has to be a CoreData store with `NSPersistentCloudKitContainer`.
+3. **Tooling**. Xcode's CoreData inspector works on the store; debug builds can dump rows from the IDE.
+
+The tradeoff: CoreData has a learning curve, and the bridge from DataFn's schema to CoreData's entities is non-trivial. The runtime handles all the bridging.
+
+## Where the store lives
+
+```swift
+storeRootURL = FileManager.default
+    .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("datafn-store", isDirectory: true)
+```
+
+By convention, application support. Multi-account apps add a per-account subdirectory.
+
+## Schema → entity mapping
+
+The runtime emits a CoreData `NSManagedObjectModel` at startup based on the JSON schema:
+
+| DataFn field type | CoreData attribute type |
+| --- | --- |
+| `string` | `String` |
+| `number` (integer) | `Int64` |
+| `number` (decimal) | `Double` |
+| `boolean` | `Bool` |
+| `date` | `Date` |
+| `json` | `Binary Data` (NSData of UTF-8 JSON) |
+| `string[]` (array) | `Transformable` |
+
+Capability fields (`createdAt`, `updatedAt`, `trashedAt`, `archivedAt`, `createdBy`, `updatedBy`, `shares`, `visibility`) are added automatically.
+
+Relations become CoreData relationships:
+
+- `one-many` → one-to-many relationship with inverse.
+- `many-many` → many-to-many via a join entity.
+- `one-one` → one-to-one with inverse.
+
+## Schema changes
+
+When you bump `schemaHash`, the runtime detects a mismatch with the stored model and triggers a migration:
+
+- **Additive changes** (new fields, new resources) migrate in-place.
+- **Removed fields** are kept in the CoreData model marked deprecated; data persists but is no longer surfaced through DFQL.
+- **Renamed fields** are not auto-migrated; provide a `DatafnAppleRuntimeMigrationPlan` or do a destructive rebuild.
+
+Destructive rebuild:
+
+```swift
+let config = DatafnAppleRuntimeConfiguration(
+    ...,
+    onSchemaMismatch: .rebuild  // drops the local store and re-clones from the server
+)
+```
+
+This is correct for development; for production prefer a migration plan that preserves user data.
+
+## Reading raw entities
+
+For 99% of cases, use [`DatafnRuntimeObservationSource`](/docs/documentation/apple/observation). For unusual cases (debugging, custom export), the underlying container is accessible:
+
+```swift
+let context = try await runtime.makeViewContext()
+let request = NSFetchRequest<NSManagedObject>(entityName: "Task")
+let results = try context.fetch(request)
+```
+
+Use this sparingly — direct CoreData access bypasses capability filtering and field-level authz.
+
+## Writing raw entities
+
+Don't. Writes through CoreData directly bypass DataFn's mutation pipeline (no `serverSeq`, no sync queue, no validation). The local store will diverge from the server.
+
+If you genuinely need to bulk-import data (e.g. on first launch), use the runtime's seed APIs:
+
+```swift
+try await runtime.seed(records: [
+    DatafnSeedRecord(resource: "tasks", id: "tsk:1", record: ["title": "First", "completed": false]),
+    ...
+])
+```
+
+`seed` is treated as a clone — it writes to local store and is then pushed to the server on the next sync.
+
+## Backup and restore
+
+The store is a standard CoreData SQLite file. Apple's automatic backup (iCloud Backup) includes it unless you opt the directory out:
+
+```swift
+var url = storeRoot
+try url.setResourceValues({ var v = URLResourceValues(); v.isExcludedFromBackup = true; return v }())
+```
+
+For user-driven backup/restore (separate from iCloud Backup), the file can be copied. Don't copy while the runtime is running — call `runtime.stop()` first.
+
+## Size limits
+
+CoreData has no hard size limit, but practical performance degrades past ~1 GB. For apps with very large datasets:
+
+- Use selective sync (only pull resources the user actively touches).
+- Periodically trim old records via a retention plugin.
+- Consider sharding by namespace if you have multiple logical datasets.
+
+## See also
+
+- [Observation](/docs/documentation/apple/observation)
+- [CloudKit](/docs/documentation/apple/cloudkit)
+- [Setup](/docs/documentation/apple/setup)

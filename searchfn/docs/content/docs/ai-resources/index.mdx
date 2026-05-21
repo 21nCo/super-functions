@@ -1,0 +1,26 @@
+---
+title: AI Resources
+sidebarTitle: Overview
+description: Use SearchFn with AI coding tools — Cursor, Claude, Codex, Windsurf, and any LLM that consumes llms.txt.
+---
+
+SearchFn ships first-class resources for AI coding tools. Everything on this site is also available as plain text optimized for LLM consumption, plus prompt patterns and integration guides for the most common agents.
+
+## What's here
+
+- **[llms.txt + llms-full.txt](/docs/ai-resources/llms-txt)** — the entire documentation as plain text, auto-generated at build time.
+- **[MCP server](/docs/ai-resources/mcp)** — connect Claude, Cursor, or any MCP-compatible client to a live SearchFn documentation server.
+- **[Skills](/docs/ai-resources/skills)** — Factory Droid skills for end-to-end SearchFn setup.
+- **[Cursor setup](/docs/ai-resources/cursor)** — pin docs, prompt scaffolding, code-mode notes.
+- **[Claude setup](/docs/ai-resources/claude)** — Projects and Code instructions tuned for SearchFn.
+- **[Codex setup](/docs/ai-resources/codex)** — system prompts for OpenAI Codex / Codex CLI.
+
+## Why this matters
+
+SearchFn has three runtimes (built-in engine, Postgres, external search services), five external adapters, and two non-TS targets (Python, Swift). An LLM that doesn't know which adapter to pick or how the SearchProvider boundary works will generate plausible-looking but wrong code. The resources here give AI tools enough context to make the right decisions without hallucinating.
+
+## See also
+
+- [Quickstart](/docs/quickstart) for first-hand setup
+- [Architecture](/docs/architecture) for the canonical mental model
+- [Adapter reference](/docs/reference/adapters) for picking the right backend

@@ -1,0 +1,117 @@
+# authfn
+
+> Self-hosted authentication for any stack. Sessions, OTP, passwords, social OAuth, 2FA, API keys, multi-region. TypeScript, Python, and Swift SDKs.
+
+## Documentation
+
+- [Custom database adapter](https://authfn.superfunctions.dev/docs/adapters/database/custom) — Implement the `@superfunctions/db` adapter contract for any storage backend.
+- [Drizzle adapter](https://authfn.superfunctions.dev/docs/adapters/database/drizzle) — Use Drizzle ORM with Postgres, MySQL, SQLite, or Cloudflare D1.
+- [Database adapters](https://authfn.superfunctions.dev/docs/adapters/database) — Wire authfn to your database — Drizzle, raw Postgres, SQLite, in-memory, or a custom adapter.
+- [Memory adapter](https://authfn.superfunctions.dev/docs/adapters/database/memory) — In-memory database — for tests and local development. Don't use it in production.
+- [Postgres adapter](https://authfn.superfunctions.dev/docs/adapters/database/postgres) — Talk to Postgres directly without Drizzle. Same contract, no ORM.
+- [SQLite adapter](https://authfn.superfunctions.dev/docs/adapters/database/sqlite) — Single-file local database — perfect for local-first apps and self-hosted single-node deployments.
+- [Adapters](https://authfn.superfunctions.dev/docs/adapters) — Database, mail, and OAuth — bring your own. authfn ships only the contracts.
+- [Custom mail adapter](https://authfn.superfunctions.dev/docs/adapters/mail/custom) — The delivery contract is one method — drop in any mailer.
+- [Mail adapters](https://authfn.superfunctions.dev/docs/adapters/mail) — authfn never bundles a mail provider. Implement the delivery contract for the provider you already use.
+- [Postmark](https://authfn.superfunctions.dev/docs/adapters/mail/postmark) — Use Postmark as your authfn email provider.
+- [Resend](https://authfn.superfunctions.dev/docs/adapters/mail/resend) — Use Resend as your authfn email provider.
+- [SendGrid](https://authfn.superfunctions.dev/docs/adapters/mail/sendgrid) — Use SendGrid as your authfn email provider.
+- [AWS SES](https://authfn.superfunctions.dev/docs/adapters/mail/ses) — Use AWS SES as your authfn email provider.
+- [OAuth adapters](https://authfn.superfunctions.dev/docs/adapters/oauth) — Bundled OAuth providers and how to extend.
+- [Admin](https://authfn.superfunctions.dev/docs/admin) — @authfn/admin — admin-only routes for listing and deleting users, with a customizable authorization callback.
+- [Claude](https://authfn.superfunctions.dev/docs/ai-resources/claude) — One-click Claude Desktop / Claude Code setup for authfn.
+- [Codex / Droid](https://authfn.superfunctions.dev/docs/ai-resources/codex) — AGENTS.md / Factory Codex / Factory Droid setup for authfn.
+- [Cursor](https://authfn.superfunctions.dev/docs/ai-resources/cursor) — One-click Cursor setup for authfn — MCP, llms.txt, and rules.
+- [AI Resources](https://authfn.superfunctions.dev/docs/ai-resources) — First-class integrations for LLM-based coding assistants — llms.txt, an MCP server, and per-tool skill packs.
+- [llms.txt](https://authfn.superfunctions.dev/docs/ai-resources/llms-txt) — Static context files generated from the docs — drop into your assistant for one-shot RAG.
+- [MCP server](https://authfn.superfunctions.dev/docs/ai-resources/mcp) — A Model Context Protocol server that exposes authfn docs, OpenAPI, and example apps as live tools for your assistant.
+- [Skills](https://authfn.superfunctions.dev/docs/ai-resources/skills) — Packaged authfn patterns your assistant can apply on request — sign-in flows, OAuth, multi-region, and more.
+- [API Reference](https://authfn.superfunctions.dev/docs/api) — HTTP endpoints exposed by authfn, generated from your enabled plugins.
+- [Account linking](https://authfn.superfunctions.dev/docs/core-concepts/account-linking) — When authfn merges multiple sign-in methods into a single user, and how to control that policy.
+- [Architecture](https://authfn.superfunctions.dev/docs/core-concepts/architecture) — How the authfn kernel, plugins, hooks, runtime resolver, and database adapter fit together.
+- [Cookies](https://authfn.superfunctions.dev/docs/core-concepts/cookies) — Names, prefixes, domain, SameSite, Secure, path, and max-age — every knob authfn exposes for cookie-based sessions.
+- [CSRF protection](https://authfn.superfunctions.dev/docs/core-concepts/csrf) — How authfn defends against cross-site request forgery, what's protected, what's exempt, and how to extend the policy.
+- [Envelopes](https://authfn.superfunctions.dev/docs/core-concepts/envelopes) — Every authfn HTTP response wraps either a success payload or a structured error in a stable envelope shape.
+- [Errors](https://authfn.superfunctions.dev/docs/core-concepts/errors) — Every error code authfn can return — what it means, what HTTP status it maps to, whether it's retryable, and what the client should show.
+- [Hooks](https://authfn.superfunctions.dev/docs/core-concepts/hooks) — Lifecycle callbacks that let you intercept and augment authfn flows — before/after user creation, session issuance, OTP send, OAuth start/callback, and account deletion.
+- [Core Concepts](https://authfn.superfunctions.dev/docs/core-concepts) — The mental model behind authfn — kernel, plugins, sessions, cookies, runtime, regions, observability, and the canonical envelope/error contract.
+- [Observability](https://authfn.superfunctions.dev/docs/core-concepts/observability) — Every meaningful action in authfn emits a structured event. Wire one callback and you have audit, metrics, and tracing.
+- [OpenAPI](https://authfn.superfunctions.dev/docs/core-concepts/openapi) — How authfn generates and serves an OpenAPI 3.1 document of your enabled plugin set.
+- [Plugins](https://authfn.superfunctions.dev/docs/core-concepts/plugins) — How authfn plugins compose into a single auth runtime — lifecycle, ordering, configuration, schema, and authoring custom plugins.
+- [Rate limiting](https://authfn.superfunctions.dev/docs/core-concepts/rate-limiting) — What authfn does and doesn't enforce, and how to add the limits you need.
+- [Multi-region routing](https://authfn.superfunctions.dev/docs/core-concepts/regions) — How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
+- [Runtime resolver](https://authfn.superfunctions.dev/docs/core-concepts/runtime) — How authfn decides per-request issuer, base URL, OAuth credentials, and cookie domain — and how to take control of that decision.
+- [Security](https://authfn.superfunctions.dev/docs/core-concepts/security) — authfn's threat model, what it defends against, what it expects you to handle, and how to harden a deployment.
+- [Sessions](https://authfn.superfunctions.dev/docs/core-concepts/sessions) — How authfn issues, verifies, rotates, and revokes sessions — for cookie-based browsers and bearer-token clients alike.
+- [account-settings](https://authfn.superfunctions.dev/docs/examples/account-settings) — Post-login UX — two-factor enroll/disable, API-key list/create/revoke, and protected-endpoint authentication via API key.
+- [Examples](https://authfn.superfunctions.dev/docs/examples) — Five runnable example apps that exercise authfn end-to-end with deterministic Playwright tests.
+- [multi-region-routing](https://authfn.superfunctions.dev/docs/examples/multi-region-routing) — Two regional authfn servers and a single browser client — region lookup, wrong-authority correction, and successful continuation.
+- [otp-recovery](https://authfn.superfunctions.dev/docs/examples/otp-recovery) — Verify-email OTP, OTP sign-in, password reset via OTP, with a deterministic demo inbox for Playwright assertions.
+- [password-sessions](https://authfn.superfunctions.dev/docs/examples/password-sessions) — Email/password sign-up, sign-in, current-session fetch, multi-device session listing, single-session revoke, and sign-out.
+- [social-oauth](https://authfn.superfunctions.dev/docs/examples/social-oauth) — OAuth start, callback, and disconnect — with a local fake provider so the example doesn't need real third-party credentials.
+- [Bun](https://authfn.superfunctions.dev/docs/frameworks/bun) — Use Bun's native HTTP server — authfn is WHATWG-native, no adapter needed.
+- [Bring your own framework](https://authfn.superfunctions.dev/docs/frameworks/byo) — Mount authfn anywhere that hands you a Request — including bare http.createServer, Deno.serve, and AWS Lambda.
+- [Express](https://authfn.superfunctions.dev/docs/frameworks/express) — Mount authfn on Express with @superfunctions/http-express.
+- [FastAPI](https://authfn.superfunctions.dev/docs/frameworks/fastapi) — Mount the Python authfn kernel on FastAPI.
+- [Flask](https://authfn.superfunctions.dev/docs/frameworks/flask) — Mount the Python authfn kernel on Flask.
+- [Hono](https://authfn.superfunctions.dev/docs/frameworks/hono) — Mount authfn on Hono with @superfunctions/http-hono.
+- [Frameworks](https://authfn.superfunctions.dev/docs/frameworks) — Adapters that mount the authfn router on the HTTP framework you already use.
+- [Next.js (App Router)](https://authfn.superfunctions.dev/docs/frameworks/nextjs) — Mount authfn as a Route Handler and read sessions from RSC, Server Actions, and middleware.
+- [Starlette](https://authfn.superfunctions.dev/docs/frameworks/starlette) — Mount the Python authfn kernel on Starlette / pure ASGI.
+- [SvelteKit](https://authfn.superfunctions.dev/docs/frameworks/sveltekit) — Mount authfn as a SvelteKit endpoint and read sessions from server load functions, hooks, and form actions.
+- [Getting Started](https://authfn.superfunctions.dev/docs/getting-started) — Install authfn, configure a server with your first plugins, mount it on Hono, and sign in a user from a typed client — in about ten minutes.
+- [Welcome to authfn](https://authfn.superfunctions.dev/docs) — Self-hosted, framework-agnostic authentication for TypeScript and Python. Sessions, OTP, passwords, social OAuth, API keys, 2FA, multi-region — opt in to what you need.
+- [API keys plugin](https://authfn.superfunctions.dev/docs/plugins/api-keys) — User-owned API keys — issued, hashed, scoped, revocable.
+- [Authoring custom plugins](https://authfn.superfunctions.dev/docs/plugins/authoring) — Step-by-step guide to writing your own authfn plugin — schema, routes, hooks, observability, and OpenAPI integration.
+- [Email OTP plugin](https://authfn.superfunctions.dev/docs/plugins/email-otp) — One-time codes for email verification, magic-link sign-in, sign-up, and password reset.
+- [Plugins](https://authfn.superfunctions.dev/docs/plugins) — Every authfn capability is a plugin. Pick the ones you need; skip the rest.
+- [Multi-region plugin](https://authfn.superfunctions.dev/docs/plugins/multi-region) — Region pinning, lookup, runtime overlays, and wrong-authority redirects.
+- [Native handoff plugin](https://authfn.superfunctions.dev/docs/plugins/native-handoff) — Bridge a web sign-in into a native app session — for iOS / macOS / Android wrappers around a web flow.
+- [Password plugin](https://authfn.superfunctions.dev/docs/plugins/password) — Email + password sign-up, sign-in, reset via OTP, and optional Have-I-Been-Pwned compromise checks.
+- [Apple](https://authfn.superfunctions.dev/docs/plugins/social-oauth/apple) — Configuring Sign in with Apple — JWT-based client secret, the form_post response_mode, and the native iOS / macOS flow.
+- [Custom OAuth providers](https://authfn.superfunctions.dev/docs/plugins/social-oauth/custom-providers) — How to add a provider that's not in the bundled set — Microsoft, GitLab, Discord, Slack, your own IdP.
+- [GitHub](https://authfn.superfunctions.dev/docs/plugins/social-oauth/github) — Configuring GitHub OAuth — emails endpoint, scopes, organization membership.
+- [Google](https://authfn.superfunctions.dev/docs/plugins/social-oauth/google) — Configuring Google OAuth — client setup, scopes, hosted-domain restriction, and one-tap.
+- [Social OAuth plugin](https://authfn.superfunctions.dev/docs/plugins/social-oauth) — Google, Apple, and GitHub OAuth — plus a resolver hook for custom providers and a native Apple flow for iOS.
+- [Two-factor (TOTP) plugin](https://authfn.superfunctions.dev/docs/plugins/two-factor) — RFC 6238 TOTP with recovery codes, time-window tolerance, and pluggable encryption.
+- [Bun](https://authfn.superfunctions.dev/docs/quickstart/bun) — Run authfn under Bun's native HTTP server with zero compatibility shims.
+- [Quickstart](https://authfn.superfunctions.dev/docs/quickstart) — Pick the stack you're shipping on and get a working authfn server and client in 10 minutes.
+- [Next.js (App Router)](https://authfn.superfunctions.dev/docs/quickstart/nextjs) — Mount authfn as a Next.js Route Handler and read sessions from server components and Server Actions.
+- [Node.js (Hono / Express)](https://authfn.superfunctions.dev/docs/quickstart/nodejs) — Stand up an authfn server on Node with Hono or Express, talk to it from the typed client, and switch from the in-memory adapter to Postgres when you're ready.
+- [Python (FastAPI / Flask)](https://authfn.superfunctions.dev/docs/quickstart/python) — Run authfn on a Python backend — same routes, same envelopes, same OpenAPI as the TypeScript kernel.
+- [SvelteKit](https://authfn.superfunctions.dev/docs/quickstart/sveltekit) — Mount authfn as a SvelteKit endpoint, hydrate a reactive session store, and use authfn from server load functions and form actions.
+- [Swift (iOS / macOS)](https://authfn.superfunctions.dev/docs/quickstart/swift) — Sign into authfn from a SwiftUI app using bearer tokens, native Apple Sign-In, and web ↔ native handoff.
+- [Account deletion](https://authfn.superfunctions.dev/docs/recipes/account-deletion) — Cascade-delete a user across every plugin's tables.
+- [Adding 2FA](https://authfn.superfunctions.dev/docs/recipes/adding-2fa) — Enroll, confirm, and challenge with TOTP — the full UX.
+- [Adding a password to an OAuth or OTP account](https://authfn.superfunctions.dev/docs/recipes/adding-password) — Let an authenticated user opt in to passwords without creating a new account.
+- [Building an admin tool](https://authfn.superfunctions.dev/docs/recipes/admin-tool) — Mount @authfn/admin behind your corporate IAM and ship a UI for support.
+- [CLI authentication](https://authfn.superfunctions.dev/docs/recipes/cli-auth) — Issue an API key from your web UI and use it from a command-line tool.
+- [Adding a custom OAuth provider (Microsoft Entra)](https://authfn.superfunctions.dev/docs/recipes/custom-oauth-provider) — Wire authfn to a provider that's not in the bundled set — Microsoft Entra here, but the pattern works for anything.
+- [Custom validation hooks](https://authfn.superfunctions.dev/docs/recipes/custom-validation) — Use beforeUserCreate / beforeSessionIssue to enforce organization-specific rules.
+- [Email verification](https://authfn.superfunctions.dev/docs/recipes/email-verification) — Verify a user's email after sign-up. Copy-paste recipe.
+- [Google One Tap](https://authfn.superfunctions.dev/docs/recipes/google-one-tap) — Hand a Google Identity Services credential to authfn for a frictionless web sign-in.
+- [Recipes](https://authfn.superfunctions.dev/docs/recipes) — Copy-pasteable solutions for common authfn flows. Each recipe is small, self-contained, and links to the relevant plugins / SDKs.
+- [Magic link sign-in](https://authfn.superfunctions.dev/docs/recipes/magic-link) — Send a clickable sign-in link instead of asking the user to type a code. Same kernel; different UI.
+- [Multi-region deployment](https://authfn.superfunctions.dev/docs/recipes/multi-region-deployment) — Two regions, a globally-replicated lookup store, and a client that routes by email.
+- [Native mobile handoff](https://authfn.superfunctions.dev/docs/recipes/native-mobile-handoff) — Sign in via a system browser, hand the session off to your iOS / Android app as a bearer credential.
+- [OpenTelemetry instrumentation](https://authfn.superfunctions.dev/docs/recipes/observability-otel) — Wire authfn's observability events into OpenTelemetry spans for full distributed tracing.
+- [Password reset](https://authfn.superfunctions.dev/docs/recipes/password-reset) — Full password-reset flow — start, verify, change. Two routes, three UI screens.
+- [Rotating 2FA encryption keys](https://authfn.superfunctions.dev/docs/recipes/rotate-2fa-encryption) — Move every 2FA enrollment from one key to a new one, with zero user-visible downtime.
+- [Changelog](https://authfn.superfunctions.dev/docs/reference/changelog) — Release history of @authfn/* packages.
+- [Configuration](https://authfn.superfunctions.dev/docs/reference/configuration) — Every option you can pass to createAuthFn.
+- [Envelopes](https://authfn.superfunctions.dev/docs/reference/envelopes) — The shape of every authfn HTTP response — success and error.
+- [Error codes](https://authfn.superfunctions.dev/docs/reference/errors) — Every AuthFnErrorCode the kernel emits — HTTP status, retryability, when it fires.
+- [Observability events](https://authfn.superfunctions.dev/docs/reference/events) — Every AuthFnEventType the kernel emits — when it fires and what's in its metadata.
+- [Reference](https://authfn.superfunctions.dev/docs/reference) — The exhaustive reference — every route, error, event, table, envelope, and configuration option.
+- [HTTP routes](https://authfn.superfunctions.dev/docs/reference/routes) — Every authfn route, organized by plugin. Auto-generated from the OpenAPI spec.
+- [Database schema](https://authfn.superfunctions.dev/docs/reference/schema) — Every table generated by `superfunctions auth schema` — fields, types, and relationships.
+- [@authfn/client](https://authfn.superfunctions.dev/docs/sdk/client) — The TypeScript client — works in browsers, Node, Bun, Deno; cookie or bearer; with an automatic CSRF, region-aware routing, and a typed surface for every kernel route.
+- [@authfn/core](https://authfn.superfunctions.dev/docs/sdk/core) — The Node server kernel — createAuthFn, AuthFnInstance, the plugin contract, and everything you import to build a runtime.
+- [SDKs](https://authfn.superfunctions.dev/docs/sdk) — First-party authfn SDKs — Node kernel, TypeScript client, Svelte bindings, Python kernel, Swift client.
+- [Python SDK](https://authfn.superfunctions.dev/docs/sdk/python) — The authfn Python kernel — same routes, same envelopes, same OpenAPI as the TypeScript kernel, on FastAPI / Flask / Starlette.
+- [@authfn/svelte](https://authfn.superfunctions.dev/docs/sdk/svelte) — Svelte stores, context, and SvelteKit-friendly patterns for displaying sign-in state and reacting to session changes.
+- [Swift SDK (AuthFnSwift)](https://authfn.superfunctions.dev/docs/sdk/swift) — The Swift package for iOS / macOS — bearer-token sessions, native Sign in with Apple, web→native handoff, and SwiftUI helpers.
+
+## API Reference
+
+- [Authfn](https://authfn.superfunctions.dev/docs/api/authfn)

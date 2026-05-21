@@ -1,0 +1,107 @@
+---
+title: Scaling
+description: Capacity planning, bottlenecks, and how to scale a SearchFn deployment.
+---
+
+A SearchFn deployment scales along three axes: server replicas, adapter-backend capacity, and index storage. Each has its own bottleneck.
+
+## Server replicas
+
+SearchFn's server is stateless when paired with an external adapter — scale horizontally. Typical sizing:
+
+| Replicas | RPS (queries) | RPS (indexing) |
+| --- | --- | --- |
+| 1 | 100–500 | 10–100 |
+| 3 | 300–1500 | 30–300 |
+| 10 | 1000–5000 | 100–1000 |
+
+Numbers depend heavily on query complexity (single-term vs multi-term, fuzzy vs exact, single-resource vs `searchAll`).
+
+The server is CPU-bound on queries (BM25 scoring) and memory-bound on indexing (token buffering). For a typical 8-core, 16 GB instance:
+
+- 1 CPU per ~500 queries/sec sustained
+- 256 MB of working memory per parallel index batch
+
+## Adapter backend capacity
+
+This is usually the real bottleneck.
+
+### Postgres
+
+- `tsvector` GIN index queries are ~1 ms with cache warm, ~50 ms with cache cold.
+- Index writes are ~10 ms each; batches amortize.
+- Postgres connection pool size caps concurrent operations.
+
+Scale: bigger Postgres instance, then read replicas for query traffic.
+
+### Meilisearch
+
+- Queries ~5 ms typical.
+- Indexing throughput ~10k docs/sec on a single Meilisearch instance.
+- Single-node only out of the box; for HA use Meilisearch Cloud or roll your own replication.
+
+Scale: vertically (more CPU + RAM). Meilisearch doesn't shard.
+
+### Elasticsearch / OpenSearch
+
+- Queries ~10 ms typical with cache.
+- Indexing ~20k docs/sec on a 3-node cluster.
+- Sharded; scales horizontally.
+
+Scale: add data nodes; tune `number_of_shards`.
+
+## Memory adapter
+
+In-memory, in-process. Scales only by adding more (independent) processes. Use only for:
+
+- Dev / tests
+- Single-instance workloads where the dataset fits in RAM
+- CLI tools
+
+For anything that needs HA, pick an external adapter.
+
+## Bottleneck diagnosis
+
+1. **Watch p99 latency.** If query latency is `<10 ms` and server CPU is `>60%`, you're CPU-bound on the server — add replicas.
+2. **Watch backend latency.** If query latency is `>50 ms` and backend latency is `>40 ms`, you're backend-bound — scale the backend, not the server.
+3. **Watch index throughput.** If indexing keeps timing out, you're write-bound — batch larger, scale the backend, or reduce indexed fields.
+
+## Cold-start considerations
+
+For serverless deployments (Vercel, Cloudflare Workers, Lambda):
+
+- `initialize()` runs on first request. Keep the resource list small.
+- Adapter connection setup adds 100–500 ms to cold start. Pool with warmers (cron pings to `/searchfn/status`).
+- MemoryAdapter on cold start = empty index. Don't use it on serverless.
+
+## Cache warming
+
+For Postgres adapter, the OS file cache warms after a few queries. Cold-cache p99 can be 10x higher than warm-cache p99. Mitigations:
+
+- Pre-warm by running representative queries on deploy.
+- Move hot indices to faster storage (NVMe vs spinning disk).
+- Increase `shared_buffers` in Postgres.
+
+## Index size estimates
+
+| Corpus | Memory adapter | Postgres adapter | Meilisearch |
+| --- | --- | --- | --- |
+| 1k docs × 100 chars/field × 2 fields | ~1 MB | ~5 MB | ~3 MB |
+| 100k docs × 500 chars/field × 5 fields | ~500 MB | ~3 GB | ~2 GB |
+| 1M docs × 1000 chars/field × 5 fields | OOM | ~50 GB | ~30 GB |
+| 10M docs | ES/OS only | ~500 GB | tight | depends |
+
+These are rough; measure with your own corpus before sizing.
+
+## Per-resource limits
+
+A common pattern is one giant `messages` resource and many small ones (`users`, `channels`, etc.). The big resource dominates index size and query CPU. Mitigations:
+
+- Shard the big resource by time (`messages_2026_q1`, `messages_2026_q2`) and search across them with `searchAll`.
+- Use a separate adapter for the big resource (Elasticsearch) and a cheaper one for the rest (Postgres).
+
+## See also
+
+- [Performance overview](/docs/documentation/performance/index)
+- [Indexing throughput](/docs/documentation/performance/indexing-throughput)
+- [Query latency](/docs/documentation/performance/query-latency)

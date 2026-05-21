@@ -1,0 +1,134 @@
+---
+title: "Quickstart: Hono"
+description: "Mount DataFn on Hono with SQLite in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+This guide gets you to a running Hono server with DataFn routes, SQLite via Drizzle, and a working `/datafn/query` endpoint.
+
+## 1. Scaffold
+
+```bash
+mkdir hono-datafn && cd hono-datafn
+npm init -y
+npm install hono @hono/node-server @datafn/server @datafn/core
+npm install @superfunctions/db @superfunctions/http-hono
+npm install drizzle-orm better-sqlite3
+npm install -D tsx typescript @types/better-sqlite3
+```
+
+Add `"type": "module"` to `package.json`.
+
+## 2. Schema
+
+`shared/schema.ts`:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["title", "completed"] },
+    },
+  ],
+});
+```
+
+## 3. Server
+
+`server/index.ts`:
+
+```typescript
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toHono } from "@superfunctions/http-hono";
+import { schema } from "../shared/schema.js";
+
+const sqlite = new Database("dev.db");
+const db = drizzle(sqlite);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "sqlite" }),
+  rest: true,
+  authorize: async () => true,
+});
+
+const app = new Hono();
+app.route("/", toHono(datafn.router));
+
+serve({ fetch: app.fetch, port: 3000 });
+console.log("DataFn server running at http://localhost:3000");
+```
+
+## 4. Migrate
+
+Generate Drizzle tables from your schema:
+
+```bash
+npx @datafn/cli drizzle-codegen --schema shared/schema.ts --out server/db.ts
+```
+
+Then run a one-time migration:
+
+```bash
+npx drizzle-kit push --config server/drizzle.config.ts
+```
+
+## 5. Run
+
+```bash
+npx tsx server/index.ts
+```
+
+Smoke-test it:
+
+```bash
+curl http://localhost:3000/datafn/status
+```
+
+You should see something like:
+
+```json
+{
+  "ok": true,
+  "result": {
+    "schemaHash": "sha256:...",
+    "capabilities": ["dfql.query", "dfql.mutation", "dfql.transact", "dfql.sync"],
+    "limits": { "maxLimit": 100, "maxTransactSteps": 100, "maxPayloadBytes": 5242880 },
+    "serverTimeMs": 1709251200000
+  }
+}
+```
+
+Try an insert + query:
+
+```bash
+curl -X POST http://localhost:3000/datafn/mutation \
+  -H 'content-type: application/json' \
+  -d '{"resource":"tasks","version":1,"operation":"insert","clientId":"c1","mutationId":"m1","record":{"title":"Hello","completed":false}}'
+
+curl -X POST http://localhost:3000/datafn/query \
+  -H 'content-type: application/json' \
+  -d '{"resource":"tasks","version":1,"limit":10}'
+```
+
+## Where to next
+
+- Add a client: [Setup the Web Client](/docs/documentation/client/setup)
+- Lock the server down: [Authorization](/docs/documentation/server/authorization), [Rate Limiting](/docs/documentation/server/rate-limiting)
+- Move off SQLite: [Drizzle Adapter](/docs/documentation/database/drizzle), [Adapters Overview](/docs/documentation/database/adapters)

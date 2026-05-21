@@ -1,0 +1,176 @@
+---
+title: "Apple Runtime Setup"
+description: "Bootstrap DatafnAppleRuntime in an iOS or macOS app."
+audience: guide
+applies_to: client
+---
+
+## Add the package
+
+In Xcode → **File → Add Packages…**:
+
+```
+https://github.com/21nCo/super-functions
+```
+
+Pick the `DatafnAppleRuntime` product.
+
+In `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/21nCo/super-functions", from: "0.1.0"),
+],
+targets: [
+    .executableTarget(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "DatafnAppleRuntime", package: "super-functions"),
+        ]
+    ),
+]
+```
+
+## Bundle the schema
+
+The schema is shared with your TypeScript codebase. Export it as JSON and add to the iOS app bundle:
+
+```bash
+npx @datafn/cli generate --schema shared/schema.ts --format json --out ios/schema.json
+```
+
+Add `ios/schema.json` to the Xcode target.
+
+## Construct the runtime
+
+```swift
+import DatafnAppleRuntime
+
+let schemaURL = Bundle.main.url(forResource: "schema", withExtension: "json")!
+let schemaData = try Data(contentsOf: schemaURL)
+
+let storeRoot = FileManager.default
+    .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("datafn-store", isDirectory: true)
+
+let config = DatafnAppleRuntimeConfiguration(
+    schemaJSON: schemaData,
+    schemaHash: "my-app-schema-v1",
+    namespace: "user:\(currentUserID)",
+    clientID: UUID().uuidString,
+    storeRootURL: storeRoot,
+    syncBackend: .datafnServer(
+        DatafnServerSyncConfiguration(
+            baseURL: URL(string: "https://api.example.com/datafn")!,
+            websocketURL: URL(string: "wss://api.example.com/datafn/ws")!,
+            profileID: "default"
+        )
+    )
+)
+
+let runtime = try await DatafnAppleRuntime(configuration: config)
+try await runtime.start()
+```
+
+The runtime opens the CoreData store, validates the schema against the bundled JSON, and brings up the sync engine.
+
+## Lifecycle
+
+```swift
+// At app launch
+let runtime = try await DatafnAppleRuntime(configuration: config)
+try await runtime.start()
+
+// At app termination
+try await runtime.stop()
+```
+
+`start()` is idempotent — calling it twice is safe.
+
+`stop()` flushes pending writes and closes the sync backend. The CoreData store remains; the next `start()` resumes from where this `stop()` left off.
+
+## Per-user / multi-account
+
+For apps that support account switching, instantiate one runtime per account:
+
+```swift
+let runtimes: [AccountID: DatafnAppleRuntime] = ...
+
+func switchAccount(to accountID: AccountID) async throws {
+    let oldRuntime = self.activeRuntime
+    try await oldRuntime?.stop()
+
+    let config = makeConfig(for: accountID)
+    let runtime = try await DatafnAppleRuntime(configuration: config)
+    try await runtime.start()
+    self.activeRuntime = runtime
+}
+```
+
+Each account gets its own store root (e.g. `datafn-store/account-<id>`).
+
+## ProfileID
+
+The `profileID` distinguishes multiple sync targets on the same device. Default: `"default"`. Use case: a developer wants a "staging" profile alongside "production":
+
+```swift
+syncBackend: .datafnServer(DatafnServerSyncConfiguration(
+    baseURL: URL(string: "https://staging.example.com/datafn")!,
+    websocketURL: URL(string: "wss://staging.example.com/datafn/ws")!,
+    profileID: "staging"
+))
+```
+
+Distinct `profileID` values use distinct stores under the same `storeRootURL`.
+
+## Schema hash
+
+`schemaHash` is your version label. Bump it when the schema changes — the runtime uses it to detect when a stored CoreData schema is stale and rebuild from scratch.
+
+The hash is purely a string; conventions like `"my-app-schema-v3"` or `"sha256:..."` are both fine.
+
+## Authentication
+
+The DataFn server backend needs to authenticate requests. Provide an `authProvider`:
+
+```swift
+let authProvider = DatafnAuthProvider { _ in
+    return [
+        "Authorization": "Bearer \(await SessionStore.shared.currentToken())"
+    ]
+}
+
+syncBackend: .datafnServer(DatafnServerSyncConfiguration(
+    baseURL: ...,
+    websocketURL: ...,
+    profileID: "default",
+    authProvider: authProvider
+))
+```
+
+The provider is called before every HTTP request and on every WebSocket upgrade. It can refresh tokens transparently.
+
+## Error handling
+
+Construction errors throw synchronously:
+
+```swift
+do {
+    let runtime = try await DatafnAppleRuntime(configuration: config)
+    try await runtime.start()
+} catch DatafnAppleRuntimeError.schemaValidationFailed(let details) {
+    print("Schema invalid:", details)
+} catch DatafnAppleRuntimeError.storeMigrationFailed(let underlying) {
+    print("Migration failed:", underlying)
+} catch {
+    print("Unknown:", error)
+}
+```
+
+The most common failure is `schemaValidationFailed` — typically a mismatch between the bundled schema JSON and what the server expects.
+
+## See also
+
+- [Observation](/docs/documentation/apple/observation)
+- [SwiftUI](/docs/documentation/apple/swiftui)
+- [Quickstart: Swift](/docs/quickstart/swift)

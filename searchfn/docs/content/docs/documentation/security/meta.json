@@ -1,0 +1,12 @@
+{
+  "title": "Security",
+  "description": "Securing a SearchFn deployment end-to-end",
+  "pages": [
+    "index",
+    "request-authz",
+    "multi-tenant-isolation",
+    "payload-limits",
+    "secret-redaction",
+    "production-checklist"
+  ]
+}

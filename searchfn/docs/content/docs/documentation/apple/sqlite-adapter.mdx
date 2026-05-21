@@ -1,0 +1,133 @@
+---
+title: SQLite Adapter
+description: SearchFnSQLiteAdapter — persistent on-device search backed by SQLite.
+---
+
+The SQLite adapter persists the SearchFn inverted index in an app-owned SQLite file. State survives across launches; reopening with the same `indexKey` resumes where you left off.
+
+## Bootstrap
+
+```swift
+import Foundation
+import SearchFnConvenience
+import SearchFnSQLiteAdapter
+
+let rootURL = FileManager.default
+    .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    .appendingPathComponent("searchfn-store", isDirectory: true)
+
+let search = try SearchFn(
+    sqlite: SearchFnSQLiteAdapterConfiguration(
+        rootURL: rootURL,
+        indexKey: "project-docs"
+    )
+)
+
+let client = search.client()
+```
+
+The constructor creates a directory at `<rootURL>/<slug(indexKey)>-<hash16(indexKey)>/` and opens `searchfn.sqlite` and `manifest.json` inside it.
+
+## File layout
+
+```
+<rootURL>/
+  project-docs-abc123def4567890/
+    searchfn.sqlite     ← inverted index, vocab, docs
+    manifest.json       ← schema version + format
+```
+
+The `indexKey` is hashed to produce a deterministic directory name. Reopening with the same key reuses the directory. Different keys produce different directories — useful for multiple independent indices in the same app.
+
+## Persistence ownership
+
+The SQLite file is **owned by SearchFn**. Do not modify it externally. SearchFn writes:
+
+- Resource configurations
+- Stored documents (the raw `fields`)
+- Postings (term → docId → frequency)
+- Vocabulary counts (docFrequency)
+- Manifest metadata (format version, schema version)
+
+If the file is modified or corrupted, behavior is undefined; the best recovery is to delete the directory and rebuild.
+
+## Open / close lifecycle
+
+```swift
+let search = try SearchFn(sqlite: config)
+let client = search.client()
+
+// ... use ...
+
+try await client.dispose()
+```
+
+`dispose()` closes the SQLite handle. Re-opening:
+
+```swift
+let search2 = try SearchFn(sqlite: config) // same config
+let client2 = search2.client()
+```
+
+The new client picks up where the old one left off.
+
+## Excluding from backup
+
+By default, iCloud Backup includes the SearchFn directory. To exclude:
+
+```swift
+var url = rootURL.appendingPathComponent("project-docs-abc123def4567890", isDirectory: true)
+try url.setResourceValues({
+  var v = URLResourceValues()
+  v.isExcludedFromBackup = true
+  return v
+}())
+```
+
+For derived-state indices (rebuildable from a primary store), exclude from backup. For indices that contain content not present elsewhere, keep in backup.
+
+## Schema versioning
+
+The manifest carries a schema version. If a future SearchFn release changes the on-disk format, opening an older file either (a) auto-migrates or (b) refuses to open (you'll get an error). For unrecoverable cases, delete the directory and rebuild.
+
+## Concurrent access
+
+The SQLite adapter holds one handle. Multiple `SearchFn` instances against the same `indexKey` is **not supported** — the second open will fail or corrupt the file. For multi-process apps, route through a single owner.
+
+## Performance
+
+| Operation | Typical latency |
+| --- | --- |
+| `index` 100 docs (single batch) | ~50–100 ms |
+| `search` exact query | ~5–20 ms |
+| `search` fuzzy query | ~50–150 ms |
+| `clear` (small resource) | ~10 ms |
+| `clear` (100k+ docs) | seconds |
+
+Numbers depend on field size and vocab cardinality. For very large indices, increase `journal_mode` or use a real backend (or the TypeScript Postgres adapter via a remote).
+
+## Diagnostics
+
+```swift
+let sink = SearchFnDiagnosticsSink { event in
+    switch event {
+    case .persistence(let group, let detail):
+        print("persistence.\(group):", detail)
+    default: break
+    }
+}
+
+let config = SearchFnSQLiteAdapterConfiguration(
+    rootURL: rootURL,
+    indexKey: "project-docs",
+    diagnostics: sink
+)
+```
+
+Persistence events fire on `open`, `reopen`, `close`. Use during development; turn off in production unless you want the persistence lifecycle in your telemetry.
+
+## See also
+
+- [Memory adapter](/docs/documentation/apple/memory-adapter)
+- [Diagnostics](/docs/documentation/apple/diagnostics)
+- [Swift reference](/docs/reference/swift)

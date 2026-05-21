@@ -1,0 +1,100 @@
+---
+title: Hybrid Local + Remote Search
+description: IndexedDB for hot data on the client; server search for everything else.
+---
+
+Local-first search has two failure modes: it's empty until you populate it, and it's stale until you refresh it. The hybrid pattern uses local IndexedDB for the data the user has actually touched, falling back to the server for cold or fresh queries.
+
+## Pattern
+
+```typescript
+import { createIndexedDbSearchClient } from "@searchfn/client";
+
+const local = createIndexedDbSearchClient({
+  adapterConfig: { dbName: "app-search" },
+  defaults: { limit: 20, fuzzy: true },
+});
+
+await local.initialize?.({
+  resources: [{ name: "tasks", searchFields: ["title", "body"] }],
+});
+
+async function search(query: string) {
+  // 1. Try local first
+  const localIds = await local.search({ resource: "tasks", query, limit: 10 });
+  if (localIds.length >= 3) return { ids: localIds, source: "local" as const };
+
+  // 2. Fall back to server
+  const res = await fetch("/searchfn/search", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resource: "tasks", query, limit: 10 }),
+  });
+  const { result } = await res.json();
+  return { ids: result.ids as string[], source: "remote" as const };
+}
+```
+
+The threshold (`3`) is the number of strong-enough local hits below which you'd rather just ask the server. Tune for your domain.
+
+## Sync-on-mutate
+
+To keep the local index current, mirror mutations into it:
+
+```typescript
+async function createTask(input: TaskInput) {
+  const task = await api.tasks.create(input);
+  // Mirror into local index
+  await local.index({
+    resource: "tasks",
+    documents: [{ id: task.id, fields: { title: task.title, body: task.body } }],
+  });
+  return task;
+}
+```
+
+For DataFn-backed apps the `@searchfn/datafn-provider` does this automatically — every DataFn mutation calls `updateIndices` on the provider, which writes to the underlying SearchFn adapter.
+
+## Periodic full sync
+
+Even with sync-on-mutate, the local index will drift over time (records touched by other devices, server-side migrations). Schedule a periodic full pull:
+
+```typescript
+async function fullSync() {
+  const remote = await fetch("/api/tasks").then((r) => r.json());
+  await local.clear("tasks");
+  await local.index({
+    resource: "tasks",
+    documents: remote.map((t: any) => ({
+      id: t.id,
+      fields: { title: t.title, body: t.body },
+    })),
+  });
+  localStorage.setItem("last-sync", Date.now().toString());
+}
+
+// Run on app boot if the last sync was > 1 hour ago
+if (parseInt(localStorage.getItem("last-sync") ?? "0") < Date.now() - 3600_000) {
+  fullSync();
+}
+```
+
+For large datasets, paginate the pull and write in batches.
+
+## When to skip local
+
+- Cold start (no records yet)
+- Fresh data the user expects to see (newly created on another device)
+- Server-authoritative search (admin dashboards, audit logs)
+
+In those cases, just go to the server and skip the local layer.
+
+## DataFn note
+
+If you're on DataFn, the search provider already manages this — `client.search(...)` does local-first execution with server fallback by default. See the [DataFn search docs](https://datafn.21n.co/docs/dfql/search) for the source/auto/local/remote toggle.
+
+## See also
+
+- [SvelteKit quickstart](/docs/quickstart/sveltekit)
+- [Cross-resource ranking](/docs/recipes/cross-resource-ranking)
+- [DataFn integration](/docs/recipes/datafn-integration)

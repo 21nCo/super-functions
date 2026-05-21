@@ -1,0 +1,14 @@
+{
+  "title": "Deploy",
+  "description": "Production hosting for SearchFn",
+  "pages": [
+    "index",
+    "vercel",
+    "cloudflare-workers",
+    "fly",
+    "railway",
+    "docker",
+    "kubernetes",
+    "scaling"
+  ]
+}

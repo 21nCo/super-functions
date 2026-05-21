@@ -1,0 +1,69 @@
+---
+title: Bun
+description: SearchFn on Bun's native HTTP server.
+---
+
+Bun's native `Bun.serve` handles requests with a single fetch handler, so SearchFn slots in directly.
+
+## 1. Install
+
+```bash
+bun add @searchfn/server @searchfn/adapter-memory
+```
+
+## 2. Run
+
+```typescript
+import { createSearchFnServer } from "@searchfn/server";
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+const sf = await createSearchFnServer({
+  adapter: new MemoryAdapter(),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [{ name: "messages", searchFields: ["body"] }],
+});
+
+Bun.serve({
+  port: 3000,
+  fetch: async (req) => {
+    if (new URL(req.url).pathname.startsWith("/searchfn/")) {
+      return sf.router.handle({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body,
+      });
+    }
+    return new Response("Not found", { status: 404 });
+  },
+});
+```
+
+`Bun.serve` accepts native `Request`s, and `sf.router.handle` returns one — no shim needed.
+
+## 3. Smoke test
+
+```bash
+curl -X POST http://localhost:3000/searchfn/index \
+  -H 'content-type: application/json' \
+  -d '{ "resource": "messages", "documents": [{ "id": "m-1", "fields": { "body": "ship the docs already" } }] }'
+
+curl -X POST http://localhost:3000/searchfn/search \
+  -H 'content-type: application/json' \
+  -d '{ "resource": "messages", "query": "docs" }'
+```
+
+## Production
+
+For Bun on Fly or Railway:
+
+- Use `@searchfn/adapter-postgres` for persistence (in-memory loses state on every cold start).
+- Set up a tiny startup script to call `initialize()` against your resource list.
+
+## Next steps
+
+- [Server reference](/docs/reference/server)
+- [Deploy: Fly](/docs/documentation/deploy/fly)

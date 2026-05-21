@@ -59,3 +59,138 @@ Calling any method after `dispose()` throws `SEARCH_ADAPTER_DISPOSED`. Call `ini
 | Connection errors | Verify `node` URL and authentication credentials |
 | Missing indexes | Ensure `initialize()` was called to create indexes |
 | Cluster health | Check cluster status via `/_cluster/health` endpoint |
+
+## Top 15 failure modes
+
+A curated list, ordered by frequency in production deployments.
+
+### 1. "Search returns no results, indexing claims success"
+
+Tokenization mismatch between index and query. The most common cause is normalization differences across SearchFn versions.
+
+Check:
+
+```typescript
+import { tokenize } from "@searchfn/core";
+
+console.log(tokenize("Foo Bar")); // ["foo", "bar"]
+```
+
+Both index and search must use the same tokenizer. If you set `pipeline.tokenize` to a custom function, ensure it's applied at both index and query time.
+
+### 2. "Index size grew past available RAM"
+
+You're on `MemoryAdapter` with too many docs, or you indexed all fields when you only meant a few. Fix:
+
+- Switch to a persistent adapter ([Postgres](/docs/reference/adapters/postgres) is the easy first step).
+- Reduce `searchFields` to the ones you actually query.
+
+### 3. "First request after deploy is slow"
+
+Cold cache. The first 100 queries after a fresh start re-populate Postgres' OS cache or the LRU caches in the JS engine. Warm with a `status` ping and a representative query.
+
+See [cache tuning](/docs/documentation/performance/cache-tuning).
+
+### 4. "Query latency spiked at 9am"
+
+Cache eviction, not load. Check:
+
+- Postgres `shared_buffers` hit ratio (drops mean the working set outgrew RAM).
+- Meilisearch task queue (`/tasks?status=processing`).
+- Concurrent index operations stealing CPU from queries.
+
+### 5. "Re-indexing is taking hours"
+
+Sequential single-doc inserts. Fix:
+
+- Batch with 500–2000 docs per call.
+- Run 4 batches in parallel.
+- For very large backfills, use the [backfill from DB recipe](/docs/recipes/backfill-from-db).
+
+### 6. "Got `LIMIT_EXCEEDED` on a normal query"
+
+Server-side limits are stricter than you think. Common culprits:
+
+- `query` over 1024 characters (configurable via `limits.maxQueryLength`).
+- `limit` over 1000 (configurable via `limits.maxLimit`).
+- Indexing batch over `maxBatchSize` for your adapter.
+
+See [configuration reference](/docs/reference/configuration).
+
+### 7. "Got `FORBIDDEN` from authorize callback"
+
+Your `authorize` returned `false` or threw. Add structured logging:
+
+```typescript
+authorize: async ({ method, resource, request }) => {
+  const result = await myAuthCheck(...);
+  if (!result) console.warn("denied", { method, resource });
+  return result;
+},
+```
+
+### 8. "Adapter disposed errors"
+
+You called `dispose()` and then made another call. In serverless, `dispose` is rarely needed — let the adapter live with the process. In tests, recreate the adapter per test.
+
+### 9. "Fuzzy queries are extremely slow"
+
+Fuzzy is 5–20x slower than exact, especially on large vocabularies. Fix:
+
+- Use fuzzy only after exact returns no results.
+- Limit fuzzy to terms ≥ 4 characters.
+- Use `fuzzy: 1` instead of `fuzzy: 2` (2 edits is much slower).
+
+### 10. "Postgres adapter: connection pool exhausted"
+
+Each Lambda/Vercel function creates its own pool. Fix:
+
+- Use a connection pooler (Neon's, Supabase's, pgBouncer).
+- Set `poolSize: 1` per Lambda.
+
+### 11. "Meilisearch: task queue backing up"
+
+You're indexing faster than Meili can process. Symptoms:
+
+- `/tasks?status=processing` always non-empty.
+- Search queries stay fast, but writes don't reflect for minutes.
+
+Fix: slow down indexing, or scale up the Meili instance.
+
+### 12. "Elasticsearch: too many shards"
+
+You created a separate index per tenant and crossed ES's per-cluster shard limit. Fix:
+
+- Combine small tenants into a shared index with a `tenant_id` filter.
+- Use [multi-tenant isolation](/docs/recipes/multi-tenant) pattern.
+
+### 13. "Swift app: index file grew unexpectedly"
+
+SQLite WAL not checkpointed. Fix:
+
+- The SQLite adapter handles this automatically. If you're seeing growth, you probably have multiple processes opening the same indexKey — not supported.
+- Confirm a single owner per indexKey.
+
+### 14. "Build fails with `<N ms` JSX error"
+
+MDX confuses `<N ms` with a JSX tag. This bit our own docs build (see DataFn build notes). Fix in your MDX content:
+
+- Wrap in backticks: `` `<10 ms` ``.
+- Or escape: `&lt;10 ms`.
+
+### 15. "Tests pass locally, fail in CI"
+
+Likely a port collision, missing binary, or different tokenization (locale-sensitive). Check:
+
+- CI runs Node 20+.
+- No locale-dependent collation (force `LANG=en_US.UTF-8`).
+- Database/Meilisearch fixtures reset between test runs.
+
+## Where to look
+
+- Structured logger output (one line per operation).
+- Adapter health endpoints (`/searchfn/status` on the server; `/health` on Meilisearch; `/_cluster/health` on ES).
+- Apple `SearchFnDiagnosticsSink` events.
+- Postgres `pg_stat_statements`.
+
+If none of these turn up a culprit, file an issue with the failing request shape (redacted) and the server log line for that request.

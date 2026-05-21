@@ -1,0 +1,109 @@
+---
+title: "Skills"
+description: "Drop-in instruction files that teach AI coding assistants how to use DataFn correctly."
+audience: guide
+applies_to: both
+---
+
+A "skill" is a short instruction file you commit alongside your code that teaches an AI coding assistant the local conventions for working with DataFn. Each assistant has its own location and format:
+
+| Assistant | Location | Format |
+| --- | --- | --- |
+| Cursor | `.cursor/rules/*.mdc` | MDC (Markdown with frontmatter) |
+| Claude Code | `CLAUDE.md` at project root, or `.claude/skills/*` | Plain Markdown |
+| OpenAI Codex | `AGENTS.md` at project root | Plain Markdown |
+| Continue.dev | `.continue/rules/*.md` | Markdown |
+
+The content can be largely the same across formats. Below is a starter that works for any DataFn project. Tailor the schema and conventions to your codebase.
+
+## Starter skill
+
+```md
+# DataFn project conventions
+
+## Stack
+- Server: TypeScript via `@datafn/server` mounted on Hono
+- Client (web): `@datafn/client` with `@datafn/svelte` adapter
+- Client (mobile): `@datafn/apple` via Swift package
+- Database: Postgres via `@superfunctions/db` Drizzle adapter
+- Auth: `@authfn/server` provides the session; namespaceProvider derives `ns(orgId, userId)`
+
+## Schema rules
+- Always declare resources via `defineSchema(...)` from `@datafn/core` so capability declarations are type-checked.
+- Default capabilities: `["timestamps", "audit"]` at the schema level. Add `archivable`, `trashable`, `shareable` only when needed.
+- Field naming: camelCase. ID prefix is the first 3 letters of the resource name (e.g. `prj` for `projects`).
+- Indices: declare `base` indices for every field that appears in a filter or sort; `search` indices for full-text fields.
+
+## DFQL rules
+- Prefer `select` projections; never request all fields from large resources.
+- Use cursor pagination (`cursor`) over offset for any list with >100 items.
+- Wrap multi-step writes in a transaction; never call multiple mutations from the client without `transact`.
+- `metadata.includeTrashed` and `includeArchived` default to false; only set to true with explicit user intent.
+
+## Authorization
+- Field-level authz lives in `server/authz.ts`. New resources must add a policy entry there.
+- `authorize()` returns `false` by default. Tighten, don't loosen.
+- Always pair sharing with audit logging (it's a hard dependency in the schema).
+
+## What to avoid
+- Don't bypass the client envelope (`{ ok, result }`/`{ ok, error }`). Surface errors to the UI from `result.error.code`.
+- Don't write to underlying tables directly — go through DFQL so capabilities, sync, and authz fire correctly.
+- Don't use `replace` when `merge` will do. `replace` overwrites all fields including capability-managed ones.
+
+## When in doubt
+1. Read the DataFn docs at https://datafn.21n.co/docs (raw markdown at /api/docs/raw/<path>).
+2. Use the MCP server (`datafn-mcp`) if it's registered.
+3. Ask the user before introducing a new capability, plugin, or sync route.
+```
+
+## Where to put it
+
+### Cursor
+
+```
+my-project/
+└── .cursor/
+    └── rules/
+        └── datafn.mdc
+```
+
+Frontmatter for Cursor:
+
+```mdc
+---
+description: DataFn conventions for this project
+globs:
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+  - "src/**/*.svelte"
+alwaysApply: true
+---
+
+# DataFn project conventions
+...
+```
+
+### Claude Code
+
+```
+my-project/
+└── CLAUDE.md
+```
+
+Claude Code reads `CLAUDE.md` automatically; no frontmatter required.
+
+### OpenAI Codex
+
+```
+my-project/
+└── AGENTS.md
+```
+
+Codex auto-discovers `AGENTS.md` at the repo root.
+
+## Tips
+
+- Keep skills under ~200 lines. Long skills hurt context.
+- Pin to a DataFn version: "We are on `@datafn/server` 0.3.x" prevents the assistant from suggesting deprecated APIs.
+- Link out to the docs. `See https://datafn.21n.co/docs/dfql/mutations` is better than inlining all the rules.
+- Re-read the skill on major refactors. Stale skills mislead agents harder than no skills at all.

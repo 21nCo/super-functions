@@ -1,0 +1,92 @@
+---
+title: Comparison
+description: SearchFn vs Algolia, Typesense, Meilisearch direct, Elasticsearch direct, Postgres FTS direct, FlexSearch, MiniSearch, Lunr.js, Orama, Pagefind.
+---
+
+SearchFn is two things: a complete in-process search engine (BM25, tokenization, fuzzy, stemming) **and** a thin adapter layer over external search services. Where it fits depends on what you're solving for.
+
+## At-a-glance
+
+| | Self-hosted | In-process engine | Offline-first | Multi-language | TypeScript-native | Pluggable backends |
+| --- | --- | --- | --- | --- | --- | --- |
+| **SearchFn** | yes | yes (`@searchfn/core`) | yes (IndexedDB, SQLite) | yes (en/es/fr stemmers) | yes | yes (5 backends) |
+| Algolia | no | no | no | yes | wrapper | no |
+| Typesense | yes | no | no | yes | wrapper | no |
+| Meilisearch | yes | no | no | yes | wrapper | no |
+| Elasticsearch | yes | no | no | yes | wrapper | no |
+| Postgres FTS | yes | no (in-DB) | no | partial | wrapper | no |
+| FlexSearch | n/a | yes | partial | yes | yes | no |
+| MiniSearch | n/a | yes | partial | yes | yes | no |
+| Lunr.js | n/a | yes | yes (stale) | partial | yes | no |
+| Orama | yes (own engine) | yes | yes | yes | yes | no |
+| Pagefind | n/a (static) | yes (per-page) | yes | yes | yes | no |
+
+## When to pick SearchFn
+
+- You want **one search abstraction** that works across browser-local, in-process server, and external services. Most other tools commit you to one runtime.
+- You need **offline-first browser search** with proper BM25 ranking (not just substring matching).
+- You're already on the SuperFunctions stack (DataFn, AuthFn, FileFn).
+- You want to start with zero infra (`MemoryAdapter`) and upgrade to Postgres/Meilisearch/Elasticsearch without rewriting application code.
+- You need **TypeScript + Swift + Python parity** for the same search semantics.
+
+## When to pick something else
+
+### Algolia / hosted search-as-a-service
+
+Pick if you want a managed service, are happy paying per record/query, and don't have data residency concerns. SearchFn doesn't try to be Algolia — there's no hosted offering. The `MeilisearchAdapter` is the closest analog when you want a dedicated search service you control.
+
+### Typesense / Meilisearch / Elasticsearch direct
+
+Pick when you want the backend's full feature set (advanced filtering, facets, geo, vector search) **and** you're committed to that one backend. SearchFn's adapters expose the common subset. If you find yourself reaching past the adapter API, use the backend SDK directly.
+
+### Postgres FTS direct
+
+Pick if you only need server-side search, you have one specific text shape, and you want to write the `tsvector` triggers by hand. `PostgresAdapter` is the SearchFn-flavored version: same idea, lifted into a portable API.
+
+### FlexSearch / MiniSearch / Lunr.js
+
+Pick if you only need browser-side search, your dataset is small, and you don't need a unified API across runtimes. These are perfectly good in their lane. SearchFn's `IndexedDbAdapter` covers the same case but with the same API as the server adapters.
+
+### Orama
+
+Closest to SearchFn in philosophy — a TypeScript-native search engine with persistence and a hosted Cloud variant. Pick Orama if you prefer its specific API or want the hosted offering. Pick SearchFn if you want the explicit Postgres/Meilisearch/Elasticsearch path or first-class Swift / Python parity.
+
+### Pagefind
+
+Pick for static sites — Pagefind indexes at build time and runs entirely on the client. SearchFn is for apps with mutable data.
+
+## Migration tips
+
+### From MiniSearch / FlexSearch
+
+The mental model is nearly identical. Map:
+
+- `MiniSearch.add()` → `client.index({ resource, documents })`
+- `MiniSearch.search()` → `client.search({ resource, query })`
+
+Switch to `IndexedDbAdapter` if you want persistence; switch to `PostgresAdapter` later if you outgrow browser-only.
+
+### From Algolia
+
+Index your existing Algolia objects by mapping `objectID` → SearchFn `id`. Use `MeilisearchAdapter` for a managed-feeling alternative or `PostgresAdapter` if you want infra simplicity.
+
+### From bare Postgres FTS
+
+`PostgresAdapter` runs migrations that create the same `tsvector` columns and GIN indexes you'd write by hand. You can keep both running side by side during migration — SearchFn's tables are namespaced under `_searchfn_*`.
+
+### From Elasticsearch
+
+Use `ElasticsearchAdapter` to keep the same backend with a portable client API. If you want to also retire ES, run both adapters in parallel and shift traffic.
+
+## What SearchFn doesn't try to do
+
+- Vector / semantic search — not in scope today. Hybrid lexical + vector is on the roadmap.
+- Faceted aggregations — partially supported per adapter; not unified.
+- Geo search — backend-specific. Use the backend SDK directly.
+- Spell-correction-as-a-service — the built-in engine has fuzzy matching; for richer correction use Meilisearch or ES.
+
+## See also
+
+- [Architecture](/docs/architecture)
+- [Adapter reference](/docs/reference/adapters)
+- [DataFn integration](/docs/integrations/datafn)

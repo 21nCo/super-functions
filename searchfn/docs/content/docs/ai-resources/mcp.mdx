@@ -1,0 +1,60 @@
+---
+title: MCP Server
+description: Connect Claude, Cursor, and other MCP clients to SearchFn documentation.
+---
+
+The Model Context Protocol (MCP) lets AI agents fetch live documentation through a typed tool interface. SearchFn exposes its docs through a hosted MCP endpoint and a self-hostable variant.
+
+## Hosted endpoint
+
+```
+https://searchfn.com/api/mcp
+```
+
+This is what you'll add to MCP-aware clients.
+
+## Claude Code
+
+```bash
+claude mcp add searchfn https://searchfn.com/api/mcp
+```
+
+## Cursor
+
+In `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "searchfn": {
+      "url": "https://searchfn.com/api/mcp"
+    }
+  }
+}
+```
+
+Restart Cursor; the SearchFn tools appear under the MCP menu.
+
+## Factory Droid
+
+```bash
+droid mcp add searchfn https://searchfn.com/api/mcp --type http
+```
+
+## Tools exposed
+
+| Tool | Purpose |
+| --- | --- |
+| `searchfn_docs.list` | List all documentation pages with titles and descriptions |
+| `searchfn_docs.read` | Read the full content of a specific page by URL |
+| `searchfn_docs.search` | Search the docs corpus by text query |
+
+## Self-hosting
+
+If you fork SearchFn and run your own docs site, the MCP route lives at `app/api/mcp/route.ts`. It reads `public/llms.txt` and `public/llms-full.txt` so as long as `generate-llms.mjs` runs at build, the MCP endpoint stays current.
+
+## See also
+
+- [llms.txt and llms-full.txt](/docs/ai-resources/llms-txt)
+- [Claude setup](/docs/ai-resources/claude)
+- [Cursor setup](/docs/ai-resources/cursor)

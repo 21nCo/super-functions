@@ -1,0 +1,13 @@
+{
+  "title": "Reference",
+  "pages": [
+    "index",
+    "routes",
+    "errors",
+    "events",
+    "schema",
+    "envelopes",
+    "configuration",
+    "changelog"
+  ]
+}

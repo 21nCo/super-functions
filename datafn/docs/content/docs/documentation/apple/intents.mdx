@@ -1,0 +1,149 @@
+---
+title: "App Intents"
+description: "Expose DataFn records to Siri, Shortcuts, Focus filters, and Spotlight via App Intents."
+audience: guide
+applies_to: client
+---
+
+App Intents (the iOS 16+ framework) let your app expose actions and entities to the system: Siri, Shortcuts, Focus filters, Spotlight, the Action button, and Widgets. The runtime cooperates with App Intents — you expose your resources as `AppEntity` types and write Intents that read or mutate them.
+
+## Expose resources as AppEntity
+
+```swift
+import AppIntents
+import DatafnAppleRuntime
+
+struct TaskEntity: AppEntity {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Task")
+
+    let id: String
+    var title: String
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)")
+    }
+
+    static var defaultQuery = TaskEntityQuery()
+}
+
+struct TaskEntityQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [TaskEntity] {
+        guard let source = await GlobalRuntime.shared.source else { return [] }
+        return try identifiers.compactMap { id in
+            guard let row = try source.getRecord(resource: "tasks", id: id) else { return nil }
+            return TaskEntity(id: id, title: row["title"] as? String ?? "")
+        }
+    }
+
+    func suggestedEntities() async throws -> [TaskEntity] {
+        guard let source = await GlobalRuntime.shared.source else { return [] }
+        return try source.listRecords(
+            resource: "tasks",
+            filters: ["completed": .equal(false)],
+            limit: 20
+        ).map { row in
+            TaskEntity(id: row["id"] as! String, title: row["title"] as? String ?? "")
+        }
+    }
+}
+```
+
+`GlobalRuntime` is your app's singleton holder for `DatafnAppleRuntime` — wire it up in your app delegate / scene.
+
+## Write an Intent
+
+```swift
+struct CompleteTaskIntent: AppIntent {
+    static var title: LocalizedStringResource = "Complete Task"
+
+    @Parameter(title: "Task")
+    var task: TaskEntity
+
+    func perform() async throws -> some IntentResult {
+        try await GlobalRuntime.shared.runtime?.completeTask(id: task.id)
+        return .result()
+    }
+}
+```
+
+For now, mutations from intents go through the bridge if you're in hybrid mode, or through native APIs as they ship. The `completeTask` method is your app's wrapper:
+
+```swift
+extension DatafnAppleRuntime {
+    func completeTask(id: String) async throws {
+        // For now: bridge dispatch. Future: native mutate().
+        try await bridgeHost.dispatch(.mutation(
+            resource: "tasks", id: id, operation: .merge, record: ["completed": true]
+        ))
+    }
+}
+```
+
+## Siri
+
+App Intents are auto-discovered by Siri. With the entity and intent above, users can say:
+
+> "Hey Siri, complete the task 'buy groceries'."
+
+Siri matches against `displayRepresentation` and dispatches the intent. No extra config.
+
+## Shortcuts
+
+Users can build Shortcuts that chain your intents with system intents. Example: "When I arrive at home, complete the task tagged 'commute'."
+
+## Spotlight
+
+Implement `IndexedEntity` for Spotlight indexing:
+
+```swift
+extension TaskEntity: IndexedEntity {
+    var attributeSet: CSSearchableItemAttributeSet {
+        let attrs = CSSearchableItemAttributeSet(contentType: .text)
+        attrs.title = title
+        return attrs
+    }
+}
+```
+
+When a user searches in Spotlight, your tasks appear. Tap takes them into your app at the right deeplink.
+
+## Focus filters
+
+`SetFocusFilterIntent` lets your app respect Focus modes. The pattern:
+
+```swift
+struct WorkFocusFilter: SetFocusFilterIntent {
+    static var title: LocalizedStringResource = "Work tasks only"
+
+    @Parameter(title: "Tag")
+    var tag: String
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults.standard.set(tag, forKey: "focus-tag")
+        return .result()
+    }
+}
+```
+
+Then your UI reads `focus-tag` and filters the query.
+
+## Widgets
+
+Widgets use `EntityIntentTimelineProvider`. The provider can return your `TaskEntity` directly. The widget's body renders from the entity — no separate fetch.
+
+## Background updates from intents
+
+When a Shortcut runs while the app is in the background, the intent's `perform()` runs as a background process. Your mutation hits the local store immediately; sync happens when the app next foregrounds (or on the next BG App Refresh).
+
+## Best practices
+
+- **Keep intents idempotent.** Users may run the same shortcut twice; design intents to be safe to repeat.
+- **Surface confirmations** for destructive intents (e.g. delete).
+- **Wire `valueChanged()`** on `IntentResult` when downstream intents may depend on the new state.
+- **Avoid heavy work** in `perform()`. Intents have a short budget; defer to the runtime.
+
+## See also
+
+- [Setup](/docs/documentation/apple/setup)
+- [Background sync](/docs/documentation/apple/background)
+- [Apple WebView Host example](/docs/examples/apple-webview-host)

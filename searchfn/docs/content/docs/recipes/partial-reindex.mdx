@@ -1,0 +1,121 @@
+---
+title: Partial Reindex
+description: Re-index only the records that changed since the last sync.
+---
+
+Full reindexing is expensive. For incremental updates — sync from a primary store, fix a data issue in a subset of records, etc. — you want to touch only what changed.
+
+## Track an `updatedAt` watermark
+
+The pattern: store the last successful sync timestamp and pull only records modified since then.
+
+```typescript
+async function partialReindex() {
+  const since = await loadWatermark(); // e.g. ISO string
+  const records = await db.articles.findMany({
+    where: { updatedAt: { gt: since } },
+    orderBy: { updatedAt: "asc" },
+  });
+
+  if (records.length === 0) return;
+
+  await adapter.index({
+    resource: "articles",
+    documents: records.map((r) => ({
+      id: r.id,
+      fields: { title: r.title, body: r.body },
+    })),
+  });
+
+  await saveWatermark(records[records.length - 1].updatedAt);
+}
+
+setInterval(partialReindex, 30_000);
+```
+
+Indexing is idempotent — re-sending the same ID with new fields updates in place.
+
+## Handle deletions
+
+`updatedAt` doesn't catch deletions. Two patterns:
+
+### Soft-delete
+
+If your data model uses soft deletes:
+
+```typescript
+const records = await db.articles.findMany({
+  where: { updatedAt: { gt: since } },
+});
+
+const live = records.filter((r) => !r.deletedAt);
+const deleted = records.filter((r) => r.deletedAt);
+
+await adapter.index({ resource: "articles", documents: live.map(toDoc) });
+await adapter.remove({ resource: "articles", ids: deleted.map((r) => r.id) });
+```
+
+### Tombstone table
+
+If you hard-delete, keep a `_deletions` table with timestamps:
+
+```typescript
+const tombstones = await db._deletions.findMany({
+  where: { resource: "articles", deletedAt: { gt: since } },
+});
+
+await adapter.remove({
+  resource: "articles",
+  ids: tombstones.map((t) => t.recordId),
+});
+```
+
+## Debouncing per record
+
+If a single record changes frequently (collaborative editor), you'll re-index it on every change. To avoid thrashing:
+
+```typescript
+const debouncedUpdates = new Map<string, NodeJS.Timeout>();
+
+function scheduleReindex(id: string, doc: SearchDocument) {
+  if (debouncedUpdates.has(id)) clearTimeout(debouncedUpdates.get(id)!);
+  debouncedUpdates.set(
+    id,
+    setTimeout(async () => {
+      await adapter.index({ resource: "articles", documents: [doc] });
+      debouncedUpdates.delete(id);
+    }, 500)
+  );
+}
+```
+
+500 ms is a balance between freshness and write amplification.
+
+## CDC (change data capture)
+
+For very large systems, integrate with a CDC pipeline (Debezium, Logical Replication, etc.). Each CDC event maps to an index/remove call:
+
+```typescript
+async function handleCDC(event: CDCEvent) {
+  if (event.op === "delete") {
+    await adapter.remove({ resource: event.resource, ids: [event.id] });
+  } else {
+    await adapter.index({
+      resource: event.resource,
+      documents: [{ id: event.id, fields: event.after }],
+    });
+  }
+}
+```
+
+This eliminates polling and brings the index near-realtime.
+
+## DataFn handles this for you
+
+If you use `@searchfn/datafn-provider`, partial reindex is automatic — every DataFn mutation calls `updateIndices` on the provider, which writes to SearchFn. No watermark management required.
+
+## See also
+
+- [Backfill from DB](/docs/recipes/backfill-from-db)
+- [Reindex with no downtime](/docs/recipes/reindex-no-downtime)
+- [DataFn integration](/docs/recipes/datafn-integration)

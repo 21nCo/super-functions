@@ -1,0 +1,110 @@
+---
+title: "Deploy: Cloudflare Workers"
+description: SearchFn on Cloudflare Workers — what works and what doesn't.
+---
+
+Cloudflare Workers is V8 isolates, not Node. The adapter choices narrow significantly.
+
+## What works on Workers
+
+- **`@searchfn/adapter-meilisearch`** — talks to Meili over HTTP. Works on Workers.
+- **`@searchfn/adapter-elasticsearch`** / **`@searchfn/adapter-opensearch`** — same; HTTP-based.
+
+## What doesn't work
+
+- **`@searchfn/adapter-memory`** — RAM is reset between requests.
+- **`@searchfn/adapter-indexeddb`** — no IndexedDB on Workers.
+- **`@searchfn/adapter-postgres`** — node-postgres doesn't run on Workers. Use [Hyperdrive](https://developers.cloudflare.com/hyperdrive/) + a compatible driver if you must.
+
+## Setup
+
+```typescript
+// worker.ts
+import { createSearchFnServer } from "@searchfn/server";
+import { MeilisearchAdapter } from "@searchfn/adapter-meilisearch";
+
+interface Env {
+  MEILI_URL: string;
+  MEILI_API_KEY: string;
+}
+
+let sf: Awaited<ReturnType<typeof createSearchFnServer>> | null = null;
+
+async function getServer(env: Env) {
+  if (sf) return sf;
+  sf = await createSearchFnServer({
+    adapter: new MeilisearchAdapter({
+      host: env.MEILI_URL,
+      apiKey: env.MEILI_API_KEY,
+    }),
+    basePath: "/searchfn",
+  });
+  await sf.adapter.initialize?.({
+    resources: [{ name: "articles", searchFields: ["title", "body"] }],
+  });
+  return sf;
+}
+
+export default {
+  async fetch(request: Request, env: Env) {
+    const server = await getServer(env);
+    return server.router.handle({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: request.body,
+    });
+  },
+};
+```
+
+`wrangler.toml`:
+
+```toml
+name = "searchfn-worker"
+main = "worker.ts"
+compatibility_date = "2026-03-01"
+
+[vars]
+MEILI_URL = "https://search.example.com"
+# MEILI_API_KEY set via `wrangler secret put`
+```
+
+## Caveats
+
+- Worker invocations are short. If `initialize()` takes more than a few seconds, the first invocation after a deploy may time out. Mitigation: hit `/searchfn/status` from a warmer cron after deploy.
+- Workers share the global scope **within an isolate**, but isolates are recycled. Treat the `sf` cache as best-effort.
+- Outbound HTTP from Workers has subrequest limits. With Meilisearch, one request typically issues one subrequest — fine.
+
+## Durable Objects
+
+For per-tenant isolation backed by Durable Objects:
+
+```typescript
+import { DurableObject } from "cloudflare:workers";
+
+export class TenantSearch extends DurableObject {
+  private sf: Awaited<ReturnType<typeof createSearchFnServer>> | null = null;
+
+  async fetch(request: Request) {
+    if (!this.sf) {
+      this.sf = await createSearchFnServer({
+        adapter: new MeilisearchAdapter({
+          host: env.MEILI_URL,
+          apiKey: env.MEILI_API_KEY,
+          indexPrefix: `tenant-${this.ctx.id.toString()}_`,
+        }),
+        basePath: "/searchfn",
+      });
+    }
+    return this.sf.router.handle({ /* ... */ });
+  }
+}
+```
+
+Each tenant gets a dedicated DO instance, which gets a dedicated Meilisearch index prefix.
+
+## See also
+
+- [Meilisearch adapter](/docs/reference/adapters/meilisearch)
+- [Scaling](/docs/documentation/deploy/scaling)

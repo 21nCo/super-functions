@@ -1,0 +1,110 @@
+---
+title: Hono
+description: SearchFn on Hono with the Memory adapter for dev and Postgres for prod.
+---
+
+This guide gets a Hono server indexing and searching in under 10 minutes. The same shape works on Bun, Deno, or Node.
+
+## 1. Install
+
+```bash
+npm install hono @searchfn/server @searchfn/adapter-memory
+```
+
+For production with Postgres:
+
+```bash
+npm install @searchfn/adapter-postgres
+```
+
+## 2. Mount SearchFn on Hono
+
+```typescript
+import { Hono } from "hono";
+import { createSearchFnServer } from "@searchfn/server";
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+const sf = await createSearchFnServer({
+  adapter: new MemoryAdapter(),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [
+    { name: "articles", searchFields: ["title", "body"] },
+  ],
+});
+
+const app = new Hono();
+
+app.all("/searchfn/*", async (c) => {
+  const res = await sf.router.handle({
+    method: c.req.method,
+    url: c.req.url,
+    headers: c.req.raw.headers,
+    body: c.req.raw.body,
+  });
+  return new Response(res.body, { status: res.status, headers: res.headers });
+});
+
+export default app;
+```
+
+`@searchfn/server` exposes a generic `router` that adapts to any HTTP framework through small request/response shims. The example above is a 10-line shim; if you use `@superfunctions/http`'s Hono adapter, you can drop the shim entirely.
+
+## 3. Run
+
+```bash
+npx tsx --watch server.ts
+```
+
+Server listens on the default Hono port (3000).
+
+## 4. Index your first documents
+
+```bash
+curl -X POST http://localhost:3000/searchfn/index \
+  -H 'content-type: application/json' \
+  -d '{
+    "resource": "articles",
+    "documents": [
+      { "id": "a-1", "fields": { "title": "Hello SearchFn", "body": "Get started in 10 minutes" } },
+      { "id": "a-2", "fields": { "title": "BM25 in practice", "body": "Why ranking matters" } }
+    ]
+  }'
+```
+
+## 5. Search
+
+```bash
+curl -X POST http://localhost:3000/searchfn/search \
+  -H 'content-type: application/json' \
+  -d '{ "resource": "articles", "query": "ranking", "limit": 5 }'
+```
+
+```json
+{ "ok": true, "result": { "ids": ["a-2"] } }
+```
+
+## 6. Promote to Postgres for production
+
+Swap the adapter:
+
+```typescript
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+
+const sf = await createSearchFnServer({
+  adapter: new PostgresAdapter({
+    connectionString: process.env.SEARCH_DB_URL!,
+  }),
+  basePath: "/searchfn",
+});
+```
+
+Run the [Postgres adapter migration SQL](/docs/reference/adapters/postgres) once. Everything else stays the same.
+
+## Next steps
+
+- [Authorization](/docs/documentation/security/request-authz) — gate `/searchfn/*` per user/role
+- [Deploy](/docs/documentation/deploy/index) — production hosting
+- [DataFn integration](/docs/integrations/datafn) — use this server as a DataFn search backend

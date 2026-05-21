@@ -1,0 +1,159 @@
+---
+title: "Docker"
+description: "Run DataFn in a container. Foundation for self-hosted, on-prem, or bring-your-own platform."
+audience: guide
+applies_to: server
+---
+
+DataFn doesn't ship an official image — you build one for your application. The Dockerfile is short.
+
+## Dockerfile
+
+```dockerfile
+# syntax=docker/dockerfile:1.7
+FROM node:22-slim AS base
+WORKDIR /app
+
+FROM base AS deps
+COPY package*.json ./
+RUN npm ci --include=dev
+
+FROM deps AS build
+COPY . .
+RUN npm run build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=deps  /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package*.json ./
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/datafn/status || exit 1
+CMD ["node", "dist/index.js"]
+```
+
+A few production-shaped details:
+
+- **Multi-stage**: keeps the final image lean (no devDependencies, no source).
+- **`USER node`**: don't run as root.
+- **`HEALTHCHECK`**: targets the DataFn status route. Add `authorize: async (ctx, action) => action === "status" || ...` so the health check doesn't require auth.
+- **`ENV NODE_ENV=production`**: turns on `debug: false` automatically.
+
+Build:
+
+```bash
+docker build -t my-datafn-app:latest .
+```
+
+## Compose: app + Postgres + Redis
+
+`compose.yaml` for local development:
+
+```yaml
+services:
+  app:
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgres://datafn:secret@db:5432/datafn
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: datafn
+      POSTGRES_USER: datafn
+      POSTGRES_PASSWORD: secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datafn"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  db-data:
+```
+
+```bash
+docker compose up
+```
+
+For production, replace `db` and `redis` with managed services (RDS, ElastiCache, Cloud SQL).
+
+## Image size
+
+The reference image above lands at ~150 MB. To shrink further:
+
+- Switch base to `node:22-alpine` (~50 MB final). Verify your Node-native modules support musl.
+- Use [Distroless](https://github.com/GoogleContainerTools/distroless) for the runtime stage (~80 MB, no shell).
+
+```dockerfile
+FROM gcr.io/distroless/nodejs22-debian12 AS runtime
+COPY --from=build /app/dist /app/dist
+COPY --from=deps  /app/node_modules /app/node_modules
+WORKDIR /app
+CMD ["dist/index.js"]
+```
+
+## Migrations
+
+Run migrations before the new image takes traffic:
+
+```yaml
+services:
+  migrate:
+    build: .
+    command: ["node", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    build: .
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+```
+
+For Kubernetes, do the same with an init container or a Job — see [Kubernetes](/docs/documentation/deploy/kubernetes).
+
+## Logging
+
+`console.log` writes to stdout in the container. Hand to your log aggregator via your platform's log driver (Docker → `--log-driver json-file`, Kubernetes → cluster-default).
+
+## Graceful shutdown
+
+DataFn registers SIGTERM/SIGINT handlers and drains in-flight requests for up to `shutdownTimeoutMs` (default 10s). Make sure your orchestrator gives the container that long:
+
+- Docker Compose: `stop_grace_period: 15s`.
+- Kubernetes: `terminationGracePeriodSeconds: 15`.
+- Docker Swarm: `stop_grace_period: 15s`.
+
+If the orchestrator SIGKILLs early, in-flight requests get dropped and clients have to retry.
+
+## Multi-arch
+
+Build for both `amd64` and `arm64` via Buildx:
+
+```bash
+docker buildx create --use --name multi
+docker buildx build --platform linux/amd64,linux/arm64 -t my-datafn-app:latest --push .
+```
+
+`arm64` is meaningfully cheaper on cloud platforms (Graviton, Tau T2A) — typically 20–40% less for the same performance.
+
+## See also
+
+- [Kubernetes](/docs/documentation/deploy/kubernetes)
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Production Checklist](/docs/documentation/security/production-checklist)

@@ -1,0 +1,154 @@
+---
+title: "Recipe: SearchFn Integration"
+description: "Cross-resource search via the SearchProvider interface, backed by SearchFn."
+audience: guide
+applies_to: both
+---
+
+DataFn supports full-text search through the `SearchProvider` interface. SearchFn is the Superfunctions search layer — it manages indices, ranking, and synonyms. This recipe wires SearchFn into DataFn so `client.search("query")` works end-to-end.
+
+## The SearchProvider interface
+
+```typescript
+import type { SearchProvider } from "@datafn/core";
+
+interface SearchProvider {
+  index(resource: string, id: string, document: Record<string, unknown>): Promise<void>;
+  remove(resource: string, id: string): Promise<void>;
+  query(params: { text: string; resources?: string[]; limit?: number }): Promise<{
+    results: Array<{ resource: string; id: string; score: number; snippet?: string }>;
+  }>;
+}
+```
+
+DataFn calls `index` after every successful mutation and `remove` after every delete. Your provider keeps the search engine in sync with the database.
+
+## Wire SearchFn
+
+```typescript
+import { createDatafnServer } from "@datafn/server";
+import { searchfnAdapter } from "@searchfn/server/datafn";
+
+const search = searchfnAdapter({
+  apiKey: process.env.SEARCHFN_API_KEY,
+  defaultIndex: "datafn-default",
+});
+
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  search, // the SearchProvider
+  searchableFields: {
+    documents: ["title", "body"],
+    comments: ["body"],
+  },
+});
+```
+
+`searchableFields` tells DataFn which fields to send to the indexer. Everything else is private.
+
+## Configure on the client
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  sync: { remote: "/datafn" },
+});
+```
+
+No client-side configuration needed for server-side search. The `client.search(...)` call routes through `/datafn/search` on the server.
+
+## Searching
+
+```typescript
+const results = await client.search({
+  text: "design document",
+  resources: ["documents", "comments"],
+  limit: 20,
+});
+
+if (results.ok) {
+  for (const hit of results.result.results) {
+    console.log(hit.resource, hit.id, hit.score, hit.snippet);
+  }
+}
+```
+
+Use the result `id`s to hydrate full records via `client.table("documents").query({ filters: { id: { $in: ids } } })`.
+
+## Local search (offline)
+
+For offline search, run a search index in the client. DataFn ships a pluggable interface:
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+import { flexsearchProvider } from "@datafn/search-flexsearch";
+
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  sync: { remote: "/datafn" },
+  searchProvider: flexsearchProvider({
+    searchableFields: { documents: ["title", "body"] },
+  }),
+});
+```
+
+The client provider indexes locally whenever a record is written to local storage. `client.search(...)` then runs locally — no network round-trip, works offline.
+
+See [Client search](/docs/documentation/plugins/client-search) for the available providers.
+
+## Hybrid: server-first with offline fallback
+
+The common production pattern:
+
+```typescript
+async function search(text: string) {
+  if (navigator.onLine) {
+    const env = await client.search({ text });
+    if (env.ok) return env.result.results;
+  }
+  // offline or server error → local fallback
+  return client.localSearch({ text });
+}
+```
+
+Both providers can be active at once; pick at query time.
+
+## Re-indexing
+
+When you change `searchableFields` or your search engine schema, you need to re-index:
+
+```bash
+npx @searchfn/cli reindex --datafn-server http://localhost:3000
+```
+
+The CLI walks every resource, fetches all rows, and pushes them through the SearchProvider's `index` method.
+
+## Search authorization
+
+The same `authorize(ctx, "search", payload)` callback gates `/datafn/search`. Default: returns the rows the actor is allowed to see based on resource policies. To enforce a tighter check (e.g. "only search documents I authored"):
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (action === "search") {
+    // payload includes the search text and target resources
+    const session = ctx.session as AuthfnSession;
+    return session.roles.includes("member"); // simple gate
+  }
+  return defaultAuthz(ctx, action, payload);
+};
+```
+
+DataFn intersects the search results with the resource-level `authorize` checks per id, so even if the search index has stale ACLs the user can't see forbidden hits.
+
+## See also
+
+- [Search](/docs/dfql/search)
+- [Search provider interface](/docs/reference/core/search-provider)
+- [Client search](/docs/documentation/plugins/client-search)

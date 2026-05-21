@@ -1,0 +1,154 @@
+---
+title: Configuration
+description: Full configuration tables for the server, client, and every adapter.
+---
+
+This page is the canonical reference. The same fields appear in narrower pages with examples — here they live as one queryable table.
+
+## Server configuration
+
+`createSearchFnServer(options)`:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `adapter` | `SearchAdapter` | — | Required. Backing adapter |
+| `basePath` | `string` | `"/searchfn"` | URL prefix for endpoints |
+| `limits` | `Partial<ServerLimits>` | see below | Override default limits |
+| `authorize` | `(ctx, action, payload) => boolean \| Promise<boolean>` | — | Authorization callback |
+| `logger` | `SearchFnLogger` | — | Structured logger (info/warn/error/debug) |
+
+### Server limits
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `maxPayloadBytes` | `1_048_576` (1 MB) | Max request body size |
+| `maxQueryLength` | `1_000` | Max query string length |
+| `maxResourcesPerSearchAll` | `50` | Max resources per `search-all` |
+| `maxLimit` | `10_000` | Max `limit` param |
+| `maxLimitPerResource` | `1_000` | Max `limitPerResource` |
+| `maxIndexBatch` | `10_000` | Max docs per `index` batch |
+
+## Client configuration
+
+`createSearchClient(options)`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `adapter` | `SearchAdapter` | Required |
+| `defaults.limit` | `number` | Default `search` limit |
+| `defaults.limitPerResource` | `number` | Default `searchAll` per-resource limit |
+| `defaults.fuzzy` | `boolean \| number` | Enable fuzzy by default; number is edit distance |
+| `defaults.prefix` | `boolean` | Enable prefix/edge-n-gram matching by default |
+| `defaults.fields` | `string[]?` | Default field restriction |
+| `defaults.fieldBoosts` | `Record<string, number>?` | Default field weights |
+
+## Convenience client constructors
+
+`createMemorySearchClient(options)`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `adapterConfig.pipeline` | `Pipeline?` | Custom text pipeline |
+| `adapterConfig.stopWords` | `Set<string> \| Record<string, Set<string>>` | Per-language stop words |
+| `adapterConfig.diagnostics` | `DiagnosticsSink?` | Diagnostics callback |
+| `defaults` | `ClientDefaults` | Same as `createSearchClient` |
+
+`createIndexedDbSearchClient(options)`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `adapterConfig.dbName` | `string` | IndexedDB database name |
+| `adapterConfig.cache.terms` | `number` | LRU cache size for hot term lookups (default 1024) |
+| `adapterConfig.cache.postings` | `number` | LRU cache size for postings (default 2048) |
+| `adapterConfig.pipeline` | `Pipeline?` | Custom pipeline |
+| `defaults` | `ClientDefaults` | Same as `createSearchClient` |
+
+## Adapter configs
+
+### `MemoryAdapter`
+
+```typescript
+new MemoryAdapter({
+  pipeline,           // optional Pipeline
+  stopWords,          // optional Set or per-language map
+  diagnostics,        // optional sink
+})
+```
+
+### `IndexedDbAdapter`
+
+```typescript
+new IndexedDbAdapter({
+  dbName: "my-search",
+  cache: { terms: 1024, postings: 2048 },
+  pipeline,
+  stopWords,
+  diagnostics,
+})
+```
+
+### `PostgresAdapter`
+
+```typescript
+new PostgresAdapter({
+  connectionString: "postgres://...",
+  schema: "public",
+  tablePrefix: "_searchfn_",
+  queryTimeoutMs: 15_000,
+  retry: { maxRetries: 3, baseDelayMs: 200, maxDelayMs: 10_000 },
+})
+```
+
+### `MeilisearchAdapter`
+
+```typescript
+new MeilisearchAdapter({
+  host: "https://search.example.com",
+  apiKey: process.env.MEILI_API_KEY,
+  indexPrefix: "prod_",
+  requestTimeoutMs: 10_000,
+})
+```
+
+### `ElasticsearchAdapter` / `OpenSearchAdapter`
+
+```typescript
+new ElasticsearchAdapter({
+  engine: "elasticsearch", // or "opensearch"
+  node: "https://es.example.com",
+  apiKey: process.env.ES_API_KEY,
+  indexPrefix: "prod_",
+})
+```
+
+## DataFn provider
+
+`createSearchProvider(adapter, options)`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `resourceFields` | `Record<string, string[]>` | Which DataFn record fields to index per resource. Default: all except `id`. |
+
+## Swift configuration
+
+`SearchFnClientConfiguration`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `defaults` | `SearchFnDefaults` | limit, limitPerResource, fuzzy, prefix |
+| `diagnostics` | `SearchFnDiagnosticsSink?` | Opt-in event sink |
+
+`SearchFnSQLiteAdapterConfiguration`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `rootURL` | `URL` | Storage root |
+| `indexKey` | `String` | Unique key for this index (hashed for directory name) |
+| `pipeline` | `SearchFnPipeline?` | Custom pipeline |
+| `diagnostics` | `SearchFnDiagnosticsSink?` | Diagnostics |
+
+## See also
+
+- [Server reference](/docs/reference/server)
+- [Client reference](/docs/reference/client)
+- [Capabilities](/docs/reference/capabilities)

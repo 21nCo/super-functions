@@ -1,0 +1,91 @@
+---
+title: "Payload Limits"
+description: "Body size, complexity caps, and per-request resource limits."
+audience: guide
+applies_to: server
+---
+
+Beyond rate limiting, DataFn enforces hard caps on request shape and size. These prevent complexity-based attacks (deeply nested filters, oversized payloads) and runaway client bugs.
+
+## Body size
+
+```typescript
+limits: { maxPayloadBytes: 1_048_576 } // 1 MB default
+```
+
+Enforced in two phases:
+
+1. **`Content-Length` check** — if the header is present and exceeds the cap, the body isn't read.
+2. **Actual byte length** for chunked uploads — measured with `Buffer.byteLength(body, "utf8")` to correctly count multibyte characters.
+
+Rejections return `413 Payload Too Large` with envelope `{ ok: false, error: { code: "LIMIT_EXCEEDED" } }`.
+
+## Complexity caps
+
+| Limit | Default | Purpose |
+| --- | --- | --- |
+| `maxLimit` | 100 | Max rows per query (`limit` in DFQL). |
+| `maxTransactSteps` | 100 | Max steps in a `/datafn/transact` call. |
+| `maxPullLimit` | 1000 | Max changes per `/datafn/pull`. |
+| `maxSelectTokens` | 50 | Max select tokens per query. |
+| `maxFilterKeysPerLevel` | 20 | Max filter keys at any nesting level. |
+| `maxSortFields` | 10 | Max sort fields per query. |
+| `maxAggregations` | 20 | Max aggregation definitions per query. |
+| `maxIdLength` | 255 | Max characters in a record id. |
+| `maxBatchSize` | 500 | Max items in batch `/datafn/push` or `/datafn/mutation`. |
+| `maxBatchQueryConcurrency` | 20 | Max concurrent in-flight queries for batch `/datafn/query`. |
+
+Exceeding any limit returns `LIMIT_EXCEEDED` with `details` indicating the cap.
+
+## Depth limits
+
+Two depth limits are not externally configurable today:
+
+- **Filter depth** — nested `$and` / `$or` expressions are capped (default ~10 levels). This prevents stack-overflow attacks via pathological filters.
+- **Relation depth** — select tokens with traversals (`author.posts.comments.*`) are capped (default ~5).
+
+Both rejections return `DFQL_INVALID`.
+
+## Setting limits
+
+```typescript
+const datafn = await createDatafnServer({
+  schema, db,
+  limits: {
+    maxPayloadBytes: 5_242_880,  // 5 MB
+    maxLimit: 200,               // allow larger queries
+    maxBatchSize: 1000,          // larger batches
+    // unspecified options fall back to defaults
+  },
+});
+```
+
+## Picking values
+
+- **`maxPayloadBytes`** — default 1 MB is suitable for most apps. Bump to 5–10 MB if your records carry large text/CRDT blobs (see [Document collab](/docs/recipes/document-collab)).
+- **`maxBatchSize`** — default 500 is conservative. Push throughput improves linearly with batch size; raise to 1000–2000 if you're constrained by sync latency.
+- **`maxTransactSteps`** — default 100 is a hard ceiling, not a target. Transactions of 100+ steps usually indicate a data model that needs rethinking.
+- **`maxAggregations`** — keep tight. A query with 20 aggregations is doing analytical work that probably belongs in a warehouse.
+
+## What about per-resource limits?
+
+Today, limits are server-wide. There's no `tasks.maxLimit` knob. For resource-specific shaping (e.g. "messages can have at most 30 per page"), enforce it in your `authorize` callback or a `beforeQuery` plugin:
+
+```typescript
+{
+  event: "beforeQuery",
+  filter: { resource: "messages" },
+  handler: async (ctx) => {
+    const q = ctx.payload as DfqlQuery;
+    if ((q.limit ?? 0) > 30) {
+      return { abort: { code: "LIMIT_EXCEEDED", message: "Max 30 messages per query" } };
+    }
+  },
+}
+```
+
+## See also
+
+- [Layered model](/docs/documentation/security/layered-model)
+- [Rate limiting](/docs/documentation/security/rate-limiting)
+- [Configuration reference](/docs/reference/configuration)

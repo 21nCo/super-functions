@@ -1,0 +1,5 @@
+{
+  "title": "Apple",
+  "description": "SearchFn on iOS, macOS, watchOS, tvOS",
+  "pages": ["index", "setup", "memory-adapter", "sqlite-adapter", "swiftui", "diagnostics"]
+}

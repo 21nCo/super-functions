@@ -1,0 +1,117 @@
+---
+title: Multi-Language Search
+description: Per-language stop words, stemming, and tokenization.
+---
+
+If your corpus mixes languages (or you serve multiple locales), tokenization and stop words need to follow each document's language. The pipeline supports per-language stages.
+
+## Per-resource language
+
+```typescript
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+const adapter = new MemoryAdapter({
+  pipeline: {
+    stopWords: {
+      en: englishStopWords,
+      es: spanishStopWords,
+      fr: frenchStopWords,
+      de: germanStopWords,
+    },
+    stem: (token, { language = "english" } = {}) =>
+      snowballStem(language, token),
+  },
+});
+
+await adapter.initialize({
+  resources: [
+    { name: "articles-en", searchFields: ["title", "body"], language: "en" },
+    { name: "articles-es", searchFields: ["title", "body"], language: "es" },
+    { name: "articles-fr", searchFields: ["title", "body"], language: "fr" },
+  ],
+});
+```
+
+Each resource carries its language declaration. When indexing or searching, the pipeline picks up the matching stop words and stemmer behavior.
+
+## Per-document language
+
+Sometimes resources are heterogeneous (a `comments` table with comments in any language). Encode the language as a field and look it up at index time:
+
+```typescript
+const adapter = new MemoryAdapter({
+  pipeline: {
+    tokenize: (text, { language }) => {
+      if (language === "zh" || language === "ja") {
+        return chineseJapaneseTokenize(text);
+      }
+      return defaultTokenize(text);
+    },
+    stem: (token, { language = "english" }) =>
+      snowballStem(language, token),
+  },
+});
+
+await client.index({
+  resource: "comments",
+  documents: comments.map((c) => ({
+    id: c.id,
+    fields: { body: c.body },
+    language: c.language,
+  })),
+});
+```
+
+(API note: per-document `language` requires the adapter to surface a hook for it — the built-in adapters accept it on `SearchDocument` when pipeline stages declare language support.)
+
+## Per-query language
+
+```typescript
+await client.search({
+  resource: "articles",
+  query: "ranking",
+  language: "en",
+});
+```
+
+When the resource is mixed-language, this restricts effective stop words and stemming to the requested language. Records in other languages still match against exact tokens but get a lower score.
+
+## CJK tokenization
+
+SearchFn's default tokenizer is whitespace + punctuation aware. For Chinese, Japanese, Korean, you'll need a real CJK tokenizer:
+
+```typescript
+import { jieba } from "nodejieba";
+
+const adapter = new MemoryAdapter({
+  pipeline: {
+    tokenize: (text, { language }) => {
+      if (language === "zh") return jieba.cut(text);
+      if (language === "ja") return kuromojiTokenize(text);
+      return defaultTokenize(text);
+    },
+  },
+});
+```
+
+The same pattern applies to Thai (no spaces), Arabic (right-to-left + diacritics), etc.
+
+## What about ICU?
+
+If you need real ICU support (full Unicode-aware tokenization with proper word breaking), wrap an ICU library and plug it in via the tokenize hook. The built-in `\p{L}\p{N}` regex covers most Latin / Cyrillic / Greek scripts fine.
+
+## Mixing languages in a single query
+
+```typescript
+await client.searchAll({
+  query: "Paris",
+  resources: ["articles-en", "articles-fr"],
+});
+```
+
+Each resource processes the query with its own language config. The merged result puts French and English hits in one ranking, which is usually what you want for proper nouns.
+
+## See also
+
+- [Pipeline customization](/docs/documentation/core/customization)
+- [Pipeline](/docs/documentation/core/pipeline)

@@ -1,0 +1,180 @@
+---
+title: "Multi-Environment Workflows"
+description: "Promote schemas and migrations across dev → staging → production safely."
+audience: guide
+applies_to: typescript
+---
+
+A typical DataFn deployment has three or more environments: local dev, staging, production. The CLI is built around the assumption that you'll iterate locally, validate in staging, then promote to production with the same artifacts.
+
+## The promotion pattern
+
+```
+local dev          staging              production
+└── apply ◄──────┐ └── apply ◄────────┐ └── apply
+    immediate    │     after PR       │     after release
+                 │                    │
+              same migration file, same schema hash
+```
+
+The unit of promotion is a **migration file**. The same file, byte-for-byte, runs against all three environments. The CLI verifies the schema hash chain on each environment to prevent drift.
+
+## End-to-end flow
+
+### 1. Edit the schema locally
+
+```typescript
+// schema.datafn.ts
+export default defineSchema({
+  resources: [
+    { name: "tasks", version: 1, fields: [...] },
+    // New:
+    { name: "projects", version: 1, fields: [...] },
+  ],
+});
+```
+
+### 2. Diff against main
+
+```bash
+datafn schema-diff --before main:schema.datafn.ts
+```
+
+```
++ Resource: projects (safe)
+```
+
+### 3. Generate a migration (if needed)
+
+For additive changes (new resource, new optional field), you don't need a migration — the runtime handles them at startup.
+
+For breaking or risky changes, generate one:
+
+```bash
+datafn schema-migrate generate \
+  --before main:schema.datafn.ts \
+  --out migrations/
+```
+
+### 4. Apply to local dev
+
+```bash
+datafn schema-migrate apply \
+  --profile default \
+  --plan migrations/2026-05-21-add-projects.ts
+```
+
+### 5. Open a PR
+
+The PR includes:
+
+- The updated `schema.datafn.ts`
+- The migration file (if any)
+- Any code changes that depend on the schema
+
+CI runs `datafn schema-diff --fail-on breaking` to flag unsafe changes. See [CI integration](/docs/cli/ci-integration).
+
+### 6. Merge → CD deploys to staging
+
+A deploy step in CI runs:
+
+```bash
+datafn schema-migrate apply \
+  --profile staging \
+  --plan migrations/2026-05-21-add-projects.ts
+```
+
+The CLI verifies staging's current schema hash matches `schemaHashBefore` and applies the migration. If staging is behind (e.g. a prior migration wasn't applied), the CLI lists pending migrations and fails until the chain is consistent.
+
+### 7. Smoke test in staging
+
+Manual or automated. Confirm the app runs against the new schema before promoting.
+
+### 8. Promote to production
+
+```bash
+datafn schema-migrate apply \
+  --profile production \
+  --schema-hash <expected> \
+  --plan migrations/2026-05-21-add-projects.ts
+```
+
+Use `--schema-hash` to assert the production state explicitly — defense against running the wrong migration against production.
+
+## Drift detection
+
+If staging and production schema hashes diverge, the CLI flags it:
+
+```bash
+datafn schema-migrate status --profile staging --profile production
+```
+
+```
+ENV         CURRENT HASH    LAST MIGRATION                              PENDING
+staging     def456          2026-05-21-add-projects                     0
+production  abc123          2026-05-15-rename-title                     1
+            └─ Pending: migrations/2026-05-21-add-projects.ts
+```
+
+Production is behind staging by one migration. The promotion command applies it.
+
+## Rollback strategy
+
+Production rollback is the same migration file's `down`:
+
+```bash
+datafn schema-migrate rollback \
+  --profile production \
+  --plan migrations/2026-05-21-add-projects.ts \
+  --schema-hash <expected-after-hash>
+```
+
+The CLI verifies the schema hash matches `schemaHashAfter`, then applies `down` to bring it back to `schemaHashBefore`.
+
+For non-reversible migrations (data loss, type narrowing), `down` should throw with a clear message. The team knows ahead of time that rolling forward (a new migration) is the only safe path.
+
+## Multi-region production
+
+For deployments spanning multiple regions:
+
+```bash
+for region in eu us asia; do
+  datafn schema-migrate apply \
+    --profile production-$region \
+    --plan migrations/2026-05-21-add-projects.ts
+done
+```
+
+Migrations are idempotent — running the same plan across regions does the right thing.
+
+## Per-namespace migrations
+
+If your store has multiple namespaces (multi-tenant SaaS), you may want to roll out a migration to one tenant first:
+
+```bash
+datafn schema-migrate apply \
+  --profile production \
+  --namespace org:beta-tester \
+  --plan migrations/2026-05-21-add-projects.ts
+```
+
+Then expand:
+
+```bash
+datafn schema-migrate apply \
+  --profile production \
+  --plan migrations/2026-05-21-add-projects.ts
+# Default: all namespaces
+```
+
+## Common pitfalls
+
+- **Don't edit applied migrations.** Once a migration has been applied in any environment, its file is locked. Editing it after the fact breaks reproducibility — the same hash chain no longer corresponds to the same data transformation. Create a new migration instead.
+- **Don't skip staging.** The whole point of staging is to find migration problems before production. The CLI's hash chain assumes a linear progression.
+- **Don't run migrations as part of the app boot.** App boot should be idempotent and fast; migrations should be explicit, separate, and gated.
+
+## See also
+
+- [`datafn schema-migrate`](/docs/cli/schema-migrate)
+- [Environment profiles](/docs/cli/env-profiles)
+- [CI integration](/docs/cli/ci-integration)

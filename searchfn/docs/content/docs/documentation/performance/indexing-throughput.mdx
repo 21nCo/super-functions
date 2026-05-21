@@ -1,0 +1,134 @@
+---
+title: Indexing Throughput
+description: Make backfills and bulk indexing fast.
+---
+
+A 10 M-record backfill at 100 docs/sec takes 28 hours. At 5000 docs/sec it's 33 minutes. The difference is usually three things: batch size, concurrency, and pipeline cost.
+
+## Pick the right batch size
+
+```typescript
+// Too small — round-trip overhead dominates
+await adapter.index({ resource: "articles", documents: [oneDoc] });
+
+// Sweet spot
+await adapter.index({ resource: "articles", documents: docs.slice(0, 500) });
+
+// Too big — memory pressure, transaction risk
+await adapter.index({ resource: "articles", documents: docs.slice(0, 50000) });
+```
+
+| Adapter | Batch sweet spot |
+| --- | --- |
+| `MemoryAdapter` | 500–5000 (memory only) |
+| `IndexedDbAdapter` | 100–500 (per IDB transaction) |
+| `PostgresAdapter` | 500–2000 (per Postgres transaction) |
+| `MeilisearchAdapter` | 1000–5000 (per Meili task) |
+| `Elasticsearch` / `OpenSearch` | 500–2000 (per `_bulk` call) |
+
+## Parallel batches
+
+Sequential batches leave the backend idle while the next batch is being constructed. Parallelize:
+
+```typescript
+import pLimit from "p-limit";
+
+const limit = pLimit(4); // 4 concurrent batches
+
+const batches = chunk(allDocs, 500);
+await Promise.all(
+  batches.map((batch) =>
+    limit(() => adapter.index({ resource: "articles", documents: batch }))
+  )
+);
+```
+
+Concurrency higher than 4 usually saturates the backend without further throughput gains.
+
+## Reduce pipeline cost per doc
+
+Each indexed token costs time. Per doc:
+
+- Tokenize all `searchFields`
+- Normalize each token
+- Filter stop words
+- Stem each token
+- Generate edge n-grams (if enabled)
+- Write postings
+
+Cuts:
+
+- **Index fewer fields.** Only what you search.
+- **Disable edge n-grams** if you don't need autocomplete.
+- **Drop the stemmer** for short / structured fields.
+- **Lower `maxBatchSize`** — but only if you're memory-pressured. Otherwise batch larger.
+
+## Streaming source
+
+If the source is a paginated DB query, paginate with cursors, not `OFFSET`:
+
+```typescript
+// BAD — Postgres scans + skips every batch
+for (let off = 0; ; off += 500) {
+  const batch = await db.articles.findMany({ skip: off, take: 500 });
+  if (!batch.length) break;
+  await indexBatch(batch);
+}
+
+// GOOD — keyset pagination
+let lastId = "";
+while (true) {
+  const batch = await db.articles.findMany({
+    where: { id: { gt: lastId } },
+    orderBy: { id: "asc" },
+    take: 500,
+  });
+  if (!batch.length) break;
+  await indexBatch(batch);
+  lastId = batch[batch.length - 1].id;
+}
+```
+
+## Postgres-specific tuning
+
+The PostgresAdapter writes use `INSERT ... ON CONFLICT`. For bulk loads:
+
+- Disable GIN auto-vacuum during the load, run `VACUUM ANALYZE` after.
+- Set `maintenance_work_mem` to 1 GB+ for the bulk load session.
+- Use `COPY` directly instead of the adapter (for one-time massive backfills) — bypass the abstraction.
+
+## Meilisearch-specific tuning
+
+- Send batches to the same index; Meilisearch batches them internally before applying.
+- Disable typo tolerance during the load (`updateTypoTolerance`), re-enable after.
+- Watch the task queue (`/tasks?status=processing`) — if it's backing up, slow down indexing.
+
+## Elasticsearch-specific tuning
+
+- Disable refresh during the load (`index.refresh_interval = -1`), set it back to `1s` after.
+- Reduce `number_of_replicas` to 0 during the load, restore after.
+- Use the `_bulk` API; ES indexes in parallel internally.
+
+## Measuring
+
+```typescript
+const t0 = Date.now();
+let count = 0;
+
+for await (const batch of stream) {
+  await adapter.index({ resource: "articles", documents: batch });
+  count += batch.length;
+  if (count % 10000 === 0) {
+    const rate = count / ((Date.now() - t0) / 1000);
+    console.log(`${count} docs in ${(Date.now() - t0) / 1000}s = ${rate.toFixed(0)} docs/sec`);
+  }
+}
+```
+
+Stable rate after the first minute is your real throughput.
+
+## See also
+
+- [Backfill from DB](/docs/recipes/backfill-from-db)
+- [Reindex with no downtime](/docs/recipes/reindex-no-downtime)
+- [Scaling](/docs/documentation/deploy/scaling)

@@ -1,0 +1,142 @@
+---
+title: Reindex With No Downtime
+description: Blue-green index swap — never serve a half-rebuilt index.
+---
+
+Reindexing happens for two reasons: schema changes (new fields, new tokenizer) or corpus changes (large dataset rewrite). Both want zero-downtime.
+
+## Strategy: write to a shadow resource, swap
+
+1. Index runs into `articles_v2` while reads still go to `articles_v1`.
+2. Once `articles_v2` is fully built, atomically swap reads to `v2`.
+3. Drop `v1`.
+
+## Step 1 — index into the shadow
+
+```typescript
+const NEW_VERSION = "articles_v2";
+
+await adapter.initialize({
+  resources: [{ name: NEW_VERSION, searchFields: ["title", "body"] }],
+});
+
+for await (const batch of streamArticles()) {
+  await adapter.index({
+    resource: NEW_VERSION,
+    documents: batch.map((row) => ({
+      id: row.id,
+      fields: { title: row.title, body: row.body },
+    })),
+  });
+}
+```
+
+## Step 2 — atomically swap
+
+The swap mechanism depends on the adapter:
+
+### Memory / IndexedDB
+
+The cleanest swap is at the application level — use an alias that your code reads:
+
+```typescript
+let currentResource = "articles_v1";
+
+async function search(query: string) {
+  return client.search({ resource: currentResource, query });
+}
+
+// At swap time:
+currentResource = "articles_v2";
+await adapter.clear("articles_v1"); // optional cleanup
+```
+
+### Postgres
+
+`PostgresAdapter` writes tables prefixed by resource name. Rename via SQL transaction:
+
+```sql
+BEGIN;
+DROP TABLE IF EXISTS _searchfn_articles_old;
+ALTER TABLE _searchfn_articles RENAME TO _searchfn_articles_old;
+ALTER TABLE _searchfn_articles_v2 RENAME TO _searchfn_articles;
+COMMIT;
+```
+
+Application code keeps using resource `"articles"`; the underlying tables are swapped.
+
+### Meilisearch
+
+Meilisearch has a native [index swap API](https://www.meilisearch.com/docs/reference/api/indexes#swap-indexes):
+
+```typescript
+await meili.swapIndexes([{ indexes: ["articles", "articles_v2"] }]);
+```
+
+Atomic. The `MeilisearchAdapter` exposes this via `adapter.swapResources(["articles", "articles_v2"])`.
+
+### Elasticsearch / OpenSearch
+
+Use the [aliases API](https://www.elastic.co/guide/en/elasticsearch/reference/current/aliases.html):
+
+```typescript
+await es.indices.updateAliases({
+  body: {
+    actions: [
+      { remove: { index: "articles_v1", alias: "articles" } },
+      { add: { index: "articles_v2", alias: "articles" } },
+    ],
+  },
+});
+```
+
+Application code reads from the alias `"articles"`; the alias swap is atomic.
+
+## Step 3 — drop the old
+
+After verifying the swap (sample queries, count check), drop the old resource:
+
+```typescript
+await adapter.clear("articles_v1"); // or DROP TABLE / DELETE INDEX
+```
+
+Leave it for an hour or two in case you need to roll back.
+
+## Validating before the swap
+
+Don't swap blind:
+
+```typescript
+const oldCount = await countDocuments("articles_v1");
+const newCount = await countDocuments("articles_v2");
+
+if (newCount < oldCount * 0.95) {
+  throw new Error(`v2 has ${newCount} docs, expected ~${oldCount} — aborting swap`);
+}
+
+// Sample queries
+for (const sample of relevanceTests) {
+  const oldIds = await searchOn("articles_v1", sample.query);
+  const newIds = await searchOn("articles_v2", sample.query);
+  if (newIds.length === 0 && oldIds.length > 0) {
+    throw new Error(`Regression: query "${sample.query}" returns nothing in v2`);
+  }
+}
+```
+
+The point of the shadow build is to give you time to find regressions before users see them.
+
+## Live mutations during reindex
+
+While the backfill into `v2` runs, new writes still go to `v1`. To keep `v2` current:
+
+- Dual-write: every mutation indexes into both `v1` and `v2`. After the swap, stop writing to `v1`.
+- Or: backfill into `v2` from `v1`, then at swap time replay any mutations that happened in the meantime.
+
+Dual-write is simpler; it costs ~2x write throughput during the migration window.
+
+## See also
+
+- [Backfill from DB](/docs/recipes/backfill-from-db)
+- [Index snapshot and restore](/docs/recipes/index-snapshot-restore)
+- [Partial reindex](/docs/recipes/partial-reindex)

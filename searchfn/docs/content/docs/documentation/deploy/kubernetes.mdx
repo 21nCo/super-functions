@@ -1,0 +1,172 @@
+---
+title: "Deploy: Kubernetes"
+description: Deployment, Service, Ingress, and HPA for SearchFn — production-shaped.
+---
+
+## Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searchfn
+  labels: { app: searchfn }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: searchfn }
+  template:
+    metadata:
+      labels: { app: searchfn }
+    spec:
+      containers:
+        - name: searchfn
+          image: myorg/searchfn:0.2.0
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: SEARCH_DB_URL
+              valueFrom: { secretKeyRef: { name: searchfn-secrets, key: db-url } }
+            - name: NODE_ENV
+              value: production
+          readinessProbe:
+            httpGet: { path: /searchfn/status, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /searchfn/status, port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: 1000m, memory: 1Gi }
+```
+
+## Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: searchfn
+spec:
+  type: ClusterIP
+  selector: { app: searchfn }
+  ports:
+    - port: 80
+      targetPort: 8080
+```
+
+## Ingress
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: searchfn
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+spec:
+  rules:
+    - host: search.example.com
+      http:
+        paths:
+          - path: /searchfn
+            pathType: Prefix
+            backend:
+              service:
+                name: searchfn
+                port: { number: 80 }
+```
+
+Cap the proxy body size at the SearchFn server's `maxPayloadBytes`. Nginx defaults to 1 MB; mismatched limits drop connections at the proxy with no useful error.
+
+## HorizontalPodAutoscaler
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: searchfn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: searchfn
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }
+    - type: Resource
+      resource:
+        name: memory
+        target: { type: Utilization, averageUtilization: 70 }
+```
+
+SearchFn is CPU-bound for queries (BM25 scoring) and memory-bound for indexing. HPA on both metrics catches whichever saturates first.
+
+## PodDisruptionBudget
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: searchfn
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: searchfn }
+```
+
+Keeps at least 2 replicas during voluntary disruptions (node drain, upgrades).
+
+## NetworkPolicy
+
+Restrict who can talk to the SearchFn service:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: searchfn-ingress
+spec:
+  podSelector:
+    matchLabels: { app: searchfn }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: web-app }
+      ports: [{ protocol: TCP, port: 8080 }]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app: postgres }
+      ports: [{ protocol: TCP, port: 5432 }]
+```
+
+## Secrets
+
+Use the cluster's secret manager (Sealed Secrets, External Secrets Operator, Vault):
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: searchfn-secrets
+type: Opaque
+stringData:
+  db-url: postgres://...
+```
+
+Don't commit raw secrets.
+
+## See also
+
+- [Docker](/docs/documentation/deploy/docker)
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Production checklist](/docs/documentation/security/production-checklist)

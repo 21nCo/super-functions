@@ -7,7 +7,7 @@
 
   let { data }: Props = $props();
 
-  const tagline = "Self-hosted authentication for superfunctions";
+  const tagline = "Self-hosted authentication for any stack.";
   const configDescription = data.source.config.site.description ?? "";
   const extraBlurb = configDescription && configDescription !== tagline ? configDescription : "";
 
@@ -45,7 +45,7 @@
 
 <div class="landing docsfn-layout">
   <section class="landing-hero" aria-labelledby="landing-title">
-    <p class="landing-eyebrow">Superfunctions</p>
+    <p class="landing-eyebrow">Open source</p>
     <h1 id="landing-title" class="landing-title">authfn</h1>
     <p class="landing-tagline">{tagline}</p>
     {#if extraBlurb}
