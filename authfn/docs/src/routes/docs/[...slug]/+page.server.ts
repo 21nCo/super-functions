@@ -6,6 +6,7 @@ import {
   resolveDocsRouteDataOrThrow,
   type SvelteDocsPageSurface,
 } from "@docsfn/sveltekit";
+import { resolveMarkdownRelativeLinks } from "@docsfn/core";
 import { getCompiledDocsPage } from "$lib/server/docs-site-source";
 import type { PageServerLoad } from "./$types";
 
@@ -25,6 +26,10 @@ function isRouteNotFoundError(input: unknown): input is { message: string } {
     "code" in input &&
     String((input as { code: unknown }).code) === "DOCS_ROUTE_NOT_FOUND"
   );
+}
+
+function hasNestedDocsRoutes(routes: Record<string, string>, route: string): boolean {
+  return Object.keys(routes).some((candidate) => candidate.startsWith(`${route}/`));
 }
 
 export const load: PageServerLoad = async ({ params, parent }) => {
@@ -94,7 +99,12 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 
   const compiled =
     routeEntry.kind === "page"
-      ? await getCompiledDocsPage(routeEntry.page.id)
+      ? resolveMarkdownRelativeLinks({
+          compiled: await getCompiledDocsPage(routeEntry.page.id),
+          route: routeEntry.route,
+          sourcePath: routeEntry.page.relativePath,
+          isIndexRoute: hasNestedDocsRoutes(source.manifest.routes, routeEntry.route),
+        })
       : undefined;
 
   return {

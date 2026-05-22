@@ -100,7 +100,7 @@ In bearer mode, the kernel:
 - Reads the bearer token from `Authorization: Bearer <token>`.
 - Skips the CSRF check (bearer tokens are not subject to browser-driven CSRF; the trade-off is that the client must protect token storage itself).
 
-The Swift SDK uses bearer mode by default. See [SDKs → Client → Token mode](../sdk/client/token-mode) and [SDKs → Swift](../sdk/swift).
+The Swift SDK uses bearer mode by default. See [SDKs → Client → Token mode](../sdk/client#bearer-mode) and [SDKs → Swift](../sdk/swift).
 
 ## Rotation
 

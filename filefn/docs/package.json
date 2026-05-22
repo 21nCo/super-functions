@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",
-    "@docsfn/core": "0.0.4",
+    "@docsfn/core": "0.0.5",
     "@docsfn/provider-fs": "0.0.2",
     "@docsfn/svelte": "0.0.3",
     "@docsfn/sveltekit": "0.0.2"

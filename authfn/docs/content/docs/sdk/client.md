@@ -230,12 +230,6 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 await withRetry(() => client.sendOtp({ email, purpose: 'sign-in' }));
 ```
 
-## Token mode subpages
-
-For deep dives:
-
-- [Bearer-token mode](./client/token-mode) — how to safely store and rotate bearer tokens, integrate with native credential stores, and handle session augmentation.
-
 ## Related
 
 - [Concepts → Sessions](../core-concepts/sessions) — what the cookie / bearer carries.
