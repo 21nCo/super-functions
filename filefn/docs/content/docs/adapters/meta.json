@@ -1,0 +1,19 @@
+{
+  "title": "Adapters",
+  "pages": [
+    "index",
+    "storage",
+    "storage-local",
+    "storage-s3",
+    "storage-gcs",
+    "storage-azure",
+    "storage-r2",
+    "storage-minio",
+    "db",
+    "db-memory",
+    "db-drizzle",
+    "db-postgres",
+    "db-sqlite",
+    "processors"
+  ]
+}

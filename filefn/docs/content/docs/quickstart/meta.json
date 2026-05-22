@@ -1,0 +1,14 @@
+{
+  "title": "Quickstart",
+  "pages": [
+    "index",
+    "hono",
+    "express",
+    "bun",
+    "sveltekit",
+    "nextjs",
+    "fastapi",
+    "flask",
+    "swift"
+  ]
+}

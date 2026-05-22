@@ -1,0 +1,18 @@
+{
+  "title": "filefn",
+  "pages": [
+    "index",
+    "getting-started",
+    "quickstart",
+    "core-concepts",
+    "features",
+    "sdk",
+    "adapters",
+    "frameworks",
+    "recipes",
+    "examples",
+    "ai-resources",
+    "reference",
+    "api"
+  ]
+}

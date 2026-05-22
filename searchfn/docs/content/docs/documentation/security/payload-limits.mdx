@@ -1,0 +1,117 @@
+---
+title: Payload Limits
+description: How SearchFn caps request size, query length, and batch counts — and why.
+---
+
+Without limits, a single malicious or buggy client can exhaust server memory by sending a 50 MB query, 100k documents per batch, or 5000 resources per `searchAll`. Default limits keep this from happening; production deployments may tune them.
+
+## Defaults
+
+| Limit | Default | What it stops |
+| --- | --- | --- |
+| `maxPayloadBytes` | `1_048_576` (1 MB) | Multi-MB request bodies |
+| `maxQueryLength` | `1_000` chars | Pathological queries that explode pipeline cost |
+| `maxResourcesPerSearchAll` | `50` | `searchAll` fan-out attacks |
+| `maxLimit` | `10_000` | Asking for too many results |
+| `maxLimitPerResource` | `1_000` | Per-resource fan-out |
+| `maxIndexBatch` | `10_000` docs | Memory pressure during indexing |
+
+## Configuring
+
+```typescript
+const sf = await createSearchFnServer({
+  adapter,
+  limits: {
+    maxQueryLength: 500,
+    maxIndexBatch: 5_000,
+  },
+});
+```
+
+Limits not specified use defaults.
+
+## When to raise limits
+
+- **`maxIndexBatch`** — increase if you have plenty of memory and want fewer round-trips during backfill. Don't go above 50k without testing.
+- **`maxResourcesPerSearchAll`** — increase only if you have many small resources (per-tenant pattern with hundreds of tenants).
+
+## When to lower limits
+
+- **`maxQueryLength`** — lower for autocomplete-only endpoints (queries are short by definition).
+- **`maxPayloadBytes`** — lower for client-facing search endpoints; raise for service-to-service indexing.
+- **`maxLimit`** — lower aggressively; very few real UIs need more than 100 results.
+
+## Per-endpoint limits
+
+If you need different limits per endpoint, run two SearchFn servers:
+
+```typescript
+const userSf = await createSearchFnServer({
+  adapter,
+  basePath: "/searchfn",
+  limits: { maxLimit: 50, maxIndexBatch: 0 }, // read-only for users
+  authorize: async (ctx, action) => action === "search" || action === "searchAll",
+});
+
+const adminSf = await createSearchFnServer({
+  adapter,
+  basePath: "/admin/searchfn",
+  limits: { maxIndexBatch: 50_000 },
+  authorize: async (ctx) => isAdmin(ctx),
+});
+```
+
+Mount both on the same HTTP framework with different `basePath` and `authorize`.
+
+## What happens on limit violations
+
+The server responds with `LIMIT_EXCEEDED`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "LIMIT_EXCEEDED",
+    "message": "query exceeds maxQueryLength (1000)",
+    "details": { "path": "query", "actual": 4521, "max": 1000 }
+  }
+}
+```
+
+HTTP status: 400.
+
+Clients should treat this as a non-retryable client error — retrying won't help.
+
+## HTTP framework limits
+
+SearchFn's `maxPayloadBytes` is checked **after** the request body has been read. To stop attacks before the body is read, configure your HTTP framework's body limit at the same value or slightly higher:
+
+- Express: `express.json({ limit: "2mb" })`
+- Fastify: `Fastify({ bodyLimit: 2 * 1024 * 1024 })`
+- Hono: `hono` doesn't enforce by default; use a body-size middleware.
+
+## Rate limiting
+
+Limits cap individual request size, not request rate. For per-user rate limits, use the `authorize` callback:
+
+```typescript
+import { Ratelimit } from "@upstash/ratelimit";
+
+const indexLimiter = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(10, "1 m") });
+const searchLimiter = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(120, "1 m") });
+
+async function authorize(ctx, action) {
+  const userId = ctx.user?.id ?? ctx.ip;
+  const limiter = action === "index" ? indexLimiter : searchLimiter;
+  const { success } = await limiter.limit(userId);
+  return success && passesAuth(ctx, action);
+}
+```
+
+Rate-limit denials look like authorization failures (`FORBIDDEN`) — surface this as 429 if you want HTTP semantics correct.
+
+## See also
+
+- [Request authz](/docs/documentation/security/request-authz)
+- [Server reference](/docs/reference/server)
+- [Configuration](/docs/reference/configuration)

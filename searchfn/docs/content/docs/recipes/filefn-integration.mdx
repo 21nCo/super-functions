@@ -1,0 +1,144 @@
+---
+title: FileFn Integration
+description: Index FileFn file metadata and extracted text content into SearchFn.
+---
+
+FileFn stores files; SearchFn searches text. The integration is two pieces: (1) index FileFn's file metadata so users can search by name/type/owner; (2) extract text content from supported file types and index that too.
+
+## Indexing metadata
+
+Subscribe to FileFn upload completion events:
+
+```typescript
+import { onFileUploaded } from "@filefn/server";
+
+onFileUploaded(async (file) => {
+  await searchAdapter.index({
+    resource: "files",
+    documents: [{
+      id: file.id,
+      fields: {
+        filename: file.filename,
+        contentType: file.contentType,
+        ownerId: file.ownerId,
+        tags: file.tags.join(" "),
+      },
+    }],
+  });
+});
+```
+
+Users can now search by filename, owner, or tags through the standard SearchFn interface.
+
+## Extracting text content
+
+For PDF, DOCX, TXT, HTML files, extract content during processing and index it as a `body` field:
+
+```typescript
+import { extractText } from "filefn-text-extractor"; // or your tool of choice
+
+onFileUploaded(async (file) => {
+  const text = await extractText(file.stream, file.contentType);
+
+  await searchAdapter.index({
+    resource: "files",
+    documents: [{
+      id: file.id,
+      fields: {
+        filename: file.filename,
+        contentType: file.contentType,
+        ownerId: file.ownerId,
+        body: text ?? "",
+      },
+    }],
+  });
+});
+```
+
+Now searches against `body` work across file content.
+
+### Recommended extractors
+
+| Format | Tool |
+| --- | --- |
+| PDF | `pdf-parse`, `pdfjs-dist`, or [Apache Tika](https://tika.apache.org/) for richer extraction |
+| DOCX | `mammoth.js` |
+| HTML | `cheerio` + `.text()` |
+| Plain text | direct read |
+| Images (OCR) | Tesseract via `node-tesseract-ocr` |
+
+For mixed corpora, Tika in a sidecar is the most robust path.
+
+## Indexing in chunks
+
+For very large files (`>10 MB` of text), index in chunks rather than as a single document:
+
+```typescript
+const chunks = chunkText(text, 5000); // 5k chars per chunk
+
+await searchAdapter.index({
+  resource: "files",
+  documents: chunks.map((chunk, idx) => ({
+    id: `${file.id}:chunk-${idx}`,
+    fields: {
+      filename: file.filename,
+      ownerId: file.ownerId,
+      body: chunk,
+      parentFileId: file.id,
+    },
+  })),
+});
+```
+
+Searches return chunk IDs; display the parent file. Deduplicate by `parentFileId` if a single file shows up multiple times in results.
+
+## Deletion
+
+When a file is deleted in FileFn, remove its index entries:
+
+```typescript
+import { onFileDeleted } from "@filefn/server";
+
+onFileDeleted(async (file) => {
+  // If you chunked
+  for (let i = 0; ; i++) {
+    const chunkId = `${file.id}:chunk-${i}`;
+    // ... remove all chunks
+  }
+  // Or simply:
+  await searchAdapter.remove({ resource: "files", ids: [file.id] });
+});
+```
+
+## Sharing-aware search
+
+When FileFn files have ACLs (via the `shareable` capability), search results need to respect them. The pattern: include `ownerId` and `sharedWith` (a multi-value field) in the indexed fields, then filter results post-search:
+
+```typescript
+const ids = await searchAdapter.search({
+  resource: "files",
+  query: userQuery,
+  limit: 50,
+});
+
+const files = await db.files.findMany({ where: { id: { in: ids } } });
+const accessible = files.filter((f) => userCanAccess(currentUser, f));
+```
+
+For strict isolation (search must not even hint at the existence of inaccessible files), use a per-user resource name (`files:user-1`) and let `authorize` reject cross-user queries.
+
+## DataFn + FileFn + SearchFn
+
+When all three are wired together, the integration is automatic:
+
+- DataFn owns file metadata records.
+- FileFn owns the blob storage.
+- SearchFn (via `@searchfn/datafn-provider`) indexes the DataFn records.
+
+Use [DataFn integration](/docs/recipes/datafn-integration) — FileFn metadata flows through DataFn into SearchFn without extra code.
+
+## See also
+
+- [DataFn integration](/docs/recipes/datafn-integration)
+- [Multi-tenant search](/docs/recipes/multi-tenant)
+- [Backfill from DB](/docs/recipes/backfill-from-db)

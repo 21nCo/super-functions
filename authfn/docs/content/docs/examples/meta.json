@@ -1,0 +1,4 @@
+{
+  "title": "Examples",
+  "pages": ["index", "password-sessions", "otp-recovery", "social-oauth", "account-settings", "multi-region-routing"]
+}

@@ -1,0 +1,82 @@
+---
+title: "Codex / GPT-based assistants"
+description: "Wire DataFn into OpenAI Codex, GitHub Copilot, and Continue.dev."
+audience: guide
+applies_to: both
+---
+
+OpenAI Codex (and GPT-based assistants in general) discover project conventions through one of three mechanisms:
+
+1. `AGENTS.md` at the repo root (Codex CLI).
+2. Repo-level instructions on github.com (Copilot for GitHub).
+3. `.continue/rules/*.md` (Continue.dev).
+
+The content is largely the same. Below is a starter that works for any of them — drop it in and adjust paths.
+
+## AGENTS.md starter
+
+```md
+# DataFn project
+
+This repo uses DataFn for sync, queries, and mutations.
+
+## Layout
+- `shared/schema.ts` — source-of-truth DataFn schema, used by client and server.
+- `server/` — TypeScript server using `@datafn/server` + Hono.
+- `client/` — React app using `@datafn/client` + `@datafn/react` (if present).
+- `mobile/` — Swift package using `@datafn/apple`.
+
+## Tooling
+- `npm test` runs the full test suite (server + client).
+- `npm run generate:schema` regenerates Drizzle and TypeScript types from `shared/schema.ts`.
+- `npm run validate:schema` enforces the schema is well-formed.
+
+## DataFn conventions
+- Add new resources via `defineSchema(...)` in `shared/schema.ts`.
+- Wire authorization in `server/authz.ts`. The default `authorize` returns false; tighten, don't loosen.
+- Client access is always through `client.table("<resource>").<verb>(...)`; never read or write IndexedDB directly.
+- Wrap multi-step writes in `client.transact(...)`. Never fire more than one `mutate` in a single user action.
+- Capability operations (`trash`, `restore`, `archive`, `unarchive`, `share`, `unshare`) are first-class. Use them; don't model them as boolean fields.
+
+## When fixing bugs
+1. Reproduce the failure with a deterministic test before fixing.
+2. Check `server/src/execution/errors.ts` for the error code's classification.
+3. If a new error code is needed, add it to `core/src/errors.ts` first, then update the server.
+
+## Docs
+See https://datafn.21n.co/docs. Raw markdown is at /api/docs/raw/<path>.mdx.
+```
+
+## GitHub Copilot
+
+In repository settings → **Copilot** → **Code review** → **Custom instructions**, paste the same content. Copilot will use it for chat, code review, and PR summaries.
+
+## Continue.dev
+
+Continue reads rules from `.continue/rules/*.md`:
+
+```
+.continue/
+└── rules/
+    └── datafn.md
+```
+
+No frontmatter needed; Continue applies them to all chat sessions in the project.
+
+## Open in ChatGPT
+
+The "Open in ChatGPT" button on every doc page constructs a deep link to `chatgpt.com/?q=...` with a prompt that asks the model to read the current page. This works without any setup.
+
+## Verifying it works
+
+In a session with the rules in place:
+
+> "Add `clonable` capability to the `templates` resource."
+
+The assistant should:
+
+1. Recognize that `clonable` is not a built-in DataFn capability.
+2. Ask whether you want to model it as a plugin or a boolean field.
+3. Reach for `defineSchema` and the plugin API rather than ad-hoc fields.
+
+If it confidently adds `clonable` to the capabilities array as if it were built in, the rules need a "what capabilities exist" enumeration.

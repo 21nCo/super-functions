@@ -1,0 +1,13 @@
+{
+  "title": "Frameworks",
+  "pages": [
+    "index",
+    "hono",
+    "express",
+    "bun",
+    "sveltekit",
+    "nextjs",
+    "fastapi",
+    "flask"
+  ]
+}

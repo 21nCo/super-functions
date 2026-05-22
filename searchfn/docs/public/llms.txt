@@ -1,0 +1,135 @@
+# SearchFn Documentation
+
+> Full-text search engine and adapter system for TypeScript, Python, and Swift. Ships a built-in BM25 engine for in-process and browser-persistent search, plus thin adapters for Postgres, Meilisearch, Elasticsearch, and OpenSearch.
+
+This document is intended for large language models and agentic developer tools. It contains an outline of the SearchFn documentation with deep-links to each page; for the full content see `llms-full.txt`.
+
+## Ai Resources
+
+- [Claude Setup](https://searchfn.com/docs/ai-resources/claude): Use SearchFn effectively with Claude Code and Claude Projects.
+- [Codex Setup](https://searchfn.com/docs/ai-resources/codex): Use SearchFn with OpenAI Codex CLI and Codex agents.
+- [Cursor Setup](https://searchfn.com/docs/ai-resources/cursor): Pin SearchFn docs in Cursor and prompt the agent effectively.
+- [llms.txt and llms-full.txt](https://searchfn.com/docs/ai-resources/llms-txt): Plain-text documentation feeds for AI coding tools.
+- [MCP Server](https://searchfn.com/docs/ai-resources/mcp): Connect Claude, Cursor, and other MCP clients to SearchFn documentation.
+- [Skills](https://searchfn.com/docs/ai-resources/skills): Factory Droid skills for SearchFn setup, indexing, and adapter selection.
+
+## Top Level
+
+- [AI Resources](https://searchfn.com/docs/ai-resources): Use SearchFn with AI coding tools — Cursor, Claude, Codex, Windsurf, and any LLM that consumes llms.txt.
+- [Architecture](https://searchfn.com/docs/architecture): Built-in search engine, package layers, adapter contract, and response semantics.
+- [Comparison](https://searchfn.com/docs/comparison): SearchFn vs Algolia, Typesense, Meilisearch direct, Elasticsearch direct, Postgres FTS direct, FlexSearch, MiniSearch, Lunr.js, Orama, Pagefind.
+- [Examples](https://searchfn.com/docs/examples): Runnable example apps shipped with SearchFn.
+- [Getting Started with Swift](https://searchfn.com/docs/getting-started-swift): Build local Swift search with the standalone SearchFn Swift package.
+- [Getting Started](https://searchfn.com/docs/getting-started): Install SearchFn, index documents, and run your first search query in minutes.
+- [SearchFn](https://searchfn.com/docs): A full-text search engine and adapter system for TypeScript applications.
+- [Quickstart](https://searchfn.com/docs/quickstart): Get SearchFn indexing and serving queries in 5–10 minutes for your stack.
+- [Recipes](https://searchfn.com/docs/recipes): Copy-pasteable patterns for the things you actually want to do with SearchFn.
+
+## Documentation
+
+- [Migrating Between Adapters](https://searchfn.com/docs/documentation/advanced/adapter-migration): Move from Memory → Postgres → Meilisearch → Elasticsearch without downtime.
+- [Writing an Adapter](https://searchfn.com/docs/documentation/advanced/writing-an-adapter): Implement SearchAdapter against your own backend — full guide.
+- [Diagnostics](https://searchfn.com/docs/documentation/apple/diagnostics): Opt-in event sink for observing SearchFn lifecycle on Apple.
+- [Apple Runtime](https://searchfn.com/docs/documentation/apple): SearchFn on iOS, macOS, watchOS, and tvOS — standalone Swift package.
+- [Memory Adapter](https://searchfn.com/docs/documentation/apple/memory-adapter): SearchFnMemoryAdapter — in-process, ephemeral, fastest.
+- [Setup](https://searchfn.com/docs/documentation/apple/setup): Add SearchFn to a Swift project.
+- [SQLite Adapter](https://searchfn.com/docs/documentation/apple/sqlite-adapter): SearchFnSQLiteAdapter — persistent on-device search backed by SQLite.
+- [SwiftUI](https://searchfn.com/docs/documentation/apple/swiftui): Bind SearchFn results into a SwiftUI view.
+- [WASM Core](https://searchfn.com/docs/documentation/core-wasm): Rust+WebAssembly build of the SearchFn engine — experimental, for workloads where the JS engine isn't fast enough.
+- [WASM Core Setup](https://searchfn.com/docs/documentation/core-wasm/setup): Install and use the WASM engine.
+- [When to Use the WASM Core](https://searchfn.com/docs/documentation/core-wasm/when-to-use): Pick WASM over the TS engine — or pick neither.
+- [BM25 Scoring](https://searchfn.com/docs/documentation/core/bm25): The formula, the constants, and when to tune them.
+- [Customization](https://searchfn.com/docs/documentation/core/customization): Replace any pipeline stage — tokenizer, normalizer, stop words, stemmer.
+- [Fuzzy Matching](https://searchfn.com/docs/documentation/core/fuzzy): How SearchFn handles typos — Levenshtein distance with vocabulary expansion.
+- [Core Engine](https://searchfn.com/docs/documentation/core): Inside @searchfn/core — the full-text engine that powers MemoryAdapter and IndexedDbAdapter.
+- [Inverted Index](https://searchfn.com/docs/documentation/core/inverted-index): How SearchFn stores postings — in memory, in IndexedDB, and what that means for performance.
+- [Text Pipeline](https://searchfn.com/docs/documentation/core/pipeline): How SearchFn turns raw field text into searchable tokens.
+- [Deploy: Cloudflare Workers](https://searchfn.com/docs/documentation/deploy/cloudflare-workers): SearchFn on Cloudflare Workers — what works and what doesn't.
+- [Deploy: Docker](https://searchfn.com/docs/documentation/deploy/docker): Containerize SearchFn — multi-stage build, production image, compose for local stack.
+- [Deploy: Fly.io](https://searchfn.com/docs/documentation/deploy/fly): SearchFn on Fly with Postgres, Meilisearch, or a self-hosted Elasticsearch sidecar.
+- [Deploy](https://searchfn.com/docs/documentation/deploy): Where to run SearchFn — the tradeoffs per platform.
+- [Deploy: Kubernetes](https://searchfn.com/docs/documentation/deploy/kubernetes): Deployment, Service, Ingress, and HPA for SearchFn — production-shaped.
+- [Deploy: Railway](https://searchfn.com/docs/documentation/deploy/railway): SearchFn on Railway with Railway Postgres or external Meilisearch.
+- [Scaling](https://searchfn.com/docs/documentation/deploy/scaling): Capacity planning, bottlenecks, and how to scale a SearchFn deployment.
+- [Deploy: Vercel](https://searchfn.com/docs/documentation/deploy/vercel): Run SearchFn server-side on Vercel using Next.js API routes or serverless functions.
+- [Cache Tuning](https://searchfn.com/docs/documentation/performance/cache-tuning): LRU caches in the built-in engine, OS cache for Postgres, and how to size both.
+- [Performance](https://searchfn.com/docs/documentation/performance): Where to look when SearchFn is slow.
+- [Indexing Throughput](https://searchfn.com/docs/documentation/performance/indexing-throughput): Make backfills and bulk indexing fast.
+- [Query Latency](https://searchfn.com/docs/documentation/performance/query-latency): Where the milliseconds go and how to claw them back.
+- [HTTP Mount](https://searchfn.com/docs/documentation/python/http-mount): Mount the SearchFn routes on FastAPI, Starlette, or Flask.
+- [Python](https://searchfn.com/docs/documentation/python): SearchFn Python — a lightweight DataFn companion for database-backed full-text search.
+- [Indexing](https://searchfn.com/docs/documentation/python/indexing): How index_data walks DataFn models and populates the inverted index.
+- [Search](https://searchfn.com/docs/documentation/python/search): How search_index ranks records and what to expect from the Python scoring model.
+- [Setup](https://searchfn.com/docs/documentation/python/setup): Install searchfn (Python) and wire it to your DataFn schema.
+- [Security](https://searchfn.com/docs/documentation/security): The threat model and defense layers for a SearchFn deployment.
+- [Multi-Tenant Isolation](https://searchfn.com/docs/documentation/security/multi-tenant-isolation): Stop tenants from leaking into each other's search results.
+- [Payload Limits](https://searchfn.com/docs/documentation/security/payload-limits): How SearchFn caps request size, query length, and batch counts — and why.
+- [Production Checklist](https://searchfn.com/docs/documentation/security/production-checklist): Pre-launch audit for a SearchFn deployment.
+- [Request Authorization](https://searchfn.com/docs/documentation/security/request-authz): The authorize callback — how to write one, how to test it.
+- [Secret Redaction](https://searchfn.com/docs/documentation/security/secret-redaction): What SearchFn strips from log output — and what you still have to handle.
+
+## Examples
+
+- [Swift: In-Memory Example](https://searchfn.com/docs/examples/swift-in-memory): SearchFnInMemoryExample — runs the in-memory adapter end-to-end.
+- [Swift: SQLite Example](https://searchfn.com/docs/examples/swift-sqlite): SearchFnSQLiteExample — persistent on-device search backed by SQLite.
+
+## Integrations
+
+- [DataFn Integration](https://searchfn.com/docs/integrations/datafn): Connect SearchFn adapters to DataFn as a search provider.
+
+## Operations
+
+- [Observability](https://searchfn.com/docs/operations/observability): Structured logging, health checks, and failure classification for SearchFn.
+- [Security](https://searchfn.com/docs/operations/security): Authorization, secret handling, and credential management for SearchFn.
+- [Setup](https://searchfn.com/docs/operations/setup): Deploy SearchFn in production with proper configuration, limits, and resilience.
+- [Troubleshooting](https://searchfn.com/docs/operations/troubleshooting): Diagnose and resolve common SearchFn errors with error codes and backend-specific playbooks.
+
+## Quickstart
+
+- [Bun](https://searchfn.com/docs/quickstart/bun): SearchFn on Bun's native HTTP server.
+- [Express](https://searchfn.com/docs/quickstart/express): Mount SearchFn into an Express app in under 10 minutes.
+- [FastAPI](https://searchfn.com/docs/quickstart/fastapi): Mount the Python SearchFn server inside a FastAPI app.
+- [Fastify](https://searchfn.com/docs/quickstart/fastify): SearchFn on Fastify with a single route registration.
+- [Flask](https://searchfn.com/docs/quickstart/flask): Mount SearchFn into a Flask app.
+- [Hono](https://searchfn.com/docs/quickstart/hono): SearchFn on Hono with the Memory adapter for dev and Postgres for prod.
+- [Next.js](https://searchfn.com/docs/quickstart/nextjs): SearchFn in Next.js (App Router) — server route for search + IndexedDB on the client.
+- [Starlette](https://searchfn.com/docs/quickstart/starlette): Mount SearchFn into a Starlette app.
+- [SvelteKit](https://searchfn.com/docs/quickstart/sveltekit): SearchFn in a SvelteKit app — IndexedDB on the client, Postgres on the server.
+- [Swift](https://searchfn.com/docs/quickstart/swift): SearchFn on iOS, macOS, watchOS — in-memory or SQLite-backed local search.
+
+## Recipes
+
+- [AuthFn Integration](https://searchfn.com/docs/recipes/authfn-integration): Wire SearchFn's authorize callback to AuthFn sessions and roles.
+- [Autocomplete](https://searchfn.com/docs/recipes/autocomplete): Search-as-you-type with prefix matching and low latency.
+- [Backfill From An Existing Database](https://searchfn.com/docs/recipes/backfill-from-db): Populate SearchFn from Postgres, MySQL, or Mongo without re-fetching everything twice.
+- [Cross-Resource Ranking](https://searchfn.com/docs/recipes/cross-resource-ranking): Search across products, articles, and users — and rank them fairly.
+- [DataFn Integration (Deep)](https://searchfn.com/docs/recipes/datafn-integration): Wire SearchFn as a DataFn search provider — server, client, native, and dataflows.
+- [FileFn Integration](https://searchfn.com/docs/recipes/filefn-integration): Index FileFn file metadata and extracted text content into SearchFn.
+- [Hybrid Local + Remote Search](https://searchfn.com/docs/recipes/hybrid-local-remote): IndexedDB for hot data on the client; server search for everything else.
+- [Index Snapshot and Restore](https://searchfn.com/docs/recipes/index-snapshot-restore): Capture the SearchFn index state for backup, fixtures, or seeding new environments.
+- [Multi-Language Search](https://searchfn.com/docs/recipes/multi-language): Per-language stop words, stemming, and tokenization.
+- [Multi-Tenant Search](https://searchfn.com/docs/recipes/multi-tenant): Keep tenants' search results isolated — even when sharing infrastructure.
+- [Partial Reindex](https://searchfn.com/docs/recipes/partial-reindex): Re-index only the records that changed since the last sync.
+- [Reindex With No Downtime](https://searchfn.com/docs/recipes/reindex-no-downtime): Blue-green index swap — never serve a half-rebuilt index.
+- [Relevance Testing](https://searchfn.com/docs/recipes/relevance-testing): Make search quality measurable, not anecdotal.
+- [Snippet Highlighting](https://searchfn.com/docs/recipes/snippet-highlighting): Return matched fragments with the hit terms wrapped in HTML mark tags.
+
+## Reference
+
+- [Elasticsearch / OpenSearch Adapter](https://searchfn.com/docs/reference/adapters/elastic-opensearch): Elastic-compatible adapter for Elasticsearch and OpenSearch clusters.
+- [Adapters](https://searchfn.com/docs/reference/adapters): Choose the right search adapter — built-in engine or external backend.
+- [IndexedDB Adapter](https://searchfn.com/docs/reference/adapters/indexeddb): Browser-persistent full-text search using SearchFn's built-in engine with IndexedDB storage.
+- [Meilisearch Adapter](https://searchfn.com/docs/reference/adapters/meilisearch): External Meilisearch adapter for hosted or self-hosted search backends.
+- [Memory Adapter](https://searchfn.com/docs/reference/adapters/memory): In-process full-text search using SearchFn's built-in engine.
+- [Postgres Adapter](https://searchfn.com/docs/reference/adapters/postgres): Production-grade full-text search using Postgres tsvector.
+- [Capabilities](https://searchfn.com/docs/reference/capabilities): Per-adapter feature matrix.
+- [Changelog](https://searchfn.com/docs/reference/changelog): Release notes for SearchFn packages.
+- [Client API](https://searchfn.com/docs/reference/client): Create and configure a SearchFn client for in-app search.
+- [Configuration](https://searchfn.com/docs/reference/configuration): Full configuration tables for the server, client, and every adapter.
+- [Envelopes](https://searchfn.com/docs/reference/envelopes): Canonical SearchFn request and response envelopes.
+- [Errors](https://searchfn.com/docs/reference/errors): All SearchFn error codes — cause, fix, and retry semantics.
+- [Events](https://searchfn.com/docs/reference/events): Server log events and Swift diagnostics events.
+- [Python Reference](https://searchfn.com/docs/reference/python): API reference for the Python SearchFn package.
+- [Server API](https://searchfn.com/docs/reference/server): Expose SearchFn as an HTTP API with authorization, logging, and secret redaction.
+- [Swift Package Reference](https://searchfn.com/docs/reference/swift): Reference for the standalone SearchFn Swift package, adapters, convenience APIs, and diagnostics.
+

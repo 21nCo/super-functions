@@ -1,0 +1,152 @@
+---
+title: "Deploy to Railway"
+description: "Zero-config DataFn deploys on Railway with managed Postgres and Redis."
+audience: guide
+applies_to: server
+---
+
+Railway is the smoothest path from "I have a DataFn server" to "It's running in production". A few clicks gets you Postgres, Redis, and a Node service that auto-deploys from GitHub.
+
+## Tradeoffs
+
+- **Excellent**: Zero-config deploy, sane defaults, WebSockets work out of the box.
+- **Good**: Predictable pricing for hobby and small production tiers.
+- **Watch out**: Single region per project (multi-region needs separate projects + cross-region replication).
+
+## 1. Create the project
+
+In Railway:
+
+1. New Project → Deploy from GitHub repo.
+2. Add a Postgres service via "+ New" → Database → Postgres.
+3. Add a Redis service via "+ New" → Database → Redis.
+4. Link both to your application service. Railway auto-injects `DATABASE_URL` and `REDIS_URL`.
+
+## 2. Application code
+
+```typescript
+// server/index.ts
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import IORedis from "ioredis";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toHono } from "@superfunctions/http-hono";
+import { schema } from "../shared/schema";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+const redis = new IORedis(process.env.REDIS_URL!);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db: drizzle(pool), dialect: "postgres" }),
+  redis,
+  authorize: async (ctx) => Boolean(ctx.session?.userId),
+});
+
+const app = new Hono();
+app.route("/", toHono(datafn.router));
+
+serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) });
+```
+
+Railway sets `PORT`; respect it.
+
+## 3. Build config
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc"
+  }
+}
+```
+
+`nixpacks.toml` (optional, only if you want to pin):
+
+```toml
+[phases.setup]
+nixPkgs = ["nodejs-22_x"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
+```
+
+Railway auto-detects Node projects; the file above is only needed if defaults misbehave.
+
+## 4. Migrations
+
+Add a one-shot deploy job for schema migrations:
+
+```json
+// package.json
+{
+  "scripts": {
+    "migrate": "drizzle-kit push --config drizzle.config.ts"
+  }
+}
+```
+
+In Railway → Service → Settings → Deploy → Pre-deploy command:
+
+```bash
+npm run migrate
+```
+
+The pre-deploy command runs once per deploy, before the new container takes traffic.
+
+## 5. WebSocket
+
+Railway supports WebSockets natively. Nothing extra needed — `ws: true` on the client just works.
+
+## 6. Custom domain + TLS
+
+Service → Settings → Networking → Generate domain (free `<app>.up.railway.app`) or attach a custom domain (auto-TLS via Let's Encrypt).
+
+## 7. Scaling
+
+- **Vertical** (default): bump resources in Service → Settings → Resources.
+- **Horizontal**: Railway's "Replicas" knob (beta) spins up N machines. With Redis configured, DataFn's WS broadcasts fan out across replicas via pub/sub.
+
+For hobby tier ($5/mo) one replica is plenty. For ~10k DAU you typically want 2 small replicas + a slightly larger Postgres tier.
+
+## 8. Observability
+
+Railway captures stdout; pipe `logger` to JSON:
+
+```typescript
+const datafn = await createDatafnServer({
+  ...,
+  logger: {
+    info:  (m, ctx) => console.log(JSON.stringify({ level: "info",  m, ctx })),
+    warn:  (m, ctx) => console.warn(JSON.stringify({ level: "warn",  m, ctx })),
+    error: (m, ctx) => console.error(JSON.stringify({ level: "error", m, ctx })),
+  },
+  observability: {
+    timing: true,
+    onTiming: (event) => console.log(JSON.stringify({ timing: event })),
+  },
+});
+```
+
+Forward Railway logs to Datadog / Honeycomb / Logtail via the Railway dashboard if you want richer dashboards.
+
+## 9. Cost shape
+
+Railway prices by resource usage (CPU + memory + egress). A typical DataFn deploy with 10k DAU runs ~$15–30/mo on Railway. Postgres + Redis are billed separately; the smallest tiers usually cover early-stage usage.
+
+## See also
+
+- [Quickstart: Hono](/docs/quickstart/hono)
+- [Scaling](/docs/documentation/deploy/scaling)

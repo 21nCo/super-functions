@@ -1,0 +1,107 @@
+---
+title: Multi-Tenant Search
+description: Keep tenants' search results isolated — even when sharing infrastructure.
+---
+
+Multi-tenancy in search is a question of where the isolation lives: in the adapter, in the resource name, or in the application layer. Pick the right level for your threat model.
+
+## Pattern 1 — Per-tenant resource name
+
+```typescript
+async function indexForTenant(tenantId: string, docs: SearchDocument[]) {
+  await client.index({
+    resource: `articles:${tenantId}`,
+    documents: docs,
+  });
+}
+
+async function searchForTenant(tenantId: string, query: string) {
+  return client.search({
+    resource: `articles:${tenantId}`,
+    query,
+  });
+}
+```
+
+**Pros:** trivial; works with any adapter; isolation is enforced at the request level.
+
+**Cons:** vocab is per-tenant (no cross-tenant ranking). The resource list grows with tenant count, which can degrade `searchAll` startup.
+
+Use this for SaaS with up to a few thousand tenants.
+
+## Pattern 2 — Per-tenant adapter
+
+```typescript
+const adapters = new Map<string, MemoryAdapter>();
+
+function getAdapter(tenantId: string) {
+  if (!adapters.has(tenantId)) {
+    adapters.set(tenantId, new MemoryAdapter());
+  }
+  return adapters.get(tenantId)!;
+}
+```
+
+**Pros:** complete isolation; lifecycle independent per tenant.
+
+**Cons:** more memory (each adapter has its own structures). Postgres / Meilisearch versions of this involve per-tenant databases or indexes.
+
+Use this for large SaaS with strict isolation requirements (regulated industries).
+
+## Pattern 3 — Tenant filter at search time
+
+This doesn't work with SearchFn alone — `search()` returns IDs, and there's no `filter` clause for tenant filtering. **Don't** rely on filtering after the fact:
+
+```typescript
+// BAD: indexes leak across tenants
+const ids = await client.search({ resource: "articles", query });
+const myTenantIds = ids.filter((id) => tenantOwnsId(currentTenant, id));
+```
+
+This is wrong. If a malicious tenant searches for a competitor's product names, they get hits even if you filter at the app layer — the existence of the match leaks.
+
+## Authorization gate
+
+On the server, the `authorize` callback enforces which resources a caller can touch:
+
+```typescript
+const sf = await createSearchFnServer({
+  adapter,
+  authorize: async (ctx, action, payload) => {
+    const requestedResource = payload.resource as string | undefined;
+    if (!requestedResource) return false;
+    const [base, tenantId] = requestedResource.split(":");
+    if (!tenantId) return false;
+    return ctx.user?.tenantId === tenantId;
+  },
+});
+```
+
+This pairs with the per-tenant resource name pattern: the resource itself encodes the tenant, and `authorize` cross-references it against the session.
+
+## DataFn integration
+
+When SearchFn backs DataFn, the namespaceProvider handles tenant routing:
+
+```typescript
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  namespaceProvider: (req) => `org:${req.session.orgId}`,
+  search: createSearchProvider(adapter, {
+    resourceFields: { articles: ["title", "body"] },
+  }),
+});
+```
+
+The DataFn provider scopes search to the active namespace automatically — you don't manage tenant resource names manually.
+
+## Cross-tenant analytics (carefully)
+
+If you need cross-tenant analytics search (admin tool, fraud detection), do it from a separate **admin adapter** that points at all tenant indices. Don't widen the `authorize` callback on the main server.
+
+## See also
+
+- [Security: request authz](/docs/documentation/security/request-authz)
+- [Security: multi-tenant isolation](/docs/documentation/security/multi-tenant-isolation)
+- [DataFn integration](/docs/recipes/datafn-integration)

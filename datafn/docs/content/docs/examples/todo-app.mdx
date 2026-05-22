@@ -1,0 +1,89 @@
+---
+title: "Example: Todo App"
+description: "The dual-mode reference app — same Svelte UI, three deployment topologies."
+audience: guide
+applies_to: both
+---
+
+The Todo example is intentionally minimal in scope and maximal in topology coverage. The same Svelte app runs in three modes by detecting injected bootstrap globals from a host environment:
+
+| Topology | Where the app runs | Local persistence | Remote persistence | Sync owner |
+| --- | --- | --- | --- | --- |
+| **Browser-owned** | Browser tab | IndexedDB | DataFn server | JavaScript |
+| **Native-backed (DataFn server)** | `WKWebView` in the Apple host | CoreData | DataFn server | Swift |
+| **Native-backed (CloudKit)** | `WKWebView` in the Apple host | CoreData | CloudKit private database | Swift |
+
+## Why this matters
+
+Most apps will only ship one topology. The reason this example covers three is to demonstrate that the same DataFn schema, server, and client code paths work across very different deployment shapes — same DFQL, same envelope, same signal API.
+
+If you're building:
+
+- A purely web app → study the browser-owned mode. Ignore the native bits.
+- A web app + iOS app that share data → study the native-backed (DataFn server) mode.
+- A native iOS app with no separate backend → study the native-backed (CloudKit) mode.
+
+## Browser-owned mode
+
+```bash
+# Server
+npm --prefix datafn/examples/todo-app/server install
+npm --prefix datafn/examples/todo-app/server run dev
+
+# Client
+npm --prefix datafn/examples/todo-app/client install
+npm --prefix datafn/examples/todo-app/client run dev
+```
+
+Open the Vite URL. The app uses `IndexedDbStorageAdapter` for local persistence and syncs over HTTP + WebSocket to the DataFn server. This is the default DataFn experience.
+
+## Native-backed (DataFn server) mode
+
+The same Vite client runs inside a `WKWebView` hosted by the Apple Host. Swift owns the CoreData store; the WebView dispatches mutations through the bridge.
+
+```bash
+# Keep the server running from above.
+open datafn/examples/apple-webview-host/DatafnAppleHost.xcodeproj
+# Select Native-backed DataFn-server in the topology picker.
+```
+
+What changes inside the same Svelte client:
+
+- `IndexedDbStorageAdapter` → `createNativeBackedStorageAdapter(...)` (CoreData via the bridge).
+- HTTP transport → `createNativeBackedRemoteAdapter(...)` (Swift-owned sync engine).
+- WebSocket → native handles it.
+- Local search → Swift's SearchFn provider.
+
+The Svelte code itself doesn't change. It detects `window.__DATAFN_EXAMPLE_TOPOLOGY__` and swaps adapters.
+
+## Native-backed (CloudKit) mode
+
+Same Apple host, same Svelte client. The Swift runtime now syncs through CloudKit's private database instead of the DataFn server.
+
+```bash
+open datafn/examples/apple-webview-host/DatafnAppleHost.xcodeproj
+# Select Native-backed CloudKit in the topology picker.
+# Set a valid iCloud container ID in the UI.
+```
+
+The DataFn server doesn't need to be running in this mode — the app is self-contained on the device, and CloudKit handles cross-device sync.
+
+## Key takeaways
+
+- **One schema, three topologies.** The DFQL contracts are identical. A `defineSchema(...)` call drives every mode.
+- **No fallback in native-backed mode.** If the WebView bridge is missing, the app fails fast rather than silently falling back to IndexedDB. This is deliberate: a user who expects native persistence shouldn't get browser storage by accident.
+- **Search is per-device.** Search indices are derived state, not synced. Each topology builds its own; CloudKit syncs the records, not the index files.
+
+## What to copy
+
+If you're building a similar dual-mode app:
+
+1. Copy the **bootstrap detection** pattern from `datafn/examples/todo-app/client/src/lib/bootstrap.ts`.
+2. Copy the **adapter selection** from `client/src/lib/createClient.ts`.
+3. Copy the **bridge injection** from `apple-webview-host/DatafnAppleHost/HostWebView.swift`.
+
+## See also
+
+- [Apple WebView host example](/docs/examples/apple-webview-host)
+- [Apple → WebView bridge](/docs/documentation/apple/webview-bridge)
+- [Quickstart: Swift](/docs/quickstart/swift)

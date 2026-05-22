@@ -1,0 +1,54 @@
+---
+title: "Production & Deploy"
+sidebarTitle: "Overview"
+description: "Where DataFn fits in your hosting stack and how to deploy it on the major platforms."
+audience: landing
+applies_to: server
+---
+
+DataFn is a stateless HTTP service plus a stateful database. The HTTP layer scales horizontally without coordination — it's where most platforms put their default tier. The database is the bottleneck and the place that needs real planning.
+
+Pair the runtime guide for your platform with the [Scaling](/docs/documentation/deploy/scaling) page for sequence stores, WS broadcasting, and multi-region replication.
+
+## Pick your platform
+
+| Platform | Best for | Guide |
+| --- | --- | --- |
+| **Vercel** | Next.js / SvelteKit apps; want zero infra | [Deploy to Vercel](/docs/documentation/deploy/vercel) |
+| **Cloudflare Workers** | Edge-rendered apps; want low latency globally | [Deploy to Cloudflare Workers](/docs/documentation/deploy/cloudflare-workers) |
+| **Fly.io** | TypeScript/Bun apps; want stateful regions and easy scaling | [Deploy to Fly](/docs/documentation/deploy/fly) |
+| **Railway** | Hobby / small SaaS; want zero-thought provisioning | [Deploy to Railway](/docs/documentation/deploy/railway) |
+| **Docker** | Self-hosted, on-prem, or bring-your-own platform | [Docker](/docs/documentation/deploy/docker) |
+| **Kubernetes** | Larger orgs with existing k8s investment | [Kubernetes](/docs/documentation/deploy/kubernetes) |
+
+## What you need everywhere
+
+Regardless of platform, every deploy needs:
+
+1. **A database** — Postgres on a managed service (Neon, Supabase, Render, RDS) is the default. SQLite on the local FS works for hobby apps; serverless SQLite (Turso, D1) for edge.
+2. **Redis** if you run more than one instance — for atomic `serverSeq` increments and shared rate limiting.
+3. **A TLS terminator** — your platform's edge usually handles this.
+4. **Logs and metrics** — wire `observability.onTiming` and `logger` to your platform's pipeline.
+5. **A schema migration story** — see [CLI: drizzle-codegen](/docs/cli/drizzle-codegen).
+
+## What changes by platform
+
+| | Vercel | Cloudflare | Fly | Railway | k8s |
+| --- | --- | --- | --- | --- | --- |
+| Long-lived WS | Limited | Limited | Yes | Yes | Yes |
+| Multi-region writes | One primary | One primary | Anywhere | One primary | Anywhere |
+| Background pruning | Cron | Cron | Built-in timers | Built-in timers | Built-in timers |
+| Cold starts | Yes | Yes | No | No | No |
+| Sticky sessions | No | No | Optional | Optional | Optional |
+
+If your app relies on WebSocket-based live updates, prefer Fly / Railway / k8s. Vercel and Cloudflare Workers work with DataFn but need polling-based pull as a fallback for the WS layer.
+
+## Recommended starter setups
+
+- **Solo / startup**: Railway + managed Postgres + Upstash Redis. ~$15/mo, zero infra.
+- **Startup / scaling**: Fly.io with multi-region database (read replicas per region, primary in one region). ~$100/mo for the runtime; database varies.
+- **Enterprise**: k8s with managed Postgres + Redis cluster, multi-region with active-passive failover. Cost scales linearly with traffic.
+
+## Production checklist
+
+Before you ship, work through [Security → Production Checklist](/docs/documentation/security/production-checklist).

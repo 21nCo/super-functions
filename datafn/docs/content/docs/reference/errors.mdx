@@ -1,0 +1,120 @@
+---
+title: "Errors Reference"
+description: "Canonical error code matrix: what each code means, what causes it, and how to fix it."
+audience: reference
+applies_to: both
+---
+
+Every DataFn server response uses the same envelope:
+
+```typescript
+type DatafnEnvelope<T> =
+  | { ok: true; result: T }
+  | { ok: false; error: DatafnError };
+
+type DatafnError = {
+  code: DatafnErrorCode;
+  message: string;
+  details?: { path: string; [key: string]: unknown };
+};
+```
+
+When you see `ok: false`, route on `error.code` — it's the stable, machine-readable identifier. `error.message` and `error.details.path` carry human-readable context.
+
+## Schema errors
+
+These fire at server startup (during `validateSchema`) or when a schema is loaded by a client.
+
+| Code | Common cause | Fix |
+| --- | --- | --- |
+| `SCHEMA_INVALID` | Structural problems: too many resources/fields, duplicate names, unknown field referenced in an index. | Run `npx @datafn/cli validate --schema shared/schema.ts` locally — the error message names the offending path. |
+| `INVALID_CAPABILITY` | A capability name in the array is not recognized (e.g. `"sharable"` instead of `"shareable"`). | Use one of the documented capabilities. See [Capabilities](/docs/documentation/capabilities). |
+| `INVALID_CAPABILITY_CONFIG` | A capability config object is the wrong shape (e.g. `shareable: { defaultVisibility: "everyone" }`). | Check the capability's config contract in [Capabilities](/docs/documentation/capabilities). |
+| `CAPABILITY_FIELD_COLLISION` | A field you declared has the same name as a capability-injected system field (e.g. declaring `createdAt` while `timestamps` is enabled). | Drop the conflicting field; capabilities own these names. See [System Fields](/docs/dfql/schema/system-fields). |
+| `CAPABILITY_DEPENDENCY` | A capability requires another that isn't enabled (`shareable` depends on `audit`). | Add the dependency to the schema or remove the dependent capability. |
+
+## DFQL errors
+
+These fire on query, mutation, or transaction requests when the payload doesn't match the schema.
+
+| Code | Common cause | Fix |
+| --- | --- | --- |
+| `DFQL_INVALID` | Required field missing, value of wrong type, malformed filter, malformed cursor. | Inspect `error.details.path` — it pinpoints the bad subtree. |
+| `DFQL_UNKNOWN_RESOURCE` | Resource name in the payload isn't in the schema. | Re-run codegen if you renamed/added a resource. |
+| `DFQL_UNKNOWN_FIELD` | A field in `select`, `filters`, `sort`, or `record` isn't on the resource. | Same as above. |
+| `DFQL_UNKNOWN_RELATION` | A relation path in `select` references an undeclared relation. | Add the relation to the schema or fix the path. |
+| `DFQL_UNSUPPORTED` | A feature (operator, capability operation) is not supported by the current server build. | Common in cross-resource search without a `SearchProvider`. Configure the missing dependency. |
+| `DFQL_ABORTED` | A step in `transact` aborted because a prior step failed. | Check the first non-`DFQL_ABORTED` error in `results`. |
+| `DFQL_SHARE_SCOPE_INVALID` | `share` mutation with an invalid `scope` (must be `"record"` or `"resource"`). | Pass `scope: "record"` + `id`, or `scope: "resource"` (no id). |
+| `DFQL_PRINCIPAL_INVALID` | `share` mutation with an empty `principalId`, both `principalId` and `userId`, or neither. | Pass one of them, non-empty. |
+| `DFQL_CROSS_NS_SHARE_FORBIDDEN` | `share` mutation crossing namespaces with `crossNsShareable: false`. | Either flip the resource config or share within-namespace. |
+
+## Authz and limits
+
+| Code | Common cause | Fix |
+| --- | --- | --- |
+| `FORBIDDEN` | `authorize()` returned `false`, field-level authz denied the action, or sharing rules rejected the principal. | Tighten or loosen `authorize` and the relevant `permissions` policy. See [Authorization](/docs/documentation/server/authorization). |
+| `LIMIT_EXCEEDED` | A request exceeded `limits.maxLimit`, `maxTransactSteps`, `maxPayloadBytes`, `maxBatchSize`, etc. | Lower the request or raise the limit. See [Server Setup](/docs/documentation/server/setup#limits). |
+| `NOT_FOUND` | Mutation referenced an `id` that does not exist (or that the actor cannot see). | Check the id exists and that the actor has access. |
+| `CONFLICT` | Insert with a colliding id, or an `if` guard that failed. | Use `merge` if you want upsert semantics. For guards, refresh the row and retry. |
+
+## Runtime / infrastructure
+
+| Code | Common cause | Fix |
+| --- | --- | --- |
+| `INTERNAL` | Unclassified server error (database connection, plugin throwing, etc.). | Check server logs; this code is never thrown intentionally. |
+| `TRANSACTION_ROLLED_BACK` | A step in `transact` failed and the entire transaction was rolled back. | Inspect prior step error(s); the rollback itself is correct. |
+| `TRANSPORT_ERROR` | Client-side network error (timeout, connection refused, DNS). Never returned by the server. | Surface to the user; retry with backoff. |
+
+## Apple-only
+
+These codes only surface on the Apple runtime when running with the iCloud sync backend or with the WebView bridge.
+
+| Code | Common cause | Fix |
+| --- | --- | --- |
+| `BRIDGE_UNAVAILABLE` | WebView bridge isn't yet wired up. | Call `runtime.makeBridgeHost(...)` and inject the host script before triggering JS-side mutations. |
+| `BRIDGE_PROTOCOL_MISMATCH` | The WebView is running an older bridge version than the host. | Rebuild the WebView bundle. |
+| `BRIDGE_METHOD_UNSUPPORTED` | JS requested a host method the runtime doesn't expose. | Update DatafnAppleRuntime, or drop the call. |
+| `NATIVE_BRIDGE_UNAVAILABLE` | Same as `BRIDGE_UNAVAILABLE` but from native code. | See above. |
+| `NATIVE_SEARCH_UNAVAILABLE` | Search index hasn't been built for the resource. | Trigger a `runtime.search.rebuild(...)`. |
+| `NATIVE_SYNC_CONFLICT` | CoreData detected a conflict that the runtime couldn't resolve. | Inspect logs and adjust merge policy. |
+| `SEARCH_INDEX_REBUILD_FAILED` | Disk full, permissions, or a search provider crash. | Check device storage; restart the runtime. |
+| `ICLOUD_UNAVAILABLE` | iCloud account is signed out, network is down, or container quota is exceeded. | Surface to the user; iCloud sync is required to be opt-in anyway. |
+
+## Reading `details.path`
+
+`error.details.path` is a JSONPath-style locator into the request body. Examples:
+
+- `path: "$"` — the whole payload (commonly seen on `DFQL_INVALID`).
+- `path: "filters.status"` — the offending filter clause.
+- `path: "select"` — a bad select projection.
+- `path: "steps[3].mutation.record.title"` — a transaction step's record field.
+
+This is the fastest way to triage validation errors without re-reading the entire request.
+
+## Pattern: handling errors in the client
+
+```typescript
+const result = await client.table("tasks").mutate({
+  operation: "insert",
+  record: { title: "" },
+});
+
+if (!result.ok) {
+  switch (result.error.code) {
+    case "DFQL_INVALID":
+      showFieldError(result.error.details?.path, result.error.message);
+      break;
+    case "FORBIDDEN":
+      navigate("/login");
+      break;
+    case "TRANSPORT_ERROR":
+      queueForRetry(result);
+      break;
+    default:
+      showToast(`Unexpected error: ${result.error.code}`);
+  }
+}
+```
+
+Always switch on `code`. Never parse `message`; it's human-readable and may change between versions.

@@ -1,0 +1,156 @@
+---
+title: "Schema Migration"
+description: "Evolving the schema while clients are connected — adding, renaming, deprecating fields."
+audience: guide
+applies_to: both
+---
+
+Schema changes during long-lived sync sessions are the hard part of any offline-first system. DataFn handles the common cases cleanly:
+
+- **Adding** a field or resource — safe at any time.
+- **Renaming** a field — safe with the documented two-deploy procedure.
+- **Removing** a field — safe after a grace window.
+- **Changing a field's type** — almost always wrong; treat as remove-then-add.
+- **Changing a capability** — varies; see below.
+
+## The version field
+
+Every resource has a `version: 1` field. Every DFQL operation passes its target version:
+
+```typescript
+{ resource: "tasks", version: 1, operation: "merge", id: "...", record: { ... } }
+```
+
+When the server's resource version is bumped (e.g. to `version: 2`), it rejects operations sent against `version: 1` with `DFQL_INVALID`. This is the safety net: a client running an old schema can't accidentally write to a new shape.
+
+## Adding a field
+
+Safe to do at any time:
+
+1. Add the field to your schema:
+
+```diff
+   { name: "tasks", version: 1, fields: [
+     { name: "title", type: "string", required: true },
++    { name: "priority", type: "number", min: 1, max: 5 },
+   ] }
+```
+
+2. Deploy the server.
+3. Run a database migration to add the column with a default value.
+4. Old clients keep working — they neither read nor write the new field. New clients see it.
+
+If the new field is `required`, you must provide a `default`. Otherwise inserts from old clients (which don't know about the field) will fail.
+
+## Renaming a field
+
+You can't directly rename — you have to add the new name, copy data, then deprecate the old name. The two-deploy procedure:
+
+### Deploy 1: add the new field, deprecate the old
+
+```typescript
+{
+  name: "tasks", version: 1,
+  fields: [
+    { name: "headline",  type: "string", required: true },                   // new
+    { name: "title", type: "string", required: false, deprecated: true },    // old, kept for compatibility
+  ],
+}
+```
+
+Add a `beforeMutation` hook to copy values:
+
+```typescript
+{
+  event: "beforeMutation",
+  filter: { resource: "tasks", operation: ["insert", "merge", "replace"] },
+  handler: async (ctx) => {
+    const mut = ctx.payload as DfqlMutation;
+    if (mut.record && "title" in mut.record && !("headline" in mut.record)) {
+      return { ...mut, record: { ...mut.record, headline: mut.record.title } };
+    }
+  },
+}
+```
+
+Run a one-off migration to populate `headline` for existing rows.
+
+### Deploy 2: bump the resource version, drop the old field
+
+After all clients have updated (you control this via your release cadence):
+
+```typescript
+{
+  name: "tasks", version: 2,  // bumped
+  fields: [
+    { name: "headline", type: "string", required: true },
+  ],
+}
+```
+
+Clients still on `version: 1` get `DFQL_INVALID` — they need to upgrade.
+
+## Removing a field
+
+Add `deprecated: true` first; let clients update. Then in a subsequent release remove the field and run a migration to drop the column.
+
+If the field is referenced by an index or by a relation, you must update those simultaneously. The schema validator catches mismatches.
+
+## Changing a field's type
+
+Don't. Add a new field with the new type, populate it, deprecate the old one. Changing a type in place produces invalid data for any row written under the old type — there's no automatic conversion.
+
+For widening (string → text, int → bigint), the database migration may be in-place, but DataFn still treats it as a logical change.
+
+## Adding a capability
+
+```diff
+   { name: "tasks", version: 1,
+-    capabilities: ["timestamps", "audit"],
++    capabilities: ["timestamps", "audit", "trash"],
+   }
+```
+
+Safe. Capability fields are injected on the next mutation; old rows simply lack them (e.g. `trashedAt: null`). Queries with `metadata.includeTrashed === false` (the default) will still include all old rows, which is correct because they have no trash state.
+
+## Removing a capability
+
+Less safe. If clients are still using the capability's operations (`trash()`, `archive()`), they'll fail with `DFQL_UNSUPPORTED`. Best practice:
+
+1. Deprecate UI use of the capability in the client.
+2. Release the client and wait for adoption.
+3. Remove the capability from the schema and run a migration to drop the system fields if you want.
+
+## Bumping a resource's version
+
+Bumping `version: 1` → `version: 2` is the breaking change escape hatch. It means: "old clients are dead to me". Use sparingly:
+
+- Document the breakage in the changelog.
+- Force clients to update via a hard cutoff date.
+- Coordinate with mobile app store releases (you can't push instant updates to native apps).
+
+## During the change
+
+While a schema change is rolling out:
+
+- The server validates against the **new** schema.
+- Clients running the **old** schema may send mutations that fail validation (`DFQL_INVALID`).
+- Those failures are surfaced via `onSyncEvent` so the app can prompt for a reload.
+
+A minimum-version check at app boot is a good idea:
+
+```typescript
+const status = await fetch("/datafn/status").then((r) => r.json());
+const myHash = computeLocalSchemaHash(schema);
+if (status.result.schemaHash !== myHash) {
+  promptUserToReload();
+}
+```
+
+`schemaHash` is included in `/datafn/status` precisely so clients can detect drift.
+
+## See also
+
+- [Schema](/docs/dfql/schema)
+- [Migrations → SPv2](/docs/documentation/migrations/spv2)
+- [Sync overview](/docs/documentation/sync/overview)

@@ -1,0 +1,47 @@
+---
+title: Examples
+sidebarTitle: Overview
+description: Runnable example apps shipped with SearchFn.
+---
+
+The repo ships a small set of examples that compile against the published packages. Use them as runnable starting points.
+
+## Swift examples (shipped in the Swift package)
+
+| Example | What it shows |
+| --- | --- |
+| [In-memory](/docs/examples/swift-in-memory) | `MemoryAdapter`, index, search, searchAll, remove, clear |
+| [SQLite](/docs/examples/swift-sqlite) | `SQLiteAdapter`, persistence, re-open with `indexKey` |
+
+Both ship as Swift package executables. Run them from the repo root:
+
+```bash
+swift run --package-path searchfn/swift SearchFnInMemoryExample
+swift run --package-path searchfn/swift SearchFnSQLiteExample
+```
+
+## TypeScript examples
+
+The TypeScript surface doesn't ship boxed example apps — instead, every [framework quickstart](/docs/quickstart) is a complete, runnable starter. Pick the one for your framework:
+
+| Framework | Quickstart |
+| --- | --- |
+| Hono | [Hono](/docs/quickstart/hono) |
+| Express | [Express](/docs/quickstart/express) |
+| Fastify | [Fastify](/docs/quickstart/fastify) |
+| Bun | [Bun](/docs/quickstart/bun) |
+| Next.js | [Next.js](/docs/quickstart/nextjs) |
+| SvelteKit | [SvelteKit](/docs/quickstart/sveltekit) |
+| FastAPI | [FastAPI](/docs/quickstart/fastapi) |
+| Starlette | [Starlette](/docs/quickstart/starlette) |
+| Flask | [Flask](/docs/quickstart/flask) |
+| Swift | [Swift](/docs/quickstart/swift) |
+
+## Recipe-shaped examples
+
+For task-shaped examples (autocomplete, multi-tenant, hybrid local+remote, etc.), see the [recipes section](/docs/recipes). Each recipe is a single page with a working code sample.
+
+## See also
+
+- [Quickstart overview](/docs/quickstart)
+- [Recipes overview](/docs/recipes)

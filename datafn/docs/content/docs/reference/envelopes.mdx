@@ -1,0 +1,105 @@
+---
+title: "Envelopes Reference"
+description: "Every DataFn response is a DatafnEnvelope. Here is the shape and the helpers."
+audience: reference
+applies_to: both
+---
+
+## DatafnEnvelope&lt;T&gt;
+
+A discriminated union over success and error:
+
+```typescript
+type DatafnEnvelope<T> =
+  | { ok: true;  result: T }
+  | { ok: false; error: DatafnError };
+
+type DatafnError = {
+  code: DatafnErrorCode;
+  message: string;
+  details?: { path: string; [key: string]: unknown };
+};
+```
+
+Every HTTP route, every client method, every plugin hook returns this shape — it's the protocol's only carrier type.
+
+## Why an envelope?
+
+- **No exceptions over the wire.** All failures travel as data; you switch on `code`.
+- **Composable.** A transaction's response is `DatafnEnvelope<{ results: DatafnEnvelope<...>[] }>` — failures at any depth surface as the same shape.
+- **Type-safe.** A `if (env.ok)` narrows `env.result` automatically; the error branch narrows `env.error`.
+- **Replay-friendly.** Stored envelopes can be replayed for idempotency without re-running the underlying operation.
+
+## Constructors
+
+```typescript
+import { ok, err } from "@datafn/core";
+
+ok({ data: [], hasMore: false });
+// { ok: true, result: { data: [], hasMore: false } }
+
+err("DFQL_INVALID", "Missing resource field");
+// { ok: false, error: { code: "DFQL_INVALID", message: "Missing resource field", details: { path: "$" } } }
+
+err("LIMIT_EXCEEDED", "Too many fields", { limit: 50, requested: 80 });
+// { ok: false, error: { code: "LIMIT_EXCEEDED", message: "Too many fields", details: { limit: 50, requested: 80 } } }
+```
+
+`details` defaults to `{ path: "$" }` when not provided.
+
+## Unwrapping
+
+```typescript
+import { unwrapEnvelope } from "@datafn/core";
+
+const schema = unwrapEnvelope(validateSchema(input));
+// → returns the result on success
+// → throws the error on failure
+```
+
+Use `unwrapEnvelope` when you want exceptions in a code path you control (typically in startup code). Avoid it in request handlers — preserve the envelope and surface `error.code` to the caller.
+
+## On the wire
+
+A response is exactly the envelope, serialized as JSON, with `content-type: application/json`. HTTP status is `200 OK` for both success and "graceful" errors. The server only returns non-200 for transport-level problems (`503 SERVICE_UNAVAILABLE` during shutdown, `429 TOO_MANY_REQUESTS` if a rate limit middleware is configured).
+
+This matters for monitoring: a `4xx` rate doesn't indicate DataFn errors. To monitor envelope failures, look at `result.error.code` in the response body.
+
+## Composing envelopes
+
+When a route returns multiple results (e.g. batch queries, push results), each entry is itself an envelope:
+
+```typescript
+// POST /datafn/query  (batch body)
+type BatchQueryResult = DatafnEnvelope<DatafnEnvelope<{ data: any[]; hasMore: boolean }>[]>;
+```
+
+The outer envelope reflects "did the route accept the request at all"; the inner envelopes reflect "did each query succeed individually". The same pattern is used by `/datafn/transact` step results.
+
+## Idempotency cache
+
+For `/datafn/mutation` (and `/datafn/push`), every successful envelope is cached against `clientId + mutationId`. A replay returns the cached envelope verbatim — same `serverSeq`, same `result.id`, no side effects. See [Idempotency](/docs/documentation/advanced/idempotency) for the cache semantics and TTL.
+
+## Pattern: surfacing errors in the UI
+
+```typescript
+const env = await client.table("tasks").mutate({ operation: "insert", record: { title } });
+
+if (env.ok) {
+  toast.success(`Created ${env.result.id}`);
+} else {
+  switch (env.error.code) {
+    case "DFQL_INVALID":
+      form.setError(env.error.details?.path as string, { message: env.error.message });
+      break;
+    case "FORBIDDEN":
+      toast.error("You don't have permission to do that.");
+      break;
+    case "TRANSPORT_ERROR":
+      // The mutation was queued offline; nothing to do.
+      break;
+    default:
+      toast.error(`Unexpected error: ${env.error.code}`);
+  }
+}
+```

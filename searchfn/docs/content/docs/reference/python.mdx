@@ -1,0 +1,140 @@
+---
+title: Python Reference
+description: API reference for the Python SearchFn package.
+---
+
+The Python SearchFn package is a lightweight, database-backed search engine designed as a DataFn companion. It stores its inverted index in the same database as your DataFn data — no extra infrastructure for small to medium apps.
+
+## Install
+
+```bash
+pip install searchfn
+```
+
+## `create_searchfn_server(config)`
+
+Creates the server plugin definitions for mounting into an HTTP framework.
+
+```python
+from searchfn import create_searchfn_server
+from datafn.db import PostgresAdapter
+
+search_plugin = create_searchfn_server({
+    "schema": schema,        # DataFn schema dict
+    "db": db,                # DataFn DB adapter instance
+    "table_prefix": "_searchfn_",  # optional
+})
+```
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `schema` | `dict` | yes | DataFn schema object |
+| `db` | DB adapter | yes | DataFn-compatible DB adapter (Postgres, SQLite) |
+| `table_prefix` | `str` | no | Prefix for SearchFn-owned tables. Default: `_searchfn_` |
+
+**Returns:** `dict` with `routes` key — a map of HTTP paths to async handlers.
+
+## HTTP endpoints
+
+When mounted, the plugin exposes:
+
+### `POST /searchfn/index`
+
+Triggers (re-)indexing of a model or all models.
+
+**Request:**
+
+```json
+{ "model": "products" }
+```
+
+Omit `model` to index all string fields across all resources.
+
+**Response:**
+
+```json
+{ "ok": true, "result": { "totalIndexed": 1234 } }
+```
+
+### `POST /searchfn/search`
+
+Searches the inverted index.
+
+**Request:**
+
+```json
+{ "query": "fast laptop", "model": "products", "limit": 20 }
+```
+
+`model` is optional; omit to search across all indexed models.
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "results": [
+    { "id": "p-1", "model": "products", "score": 1.42 },
+    { "id": "p-7", "model": "products", "score": 0.88 }
+  ]
+}
+```
+
+## Core functions
+
+### `index_data(schema, db, model=None, table_prefix="_searchfn_")`
+
+Indexes records into the search table. Use for background indexing jobs.
+
+```python
+import asyncio
+from searchfn import index_data
+
+async def reindex():
+    await index_data(schema, db, model="products")
+
+asyncio.run(reindex())
+```
+
+### `search_index(schema, db, query, model=None, limit=20, table_prefix="_searchfn_")`
+
+Search programmatically. Returns matching records sorted by relevance.
+
+```python
+import asyncio
+from searchfn import search_index
+
+async def go():
+    results = await search_index(schema, db, query="fast laptop")
+    for r in results:
+        print(r["id"], r["model"], r["score"])
+
+asyncio.run(go())
+```
+
+## How it works
+
+The Python package maintains an inverted index in a single table (default `_searchfn_index`):
+
+| Column | Description |
+| --- | --- |
+| `term` | A token from the indexed text |
+| `model` | The DataFn resource name |
+| `record_id` | The record's ID |
+| `field` | Which field this term came from |
+
+Search scoring is based on the number of matching terms per record. The package is intentionally simple — for richer ranking (BM25, fuzzy, field boosts), use the TypeScript server's `PostgresAdapter`, which writes a tsvector-backed index, and call it from Python over HTTP.
+
+## When to choose which Python path
+
+| Need | Use |
+| --- | --- |
+| Quick MVP, DataFn already on Postgres/SQLite | Python `create_searchfn_server` |
+| Production-grade ranking, BM25 | TypeScript `@searchfn/server` + `PostgresAdapter`, called over HTTP |
+| Browser local search | TypeScript `@searchfn/adapter-indexeddb` |
+
+## See also
+
+- [FastAPI quickstart](/docs/quickstart/fastapi)
+- [Starlette quickstart](/docs/quickstart/starlette)
+- [Flask quickstart](/docs/quickstart/flask)

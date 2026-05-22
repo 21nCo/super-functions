@@ -1,0 +1,132 @@
+---
+title: "datafn schema-diff"
+description: "Compare two schema versions and produce a structured diff."
+audience: reference
+applies_to: typescript
+---
+
+`datafn schema-diff` compares two schema files (or a file vs a recorded version) and reports the changes in a structured form. Use it in CI to enforce migration safety policies before merging.
+
+## Usage
+
+```bash
+datafn schema-diff --before <path> --after <path>
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--before` | — | Older schema (file, JSON, or `git:<ref>:<path>`) |
+| `--after` | discovered | Newer schema (defaults to discovered schema) |
+| `--format` | `text` | `text`, `json`, or `markdown` |
+| `--fail-on` | `none` | Exit non-zero if diff contains changes of severity `breaking`, `risky`, or `any` |
+
+Examples:
+
+```bash
+# Diff working copy against last tagged release
+datafn schema-diff --before git:v1.2.0:schema.datafn.ts
+
+# Machine-readable for CI
+datafn schema-diff --before main:schema.datafn.ts --format json > diff.json
+
+# Fail merge if breaking changes
+datafn schema-diff --before main:schema.datafn.ts --fail-on breaking
+```
+
+## Diff categories
+
+Each change is categorized by severity:
+
+| Severity | Examples |
+| --- | --- |
+| `safe` | New resource added, new optional field added, new index, capability flipped on with backfill |
+| `risky` | Field type widened, capability flipped off, relation cardinality changed in compatible direction |
+| `breaking` | Field removed, field type narrowed (string → int), required field added with no default, namespace strategy changed |
+
+The `breaking` set is what blocks safe deployment.
+
+## Output format
+
+### Text (default)
+
+```
++ Resource: comments
++   field: parentCommentId (string, optional)
+~ Resource: tasks
+~   field: priority changed: int → "low" | "medium" | "high" (breaking)
+~   capability: archivable added (safe)
+- Resource: legacyAttachments (breaking)
+```
+
+### JSON
+
+```json
+{
+  "resources": {
+    "added": ["comments"],
+    "removed": ["legacyAttachments"],
+    "changed": {
+      "tasks": {
+        "fields": {
+          "changed": {
+            "priority": { "before": "int", "after": "string", "severity": "breaking" }
+          }
+        },
+        "capabilities": {
+          "added": ["archivable"]
+        }
+      }
+    }
+  },
+  "severity": "breaking"
+}
+```
+
+### Markdown
+
+GitHub-flavoured table suitable for posting to PR comments. The CLI `--format markdown` output is what `datafn-action` posts.
+
+## Integration with PR review
+
+A common pattern:
+
+```yaml
+# .github/workflows/schema-diff.yml
+on: pull_request
+
+jobs:
+  schema-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: npm ci
+      - run: |
+          npx datafn schema-diff \
+            --before "git:${{ github.base_ref }}:schema.datafn.ts" \
+            --format markdown > /tmp/diff.md
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const body = fs.readFileSync("/tmp/diff.md", "utf-8");
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "## Schema diff\n\n" + body,
+            });
+```
+
+This posts a diff comment on every PR. Reviewers see exactly what schema surface changed.
+
+## What it doesn't do
+
+`schema-diff` reports the shape of change; it doesn't generate a migration. For that, see [`datafn schema-migrate`](/docs/cli/schema-migrate). For runtime migration semantics, see [Schema migration](/docs/documentation/sync/schema-migration).
+
+## See also
+
+- [`datafn schema-migrate`](/docs/cli/schema-migrate)
+- [CI integration](/docs/cli/ci-integration)
+- [Schema migration](/docs/documentation/sync/schema-migration)

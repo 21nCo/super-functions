@@ -1,0 +1,127 @@
+---
+title: "Layered Security Model"
+description: "How DataFn's seven defense layers chain together — and why each layer exists."
+audience: reference
+applies_to: server
+---
+
+```text
+Request → Rate Limit → Payload Limit → JSON Parse → authorize → Schema Validation → Field-Level Authz → Namespace Filter → Execute
+```
+
+Each layer is independent: a bug in one cannot bypass the next. Reject early; reject cheaply.
+
+## Why this order?
+
+The ordering is deliberate.
+
+1. **Rate limit before parse**: a 100 KB JSON parse is more expensive than checking a counter. If we parsed first we'd be doing the attacker's work for them.
+2. **Payload limit before parse**: a 100 MB body would OOM the server before JSON.parse failed.
+3. **Parse before authz**: a malformed body must return `DFQL_INVALID`, never `FORBIDDEN`. Otherwise the response distinguishes "valid request, bad auth" from "invalid request" — which leaks signal about whether a token is real.
+4. **Authz before validation**: don't tell an unauthenticated caller that the field `ssn` exists in the schema. Coarse authz first.
+5. **Validation before field-level authz**: the field-level check is per-field. We need to know the request parses cleanly into a known shape before we walk that shape.
+6. **Namespace filter at the database layer**: it's the cheapest and most correct place. Filter by `__ns` in every SELECT, automatically.
+
+## The seven layers
+
+### 1. Rate Limit
+
+Configured via `rateLimit` in `createDatafnServer`. Backed by Redis (`RedisRateLimiter`) or memory (`InMemoryRateLimiter`).
+
+```typescript
+rateLimit: {
+  enabled: true,
+  maxRequests: 100, windowSeconds: 60,
+  endpoints: {
+    push:  { maxRequests: 50,  windowSeconds: 60 },
+    query: { maxRequests: 200, windowSeconds: 60 },
+  },
+  keyExtractor: (ctx) => ctx.session?.userId ?? ctx.req.ip,
+}
+```
+
+Rejections return `429 Too Many Requests` at the transport layer (no envelope). See [Rate Limiting](/docs/documentation/security/rate-limiting).
+
+### 2. Payload Limit
+
+Two-phase: `Content-Length` header is checked first, then the actual byte length is measured for chunked uploads.
+
+```typescript
+limits: { maxPayloadBytes: 1_048_576 } // 1 MB
+```
+
+Rejections return `413 Payload Too Large` with envelope `{ ok: false, error: { code: "LIMIT_EXCEEDED" } }`. See [Payload Limits](/docs/documentation/security/payload-limits).
+
+### 3. JSON Parse
+
+If the body is not valid JSON, the server returns `400 DFQL_INVALID`. This step is otherwise free.
+
+### 4. authorize
+
+Your coarse-grained gate. See [Request Authorization](/docs/documentation/security/request-authz).
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  return Boolean(ctx.session?.userId);
+}
+```
+
+Returning `false` (or throwing) returns `403 FORBIDDEN` with `path: "$"` (whole request).
+
+### 5. Schema Validation
+
+Every DFQL payload is checked against the schema. This step rejects:
+
+- Unknown resources, fields, operators
+- Missing required fields on inserts
+- Type mismatches
+- Filter / sort / select / aggregation that reference non-existent fields
+- Payloads exceeding complexity limits (`maxSelectTokens`, `maxFilterKeysPerLevel`, `maxAggregations`)
+- Deep nested `$and` / `$or` (depth-limited to prevent stack-overflow)
+- Mutations attempting to write capability-managed fields (`createdAt`, `trashedAt`, etc.)
+
+Errors return `DFQL_INVALID` / `DFQL_UNKNOWN_*` with `path` pointing at the offending subtree.
+
+### 6. Field-Level Authorization
+
+The `permissions` policy on each resource controls what each field can do. See [Field-Level Authz](/docs/documentation/security/field-level-authz).
+
+```typescript
+{
+  name: "users",
+  permissions: {
+    read:  { fields: ["id", "name", "email"] },
+    write: { fields: ["name"] },
+  },
+}
+```
+
+A query selecting `ssn` or a mutation writing `email` is rejected with `FORBIDDEN` and a path like `select[1]` or `record.email`.
+
+**Resources without `permissions` are forbidden by default.** Set `allowUnknownResources: true` only in development.
+
+### 7. Namespace Isolation
+
+When `namespaceProvider` is configured, every database operation is automatically scoped by an opaque `__ns` column. See [Namespace Isolation](/docs/documentation/security/namespace-isolation).
+
+This layer is transparent — rejection is silent: rows from other namespaces simply don't return. There's no `FORBIDDEN` for cross-namespace access because the request never tries; the database sees only the actor's namespace.
+
+## Sanitization sub-layers
+
+In parallel with the seven main layers, DataFn applies sanitization to every mutation payload:
+
+- **Prototype pollution check** — `__proto__`, `constructor`, `prototype` keys are rejected.
+- **Path traversal check** — REST URL segments containing `..`, null bytes, or encoded `/` are rejected.
+- **Type validation** — every field value is checked against its declared type.
+
+These run inside schema validation and don't add a discrete layer; they're listed here for completeness.
+
+## What's not in this list
+
+- **HTTPS / TLS** — out of scope; terminate before DataFn.
+- **Network firewalls** — your hosting platform's job.
+- **DDoS scrubbing** — Cloudflare, Akamai, AWS Shield.
+- **Database encryption at rest** — your database's job.
+- **Field-level encryption** — see [Encryption at rest](/docs/recipes/encryption-at-rest).
+
+DataFn ships the layers it's correctly positioned to ship. Everything else is your operating environment.

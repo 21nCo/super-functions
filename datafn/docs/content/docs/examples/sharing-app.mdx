@@ -1,0 +1,109 @@
+---
+title: "Example: Sharing App"
+description: "Multi-actor, multi-workspace sharing semantics with deterministic E2E tests."
+audience: guide
+applies_to: both
+---
+
+The Sharing example is the canonical reference for the `shareable` capability. It exercises the corners of sharing semantics — cross-workspace isolation, principal-based grants, team scope, deterministic replay — and ships with a Playwright E2E suite.
+
+## What it covers
+
+- **Workspaces as namespaces.** `acme` → `org:acme`, `globex` → `org:globex`.
+- **Per-record sharing** with role promotion and revocation.
+- **Team principals** (`team:design`) for group-scope grants.
+- **Deterministic resets** via `POST /demo/reset` for replayable scenarios.
+- **Cross-workspace denial** as a hard rule (`DEMO_CROSS_WORKSPACE_DENIED`).
+
+## Running
+
+```bash
+npm --prefix datafn/examples/sharing-app install
+npm --prefix datafn/examples/sharing-app/client install
+npm --prefix datafn/examples/sharing-app/server install
+npm --prefix datafn/examples/sharing-app exec playwright install chromium
+```
+
+Start the server:
+
+```bash
+npm --prefix datafn/examples/sharing-app run dev:server
+```
+
+Start the client in a separate terminal:
+
+```bash
+npm --prefix datafn/examples/sharing-app run dev:client
+```
+
+Open the Vite URL. The UI has demo session controls — Alice, Bob, Charlie, and a workspace toggle.
+
+## Walkthrough scenarios
+
+### Scenario 1: Record share lifecycle
+
+1. Alice shares `doc:acme-private-alice` to Bob as `viewer`.
+2. Bob can read the doc; attempting to save fails with `FORBIDDEN`.
+3. Alice upgrades Bob to `editor`. Bob can save.
+4. Bob cannot re-share to Charlie (no `owner` role).
+5. Alice unshares Bob. Bob's next pull removes the doc from his view.
+
+This shows: role-based write control, role escalation, the audit trail of the share lifecycle.
+
+### Scenario 2: Team scope grant + isolation
+
+1. In `acme`, Alice grants `team:design` scope `viewer`.
+2. Bob (member of `team:design`) gains visibility to the covered records.
+3. Charlie (not in `team:design`) does not.
+4. Switching Bob to `globex` shows only `globex`-namespaced records — `acme` data is invisible.
+
+This shows: principal indirection through team membership, namespace isolation even with cross-namespace principals.
+
+### Scenario 3: Two-context sync flow
+
+1. Alice creates a historical document and shares it to Bob.
+2. Bob clicks **Pull now**. The doc appears in his view.
+3. Alice revokes Bob's access. Bob pulls again — the doc is removed.
+
+This shows: backfill of historical records on share grant, real-time removal on revoke.
+
+## Deterministic reset
+
+Every scenario ships from a clean baseline:
+
+```bash
+curl -X POST http://localhost:3001/demo/reset \
+  -H 'content-type: application/json' \
+  -d '{"scenario":"baseline"}'
+```
+
+Or via the **Reset baseline + resync** button. The reset reseeds workspaces, memberships, and the canonical document fixtures.
+
+## E2E tests
+
+```bash
+npm --prefix datafn/examples/sharing-app run test:e2e
+```
+
+The Playwright suite covers all three scenarios with no external dependencies. The reset endpoint is what makes the tests deterministic — every scenario starts from the same fixture state.
+
+## Key takeaways
+
+- **Sharing isn't a UI concern.** It's a schema concern. The capability declaration determines what's possible; the UI just surfaces it.
+- **Roles are application-defined.** The example uses `viewer`, `editor`, `owner`. You can use whatever role names fit your domain — DataFn enforces the order you declare.
+- **Cross-namespace sharing is opt-in.** The example deliberately denies it (`crossNsShareable: false`). Flip that flag to enable; consider the threat model.
+- **Audit + sharing are coupled.** Sharing depends on audit (which depends on a namespaceProvider with `getActorId`).
+
+## What to copy
+
+If you're modeling per-record sharing:
+
+1. Copy the **schema** from `datafn/examples/sharing-app/server/src/schema.ts` as a starting shape.
+2. Copy the **demo session middleware** pattern from `server/src/middleware/demoAuth.ts` — substitute your real auth.
+3. Copy the **E2E setup** in `e2e/` — deterministic reset is the trick.
+
+## See also
+
+- [Sharing](/docs/documentation/sharing)
+- [Sharing flows recipe](/docs/recipes/sharing-flows)
+- [Multi-tenant SaaS recipe](/docs/recipes/multi-tenant-saas)

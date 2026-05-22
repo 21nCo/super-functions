@@ -1,0 +1,39 @@
+---
+title: "Examples"
+sidebarTitle: "Overview"
+description: "Working reference apps that ship with DataFn — clone, run, copy what you need."
+audience: landing
+applies_to: both
+---
+
+The repository ships three reference apps. They're not toys — they're how the maintainers exercise the core capabilities end-to-end. Use them as a starting point for your own architecture decisions.
+
+| Example | What it shows |
+| --- | --- |
+| [Todo app](/docs/examples/todo-app) | Minimum viable app with three deployment topologies (browser-owned, native-backed via WebView, native + CloudKit). |
+| [Sharing app](/docs/examples/sharing-app) | Multi-actor, multi-workspace sharing semantics with deterministic E2E tests. |
+| [Apple WebView host](/docs/examples/apple-webview-host) | The Swift host that demonstrates the native-backed and CloudKit topologies. |
+
+All three examples live in `datafn/examples/` in the [super-functions repo](https://github.com/21nCo/super-functions). Each has its own `README.md` with the canonical run instructions.
+
+## Running them locally
+
+Clone the repo and pick an example:
+
+```bash
+git clone https://github.com/21nCo/super-functions
+cd super-functions
+npm install
+```
+
+Then follow the per-example walkthrough.
+
+## What to learn from each
+
+- **Todo app** is the right starting point for understanding how DataFn handles the same app across three topologies. Pay attention to how it switches between `IndexedDbStorageAdapter` and `createNativeBackedStorageAdapter` based on injected globals.
+- **Sharing app** is the right reference for any product that needs per-record ACLs and deterministic E2E tests of share lifecycles.
+- **Apple WebView host** is the right starting point for a Swift app that embeds a web view but wants native CoreData persistence and SearchFn indexing.
+
+## Beyond the examples
+
+If you want recipe-shaped walkthroughs (single-page recipes that ship with a working schema + server + client), see the [Recipes](/docs/recipes) section.

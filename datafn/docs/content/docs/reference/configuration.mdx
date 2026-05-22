@@ -1,0 +1,168 @@
+---
+title: "Configuration Reference"
+description: "Every option accepted by createDatafnServer and createDatafnClient, end to end."
+audience: reference
+applies_to: both
+---
+
+The server and client share one schema, but each has its own configuration object. This page lists every option, what it does, and what the default is.
+
+## Server: createDatafnServer
+
+```typescript
+import { createDatafnServer } from "@datafn/server";
+
+const server = await createDatafnServer({ /* options below */ });
+```
+
+### Required
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `schema` | `DatafnSchema` | Source-of-truth schema. Validated at startup; throws if invalid. |
+
+### Database & storage
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `db` | `Adapter` | — | Database adapter (Drizzle, SQLAlchemy, or custom). See [Adapters](/docs/documentation/database/adapters). |
+| `redis` | `RedisAdapter` | — | Redis for atomic operations (server sequence, rate limiting). |
+| `kvStore` | `KVStoreAdapter` | — | KV store for sequence numbers. Must support `incr()`. |
+| `dbMapping` | `DbMapping` | — | Per-feature database routing, e.g. `{ serverseq: "redis", changeLog: "db" }`. |
+| `rowLevelNamespace` | `false \| RowLevelNamespaceConfig` | auto | Auto-enabled when `namespaceProvider` is present. Set `false` to disable. |
+
+### Auth & security
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `authorize` | `(ctx, action, payload) => boolean` | — | Per-request authorization. Actions: `"status"`, `"query"`, `"mutation"`, `"transact"`, `"seed"`, `"clone"`, `"pull"`, `"push"`, `"reconcile"`, `"search"`. |
+| `namespaceProvider` | `{ getNamespace; getActorId? }` | — | Maps requests to a namespace string for data isolation. |
+| `allowUnknownResources` | `boolean` | `false` | Allow resources without a permissions policy. Development only. |
+| `debug` | `boolean` | `NODE_ENV !== "production"` | When `false`, error messages drop field names and schema details. |
+
+### Limits
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limits.maxLimit` | `number` | `100` | Max rows per query. |
+| `limits.maxTransactSteps` | `number` | `100` | Max steps per `/datafn/transact`. |
+| `limits.maxPayloadBytes` | `number` | `5_242_880` | Max request body (5 MB). |
+| `limits.maxPullLimit` | `number` | `1000` | Max changes per `/datafn/pull`. |
+| `limits.maxSelectTokens` | `number` | `50` | Max select tokens per query. |
+| `limits.maxFilterKeysPerLevel` | `number` | `20` | Max filter keys per nesting level. |
+| `limits.maxSortFields` | `number` | `10` | Max sort fields per query. |
+| `limits.maxAggregations` | `number` | `20` | Max aggregations per query. |
+| `limits.maxIdLength` | `number` | `255` | Max characters in a record id. |
+| `limits.maxBatchSize` | `number` | `500` | Max items in batch `/datafn/push` or `/datafn/mutation`. |
+| `limits.maxBatchQueryConcurrency` | `number` | `20` | Max concurrent in-flight queries for batch `/datafn/query`. |
+
+### Features
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `plugins` | `DatafnPlugin[]` | `[]` | Server-side plugins. See [Custom Plugins](/docs/documentation/plugins/custom-plugins). |
+| `rest` | `boolean` | `false` | Enable auto REST endpoints under `/datafn/rest/*`. |
+| `getServerTime` | `() => number` | `Date.now` | Time provider, useful in tests. |
+| `retention` | `RetentionConfig` | — | Change log + idempotency table retention. |
+| `rateLimit` | `RateLimitConfig` | — | Per-endpoint rate limits. See [Rate Limiting](/docs/documentation/server/rate-limiting). |
+| `observability` | `ObservabilityConfig` | — | Per-request timing hooks. See [Observability](/docs/documentation/server/observability). |
+| `ws` | `WsManagerConfig` | — | WebSocket connection caps and heartbeats. |
+| `shutdownTimeoutMs` | `number` | `10_000` | Graceful shutdown drain. |
+| `logger` | `DatafnLogger` | console | Pluggable logger. JSON in production, pretty in dev. |
+
+## Client: createDatafnClient
+
+```typescript
+import { createDatafnClient } from "@datafn/client";
+
+const client = createDatafnClient({ /* options below */ });
+```
+
+### Required
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `schema` | `DatafnSchema` | The same schema used by the server. |
+| `clientId` | `string` | Stable device identifier (used to dedupe sync). |
+| `storage` | `StorageAdapter` | `IndexedDbStorageAdapter` for browsers; `MemoryStorageAdapter` for tests. |
+
+### Sync
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sync.remote` | `string` | — | Base URL of the DataFn server (e.g. `/datafn` or `http://localhost:3000/datafn`). |
+| `sync.offlinability` | `boolean` | `true` | Queue mutations while offline; replay on reconnect. |
+| `sync.ws` | `boolean \| { url?: string }` | `false` | Open a WebSocket for live cursor notifications. |
+| `sync.cloneOnStart` | `boolean` | `true` | Perform an initial `/datafn/clone` the first time this `clientId` connects. |
+| `sync.pullIntervalMs` | `number` | `30_000` | Polling fallback when WS is disabled. |
+
+### Plugins & adapters
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `plugins` | `DatafnPlugin[]` | `[]` | Client-side plugins (e.g. computed fields). |
+| `searchProvider` | `SearchProvider` | — | Local search provider (FlexSearch, Tantivy via WASM, etc.). |
+| `transport` | `Transport` | http | Custom transport (rare; useful in WebView). |
+
+### Observability
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `onSyncEvent` | `(event) => void` | — | Receive sync lifecycle events (`pulling`, `pushing`, `idle`, `offline`, `error`). |
+| `logger` | `DatafnLogger` | console | Pluggable logger. |
+
+## Apple runtime: DatafnAppleRuntimeConfiguration
+
+```swift
+let config = DatafnAppleRuntimeConfiguration(
+    schemaJSON: Data,
+    schemaHash: String,
+    namespace: String,
+    clientID: String,
+    storeRootURL: URL,
+    syncBackend: SyncBackend
+)
+```
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `schemaJSON` | `Data` | JSON-serialized schema (typically bundled). |
+| `schemaHash` | `String` | Versioning hash; bump on schema change. |
+| `namespace` | `String` | Per-actor namespace. |
+| `clientID` | `String` | Stable device identifier. |
+| `storeRootURL` | `URL` | Filesystem root for the CoreData store. |
+| `syncBackend` | `.datafnServer(...) \| .iCloud(...)` | Which backend to use. |
+| `searchConfig` | `DatafnSearchConfiguration?` | Optional local search configuration. |
+
+### syncBackend variants
+
+`SyncBackend.datafnServer(DatafnServerSyncConfiguration)`:
+
+| | |
+| --- | --- |
+| `baseURL` | DataFn HTTP base. |
+| `websocketURL` | DataFn WS endpoint. |
+| `profileID` | Logical profile name (multi-account devices). |
+| `authProvider` | Optional async callback to supply auth headers. |
+
+`SyncBackend.iCloud(DatafnCloudKitConfiguration)`:
+
+| | |
+| --- | --- |
+| `containerIdentifier` | CloudKit container id. |
+| `databaseScope` | `.private` / `.shared`. |
+| `subscriptionId` | Notification subscription id. |
+
+See [Apple Runtime](/docs/documentation/apple/setup) for end-to-end setup.
+
+## Environment variables
+
+DataFn does not read environment variables directly. Pass everything through configuration. By convention, projects use:
+
+| Variable | Maps to |
+| --- | --- |
+| `DATABASE_URL` | Drizzle / SQLAlchemy connection string. |
+| `REDIS_URL` | Redis adapter. |
+| `DATAFN_NAMESPACE_DEFAULT` | Fallback namespace for dev. |
+| `DATAFN_DEBUG` | `debug` flag — recommended `false` in production. |
+| `NEXT_PUBLIC_DATAFN_URL` | Client `sync.remote` in Next.js. |

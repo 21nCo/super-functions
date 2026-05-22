@@ -1,0 +1,72 @@
+---
+title: FastAPI
+description: Mount the Python SearchFn server inside a FastAPI app.
+---
+
+## 1. Install
+
+```bash
+pip install fastapi uvicorn searchfn datafn
+```
+
+## 2. Set up SearchFn alongside DataFn
+
+`app.py`:
+
+```python
+from fastapi import FastAPI, Request
+from searchfn import create_searchfn_server
+from datafn.db import PostgresAdapter
+from schema import schema  # your DataFn schema
+
+db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
+
+search_plugin = create_searchfn_server({
+    "schema": schema,
+    "db": db,
+    "table_prefix": "_searchfn_",
+})
+
+app = FastAPI()
+
+for path, handler in search_plugin["routes"].items():
+    @app.api_route(path, methods=["POST"], name=f"sf-{path}")
+    async def route(request: Request, _handler=handler):
+        body = await request.json()
+        return await _handler(body)
+```
+
+The Python SearchFn server stores its inverted index inside your existing Postgres database, alongside the DataFn data. No additional infrastructure required for moderate-scale apps.
+
+## 3. Run
+
+```bash
+uvicorn app:app --reload
+```
+
+## 4. Index
+
+```bash
+curl -X POST http://localhost:8000/searchfn/index \
+  -H 'content-type: application/json' \
+  -d '{ "model": "products" }'
+```
+
+This scans all rows in `products`, tokenizes the string fields, and populates `_searchfn_index`.
+
+## 5. Search
+
+```bash
+curl -X POST http://localhost:8000/searchfn/search \
+  -H 'content-type: application/json' \
+  -d '{ "query": "fast laptop", "limit": 10 }'
+```
+
+## When to use the TypeScript adapters instead
+
+The Python package is optimized for the "DataFn + Postgres" case. If you need an external search service (Meilisearch, Elasticsearch), stand up the TypeScript server in a sidecar and have FastAPI call it. The Python package and TypeScript server share the same envelope contract, so client code stays portable.
+
+## Next steps
+
+- [Python reference](/docs/reference/python)
+- [DataFn integration](/docs/integrations/datafn)

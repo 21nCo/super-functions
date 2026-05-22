@@ -1,0 +1,102 @@
+---
+title: "Quickstart: Bun"
+description: "Mount DataFn directly on Bun.serve in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+Bun's HTTP server takes a `fetch` function that returns a `Response`. DataFn's router exposes `router.fetch(request)` directly — no adapter needed.
+
+## 1. Scaffold
+
+```bash
+mkdir bun-datafn && cd bun-datafn
+bun init -y
+bun add @datafn/server @datafn/core
+bun add @superfunctions/db
+bun add drizzle-orm bun:sqlite
+```
+
+(`bun:sqlite` ships with Bun; no extra package needed.)
+
+## 2. Schema
+
+`shared/schema.ts`:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["title", "completed"] },
+    },
+  ],
+});
+```
+
+## 3. Server
+
+`server/index.ts`:
+
+```typescript
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { schema } from "../shared/schema";
+
+const sqlite = new Database("dev.db");
+const db = drizzle(sqlite);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "sqlite" }),
+  rest: true,
+  authorize: async () => true,
+});
+
+Bun.serve({
+  port: 3000,
+  fetch: datafn.router.fetch,
+  websocket: {
+    open(ws) {
+      datafn.websocketHandler.addClient(ws, { user: null });
+    },
+    message(ws, message) {
+      datafn.websocketHandler.handleMessage(ws, message.toString());
+    },
+    close(ws) {
+      datafn.websocketHandler.removeClient(ws);
+    },
+  },
+});
+
+console.log("DataFn server running at http://localhost:3000");
+```
+
+That's it — Bun's `fetch` takes a `Request`, DataFn's router takes the same shape, and the WebSocket handlers are async/sync-callable from Bun's native WebSocket.
+
+## 4. Run
+
+```bash
+bun run server/index.ts
+```
+
+```bash
+curl http://localhost:3000/datafn/status
+```
+
+## Where to next
+
+- Drop in [WebSocket](/docs/documentation/server/websockets) details for the live sync handlers.
+- Use Bun's edge deployment: [Production / Deploy](/docs/documentation/deploy)
+- For HTTP routing with middleware, layer Hono on top: [Quickstart: Hono](/docs/quickstart/hono)

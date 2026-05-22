@@ -1,0 +1,90 @@
+---
+title: SvelteKit
+description: SearchFn in a SvelteKit app — IndexedDB on the client, Postgres on the server.
+---
+
+This guide sets up SearchFn in two places: an `IndexedDbAdapter` for offline-first browser search, and a server-side `PostgresAdapter` for shared search state.
+
+## 1. Install
+
+```bash
+npm install @searchfn/client @searchfn/adapter-indexeddb @searchfn/server @searchfn/adapter-postgres
+```
+
+## 2. Server route
+
+`src/routes/searchfn/+server.ts`:
+
+```typescript
+import { json } from "@sveltejs/kit";
+import { createSearchFnServer } from "@searchfn/server";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+import { SEARCH_DB_URL } from "$env/static/private";
+
+const sf = await createSearchFnServer({
+  adapter: new PostgresAdapter({ connectionString: SEARCH_DB_URL }),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [{ name: "notes", searchFields: ["title", "body"] }],
+});
+
+export const GET = async ({ request }) =>
+  sf.router.handle({ method: "GET", url: request.url, headers: request.headers });
+
+export const POST = async ({ request }) =>
+  sf.router.handle({
+    method: "POST",
+    url: request.url,
+    headers: request.headers,
+    body: request.body,
+  });
+```
+
+Run the Postgres migrations once — see the [PostgresAdapter reference](/docs/reference/adapters/postgres).
+
+## 3. Client (offline-first)
+
+`src/lib/search.ts`:
+
+```typescript
+import { createIndexedDbSearchClient } from "@searchfn/client";
+
+export const search = createIndexedDbSearchClient({
+  adapterConfig: { dbName: "notes-search" },
+  defaults: { limit: 20, fuzzy: true },
+});
+
+await search.initialize?.({
+  resources: [{ name: "notes", searchFields: ["title", "body"] }],
+});
+```
+
+## 4. Use in a Svelte component
+
+```svelte
+<script lang="ts">
+  import { search } from "$lib/search";
+  let query = "";
+  let ids: string[] = [];
+
+  async function run() {
+    ids = await search.search({ resource: "notes", query, limit: 10 });
+  }
+</script>
+
+<input bind:value={query} on:input={run} placeholder="Search notes..." />
+<ul>
+  {#each ids as id}
+    <li>{id}</li>
+  {/each}
+</ul>
+```
+
+The browser search runs against the local IndexedDB index. Sync the index from the server on app boot, or use [DataFn integration](/docs/integrations/datafn) if your data already lives in DataFn.
+
+## Next steps
+
+- [Hybrid local + remote search recipe](/docs/recipes/hybrid-local-remote)
+- [IndexedDB adapter](/docs/reference/adapters/indexeddb)

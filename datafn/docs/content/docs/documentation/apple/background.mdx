@@ -1,0 +1,130 @@
+---
+title: "Background Sync"
+description: "Background app refresh, silent push, and sync-on-resume for the Apple runtime."
+audience: guide
+applies_to: client
+---
+
+Apple gates background work tightly. The runtime works inside the standard mechanisms — Background App Refresh, silent push, `BGAppRefreshTask` — without requiring custom infrastructure.
+
+## What runs in background
+
+| Trigger | What happens | When iOS allows it |
+| --- | --- | --- |
+| Foreground | Full sync | Always |
+| Silent push (CloudKit) | One pull cycle | When user has BG App Refresh on |
+| `BGAppRefreshTask` | One pull cycle | Periodically; iOS decides |
+| App suspended | Nothing | — |
+| App killed by user | Nothing until next launch | — |
+
+The runtime is **explicitly designed** not to require long-running background work. Sync catches up on resume.
+
+## Wire BGAppRefreshTask
+
+```swift
+import BackgroundTasks
+
+// Register on launch
+BGTaskScheduler.shared.register(
+    forTaskWithIdentifier: "com.example.datafn-refresh",
+    using: nil
+) { task in
+    handleRefresh(task as! BGAppRefreshTask)
+}
+
+func handleRefresh(_ task: BGAppRefreshTask) {
+    scheduleNextRefresh()
+
+    let operation = Task {
+        try await runtime?.syncOnce()
+        task.setTaskCompleted(success: true)
+    }
+
+    task.expirationHandler = {
+        operation.cancel()
+    }
+}
+
+func scheduleNextRefresh() {
+    let request = BGAppRefreshTaskRequest(identifier: "com.example.datafn-refresh")
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60)  // 1 hour
+    try? BGTaskScheduler.shared.submit(request)
+}
+```
+
+`runtime.syncOnce()` does one pull + push and returns. The system gives `BGAppRefreshTask` ~30 seconds; one sync cycle finishes well within that window.
+
+Add the matching identifier to `Info.plist` under `BGTaskSchedulerPermittedIdentifiers`.
+
+## Silent push (CloudKit mode)
+
+In CloudKit-backed mode, the runtime auto-subscribes to silent pushes:
+
+```swift
+let config = DatafnAppleRuntimeConfiguration(
+    ...,
+    syncBackend: .iCloud(DatafnCloudKitConfiguration(
+        containerIdentifier: "iCloud.com.example.MyApp",
+        databaseScope: .private,
+        subscriptionId: "datafn-default"
+    ))
+)
+```
+
+The system delivers `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`; the runtime handles it:
+
+```swift
+func application(_ application: UIApplication,
+                 didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                 fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    Task {
+        let didFetch = await runtime?.handleSilentPush(userInfo: userInfo) ?? false
+        completionHandler(didFetch ? .newData : .noData)
+    }
+}
+```
+
+This works only in CloudKit mode. The DataFn-server backend uses WebSockets when active and `BGAppRefreshTask` for background.
+
+## DataFn-server silent push (optional)
+
+If your DataFn server can send APNs notifications (e.g. via your own push service), you can wake the app on a sync trigger:
+
+```swift
+func application(_ application: UIApplication,
+                 didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                 fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    if userInfo["datafn-sync"] != nil {
+        Task {
+            try? await runtime?.syncOnce()
+            completionHandler(.newData)
+        }
+    } else {
+        completionHandler(.noData)
+    }
+}
+```
+
+Configure your DataFn server's `afterMutation` hook to fire a push when relevant resources change. This is optional — sync-on-resume usually suffices.
+
+## Sync-on-resume
+
+The runtime listens for `UIApplication.willEnterForegroundNotification` and triggers a sync automatically. You don't need to call `syncOnce()` from `applicationDidBecomeActive`.
+
+## Tradeoffs
+
+- **Power usage**: aggressive background sync drains battery. Default behavior is conservative; only sync when the app is visible or when iOS allows BG App Refresh.
+- **Sync latency**: with background sync alone, a new record from another device may not appear until the user opens the app. For latency-sensitive apps (chat), keep the app in the foreground or use silent push.
+- **iOS rate limits**: BG App Refresh windows are unpredictable — iOS may grant a refresh once per hour or once per day, depending on usage patterns.
+
+## What not to do
+
+- Don't run long sync loops in `BGProcessingTask`. That category is for hours-long batch work; DataFn sync is per-cycle, fits inside `BGAppRefreshTask`.
+- Don't poll on a timer in the background. iOS will kill the app.
+- Don't rely on background sync to keep state fresh. Surface a "Last synced: …" timestamp in the UI.
+
+## See also
+
+- [Setup](/docs/documentation/apple/setup)
+- [CloudKit](/docs/documentation/apple/cloudkit)
+- [Sync overview](/docs/documentation/sync/overview)

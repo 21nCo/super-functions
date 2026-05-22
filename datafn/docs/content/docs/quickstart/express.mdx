@@ -1,0 +1,113 @@
+---
+title: "Quickstart: Express"
+description: "Mount DataFn on Express with Postgres in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+DataFn's router is framework-agnostic. The simplest way to mount it on Express is via a small adapter that delegates each `/datafn/*` route to the corresponding async handler. The DataFn server exposes a `router.fetch(request)` web-standard handler — Express just bridges Node's `req`/`res` to a `Request`/`Response`.
+
+## 1. Scaffold
+
+```bash
+mkdir express-datafn && cd express-datafn
+npm init -y
+npm install express @datafn/server @datafn/core
+npm install @superfunctions/db
+npm install drizzle-orm pg
+npm install -D tsx typescript @types/express @types/pg
+```
+
+Add `"type": "module"` to `package.json`.
+
+## 2. Schema
+
+`shared/schema.ts`:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["title", "completed"] },
+    },
+  ],
+});
+```
+
+## 3. Express bridge
+
+`server/index.ts`:
+
+```typescript
+import express from "express";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { schema } from "../shared/schema.js";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "postgres" }),
+  rest: true,
+  authorize: async () => true,
+});
+
+const app = express();
+
+app.all("/datafn/*", async (req, res) => {
+  const url = `http://${req.headers.host}${req.originalUrl}`;
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (typeof v === "string") headers.set(k, v);
+  }
+  const body =
+    req.method === "GET" || req.method === "HEAD"
+      ? undefined
+      : await new Promise<string>((resolve) => {
+          let buf = "";
+          req.on("data", (chunk) => (buf += chunk));
+          req.on("end", () => resolve(buf));
+        });
+  const webRequest = new Request(url, { method: req.method, headers, body });
+  const webResponse = await datafn.router.fetch(webRequest);
+  res.status(webResponse.status);
+  webResponse.headers.forEach((value, key) => res.setHeader(key, value));
+  res.send(Buffer.from(await webResponse.arrayBuffer()));
+});
+
+app.listen(3000, () => {
+  console.log("DataFn server running at http://localhost:3000");
+});
+```
+
+If you'd rather avoid the manual bridge, swap Express for Hono or wrap each route handler individually — see [Routes](/docs/reference/routes) for the per-route contract.
+
+## 4. Run
+
+```bash
+DATABASE_URL=postgres://localhost/datafn_dev npx tsx server/index.ts
+```
+
+```bash
+curl http://localhost:3000/datafn/status
+```
+
+## Where to next
+
+- Wire authn in middleware before the bridge: see [Authorization](/docs/documentation/server/authorization)
+- Switch to a typed handler-by-handler mount via the request body parsing convention from [Routes](/docs/reference/routes)
+- Move to a framework with built-in web-standard `Request` support: [Hono](/docs/quickstart/hono), [SvelteKit](/docs/quickstart/sveltekit), [Next.js](/docs/quickstart/nextjs)

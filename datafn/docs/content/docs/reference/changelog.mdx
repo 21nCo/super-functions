@@ -1,0 +1,81 @@
+---
+title: "Changelog"
+description: "Notable changes to DataFn across releases."
+audience: reference
+applies_to: both
+---
+
+This is the human-readable changelog. For machine-readable release metadata see the [GitHub releases page](https://github.com/21nCo/super-functions/releases).
+
+DataFn follows [semver](https://semver.org/): until 1.0 minor versions may include breaking changes that are called out below.
+
+## Unreleased
+
+- (placeholder for in-development changes)
+
+## 0.3.0
+
+**New**
+
+- `shareable` capability with record-scope and resource-scope variants.
+- WebSocket-based live cursor notifications under `/datafn/ws`.
+- `SearchProvider` interface for cross-resource search.
+- Apple runtime: `DatafnObservedQuery` for `@Observable` SwiftUI integration.
+- Apple runtime: WebView bridge host (`DatafnWKWebViewBridgeHost`) for hybrid apps.
+- `rest: true` flag auto-exposes a REST surface under `/datafn/rest/*`.
+- Plugin hook events: `beforeQuery`, `afterQuery`, `beforeMutation`, `afterMutation`, and friends.
+
+**Breaking**
+
+- `authorize` callback now receives `action` as the second argument and `payload` as the third (was `(ctx, payload)`).
+- `client.table("…").observe(...)` renamed to `signal(...)`; `Observable` type removed in favor of the more general `Signal`.
+- `DatafnEnvelope` is now exported from `@datafn/core` (was `@datafn/server`). Update your imports.
+
+**Bug fixes**
+
+- Cursor-based pagination correctly handles ties on the sort field by using `id` as a secondary key.
+- Idempotency cache TTL respects `retention.idempotencyDays` (was hard-coded at 7 days).
+- WebSocket reconnect honors `Retry-After` header on 429 responses.
+
+## 0.2.0
+
+**New**
+
+- Capabilities: `timestamps`, `audit`, `trash`, `archivable`.
+- Namespace-aware row-level isolation, enabled by `namespaceProvider`.
+- `idPrefix` per resource for prefixed ULID record ids.
+- Drizzle adapter (`drizzleAdapter`) and SQLAlchemy adapter (`sqlalchemy_adapter`).
+- Python server (`create_datafn_server`) with parity on `/datafn/query`, `/datafn/mutation`, `/datafn/transact`, `/datafn/seed`, `/datafn/clone`, `/datafn/pull`, `/datafn/push`.
+
+**Breaking**
+
+- Schema must now declare `version: 1` per resource. Resources without a version fail validation.
+- `defineSchema` is now mandatory for type inference; plain object schemas still work at runtime but lose types.
+
+## 0.1.0
+
+Initial public release.
+
+- TypeScript server (`createDatafnServer`) on Hono.
+- TypeScript client (`createDatafnClient`) with IndexedDB and Memory storage adapters.
+- DFQL: queries, mutations, transactions.
+- Sync engine: clone, pull, push.
+- Schema-driven validation.
+- AuthFn / FileFn integration points.
+
+## Versioning policy
+
+- **0.x.y** — minor (`x`) may include documented breaking changes; patch (`y`) is always backwards-compatible.
+- **1.x.y** — minor will not break the public API. Schema versioning (the per-resource `version` field) is the upgrade path for breaking on-the-wire changes.
+- **Apple runtime** versions independently from the TypeScript packages but maintains protocol compatibility with the same-major DataFn server.
+- **Python package** is published as `datafn` on PyPI and tracks the TypeScript packages' major + minor versions.
+
+## Upgrading
+
+For every minor bump:
+
+1. Read the entry above.
+2. Run `npx @datafn/cli validate --schema shared/schema.ts` to catch schema-level breakage.
+3. Re-run codegen: `npx @datafn/cli generate` and `npx @datafn/cli drizzle-codegen`.
+4. Update your tests; the test suite is the best signal that the upgrade is clean.
+5. Deploy server before client; the server is forwards-compatible within a minor.

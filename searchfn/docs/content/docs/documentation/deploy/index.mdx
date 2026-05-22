@@ -1,0 +1,41 @@
+---
+title: Deploy
+sidebarTitle: Overview
+description: Where to run SearchFn — the tradeoffs per platform.
+---
+
+SearchFn is a Node-compatible HTTP server (`@searchfn/server`) plus an adapter. The deployment shape depends on which adapter you pick — the server itself runs anywhere Node, Bun, or Deno do.
+
+## Where the index lives
+
+| Adapter | Where state lives | Cold start friendly | Best fit |
+| --- | --- | --- | --- |
+| `MemoryAdapter` | Server process RAM | No (re-builds on every start) | Single-instance dev, tests |
+| `IndexedDbAdapter` | Browser | n/a | Client side only |
+| `PostgresAdapter` | Postgres | Yes | Most server deployments |
+| `MeilisearchAdapter` | Meilisearch instance | Yes | Dedicated search service |
+| `ElasticsearchAdapter` / `OpenSearchAdapter` | ES/OS cluster | Yes | Large scale |
+
+Stateful adapters (everything except Memory) make the SearchFn server stateless — easy to scale horizontally, easy to deploy on any platform.
+
+## Per-platform pages
+
+| Platform | Page |
+| --- | --- |
+| Vercel | [Deploy: Vercel](/docs/documentation/deploy/vercel) |
+| Cloudflare Workers | [Deploy: Cloudflare Workers](/docs/documentation/deploy/cloudflare-workers) |
+| Fly.io | [Deploy: Fly](/docs/documentation/deploy/fly) |
+| Railway | [Deploy: Railway](/docs/documentation/deploy/railway) |
+| Docker | [Deploy: Docker](/docs/documentation/deploy/docker) |
+| Kubernetes | [Deploy: Kubernetes](/docs/documentation/deploy/kubernetes) |
+
+For scaling and capacity planning, see [Scaling](/docs/documentation/deploy/scaling).
+
+## Pre-flight
+
+Before any production deploy, run through the [production checklist](/docs/documentation/security/production-checklist). It covers authz, limits, observability, and DR.
+
+## See also
+
+- [Adapter reference](/docs/reference/adapters)
+- [Performance overview](/docs/documentation/performance/index)

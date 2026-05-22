@@ -1,0 +1,68 @@
+---
+title: When to Use the WASM Core
+description: Pick WASM over the TS engine — or pick neither.
+---
+
+WASM is faster but more complex to ship. The decision tree:
+
+```mermaid
+graph TD
+  Start[Need search?] --> Q1[Is data > 100k docs?]
+  Q1 -->|No| TS[Use @searchfn/core, you're done]
+  Q1 -->|Yes| Q2[Backend search ok?]
+  Q2 -->|Yes| External[Use Postgres or Meilisearch]
+  Q2 -->|No, must be local| Q3[Have Rust toolchain & WASM bundler?]
+  Q3 -->|Yes| Wasm[@searchfn/core-wasm]
+  Q3 -->|No| Hybrid[Hybrid: small local index, remote for the rest]
+```
+
+## When the WASM core wins
+
+- **Large local datasets.** Browser, mobile, or edge runtime with a 100k–1M doc corpus that must be searched on-device.
+- **Fuzzy-heavy queries.** Wagner-Fischer in Rust is 5x+ faster.
+- **Indexing pipelines that batch in the millions.** The 3x indexing speedup compounds.
+- **Edge functions.** Both Cloudflare Workers and Vercel Edge support WASM natively; if you want full-engine search at the edge with no remote backend, WASM is the only option.
+
+## When the TS engine wins
+
+- **Most apps.** The TS engine is fast enough for `<100k` doc corpora — see [performance/index](/docs/documentation/performance/index).
+- **Simple build pipelines.** No WASM means no bundler config, no Rust toolchain.
+- **Small browser bundles.** The WASM artifact adds ~80 KB gzipped. Worth it for big corpora, not for a 1k-doc search UI.
+
+## When neither wins
+
+For very large corpora (`>1M docs`) or multi-instance HA needs:
+
+- Use an external backend (Postgres, Meilisearch, Elasticsearch).
+- The SearchFn server stays the same; only the adapter changes.
+
+## Mixed strategies
+
+Many apps end up with two indices:
+
+- A small local one (TS core or WASM core) for instant offline search of recent / hot content.
+- A larger remote one (Postgres / Meilisearch) for the full corpus.
+
+The [hybrid local + remote recipe](/docs/recipes/hybrid-local-remote) covers this pattern.
+
+## Migration
+
+The WASM adapter is API-compatible with the TS core adapter for the same operations. Switching is a one-line change:
+
+```diff
+- import { IndexedDbAdapter } from "@searchfn/adapter-indexeddb";
++ import { WasmCoreAdapter } from "@searchfn/core-wasm";
+
+  const sf = await createSearchFnServer({
+-   adapter: new IndexedDbAdapter({ dbName: "search" }),
++   adapter: new WasmCoreAdapter({}),
+  });
+```
+
+(WASM core doesn't persist by default — pair with IndexedDB snapshots if you need persistence.)
+
+## See also
+
+- [Setup](/docs/documentation/core-wasm/setup)
+- [Hybrid local + remote](/docs/recipes/hybrid-local-remote)
+- [Core engine overview](/docs/documentation/core/index)

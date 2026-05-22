@@ -1,0 +1,5 @@
+{
+  "title": "WASM Core",
+  "description": "Rust+WebAssembly build of the SearchFn engine",
+  "pages": ["index", "setup", "when-to-use"]
+}

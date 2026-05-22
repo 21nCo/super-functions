@@ -1,0 +1,122 @@
+---
+title: Cache Tuning
+description: LRU caches in the built-in engine, OS cache for Postgres, and how to size both.
+---
+
+Caches are where SearchFn pays for the difference between disk and memory. The defaults are reasonable; for high-throughput deployments you'll want bigger ones.
+
+## IndexedDbAdapter LRU caches
+
+```typescript
+new IndexedDbAdapter({
+  dbName: "search",
+  cache: {
+    terms: 1024,    // term docFrequency
+    postings: 2048, // posting lists
+  },
+});
+```
+
+| Cache | Default | Purpose | When to raise |
+| --- | --- | --- | --- |
+| `terms` | 1024 | Hot term docFrequency lookups | Queries hit many distinct terms |
+| `postings` | 2048 | Hot posting lists | Queries on same terms repeatedly |
+
+Memory per entry is roughly:
+
+- `terms`: ~50 bytes per entry → 1024 entries ≈ 50 KB
+- `postings`: ~200 bytes per entry (typical posting list) → 2048 entries ≈ 400 KB
+
+A 10x bump uses ~5 MB — fine for any modern device.
+
+## MemoryAdapter
+
+`MemoryAdapter` doesn't use LRU — everything lives in a Map. There's no cache to tune; size your process memory to fit the working set.
+
+For a 1M-document corpus with 50 tokens/doc average, expect ~1.5 GB of working set. Bigger than that, switch to IndexedDB or external adapter.
+
+## Postgres OS cache
+
+Postgres caches data in two layers:
+
+1. `shared_buffers` (configured) — Postgres's own cache.
+2. OS page cache — the file system cache. Postgres reads through this.
+
+For a SearchFn-heavy workload:
+
+- `shared_buffers` = 25% of system memory (typical Postgres rule).
+- Reserve another 50% for OS page cache by not over-provisioning Postgres.
+- For dedicated DB hosts, `shared_buffers` up to 40% can help with very read-heavy workloads.
+
+After a fresh start, run representative queries to warm the cache. Cold p99 can be 10x higher than warm p99.
+
+## Meilisearch caches
+
+Meilisearch caches the entire index in RAM by default. If your index is `<RAM`, Meili is fast. If the index outgrows RAM, latency spikes.
+
+```bash
+# Check Meili memory usage
+curl http://localhost:7700/stats
+```
+
+Scale: vertically. Meili doesn't shard.
+
+## Elasticsearch caches
+
+ES has three caches:
+
+- **Field data cache** — used by sort and aggregations.
+- **Query cache** — caches frequent queries.
+- **Request cache** — caches search responses.
+
+Default sizing is fine for most workloads. For very read-heavy:
+
+```json
+PUT _cluster/settings
+{ "persistent": { "indices.queries.cache.size": "20%" } }
+```
+
+Track cache hit rates via `_nodes/stats?metric=indices`.
+
+## Cache invalidation
+
+LRU caches in the built-in engine are invalidated on writes — index, remove, clear all flush the relevant entries. You don't need to reset them manually.
+
+For Postgres, `VACUUM` and `ANALYZE` rebuild planner statistics; run them after big bulk changes.
+
+For Meilisearch, an `updateDocuments` invalidates the index cache transparently.
+
+For ES, deletes invalidate the query cache for the index.
+
+## When caches don't help
+
+- **High-cardinality queries.** If every query is unique (search-as-you-type with long unique queries), nothing repeats — caches don't help, but they don't hurt either.
+- **Indexing-heavy workloads.** Caches are flushed by writes; under heavy write load, the cache hit rate stays low.
+
+## Monitoring
+
+For IndexedDB / Memory:
+
+```typescript
+adapter.cacheStats(); // { terms: { hits, misses, size }, postings: { ... } }
+```
+
+For Postgres:
+
+```sql
+SELECT relname, heap_blks_read, heap_blks_hit
+FROM pg_statio_user_tables
+WHERE relname LIKE '_searchfn_%';
+```
+
+For Meili: `/stats`.
+
+For ES: `_nodes/stats?metric=indices`.
+
+A hit ratio below 80% is a sign to raise the cache; above 99% means you could lower it without harm.
+
+## See also
+
+- [Query latency](/docs/documentation/performance/query-latency)
+- [Inverted index](/docs/documentation/core/inverted-index)
+- [Scaling](/docs/documentation/deploy/scaling)

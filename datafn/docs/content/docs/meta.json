@@ -1,4 +1,16 @@
 {
   "title": "DataFn",
-  "pages": ["index", "getting-started", "documentation", "dfql", "cli", "reference"]
+  "pages": [
+    "index",
+    "getting-started",
+    "quickstart",
+    "documentation",
+    "dfql",
+    "recipes",
+    "examples",
+    "cli",
+    "reference",
+    "comparison",
+    "ai-resources"
+  ]
 }

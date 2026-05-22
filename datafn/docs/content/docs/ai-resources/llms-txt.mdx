@@ -1,0 +1,82 @@
+---
+title: "llms.txt / llms-full.txt"
+description: "Machine-readable artifacts that turn the DataFn documentation into a prompt-friendly corpus."
+audience: reference
+applies_to: both
+---
+
+The DataFn docs site publishes two artifacts that follow the emerging [`llms.txt` convention](https://llmstxt.org/):
+
+## llms.txt
+
+A short outline of the site organized by section. Suitable for grounding a single prompt or seeding a retrieval index.
+
+```
+https://datafn.21n.co/llms.txt
+```
+
+Typical size: ~20–40 KB. Each entry is a Markdown bullet:
+
+```
+- [Schema Definition](https://datafn.21n.co/docs/dfql/schema): Define and validate your DataFn schema, including capability-driven behavior.
+```
+
+The file is regenerated from `content/docs/**` on every build so it never drifts from the rendered site.
+
+## llms-full.txt
+
+The complete body of every page, concatenated with section separators and deep-link headers. Suitable for direct ingestion by long-context models, embeddings, or fine-tuning datasets.
+
+```
+https://datafn.21n.co/llms-full.txt
+```
+
+Typical size: 300–500 KB. Structure:
+
+```
+================================================================================
+## Dfql
+================================================================================
+
+--------------------------------------------------------------------------------
+### Schema Definition
+
+URL: https://datafn.21n.co/docs/dfql/schema
+Description: Define and validate your DataFn schema, including capability-driven behavior.
+--------------------------------------------------------------------------------
+
+(full markdown body of the page)
+```
+
+## Regenerating locally
+
+The artifacts are generated at build time:
+
+```bash
+cd datafn/docs
+npm run generate:llms
+```
+
+You can also override the base URL used in the generated links:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://my-mirror.example.com npm run generate:llms
+```
+
+The script lives at `datafn/docs/scripts/generate-llms.mjs` — it walks `content/docs/`, parses frontmatter, and emits both files into `public/`.
+
+## Per-page raw markdown
+
+Beyond the two corpus files, every page is reachable as raw MDX:
+
+```
+GET /api/docs/raw/<path-to-page>.mdx
+```
+
+Example:
+
+```bash
+curl https://datafn.21n.co/api/docs/raw/dfql/filters.mdx
+```
+
+The "Copy Markdown" button at the top of every page uses this endpoint behind the scenes.

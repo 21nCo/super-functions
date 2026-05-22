@@ -1,0 +1,24 @@
+{
+  "title": "Recipes",
+  "description": "Production-tested patterns",
+  "root": true,
+  "pages": [
+    "index",
+    "todo-app",
+    "kanban-board",
+    "chat-app",
+    "document-collab",
+    "multi-tenant-saas",
+    "sharing-flows",
+    "presence-cursors",
+    "offline-conflicts",
+    "optimistic-ui",
+    "virtualization",
+    "encryption-at-rest",
+    "audit-logging",
+    "testing",
+    "authfn-integration",
+    "filefn-integration",
+    "searchfn-integration"
+  ]
+}

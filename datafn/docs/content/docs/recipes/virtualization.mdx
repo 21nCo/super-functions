@@ -1,0 +1,103 @@
+---
+title: "Recipe: List Virtualization"
+description: "Subscriptions over windowed slices for large lists."
+audience: guide
+applies_to: client
+---
+
+DataFn signals deliver every row that matches a query. For a 10k-row table you don't want to render or subscribe to all of them — you want a sliding window aligned with the visible viewport.
+
+## Pattern: windowed signal
+
+Subscribe to a small window (e.g. 100 rows) and re-subscribe when the user scrolls.
+
+```typescript
+import { useEffect, useState } from "react";
+
+function useWindow(resource: string, baseFilters: any, windowStart: number, windowSize: number) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    const signal = client.table(resource).signal({
+      filters: baseFilters,
+      sort: ["createdAt:desc"],
+      offset: windowStart,
+      limit: windowSize,
+    });
+    return signal.subscribe((value) => setRows(value ?? []));
+  }, [resource, JSON.stringify(baseFilters), windowStart, windowSize]);
+
+  useEffect(() => {
+    // Count separately; offset is for windowing only.
+    client.table(resource).query({
+      filters: baseFilters,
+      aggregations: [{ name: "total", op: "count" }],
+    }).then((env) => env.ok && setTotal(env.result.aggregations.total));
+  }, [resource, JSON.stringify(baseFilters)]);
+
+  return { rows, total };
+}
+```
+
+This is correct when the user is browsing a stable list (e.g. an archive). The signal re-subscribes when `windowStart` changes; recent edits within the window stream in live.
+
+## Pattern: cursor-paged signal
+
+For "infinite scroll" lists where rows can be inserted at the top (chat, activity feed), use cursor pagination with append-on-scroll:
+
+```typescript
+const [pages, setPages] = useState<any[][]>([]);
+const [cursor, setCursor] = useState<string | null>(null);
+
+async function loadMore() {
+  const env = await client.table("messages").query({
+    filters: baseFilters,
+    sort: ["createdAt:desc"],
+    cursor: cursor ?? undefined,
+    limit: 30,
+  });
+  if (!env.ok) return;
+  setPages((p) => [...p, env.result.data]);
+  setCursor(env.result.cursor ?? null);
+}
+```
+
+The top of the list (latest messages) is a live signal; older pages are static loads. Combine them in the UI.
+
+## Pattern: count + signal for total
+
+If you need a total count *plus* a windowed view:
+
+```typescript
+const total = client.table("tasks").signal({
+  filters,
+  aggregations: [{ name: "count", op: "count" }],
+});
+
+const window = client.table("tasks").signal({
+  filters,
+  sort: ["priority:desc"],
+  limit: 50,
+});
+```
+
+Each signal subscribes independently. The aggregation subscription delivers a tiny payload (just the count), so it's cheap even on large tables.
+
+## What DataFn does for you
+
+- Signals diff their previous emission against the new query result and only fire on real changes.
+- The query is normalized (`normalizeDfql`) before dispatching, so signals with equivalent shapes deduplicate in the runtime.
+- Offline storage indexes are aware of `sort` and `limit`, so windowed reads don't scan the whole table.
+
+## Where this falls short
+
+- **DataFn doesn't ship a `useVirtualList` hook.** Use [TanStack Virtual](https://tanstack.com/virtual), `react-window`, or your framework's equivalent for the rendering layer.
+- **Total count of a filtered query** isn't free at huge scale. For 1M+ rows behind a filter, an approximate-count plugin is a better fit than a precise aggregation.
+- **Long-tail filters** (e.g. searching by a non-indexed field) are slow regardless of windowing. Make sure your `indices.base` matches your common filter combinations.
+
+## See also
+
+- [Pagination](/docs/dfql/pagination)
+- [Aggregations](/docs/dfql/aggregations)
+- [Signals](/docs/documentation/client/signals)

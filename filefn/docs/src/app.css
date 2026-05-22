@@ -1,0 +1,48 @@
+@import "@21n/fonts/styles.css";
+@import "tailwindcss";
+@import "@docsfn/svelte/theme.css";
+
+:root {
+  --docsfn-font-sans: "Twenty One Native", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-sans: var(--docsfn-font-sans);
+  /* filefn brand: a deep blue tied to flowing storage / "files in motion" */
+  --docsfn-color-primary: hsl(214, 60%, 36%);
+  --docsfn-color-primary-hover: hsl(214, 60%, 30%);
+  --docsfn-color-accent-soft: hsl(214 60% 36% / 0.12);
+  --docsfn-docs-shell-max-width: min(100rem, 100%);
+  --docsfn-main-column-max-width: 48rem;
+  --docsfn-sidebar-panel-bg: #f4f4f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --docsfn-sidebar-panel-bg: #232326;
+    --docsfn-color-primary: hsl(212, 65%, 64%);
+    --docsfn-color-primary-hover: hsl(212, 65%, 60%);
+    --docsfn-color-accent-soft: hsl(212 65% 64% / 0.12);
+  }
+}
+
+html,
+body {
+  font-family: var(--docsfn-font-sans);
+}
+
+.docsfn-topbar-container {
+  max-width: var(--fd-layout-width, 1600px);
+  margin-inline: auto;
+  padding-inline: 1rem;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .docsfn-site-root.docsfn-docs-chrome .docsfn-topbar-container {
+    max-width: var(--docsfn-docs-shell-max-width, none);
+    margin-inline: auto;
+    width: 100%;
+    padding-left: calc(var(--docsfn-sidebar-width) + var(--docsfn-main-padding-inline));
+    padding-right: var(--docsfn-main-padding-inline);
+    box-sizing: border-box;
+  }
+}

@@ -1,10 +1,156 @@
 ---
-title: Regions
-description: Multi-region routing and runtime overlays.
+title: Multi-region routing
+description: How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
 ---
 
-# Regions
+# Multi-region routing
 
-For apps that need to keep user data in a specific geography, authfn ships a `multiRegion` plugin that resolves the right region per request and applies a runtime overlay so the rest of the system sees only that region's database and storage.
+Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. The same browser may end up on either authority."*
 
-> Stub page — fill in with: region resolution, lookup table, runtime overlay, fail-over.
+Enable the **`authFnMultiRegionPlugin`** and the kernel will:
+
+1. Look up which region a user belongs to (by email or other identifier) before any sensitive operation.
+2. Apply a region-specific runtime overlay (issuer, base URL, cookie domain, OAuth credentials).
+3. If the request landed on the wrong authority, raise `AUTHFN_REGION_MISMATCH` with a `redirectTo` to the right authority.
+4. Pin newly created users to the region they were created in.
+5. Cache lookups so steady-state traffic is fast.
+
+The plugin is *additive* — single-region authfn still works without it. You opt in only when you need region pinning.
+
+## Concepts
+
+### Region
+
+A **region** is a logical pin: `us-east-1`, `eu-west-1`, …. Each region has:
+
+- A regional **authority** — the URL where requests for that region should land (`https://api.us.example.com`, `https://api.eu.example.com`).
+- An optional **cookie domain** — a region-scoped domain to bind sessions to.
+- Optional region-specific **OAuth client IDs** and **issuer**.
+- Optional region-specific **base URL** (often the same as the authority).
+
+### Authority
+
+A region's authority is a fully-qualified URL. authfn uses it to:
+
+- Decide whether a request is on the right authority for the resolved user (`continueLocally`).
+- Build redirect targets when the request lands on the wrong authority.
+
+### Identifier
+
+The lookup key. Today this is the user's primary email. The plugin normalizes (lowercases, trims) the identifier before the lookup.
+
+### Region profile
+
+A row in `authfn_region_profiles`. One per user. It records the user's pinned `regionId` and `authority`. Created on the user's first sign-up; updated only by privileged paths.
+
+### Region lookup
+
+Either a row in your **lookup store** (e.g. a globally-replicated table that maps `email → region`), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
+
+## Configuring the plugin
+
+```ts
+import { authFnMultiRegionPlugin } from '@authfn/core';
+
+authFnMultiRegionPlugin({
+  defaultRegionId: 'us-east-1',
+  regions: [
+    {
+      regionId: 'us-east-1',
+      authority: 'https://api.us.example.com',
+      hosts: ['api.us.example.com'],
+      cookie: { domain: '.us.example.com' },
+      oauth: { google: { clientId: process.env.GOOGLE_US_ID! } },
+    },
+    {
+      regionId: 'eu-west-1',
+      authority: 'https://api.eu.example.com',
+      hosts: ['api.eu.example.com'],
+      cookie: { domain: '.eu.example.com' },
+      oauth: { google: { clientId: process.env.GOOGLE_EU_ID! } },
+    },
+  ],
+  lookupStore,        // optional, externally-replicated lookup
+  directory,          // optional, alternative to lookupStore for managed directories
+});
+```
+
+## How a request flows
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant US as api.us.example.com
+  participant EU as api.eu.example.com
+  participant Lookup as Region lookup store
+
+  Browser->>US: POST /auth/sign-in/password { email: ada@eu.com }
+  US->>Lookup: lookup ada@eu.com
+  Lookup-->>US: regionId=eu-west-1, authority=https://api.eu.example.com
+  US-->>Browser: 409 AUTHFN_REGION_MISMATCH { redirectTo: https://api.eu.example.com }
+  Browser->>EU: POST /auth/sign-in/password
+  EU-->>Browser: 200 OK + cookies for .eu.example.com
+```
+
+The browser (or `@authfn/client`) follows the `redirectTo`. The first-party SDKs handle this transparently.
+
+## What's checked, when
+
+The plugin enforces region alignment at every privileged entry point that has a known identifier:
+
+| Surface | Action |
+| --- | --- |
+| `POST /auth/sign-in/password` | Look up `email`, throw `AUTHFN_REGION_MISMATCH` if the wrong authority. |
+| `POST /auth/sign-up/password` | Look up `email`. If unknown, allow, then pin to the current region after success. |
+| `POST /auth/otp/start` (sign-in / sign-up purposes) | Same — pre-route on the email. |
+| `POST /auth/oauth/:provider/start` | Pre-route the configured `email_hint` if supplied. |
+| `GET /auth/oauth/:provider/callback` | After the provider returns the email, pre-route. |
+| Anything else | Use the runtime's `regionId` (no per-request lookup; trusts the resolver). |
+
+## Pinning new users
+
+When a user signs up, authfn writes a `region_profiles` row with the region the request landed on. If you need to migrate a user between regions, do it through your own admin tooling — `authFnMultiRegionPlugin` does not currently expose a "move user" route by default. (You can write one as a custom plugin or a direct DB migration.)
+
+## Conflicts and races
+
+If two regions both attempt to register the same email at the same time, the lookup store's `putIfAbsent` semantics decide a winner. The losing region throws `AUTHFN_REGION_MISMATCH` and emits an `authfn.region.lookup.conflict` event with the existing record's authority.
+
+## Caching
+
+Region lookups are cached when you supply a `cacheStore` to `createAuthFn`. The cache layer is shared with the rest of the kernel, so you only configure it once. Hits and misses use different TTLs:
+
+- Hits: `regionHit` TTL (default 5 minutes).
+- Misses: `regionMiss` TTL (default 1 minute) — short on purpose so newly-created users don't experience stale "no region" lookups.
+
+Use a Redis-backed store for production; the in-memory KV store is fine for local development.
+
+## What if no lookup store is configured?
+
+Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile (e.g. a globally-replicated table). This is the simplest pattern for small multi-region deployments. For larger setups, configure a dedicated lookup store backed by a global index (DynamoDB Global Tables, Cloudflare D1 + replication, etc.).
+
+## Observability
+
+The plugin emits:
+
+- `authfn.region.lookup` — every successful region lookup. Carries `identifier`, `regionId`, `authority`.
+- `authfn.region.lookup.conflict` — when a registration attempt loses a race.
+
+Use these to track lookup latency, miss ratios, and conflict frequency.
+
+## Schema
+
+The plugin contributes one table:
+
+| Table | Columns |
+| --- | --- |
+| `authfn_region_profiles` | `id`, `userId`, `regionId`, `authority`, `domain`, `createdAt`, `updatedAt` |
+
+…plus your `lookupStore` schema (whatever shape you choose for the global lookup, typically `(identifier, userId, regionId, authority, domain, createdAt, updatedAt)`).
+
+## Related
+
+- [Plugins → Multi-region](../plugins/multi-region) — full plugin reference.
+- [Runtime](./runtime) — how region overlays compose with `runtime.resolve`.
+- [Cookies](./cookies) — region-scoped cookie domains.
+- [Recipes → Multi-region deployment](../recipes/multi-region-deployment) — end-to-end walkthrough.
+- [Examples → multi-region-routing](../examples/multi-region-routing) — runnable example.

@@ -1,0 +1,258 @@
+---
+title: "Troubleshooting"
+description: "The 15 failure modes you'll hit in production — and how to fix them."
+audience: reference
+applies_to: both
+---
+
+The shortest path from "something is wrong" to "fixed." Each entry covers what you see, why it happens, and the fix.
+
+## 1. Sync is stuck — nothing pulls or pushes
+
+**Symptom**: The local store stops receiving updates. `client.sync.status` shows `idle` indefinitely.
+
+**Common causes**:
+
+- Schema hash mismatch — server schema changed, client expects old.
+- Authentication expired — sync calls are 401ing silently.
+- WebSocket connection failed and reconnect backoff is in its dead zone.
+
+**Fix**:
+
+```typescript
+client.sync.events.on("*", console.log);  // surface everything
+await client.sync.syncOnce();  // force one cycle
+```
+
+If `SCHEMA_HASH_MISMATCH` appears: re-clone (`client.sync.clone()`). If `UNAUTHENTICATED`: refresh the token. If a WebSocket error: check the network tab.
+
+See [Sync events](/docs/reference/events) for the complete event list.
+
+## 2. SCHEMA_HASH_MISMATCH on first sync
+
+**Symptom**: First `pull` fails with `SCHEMA_HASH_MISMATCH`.
+
+**Cause**: The client's `schema.hash()` doesn't match the server's stored hash. Almost always: client and server have different schema files.
+
+**Fix**:
+
+1. Confirm `clientSchema.hash() === expectedServerHash` in your app's startup.
+2. Verify the server's `validateSchema(schema)` runs without warnings.
+3. If you've intentionally bumped the schema: have the client re-clone (`client.sync.clone()` discards local and copies server). If you changed the server schema: run the matching migration first.
+
+## 3. Offline indicator says online when WebSocket is down
+
+**Symptom**: `client.sync.connection.status === "connected"` but you haven't received a live update in minutes.
+
+**Cause**: HTTP requests are working but the WebSocket dropped. The client tries to reconnect but indicator only watches HTTP.
+
+**Fix**: Read `client.sync.connection.live` for WebSocket state separately:
+
+```typescript
+client.sync.connection.subscribe((conn) => {
+  if (conn.live === "disconnected") {
+    showStaleBanner();
+  }
+});
+```
+
+## 4. WebSocket reconnect storm
+
+**Symptom**: WebSocket repeatedly reconnects (every few seconds), pegs CPU.
+
+**Cause**: A reverse proxy is closing idle connections, the client reconnects, the proxy closes again. Common with default nginx config and serverless WS gateways.
+
+**Fix**: Enable WebSocket pings on the client (default: every 25s), and set the proxy's idle timeout to be **larger** than the client ping interval. Server-side, ensure `idleTimeoutMs` in `wsOptions` ≥ 30s. See [Sync over WebSocket](/docs/documentation/sync/websocket-channel).
+
+## 5. Namespace leakage in a multi-tenant app
+
+**Symptom**: Two test accounts see each other's data.
+
+**Cause**: The namespaceProvider isn't using the request's auth identity, or middleware is overwriting it.
+
+**Fix**: Audit the namespaceProvider:
+
+```typescript
+namespaceProvider: {
+  current: (req) => {
+    const session = req.session;
+    if (!session?.userId) throw new Error("Unauthenticated");
+    return `user:${session.userId}`;  // or org-based, etc.
+  },
+  list: ...,
+}
+```
+
+Add a test that opens two clients with different namespaces and asserts queries return disjoint results. See [Namespace isolation](/docs/documentation/security/namespace-isolation).
+
+## 6. Idempotency cache returns stale data
+
+**Symptom**: A mutation that the user retried is silently re-applied with old payload.
+
+**Cause**: The same `mutationId` was reused across logically different mutations. Idempotency cache returns the first result.
+
+**Fix**: Generate a fresh `mutationId` per logical write attempt. The client SDK does this; if you're calling the HTTP API directly, **don't** reuse mutation IDs across distinct intents.
+
+Idempotency cache TTL is 24h by default; tune via `idempotency: { ttlSeconds: ... }` in server config.
+
+## 7. FORBIDDEN on shared records the user "should" see
+
+**Symptom**: A user with `viewer` access on a record gets `FORBIDDEN` on a write attempt.
+
+**Cause**: `viewer` only grants read; the user's role isn't sufficient for the operation. Or the share is on a different scope (record vs resource).
+
+**Fix**: Check the user's actual access:
+
+```bash
+curl https://api.example.com/datafn/access \
+  -H "Authorization: Bearer ..." \
+  -d '{"resource":"documents","id":"doc:42"}' \
+  | jq
+```
+
+The response includes the user's effective role. If `viewer`, the write is correctly denied. To allow editing, share at `editor` level.
+
+See [Sharing](/docs/documentation/sharing).
+
+## 8. CORS error from the browser
+
+**Symptom**: `Access to fetch at 'https://api.example.com/datafn' from origin 'https://app.example.com' has been blocked by CORS policy`.
+
+**Cause**: The DataFn server isn't returning the right CORS headers (or any).
+
+**Fix**: Configure CORS at your HTTP framework layer **before** DataFn's router:
+
+```typescript
+import cors from "hono/cors";
+
+app.use("/datafn/*", cors({
+  origin: "https://app.example.com",
+  credentials: true,
+  allowMethods: ["GET", "POST", "OPTIONS"],
+}));
+app.route("/datafn", datafnHonoAdapter(server));
+```
+
+For WebSocket: configure the upgrade endpoint's origin check separately.
+
+## 9. Conflict on every save (optimistic concurrency)
+
+**Symptom**: Every `merge` mutation returns `CONFLICT`.
+
+**Cause**: The client's `serverSeq` is behind. Often: a missing capability that updates `serverSeq` server-side, or a custom mutation handler that didn't bump it.
+
+**Fix**: Confirm the server is updating `serverSeq` on every write. The default plugins handle this; custom mutation handlers must call `ctx.advanceSequence()`.
+
+For deliberate write-without-conflict-check: use `replace` instead of `merge`, or use the `if` guard for conditional writes.
+
+## 10. Optimistic update flickers
+
+**Symptom**: A new record appears, disappears for a frame, then reappears.
+
+**Cause**: The optimistic write applies, then the server's confirmation arrives and a stale snapshot temporarily replaces it.
+
+**Fix**: This is usually a Svelte/React signal subscription pattern problem. Read through [Optimistic UI](/docs/recipes/optimistic-ui) — the fix is to make signals diff-based, not snapshot-based.
+
+## 11. Large clone hits memory limits
+
+**Symptom**: First-time clone OOMs the browser tab or Node process.
+
+**Cause**: Default clone loads everything into memory before persisting.
+
+**Fix**: Enable streaming clone:
+
+```typescript
+const client = createDatafnClient({
+  ...,
+  sync: {
+    clone: {
+      stream: true,
+      batchSize: 500,
+    },
+  },
+});
+```
+
+See [Sync clone](/docs/documentation/sync/clone).
+
+## 12. Search returns nothing after a fresh login
+
+**Symptom**: `client.search(...)` returns empty on a new device.
+
+**Cause**: The local search index hasn't been built. Search indices are derived state — they're built per-device.
+
+**Fix**: Wait for `client.search.ready` to resolve before searching, or call `client.search.rebuild()` explicitly. The default behavior builds the index lazily as records arrive.
+
+## 13. Sync stalls after a network outage
+
+**Symptom**: Network came back, but sync didn't resume.
+
+**Cause**: The reconnection logic detected the offline state but didn't re-trigger sync.
+
+**Fix**: Wire `online` to a manual sync:
+
+```typescript
+window.addEventListener("online", () => {
+  client.sync.syncOnce().catch(console.error);
+});
+```
+
+Newer client versions do this automatically. If you're on an older version, add the listener yourself.
+
+## 14. CloudKit sync silently stops
+
+**Symptom**: Apple-runtime app with `iCloud` backend stopped syncing. No errors.
+
+**Cause**: User signed out of iCloud, iCloud Drive disabled, or quota exhausted.
+
+**Fix**: Subscribe to runtime events:
+
+```swift
+runtime.events.subscribe { event in
+    switch event {
+    case .iCloudUnavailable(let reason):
+        showBanner("iCloud sync paused: \(reason)")
+    default: break
+    }
+}
+```
+
+`reason` is typically `accountUnavailable`, `quotaExceeded`, or `networkUnavailable`. Surface to the user; the runtime resumes when conditions improve.
+
+## 15. Type errors after schema change
+
+**Symptom**: TypeScript suddenly fails compilation after a schema edit.
+
+**Cause**: Generated types are stale.
+
+**Fix**:
+
+```bash
+npx datafn type-codegen
+```
+
+Add this to your dev workflow (pre-commit hook, file watcher, or `package.json` script that runs before `dev`). The recommendation:
+
+```json
+{
+  "scripts": {
+    "dev": "npm run datafn:codegen && next dev",
+    "datafn:codegen": "datafn type-codegen --watch"
+  }
+}
+```
+
+CI should run `datafn type-codegen --check` to fail builds with stale types.
+
+## Still stuck?
+
+- Open an issue: [super-functions/issues](https://github.com/21nCo/super-functions/issues)
+- Discord: [21n.co/discord](https://21n.co/discord)
+- Stack Overflow: tag `datafn`
+
+When opening an issue, include:
+
+- DataFn version (`npm ls @datafn/client`)
+- Schema hash (`schema.hash()`)
+- Sync event log (`client.sync.events.on("*", console.log)` for ~30 seconds)
+- Server logs around the failure window

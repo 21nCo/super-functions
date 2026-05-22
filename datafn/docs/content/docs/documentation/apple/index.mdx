@@ -1,0 +1,76 @@
+---
+title: "Apple Runtime"
+sidebarTitle: "Overview"
+description: "DataFn on iOS, macOS, watchOS, and tvOS — CoreData persistence, SwiftUI observation, and optional CloudKit sync."
+audience: landing
+applies_to: client
+---
+
+`DatafnAppleRuntime` is the native Apple-platform sibling of the TypeScript client. It owns a local CoreData store, observes records reactively through `@Observable`, and syncs with either a DataFn server or directly through CloudKit.
+
+## What you get
+
+- **Schema parity** with TypeScript — same `defineSchema` shapes, same capabilities.
+- **CoreData-backed local store** that integrates naturally with SwiftUI.
+- **`DatafnObservedQuery`** — an `@Observable @MainActor` class that drops straight into a SwiftUI view.
+- **Two sync backends**: your DataFn server, or CloudKit private database.
+- **WebView bridge** for hybrid apps where the UI is web but persistence is native.
+- **Background app refresh** support for sync-on-resume.
+- **App Intents** integration for Siri / Shortcuts / Spotlight.
+
+## When to choose Apple-native vs WebView
+
+| | Apple-native | WebView |
+| --- | --- | --- |
+| iOS / macOS app with native UI | yes | no |
+| Hybrid app with shared web codebase | possibly | yes |
+| Single codebase across platforms | no | yes |
+| Best perf | yes | no |
+| Best access to platform features | yes | partial |
+
+For a fully native experience, follow [Setup](/docs/documentation/apple/setup) and [SwiftUI](/docs/documentation/apple/swiftui). For a WebView-backed app see [WebView bridge](/docs/documentation/apple/webview-bridge) and the [Apple WebView Host example](/docs/examples/apple-webview-host).
+
+## When to choose CloudKit vs DataFn server
+
+| | DataFn server | CloudKit |
+| --- | --- | --- |
+| Sync to web clients | yes | no |
+| Cross-platform sync (Android, web) | yes | no |
+| Self-hosted infrastructure | yes | no |
+| Per-user storage cost | server cost | free up to user's iCloud quota |
+| Offline-first | yes | yes |
+| Per-record sharing UI | server + UI | CloudKit Sharing |
+
+CloudKit is correct when your data is per-user and stays in Apple's ecosystem. DataFn server is correct when you also need a web client, Android, or any backend integration.
+
+## Quickstart
+
+Add the package to your `Package.swift`:
+
+```swift
+.package(url: "https://github.com/21nCo/super-functions", from: "0.1.0"),
+.product(name: "DatafnAppleRuntime", package: "super-functions"),
+```
+
+Or see [Quickstart: Swift](/docs/quickstart/swift) for the full bootstrapping flow.
+
+## Capability parity
+
+Every TypeScript capability maps to a native API:
+
+| TypeScript | Swift |
+| --- | --- |
+| `client.table("tasks").query({ ... })` | `try source.queryRecords(resource: "tasks", filters: ...)` |
+| `client.table("tasks").mutate({ ... })` (today via bridge) | `runtime.bridgeHost.dispatch(...)` (native API forthcoming) |
+| `client.table("tasks").signal({ ... })` | `DatafnObservedQuery(resource: "tasks", source: ...)` |
+| `client.table("tasks").trash(id)` (today via bridge) | bridge dispatch |
+| Capability fields (`createdAt`, etc.) | Same field names; injected into CoreData entities |
+
+Mutations from native Swift currently route through the WebView bridge in hybrid mode. A first-class native `mutate(...)` API is on the roadmap.
+
+## See also
+
+- [Setup](/docs/documentation/apple/setup)
+- [SwiftUI](/docs/documentation/apple/swiftui)
+- [CloudKit](/docs/documentation/apple/cloudkit)
+- [Quickstart: Swift](/docs/quickstart/swift)

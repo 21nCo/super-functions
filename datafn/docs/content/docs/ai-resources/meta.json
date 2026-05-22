@@ -1,0 +1,14 @@
+{
+  "title": "AI Resources",
+  "description": "LLM and agent affordances",
+  "root": true,
+  "pages": [
+    "index",
+    "llms-txt",
+    "mcp",
+    "skills",
+    "cursor",
+    "claude",
+    "codex"
+  ]
+}

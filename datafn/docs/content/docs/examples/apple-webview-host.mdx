@@ -1,0 +1,102 @@
+---
+title: "Example: Apple WebView Host"
+description: "Reference SwiftUI host that embeds a web view, owns CoreData, and demonstrates three topologies."
+audience: guide
+applies_to: client
+---
+
+The Apple WebView Host is the Swift companion to the [Todo app example](/docs/examples/todo-app). It's a SwiftUI app that wraps a `WKWebView`, runs `DatafnAppleRuntime` to own CoreData persistence, and demonstrates how the same web app behaves across three deployment shapes.
+
+## Topology matrix
+
+| Topology | Web runtime | Local persistence | Remote persistence | Sync owner |
+| --- | --- | --- | --- | --- |
+| **Browser-owned** | Safari / desktop browser | IndexedDB | DataFn server | JavaScript |
+| **Native-backed (DataFn server)** | `WKWebView` | CoreData | DataFn server | Swift |
+| **Native-backed (CloudKit)** | `WKWebView` | CoreData | CloudKit private database | Swift |
+
+The host picks one of the three at runtime via a SwiftUI picker. The web app receives the choice via injected globals:
+
+```javascript
+window.__DATAFN_EXAMPLE_TOPOLOGY__       // "browser" | "native-server" | "native-cloudkit"
+window.__DATAFN_NATIVE_CONFIG__          // bridge handler name + native runtime params
+```
+
+## Project layout
+
+```
+apple-webview-host/
+├── DatafnAppleHost/                 ← SwiftUI app source
+├── DatafnAppleHostTests/            ← topology + bootstrap tests
+├── DatafnAppleHost.xcodeproj/       ← Xcode project
+└── scripts/verify-topologies.sh     ← consolidated verify command
+```
+
+## Running
+
+```bash
+# 1. Start the todo-app server (the native-backed-DataFn-server mode uses it):
+npm --prefix datafn/examples/todo-app/server install
+npm --prefix datafn/examples/todo-app/server run dev
+
+# 2. Start the todo-app web client (the WebView loads it):
+npm --prefix datafn/examples/todo-app/client install
+npm --prefix datafn/examples/todo-app/client run dev
+
+# 3. Open the Apple host in Xcode:
+open datafn/examples/apple-webview-host/DatafnAppleHost.xcodeproj
+# Pick the DatafnAppleHost scheme and an iOS simulator, then run.
+```
+
+## What the host does
+
+1. **Constructs a `DatafnAppleRuntime`.** Reads a bundled schema, creates the CoreData store under the application support directory, opens a sync backend (`.datafnServer` or `.iCloud`).
+2. **Wires a `DatafnWKWebViewBridgeHost`.** This is the host side of the WebView bridge — messages from JavaScript become Swift calls into the runtime.
+3. **Injects bootstrap globals.** Before `loadURL`, evaluates a small script that sets `window.__DATAFN_EXAMPLE_TOPOLOGY__` and `window.__DATAFN_NATIVE_CONFIG__`. The web app reads these on boot and picks adapters accordingly.
+4. **Owns sync and search.** In native-backed mode, the Swift runtime owns the CoreData store, the SearchFn index, and the sync engine. The web app dispatches DFQL through the bridge and reads through observable queries.
+
+## CloudKit mode caveats
+
+- Requires a real iCloud container identifier. The UI lets you swap it.
+- Requires matching app entitlements. The Xcode project has placeholder entitlements; replace before signing for device deployment.
+- The SearchFn index is **not** synced through CloudKit. Each device builds its own index from the CloudKit-merged records.
+
+## Native-backed mode is fail-fast
+
+If the WebView bridge isn't injected (e.g. you accidentally open the same Vite URL in Safari), the web app **must not** silently fall back to IndexedDB. It refuses to start. This is intentional: a user who expects native persistence shouldn't get browser persistence behind their back.
+
+## What to copy
+
+If you're building a SwiftUI app that wraps a `WKWebView` and wants native data ownership:
+
+1. Copy `HostWebView.swift` — the `WKWebView` configuration with bridge injection.
+2. Copy `RuntimeConfiguration.swift` — the `DatafnAppleRuntime` setup, including the topology switch.
+3. Copy `Bootstrap.swift` — the JS injection that hands topology and config to the web app.
+
+If you're only running CloudKit (no DataFn server):
+
+1. Same files, but ignore the `.datafnServer` branch.
+2. Use `DatafnCloudKitConfiguration(...)` and a real container ID.
+
+## Final verification
+
+```bash
+bash datafn/examples/apple-webview-host/scripts/verify-topologies.sh
+```
+
+Or individually:
+
+```bash
+npm --prefix datafn/swift-bridge test
+npm --prefix datafn/client test
+swift test --package-path datafn/swift
+xcodebuild -project datafn/examples/apple-webview-host/DatafnAppleHost.xcodeproj \
+  -scheme DatafnAppleHost \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test
+```
+
+## See also
+
+- [Apple → WebView bridge](/docs/documentation/apple/webview-bridge)
+- [Apple → CloudKit](/docs/documentation/apple/cloudkit)
+- [Todo app example](/docs/examples/todo-app)

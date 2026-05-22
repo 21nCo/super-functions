@@ -1,0 +1,70 @@
+---
+title: Capabilities
+description: Per-adapter feature matrix.
+---
+
+Each adapter declares its capabilities so clients and servers can adapt. Query through `adapter.capabilities` or `client.adapterInfo()`.
+
+## Capability shape
+
+```typescript
+interface SearchAdapterCapabilities {
+  persistent?: boolean;
+  searchAll?: boolean;
+  fuzzy?: boolean;
+  fieldBoosts?: boolean;
+  prefix?: boolean;
+  multiLanguage?: boolean;
+  maxBatchSize?: number;
+}
+```
+
+| Capability | Meaning |
+| --- | --- |
+| `persistent` | Data survives process or browser restarts |
+| `searchAll` | Native cross-resource search; if false, the client merges per-resource results |
+| `fuzzy` | Approximate matching available |
+| `fieldBoosts` | Per-field relevance weights honored |
+| `prefix` | Prefix / edge-n-gram matching supported |
+| `multiLanguage` | Stop words / stemmers per language supported |
+| `maxBatchSize` | Maximum docs in a single `index` call |
+
+## Matrix
+
+| Adapter | persistent | searchAll | fuzzy | fieldBoosts | prefix | multiLanguage | maxBatchSize |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `MemoryAdapter` | no | yes | yes | yes | yes | yes | 10_000 |
+| `IndexedDbAdapter` | yes (browser) | yes | yes | yes | yes | yes | 10_000 |
+| `PostgresAdapter` | yes | yes | partial (`pg_trgm`) | no | no | partial | 10_000 |
+| `MeilisearchAdapter` | yes | yes | yes | partial | yes | yes | 10_000 |
+| `ElasticsearchAdapter` | yes | yes | yes | yes | yes | yes | 10_000 |
+| `OpenSearchAdapter` | yes | yes | yes | yes | yes | yes | 10_000 |
+| `SearchFnMemoryAdapter` (Swift) | no | yes | yes | yes | yes | partial | 10_000 |
+| `SearchFnSQLiteAdapter` (Swift) | yes | yes | yes | yes | yes | partial | 10_000 |
+
+"partial" means the capability is available but with caveats:
+
+- `PostgresAdapter` fuzzy requires the `pg_trgm` extension and uses similarity rather than Levenshtein.
+- `PostgresAdapter` multi-language uses Postgres's built-in language configs (`english`, `simple`, etc.), not the SearchFn pipeline.
+- `MeilisearchAdapter` fieldBoosts use Meili's `attributesToSearchOn`/`rankingRules`, which aren't the same as in-engine boosts.
+- Swift multi-language ships English stemming and stop words; ES/FR/DE require custom pipelines.
+
+## Detecting capabilities at runtime
+
+```typescript
+const info = client.adapterInfo();
+
+if (!info.capabilities?.fuzzy) {
+  console.warn("Fuzzy not supported by", info.name);
+}
+```
+
+Use this when:
+
+- Disabling UI affordances (e.g. a "fuzzy" toggle) that the active backend can't support.
+- Building portable libraries that need to fall back gracefully.
+
+## See also
+
+- [Configuration](/docs/reference/configuration)
+- [Adapter index](/docs/reference/adapters)

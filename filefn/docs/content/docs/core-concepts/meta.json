@@ -1,0 +1,24 @@
+{
+  "title": "Core Concepts",
+  "pages": [
+    "index",
+    "architecture",
+    "upload-sessions",
+    "multipart",
+    "idempotency",
+    "policies",
+    "visibility",
+    "storage-targets",
+    "render-intents",
+    "artifacts",
+    "dedup",
+    "grants",
+    "share-links",
+    "offline",
+    "events",
+    "errors",
+    "observability",
+    "rate-limiting",
+    "security"
+  ]
+}

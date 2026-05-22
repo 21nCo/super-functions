@@ -1,0 +1,14 @@
+{
+  "title": "Plugins",
+  "pages": [
+    "index",
+    "password",
+    "email-otp",
+    "social-oauth",
+    "api-keys",
+    "two-factor",
+    "multi-region",
+    "native-handoff",
+    "authoring"
+  ]
+}

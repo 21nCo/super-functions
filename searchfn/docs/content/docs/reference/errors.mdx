@@ -1,0 +1,98 @@
+---
+title: Errors
+description: All SearchFn error codes — cause, fix, and retry semantics.
+---
+
+Every SearchFn response is an envelope. Failures look like:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "DFQL_INVALID",
+    "message": "Query must be a non-empty string",
+    "details": { "path": "query" }
+  }
+}
+```
+
+## Error matrix
+
+| Code | HTTP | Cause | Fix | Retry? |
+| --- | --- | --- | --- | --- |
+| `DFQL_INVALID` | 400 | Malformed request, missing required fields, wrong types | Validate the request shape client-side; check `details.path` | No |
+| `LIMIT_EXCEEDED` | 400 | Query/limit/batch size above the server's configured max | Reduce request size or increase `limits` in `createSearchFnServer` | No |
+| `DFQL_ABORTED` | 499 | The caller aborted via `AbortSignal` before the operation completed | None — this is the expected outcome of cancellation | No |
+| `DFQL_UNSUPPORTED` | 400 | The adapter doesn't implement the requested operation or option | Check adapter capabilities; use a different adapter; drop the unsupported option | No |
+| `FORBIDDEN` | 403 | The `authorize` callback returned false | Verify credentials / role | No |
+| `INTERNAL` | 500 | Unexpected backend failure | Inspect logs; check backend health; retry with backoff | Yes |
+| `SEARCH_ADAPTER_DISPOSED` | 500 | Called any method after `dispose()` | Re-initialize the adapter before use | No |
+| `SEARCH_TIMEOUT` | 504 | Adapter operation exceeded its timeout | Increase the adapter's `queryTimeoutMs`; check backend latency | Yes |
+
+## Client-side validation errors
+
+The client throws `SearchClientValidationError` before making any network call:
+
+```typescript
+try {
+  await client.search({ resource: "tasks", query: "" });
+} catch (err) {
+  if (err.code === "DFQL_INVALID") {
+    console.error("path:", err.details?.path); // "query"
+  }
+}
+```
+
+Validation never reaches the server, which means these errors are free of network latency and trivially testable.
+
+## Per-adapter error patterns
+
+### MemoryAdapter / IndexedDbAdapter
+
+These run in-process. Errors are almost always `DFQL_INVALID` (bad request) or `SEARCH_ADAPTER_DISPOSED`. `INTERNAL` indicates a bug in the built-in engine — file an issue.
+
+### PostgresAdapter
+
+| Symptom | Likely code | Notes |
+| --- | --- | --- |
+| `connection refused` | `INTERNAL` | DB unreachable or auth wrong |
+| Missing table | `INTERNAL` | Migration didn't run; see [Postgres adapter migration](/docs/reference/adapters/postgres) |
+| Long-running query | `SEARCH_TIMEOUT` | Tune `queryTimeoutMs` |
+| Retry exhaustion | `INTERNAL` (after retries) | Tune `retry.maxRetries` / inspect DB health |
+
+### Meilisearch / Elasticsearch / OpenSearch
+
+| Symptom | Likely code | Notes |
+| --- | --- | --- |
+| Bad API key | `INTERNAL` (with backend body in logs) | Rotate credentials |
+| Index missing | `INTERNAL` | Call `initialize()` to create indexes |
+| Network blip | `INTERNAL` | Retried automatically per adapter config |
+| Wrong engine string | `DFQL_UNSUPPORTED` | Set `engine: "elasticsearch"` or `"opensearch"` |
+
+## Retry semantics
+
+Only `INTERNAL`, `SEARCH_TIMEOUT`, and transient backend errors are safe to retry. Use exponential backoff:
+
+```typescript
+async function withRetry<T>(fn: () => Promise<T>, max = 3): Promise<T> {
+  let lastErr;
+  for (let attempt = 0; attempt < max; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err.code !== "INTERNAL" && err.code !== "SEARCH_TIMEOUT") throw err;
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt) + Math.random() * 100));
+    }
+  }
+  throw lastErr;
+}
+```
+
+Adapters that talk to external backends (Postgres, Meilisearch, ES/OS) already retry internally; don't double-retry at the application layer.
+
+## See also
+
+- [Envelopes](/docs/reference/envelopes)
+- [Events](/docs/reference/events)
+- [Troubleshooting](/docs/operations/troubleshooting)

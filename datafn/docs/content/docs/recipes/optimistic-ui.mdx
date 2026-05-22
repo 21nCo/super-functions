@@ -1,0 +1,115 @@
+---
+title: "Recipe: Optimistic UI"
+description: "Snappy mutations with deterministic rollback when the server rejects."
+audience: guide
+applies_to: both
+---
+
+DataFn's mutations are optimistic by default — they hit local storage, update signals, then sync to the server in the background. You don't have to opt in. But you do have to handle the case where the server rejects, because the local store has already changed.
+
+## What "optimistic" means here
+
+When you call `client.table("tasks").mutate(...)`:
+
+1. The local IndexedDB row is updated immediately.
+2. All signals watching that resource emit the new value.
+3. The mutation is queued for sync.
+4. The sync engine pushes to `/datafn/push`.
+5. If the push succeeds, the local row is reconciled with the server's response (which may include capability fields like `createdAt`).
+6. If the push fails (validation, authz, conflict), the local change is reverted and the failure is surfaced to your `onSyncEvent` callback.
+
+Most UIs don't have to handle the failure case explicitly — the revert is automatic. But if you're in a multi-screen flow ("…then I navigate elsewhere") you may want to know.
+
+## Handling a rejection
+
+```typescript
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  sync: { remote: "/datafn", offlinability: true },
+  onSyncEvent: (event) => {
+    if (event.type !== "push:error") return;
+    const { mutation, error } = event;
+    switch (error.code) {
+      case "DFQL_INVALID":
+        toast.error(`Invalid input: ${error.message}`);
+        break;
+      case "FORBIDDEN":
+        toast.error("You don't have permission to do that.");
+        break;
+      case "CONFLICT":
+        toast.warning("Someone else changed this. Please reload.");
+        break;
+      default:
+        toast.error(`Sync failed: ${error.code}`);
+    }
+  },
+});
+```
+
+For server-side rejections, the local store has already reverted by the time `onSyncEvent` fires. Don't try to "re-apply" the mutation; that produces a flicker.
+
+## Explicit "show the result" UI
+
+If you want a "saved" indicator, observe the per-mutation lifecycle:
+
+```typescript
+import { useState } from "react";
+
+function useMutationWithStatus() {
+  const [status, setStatus] = useState<"idle" | "pending" | "saved" | "error">("idle");
+
+  async function run(fn: () => Promise<{ ok: boolean }>) {
+    setStatus("pending");
+    const env = await fn();
+    setStatus(env.ok ? "saved" : "error");
+    setTimeout(() => setStatus("idle"), 1500);
+  }
+
+  return { status, run };
+}
+```
+
+`mutate(...)` returns synchronously when the local optimistic update is done, but it returns a promise that resolves when the **server** confirms (or rejects). Most apps don't need to wait — but the option is there.
+
+## Insert-then-navigate
+
+A common pattern is to insert a row and immediately navigate to its detail page. The local id is available synchronously:
+
+```typescript
+const env = await client.table("projects").mutate({
+  operation: "insert",
+  record: { name: "New project" },
+});
+if (env.ok) navigate(`/projects/${env.result.id}`);
+```
+
+This works offline too. The id is generated client-side from `idPrefix` + a local ULID; the server preserves it. The detail page can immediately read the row from local storage; the row will be tagged `pendingSync` until the push completes.
+
+## Tracking pendingSync state
+
+To dim un-saved rows in the UI:
+
+```typescript
+const tasks = client.table("tasks").signal({ filters: { ... } });
+tasks.subscribe((rows) =>
+  rows?.map((r) => ({ ...r, _pending: r._meta?.pendingSync }))
+);
+```
+
+The signal includes a `_meta` object with sync state — `pendingSync: true` if the row hasn't been confirmed by the server yet, `lastError` if the last push attempt failed.
+
+## Don't optimistically render server-generated fields
+
+Capability fields (`createdAt`, `updatedAt`, `createdBy`) are filled by the server. The local row will have them as undefined or `null` until the push completes. Don't render them as if they were canonical — wait for the server confirmation, or render a placeholder:
+
+```tsx
+<small>{task.createdAt ? formatDate(task.createdAt) : "just now"}</small>
+```
+
+## See also
+
+- [Change tracking](/docs/documentation/advanced/change-tracking)
+- [Error handling](/docs/documentation/advanced/error-handling)
+- [Offline conflicts](/docs/recipes/offline-conflicts)

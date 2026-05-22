@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 6002",
-    "prebuild": "npm --prefix ../../packages/docs-theme run build && node ./scripts/ensure-styled-jsx.mjs && fumadocs-mdx",
+    "prebuild": "npm --prefix ../../packages/docs-theme run build && node ./scripts/ensure-styled-jsx.mjs && fumadocs-mdx && node ./scripts/generate-llms.mjs",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "generate:llms": "node ./scripts/generate-llms.mjs"
   },
   "dependencies": {
     "@21n/fonts": "^1.0.1",

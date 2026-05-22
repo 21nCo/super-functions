@@ -1,0 +1,148 @@
+---
+title: "Recipe: Kanban Board"
+description: "Ordered lists with drag-and-drop, position fields, and atomic moves via transact."
+audience: guide
+applies_to: both
+---
+
+A kanban board needs three things you don't get for free: a `position` field for ordering, atomic re-orders that won't reorder twice if the network is flaky, and a "move card between columns" operation that updates two records at once.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "lists",
+      version: 1,
+      idPrefix: "lst",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "position", type: "number", required: true },
+      ],
+      indices: { base: ["position"] },
+    },
+    {
+      name: "cards",
+      version: 1,
+      idPrefix: "crd",
+      fields: [
+        { name: "listId", type: "string", required: true, references: { resource: "lists" } },
+        { name: "title", type: "string", required: true },
+        { name: "position", type: "number", required: true },
+      ],
+      indices: { base: ["listId", "position"] },
+    },
+  ],
+  relations: [
+    { from: "lists", to: "cards", through: "listId", type: "one-many" },
+  ],
+});
+```
+
+## Choosing a position scheme
+
+Three options, increasing in complexity:
+
+1. **Sparse integers** (`position = 100, 200, 300, ...`). Re-order by setting the moved card to halfway between its neighbors. Re-densify the column when positions get too close.
+2. **Lexicographic strings** (`"a"`, `"m"`, `"z"`) via a library like [fractional-indexing](https://github.com/rocicorp/fractional-indexing). No re-densification needed.
+3. **Linked list pointers** (`prevId`, `nextId`). Atomic and densification-free but you need a transaction for every move.
+
+The example below uses fractional indexing — it's the best DX for offline-first because two clients can re-order without collisions.
+
+```typescript
+import { generateKeyBetween } from "fractional-indexing";
+
+function newPosition(prev: string | null, next: string | null) {
+  return generateKeyBetween(prev, next);
+}
+```
+
+(Change the `position` type to `"string"` in the schema if you go this route.)
+
+## Moving a card within a column
+
+```typescript
+async function moveCard(cardId: string, prevId: string | null, nextId: string | null) {
+  const prev = prevId ? await client.table("cards").get(prevId) : null;
+  const next = nextId ? await client.table("cards").get(nextId) : null;
+
+  await client.table("cards").mutate({
+    operation: "merge",
+    id: cardId,
+    record: { position: newPosition(prev?.position ?? null, next?.position ?? null) },
+  });
+}
+```
+
+## Moving a card across columns
+
+A cross-column move is two updates: change the card's `listId` and its `position`. Wrap in a `transact` so both succeed or both fail.
+
+```typescript
+async function moveCardToList(cardId: string, toListId: string, prevId: string | null, nextId: string | null) {
+  const prev = prevId ? await client.table("cards").get(prevId) : null;
+  const next = nextId ? await client.table("cards").get(nextId) : null;
+
+  await client.transact({
+    steps: [
+      {
+        type: "mutation",
+        mutation: {
+          resource: "cards",
+          version: 1,
+          operation: "merge",
+          id: cardId,
+          record: {
+            listId: toListId,
+            position: newPosition(prev?.position ?? null, next?.position ?? null),
+          },
+        },
+      },
+    ],
+  });
+}
+```
+
+(Single-step transactions are fine if you want guard semantics or want to add other steps later.)
+
+## Reading a column
+
+```typescript
+const cards = client.table("cards").signal({
+  filters: { listId: { $eq: "lst_planning" } },
+  sort: ["position:asc", "id:asc"],
+});
+```
+
+Sorting by `id` after `position` makes the order deterministic if two cards somehow share a position.
+
+## Guarding moves
+
+If two users drag the same card at once, you want the second move to lose cleanly:
+
+```typescript
+await client.table("cards").mutate({
+  operation: "merge",
+  id: cardId,
+  record: { position: newPosition(prev?.position ?? null, next?.position ?? null) },
+  if: { updatedAt: { $eq: card.updatedAt } }, // optimistic concurrency
+});
+```
+
+On conflict the server returns `CONFLICT`; refresh the card and retry.
+
+## What this gives you
+
+- Offline re-orders never collide (fractional indexing handles it).
+- Cross-column moves are atomic.
+- `if` guards prevent two simultaneous drags from clobbering each other.
+
+## See also
+
+- [Offline conflicts](/docs/recipes/offline-conflicts) — broader conflict-handling patterns.
+- [Transactions](/docs/dfql/transactions) — full transact contract.
+- [Capabilities](/docs/documentation/capabilities) — if you want soft-delete or archive on cards.

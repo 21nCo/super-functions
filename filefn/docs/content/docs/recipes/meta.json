@@ -1,0 +1,16 @@
+{
+  "title": "Recipes",
+  "pages": [
+    "index",
+    "image-uploads",
+    "document-uploads",
+    "video-uploads",
+    "opfs-offline",
+    "heic-conversion",
+    "cdn-integration",
+    "virus-scanning",
+    "signed-share-links",
+    "custom-processor",
+    "tenant-isolation"
+  ]
+}

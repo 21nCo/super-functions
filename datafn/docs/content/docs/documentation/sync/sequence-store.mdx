@@ -1,0 +1,141 @@
+---
+title: "Sequence Store"
+description: "Where serverSeq lives, why it matters, and how to pick the right backend."
+audience: reference
+applies_to: server
+---
+
+`serverSeq` is the spine of DataFn's sync engine: a monotonically increasing integer assigned to every mutation, per-namespace. The **sequence store** is the component that hands out the next value atomically. Pick the right backend or you'll get duplicate sequence numbers and broken sync.
+
+## The contract
+
+```typescript
+interface SequenceStore {
+  next(namespace: string): Promise<number>;
+  peek(namespace: string): Promise<number>;
+  reset(namespace: string, to: number): Promise<void>; // testing / disaster recovery
+}
+```
+
+`next` must be **atomic across all server instances**. Two concurrent calls in two different processes must never return the same number for the same namespace.
+
+## Built-in backends
+
+| Backend | Atomic across processes | Persistence | Best for |
+| --- | --- | --- | --- |
+| `MemorySequenceStore` | No | No | Tests and single-instance dev |
+| `RedisSequenceStore` | Yes | Yes (Redis durability config) | Multi-instance production |
+| `KVSequenceStore` | Depends on KV | Yes | Edge runtimes with `incr()`-supporting KV (Cloudflare KV, Upstash KV) |
+| `DatabaseSequenceStore` | Yes (via transaction) | Yes | When you don't want Redis |
+| `ChainedSequenceStore` | Yes | Yes | Multi-tier (memory → Redis → DB) |
+
+## Choosing
+
+### Single-instance dev / tests
+
+The default. No configuration needed:
+
+```typescript
+const datafn = await createDatafnServer({ schema, db });
+// Uses MemorySequenceStore implicitly
+```
+
+This breaks the moment you scale to two instances. Don't ship it to production.
+
+### Multi-instance production: Redis
+
+```typescript
+import IORedis from "ioredis";
+const redis = new IORedis(process.env.REDIS_URL!);
+
+const datafn = await createDatafnServer({
+  schema, db, redis,
+  // RedisSequenceStore is auto-selected when redis is configured.
+});
+```
+
+Redis is the canonical choice. `INCR` is atomic, fast (`<1ms` typical), and durable enough for sequence numbers (the AOF/RDB story is fine for this use case).
+
+### Edge runtimes: KV
+
+For Cloudflare Workers, Durable Objects, or Vercel KV:
+
+```typescript
+import { createSequenceStore, KVSequenceStore } from "@datafn/server";
+
+const store = new KVSequenceStore(env.MY_KV); // KV namespace with incr() support
+const datafn = await createDatafnServer({ schema, db, sequenceStore: store });
+```
+
+Cloudflare KV doesn't support `INCR` natively — use a Durable Object or pair with Cloudflare Queues for serialization. For Upstash KV (a Redis-compatible HTTP API), `RedisSequenceStore` with the Upstash REST client works.
+
+### Database-backed
+
+If Redis is operationally too expensive and you're running few enough instances that database INCRs are fast enough:
+
+```typescript
+import { DatabaseSequenceStore } from "@datafn/server";
+
+const store = new DatabaseSequenceStore({ adapter: db });
+const datafn = await createDatafnServer({ schema, db, sequenceStore: store });
+```
+
+Backed by a `__datafn_seq` table; uses `SELECT ... FOR UPDATE` (Postgres) or equivalent for atomicity. Slower than Redis (`~5ms` vs `<1ms`) but uses one less moving part.
+
+### Chained
+
+For a memory cache in front of Redis:
+
+```typescript
+import { ChainedSequenceStore, RedisSequenceStore, MemorySequenceStore } from "@datafn/server";
+
+const store = new ChainedSequenceStore([
+  new MemorySequenceStore(),       // hot cache, batched fetches
+  new RedisSequenceStore({ redis }),
+]);
+```
+
+`ChainedSequenceStore` claims a batch of sequence numbers from Redis (e.g. 100 at a time) and serves them from memory. This drops Redis hits by 100x at the cost of "burning" sequence numbers on process restart (a benign waste — sequence numbers are not user-visible).
+
+## Per-namespace performance
+
+`serverSeq` is per-namespace, so a single namespace is the throughput unit. Typical limits:
+
+- **Redis**: ~10k INCRs/sec per namespace before Redis becomes the bottleneck.
+- **Database-backed**: ~1k/sec.
+- **ChainedSequenceStore (batch 100)**: ~100k effective rate per namespace.
+
+If a single namespace exceeds 5k writes/sec sustained, the sequence store is the second thing to look at (after the database).
+
+## Recovery and reset
+
+If the sequence store loses state (Redis flushed, database table truncated), you need to recover. Two strategies:
+
+### Bootstrap from the database
+
+DataFn ships a `boostrapSequence(namespace)` helper that scans the changelog table for the largest existing `serverSeq` and sets the sequence store to that + 1.
+
+```typescript
+import { bootstrapSequence } from "@datafn/server";
+
+// On startup, after detecting Redis was flushed:
+await bootstrapSequence(datafn, "org:42");
+```
+
+Run for every active namespace. Safe to over-run; bootstrapping a namespace with no rows just sets it to 0.
+
+### Bump-and-forget
+
+Alternative: set every namespace's sequence to `Math.floor(Date.now() / 1000)`. This guarantees forward progress at the cost of a one-time gap. Clients pull from the old cursor and receive everything between old and new — the gap is invisible to them.
+
+## Per-process safety
+
+Within a single process, `MemorySequenceStore` is correct — Node's event loop serializes the `next()` calls. Across processes it isn't; you need an external coordinator (Redis, KV, DB).
+
+If you accidentally deploy multiple instances with `MemorySequenceStore`, you'll see **duplicate `serverSeq` values** on different rows. The client sync engine flags this with a `DUPLICATE_SEQ` warning in logs; the data is recoverable but the cleanup is manual.
+
+## See also
+
+- [Sync overview](/docs/documentation/sync/overview)
+- [Ordering guarantees](/docs/documentation/sync/ordering-guarantees)
+- [Scaling](/docs/documentation/deploy/scaling)

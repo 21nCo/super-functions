@@ -1,0 +1,68 @@
+---
+title: Cursor Setup
+description: Pin SearchFn docs in Cursor and prompt the agent effectively.
+---
+
+Cursor reads documentation through MCP. Set it up once, then mention SearchFn naturally in chat.
+
+## 1. Install the MCP server
+
+`~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "searchfn": {
+      "url": "https://searchfn.com/api/mcp"
+    }
+  }
+}
+```
+
+Restart Cursor.
+
+## 2. Add to project rules
+
+`.cursor/rules/searchfn.mdc`:
+
+```markdown
+---
+description: Conventions when working with SearchFn
+globs: ["**/*.ts", "**/*.tsx", "**/*.py", "**/*.swift"]
+alwaysApply: false
+---
+
+# SearchFn
+
+When working with @searchfn/* packages:
+
+- Use the SearchFn MCP server to fetch docs before generating code.
+- Pick the adapter from this matrix:
+  - In-process / tests / CLI → `@searchfn/adapter-memory`
+  - Browser, offline-first → `@searchfn/adapter-indexeddb`
+  - Existing Postgres → `@searchfn/adapter-postgres`
+  - Dedicated search service → `@searchfn/adapter-meilisearch` (most cases) or `@searchfn/adapter-elasticsearch` / `@searchfn/adapter-opensearch` (large scale)
+- Always call `initialize()` with `resources` and `searchFields` before `index()` or `search()`.
+- `search()` returns IDs only. Fetch full records from your store of truth.
+- Validation errors are `DFQL_INVALID`; rate/limit errors are `LIMIT_EXCEEDED`.
+- For DataFn integration use `@searchfn/datafn-provider`, never roll your own bridge.
+```
+
+## 3. Prompt patterns
+
+For setup tasks:
+
+> Set up SearchFn in this Next.js app using the PostgresAdapter. Use the SearchFn MCP server to fetch docs as needed.
+
+For indexing tasks:
+
+> Generate a batch indexer that reads all `articles` from Drizzle and indexes them into SearchFn with fields `title`, `subtitle`, `body`.
+
+For relevance tuning:
+
+> Tune the SearchFn config so `title` weighs 3x the body. Add a stop word list for German.
+
+## See also
+
+- [MCP server](/docs/ai-resources/mcp)
+- [Architecture](/docs/architecture)

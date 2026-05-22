@@ -1,0 +1,5 @@
+{
+  "title": "Performance",
+  "description": "Tuning indexing throughput, query latency, and caches",
+  "pages": ["index", "indexing-throughput", "query-latency", "cache-tuning"]
+}

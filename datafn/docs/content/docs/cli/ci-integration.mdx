@@ -1,0 +1,231 @@
+---
+title: "CI Integration"
+description: "GitHub Actions, GitLab CI, and CircleCI recipes for DataFn schema validation and migration."
+audience: guide
+applies_to: typescript
+---
+
+The CLI is designed for CI environments. Every command exits non-zero on failure, supports `--format json`, and reads credentials from env vars rather than disk.
+
+## What to gate in CI
+
+1. **Schema validity** — `datafn validate` on every PR. Catches malformed schemas before they get merged.
+2. **Breaking diff detection** — `datafn schema-diff --fail-on breaking` on every PR. Forces explicit review of breaking changes.
+3. **Type codegen freshness** — `datafn type-codegen --check` on every PR. Ensures generated types are in sync with the schema.
+4. **Migration application** — `datafn schema-migrate apply` on merge. Promotes schema changes to the corresponding environment.
+
+## GitHub Actions
+
+```yaml
+# .github/workflows/datafn-ci.yml
+name: DataFn CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Validate schema
+        run: npx datafn validate
+      - name: Schema diff vs main
+        if: github.event_name == 'pull_request'
+        run: |
+          npx datafn schema-diff \
+            --before "git:${{ github.base_ref }}:schema.datafn.ts" \
+            --fail-on breaking \
+            --format markdown > /tmp/diff.md
+          cat /tmp/diff.md >> $GITHUB_STEP_SUMMARY
+      - name: Type codegen freshness
+        run: npx datafn type-codegen --check
+
+  apply-staging:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Apply pending migrations
+        env:
+          DATAFN_STAGING_TOKEN: ${{ secrets.DATAFN_STAGING_TOKEN }}
+        run: |
+          for f in migrations/*.ts; do
+            npx datafn schema-migrate apply --profile staging --plan "$f"
+          done
+
+  apply-production:
+    needs: apply-staging
+    if: github.event.release.tag_name
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Apply pending migrations
+        env:
+          DATAFN_PRODUCTION_TOKEN: ${{ secrets.DATAFN_PRODUCTION_TOKEN }}
+        run: |
+          for f in migrations/*.ts; do
+            npx datafn schema-migrate apply --profile production --plan "$f"
+          done
+```
+
+The `environment:` keys gate production with the standard GitHub deployment protection rules — required reviewers, wait timer, etc.
+
+## GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+stages: [validate, deploy-staging, deploy-production]
+
+validate:
+  stage: validate
+  image: node:20
+  script:
+    - npm ci
+    - npx datafn validate
+    - >
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        npx datafn schema-diff \
+          --before "git:origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME:schema.datafn.ts" \
+          --fail-on breaking
+      fi
+    - npx datafn type-codegen --check
+
+deploy-staging:
+  stage: deploy-staging
+  image: node:20
+  only: [main]
+  environment: staging
+  script:
+    - npm ci
+    - for f in migrations/*.ts; do npx datafn schema-migrate apply --profile staging --plan "$f"; done
+
+deploy-production:
+  stage: deploy-production
+  image: node:20
+  only: [tags]
+  environment: production
+  when: manual
+  script:
+    - npm ci
+    - for f in migrations/*.ts; do npx datafn schema-migrate apply --profile production --plan "$f"; done
+```
+
+## CircleCI
+
+```yaml
+# .circleci/config.yml
+version: 2.1
+
+jobs:
+  validate:
+    docker: [{ image: cimg/node:20.0 }]
+    steps:
+      - checkout
+      - run: npm ci
+      - run: npx datafn validate
+      - run: npx datafn type-codegen --check
+      - run:
+          name: Schema diff vs main
+          command: |
+            BASE=${CIRCLE_PR_BASE_BRANCH:-main}
+            git fetch origin $BASE
+            npx datafn schema-diff \
+              --before "git:origin/$BASE:schema.datafn.ts" \
+              --fail-on breaking
+
+  apply-staging:
+    docker: [{ image: cimg/node:20.0 }]
+    steps:
+      - checkout
+      - run: npm ci
+      - run:
+          name: Apply migrations
+          command: |
+            for f in migrations/*.ts; do
+              npx datafn schema-migrate apply --profile staging --plan "$f"
+            done
+
+workflows:
+  ci:
+    jobs:
+      - validate
+      - apply-staging:
+          requires: [validate]
+          filters: { branches: { only: main } }
+```
+
+## OIDC-based auth (GitHub Actions example)
+
+Instead of long-lived bearer tokens, use OIDC token exchange:
+
+```yaml
+permissions:
+  id-token: write
+  contents: read
+
+steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-node@v4
+    with: { node-version: 20 }
+  - run: npm ci
+  - name: Exchange OIDC for DataFn token
+    id: token
+    run: |
+      OIDC_TOKEN=$(curl -sLS \
+        -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=datafn-prod")
+      DATAFN_TOKEN=$(curl -sX POST https://api.example.com/datafn/auth/oidc-exchange \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$OIDC_TOKEN\"}" | jq -r .access_token)
+      echo "DATAFN_TOKEN=$DATAFN_TOKEN" >> $GITHUB_ENV
+  - run: |
+      for f in migrations/*.ts; do
+        npx datafn schema-migrate apply --profile production --plan "$f"
+      done
+    env:
+      DATAFN_PRODUCTION_TOKEN: ${{ env.DATAFN_TOKEN }}
+```
+
+OIDC is the recommended pattern for production deploys — no secrets in repo settings, short-lived credentials, audit trail through your IdP.
+
+## Reading the diff in PR comments
+
+The CLI's `--format markdown` output is designed for posting:
+
+```yaml
+- name: Post schema diff
+  if: github.event_name == 'pull_request'
+  run: |
+    npx datafn schema-diff \
+      --before "git:${{ github.base_ref }}:schema.datafn.ts" \
+      --format markdown > /tmp/diff.md
+- uses: marocchino/sticky-pull-request-comment@v2
+  with:
+    header: schema-diff
+    path: /tmp/diff.md
+```
+
+`sticky-pull-request-comment` updates the same comment instead of posting fresh ones — keeps the PR clean.
+
+## See also
+
+- [Environment profiles](/docs/cli/env-profiles)
+- [Multi-environment workflows](/docs/cli/multi-env)
+- [`datafn schema-diff`](/docs/cli/schema-diff)
+- [`datafn schema-migrate`](/docs/cli/schema-migrate)

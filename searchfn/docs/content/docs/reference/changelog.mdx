@@ -1,0 +1,66 @@
+---
+title: Changelog
+description: Release notes for SearchFn packages.
+---
+
+SearchFn ships a coordinated set of packages. Each release notes which packages changed.
+
+## 0.2.0 — 2026-03-11
+
+### Breaking
+
+- Removed the legacy aggregate adapters package.
+- Split adapters into dedicated packages:
+  - `@searchfn/adapter-contracts`
+  - `@searchfn/adapter-memory`
+  - `@searchfn/adapter-indexeddb`
+  - `@searchfn/adapter-postgres`
+  - `@searchfn/adapter-meilisearch`
+  - `@searchfn/adapter-elasticsearch`
+  - `@searchfn/adapter-opensearch`
+
+### Migration
+
+#### Package mapping
+
+| Old | New |
+| --- | --- |
+| legacy aggregate | `@searchfn/adapter-memory` |
+| legacy aggregate | `@searchfn/adapter-indexeddb` |
+| legacy aggregate | `@searchfn/adapter-postgres` |
+| legacy aggregate | `@searchfn/adapter-meilisearch` |
+| legacy aggregate | `@searchfn/adapter-elasticsearch` |
+| legacy aggregate | `@searchfn/adapter-opensearch` |
+
+#### Import mapping
+
+| Old | New |
+| --- | --- |
+| `import { MemoryAdapter } from "<legacy>"` | `import { MemoryAdapter } from "@searchfn/adapter-memory"` |
+| `import { IndexedDbAdapter } from "<legacy>"` | `import { IndexedDbAdapter } from "@searchfn/adapter-indexeddb"` |
+| `import { PostgresAdapter } from "<legacy>"` | `import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres"` |
+| `import { MeilisearchAdapter } from "<legacy>"` | `import { MeilisearchAdapter } from "@searchfn/adapter-meilisearch"` |
+| `import { ElasticsearchAdapter } from "<legacy>"` | `import { ElasticsearchAdapter } from "@searchfn/adapter-elasticsearch"` |
+| `import { OpenSearchAdapter } from "<legacy>"` | `import { OpenSearchAdapter } from "@searchfn/adapter-opensearch"` |
+
+## Versioning policy
+
+- **Patch (0.x.y)**: bug fixes, doc improvements, perf wins that don't change behavior.
+- **Minor (0.x.0)**: new features, new adapters, backwards-compatible additions to the SearchAdapter contract.
+- **Major (x.0.0)**: contract changes, removed deprecated APIs, breaking changes to envelopes.
+
+SearchFn is in 0.x — minor versions may include breaking changes when called out in this changelog.
+
+## Coordinated releases
+
+`@searchfn/*` packages share a version. Upgrading is per-package, but the same version across packages is the supported configuration. Mixing major versions across packages is not supported.
+
+## Upgrade guides
+
+- Major bumps include a `### Migration` section above with package/import/dependency mappings.
+- Run `npm ls @searchfn/*` after an upgrade to confirm versions match across the tree.
+
+## See also
+
+- [Configuration](/docs/reference/configuration)
+- [GitHub releases](https://github.com/21nCo/super-functions/releases)

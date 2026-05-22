@@ -1,0 +1,103 @@
+---
+title: Diagnostics
+description: Opt-in event sink for observing SearchFn lifecycle on Apple.
+---
+
+`SearchFnDiagnosticsSink` is the Apple equivalent of the TypeScript server's logger. It's opt-in, redacted, and gives you per-event counts and timings.
+
+## Wiring
+
+```swift
+let sink = SearchFnDiagnosticsSink { event in
+    print(event)
+}
+
+let client = search.client(configuration: SearchFnClientConfiguration(diagnostics: sink))
+```
+
+The same sink can be attached to the adapter directly:
+
+```swift
+let adapter = SearchFnMemoryAdapter(configuration: SearchFnMemoryAdapterConfiguration(
+    diagnostics: sink
+))
+```
+
+When attached at both layers, client events and adapter events fire independently — useful for debugging.
+
+## Event groups
+
+| Source | Group | Examples |
+| --- | --- | --- |
+| Client | `initialize`, `index`, `search`, `searchAll`, `searchAll.fallback`, `remove`, `clear`, `dispose` | One per client method call |
+| Adapter | `initialize`, `index`, `search`, `searchAll`, `remove`, `clear`, `dispose` | Adapter-level operations |
+| Persistence | `open`, `reopen`, `close` | Only for `SQLiteAdapter` |
+
+## What's included
+
+Per-event payloads contain counts and metadata:
+
+- `resource` (string)
+- `query` length (Int) — **not** the query content
+- `documentCount` (Int) for indexing
+- `indexKey` (string, hashed)
+- `directoryName` (string, deterministic from indexKey)
+- `schemaVersion` (string)
+- `durationNanoseconds` (Int)
+
+Raw field values, full query strings, and document content are **not** emitted. Diagnostics are safe to forward to a remote logger.
+
+## Routing to a logger
+
+```swift
+import OSLog
+
+let logger = Logger(subsystem: "com.example.MyApp", category: "searchfn")
+
+let sink = SearchFnDiagnosticsSink { event in
+    switch event {
+    case .client(let group, let detail):
+        logger.info("client.\(group, privacy: .public): \(detail, privacy: .public)")
+    case .adapter(let group, let detail):
+        logger.info("adapter.\(group, privacy: .public): \(detail, privacy: .public)")
+    case .persistence(let group, let detail):
+        logger.info("persistence.\(group, privacy: .public): \(detail, privacy: .public)")
+    }
+}
+```
+
+Privacy markers (`.public`, `.private`) are honored by OSLog — diagnostic detail is safe to mark public because it's already redacted.
+
+## Performance tracking
+
+```swift
+let sink = SearchFnDiagnosticsSink { event in
+    if case .client(let group, let detail) = event,
+       group == "search" {
+        if let ns = detail.durationNanoseconds {
+            let ms = Double(ns) / 1_000_000.0
+            metrics.search.latency.record(ms)
+        }
+    }
+}
+```
+
+Hook into Apple's Metrics framework or your own telemetry pipeline.
+
+## Disabling
+
+Don't pass a `diagnostics` to the configuration — diagnostics are off by default.
+
+For production builds where you want diagnostics only when the user reports an issue:
+
+```swift
+let config = SearchFnClientConfiguration(
+    diagnostics: userOptedIn ? sink : nil
+)
+```
+
+## See also
+
+- [Events reference](/docs/reference/events)
+- [Swift reference](/docs/reference/swift)
+- [Memory adapter](/docs/documentation/apple/memory-adapter)

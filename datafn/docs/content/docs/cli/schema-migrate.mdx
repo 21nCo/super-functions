@@ -1,0 +1,187 @@
+---
+title: "datafn schema-migrate"
+description: "Generate and apply schema migration plans."
+audience: reference
+applies_to: typescript
+---
+
+`datafn schema-migrate` turns a [schema diff](/docs/cli/schema-diff) into an executable migration plan and applies it to your data store. Use it for the small set of changes that need explicit data transformation (renames, type changes with custom mapping, backfills).
+
+The simpler case — additive changes only — doesn't need a migration. The runtime handles those at startup. Migrations exist for the harder cases.
+
+## Usage
+
+```bash
+datafn schema-migrate generate --before <path>
+datafn schema-migrate apply --plan migrations/<file>.ts
+datafn schema-migrate status
+```
+
+## Subcommands
+
+### `generate`
+
+```bash
+datafn schema-migrate generate --before main:schema.datafn.ts --out migrations/
+```
+
+Reads the diff between `--before` and the current schema, generates a TypeScript migration file with `up` / `down` stubs:
+
+```typescript
+// migrations/2026-05-21T12-00-00-rename-priority.ts
+import { defineMigration } from "@datafn/migrate";
+
+export default defineMigration({
+  id: "2026-05-21T12-00-00-rename-priority",
+  description: "Convert priority from int to string enum",
+  schemaHashBefore: "abc123",
+  schemaHashAfter: "def456",
+  resources: ["tasks"],
+
+  up: async ({ stream, batch }) => {
+    for await (const task of stream("tasks")) {
+      await batch.set("tasks", task.id, {
+        priority: ["low", "medium", "high"][task.priority - 1] ?? "medium",
+      });
+    }
+  },
+
+  down: async ({ stream, batch }) => {
+    for await (const task of stream("tasks")) {
+      await batch.set("tasks", task.id, {
+        priority: { low: 1, medium: 2, high: 3 }[task.priority] ?? 2,
+      });
+    }
+  },
+});
+```
+
+Replace the body with your transformation logic.
+
+### `apply`
+
+```bash
+datafn schema-migrate apply --plan migrations/2026-05-21T12-00-00-rename-priority.ts
+```
+
+Runs the migration. Behavior:
+
+1. Validates the migration's `schemaHashBefore` matches the store's current hash.
+2. Starts a transaction.
+3. Streams affected resources and applies `up`.
+4. On success, advances the store's schema hash to `schemaHashAfter`.
+5. On failure, rolls back and exits non-zero.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report what would change without writing |
+| `--namespace <ns>` | Apply only to a specific namespace (default: all) |
+| `--batch-size <n>` | Tune batch size (default 500) |
+| `--checkpoint <path>` | Persist progress for resumable runs |
+
+### `status`
+
+```bash
+datafn schema-migrate status
+```
+
+Shows the current store schema hash, last applied migration, and pending migrations (files in `migrations/` that haven't been applied).
+
+### `rollback`
+
+```bash
+datafn schema-migrate rollback --plan migrations/<file>.ts
+```
+
+Runs the `down` function. Reverses `up`. Same flags as `apply`.
+
+## Migration safety rules
+
+The CLI enforces these by default; pass `--force` to override (don't).
+
+1. **Hash match required.** `apply` refuses to run if `schemaHashBefore` doesn't match the store's current hash. Prevents replaying an old migration on a future schema.
+2. **One in-flight migration.** Concurrent migrations on the same store fail with `MIGRATION_LOCKED`.
+3. **Idempotent re-runs.** If `apply` is re-invoked on the same migration, it's a no-op (the hash already matches `schemaHashAfter`).
+4. **Forward-only locks.** Once a migration has been applied in production, the file is locked — modifying it later breaks reproducibility. Convention: create new migrations rather than editing applied ones.
+
+## Where it runs
+
+Migrations run **server-side**, against the authoritative database. Clients re-clone after schema-hash mismatch on their next sync. You don't need a client-side migration.
+
+For the client experience after a server migration, see [Schema migration](/docs/documentation/sync/schema-migration).
+
+## Example: rename a field
+
+Schema before:
+
+```typescript
+{ name: "title", type: "string", required: true }
+```
+
+Schema after:
+
+```typescript
+{ name: "name", type: "string", required: true }
+```
+
+Generated migration:
+
+```typescript
+import { defineMigration } from "@datafn/migrate";
+
+export default defineMigration({
+  id: "2026-05-21-rename-title-to-name",
+  description: "Rename tasks.title to tasks.name",
+  schemaHashBefore: "abc123",
+  schemaHashAfter: "def456",
+  resources: ["tasks"],
+
+  up: async ({ stream, batch }) => {
+    for await (const task of stream("tasks")) {
+      await batch.set("tasks", task.id, { name: task.title });
+      // The "title" field is dropped by the schema-hash change.
+    }
+  },
+
+  down: async ({ stream, batch }) => {
+    for await (const task of stream("tasks")) {
+      await batch.set("tasks", task.id, { title: task.name });
+    }
+  },
+});
+```
+
+## Example: type change with custom map
+
+Already shown above (`priority: int → string enum`). The pattern is: stream, transform, write.
+
+## Example: backfill from another resource
+
+```typescript
+up: async ({ stream, batch, get }) => {
+  for await (const task of stream("tasks")) {
+    const project = await get("projects", task.projectId);
+    if (!project) continue;
+    await batch.set("tasks", task.id, { projectName: project.name });
+  }
+}
+```
+
+## Performance
+
+Large migrations are streamed in batches. The runtime emits progress events:
+
+```
+[migrate] tasks: 12,500/45,000 (28%)
+[migrate] tasks: complete in 4m 12s
+```
+
+For very large stores, use `--checkpoint <path>` to persist progress; if the migration is interrupted, the next `apply --checkpoint <path>` resumes from where it stopped.
+
+## See also
+
+- [`datafn schema-diff`](/docs/cli/schema-diff)
+- [Schema migration runtime](/docs/documentation/sync/schema-migration)
+- [Migrations section](/docs/documentation/migrations/overview)

@@ -1,0 +1,155 @@
+---
+title: AuthFn Integration
+description: Wire SearchFn's authorize callback to AuthFn sessions and roles.
+---
+
+SearchFn's `authorize` callback is the gate between an HTTP request and the search engine. AuthFn provides the session model. Connecting them is a one-liner per action.
+
+## Setup
+
+```typescript
+import { createSearchFnServer } from "@searchfn/server";
+import { authFn } from "@authfn/server";
+
+const sf = await createSearchFnServer({
+  adapter,
+  basePath: "/searchfn",
+  authorize: async (ctx, action, payload) => {
+    const session = await authFn.getSession(ctx.request);
+    if (!session) return action === "status";
+
+    switch (action) {
+      case "status":
+      case "search":
+      case "searchAll":
+        return true; // any authenticated user
+      case "index":
+      case "remove":
+        return session.user.role === "editor" || session.user.role === "admin";
+      case "clear":
+        return session.user.role === "admin";
+      default:
+        return false;
+    }
+  },
+});
+```
+
+The `ctx.request` shape depends on your HTTP framework adapter — pass it through as-is so AuthFn can read cookies / Authorization headers.
+
+## Per-resource authz
+
+If different resources have different access rules:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  const session = await authFn.getSession(ctx.request);
+  if (!session) return false;
+
+  const resource = (payload as any).resource ?? (payload as any).resources?.[0];
+
+  if (resource === "admin_logs") {
+    return session.user.role === "admin";
+  }
+
+  // Default: any authenticated user
+  return true;
+},
+```
+
+For multi-resource `searchAll`, all requested resources have to pass:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (action === "searchAll") {
+    const resources = (payload as SearchAllParams).resources;
+    return resources.every((r) => canAccess(session, r));
+  }
+  // ...
+},
+```
+
+## Per-tenant authz
+
+When resource names encode tenant (`articles:tenant-1`):
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  const session = await authFn.getSession(ctx.request);
+  if (!session) return false;
+
+  const resource = (payload as any).resource;
+  if (!resource) return false;
+  const [, tenantId] = resource.split(":");
+  return session.user.tenantId === tenantId;
+},
+```
+
+This pairs with the [multi-tenant pattern](/docs/recipes/multi-tenant).
+
+## Service-to-service
+
+For service accounts (background indexers, CI pipelines), pass a different credential:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  const apiKey = ctx.request.headers.get("x-service-key");
+  if (apiKey === process.env.INDEXER_SERVICE_KEY && action === "index") {
+    return true;
+  }
+
+  const session = await authFn.getSession(ctx.request);
+  // ...
+},
+```
+
+Treat service keys as long-lived secrets — rotate, store in a secret manager, scope to specific actions.
+
+## Logging denied requests
+
+Failed authz attempts surface as `authorization.denied` events:
+
+```typescript
+const sf = await createSearchFnServer({
+  adapter,
+  authorize,
+  logger: {
+    warn: (msg, ctx) => {
+      if (msg === "authorization.denied") {
+        log({
+          level: "warn",
+          msg,
+          action: ctx.action,
+          userId: ctx.userId ?? "anonymous",
+          ip: ctx.ip,
+        });
+      }
+    },
+    info: () => {},
+    error: () => {},
+    debug: () => {},
+  },
+});
+```
+
+Track repeated denies per IP as a signal for an alert.
+
+## Tests
+
+Mock the AuthFn session in your test setup:
+
+```typescript
+import { authFn } from "@authfn/server";
+
+beforeEach(() => {
+  vi.spyOn(authFn, "getSession").mockResolvedValue({
+    user: { id: "u1", role: "editor", tenantId: "t1" },
+  });
+});
+```
+
+## See also
+
+- [Security: request authz](/docs/documentation/security/request-authz)
+- [Multi-tenant search](/docs/recipes/multi-tenant)
+- [Server reference](/docs/reference/server)

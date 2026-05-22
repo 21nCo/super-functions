@@ -1,0 +1,137 @@
+---
+title: "Deploy to Vercel"
+description: "Run DataFn on Vercel with Next.js or SvelteKit and a managed Postgres."
+audience: guide
+applies_to: server
+---
+
+Vercel hosts the DataFn server as part of your Next.js / SvelteKit deployment. No separate service to manage.
+
+## Tradeoffs
+
+- **Excellent**: Zero infra, instant deploys, global edge for static assets.
+- **Good**: HTTP routes scale to zero, then up.
+- **Limited**: Long-lived WebSockets aren't a great fit. Use the polling-based sync fallback (`sync.ws: false`, `sync.pullIntervalMs: 5000`) or a separate WS service.
+
+If you need WS-driven live updates with sub-second latency, host the DataFn server on Fly / Railway and keep the frontend on Vercel.
+
+## 1. Wire the database
+
+Add a managed Postgres. Recommended:
+
+- [Neon](https://neon.tech) — branches for preview environments
+- [Supabase](https://supabase.com) — also gives you authn if you don't use AuthFn
+- [Vercel Postgres](https://vercel.com/storage/postgres) — same-platform billing
+
+Set `DATABASE_URL` in Vercel project settings (Production / Preview / Development).
+
+## 2. Mount the DataFn routes
+
+For Next.js (App Router):
+
+```typescript
+// app/api/datafn/[...path]/route.ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toNext } from "@superfunctions/http-next";
+import { schema } from "@/shared/schema";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "postgres" }),
+  authorize: async (ctx) => Boolean(ctx.session?.userId),
+  debug: process.env.NODE_ENV !== "production",
+});
+
+export const { GET, POST } = toNext(datafn.router);
+```
+
+The connection pool is created at module init. Vercel's runtime reuses warm functions; the pool persists across invocations.
+
+For SvelteKit see [Quickstart: SvelteKit](/docs/quickstart/sveltekit).
+
+## 3. Configure the runtime
+
+In `vercel.json`:
+
+```json
+{
+  "functions": {
+    "app/api/datafn/[...path]/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
+```
+
+DataFn requests are typically sub-second, but `/datafn/clone` on a large dataset can take longer. 30s covers nearly all cases.
+
+## 4. WebSocket alternatives
+
+Vercel doesn't terminate WebSockets in the default tier. Three options:
+
+1. **Disable WS, use polling** — simplest. `sync.ws: false`, `sync.pullIntervalMs: 5000`. Live updates take 0–5s.
+2. **Use Vercel + Ably / Pusher / PartyKit** — route WS through a dedicated provider.
+3. **Move the DataFn server to Fly** — keep the frontend on Vercel.
+
+The DataFn client handles option 1 automatically when `sync.ws` is `false`.
+
+## 5. Connection pooling
+
+Postgres pool exhaustion is the #1 production issue on Vercel. The fix:
+
+- **Use a connection-pool-aware Postgres driver** that closes idle connections (`pg`'s `idleTimeoutMillis: 10_000`).
+- **Cap pool size per function**: `new pg.Pool({ max: 5 })`. With 100 concurrent functions and `max: 5`, you'd allow 500 connections — but most warm functions stay in the pool, so the typical hot count is ~30.
+- **Use Neon's pooled connection string** (the `-pooler` variant) or Supabase's PgBouncer endpoint.
+
+Neon's branching also helps: each preview deployment can have its own database branch with copy-on-write rows.
+
+## 6. Background tasks
+
+Vercel functions are request-scoped; long-running tasks (retention pruning, scheduled aggregations) need cron:
+
+```json
+// vercel.json
+{
+  "crons": [
+    { "path": "/api/datafn/prune", "schedule": "0 3 * * *" }
+  ]
+}
+```
+
+```typescript
+// app/api/datafn/prune/route.ts
+export async function GET() {
+  await datafn.prune();
+  return new Response("ok");
+}
+```
+
+`datafn.prune()` is forward-looking — for current versions, call directly into `retention.pruneOnStartup` semantics by re-instantiating the server, or run a small standalone script outside Vercel.
+
+## 7. Deploy
+
+```bash
+vercel
+```
+
+Set environment variables in the Vercel dashboard or via `vercel env add`.
+
+## Where it falls down
+
+- WebSocket-driven live updates aren't a great fit.
+- Cold starts add ~300ms to the first request.
+- Long-running queries (e.g. clone of 100k rows) push the function timeout.
+
+For all three, hosting on Fly or Railway is the answer.
+
+## See also
+
+- [Quickstart: Next.js](/docs/quickstart/nextjs)
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Production Checklist](/docs/documentation/security/production-checklist)
