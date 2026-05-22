@@ -88,6 +88,6 @@ The same pattern works on Cloudflare Workers (or any Workers-compatible runtime)
 
 ## Next steps
 
-- [SDKs → Client → Token mode](../sdk/client/token-mode) for non-cookie clients (CLI, mobile, server-to-server).
+- [SDKs → Client → Token mode](../sdk/client#bearer-mode) for non-cookie clients (CLI, mobile, server-to-server).
 - [Adapters → Database](../adapters/database) — Bun-friendly Postgres and SQLite adapters.
 - [Frameworks → Bun](../frameworks/bun) for a deeper integration pattern.

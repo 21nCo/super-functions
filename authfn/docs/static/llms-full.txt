@@ -3866,7 +3866,7 @@ In bearer mode, the kernel:
 - Reads the bearer token from `Authorization: Bearer <token>`.
 - Skips the CSRF check (bearer tokens are not subject to browser-driven CSRF; the trade-off is that the client must protect token storage itself).
 
-The Swift SDK uses bearer mode by default. See [SDKs → Client → Token mode](../sdk/client/token-mode) and [SDKs → Swift](../sdk/swift).
+The Swift SDK uses bearer mode by default. See [SDKs → Client → Token mode](../sdk/client#bearer-mode) and [SDKs → Swift](../sdk/swift).
 
 ## Rotation
 
@@ -5197,7 +5197,7 @@ console.log(`User has ${sessions.sessions.length} active sessions`);
 await client.signOut();
 ```
 
-By default the client uses cookie credentials (`credentials: "include"` plus CSRF double-submit on mutating routes). For mobile or CLI clients that can't store cookies, use bearer-token mode — see [SDKs → Client → Token mode](./sdk/client/token-mode).
+By default the client uses cookie credentials (`credentials: "include"` plus CSRF double-submit on mutating routes). For mobile or CLI clients that can't store cookies, use bearer-token mode — see [SDKs → Client → Token mode](./sdk/client#bearer-mode).
 
 ## 5. Add the plugins you actually need
 
@@ -7210,7 +7210,7 @@ The same pattern works on Cloudflare Workers (or any Workers-compatible runtime)
 
 ## Next steps
 
-- [SDKs → Client → Token mode](../sdk/client/token-mode) for non-cookie clients (CLI, mobile, server-to-server).
+- [SDKs → Client → Token mode](../sdk/client#bearer-mode) for non-cookie clients (CLI, mobile, server-to-server).
 - [Adapters → Database](../adapters/database) — Bun-friendly Postgres and SQLite adapters.
 - [Frameworks → Bun](../frameworks/bun) for a deeper integration pattern.
 
@@ -10137,12 +10137,6 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 await withRetry(() => client.sendOtp({ email, purpose: 'sign-in' }));
 ```
-
-## Token mode subpages
-
-For deep dives:
-
-- [Bearer-token mode](./client/token-mode) — how to safely store and rotate bearer tokens, integrate with native credential stores, and handle session augmentation.
 
 ## Related
 

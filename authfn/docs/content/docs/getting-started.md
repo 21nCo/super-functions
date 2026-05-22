@@ -167,7 +167,7 @@ console.log(`User has ${sessions.sessions.length} active sessions`);
 await client.signOut();
 ```
 
-By default the client uses cookie credentials (`credentials: "include"` plus CSRF double-submit on mutating routes). For mobile or CLI clients that can't store cookies, use bearer-token mode — see [SDKs → Client → Token mode](./sdk/client/token-mode).
+By default the client uses cookie credentials (`credentials: "include"` plus CSRF double-submit on mutating routes). For mobile or CLI clients that can't store cookies, use bearer-token mode — see [SDKs → Client → Token mode](./sdk/client#bearer-mode).
 
 ## 5. Add the plugins you actually need
 
