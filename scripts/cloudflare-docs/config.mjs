@@ -20,7 +20,7 @@ export const docsProducts = {
   filefn: {
     packageName: "@filefn/docs",
     docsDir: "filefn/docs",
-    kind: "next-static",
+    kind: "sveltekit-cloudflare",
     zoneName: "filefn.com",
     hosts: {
       dev: "dev.filefn.com",

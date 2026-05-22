@@ -48,7 +48,7 @@ function buildDocs(product, docsDir, environment) {
     ? `https://${product.hosts[environment]}`
     : `https://${product.hosts[environment]}/docs`;
 
-  run("npm", ["--workspace", product.packageName, "run", "build"], {
+  run("npx", ["turbo", "run", "build", `--filter=${product.packageName}...`, "--env-mode=loose"], {
     cwd: repoRoot,
     env: {
       CLOUDFLARE_DOCS_DEPLOY: "1",
