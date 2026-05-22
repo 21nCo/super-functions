@@ -8,7 +8,7 @@
 - [Drizzle adapter](https://authfn.superfunctions.dev/docs/adapters/database/drizzle) — Use Drizzle ORM with Postgres, MySQL, SQLite, or Cloudflare D1.
 - [Database adapters](https://authfn.superfunctions.dev/docs/adapters/database) — Wire authfn to your database — Drizzle, raw Postgres, SQLite, in-memory, or a custom adapter.
 - [Memory adapter](https://authfn.superfunctions.dev/docs/adapters/database/memory) — In-memory database — for tests and local development. Don't use it in production.
-- [Postgres adapter](https://authfn.superfunctions.dev/docs/adapters/database/postgres) — Talk to Postgres directly without Drizzle. Same contract, no ORM.
+- [Postgres adapter](https://authfn.superfunctions.dev/docs/adapters/database/postgres) — Use Postgres with authfn through the supported Drizzle adapter path.
 - [SQLite adapter](https://authfn.superfunctions.dev/docs/adapters/database/sqlite) — Single-file local database — perfect for local-first apps and self-hosted single-node deployments.
 - [Adapters](https://authfn.superfunctions.dev/docs/adapters) — Database, mail, and OAuth — bring your own. authfn ships only the contracts.
 - [Custom mail adapter](https://authfn.superfunctions.dev/docs/adapters/mail/custom) — The delivery contract is one method — drop in any mailer.

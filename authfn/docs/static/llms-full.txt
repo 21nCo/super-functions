@@ -347,7 +347,7 @@ That's it.
 <!-- page:docs:adapters/database/postgres.md path:/docs/adapters/database/postgres -->
 # Postgres adapter
 
-> Talk to Postgres directly without Drizzle. Same contract, no ORM.
+> Use Postgres with authfn through the supported Drizzle adapter path.
 
 
 # Postgres adapter

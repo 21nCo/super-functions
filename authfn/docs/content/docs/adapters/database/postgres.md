@@ -1,6 +1,6 @@
 ---
 title: Postgres adapter
-description: Talk to Postgres directly without Drizzle. Same contract, no ORM.
+description: Use Postgres with authfn through the supported Drizzle adapter path.
 ---
 
 # Postgres adapter
