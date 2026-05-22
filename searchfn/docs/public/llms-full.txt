@@ -1028,7 +1028,7 @@ The legacy aggregate adapters package has been removed. SearchFn now ships one p
 --------------------------------------------------------------------------------
 ### SearchFn
 
-URL: https://searchfn.com/docs/index
+URL: https://searchfn.com/docs
 Description: A full-text search engine and adapter system for TypeScript applications.
 --------------------------------------------------------------------------------
 

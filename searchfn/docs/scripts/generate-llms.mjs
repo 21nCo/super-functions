@@ -76,6 +76,7 @@ function parseFrontmatter(raw) {
 function relPathToUrlPath(relPath) {
   let p = relPath.replace(/\.mdx?$/, "");
   p = p.replace(/\/index$/, "");
+  if (p === "index") p = "";
   return p;
 }
 

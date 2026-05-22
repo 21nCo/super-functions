@@ -27,7 +27,7 @@ export function dynamoAdapter(client: DynamoDB): Adapter {
     async findOne(input) { /* Query / GetItem */ },
     async findMany(input) { /* Query */ },
     async update(input) { /* UpdateItem */ },
-    async delete(input) { /* DeleteItem */ return { affected: 1 }; },
+    async delete(input) { /* DeleteItem */ },
     async count(input) { /* Query with COUNT */ },
     async transaction(fn) { /* TransactWriteItems */ },
     // ...
@@ -45,19 +45,33 @@ The full type is exported from `@superfunctions/db`. Read the source at [`packag
 | `findOne<T>(input)` | Single row by where-clause. |
 | `findMany<T>(input)` | Multiple rows. Supports `take`, `skip`, `orderBy`. |
 | `update<T>(input)` | Update by where-clause. |
-| `delete(input)` | Delete by where-clause. Returns `{ affected }`. |
+| `delete(input)` | Delete by where-clause. Returns `void`. |
 | `count(input)` | Row count. |
 | `transaction(fn)` | Run multiple ops atomically. |
 
 ## `where` shape
 
 ```ts
-type WhereClause =
-  | { field: string; operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in'; value: unknown }
-  | { field: string; operator: 'isNull' | 'isNotNull' };
+interface WhereClause {
+  field: string;
+  operator:
+    | 'eq'
+    | 'ne'
+    | 'gt'
+    | 'gte'
+    | 'lt'
+    | 'lte'
+    | 'in'
+    | 'not_in'
+    | 'contains'
+    | 'starts_with'
+    | 'ends_with';
+  value: unknown;
+  connector?: 'AND' | 'OR';
+}
 ```
 
-The kernel currently uses `eq`, `gt`, `gte`, `lt`, `lte`, `in`, `isNull`, `isNotNull`. Implementing all of them is mandatory.
+The kernel currently uses `eq`, `gt`, `gte`, `lt`, `lte`, and `in`; adapters should implement the full public operator set so framework and plugin code can share one query contract.
 
 ## Field naming
 
@@ -79,14 +93,25 @@ A custom adapter should pass the **adapter conformance suite** (`@superfunctions
 
 ```ts
 // adapter.test.ts
-import { describe } from 'vitest';
-import { adapterConformance } from '@superfunctions/db/testing';
+import { afterEach, beforeEach, describe, it } from 'vitest';
+import { describeAdapterContract } from '@superfunctions/db/testing';
 import { myAdapter } from './my-adapter.js';
+import { testSchema } from './test-schema.js';
 
-describe('myAdapter', adapterConformance({
-  setup: async () => myAdapter(...),
-  teardown: async (adapter) => adapter.dispose?.(),
-}));
+const adapter = myAdapter(...);
+
+describeAdapterContract(
+  'myAdapter',
+  {
+    adapter,
+    namespace: 'authfn_test',
+    testSchema,
+  },
+  describe,
+  it,
+  beforeEach,
+  afterEach,
+);
 ```
 
 ## Submitting upstream
@@ -228,7 +253,7 @@ interface Adapter {
   findOne<T>(input: FindInput): Promise<T | null>;
   findMany<T>(input: FindInput): Promise<T[]>;
   update<T>(input: UpdateInput): Promise<T | null>;
-  delete(input: DeleteInput): Promise<{ affected: number }>;
+  delete(input: DeleteInput): Promise<void>;
   // ... transactional helpers
 }
 ```
@@ -256,7 +281,7 @@ The CLI reads `auth.getSchema()` and writes adapter-specific migration files. Se
 
 ## Namespacing
 
-Every read and write goes through `namespace` — the prefix `createAuthFn({ namespace: 'authfn' })` chose. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.
+Every read and write goes through `namespace` — the prefix you choose with `createAuthFn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.
 
 ---
 
@@ -327,21 +352,24 @@ That's it.
 
 # Postgres adapter
 
-If you'd rather not bring Drizzle in, the raw Postgres adapter accepts a `pg` Pool directly:
+For Postgres, use the supported Drizzle adapter path:
 
 ```ts
-import { postgresAdapter } from '@superfunctions/db/adapters/postgres';   // hypothetical export
 import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
+import * as schema from './db/generated/authfn-schema.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool, { schema });
 
 createAuthFn({
-  database: postgresAdapter(pool),
+  database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });
 ```
 
-> Some monorepo builds expose `postgresAdapter` directly; if not, prefer `drizzleAdapter(drizzle(pool))` which does the same thing under the hood.
+If you need a raw `pg` adapter, implement the [custom adapter](./custom) contract directly and keep the same generated schema.
 
 ## Migrations
 
@@ -458,7 +486,7 @@ When in doubt, the `drizzleAdapter` route works everywhere.
 SQLite is plenty fast for authfn workloads. A few tuning tips:
 
 - Run with WAL mode: `db.pragma('journal_mode = WAL')`.
-- Disable synchronous fsync if you're OK with last-second durability: `db.pragma('synchronous = NORMAL')`.
+- Reduce synchronous fsync frequency if you're OK with last-second durability trade-offs: `db.pragma('synchronous = NORMAL')`. Use `OFF` only when you explicitly accept weaker crash safety.
 - Add explicit indexes on `authfn_sessions.token_hash` and `authfn_users.primary_email` (the generated schema does both).
 
 ## Backup
@@ -1165,10 +1193,9 @@ Add this to `.cursor/mcp.json` in your project:
 }
 ```
 
-Then add a rule that points Cursor at the docs:
+Then add a rule at `.cursor/rules/authfn.mdc` that points Cursor at the docs:
 
 ```text
-# .cursor/rules/authfn.mdc
 ---
 description: authfn — self-hosted authentication
 ---
@@ -1185,7 +1212,6 @@ That's it. Cursor will use the MCP server for retrieval.
 If you'd rather not run an MCP server, point Cursor at the static file:
 
 ```text
-# .cursor/rules/authfn.mdc
 ---
 description: authfn
 ---
@@ -1246,21 +1272,21 @@ These integrations are powered by [docsfn](https://github.com/21nCo/super-functi
 
 ```mermaid
 flowchart TD
-    Docs[Docs source\n(content/docs/**)]
-    OpenAPI[OpenAPI spec\n(content/api/authfn.json)]
-    Examples[Example apps\n(authfn/examples)]
+    Docs["Docs source\n(content/docs/**)"]
+    OpenAPI["OpenAPI spec\n(content/api/authfn.json)"]
+    Examples["Example apps\n(authfn/examples)"]
 
-    Docs --> LlmsTxt[llms.txt + llms-full.txt]
+    Docs --> LlmsTxt["llms.txt + llms-full.txt"]
     OpenAPI --> LlmsTxt
     Examples --> LlmsTxt
 
-    Docs --> MCP[MCP server]
+    Docs --> MCP["MCP server"]
     OpenAPI --> MCP
     Examples --> MCP
 
-    Docs --> Skills[Skill packs]
+    Docs --> Skills["Skill packs"]
 
-    LlmsTxt --> Editor[Editor / Assistant]
+    LlmsTxt --> Editor["Editor / Assistant"]
     MCP --> Editor
     Skills --> Editor
 ```
@@ -1573,7 +1599,7 @@ In `authfn/docs/content/skills/`:
 Build:
 
 ```bash
-npm run docs:skills    # validates and emits dist/skills.json
+npm run build    # validates docs content and emits generated assistant artifacts
 ```
 
 Once the MCP server picks it up, every assistant connected to it can invoke the new skill.
@@ -2590,8 +2616,9 @@ createAuthFn({
   hooks: {
     afterUserCreate: pushToCrm,
   },
-  // (kernel-level hooks have an implicit 'fail' policy; opt out per hook below)
-  // — or, if defining on a plugin:
+  hookFailurePolicy: {
+    afterUserCreate: 'observe',
+  },
 });
 ```
 
@@ -4358,9 +4385,9 @@ const db = drizzle(new Database('authfn.db'));
 const auth = createAuthFn({ database: drizzleAdapter(db), /* ... */ });
 ```
 
-## Bun on Cloudflare-compatible runtimes
+## Edge runtimes
 
-Bun deployments on Workers or Cloudflare-compatible platforms work out of the box; pair with an edge-compatible database (D1, Hyperdrive, etc.).
+Cloudflare Workers and other workerd-based platforms are not Bun runtimes, so keep Bun-specific APIs such as `Bun.serve` and `bun:sqlite` in Bun deployments. For Workers, mount authfn through a standard `fetch(request)` handler and pair it with an edge-compatible database such as D1 or Hyperdrive.
 
 ---
 
@@ -4448,7 +4475,12 @@ export const handler = async (event: any) => {
 
 ```ts
 import { auth } from './auth.js';
-export default { fetch(request) { return auth.router.fetch(stripAuthPrefix(request)); } };
+
+export default {
+  fetch(request) {
+    return auth.router.fetch(request);
+  },
+};
 ```
 
 ## Pattern
@@ -9463,13 +9495,15 @@ Every interesting thing the kernel does emits an event through your `observabili
 ```ts
 type AuthFnEvent = {
   type: AuthFnEventType;
-  outcome: 'success' | 'failure';
   requestId: string;
+  actorId?: string;
   userId?: string;
   sessionId?: string;
   regionId?: string;
-  pluginId?: string;
-  errorCode?: AuthFnErrorCode;
+  provider?: 'google' | 'apple' | 'github';
+  pluginName?: string;
+  hookName?: string;
+  outcome?: string;
   metadata?: Record<string, unknown>;
 };
 ```
@@ -9502,7 +9536,7 @@ type AuthFnEvent = {
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |
 | `authfn.rate_limited` | A rate limiter rejected a request. | failure | `route`, `key`, `retryAfter` |
 | `authfn.request.failed` | A request failed with a non-domain error (e.g., AUTHFN_INTERNAL_ERROR). | failure | `route`, `errorCode` |
-| `authfn.plugin.failed` | A plugin's runtime hook threw outside the domain envelope. Operator alarm. | failure | `pluginId`, `phase`, `errorMessage` |
+| `authfn.plugin.failed` | A plugin or config hook threw outside the domain envelope. Operator alarm. | failure | `pluginName`, `hookName`, `metadata.errorCode` |
 
 ## Wiring
 

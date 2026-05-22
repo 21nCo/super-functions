@@ -186,8 +186,9 @@ createAuthFn({
   hooks: {
     afterUserCreate: pushToCrm,
   },
-  // (kernel-level hooks have an implicit 'fail' policy; opt out per hook below)
-  // — or, if defining on a plugin:
+  hookFailurePolicy: {
+    afterUserCreate: 'observe',
+  },
 });
 ```
 

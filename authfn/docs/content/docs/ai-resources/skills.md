@@ -71,7 +71,7 @@ In `authfn/docs/content/skills/`:
 Build:
 
 ```bash
-npm run docs:skills    # validates and emits dist/skills.json
+npm run build    # validates docs content and emits generated assistant artifacts
 ```
 
 Once the MCP server picks it up, every assistant connected to it can invoke the new skill.

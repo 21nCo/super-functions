@@ -51,6 +51,6 @@ const db = drizzle(new Database('authfn.db'));
 const auth = createAuthFn({ database: drizzleAdapter(db), /* ... */ });
 ```
 
-## Bun on Cloudflare-compatible runtimes
+## Edge runtimes
 
-Bun deployments on Workers or Cloudflare-compatible platforms work out of the box; pair with an edge-compatible database (D1, Hyperdrive, etc.).
+Cloudflare Workers and other workerd-based platforms are not Bun runtimes, so keep Bun-specific APIs such as `Bun.serve` and `bun:sqlite` in Bun deployments. For Workers, mount authfn through a standard `fetch(request)` handler and pair it with an edge-compatible database such as D1 or Hyperdrive.

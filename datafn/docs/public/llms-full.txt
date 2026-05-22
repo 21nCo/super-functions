@@ -1523,7 +1523,7 @@ Capabilities keep boilerplate (timestamps, soft-delete, audit trails, sharing) o
 --------------------------------------------------------------------------------
 ### DataFn
 
-URL: https://datafn.21n.co/docs/index
+URL: https://datafn.21n.co/docs
 Description: Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
 --------------------------------------------------------------------------------
 

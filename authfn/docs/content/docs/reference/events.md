@@ -10,13 +10,15 @@ Every interesting thing the kernel does emits an event through your `observabili
 ```ts
 type AuthFnEvent = {
   type: AuthFnEventType;
-  outcome: 'success' | 'failure';
   requestId: string;
+  actorId?: string;
   userId?: string;
   sessionId?: string;
   regionId?: string;
-  pluginId?: string;
-  errorCode?: AuthFnErrorCode;
+  provider?: 'google' | 'apple' | 'github';
+  pluginName?: string;
+  hookName?: string;
+  outcome?: string;
   metadata?: Record<string, unknown>;
 };
 ```
@@ -49,7 +51,7 @@ type AuthFnEvent = {
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |
 | `authfn.rate_limited` | A rate limiter rejected a request. | failure | `route`, `key`, `retryAfter` |
 | `authfn.request.failed` | A request failed with a non-domain error (e.g., AUTHFN_INTERNAL_ERROR). | failure | `route`, `errorCode` |
-| `authfn.plugin.failed` | A plugin's runtime hook threw outside the domain envelope. Operator alarm. | failure | `pluginId`, `phase`, `errorMessage` |
+| `authfn.plugin.failed` | A plugin or config hook threw outside the domain envelope. Operator alarm. | failure | `pluginName`, `hookName`, `metadata.errorCode` |
 
 ## Wiring
 

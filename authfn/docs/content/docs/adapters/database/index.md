@@ -13,7 +13,7 @@ interface Adapter {
   findOne<T>(input: FindInput): Promise<T | null>;
   findMany<T>(input: FindInput): Promise<T[]>;
   update<T>(input: UpdateInput): Promise<T | null>;
-  delete(input: DeleteInput): Promise<{ affected: number }>;
+  delete(input: DeleteInput): Promise<void>;
   // ... transactional helpers
 }
 ```
@@ -41,4 +41,4 @@ The CLI reads `auth.getSchema()` and writes adapter-specific migration files. Se
 
 ## Namespacing
 
-Every read and write goes through `namespace` — the prefix `createAuthFn({ namespace: 'authfn' })` chose. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.
+Every read and write goes through `namespace` — the prefix you choose with `createAuthFn({ namespace: 'authfn' })`. Tables become `authfn_users`, `authfn_sessions`, `authfn_password_credentials`, etc. Run two authfn deployments in the same database by giving them different namespaces.

@@ -5,21 +5,24 @@ description: Talk to Postgres directly without Drizzle. Same contract, no ORM.
 
 # Postgres adapter
 
-If you'd rather not bring Drizzle in, the raw Postgres adapter accepts a `pg` Pool directly:
+For Postgres, use the supported Drizzle adapter path:
 
 ```ts
-import { postgresAdapter } from '@superfunctions/db/adapters/postgres';   // hypothetical export
 import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
+import * as schema from './db/generated/authfn-schema.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool, { schema });
 
 createAuthFn({
-  database: postgresAdapter(pool),
+  database: drizzleAdapter({ db, dialect: 'postgres' }),
   // ...
 });
 ```
 
-> Some monorepo builds expose `postgresAdapter` directly; if not, prefer `drizzleAdapter(drizzle(pool))` which does the same thing under the hood.
+If you need a raw `pg` adapter, implement the [custom adapter](./custom) contract directly and keep the same generated schema.
 
 ## Migrations
 

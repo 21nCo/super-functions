@@ -21,7 +21,7 @@ This document is intended for large language models and agentic developer tools.
 - [Examples](https://searchfn.com/docs/examples): Runnable example apps shipped with SearchFn.
 - [Getting Started with Swift](https://searchfn.com/docs/getting-started-swift): Build local Swift search with the standalone SearchFn Swift package.
 - [Getting Started](https://searchfn.com/docs/getting-started): Install SearchFn, index documents, and run your first search query in minutes.
-- [SearchFn](https://searchfn.com/docs/index): A full-text search engine and adapter system for TypeScript applications.
+- [SearchFn](https://searchfn.com/docs): A full-text search engine and adapter system for TypeScript applications.
 - [Quickstart](https://searchfn.com/docs/quickstart): Get SearchFn indexing and serving queries in 5–10 minutes for your stack.
 - [Recipes](https://searchfn.com/docs/recipes): Copy-pasteable patterns for the things you actually want to do with SearchFn.
 

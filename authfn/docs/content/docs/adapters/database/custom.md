@@ -16,7 +16,7 @@ export function dynamoAdapter(client: DynamoDB): Adapter {
     async findOne(input) { /* Query / GetItem */ },
     async findMany(input) { /* Query */ },
     async update(input) { /* UpdateItem */ },
-    async delete(input) { /* DeleteItem */ return { affected: 1 }; },
+    async delete(input) { /* DeleteItem */ },
     async count(input) { /* Query with COUNT */ },
     async transaction(fn) { /* TransactWriteItems */ },
     // ...
@@ -34,19 +34,33 @@ The full type is exported from `@superfunctions/db`. Read the source at [`packag
 | `findOne<T>(input)` | Single row by where-clause. |
 | `findMany<T>(input)` | Multiple rows. Supports `take`, `skip`, `orderBy`. |
 | `update<T>(input)` | Update by where-clause. |
-| `delete(input)` | Delete by where-clause. Returns `{ affected }`. |
+| `delete(input)` | Delete by where-clause. Returns `void`. |
 | `count(input)` | Row count. |
 | `transaction(fn)` | Run multiple ops atomically. |
 
 ## `where` shape
 
 ```ts
-type WhereClause =
-  | { field: string; operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in'; value: unknown }
-  | { field: string; operator: 'isNull' | 'isNotNull' };
+interface WhereClause {
+  field: string;
+  operator:
+    | 'eq'
+    | 'ne'
+    | 'gt'
+    | 'gte'
+    | 'lt'
+    | 'lte'
+    | 'in'
+    | 'not_in'
+    | 'contains'
+    | 'starts_with'
+    | 'ends_with';
+  value: unknown;
+  connector?: 'AND' | 'OR';
+}
 ```
 
-The kernel currently uses `eq`, `gt`, `gte`, `lt`, `lte`, `in`, `isNull`, `isNotNull`. Implementing all of them is mandatory.
+The kernel currently uses `eq`, `gt`, `gte`, `lt`, `lte`, and `in`; adapters should implement the full public operator set so framework and plugin code can share one query contract.
 
 ## Field naming
 
@@ -68,14 +82,25 @@ A custom adapter should pass the **adapter conformance suite** (`@superfunctions
 
 ```ts
 // adapter.test.ts
-import { describe } from 'vitest';
-import { adapterConformance } from '@superfunctions/db/testing';
+import { afterEach, beforeEach, describe, it } from 'vitest';
+import { describeAdapterContract } from '@superfunctions/db/testing';
 import { myAdapter } from './my-adapter.js';
+import { testSchema } from './test-schema.js';
 
-describe('myAdapter', adapterConformance({
-  setup: async () => myAdapter(...),
-  teardown: async (adapter) => adapter.dispose?.(),
-}));
+const adapter = myAdapter(...);
+
+describeAdapterContract(
+  'myAdapter',
+  {
+    adapter,
+    namespace: 'authfn_test',
+    testSchema,
+  },
+  describe,
+  it,
+  beforeEach,
+  afterEach,
+);
 ```
 
 ## Submitting upstream

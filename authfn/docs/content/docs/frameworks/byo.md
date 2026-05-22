@@ -81,7 +81,12 @@ export const handler = async (event: any) => {
 
 ```ts
 import { auth } from './auth.js';
-export default { fetch(request) { return auth.router.fetch(stripAuthPrefix(request)); } };
+
+export default {
+  fetch(request) {
+    return auth.router.fetch(request);
+  },
+};
 ```
 
 ## Pattern

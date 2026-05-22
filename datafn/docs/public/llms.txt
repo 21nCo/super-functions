@@ -22,7 +22,7 @@ This document is intended for large language models and agentic developer tools.
 - [Overview](https://datafn.21n.co/docs/documentation): What DataFn is, what it ships, and how the pieces fit together.
 - [Examples](https://datafn.21n.co/docs/examples): Working reference apps that ship with DataFn — clone, run, copy what you need.
 - [Getting Started](https://datafn.21n.co/docs/getting-started): Get up and running with DataFn in minutes.
-- [DataFn](https://datafn.21n.co/docs/index): Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
+- [DataFn](https://datafn.21n.co/docs): Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
 - [Quickstart](https://datafn.21n.co/docs/quickstart): Pick your stack and ship a working DataFn integration in 10 minutes.
 - [Recipes](https://datafn.21n.co/docs/recipes): Production-tested patterns for shipping with DataFn. Each recipe is self-contained: the schema, the server config, and the client glue.
 - [API Reference](https://datafn.21n.co/docs/reference): Complete API reference for all DataFn packages.

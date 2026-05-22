@@ -47,7 +47,7 @@ When in doubt, the `drizzleAdapter` route works everywhere.
 SQLite is plenty fast for authfn workloads. A few tuning tips:
 
 - Run with WAL mode: `db.pragma('journal_mode = WAL')`.
-- Disable synchronous fsync if you're OK with last-second durability: `db.pragma('synchronous = NORMAL')`.
+- Reduce synchronous fsync frequency if you're OK with last-second durability trade-offs: `db.pragma('synchronous = NORMAL')`. Use `OFF` only when you explicitly accept weaker crash safety.
 - Add explicit indexes on `authfn_sessions.token_hash` and `authfn_users.primary_email` (the generated schema does both).
 
 ## Backup

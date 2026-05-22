@@ -20,10 +20,9 @@ Add this to `.cursor/mcp.json` in your project:
 }
 ```
 
-Then add a rule that points Cursor at the docs:
+Then add a rule at `.cursor/rules/authfn.mdc` that points Cursor at the docs:
 
 ```text
-# .cursor/rules/authfn.mdc
 ---
 description: authfn — self-hosted authentication
 ---
@@ -40,7 +39,6 @@ That's it. Cursor will use the MCP server for retrieval.
 If you'd rather not run an MCP server, point Cursor at the static file:
 
 ```text
-# .cursor/rules/authfn.mdc
 ---
 description: authfn
 ---

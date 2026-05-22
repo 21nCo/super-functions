@@ -24,21 +24,21 @@ These integrations are powered by [docsfn](https://github.com/21nCo/super-functi
 
 ```mermaid
 flowchart TD
-    Docs[Docs source\n(content/docs/**)]
-    OpenAPI[OpenAPI spec\n(content/api/authfn.json)]
-    Examples[Example apps\n(authfn/examples)]
+    Docs["Docs source\n(content/docs/**)"]
+    OpenAPI["OpenAPI spec\n(content/api/authfn.json)"]
+    Examples["Example apps\n(authfn/examples)"]
 
-    Docs --> LlmsTxt[llms.txt + llms-full.txt]
+    Docs --> LlmsTxt["llms.txt + llms-full.txt"]
     OpenAPI --> LlmsTxt
     Examples --> LlmsTxt
 
-    Docs --> MCP[MCP server]
+    Docs --> MCP["MCP server"]
     OpenAPI --> MCP
     Examples --> MCP
 
-    Docs --> Skills[Skill packs]
+    Docs --> Skills["Skill packs"]
 
-    LlmsTxt --> Editor[Editor / Assistant]
+    LlmsTxt --> Editor["Editor / Assistant"]
     MCP --> Editor
     Skills --> Editor
 ```
