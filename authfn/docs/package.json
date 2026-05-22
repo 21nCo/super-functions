@@ -7,7 +7,7 @@
     "dev": "vite dev --port 6005",
     "build": "vite build",
     "preview": "vite preview --port 6005",
-    "test": "vitest",
+    "test": "vitest run --passWithNoTests",
     "generate:openapi": "node scripts/generate-openapi.mjs",
     "generate:llms": "node scripts/generate-llms.mjs",
     "prebuild": "npm run generate:openapi && npm run generate:llms"
