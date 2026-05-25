@@ -37,6 +37,7 @@
   { "slug": "extfn-cli", "path": "extfn/cli", "name": "@extfn/cli" },
   { "slug": "extfn-svelte", "path": "extfn/svelte", "name": "@extfn/svelte" },
   { "slug": "extfn-vite", "path": "extfn/vite", "name": "@extfn/vite" },
+  { "slug": "hostfn", "path": "hostfn/cli", "name": "hostfn" },
   { "slug": "superfunctions-files", "path": "packages/files", "name": "@superfunctions/files" },
   { "slug": "superfunctions-http", "path": "packages/http", "name": "@superfunctions/http" },
   { "slug": "superfunctions-http-express", "path": "packages/http-express", "name": "@superfunctions/http-express" },
