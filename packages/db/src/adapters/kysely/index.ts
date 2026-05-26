@@ -33,6 +33,11 @@ export interface KyselyAdapterConfig {
   db: any; // Kysely instance
   dialect: KyselyDialect;
   schema: Record<string, string>; // model name -> table name
+  /**
+   * @deprecated Function authors should wrap incoming adapters with
+   * `wrapWithSchema(adapter, getSchema(...))` inside their create/init function.
+   * This option remains for compatibility and app-level direct adapter usage.
+   */
   adapterSchema?: AdapterSchemaInput;
   schemaVersionsTable?: string; // optional table name for schema versions
   namespace?: any;

@@ -29,6 +29,11 @@ import type {
 import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export interface MemoryAdapterConfig {
+  /**
+   * @deprecated Function authors should wrap incoming adapters with
+   * `wrapWithSchema(adapter, getSchema(...))` inside their create/init function.
+   * This option remains for compatibility and app-level direct adapter usage.
+   */
   adapterSchema?: AdapterSchemaInput;
   namespace?: {
     enabled: boolean;

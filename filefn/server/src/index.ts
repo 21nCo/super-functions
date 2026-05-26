@@ -1,4 +1,5 @@
 import type { Adapter } from '@superfunctions/db';
+import { wrapWithSchema } from '@superfunctions/db';
 import type { StorageAdapter } from '@superfunctions/storage';
 import type { FileProvider } from '@superfunctions/files';
 import { type RateLimiter, createRateLimiter } from '@superfunctions/middleware';
@@ -85,7 +86,7 @@ function hasConfiguredRouteRateLimits(limits?: FileFnRouteRateLimits): boolean {
 
 export function createFileFn(config: FileFnConfig): FileFn {
   const {
-    db,
+    db: inputDb,
     storage,
     policies: initialPolicies = [],
     auth = {},
@@ -101,6 +102,7 @@ export function createFileFn(config: FileFnConfig): FileFn {
     dedup,
     processing: processingConfig,
   } = config;
+  const db = wrapWithSchema(inputDb, getSchema({ namespace }));
 
   const policyRegistry = createPolicyRegistry(initialPolicies);
   const events = createEventEmitter();

@@ -1,0 +1,32 @@
+{
+  "name": "@plugfn/examples-example-01-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlugFn example-01 backend (Hono): CLI-generated Drizzle schema",
+  "scripts": {
+    "build:deps": "npm --prefix ../../../../packages/oauth-core run build && npm --prefix ../../../../packages/oauth-storage run build && npm --prefix ../../../../packages/oauth-http run build && npm --prefix ../../../../packages/oauth-flow run build && npm --prefix ../../../../packages/db run build && npm --prefix ../../../../plugfn/core run build && npm --prefix ../../../../plugfn/providers run build && npm --prefix ../../../../packages/cli run build",
+    "db:generate": "npm run build:deps && superfunctions generate-schema --config ./superfunctions.config.mjs --library plugfn --adapter drizzle --output ./src/db/generated --force",
+    "db:push": "drizzle-kit push --config drizzle.config.ts",
+    "start": "npm run build:deps && tsx index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.6",
+    "@plugfn/providers": "file:../../../providers",
+    "@superfunctions/db": "file:../../../../packages/db",
+    "@superfunctions/http-hono": "file:../../../../packages/http-hono",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.1",
+    "hono": "4.11.9",
+    "plugfn": "file:../../../core",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@superfunctions/cli": "file:../../../../packages/cli",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.20.3",
+    "typescript": "^5.6.0"
+  }
+}

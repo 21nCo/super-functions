@@ -491,6 +491,45 @@ describe("oauth-http token client", () => {
     expect(body.get("token_type_hint")).toBe("access_token");
   });
 
+  it("uses GitHub application token revocation semantics", async () => {
+    const githubProvider = {
+      id: "github",
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      revocationUrl: "https://api.github.com/applications/{client_id}/token",
+      defaultScopes: ["read:user"],
+      supportsPkce: true,
+      supportsRefreshToken: false,
+      tokenAuthMethod: "client_secret_post" as const
+    };
+    const calledUrls: string[] = [];
+    let capturedInit: RequestInitLike | null = null;
+    const fetcher: OAuthFetchLike = async (url, init) => {
+      calledUrls.push(url);
+      capturedInit = init;
+      return createResponse({
+        status: 204,
+        contentType: "application/json",
+        body: ""
+      });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher });
+    await client.revokeToken({
+      provider: githubProvider,
+      clientId: "gh-client-id",
+      clientSecret: "gh-client-secret",
+      token: "gh-access-token",
+      tokenTypeHint: "access_token"
+    });
+
+    expect(calledUrls).toEqual(["https://api.github.com/applications/gh-client-id/token"]);
+    expect(capturedInit?.method).toBe("DELETE");
+    const encodedCredentials = Buffer.from("gh-client-id:gh-client-secret").toString("base64");
+    expect(capturedInit?.headers?.authorization).toBe(`Basic ${encodedCredentials}`);
+    expect(JSON.parse(String(capturedInit?.body))).toEqual({ access_token: "gh-access-token" });
+  });
+
   it("skips remote revoke when provider has no revocation URL", async () => {
     const fetcher = vi.fn(async () =>
       createResponse({

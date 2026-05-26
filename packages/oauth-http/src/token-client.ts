@@ -112,8 +112,9 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       clientId: input.clientId,
       tokenTypeHint: input.tokenTypeHint
     });
-    const endpointRequest = createRevokeRequest(input, credentials);
-    const response = await this.executeWithRetry(input.provider.revocationUrl, endpointRequest);
+    const revocationUrl = resolveRevocationUrl(input.provider.revocationUrl, credentials.clientId);
+    const endpointRequest = createRevokeRequest(input, credentials, revocationUrl);
+    const response = await this.executeWithRetry(revocationUrl, endpointRequest);
     if (response.ok) {
       return;
     }
@@ -333,10 +334,39 @@ function createTokenRequest(
   };
 }
 
+function resolveRevocationUrl(revocationUrl: string, clientId: string): string {
+  if (!revocationUrl.includes("{client_id}")) {
+    return revocationUrl;
+  }
+
+  return revocationUrl.replace("{client_id}", encodeURIComponent(clientId));
+}
+
+function isGitHubApplicationRevokeUrl(revocationUrl: string): boolean {
+  return revocationUrl.includes("/applications/") && revocationUrl.includes("/token");
+}
+
 function createRevokeRequest(
   input: OAuthRevocationRequest,
-  credentials: ResolvedRequestCredentials
+  credentials: ResolvedRequestCredentials,
+  revocationUrl: string
 ): RequestInitLike {
+  if (isGitHubApplicationRevokeUrl(revocationUrl)) {
+    const authUser = encodeURIComponent(credentials.clientId);
+    const authPassword = encodeURIComponent(credentials.clientSecret);
+    const auth = encodeBasicCredentials(authUser, authPassword);
+
+    return {
+      method: "DELETE",
+      headers: {
+        accept: "application/json",
+        authorization: `Basic ${auth}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ access_token: input.token })
+    };
+  }
+
   const params = new URLSearchParams();
   params.set("token", input.token);
   if (input.tokenTypeHint) {
@@ -365,11 +395,34 @@ function createAuthHeaders(
   } else {
     const authUser = encodeURIComponent(credentials.clientId);
     const authPassword = encodeURIComponent(credentials.clientSecret);
-    const auth = Buffer.from(`${authUser}:${authPassword}`, "utf8").toString("base64");
+    const auth = encodeBasicCredentials(authUser, authPassword);
     headers.authorization = `Basic ${auth}`;
   }
 
   return headers;
+}
+
+function encodeBasicCredentials(username: string, password: string): string {
+  return base64EncodeAscii(`${username}:${password}`);
+}
+
+function base64EncodeAscii(value: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+
+  for (let index = 0; index < value.length; index += 3) {
+    const first = value.charCodeAt(index);
+    const second = index + 1 < value.length ? value.charCodeAt(index + 1) : 0;
+    const third = index + 2 < value.length ? value.charCodeAt(index + 2) : 0;
+    const combined = (first << 16) | (second << 8) | third;
+
+    output += alphabet[(combined >> 18) & 63];
+    output += alphabet[(combined >> 12) & 63];
+    output += index + 1 < value.length ? alphabet[(combined >> 6) & 63] : "=";
+    output += index + 2 < value.length ? alphabet[combined & 63] : "=";
+  }
+
+  return output;
 }
 
 function parseResponseBody(rawBodyText: string, contentType: string | null): unknown {
