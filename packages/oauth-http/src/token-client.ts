@@ -334,7 +334,11 @@ function createTokenRequest(
   };
 }
 
-function resolveRevocationUrl(revocationUrl: string, clientId: string): string {
+function resolveRevocationUrl(revocationUrl: string | undefined, clientId: string): string {
+  if (!revocationUrl) {
+    return "";
+  }
+
   if (!revocationUrl.includes("{client_id}")) {
     return revocationUrl;
   }
@@ -342,8 +346,8 @@ function resolveRevocationUrl(revocationUrl: string, clientId: string): string {
   return revocationUrl.replace("{client_id}", encodeURIComponent(clientId));
 }
 
-function isGitHubApplicationRevokeUrl(revocationUrl: string): boolean {
-  return revocationUrl.includes("/applications/") && revocationUrl.includes("/token");
+function isGitHubApplicationRevokeUrl(revocationUrl: string | undefined): boolean {
+  return !!revocationUrl && revocationUrl.includes("/applications/") && revocationUrl.includes("/token");
 }
 
 function createRevokeRequest(

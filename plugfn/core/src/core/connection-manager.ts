@@ -168,6 +168,7 @@ export class ConnectionManager {
   private readonly encryptedTokenVault: EncryptedTokenVault;
   private readonly keyRef: string;
   private readonly actionLogAdapter: PlugFnDatabaseStorageAdapter;
+  private readonly refreshInFlight = new Map<string, Promise<Connection>>();
 
   constructor(
     private connectionStorage: ConnectionStorage,
@@ -482,6 +483,19 @@ export class ConnectionManager {
   }
 
   async refresh(connectionId: string): Promise<Connection> {
+    const existing = this.refreshInFlight.get(connectionId);
+    if (existing) {
+      return existing;
+    }
+
+    const refreshPromise = this.performRefresh(connectionId).finally(() => {
+      this.refreshInFlight.delete(connectionId);
+    });
+    this.refreshInFlight.set(connectionId, refreshPromise);
+    return refreshPromise;
+  }
+
+  private async performRefresh(connectionId: string): Promise<Connection> {
     const connection = await this.get(connectionId);
     const provider = this.providers.get(connection.provider);
 

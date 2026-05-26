@@ -3,6 +3,7 @@
  */
 
 import type { Router } from '@superfunctions/http';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 
 export interface ToHonoOptions {
@@ -30,11 +31,12 @@ export function toHono(
 ): import('hono').Hono {
   const app = new Hono();
 
-  app.all('*', async (c) => {
+  app.all('*', async (c: Context) => {
     const routePath =
       c.req.matchedRoutes?.at(-1)?.path ?? c.req.routePath;
     const mountPrefix =
-      options.mountPath ?? getMountPrefixFromRoutePath(routePath);
+      options.mountPath ??
+      getMountPrefixFromRoutePath(routePath, c.req.raw.url, c.req.param());
     if (hasConsumedBody(c.req.raw)) {
       return Response.json(
         {
@@ -51,12 +53,49 @@ export function toHono(
   return app;
 }
 
-function getMountPrefixFromRoutePath(routePath: string): string {
-  if (routePath.endsWith('/*')) {
-    return routePath.slice(0, -2);
+function getMountPrefixFromRoutePath(
+  routePath: unknown,
+  requestUrl?: string,
+  params: Record<string, string> = {}
+): string {
+  if (typeof routePath !== 'string' || routePath.length === 0) {
+    return '';
   }
 
-  return routePath === '*' ? '' : routePath;
+  if (routePath.endsWith('/*')) {
+    return resolveConcreteMountPrefix(routePath.slice(0, -2), requestUrl, params);
+  }
+
+  return routePath === '*' ? '' : resolveConcreteMountPrefix(routePath, requestUrl, params);
+}
+
+function resolveConcreteMountPrefix(
+  routePath: string,
+  requestUrl?: string,
+  params: Record<string, string> = {}
+): string {
+  if (!routePath.includes(':') || !requestUrl) {
+    return routePath;
+  }
+
+  const url = new URL(requestUrl);
+  const routeSegments = routePath.split('/').filter(Boolean);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+
+  if (routeSegments.length > pathSegments.length) {
+    return routePath;
+  }
+
+  const resolvedSegments = routeSegments.map((segment, index) => {
+    if (!segment.startsWith(':')) {
+      return segment;
+    }
+
+    const paramName = segment.slice(1);
+    return params[paramName] ?? pathSegments[index] ?? segment;
+  });
+
+  return `/${resolvedSegments.join('/')}`;
 }
 
 function toMountedRequest(request: Request, mountPrefix: string): Request {

@@ -572,7 +572,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
             updatedAt: claimedAt,
           }),
         });
-        if (updated.status === 'running') {
+        if (updated?.status === 'running') {
           claimed.push(updated);
         }
       } catch {
@@ -633,7 +633,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
             updatedAt: claimedAt,
           }),
         });
-        if (updated.status === 'running') {
+        if (updated?.status === 'running') {
           claimed.push(updated);
         }
       } catch {

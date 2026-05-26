@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
+import { verifyWebhookSignature } from '@superfunctions/webhooks';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -107,14 +108,8 @@ export function verifyHmacSignature(
   secret: string,
   algorithm: 'sha1' | 'sha256' = 'sha256'
 ): boolean {
-  const hmac = createHmac(algorithm, secret);
-  hmac.update(payload);
-  const expectedSignature = hmac.digest('hex');
-  const actualBuffer = Buffer.from(signature, 'utf8');
-  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
-  if (actualBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(actualBuffer, expectedBuffer);
+  return verifyWebhookSignature(payload, signature, secret, {
+    algorithm,
+    encoding: 'hex',
+  });
 }

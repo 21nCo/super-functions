@@ -57,9 +57,5 @@ export function getScopedRecordById<T extends ScopedRecord & { id: string }>(
     return direct;
   }
 
-  const existsCrossTenant = records.some((record) => record.id === id);
-  if (existsCrossTenant) {
-    throw new SecurityIsolationError('TENANT_ACCESS_DENIED', 'cross-tenant access denied');
-  }
   return null;
 }

@@ -50,6 +50,7 @@ export class WorkflowEngineError extends Error {
 
 export class WorkflowEngine {
   private readonly triggerBindings = new Map<string, WorkflowTriggerBinding>();
+  private readonly executionLocks = new Map<string, Promise<void>>();
 
   constructor(
     private workflowStorage: WorkflowStorage,
@@ -142,145 +143,170 @@ export class WorkflowEngine {
     }
 
     const idempotencyKey = this.resolveIdempotencyKey(triggerPayload);
-    const existingExecution = idempotencyKey
-      ? await this.workflowStorage.findExecutionByIdempotencyKey(workflowId, idempotencyKey)
-      : null;
-
-    if (existingExecution && existingExecution.status === WorkflowExecutionStatus.Completed) {
-      return existingExecution;
-    }
-
-    const resumed = Boolean(existingExecution);
-    const execution =
-      existingExecution ??
-      (await this.workflowStorage.createExecution({
-        workflowId,
-        status: WorkflowExecutionStatus.Running,
-        input: this.buildExecutionInput(triggerPayload, idempotencyKey),
-      }));
-
-    if (existingExecution) {
-      await this.workflowStorage.updateExecution(existingExecution.id, {
-        status: WorkflowExecutionStatus.Running,
-        error: undefined,
+    const lockKey = idempotencyKey ? `${workflowId}:${idempotencyKey}` : undefined;
+    const previousExecution = lockKey
+      ? this.executionLocks.get(lockKey) ?? Promise.resolve()
+      : Promise.resolve();
+    let releaseExecutionLock: (() => void) | undefined;
+    let queueTail: Promise<void> | undefined;
+    if (lockKey) {
+      const current = new Promise<void>((resolve) => {
+        releaseExecutionLock = resolve;
       });
+      queueTail = previousExecution.catch(() => {}).then(() => current);
+      this.executionLocks.set(lockKey, queueTail);
     }
 
-    const executionState = this.readExecutionState(existingExecution ?? null);
-    const completedStepIds = [...executionState.completedStepIds];
-    const contextData = { ...executionState.data };
-
-    const context: WorkflowContext = {
-      workflowId,
-      executionId: execution.id,
-      userId: workflow.userId,
-      trigger: {
-        provider: workflow.definition.trigger.provider,
-        event: workflow.definition.trigger.event,
-        payload: triggerPayload,
-      },
-      data: contextData,
-    };
-
-    const startedAtMs = execution.startedAt ? execution.startedAt.getTime() : Date.now();
-    let activeStepId: string | undefined;
+    await previousExecution.catch(() => {});
 
     try {
-      if (workflow.definition.trigger.filter) {
-        const shouldRun = workflow.definition.trigger.filter(context);
-        if (!shouldRun) {
+      const existingExecution = idempotencyKey
+        ? await this.workflowStorage.findExecutionByIdempotencyKey(workflowId, idempotencyKey)
+        : null;
+
+      if (existingExecution && existingExecution.status === WorkflowExecutionStatus.Completed) {
+        return existingExecution;
+      }
+
+      const resumed = Boolean(existingExecution);
+      const execution =
+        existingExecution ??
+        (await this.workflowStorage.createExecution({
+          workflowId,
+          status: WorkflowExecutionStatus.Running,
+          input: this.buildExecutionInput(triggerPayload, idempotencyKey),
+        }));
+
+      if (existingExecution) {
+        await this.workflowStorage.updateExecution(existingExecution.id, {
+          status: WorkflowExecutionStatus.Running,
+          error: undefined,
+        });
+      }
+
+      const executionState = this.readExecutionState(existingExecution ?? null);
+      const completedStepIds = [...executionState.completedStepIds];
+      const contextData = { ...executionState.data };
+
+      const context: WorkflowContext = {
+        workflowId,
+        executionId: execution.id,
+        userId: workflow.userId,
+        trigger: {
+          provider: workflow.definition.trigger.provider,
+          event: workflow.definition.trigger.event,
+          payload: triggerPayload,
+        },
+        data: contextData,
+      };
+
+      const startedAtMs = execution.startedAt ? execution.startedAt.getTime() : Date.now();
+      let activeStepId: string | undefined;
+
+      try {
+        if (workflow.definition.trigger.filter) {
+          const shouldRun = workflow.definition.trigger.filter(context);
+          if (!shouldRun) {
+            await this.workflowStorage.updateExecution(execution.id, {
+              status: WorkflowExecutionStatus.Completed,
+              output: this.buildExecutionOutput(context.data, {
+                idempotencyKey,
+                completedStepIds,
+                retriable: false,
+                resumed,
+              }),
+              completedAt: new Date(),
+              durationMs: Date.now() - startedAtMs,
+            });
+
+            const skippedExecution = await this.getExecutionById(workflowId, execution.id);
+            return skippedExecution ?? execution;
+          }
+        }
+
+        for (const step of workflow.definition.steps) {
+          activeStepId = step.id;
+          if (completedStepIds.includes(step.id)) {
+            continue;
+          }
+
+          await this.executeStep(step, context);
+          completedStepIds.push(step.id);
+
           await this.workflowStorage.updateExecution(execution.id, {
-            status: WorkflowExecutionStatus.Completed,
+            status: WorkflowExecutionStatus.Running,
             output: this.buildExecutionOutput(context.data, {
               idempotencyKey,
               completedStepIds,
               retriable: false,
               resumed,
             }),
-            completedAt: new Date(),
-            durationMs: Date.now() - startedAtMs,
           });
-
-          const skippedExecution = await this.getExecutionById(workflowId, execution.id);
-          return skippedExecution ?? execution;
         }
-      }
-
-      for (const step of workflow.definition.steps) {
-        activeStepId = step.id;
-        if (completedStepIds.includes(step.id)) {
-          continue;
-        }
-
-        await this.executeStep(step, context);
-        completedStepIds.push(step.id);
 
         await this.workflowStorage.updateExecution(execution.id, {
-          status: WorkflowExecutionStatus.Running,
+          status: WorkflowExecutionStatus.Completed,
           output: this.buildExecutionOutput(context.data, {
             idempotencyKey,
             completedStepIds,
             retriable: false,
             resumed,
           }),
+          completedAt: new Date(),
+          durationMs: Date.now() - startedAtMs,
         });
-      }
 
-      await this.workflowStorage.updateExecution(execution.id, {
-        status: WorkflowExecutionStatus.Completed,
-        output: this.buildExecutionOutput(context.data, {
-          idempotencyKey,
-          completedStepIds,
-          retriable: false,
+        this.logger.info(`Workflow executed successfully: ${workflow.name}`, {
+          workflowId,
+          executionId: execution.id,
+          duration: Date.now() - startedAtMs,
           resumed,
-        }),
-        completedAt: new Date(),
-        durationMs: Date.now() - startedAtMs,
-      });
+        });
 
-      this.logger.info(`Workflow executed successfully: ${workflow.name}`, {
-        workflowId,
-        executionId: execution.id,
-        duration: Date.now() - startedAtMs,
-        resumed,
-      });
+        const completedExecution = await this.getExecutionById(workflowId, execution.id);
+        return completedExecution ?? execution;
+      } catch (error) {
+        const failure = normalizeWorkflowExecutionFailure(error);
+        this.logger.error(`Workflow execution failed: ${workflow.name}`, {
+          workflowId,
+          executionId: execution.id,
+          error: failure.error,
+        });
 
-      const completedExecution = await this.getExecutionById(workflowId, execution.id);
-      return completedExecution ?? execution;
-    } catch (error) {
-      const failure = normalizeWorkflowExecutionFailure(error);
-      this.logger.error(`Workflow execution failed: ${workflow.name}`, {
-        workflowId,
-        executionId: execution.id,
-        error: failure.error,
-      });
-
-      if (workflow.definition.errorHandlers) {
-        for (const errorHandler of workflow.definition.errorHandlers) {
-          try {
-            await errorHandler.handler(failure.error, context);
-          } catch (handlerError) {
-            this.logger.error('Error handler failed', { handlerError });
+        if (workflow.definition.errorHandlers) {
+          for (const errorHandler of workflow.definition.errorHandlers) {
+            try {
+              await errorHandler.handler(failure.error, context);
+            } catch (handlerError) {
+              this.logger.error('Error handler failed', { handlerError });
+            }
           }
         }
+
+        await this.workflowStorage.updateExecution(execution.id, {
+          status: WorkflowExecutionStatus.Failed,
+          error: `${failure.code}:${failure.error.message}`,
+          output: this.buildExecutionOutput(context.data, {
+            idempotencyKey,
+            completedStepIds,
+            retriable: failure.retriable,
+            resumed,
+            failedStepId: activeStepId,
+            errorCode: failure.code,
+          }),
+          completedAt: new Date(),
+          durationMs: Date.now() - startedAtMs,
+        });
+
+        throw failure.error;
       }
-
-      await this.workflowStorage.updateExecution(execution.id, {
-        status: WorkflowExecutionStatus.Failed,
-        error: `${failure.code}:${failure.error.message}`,
-        output: this.buildExecutionOutput(context.data, {
-          idempotencyKey,
-          completedStepIds,
-          retriable: failure.retriable,
-          resumed,
-          failedStepId: activeStepId,
-          errorCode: failure.code,
-        }),
-        completedAt: new Date(),
-        durationMs: Date.now() - startedAtMs,
-      });
-
-      throw failure.error;
+    } finally {
+      if (lockKey && releaseExecutionLock) {
+        releaseExecutionLock();
+        if (this.executionLocks.get(lockKey) === queueTail) {
+          this.executionLocks.delete(lockKey);
+        }
+      }
     }
   }
 

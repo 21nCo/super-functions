@@ -1,4 +1,5 @@
 import type { PlugFnConfig, MetricsOptions, PlugFnPrincipal } from '../types/config.js';
+import type { AuthSession } from '@superfunctions/auth';
 import { wrapWithSchema } from '@superfunctions/db';
 import type {
   ActionOptions,
@@ -322,6 +323,9 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       enableLogging: true,
       enableMetrics: true,
       database,
+      cacheStore: config.cache?.store ?? config.cacheStore,
+      cacheTtl: config.cache?.ttl ?? config.cache?.defaultTTL,
+      cacheKeyPrefix: config.cache?.keyPrefix,
     }
   );
 
@@ -617,6 +621,10 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         cursor: job.cursor,
         checkpoint: job.checkpoint,
         maxPages: workerOptions.maxPages ?? 50,
+        shouldContinue: async () => {
+          const currentJob = await runtimeStorage.getSyncJob(job.id);
+          return currentJob?.status !== 'cancelled';
+        },
         onPage: async (progress) => {
           await runtimeStorage.updateSyncJob(job.id, {
             cursor: progress.cursor,
@@ -653,6 +661,12 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         skippedCount: result.skippedCount,
       });
     } catch (error) {
+      if (isSyncCancelledError(error)) {
+        return runtimeStorage.updateSyncJob(job.id, {
+          status: 'cancelled',
+          error: undefined,
+        });
+      }
       await runtimeStorage.failSyncJob(job.id, error instanceof Error ? error.message : 'sync failed');
       throw error;
     }
@@ -840,6 +854,7 @@ async function executeSyncResource(input: {
     cursor?: string;
     checkpoint?: unknown;
   }) => Promise<void> | void;
+  shouldContinue?: () => Promise<boolean> | boolean;
 }): Promise<{
   fetchedCount: number;
   persistedCount: number;
@@ -913,6 +928,7 @@ async function executeProviderSyncDefinition(input: {
     cursor?: string;
     checkpoint?: unknown;
   }) => Promise<void> | void;
+  shouldContinue?: () => Promise<boolean> | boolean;
 }): Promise<{
   fetchedCount: number;
   persistedCount: number;
@@ -928,6 +944,10 @@ async function executeProviderSyncDefinition(input: {
   let pages = 0;
 
   while (pages < input.maxPages) {
+    if (input.shouldContinue && !(await input.shouldContinue())) {
+      throw syncCancelledError();
+    }
+
     pages += 1;
     const result: PlugFnSyncFetchResult = await input.syncDefinition.fetch({
       provider: input.provider,
@@ -994,6 +1014,23 @@ async function executeProviderSyncDefinition(input: {
     cursor,
     checkpoint,
   };
+}
+
+function syncCancelledError(): { code: string; message: string; status: number } {
+  return {
+    code: 'SYNC_CANCELLED',
+    message: 'sync job was cancelled',
+    status: 409,
+  };
+}
+
+function isSyncCancelledError(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'SYNC_CANCELLED'
+  );
 }
 
 function resolveSyncActionName(provider: Provider, resource: string): string | undefined {
@@ -1111,7 +1148,9 @@ function normalizeAuthProvider(configuredAuth: PlugFnConfig['auth']): {
   };
 }
 
-function normalizePrincipal(value: PlugFnPrincipal | string | null | undefined): PlugFnPrincipal | null {
+function normalizePrincipal(
+  value: PlugFnPrincipal | AuthSession | string | null | undefined
+): PlugFnPrincipal | null {
   if (!value) {
     return null;
   }
@@ -1120,8 +1159,29 @@ function normalizePrincipal(value: PlugFnPrincipal | string | null | undefined):
     return value.length > 0 ? { userId: value } : null;
   }
 
-  if (typeof value === 'object' && typeof value.userId === 'string' && value.userId.length > 0) {
-    return value;
+  if (
+    typeof value === 'object' &&
+    'userId' in value &&
+    typeof value.userId === 'string' &&
+    value.userId.length > 0
+  ) {
+    return value as PlugFnPrincipal;
+  }
+
+  if (
+    typeof value === 'object' &&
+    'subject' in value &&
+    typeof (value as AuthSession).subject.actorId === 'string' &&
+    (value as AuthSession).subject.actorId.length > 0
+  ) {
+    const session = value as AuthSession;
+    return {
+      userId: session.subject.actorId,
+      tenantId: session.subject.tenantId,
+      roles: session.resourceIds,
+      grants: session.scopes,
+      metadata: session.metadata,
+    };
   }
 
   return null;

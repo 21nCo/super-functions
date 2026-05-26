@@ -1,3 +1,4 @@
+import { MemoryQueueAdapter, type QueueAdapter } from '@superfunctions/queue';
 import {
   SendGovernanceError,
   type SendRequest,
@@ -12,6 +13,8 @@ import {
 
 interface QueueDependencies {
   now?: () => string;
+  retentionMs?: number;
+  queueAdapter?: QueueAdapter<SendJob>;
 }
 
 export interface QueueEnqueueResult {
@@ -21,16 +24,21 @@ export interface QueueEnqueueResult {
 
 export class SendQueue {
   private readonly now: () => string;
+  private readonly retentionMs: number;
+  private readonly queueAdapter: QueueAdapter<SendJob>;
   private readonly jobByScopeAndId = new Map<string, SendJob>();
   private readonly jobScopeByJobId = new Map<string, SendScope>();
   private readonly idempotencyByScope = new Map<string, string>();
 
   constructor(dependencies: QueueDependencies = {}) {
     this.now = dependencies.now ?? (() => new Date().toISOString());
+    this.retentionMs = dependencies.retentionMs ?? 24 * 60 * 60 * 1000;
+    this.queueAdapter = dependencies.queueAdapter ?? new MemoryQueueAdapter<SendJob>();
   }
 
-  enqueue(request: SendRequest): QueueEnqueueResult {
+  async enqueue(request: SendRequest): Promise<QueueEnqueueResult> {
     assertSendRequest(request);
+    this.cleanupExpiredTerminalJobs();
 
     const idempotencyKey = scopedIdempotencyKey(request);
     const existingJobId = this.idempotencyByScope.get(idempotencyKey);
@@ -56,6 +64,7 @@ export class SendQueue {
     this.jobByScopeAndId.set(scopedJobId(jobId, request), job);
     this.jobScopeByJobId.set(jobId, { tenantId: request.tenantId, userId: request.userId });
     this.idempotencyByScope.set(idempotencyKey, jobId);
+    await this.queueAdapter.enqueue(scopedQueueName(request), job);
 
     return {
       job,
@@ -76,6 +85,7 @@ export class SendQueue {
 
   list(scope: SendScope): SendJob[] {
     assertSendScope(scope);
+    this.cleanupExpiredTerminalJobs();
     const prefix = scopedPrefix(scope);
     return [...this.jobByScopeAndId.entries()]
       .filter(([key]) => key.startsWith(prefix))
@@ -97,6 +107,7 @@ export class SendQueue {
     };
 
     this.jobByScopeAndId.set(scopedJobId(jobId, scope), updated);
+    this.cleanupExpiredTerminalJobs();
     return updated;
   }
 
@@ -107,6 +118,27 @@ export class SendQueue {
     }
     return job;
   }
+
+  private cleanupExpiredTerminalJobs(): void {
+    const cutoff = Date.parse(this.now()) - this.retentionMs;
+    for (const [scopedId, job] of this.jobByScopeAndId.entries()) {
+      if (!isTerminalStatus(job.status) || Date.parse(job.updatedAt) >= cutoff) {
+        continue;
+      }
+
+      this.jobByScopeAndId.delete(scopedId);
+      this.jobScopeByJobId.delete(job.jobId);
+      this.idempotencyByScope.delete(scopedIdempotencyKey(job));
+    }
+  }
+}
+
+function scopedQueueName(scope: SendScope): string {
+  return `send:${scope.tenantId}:${scope.userId}`;
+}
+
+function isTerminalStatus(status: SendJobStatus): boolean {
+  return status === 'sent' || status === 'failed';
 }
 
 function scopedPrefix(scope: SendScope): string {

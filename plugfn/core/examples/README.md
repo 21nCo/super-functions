@@ -16,7 +16,7 @@ npm run build
 
 3. Run an example:
 ```bash
-node examples/basic-usage.js
+npx tsx examples/basic-usage.ts
 ```
 
 ## Examples
@@ -31,6 +31,5 @@ Some examples may require environment variables:
 ```bash
 export GITHUB_CLIENT_ID="your-client-id"
 export GITHUB_CLIENT_SECRET="your-client-secret"
-export ENCRYPTION_KEY="your-32-character-encryption-key"
+export ENCRYPTION_KEY="0000000000000000000000000000000000000000000000000000000000000000"
 ```
-

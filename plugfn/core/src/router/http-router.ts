@@ -1,5 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createRouter, type Middleware, type Route, type Router } from '@superfunctions/http';
+import type { AuthSession } from '@superfunctions/auth';
+import { ok as envelopeOk, err as envelopeErr } from '@superfunctions/envelope';
+import { SuperfunctionError } from '@superfunctions/errors';
 import type { PlugFn } from '../core/plug-fn.js';
 import type { PlugFnPrincipal } from '../types/config.js';
 import type { Connection, HandleCallbackResult } from '../types/connection.js';
@@ -768,7 +771,8 @@ async function handleWebhookRoute(
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
     headers = normalizeHeaders(req.headers);
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
-    payloadHash = createHash('sha256').update(rawBody).digest('hex');
+    const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
+    payloadHash = currentPayloadHash;
     idempotencyKey = readWebhookIdempotencyKey(provider, headers);
     if (idempotencyKey) {
       const existing = await ctx.plugFn.runtime.webhooks.findReceiptByIdempotencyKey(
@@ -776,7 +780,7 @@ async function handleWebhookRoute(
         idempotencyKey
       );
       if (existing) {
-        if (existing.payloadHash !== payloadHash) {
+        if (existing.payloadHash !== currentPayloadHash) {
           throw {
             code: 'WEBHOOK_IDEMPOTENCY_CONFLICT',
             message: 'webhook idempotency key was reused with a different payload',
@@ -787,7 +791,10 @@ async function handleWebhookRoute(
             },
           };
         }
-        if (existing.verificationStatus === 'verified') {
+        if (
+          existing.verificationStatus === 'verified' ||
+          existing.verificationStatus === 'not-required'
+        ) {
           return successResponse({
             duplicate: true,
             receiptId: existing.id,
@@ -806,7 +813,7 @@ async function handleWebhookRoute(
     const receipt = await ctx.plugFn.runtime.webhooks.createReceipt({
       provider,
       event,
-      payloadHash,
+      payloadHash: currentPayloadHash,
       idempotencyKey,
       headersRedacted: redactHeaders(headers),
       verificationStatus: secret ? 'verified' : 'not-required',
@@ -828,7 +835,7 @@ async function handleWebhookRoute(
       metadata: {
         provider,
         event,
-        payloadHash,
+        payloadHash: currentPayloadHash,
         idempotencyKey,
       },
     });
@@ -1053,6 +1060,69 @@ function assertIdentityMatches(body: Record<string, any>, authContext: RouteAuth
       status: 403,
     };
   }
+
+  const owner = asConnectionOwner(body.owner);
+  if (!owner) {
+    return;
+  }
+
+  assertOwnerMatchesAuthContext(owner, authContext);
+}
+
+function assertOwnerMatchesAuthContext(
+  owner: PlugFnConnectionOwner,
+  authContext: RouteAuthContext
+): void {
+  if (owner.tenantId && authContext.tenantId && owner.tenantId !== authContext.tenantId) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
+
+  if (owner.kind === 'user' && owner.userId !== authContext.userId) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
+
+  if (
+    owner.kind === 'organization' &&
+    owner.installedByUserId !== authContext.userId
+  ) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
+
+  if (
+    owner.kind === 'delegated' &&
+    owner.installedByUserId !== authContext.userId &&
+    owner.delegatedToUserId !== authContext.userId
+  ) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
+
+  if (
+    'organizationId' in owner &&
+    authContext.organizationId &&
+    owner.organizationId !== authContext.organizationId
+  ) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
 }
 
 function assertIdentityMatchesQuery(
@@ -1069,9 +1139,19 @@ function assertIdentityMatchesQuery(
   );
 }
 
-function normalizeAuthContext(principal: PlugFnPrincipal | null): RouteAuthContext | null {
+function normalizeAuthContext(principal: PlugFnPrincipal | AuthSession | null): RouteAuthContext | null {
   if (!principal) {
     return null;
+  }
+
+  if ('subject' in principal) {
+    return {
+      userId: principal.subject.actorId,
+      tenantId: principal.subject.tenantId,
+      organizationId: asOptionalString(principal.metadata?.organizationId),
+      roles: principal.resourceIds,
+      grants: principal.scopes,
+    };
   }
 
   return {
@@ -1168,6 +1248,17 @@ function asConnectionOwner(value: unknown): PlugFnConnectionOwner | undefined {
 }
 
 function toDeterministicError(error: unknown): DeterministicError {
+  if (error instanceof SuperfunctionError) {
+    const superfunctionError = error as SuperfunctionError;
+    return {
+      code: superfunctionError.code,
+      message: superfunctionError.message,
+      status: superfunctionError.status,
+      retryable: superfunctionError.retryable,
+      details: superfunctionError.details ?? {},
+    };
+  }
+
   if (
     error &&
     typeof error === 'object' &&
@@ -1288,37 +1379,31 @@ function resolveReturnToRedirect(returnTo: string | undefined, baseUrl: string):
 }
 
 function successResponse(data: Record<string, unknown>): Response {
-  const envelope: PlugFnApiEnvelope<Record<string, unknown>> = {
-    ok: true,
-    data,
-    meta: createResponseMeta(),
-  };
+  const envelope = envelopeOk(data) as PlugFnApiEnvelope<Record<string, unknown>>;
+  envelope.meta = createResponseMeta(envelope.meta?.timestamp);
   return Response.json(envelope);
 }
 
 function errorResponse(error: DeterministicError): Response {
   const details = isPlainObject(error.details) ? error.details : {};
-  const envelope: PlugFnApiEnvelope = {
-    ok: false,
-    error: {
-      code: error.code,
-      message: error.message,
-      status: error.status,
-      retryable: error.retryable,
-      details,
-    },
-    meta: createResponseMeta(),
-  };
+  const envelope = envelopeErr({
+    code: error.code,
+    message: error.message,
+    status: error.status,
+    retryable: error.retryable,
+    details,
+  }) as PlugFnApiEnvelope;
+  envelope.meta = createResponseMeta(envelope.meta?.timestamp);
   return Response.json(
     envelope,
     { status: error.status }
   );
 }
 
-function createResponseMeta(): PlugFnResponseMeta {
+function createResponseMeta(timestamp = new Date().toISOString()): PlugFnResponseMeta {
   return {
     requestId: `req_${randomBytes(12).toString('hex')}`,
-    timestamp: new Date().toISOString(),
+    timestamp,
   };
 }
 

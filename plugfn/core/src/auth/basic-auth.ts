@@ -36,9 +36,14 @@ export class BasicAuthHandler {
 
     const encoded = authHeader.slice(6);
     const decoded = Buffer.from(encoded, 'base64').toString('utf8');
-    const [username, password] = decoded.split(':');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex <= 0) {
+      return null;
+    }
 
-    if (!username || !password) {
+    const username = decoded.slice(0, separatorIndex);
+    const password = decoded.slice(separatorIndex + 1);
+    if (!password) {
       return null;
     }
 
@@ -61,4 +66,3 @@ export class BasicAuthHandler {
     );
   }
 }
-

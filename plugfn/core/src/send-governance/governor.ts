@@ -68,7 +68,7 @@ export class SendGovernor {
       );
     }
 
-    const queued = this.queue.enqueue(request);
+    const queued = await this.queue.enqueue(request);
     return {
       queued: true,
       jobId: queued.job.jobId,

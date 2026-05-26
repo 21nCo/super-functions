@@ -9,7 +9,7 @@ import type { Provider } from '../types/provider.js';
 import { AuthType } from '../types/provider.js';
 import type { Logger } from '../types/action.js';
 import type { Credentials } from '../types/connection.js';
-import type { Adapter as DbAdapter } from '@superfunctions/db';
+import type { Adapter as DbAdapter, KVStoreAdapter } from '@superfunctions/db';
 import { ConnectionManager } from './connection-manager.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { RetryMiddleware } from '../middleware/retry.js';
@@ -51,12 +51,18 @@ export class ActionExecutor {
       enableMetrics?: boolean;
       maxConcurrentSyncPerConnection?: number;
       database?: DbAdapter;
+      cacheStore?: KVStoreAdapter;
+      cacheTtl?: number;
+      cacheKeyPrefix?: string;
     } = {}
   ) {
     this.httpClient = new FetchHttpClient();
     this.retryMiddleware = new RetryMiddleware({}, logger);
     this.rateLimiter = new RateLimiter();
-    this.cacheMiddleware = new CacheMiddleware(300000, logger);
+    this.cacheMiddleware = new CacheMiddleware(_options.cacheTtl ?? 300000, logger, {
+      store: _options.cacheStore,
+      keyPrefix: _options.cacheKeyPrefix,
+    });
     this.loggingMiddleware = new LoggingMiddleware(logger, _options.database);
     this.metricsMiddleware = new MetricsMiddleware();
     this.maxConcurrentSyncPerConnection = Math.max(1, _options.maxConcurrentSyncPerConnection ?? 1);
@@ -106,7 +112,7 @@ export class ActionExecutor {
       // Check cache
       if (this.enableCache && options.cache !== false) {
         const cachedResult = await this.cacheMiddleware.get<T>(cacheKey);
-        if (cachedResult !== null) {
+        if (cachedResult !== undefined) {
           this.logger.debug(`Cache hit for ${provider}.${action}`);
           
           return {
@@ -138,8 +144,10 @@ export class ActionExecutor {
 
       // Apply rate limiting
       if (this.enableRateLimit && providerObj.rateLimit) {
-        await this.rateLimiter.acquire(`provider:${provider}`, providerObj.rateLimit);
-        await this.rateLimiter.acquire(`provider:${provider}:tenant:${options.userId}`, providerObj.rateLimit);
+        await this.rateLimiter.acquireMany(
+          [`provider:${provider}`, `provider:${provider}:tenant:${options.userId}`],
+          providerObj.rateLimit
+        );
       }
 
       // Build action context
@@ -373,10 +381,10 @@ export class ActionExecutor {
     const current = new Promise<void>((resolve) => {
       releaseCurrent = resolve;
     });
-    const queueTail = previous.then(() => current);
+    const queueTail = previous.catch(() => {}).then(() => current);
     this.syncExecutionQueue.set(connectionId, queueTail);
 
-    await previous;
+    await previous.catch(() => {});
     try {
       return await execute();
     } finally {

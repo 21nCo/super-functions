@@ -1,3 +1,8 @@
+import {
+  createMetricsEmitter,
+  createNamespacedEmitter,
+  type MetricsEmitter,
+} from '@superfunctions/metrics';
 import type { Metrics, ProviderMetrics, ActionMetrics } from '../types/config.js';
 
 interface MetricEntry {
@@ -16,11 +21,17 @@ interface MetricEntry {
 export class MetricsMiddleware {
   private metrics: MetricEntry[] = [];
   private maxEntries = 10000;
+  private readonly emitter: MetricsEmitter;
+
+  constructor(emitter: MetricsEmitter = createNamespacedEmitter('plugfn', createMetricsEmitter())) {
+    this.emitter = emitter;
+  }
 
   /**
    * Record an action execution
    */
   record(entry: Omit<MetricEntry, 'timestamp'>): void {
+    this.emitter.track('action', entry);
     this.metrics.push({
       ...entry,
       timestamp: new Date(),
@@ -189,4 +200,3 @@ export class MetricsMiddleware {
     this.metrics = [];
   }
 }
-

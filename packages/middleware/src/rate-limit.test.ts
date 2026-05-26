@@ -149,6 +149,23 @@ describe('rate-limit', () => {
       expect((await limiter.check({ key: 'user1' })).allowed).toBe(false);
     });
 
+    it('checks multiple keys without consuming partial capacity when one key is blocked', async () => {
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 1,
+        algorithm: 'token-bucket',
+      });
+
+      expect((await limiter.check({ key: 'provider' })).allowed).toBe(true);
+
+      const multi = await limiter.checkMany({ keys: ['provider', 'tenant'] });
+      expect(multi.allowed).toBe(false);
+      expect(multi.remainingByKey.get('provider')).toBe(0);
+      expect(multi.remainingByKey.get('tenant')).toBe(1);
+
+      expect((await limiter.check({ key: 'tenant' })).allowed).toBe(true);
+    });
+
     it('resets key state', async () => {
       const limiter = createRateLimiter({
         windowMs: 60000,

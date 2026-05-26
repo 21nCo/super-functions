@@ -18,7 +18,10 @@ function warnLegacyPath(): void {
     return;
   }
   warnedLegacyPath = true;
-  process.emitWarning(LEGACY_PATH_WARNING_MESSAGE, LEGACY_PATH_WARNING_CODE);
+  process.emitWarning(LEGACY_PATH_WARNING_MESSAGE, {
+    code: LEGACY_PATH_WARNING_CODE,
+    type: 'DeprecationWarning',
+  });
 }
 
 warnLegacyPath();

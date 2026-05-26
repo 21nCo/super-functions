@@ -10,7 +10,6 @@ import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { githubProvider, slackProvider } from '../src/providers/index.js';
 
 const app = express();
-app.use(express.json());
 
 // Initialize PlugFn
 const plug = plugFn({
@@ -65,6 +64,8 @@ plug.webhooks.on('github', 'issues.opened', async (event) => {
 // Mount PlugFn routes
 const plugfnRouter = createPlugFnRouter(plug);
 app.use('/api/plugfn', toExpress(plugfnRouter));
+
+app.use(express.json());
 
 // Custom routes
 app.get('/', (req, res) => {

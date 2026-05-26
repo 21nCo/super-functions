@@ -27,8 +27,22 @@ export interface CheckLimitInput {
   limit?: number;
 }
 
+export interface CheckManyLimitsInput {
+  keys: string[];
+  windowSeconds?: number;
+  limit?: number;
+}
+
+export interface RateLimitManyResult {
+  allowed: boolean;
+  remainingByKey: Map<string, number>;
+  resetAt: string;
+  total: number;
+}
+
 export interface RateLimiter {
   check(input: CheckLimitInput): Promise<RateLimitResult>;
+  checkMany(input: CheckManyLimitsInput): Promise<RateLimitManyResult>;
   reset(key: string): Promise<void>;
 }
 
@@ -174,6 +188,147 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     }
   }
 
+  async function withKeyLocks<T>(keys: string[], work: () => Promise<T>): Promise<T> {
+    const uniqueKeys = [...new Set(keys)].sort();
+    const releases: Array<() => void> = [];
+    const queuedLocks: Array<{ key: string; queued: Promise<void> }> = [];
+
+    try {
+      for (const key of uniqueKeys) {
+        const prior = keyLocks.get(key) ?? Promise.resolve();
+        let resolveLock!: () => void;
+        const current = new Promise<void>((resolve) => {
+          resolveLock = resolve;
+        });
+        const queued = prior.then(() => current);
+        keyLocks.set(key, queued);
+        queuedLocks.push({ key, queued });
+        releases.push(resolveLock);
+        await prior;
+      }
+
+      return await work();
+    } finally {
+      for (let index = releases.length - 1; index >= 0; index -= 1) {
+        releases[index]();
+      }
+      for (const { key, queued } of queuedLocks) {
+        if (keyLocks.get(key) === queued) {
+          keyLocks.delete(key);
+        }
+      }
+    }
+  }
+
+  async function evaluateKey(
+    key: string,
+    currentTime: number,
+    effectiveWindowMs: number,
+    effectiveLimit: number,
+    commit: boolean
+  ): Promise<RateLimitResult> {
+    if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
+      throw new Error('RATE_LIMIT_WINDOW_INVALID');
+    }
+    if (!Number.isFinite(effectiveLimit) || effectiveLimit < 0) {
+      throw new Error('RATE_LIMIT_LIMIT_INVALID');
+    }
+
+    if (algorithm === 'sliding-window') {
+      const state = (await getState<SlidingWindowState>(kv, key)) ?? { timestamps: [] };
+      const floor = currentTime - effectiveWindowMs;
+      const timestamps = state.timestamps.filter((timestamp) => timestamp > floor);
+      const allowed = timestamps.length < effectiveLimit;
+      if (allowed && commit) {
+        timestamps.push(currentTime);
+      }
+
+      const oldest = timestamps[0] ?? currentTime;
+      const resetAt = oldest + effectiveWindowMs;
+      if (commit) {
+        await setState(kv, key, { timestamps }, Math.max(1, resetAt - currentTime));
+      }
+
+      return {
+        allowed,
+        remaining: Math.max(0, effectiveLimit - timestamps.length),
+        resetAt: new Date(resetAt).toISOString(),
+        total: effectiveLimit,
+      };
+    }
+
+    if (algorithm === 'token-bucket') {
+      if (effectiveLimit <= 0) {
+        const resetAt = currentTime + Math.max(0, effectiveWindowMs);
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt: new Date(resetAt).toISOString(),
+          total: effectiveLimit,
+        };
+      }
+
+      const refillRatePerMs = effectiveLimit / effectiveWindowMs;
+      const state = (await getState<TokenBucketState>(kv, key)) ?? {
+        tokens: effectiveLimit,
+        lastRefill: currentTime,
+      };
+
+      const elapsed = Math.max(0, currentTime - state.lastRefill);
+      const tokens = Math.min(effectiveLimit, state.tokens + elapsed * refillRatePerMs);
+      const allowed = tokens >= 1;
+      const nextTokens = allowed && commit ? tokens - 1 : tokens;
+      const msUntilNextToken = nextTokens >= 1 ? 0 : Math.ceil((1 - nextTokens) / refillRatePerMs);
+      const msUntilFull = Math.ceil((effectiveLimit - nextTokens) / refillRatePerMs);
+      const resetAt = currentTime + msUntilNextToken;
+
+      if (commit) {
+        await setState(
+          kv,
+          key,
+          {
+            tokens: nextTokens,
+            lastRefill: currentTime,
+          },
+          Math.max(1, msUntilFull)
+        );
+      }
+
+      return {
+        allowed,
+        remaining: Math.max(0, Math.floor(nextTokens)),
+        resetAt: new Date(resetAt).toISOString(),
+        total: effectiveLimit,
+      };
+    }
+
+    const state = (await getState<FixedWindowState>(kv, key)) ?? {
+      count: 0,
+      windowStart: currentTime,
+    };
+    const windowState =
+      currentTime >= state.windowStart + effectiveWindowMs
+        ? { count: 0, windowStart: currentTime }
+        : { ...state };
+
+    const allowed = windowState.count < effectiveLimit;
+    if (allowed && commit) {
+      windowState.count += 1;
+    }
+
+    const resetAt = windowState.windowStart + effectiveWindowMs;
+    if (commit) {
+      await setState(kv, key, windowState, Math.max(1, resetAt - currentTime));
+    }
+
+    return {
+      allowed,
+      remaining: Math.max(0, effectiveLimit - windowState.count),
+      resetAt: new Date(resetAt).toISOString(),
+      total: effectiveLimit,
+    };
+  }
+
   return {
     async check(input: CheckLimitInput): Promise<RateLimitResult> {
       const key = `${keyPrefix}${input.key}`;
@@ -181,100 +336,60 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
         const effectiveWindowMs =
           (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
         const effectiveLimit = input.limit ?? maxRequests;
-        const currentTime = now();
+        return evaluateKey(key, now(), effectiveWindowMs, effectiveLimit, true);
+      });
+    },
 
-        if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
-          throw new Error('RATE_LIMIT_WINDOW_INVALID');
-        }
-        if (!Number.isFinite(effectiveLimit) || effectiveLimit < 0) {
-          throw new Error('RATE_LIMIT_LIMIT_INVALID');
-        }
+    async checkMany(input: CheckManyLimitsInput): Promise<RateLimitManyResult> {
+      const uniqueKeys = [...new Set(input.keys)];
+      const effectiveWindowMs =
+        (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
+      const effectiveLimit = input.limit ?? maxRequests;
+      const namespacedKeys = uniqueKeys.map((key) => `${keyPrefix}${key}`);
 
-        if (algorithm === 'sliding-window') {
-          const state = (await getState<SlidingWindowState>(kv, key)) ?? { timestamps: [] };
-          const floor = currentTime - effectiveWindowMs;
-          state.timestamps = state.timestamps.filter((timestamp) => timestamp > floor);
-
-          const allowed = state.timestamps.length < effectiveLimit;
-          if (allowed) {
-            state.timestamps.push(currentTime);
-          }
-
-          const oldest = state.timestamps[0] ?? currentTime;
-          const resetAt = oldest + effectiveWindowMs;
-          const ttlMs = Math.max(1, resetAt - currentTime);
-          await setState(kv, key, state, ttlMs);
-
-          return {
-            allowed,
-            remaining: Math.max(0, effectiveLimit - state.timestamps.length),
-            resetAt: new Date(resetAt).toISOString(),
-            total: effectiveLimit,
-          };
-        }
-
-        if (algorithm === 'token-bucket') {
-          if (effectiveLimit <= 0) {
-            const resetAt = currentTime + Math.max(0, effectiveWindowMs);
-            return {
-              allowed: false,
-              remaining: 0,
-              resetAt: new Date(resetAt).toISOString(),
-              total: effectiveLimit,
-            };
-          }
-
-          const refillRatePerMs = effectiveLimit / effectiveWindowMs;
-          const state = (await getState<TokenBucketState>(kv, key)) ?? {
-            tokens: effectiveLimit,
-            lastRefill: currentTime,
-          };
-
-          const elapsed = Math.max(0, currentTime - state.lastRefill);
-          state.tokens = Math.min(effectiveLimit, state.tokens + elapsed * refillRatePerMs);
-          state.lastRefill = currentTime;
-
-          const allowed = state.tokens >= 1;
-          if (allowed) {
-            state.tokens -= 1;
-          }
-
-          const msUntilNextToken = state.tokens >= 1 ? 0 : Math.ceil((1 - state.tokens) / refillRatePerMs);
-          const msUntilFull = Math.ceil((effectiveLimit - state.tokens) / refillRatePerMs);
-          const resetAt = currentTime + msUntilNextToken;
-
-          await setState(kv, key, state, Math.max(1, msUntilFull));
-
-          return {
-            allowed,
-            remaining: Math.max(0, Math.floor(state.tokens)),
-            resetAt: new Date(resetAt).toISOString(),
-            total: effectiveLimit,
-          };
-        }
-
-        const state = (await getState<FixedWindowState>(kv, key)) ?? {
-          count: 0,
-          windowStart: currentTime,
-        };
-
-        if (currentTime >= state.windowStart + effectiveWindowMs) {
-          state.count = 0;
-          state.windowStart = currentTime;
-        }
-
-        const allowed = state.count < effectiveLimit;
-        if (allowed) {
-          state.count += 1;
-        }
-
-        const resetAt = state.windowStart + effectiveWindowMs;
-        await setState(kv, key, state, Math.max(1, resetAt - currentTime));
-
+      if (uniqueKeys.length === 0) {
         return {
-          allowed,
-          remaining: Math.max(0, effectiveLimit - state.count),
-          resetAt: new Date(resetAt).toISOString(),
+          allowed: true,
+          remainingByKey: new Map(),
+          resetAt: new Date(now()).toISOString(),
+          total: effectiveLimit,
+        };
+      }
+
+      return withKeyLocks(namespacedKeys, async () => {
+        const currentTime = now();
+        const preflight = await Promise.all(
+          namespacedKeys.map((key) =>
+            evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, false)
+          )
+        );
+        const blocked = preflight.filter((result) => !result.allowed);
+        if (blocked.length > 0) {
+          return {
+            allowed: false,
+            remainingByKey: new Map(
+              uniqueKeys.map((key, index) => [key, preflight[index].remaining])
+            ),
+            resetAt: new Date(
+              Math.min(...blocked.map((result) => Date.parse(result.resetAt)))
+            ).toISOString(),
+            total: effectiveLimit,
+          };
+        }
+
+        const committed = await Promise.all(
+          namespacedKeys.map((key) =>
+            evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
+          )
+        );
+        return {
+          allowed: true,
+          remainingByKey: new Map(
+            uniqueKeys.map((key, index) => [key, committed[index].remaining])
+          ),
+          resetAt: new Date(
+            Math.min(...committed.map((result) => Date.parse(result.resetAt)))
+          ).toISOString(),
           total: effectiveLimit,
         };
       });

@@ -1,5 +1,6 @@
 import type { CacheOptions } from '../types/action.js';
 import type { Logger } from '../types/action.js';
+import type { KVStoreAdapter } from '@superfunctions/db';
 import { hash } from '../utils/crypto.js';
 
 interface CacheEntry {
@@ -7,17 +8,32 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+interface SerializedCacheEntry {
+  data: any;
+}
+
+interface CacheMiddlewareOptions {
+  store?: KVStoreAdapter;
+  keyPrefix?: string;
+}
+
 /**
- * Simple in-memory cache middleware
+ * Action cache middleware. Uses an injected KV store when available and falls
+ * back to an in-memory cache for local development/testing.
  */
 export class CacheMiddleware {
   private cache = new Map<string, CacheEntry>();
   private cleanupInterval: NodeJS.Timeout;
+  private readonly store?: KVStoreAdapter;
+  private readonly keyPrefix: string;
 
   constructor(
     private defaultTTL: number = 300000, // 5 minutes
-    private logger?: Logger
+    private logger?: Logger,
+    options: CacheMiddlewareOptions = {}
   ) {
+    this.store = options.store;
+    this.keyPrefix = options.keyPrefix ?? 'plugfn:action-cache:';
     // Cleanup expired entries every minute
     this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
   }
@@ -25,16 +41,32 @@ export class CacheMiddleware {
   /**
    * Get cached value
    */
-  async get<T>(key: string): Promise<T | null> {
+  async get<T>(key: string): Promise<T | undefined> {
+    if (this.store) {
+      const raw = await this.store.get(this.cacheKey(key));
+      if (raw === null) {
+        return undefined;
+      }
+
+      try {
+        const entry = JSON.parse(raw) as SerializedCacheEntry;
+        this.logger?.debug(`Cache hit: ${key}`);
+        return entry.data as T;
+      } catch {
+        await this.store.delete(this.cacheKey(key));
+        return undefined;
+      }
+    }
+
     const entry = this.cache.get(key);
     
     if (!entry) {
-      return null;
+      return undefined;
     }
     
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
-      return null;
+      return undefined;
     }
     
     this.logger?.debug(`Cache hit: ${key}`);
@@ -45,20 +77,37 @@ export class CacheMiddleware {
    * Set cached value
    */
   async set(key: string, value: any, ttl?: number): Promise<void> {
-    const expiresAt = Date.now() + (ttl || this.defaultTTL);
+    const ttlMs = ttl || this.defaultTTL;
+    if (this.store) {
+      await this.store.set({
+        key: this.cacheKey(key),
+        value: JSON.stringify({ data: value } satisfies SerializedCacheEntry),
+        ttlSeconds: Math.max(1, Math.ceil(ttlMs / 1000)),
+      });
+      this.logger?.debug(`Cache set: ${key} (TTL: ${ttlMs}ms)`);
+      return;
+    }
+
+    const expiresAt = Date.now() + ttlMs;
     
     this.cache.set(key, {
       data: value,
       expiresAt,
     });
     
-    this.logger?.debug(`Cache set: ${key} (TTL: ${ttl || this.defaultTTL}ms)`);
+    this.logger?.debug(`Cache set: ${key} (TTL: ${ttlMs}ms)`);
   }
 
   /**
    * Delete cached value
    */
   async delete(key: string): Promise<void> {
+    if (this.store) {
+      await this.store.delete(this.cacheKey(key));
+      this.logger?.debug(`Cache delete: ${key}`);
+      return;
+    }
+
     this.cache.delete(key);
     this.logger?.debug(`Cache delete: ${key}`);
   }
@@ -67,6 +116,11 @@ export class CacheMiddleware {
    * Clear all cache
    */
   async clear(): Promise<void> {
+    if (this.store) {
+      this.logger?.warn('Cache clear requested, but KV-backed caches require prefix-level invalidation by the store');
+      return;
+    }
+
     this.cache.clear();
     this.logger?.debug('Cache cleared');
   }
@@ -90,7 +144,7 @@ export class CacheMiddleware {
     // Check cache
     const cached = await this.get<T>(key);
     
-    if (cached !== null) {
+    if (cached !== undefined) {
       return { data: cached, cached: true };
     }
     
@@ -134,10 +188,20 @@ export class CacheMiddleware {
    * Get cache statistics
    */
   getStats(): { size: number; keys: string[] } {
+    if (this.store) {
+      return {
+        size: -1,
+        keys: [],
+      };
+    }
+
     return {
       size: this.cache.size,
       keys: Array.from(this.cache.keys()),
     };
   }
-}
 
+  private cacheKey(key: string): string {
+    return `${this.keyPrefix}${key}`;
+  }
+}

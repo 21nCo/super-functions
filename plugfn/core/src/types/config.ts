@@ -1,7 +1,8 @@
 import type { Logger } from './action.js';
 import type { RetryOptions } from './action.js';
 import type { RateLimitConfig } from './provider.js';
-import type { Adapter as DbAdapter } from '@superfunctions/db';
+import type { Adapter as DbAdapter, KVStoreAdapter } from '@superfunctions/db';
+import type { AuthSession } from '@superfunctions/auth';
 import type { PlugFnOAuthClientConfig, PlugFnSecretResolverConfig } from './runtime.js';
 import type { Connection } from './connection.js';
 
@@ -28,7 +29,7 @@ export interface PlugFnAuthorizationOptions {
  * Auth provider interface
  */
 export interface AuthProvider {
-  authenticate?(request: Request): Promise<PlugFnPrincipal | null> | PlugFnPrincipal | null;
+  authenticate?(request: Request): Promise<PlugFnPrincipal | AuthSession | null> | PlugFnPrincipal | AuthSession | null;
   getUserId?(request: any): Promise<string | null>;
   requireAuth?(request: any): Promise<string>;
 }
@@ -81,6 +82,8 @@ export interface GlobalCacheConfig {
   ttl?: number;
   instance?: any;
   defaultTTL?: number;
+  store?: KVStoreAdapter;
+  keyPrefix?: string;
 }
 
 /**
@@ -104,6 +107,7 @@ export interface GlobalRetryConfig extends RetryOptions {
  */
 export interface PlugFnConfig {
   database: DbAdapter;
+  cacheStore?: KVStoreAdapter;
   auth: AuthProvider;
   baseUrl: string;
   encryptionKey: string;

@@ -22,7 +22,9 @@ const plug = plugFn({
   database: new MemoryAdapter(),
   auth: demoAuthProvider,
   baseUrl: 'https://myapp.com',
-  encryptionKey: 'your-32-character-encryption-key-here!!',
+  encryptionKey:
+    process.env.ENCRYPTION_KEY ??
+    '0000000000000000000000000000000000000000000000000000000000000000',
   integrations: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID || 'your-github-client-id',
@@ -104,4 +106,3 @@ main().catch((error) => {
   console.error('❌ Error:', error);
   process.exit(1);
 });
-
