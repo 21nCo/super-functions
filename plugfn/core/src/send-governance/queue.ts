@@ -61,10 +61,18 @@ export class SendQueue {
       attempts: 0,
     };
 
-    this.jobByScopeAndId.set(scopedJobId(jobId, request), job);
+    const scopedId = scopedJobId(jobId, request);
+    this.jobByScopeAndId.set(scopedId, job);
     this.jobScopeByJobId.set(jobId, { tenantId: request.tenantId, userId: request.userId });
     this.idempotencyByScope.set(idempotencyKey, jobId);
-    await this.queueAdapter.enqueue(scopedQueueName(request), job);
+    try {
+      await this.queueAdapter.enqueue(scopedQueueName(request), job);
+    } catch (error) {
+      this.jobByScopeAndId.delete(scopedId);
+      this.jobScopeByJobId.delete(jobId);
+      this.idempotencyByScope.delete(idempotencyKey);
+      throw error;
+    }
 
     return {
       job,

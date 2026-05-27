@@ -17,6 +17,15 @@ interface CacheMiddlewareOptions {
   keyPrefix?: string;
 }
 
+export class CacheClearUnsupportedError extends Error {
+  readonly code = 'PLUGFN_CACHE_CLEAR_UNSUPPORTED';
+
+  constructor() {
+    super('Cache clear is not supported for KV-backed caches without prefix invalidation support');
+    this.name = 'CacheClearUnsupportedError';
+  }
+}
+
 /**
  * Action cache middleware. Uses an injected KV store when available and falls
  * back to an in-memory cache for local development/testing.
@@ -117,8 +126,7 @@ export class CacheMiddleware {
    */
   async clear(): Promise<void> {
     if (this.store) {
-      this.logger?.warn('Cache clear requested, but KV-backed caches require prefix-level invalidation by the store');
-      return;
+      throw new CacheClearUnsupportedError();
     }
 
     this.cache.clear();

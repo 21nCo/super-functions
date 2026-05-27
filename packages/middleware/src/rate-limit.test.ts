@@ -166,6 +166,26 @@ describe('rate-limit', () => {
       expect((await limiter.check({ key: 'tenant' })).allowed).toBe(true);
     });
 
+    it('uses the latest blocked reset time for multi-key denials', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.000Z'));
+      const limiter = createRateLimiter({
+        windowMs: 1000,
+        maxRequests: 1,
+        algorithm: 'token-bucket',
+      });
+
+      await limiter.check({ key: 'provider' });
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.500Z'));
+      await limiter.check({ key: 'tenant' });
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.600Z'));
+
+      const multi = await limiter.checkMany({ keys: ['provider', 'tenant'] });
+
+      expect(multi.allowed).toBe(false);
+      expect(multi.resetAt).toBe('2026-03-12T00:00:01.500Z');
+    });
+
     it('resets key state', async () => {
       const limiter = createRateLimiter({
         windowMs: 60000,

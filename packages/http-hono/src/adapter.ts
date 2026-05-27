@@ -91,8 +91,14 @@ function resolveConcreteMountPrefix(
       return segment;
     }
 
+    const rawSegment = pathSegments[index];
+    if (rawSegment !== undefined) {
+      return rawSegment;
+    }
+
     const paramName = segment.slice(1);
-    return params[paramName] ?? pathSegments[index] ?? segment;
+    const paramValue = params[paramName];
+    return paramValue !== undefined ? encodeURIComponent(paramValue) : segment;
   });
 
   return `/${resolvedSegments.join('/')}`;

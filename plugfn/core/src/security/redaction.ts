@@ -106,7 +106,11 @@ function redactValueInner(
       return '[Circular]';
     }
     visited.add(value);
-    return value.map((entry) => redactValueInner(entry, sensitiveKeys, visited));
+    try {
+      return value.map((entry) => redactValueInner(entry, sensitiveKeys, visited));
+    } finally {
+      visited.delete(value);
+    }
   }
 
   if (isPlainObject(value)) {
@@ -114,15 +118,19 @@ function redactValueInner(
       return '[Circular]';
     }
     visited.add(value);
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      if (isSensitiveKey(key, sensitiveKeys)) {
-        output[key] = REDACTED;
-        continue;
+    try {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value)) {
+        if (isSensitiveKey(key, sensitiveKeys)) {
+          output[key] = REDACTED;
+          continue;
+        }
+        output[key] = redactValueInner(entry, sensitiveKeys, visited);
       }
-      output[key] = redactValueInner(entry, sensitiveKeys, visited);
+      return output;
+    } finally {
+      visited.delete(value);
     }
-    return output;
   }
 
   if (typeof value === 'string' && containsSensitiveValue(value)) {
@@ -142,7 +150,11 @@ function hasSensitiveLeak(
       return false;
     }
     visited.add(value);
-    return value.some((entry) => hasSensitiveLeak(entry, sensitiveKeys, visited));
+    try {
+      return value.some((entry) => hasSensitiveLeak(entry, sensitiveKeys, visited));
+    } finally {
+      visited.delete(value);
+    }
   }
 
   if (isPlainObject(value)) {
@@ -150,15 +162,19 @@ function hasSensitiveLeak(
       return false;
     }
     visited.add(value);
-    for (const [key, entry] of Object.entries(value)) {
-      if (isSensitiveKey(key, sensitiveKeys) && entry !== REDACTED) {
-        return true;
+    try {
+      for (const [key, entry] of Object.entries(value)) {
+        if (isSensitiveKey(key, sensitiveKeys) && entry !== REDACTED) {
+          return true;
+        }
+        if (hasSensitiveLeak(entry, sensitiveKeys, visited)) {
+          return true;
+        }
       }
-      if (hasSensitiveLeak(entry, sensitiveKeys, visited)) {
-        return true;
-      }
+      return false;
+    } finally {
+      visited.delete(value);
     }
-    return false;
   }
 
   if (typeof value === 'string') {

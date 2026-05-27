@@ -371,7 +371,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
               uniqueKeys.map((key, index) => [key, preflight[index].remaining])
             ),
             resetAt: new Date(
-              Math.min(...blocked.map((result) => Date.parse(result.resetAt)))
+              Math.max(...blocked.map((result) => Date.parse(result.resetAt)))
             ).toISOString(),
             total: effectiveLimit,
           };

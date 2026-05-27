@@ -276,4 +276,24 @@ describe('Hono Adapter', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ providers: [] });
   });
+
+  it('should strip encoded dynamic mount prefixes without using decoded params', async () => {
+    const router = createRouter({
+      routes: [
+        {
+          method: 'GET',
+          path: '/providers',
+          handler: async () => Response.json({ providers: [] }),
+        },
+      ],
+    });
+
+    const app = new Hono();
+    app.route('/:tenant', toHono(router));
+
+    const res = await app.request('/acme%2Fwest/providers');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ providers: [] });
+  });
 });

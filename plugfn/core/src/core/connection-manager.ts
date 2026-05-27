@@ -1106,7 +1106,10 @@ function isOAuthSecretResolverConfig(value: unknown): value is OAuthSecretResolv
 }
 
 function defaultOAuthRedirectUris(baseUrl: string, providerId: string): string[] {
-  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  let normalizedBaseUrl = baseUrl;
+  while (normalizedBaseUrl.endsWith('/')) {
+    normalizedBaseUrl = normalizedBaseUrl.slice(0, -1);
+  }
   return [
     `${normalizedBaseUrl}/api/plugfn/callback`,
     `${normalizedBaseUrl}/api/plugfn/callback/${providerId}`,

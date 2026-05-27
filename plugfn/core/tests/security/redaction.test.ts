@@ -82,4 +82,25 @@ describe('security telemetry redaction', () => {
       safe: 'completed',
     });
   });
+
+  it('preserves repeated non-cyclic references while still marking true cycles', () => {
+    const shared = { safe: 'value' };
+    const cyclic: Record<string, unknown> = { safe: 'cycle-root' };
+    cyclic.self = cyclic;
+
+    const redacted = redactTelemetry({
+      first: shared,
+      second: shared,
+      cyclic,
+    });
+
+    expect(redacted).toEqual({
+      first: { safe: 'value' },
+      second: { safe: 'value' },
+      cyclic: {
+        safe: 'cycle-root',
+        self: '[Circular]',
+      },
+    });
+  });
 });

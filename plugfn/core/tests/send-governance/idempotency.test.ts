@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { QueueAdapter } from '@superfunctions/queue';
 import { SendGovernor } from '../../src/send-governance/governor.js';
+import { SendQueue } from '../../src/send-governance/queue.js';
+import type { SendJob } from '../../src/send-governance/types.js';
 
 describe('send governance idempotency and isolation', () => {
   it('returns existing job for duplicate idempotency key within same tenant/user scope', async () => {
@@ -122,5 +125,39 @@ describe('send governance idempotency and isolation', () => {
       code: 'TENANT_ACCESS_DENIED',
       message: 'cross-tenant access denied',
     });
+  });
+
+  it('rolls back local idempotency state when queue persistence fails', async () => {
+    const failingQueue: QueueAdapter<SendJob> = {
+      async enqueue() {
+        throw new Error('queue unavailable');
+      },
+      async dequeue() {
+        return null;
+      },
+      async dequeueMatching() {
+        return null;
+      },
+      peek() {
+        return [];
+      },
+      size() {
+        return 0;
+      },
+    };
+    const queue = new SendQueue({ queueAdapter: failingQueue });
+
+    const request = {
+      providerId: 'gmail',
+      tenantId: 't1',
+      userId: 'u1',
+      recipientCount: 1,
+      idempotencyKey: 'ik_failed_enqueue',
+    };
+
+    await expect(queue.enqueue(request)).rejects.toThrow('queue unavailable');
+
+    expect(queue.list({ tenantId: 't1', userId: 'u1' })).toEqual([]);
+    await expect(queue.enqueue(request)).rejects.toThrow('queue unavailable');
   });
 });

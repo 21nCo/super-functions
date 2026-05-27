@@ -27,7 +27,7 @@ export async function initCommand(options: { directory: string }) {
   if (!existsSync(configPath)) {
     writeFileSync(
       configPath,
-      `import { plugFn } from '@superfunctions/plugfn';
+      `import { plugFn } from 'plugfn';
 import { drizzleAdapter } from '@superfunctions/db/adapters';
 
 // Configure your database
@@ -91,7 +91,7 @@ ENCRYPTION_KEY=replace-with-a-32-byte-hex-key
     writeFileSync(
       examplePath,
       `import { plug } from '../plugfn.config.js';
-import { githubProvider } from '@superfunctions/plugfn/providers';
+import { githubProvider } from '@plugfn/providers';
 
 // Register providers
 plug.providers.register(githubProvider);

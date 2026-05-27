@@ -39,7 +39,7 @@ function generateProviderTemplate(name: string, authType: string): string {
   const authConfig = getAuthConfig(authType);
 
   return `import { z } from 'zod';
-import type { Provider, AuthType } from '@superfunctions/plugfn';
+import type { Provider, AuthType } from 'plugfn';
 
 /**
  * ${capitalize(name)} provider
@@ -135,4 +135,3 @@ function getAuthConfig(authType: string): string {
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
-
