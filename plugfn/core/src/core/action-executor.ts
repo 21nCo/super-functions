@@ -100,33 +100,8 @@ export class ActionExecutor {
 
       // Validate parameters
       const validatedParams = actionObj.parameters.parse(options.params);
-
-      // Generate cache key
-      const cacheKey = this.cacheMiddleware.generateKey(
-        provider,
-        action,
-        validatedParams,
-        options.userId
-      );
-
-      // Check cache
-      if (this.enableCache && options.cache !== false) {
-        const cachedResult = await this.cacheMiddleware.get<T>(cacheKey);
-        if (cachedResult !== undefined) {
-          this.logger.debug(`Cache hit for ${provider}.${action}`);
-          
-          return {
-            success: true,
-            data: cachedResult,
-            provider,
-            action,
-            cached: true,
-            duration: Date.now() - startTime,
-            retries: 0,
-            timestamp: new Date(),
-          };
-        }
-      }
+      const shouldUseCache =
+        this.enableCache && options.cache !== false && options.cache !== undefined;
 
       // Get or select connection
       const connection = await this.connectionManager.resolveConnectionForAction({
@@ -137,6 +112,37 @@ export class ActionExecutor {
 
       if (!connection) {
         throw new Error(`No connection found for provider ${provider} and user ${options.userId}`);
+      }
+
+      const cacheKey = shouldUseCache
+        ? typeof options.cache === 'object' && options.cache.key
+          ? options.cache.key
+          : this.cacheMiddleware.generateKey(
+              provider,
+              action,
+              validatedParams,
+              options.userId,
+              connection.id
+            )
+        : undefined;
+
+      // Check cache only after resolving the concrete connection.
+      if (cacheKey) {
+        const cachedResult = await this.cacheMiddleware.getEntry<T>(cacheKey);
+        if (cachedResult.hit) {
+          this.logger.debug(`Cache hit for ${provider}.${action}`);
+          
+          return {
+            success: true,
+            data: cachedResult.data,
+            provider,
+            action,
+            cached: true,
+            duration: Date.now() - startTime,
+            retries: 0,
+            timestamp: new Date(),
+          };
+        }
       }
 
       // Get credentials
@@ -185,7 +191,7 @@ export class ActionExecutor {
       const validatedData = actionObj.returns.parse(data);
 
       // Cache result
-      if (this.enableCache && options.cache !== false) {
+      if (cacheKey) {
         const ttl = typeof options.cache === 'object' ? options.cache.ttl : undefined;
         await this.cacheMiddleware.set(cacheKey, validatedData, ttl);
       }

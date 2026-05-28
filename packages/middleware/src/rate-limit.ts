@@ -155,6 +155,36 @@ async function setState(
   });
 }
 
+async function snapshotStates(
+  kv: KVStoreAdapter,
+  keys: string[]
+): Promise<Map<string, string | null>> {
+  const snapshot = new Map<string, string | null>();
+  for (const key of keys) {
+    snapshot.set(key, await kv.get(key));
+  }
+  return snapshot;
+}
+
+async function restoreStates(
+  kv: KVStoreAdapter,
+  snapshot: Map<string, string | null>,
+  ttlMs: number
+): Promise<void> {
+  for (const [key, value] of snapshot.entries()) {
+    if (value === null) {
+      await kv.delete(key);
+      continue;
+    }
+
+    await kv.set({
+      key,
+      value,
+      ttlSeconds: Math.max(1, Math.ceil(ttlMs / 1000)),
+    });
+  }
+}
+
 export function createRateLimiter(config: RateLimitConfig): RateLimiter {
   const now = config.now ?? Date.now;
   const {
@@ -377,11 +407,19 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
           };
         }
 
-        const committed = await Promise.all(
-          namespacedKeys.map((key) =>
-            evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
-          )
-        );
+        const previousStates = await snapshotStates(kv, namespacedKeys);
+        const committed: RateLimitResult[] = [];
+        try {
+          for (const key of namespacedKeys) {
+            committed.push(
+              await evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
+            );
+          }
+        } catch (error) {
+          await restoreStates(kv, previousStates, effectiveWindowMs).catch(() => {});
+          throw error;
+        }
+
         return {
           allowed: true,
           remainingByKey: new Map(

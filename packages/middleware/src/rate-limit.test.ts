@@ -186,6 +186,39 @@ describe('rate-limit', () => {
       expect(multi.resetAt).toBe('2026-03-12T00:00:01.500Z');
     });
 
+    it('rolls back multi-key quota commits when a later persistence write fails', async () => {
+      const internalStore = new Map<string, string>();
+      let failTenantWrite = true;
+      const customStore: KVStoreAdapter = {
+        async get(key: string) {
+          return internalStore.get(key) ?? null;
+        },
+        async set(input: KVSetInput) {
+          if (input.key === 'ratelimit:tenant' && failTenantWrite) {
+            failTenantWrite = false;
+            throw new Error('write failed');
+          }
+          internalStore.set(input.key, input.value);
+        },
+        async delete(key: string) {
+          internalStore.delete(key);
+        },
+      };
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 1,
+        algorithm: 'fixed-window',
+        persistence: customStore,
+      });
+
+      await expect(limiter.checkMany({ keys: ['provider', 'tenant'] })).rejects.toThrow(
+        'write failed'
+      );
+
+      expect(internalStore.has('ratelimit:provider')).toBe(false);
+      expect((await limiter.check({ key: 'provider' })).allowed).toBe(true);
+    });
+
     it('resets key state', async () => {
       const limiter = createRateLimiter({
         windowMs: 60000,

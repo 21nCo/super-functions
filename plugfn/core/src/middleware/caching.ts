@@ -12,6 +12,8 @@ interface SerializedCacheEntry {
   data: any;
 }
 
+export type CacheLookup<T> = { hit: true; data: T } | { hit: false };
+
 interface CacheMiddlewareOptions {
   store?: KVStoreAdapter;
   keyPrefix?: string;
@@ -51,42 +53,52 @@ export class CacheMiddleware {
    * Get cached value
    */
   async get<T>(key: string): Promise<T | undefined> {
+    const lookup = await this.getEntry<T>(key);
+    return lookup.hit ? lookup.data : undefined;
+  }
+
+  async getEntry<T>(key: string): Promise<CacheLookup<T>> {
     if (this.store) {
       const raw = await this.store.get(this.cacheKey(key));
       if (raw === null) {
-        return undefined;
+        return { hit: false };
       }
 
       try {
         const entry = JSON.parse(raw) as SerializedCacheEntry;
         this.logger?.debug(`Cache hit: ${key}`);
-        return entry.data as T;
+        return { hit: true, data: entry.data as T };
       } catch {
         await this.store.delete(this.cacheKey(key));
-        return undefined;
+        return { hit: false };
       }
     }
 
     const entry = this.cache.get(key);
     
     if (!entry) {
-      return undefined;
+      return { hit: false };
     }
     
     if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
-      return undefined;
+      return { hit: false };
     }
     
     this.logger?.debug(`Cache hit: ${key}`);
-    return entry.data;
+    return { hit: true, data: entry.data };
   }
 
   /**
    * Set cached value
    */
   async set(key: string, value: any, ttl?: number): Promise<void> {
-    const ttlMs = ttl || this.defaultTTL;
+    const ttlMs = ttl ?? this.defaultTTL;
+    if (ttlMs <= 0) {
+      await this.delete(key);
+      return;
+    }
+
     if (this.store) {
       await this.store.set({
         key: this.cacheKey(key),
@@ -136,9 +148,15 @@ export class CacheMiddleware {
   /**
    * Generate cache key for action
    */
-  generateKey(provider: string, action: string, params: any, userId?: string): string {
+  generateKey(
+    provider: string,
+    action: string,
+    params: any,
+    userId?: string,
+    connectionId?: string
+  ): string {
     const paramsHash = hash(JSON.stringify(params));
-    return `${provider}:${action}:${userId || 'anonymous'}:${paramsHash}`;
+    return `${provider}:${action}:${userId || 'anonymous'}:${connectionId || 'default'}:${paramsHash}`;
   }
 
   /**
@@ -150,10 +168,10 @@ export class CacheMiddleware {
     options?: CacheOptions
   ): Promise<{ data: T; cached: boolean }> {
     // Check cache
-    const cached = await this.get<T>(key);
+    const cached = await this.getEntry<T>(key);
     
-    if (cached !== undefined) {
-      return { data: cached, cached: true };
+    if (cached.hit) {
+      return { data: cached.data, cached: true };
     }
     
     // Execute function

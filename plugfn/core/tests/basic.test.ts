@@ -77,6 +77,73 @@ describe('PlugFn SDK', () => {
       expect(result).toEqual({ data: 'test-data' });
     });
 
+    it('does not cache actions unless cache is explicitly requested', async () => {
+      let executions = 0;
+      const provider = mockProvider('test', {
+        'createThing': mockResponse({ count: 0 }),
+      });
+      provider.actions.createThing.execute = async () => {
+        executions += 1;
+        return { count: executions };
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      const first = await plug.test.createThing({
+        userId: 'test-user',
+        params: {},
+      });
+      const second = await plug.test.createThing({
+        userId: 'test-user',
+        params: {},
+      });
+
+      expect(first).toEqual({ count: 1 });
+      expect(second).toEqual({ count: 2 });
+    });
+
+    it('separates explicit cache entries by resolved connection', async () => {
+      let executions = 0;
+      const provider = mockProvider('test', {
+        'getProfile': mockResponse({ connectionId: '' }),
+      });
+      provider.actions.getProfile.execute = async (_params, context) => {
+        executions += 1;
+        return { connectionId: context.connectionId };
+      };
+
+      plug.providers.register(provider);
+      const connectionA = { ...mockConnection('test-user', 'test'), id: 'conn-a' };
+      const connectionB = { ...mockConnection('test-user', 'test'), id: 'conn-b' };
+      await adapter.createConnection(connectionA);
+      await adapter.createConnection(connectionB);
+
+      const firstA = await plug.test.getProfile({
+        userId: 'test-user',
+        connectionId: 'conn-a',
+        params: {},
+        cache: true,
+      });
+      const secondA = await plug.test.getProfile({
+        userId: 'test-user',
+        connectionId: 'conn-a',
+        params: {},
+        cache: true,
+      });
+      const firstB = await plug.test.getProfile({
+        userId: 'test-user',
+        connectionId: 'conn-b',
+        params: {},
+        cache: true,
+      });
+
+      expect(firstA).toEqual({ connectionId: 'conn-a' });
+      expect(secondA).toEqual({ connectionId: 'conn-a' });
+      expect(firstB).toEqual({ connectionId: 'conn-b' });
+      expect(executions).toBe(2);
+    });
+
     it('serializes concurrent mail.sync actions for the same connection', async () => {
       let inFlight = 0;
       let maxInFlight = 0;

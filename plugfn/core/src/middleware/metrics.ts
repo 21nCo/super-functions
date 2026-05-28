@@ -31,7 +31,11 @@ export class MetricsMiddleware {
    * Record an action execution
    */
   record(entry: Omit<MetricEntry, 'timestamp'>): void {
-    this.emitter.track('action', entry);
+    try {
+      this.emitter.track('action', entry);
+    } catch {
+      // Metrics backends must not break action recording.
+    }
     this.metrics.push({
       ...entry,
       timestamp: new Date(),
