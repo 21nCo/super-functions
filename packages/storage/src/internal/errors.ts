@@ -20,6 +20,32 @@ export function assertMultipartParts(
   }
 }
 
+/** Upper bound for presigned URL lifetimes: 7 days, the AWS SigV4 maximum. */
+export const MAX_SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * Validate a presigned-URL expiry (in seconds). Rejects non-positive, non-finite
+ * and out-of-range values so a caller bug or malicious input cannot mint URLs
+ * that never expire (or are already expired).
+ */
+export function assertValidSignedUrlExpiry(
+  expiresInSeconds: number,
+  maxSeconds: number = MAX_SIGNED_URL_EXPIRY_SECONDS
+): void {
+  if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+    throw createStorageError(
+      'Signed URL expiry must be a positive number of seconds',
+      'STORAGE_SIGNED_URL_EXPIRY_INVALID'
+    );
+  }
+  if (expiresInSeconds > maxSeconds) {
+    throw createStorageError(
+      `Signed URL expiry must not exceed ${maxSeconds} seconds`,
+      'STORAGE_SIGNED_URL_EXPIRY_INVALID'
+    );
+  }
+}
+
 export function isNotFoundError(
   error: unknown,
   options?: {

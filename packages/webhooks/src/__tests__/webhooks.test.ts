@@ -352,4 +352,27 @@ describe('webhooks package exports', () => {
       })
     ).rejects.toThrow('WEBHOOK_SIGNATURE_HEADER_INVALID');
   });
+
+  it('refuses to deliver to non-http(s) URL schemes (SSRF guard)', async () => {
+    const fetchMock = vi.fn();
+    const result = await deliverWebhook(
+      { url: 'file:///etc/passwd', payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.attempts[0]?.error).toContain('scheme not allowed');
+  });
+
+  it('refuses to deliver to a malformed URL', async () => {
+    const fetchMock = vi.fn();
+    const result = await deliverWebhook(
+      { url: 'not a url', payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

@@ -80,40 +80,20 @@ function buildPrismaWhere(where: WhereClause[]): any {
     }
   });
 
-  // Combine with AND/OR based on connector
+  // Combine with AND/OR based on each clause's connector.
+  //
+  // The connector on clause i joins the running combination with clause i
+  // (left-associative), matching the Drizzle/Kysely adapters. Previously the
+  // presence of any OR connector caused every clause to be flattened into a
+  // single AND, silently dropping the OR semantics and returning wrong rows.
   if (conditions.length === 1) return conditions[0];
 
-  // Check if any conditions use OR connector
-  const hasOr = where.some((c, i) => i > 0 && c.connector === 'OR');
-
-  if (hasOr) {
-    // Mixed AND/OR: group by connector
-    const result: any = { AND: [] };
-    let currentGroup: any[] = [conditions[0]];
-
-    for (let i = 1; i < conditions.length; i++) {
-      if (where[i].connector === 'OR') {
-        // Flush current AND group before starting OR
-        if (currentGroup.length > 0) {
-          result.AND.push(currentGroup.length === 1 ? currentGroup[0] : { AND: currentGroup });
-        }
-        // Start new group with the OR condition
-        currentGroup = [conditions[i]];
-      } else {
-        // Continue building AND group
-        currentGroup.push(conditions[i]);
-      }
-    }
-
-    if (currentGroup.length > 0) {
-      result.AND.push(currentGroup.length === 1 ? currentGroup[0] : { AND: currentGroup });
-    }
-
-    return result.AND.length === 1 ? result.AND[0] : result;
-  } else {
-    // All AND
-    return { AND: conditions };
+  let combined: any = conditions[0];
+  for (let i = 1; i < conditions.length; i++) {
+    const connector = where[i]?.connector ?? 'AND';
+    combined = connector === 'OR' ? { OR: [combined, conditions[i]] } : { AND: [combined, conditions[i]] };
   }
+  return combined;
 }
 
 /**

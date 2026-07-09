@@ -15,7 +15,12 @@ import type {
   StorageAdapterCapabilities,
   StorageObjectStat,
 } from '../types.js';
-import { assertMultipartParts, createNotFoundError, isNotFoundError } from './errors.js';
+import {
+  assertMultipartParts,
+  assertValidSignedUrlExpiry,
+  createNotFoundError,
+  isNotFoundError,
+} from './errors.js';
 
 interface S3LikeClient {
   send(command: unknown): Promise<any>;
@@ -90,6 +95,7 @@ export function createS3CompatibleStorageAdapter(config: S3CompatibleAdapterConf
       expiresInSeconds: number;
       constraints?: SignedUrlConstraints;
     }): Promise<{ url: string; headers?: Record<string, string> }> {
+      assertValidSignedUrlExpiry(input.expiresInSeconds);
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: input.key,
@@ -117,6 +123,7 @@ export function createS3CompatibleStorageAdapter(config: S3CompatibleAdapterConf
       expiresInSeconds: number;
       constraints?: { responseContentType?: string };
     }): Promise<{ url: string; headers?: Record<string, string> }> {
+      assertValidSignedUrlExpiry(input.expiresInSeconds);
       const command = new GetObjectCommand({
         Bucket: bucket,
         Key: input.key,
@@ -158,6 +165,7 @@ export function createS3CompatibleStorageAdapter(config: S3CompatibleAdapterConf
       expiresInSeconds: number;
       constraints?: SignedUrlConstraints;
     }): Promise<{ url: string; headers?: Record<string, string> }> {
+      assertValidSignedUrlExpiry(input.expiresInSeconds);
       const command = new UploadPartCommand({
         Bucket: bucket,
         Key: input.key,

@@ -229,6 +229,9 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
         const tbl = resolveTable(model);
+        if (!where || where.length === 0) {
+          throw new Error('update requires a non-empty where clause; use updateMany to update all rows');
+        }
         const cond = buildWhere(drizzleOps, tbl, where);
         const q = db.update(tbl).set(data as any).where(cond);
         if (dialect === 'mysql') {
@@ -257,6 +260,9 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
 
       async delete({ model, where }: DeleteParams): Promise<void> {
         const tbl = resolveTable(model);
+        if (!where || where.length === 0) {
+          throw new Error('delete requires a non-empty where clause; use deleteMany to delete all rows');
+        }
         const cond = buildWhere(drizzleOps, tbl, where);
         await db.delete(tbl).where(cond).execute();
       },

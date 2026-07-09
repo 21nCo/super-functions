@@ -205,12 +205,17 @@ export function createGCSStorageAdapter(config: GCSStorageConfig): StorageAdapte
         : undefined;
 
       const gcstream = file.createReadStream(options);
+      // Pause immediately and only resume in pull() so backpressure from a slow
+      // consumer propagates to the source stream instead of buffering the whole
+      // object in the ReadableStream's internal queue (memory DoS on large files).
+      gcstream.pause();
 
       return new ReadableStream({
         start(controller) {
           gcstream.on('data', (chunk: Buffer | string) => {
             const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
             controller.enqueue(new Uint8Array(buffer));
+            gcstream.pause();
           });
           gcstream.on('end', () => {
             controller.close();
@@ -222,6 +227,9 @@ export function createGCSStorageAdapter(config: GCSStorageConfig): StorageAdapte
               controller.error(err);
             }
           });
+        },
+        pull() {
+          gcstream.resume();
         },
         cancel() {
           gcstream.destroy();

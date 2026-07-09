@@ -33,6 +33,7 @@ export {
   MethodNotAllowedError,
   ConflictError,
   UnprocessableEntityError,
+  PayloadTooLargeError,
   TooManyRequestsError,
   InternalServerError,
   NotImplementedError,

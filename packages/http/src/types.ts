@@ -65,6 +65,13 @@ export interface RouterOptions<TContext = any> {
 
   /** CORS configuration */
   cors?: CorsOptions | false;
+
+  /**
+   * Maximum request body size in bytes accepted by `ctx.json()`/`ctx.text()`/
+   * `ctx.formData()`. Bodies exceeding this (by Content-Length or by streamed
+   * size) are rejected with a 413 PayloadTooLargeError. Unset means no limit.
+   */
+  maxBodyBytes?: number;
 }
 
 // ============================================================================

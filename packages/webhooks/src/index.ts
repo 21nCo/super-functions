@@ -188,6 +188,27 @@ export async function deliverWebhook(
     'WEBHOOK_PER_ATTEMPT_TIMEOUT_INVALID'
   );
 
+  // Only http(s) delivery targets are permitted. This blocks SSRF vectors via
+  // other URL schemes (file:, gopher:, data:, ...) should the delivery URL be
+  // influenced by untrusted input.
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(input.url);
+  } catch {
+    return {
+      ok: false,
+      attempts: [{ attempt: 1, ok: false, error: 'Webhook URL is not a valid URL' }],
+    };
+  }
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return {
+      ok: false,
+      attempts: [
+        { attempt: 1, ok: false, error: `Webhook URL scheme not allowed: ${parsedUrl.protocol}` },
+      ],
+    };
+  }
+
   let payloadString: string;
   try {
     payloadString = JSON.stringify(input.payload);

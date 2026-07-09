@@ -370,4 +370,79 @@ describe('createRouter', () => {
     expect(calls).toContain('route-mw');
     expect(calls).toContain('handler');
   });
+
+  it('returns 405 with an Allow header when the path exists under another method', async () => {
+    const router = createRouter({
+      routes: [
+        { method: 'GET', path: '/users/:id', handler: async () => Response.json({}) },
+        { method: 'DELETE', path: '/users/:id', handler: async () => new Response(null, { status: 204 }) },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users/1', { method: 'POST' })
+    );
+
+    expect(res.status).toBe(405);
+    const allow = res.headers.get('Allow') ?? '';
+    expect(allow.split(', ').sort()).toEqual(['DELETE', 'GET']);
+  });
+
+  it('still returns 404 for a genuinely unknown path', async () => {
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/nope', { method: 'POST' })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects request bodies exceeding maxBodyBytes via Content-Length', async () => {
+    const router = createRouter({
+      maxBodyBytes: 10,
+      routes: [
+        {
+          method: 'POST',
+          path: '/echo',
+          handler: async (_req, ctx) => Response.json(await ctx.json()),
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/echo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: 'this is definitely more than ten bytes' }),
+      })
+    );
+
+    expect(res.status).toBe(413);
+  });
+
+  it('accepts request bodies within maxBodyBytes', async () => {
+    const router = createRouter({
+      maxBodyBytes: 1024,
+      routes: [
+        {
+          method: 'POST',
+          path: '/echo',
+          handler: async (_req, ctx) => Response.json(await ctx.json()),
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/echo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ok: true }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
 });

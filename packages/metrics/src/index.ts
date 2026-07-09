@@ -13,7 +13,13 @@ export function createMetricsEmitter(
 
   return {
     track(event: string, properties?: Record<string, unknown>): void {
-      trackFn(event, properties);
+      // Instrumentation must never break the business/request path: a throwing
+      // telemetry sink is swallowed rather than propagated to the caller.
+      try {
+        trackFn(event, properties);
+      } catch {
+        // Intentionally ignored.
+      }
     },
   };
 }

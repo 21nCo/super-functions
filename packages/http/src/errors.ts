@@ -73,6 +73,13 @@ export class UnprocessableEntityError extends RouterError {
   }
 }
 
+export class PayloadTooLargeError extends RouterError {
+  constructor(message: string = 'Payload Too Large', code?: string) {
+    super(message, 413, code);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
 export class TooManyRequestsError extends RouterError {
   constructor(message: string = 'Too Many Requests', code?: string) {
     super(message, 429, code);

@@ -418,12 +418,17 @@ export function createAzureStorageAdapter(config: AzureStorageConfig): StorageAd
       }
 
       const nodeStream = response.readableStreamBody as NodeJS.ReadableStream;
+      // Pause immediately and only resume in pull() so backpressure from a slow
+      // consumer propagates to the source stream instead of buffering the whole
+      // object in the ReadableStream's internal queue (memory DoS on large files).
+      nodeStream.pause();
 
       return new ReadableStream({
         start(controller) {
           nodeStream.on('data', (chunk: Buffer | string) => {
             const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
             controller.enqueue(new Uint8Array(buffer));
+            nodeStream.pause();
           });
           nodeStream.on('end', () => {
             controller.close();
@@ -431,6 +436,9 @@ export function createAzureStorageAdapter(config: AzureStorageConfig): StorageAd
           nodeStream.on('error', (err) => {
             controller.error(err);
           });
+        },
+        pull() {
+          nodeStream.resume();
         },
         cancel() {
           if ('destroy' in nodeStream && typeof nodeStream.destroy === 'function') {

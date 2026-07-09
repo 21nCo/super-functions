@@ -12,7 +12,7 @@ import type {
 import { compilePattern, matchPath, normalizePath, joinPaths, type CompiledPattern } from './path-matcher.js';
 import { createRouteContext, mergeContexts } from './context.js';
 import { executeMiddlewareChain, combineMiddleware } from './middleware.js';
-import { RouterError, NotFoundError } from './errors.js';
+import { RouterError, NotFoundError, MethodNotAllowedError } from './errors.js';
 
 interface CompiledRouteEntry<TContext> {
   route: Route<TContext>;
@@ -32,6 +32,7 @@ export function createRouter<TContext = any>(
     context: contextFactory,
     onError,
     basePath = '/',
+    maxBodyBytes,
   } = options;
 
   // Pre-compile all route patterns
@@ -68,6 +69,21 @@ export function createRouter<TContext = any>(
   }
 
   /**
+   * Collect the HTTP methods registered for a path (regardless of method).
+   * Used to distinguish "no such path" (404) from "wrong method" (405).
+   */
+  function allowedMethodsForPath(path: string): string[] {
+    const normalizedPath = normalizePath(path);
+    const methods = new Set<string>();
+    for (const entry of compiledRoutes) {
+      if (matchPath(entry.compiledPattern, normalizedPath).matched) {
+        methods.add(entry.route.method);
+      }
+    }
+    return [...methods];
+  }
+
+  /**
    * Handle an incoming request
    */
   async function handle(request: Request): Promise<Response> {
@@ -80,11 +96,22 @@ export function createRouter<TContext = any>(
       const matched = match(method, path);
 
       if (!matched) {
+        // Distinguish an unknown path (404) from a known path invoked with an
+        // unsupported method (405 + Allow header, per RFC 7231).
+        const allowed = allowedMethodsForPath(path);
+        if (allowed.length > 0) {
+          const error = new MethodNotAllowedError(
+            `Method ${method} not allowed for ${path}`
+          );
+          const response = error.toResponse();
+          response.headers.set('Allow', allowed.join(', '));
+          return response;
+        }
         throw new NotFoundError(`Route not found: ${method} ${path}`);
       }
 
       // Create route context
-      const routeContext = createRouteContext(request, matched.params);
+      const routeContext = createRouteContext(request, matched.params, { maxBodyBytes });
 
       // Create user context
       let userContext: TContext;

@@ -104,9 +104,12 @@ export function createResourceAuthMiddleware<TSession extends AuthSession>(
 
     const session = context[contextKey] as TSession;
 
-    // If no session exists, skip (auth middleware should have already handled this)
+    // Fail closed: resource authorization must never run without a session.
+    // If this middleware is registered without (or before) the auth middleware,
+    // or with a mismatched contextKey, proceeding would silently bypass the
+    // control. Deny by default instead.
     if (!session) {
-      return next();
+      throw new AuthenticationError('Authentication required');
     }
 
     // Get resource ID from header

@@ -55,59 +55,58 @@ function escapeLikeWildcards(value: string): string {
 /**
  * Apply where clauses to Kysely query builder
  */
+/**
+ * Build a single Kysely expression for one WHERE clause.
+ */
+function buildClauseExpression(eb: any, clause: WhereClause): any {
+  const { field, operator, value } = clause;
+
+  switch (operator) {
+    case 'eq':
+      return value === null ? eb(field, 'is', null) : eb(field, '=', value);
+    case 'ne':
+      return value === null ? eb(field, 'is not', null) : eb(field, '!=', value);
+    case 'gt':
+      return eb(field, '>', value);
+    case 'gte':
+      return eb(field, '>=', value);
+    case 'lt':
+      return eb(field, '<', value);
+    case 'lte':
+      return eb(field, '<=', value);
+    case 'in':
+      return eb(field, 'in', Array.isArray(value) ? value : [value]);
+    case 'not_in':
+      return eb(field, 'not in', Array.isArray(value) ? value : [value]);
+    case 'contains':
+      return eb(field, 'like', `%${escapeLikeWildcards(String(value))}%`);
+    case 'starts_with':
+      return eb(field, 'like', `${escapeLikeWildcards(String(value))}%`);
+    case 'ends_with':
+      return eb(field, 'like', `%${escapeLikeWildcards(String(value))}`);
+    default:
+      throw new Error(`Unsupported operator: ${operator}`);
+  }
+}
+
 function applyWhere(qb: any, where: WhereClause[]): any {
   if (!where || where.length === 0) return qb;
 
-  let builder = qb;
-  for (let i = 0; i < where.length; i++) {
-    const clause = where[i];
-    const { field, operator, value, connector } = clause;
-    const method = i === 0 || connector === 'AND' ? 'where' : 'orWhere';
-
-    switch (operator) {
-      case 'eq':
-        builder = value === null
-          ? builder[method](field, 'is', null)
-          : builder[method](field, '=', value);
-        break;
-      case 'ne':
-        builder = value === null
-          ? builder[method](field, 'is not', null)
-          : builder[method](field, '!=', value);
-        break;
-      case 'gt':
-        builder = builder[method](field, '>', value);
-        break;
-      case 'gte':
-        builder = builder[method](field, '>=', value);
-        break;
-      case 'lt':
-        builder = builder[method](field, '<', value);
-        break;
-      case 'lte':
-        builder = builder[method](field, '<=', value);
-        break;
-      case 'in':
-        builder = builder[method](field, 'in', Array.isArray(value) ? value : [value]);
-        break;
-      case 'not_in':
-        builder = builder[method](field, 'not in', Array.isArray(value) ? value : [value]);
-        break;
-      case 'contains':
-        builder = builder[method](field, 'like', `%${escapeLikeWildcards(String(value))}%`);
-        break;
-      case 'starts_with':
-        builder = builder[method](field, 'like', `${escapeLikeWildcards(String(value))}%`);
-        break;
-      case 'ends_with':
-        builder = builder[method](field, 'like', `%${escapeLikeWildcards(String(value))}`);
-        break;
-      default:
-        throw new Error(`Unsupported operator: ${operator}`);
+  // Build a single grouped expression so connector precedence is explicit.
+  // The connector on clause i joins the running combination with clause i
+  // (left-associative), matching the Drizzle/Prisma adapters. Previously the
+  // flat `.where(...).orWhere(...)` chaining left grouping to SQL operator
+  // precedence, so an intended `(a OR b) AND __ns=...` became
+  // `a OR (b AND __ns=...)`, which could leak rows across namespaces.
+  return qb.where((eb: any) => {
+    let combined = buildClauseExpression(eb, where[0]);
+    for (let i = 1; i < where.length; i++) {
+      const clause = where[i];
+      const expr = buildClauseExpression(eb, clause);
+      combined = clause.connector === 'OR' ? eb.or([combined, expr]) : eb.and([combined, expr]);
     }
-  }
-
-  return builder;
+    return combined;
+  });
 }
 
 /**
@@ -193,6 +192,9 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
 
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
         const table = resolveTable(model);
+        if (!where || where.length === 0) {
+          throw new Error('update requires a non-empty where clause; use updateMany to update all rows');
+        }
         let qb = db.updateTable(table).set(data);
         qb = applyWhere(qb, where);
 
@@ -215,6 +217,9 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
 
       async delete({ model, where }: DeleteParams): Promise<void> {
         const table = resolveTable(model);
+        if (!where || where.length === 0) {
+          throw new Error('delete requires a non-empty where clause; use deleteMany to delete all rows');
+        }
         let qb = db.deleteFrom(table);
         qb = applyWhere(qb, where);
         await qb.execute();

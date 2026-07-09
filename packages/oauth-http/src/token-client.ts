@@ -41,7 +41,16 @@ export interface OAuthTokenClientOptions {
   fetcher?: OAuthFetchLike;
   retryPolicy?: OAuthRetryPolicy;
   sleep?: (delayMs: number) => Promise<void>;
+  /**
+   * Per-request timeout (ms) applied to the default global-fetch fetcher.
+   * Prevents a hung/slow provider endpoint from blocking indefinitely and
+   * exhausting sockets. Ignored when a custom `fetcher` is supplied. Defaults
+   * to 15000ms; set to 0 to disable.
+   */
+  timeoutMs?: number;
 }
+
+const DEFAULT_OAUTH_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface DisconnectWithRevokeInput {
   revokeSupported: boolean;
@@ -69,7 +78,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
   private readonly sleep: (delayMs: number) => Promise<void>;
 
   constructor(options: OAuthTokenClientOptions = {}) {
-    this.fetcher = options.fetcher ?? getGlobalFetch();
+    this.fetcher = options.fetcher ?? getGlobalFetch(options.timeoutMs ?? DEFAULT_OAUTH_REQUEST_TIMEOUT_MS);
     this.retryPolicy = options.retryPolicy ?? DEFAULT_OAUTH_RETRY_POLICY;
     this.sleep = options.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
   }
@@ -485,7 +494,9 @@ function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse
   };
 
   const expiresIn = asNumber(payload.expires_in);
-  if (expiresIn !== undefined) {
+  // Ignore non-positive `expires_in` values: a negative/zero lifetime would
+  // produce an already-expired token and trigger spurious refresh loops.
+  if (expiresIn !== undefined && expiresIn > 0) {
     result.expiresIn = expiresIn;
   }
 
@@ -586,7 +597,7 @@ function ensureOAuthHttpError(error: unknown): OAuthHttpError {
   });
 }
 
-function getGlobalFetch(): OAuthFetchLike {
+function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
   const fetcher = globalThis.fetch;
   if (!fetcher) {
     throw new OAuthHttpError("global fetch is not available", {
@@ -597,11 +608,34 @@ function getGlobalFetch(): OAuthFetchLike {
   }
 
   return async (url, init) => {
-    const response = await fetcher(url, {
-      method: init.method,
-      headers: init.headers,
-      body: init.body
-    });
+    const controller =
+      timeoutMs > 0 && typeof AbortController === "function" ? new AbortController() : undefined;
+    const timeoutId =
+      controller !== undefined ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
+    let response: Response;
+    try {
+      response = await fetcher(url, {
+        method: init.method,
+        headers: init.headers,
+        body: init.body,
+        signal: controller?.signal
+      });
+    } catch (error) {
+      if (controller?.signal.aborted) {
+        throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
+          code: "INTERNAL_ERROR",
+          status: 504,
+          retryable: true,
+          cause: error
+        });
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     return {
       ok: response.ok,
