@@ -630,6 +630,71 @@ describe("oauth-http token client", () => {
     expect(deleteLocalTokenRecord).toHaveBeenCalledTimes(1);
     expect(deleteConnectionRecord).toHaveBeenCalledTimes(1);
   });
+
+  it("revokes RFC 7009 tokens via form-encoded POST", async () => {
+    let capturedUrl: string | null = null;
+    let capturedInit: RequestInitLike | null = null;
+    const fetcher: OAuthFetchLike = async (url, init) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return createResponse({ status: 200, contentType: "application/json", body: "{}" });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher });
+    await client.revokeToken({
+      provider: googleProvider,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      token: "tok_123",
+      tokenTypeHint: "access_token"
+    });
+
+    expect(capturedUrl).toBe("https://oauth2.googleapis.com/revoke");
+    expect(capturedInit?.method).toBe("POST");
+    expect(capturedInit?.headers["content-type"]).toBe("application/x-www-form-urlencoded");
+    const params = new URLSearchParams(capturedInit?.body);
+    expect(params.get("token")).toBe("tok_123");
+    expect(params.get("token_type_hint")).toBe("access_token");
+  });
+
+  it("revokes GitHub tokens via DELETE with a JSON body, Basic auth and substituted client_id", async () => {
+    const githubProvider = {
+      id: "github",
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      revocationUrl: "https://api.github.com/applications/{client_id}/token",
+      revocationStyle: "github" as const,
+      defaultScopes: ["read:user"],
+      supportsPkce: true,
+      supportsRefreshToken: false,
+      scopeSeparator: " " as const,
+      tokenAuthMethod: "client_secret_post" as const
+    };
+
+    let capturedUrl: string | null = null;
+    let capturedInit: RequestInitLike | null = null;
+    const fetcher: OAuthFetchLike = async (url, init) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return createResponse({ status: 204, contentType: "application/json", body: "" });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher });
+    await client.revokeToken({
+      provider: githubProvider,
+      clientId: "Iv1.abc+123",
+      clientSecret: "gh-secret/=value%",
+      token: "gho_token"
+    });
+
+    expect(capturedUrl).toBe("https://api.github.com/applications/Iv1.abc%2B123/token");
+    expect(capturedInit?.method).toBe("DELETE");
+    expect(capturedInit?.headers["content-type"]).toBe("application/json");
+    expect(capturedInit?.headers["accept"]).toBe("application/vnd.github+json");
+    const expectedAuth = Buffer.from("Iv1.abc+123:gh-secret/=value%", "utf8").toString("base64");
+    expect(capturedInit?.headers["authorization"]).toBe(`Basic ${expectedAuth}`);
+    expect(JSON.parse(capturedInit?.body ?? "{}")).toEqual({ access_token: "gho_token" });
+  });
 });
 
 function createResponse(input: {

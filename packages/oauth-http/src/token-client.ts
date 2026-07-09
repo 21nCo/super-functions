@@ -122,7 +122,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       tokenTypeHint: input.tokenTypeHint
     });
     const revocationUrl = resolveRevocationUrl(input.provider.revocationUrl, credentials.clientId);
-    const endpointRequest = createRevokeRequest(input, credentials, revocationUrl);
+    const endpointRequest = createRevokeRequest(input, credentials);
     const response = await this.executeWithRetry(revocationUrl, endpointRequest);
     if (response.ok) {
       return;
@@ -355,29 +355,12 @@ function resolveRevocationUrl(revocationUrl: string | undefined, clientId: strin
   return revocationUrl.replace("{client_id}", encodeURIComponent(clientId));
 }
 
-function isGitHubApplicationRevokeUrl(revocationUrl: string | undefined): boolean {
-  return !!revocationUrl && revocationUrl.includes("/applications/") && revocationUrl.includes("/token");
-}
-
 function createRevokeRequest(
   input: OAuthRevocationRequest,
-  credentials: ResolvedRequestCredentials,
-  revocationUrl: string
+  credentials: ResolvedRequestCredentials
 ): RequestInitLike {
-  if (isGitHubApplicationRevokeUrl(revocationUrl)) {
-    const authUser = encodeURIComponent(credentials.clientId);
-    const authPassword = encodeURIComponent(credentials.clientSecret);
-    const auth = encodeBasicCredentials(authUser, authPassword);
-
-    return {
-      method: "DELETE",
-      headers: {
-        accept: "application/json",
-        authorization: `Basic ${auth}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ access_token: input.token })
-    };
+  if (input.provider.revocationStyle === "github") {
+    return createGithubRevokeRequest(input, credentials);
   }
 
   const params = new URLSearchParams();
@@ -390,6 +373,28 @@ function createRevokeRequest(
     method: "POST",
     headers: createAuthHeaders(credentials, params),
     body: params.toString()
+  };
+}
+
+/**
+ * GitHub OAuth-app token revocation uses raw client credentials for HTTP
+ * Basic auth. URL encoding is only applied to the client-id URL segment.
+ */
+function createGithubRevokeRequest(
+  input: OAuthRevocationRequest,
+  credentials: ResolvedRequestCredentials
+): RequestInitLike {
+  const auth = encodeBasicCredentials(credentials.clientId, credentials.clientSecret);
+
+  return {
+    method: "DELETE",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Basic ${auth}`,
+      "content-type": "application/json",
+      "x-github-api-version": "2022-11-28"
+    },
+    body: JSON.stringify({ access_token: input.token })
   };
 }
 
