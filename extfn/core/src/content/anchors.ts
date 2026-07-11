@@ -72,9 +72,11 @@ export function createAnchorKey(
   index: number
 ): string {
   const preferred =
-    anchor.getAttribute('data-extfn-anchor-key') ??
-    anchor.getAttribute('data-testid') ??
-    anchor.id ??
+    anchor.getAttribute('data-extfn-anchor-key') ||
+    anchor.getAttribute('data-testid') ||
+    // `anchor.id` is always a string ('' when the attribute is absent), so the
+    // empty string must be treated as "no id" to fall through to `name`.
+    (anchor.id !== '' ? anchor.id : null) ||
     anchor.getAttribute('name');
 
   if (preferred) {

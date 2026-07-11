@@ -182,6 +182,33 @@ describe('content anchors', () => {
     ]);
   });
 
+  it('falls back to the name attribute when an anchor has no id', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" name="email" />
+        <input class="target" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'field-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'field-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'field-script/email',
+      'field-script/anchor-1',
+    ]);
+  });
+
   it('validates content script ids, entries, and style isolation deterministically', async () => {
     await expect(
       validateContentScripts(

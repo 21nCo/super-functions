@@ -46,6 +46,32 @@ describe('ports', () => {
     expect(closed).toEqual(['client-closed']);
   });
 
+  it('delivers client messages to server-side onMessage listeners', async () => {
+    const serverReceived: unknown[] = [];
+    const broker = createPortBroker({
+      address: {
+        context: 'popup',
+        surfaceId: 'popup',
+      },
+      handlers: [
+        {
+          channel: 'flux',
+          onConnect(_runtime, port) {
+            port.onMessage(async (payload) => {
+              serverReceived.push(payload);
+            });
+          },
+        },
+      ],
+    });
+
+    const port = await broker.client.open('flux');
+    await port.send({ method: 'start' });
+    await port.send({ method: 'status' });
+
+    expect(serverReceived).toEqual([{ method: 'start' }, { method: 'status' }]);
+  });
+
   it('rejects unknown channels', async () => {
     const broker = createPortBroker({
       address: {

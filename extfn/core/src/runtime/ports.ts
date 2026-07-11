@@ -141,6 +141,9 @@ function createPortSession(options: {
   const inboundListeners = new Set<
     (payload: unknown, envelope: RuntimePortEnvelope) => void | Promise<void>
   >();
+  const serverListeners = new Set<
+    (payload: unknown, envelope: RuntimePortEnvelope) => void | Promise<void>
+  >();
   const closeListeners = new Set<
     (envelope: RuntimePortCloseEnvelope) => void | Promise<void>
   >();
@@ -174,8 +177,9 @@ function createPortSession(options: {
         await listener(payload, envelope);
       }
     },
-    onMessage() {
-      return () => {};
+    onMessage(handler) {
+      serverListeners.add(handler);
+      return () => serverListeners.delete(handler);
     },
     onClose(handler) {
       closeListeners.add(handler);
@@ -217,6 +221,10 @@ function createPortSession(options: {
           envelope,
           serverPort
         );
+      }
+
+      for (const listener of serverListeners) {
+        await listener(payload, envelope);
       }
     },
     onMessage(handler) {

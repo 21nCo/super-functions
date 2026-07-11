@@ -277,6 +277,12 @@ function createRouteTable(
 async function withTimeout<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
 
+  // If the timeout wins the race, the underlying task keeps running and may
+  // later reject with no listener attached. Attach a no-op catch so a slow
+  // handler that eventually throws does not surface as an unhandled rejection
+  // (which can terminate a service worker or Node host).
+  task.catch(() => {});
+
   try {
     return await Promise.race([
       task,

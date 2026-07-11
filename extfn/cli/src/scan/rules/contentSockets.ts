@@ -10,12 +10,22 @@ export const contentSocketsRule: ScanRule = {
       return [];
     }
 
+    const targetPrefix = `${input.target}/`;
+
     return input.files
-      .filter(
-        (file) =>
-          contentScriptFiles.has(file.relativePath) &&
+      .filter((file) => {
+        // Manifest content-script paths are relative to the target output dir
+        // (e.g. `content/feed.js`), while scan file paths are relative to the
+        // dist root and may carry a `<target>/` prefix. Compare on the
+        // target-relative form so the rule matches in real scans.
+        const targetRelative = file.relativePath.startsWith(targetPrefix)
+          ? file.relativePath.slice(targetPrefix.length)
+          : file.relativePath;
+        return (
+          contentScriptFiles.has(targetRelative) &&
           SOCKET_PATTERN.test(file.contents)
-      )
+        );
+      })
       .map((file) =>
         createScanFinding({
           ruleId: 'SCAN-SOCKET-001',

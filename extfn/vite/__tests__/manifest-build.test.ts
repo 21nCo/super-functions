@@ -93,6 +93,14 @@ describe('buildManifest', () => {
           id: 'extfn@example.local',
         },
       });
+      expect(chromiumManifest.background).toEqual({
+        service_worker: 'background.js',
+        type: 'module',
+      });
+      expect(firefoxManifest.background).toEqual({
+        scripts: ['background.js'],
+        type: 'module',
+      });
 
       await expect(
         fs.stat(path.join(cwd, 'dist', 'chromium-mv3', 'background.js'))
@@ -203,6 +211,21 @@ describe('buildManifest', () => {
         id: 'extfn@example.local',
         strict_min_version: '128.0',
       },
+    });
+  });
+
+  it('translates the background service worker into event-page scripts for firefox', () => {
+    const manifest = applyFirefoxTargetManifest({
+      name: 'Firefox demo',
+      background: {
+        service_worker: 'background.js',
+        type: 'module',
+      },
+    });
+
+    expect(manifest.background).toEqual({
+      scripts: ['background.js'],
+      type: 'module',
     });
   });
 });
