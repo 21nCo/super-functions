@@ -3,34 +3,54 @@
   <p>Self deployed super stack for building modern software.</p>
 </div>
 <div align="center">
-
+  
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](/LICENSE)
 [![Discord](https://img.shields.io/discord/831815510563749889?logo=discord&logoColor=white)](https://discord.com/invite/9HJqKYTZKg)
-[![YouTube](https://img.shields.io/youtube/channel/views/UCEE8Uvy4krxIGXAGy2q5wrA?style=flat&logo=youtube&logoColor=white&color=FF0000&label=@21nCo)](https://www.youtube.com/@21nCo)
-[![Twitter Follow](https://img.shields.io/twitter/follow/superFunctions?style=flat&logo=twitter&logoColor=white&color=1DA1F2&label=X%20@superFunctions)](https://twitter.com/superFunctions)
-
+ 
 </div>
+
+> [!WARNING]
+> **Alpha software**.
+> Super functions is currently in alpha and is not yet fully ready for production use. APIs and behavior may change without notice, and some features may be incomplete or unstable. Evaluate it carefully and use it at your own risk.
 
 # Functions
 
-## Swift Platform Requirements
-
-The Swift package in `Package.swift` targets iOS 16 or later and macOS 13 or later.
-
 ## Data and storage
 
-| Function | Description | Comparable to | Packages |
-| --- | --- | --- | --- |
-| [dataFn](https://datafn.dev) | Full stack data management framework with offline-first sync, reactive signals, sharing capability, and auto REST API. | — | [npm](https://www.npmjs.com/package/@datafn/client) · [PyPI](https://pypi.org/project/datafn/) |
-| [fileFn](https://filefn.com) | Complete file management with resumability, multi-part uploads, security, processing, versioning, storage quota and analytics. | TUS + UploadThing | [npm](https://www.npmjs.com/package/@filefn/client) · [PyPI](https://pypi.org/project/filefn/) |
-| [searchFn](https://searchfn.com) | Adapter-first full-text search for browser, native mobile apps and server with offline IndexedDB and DataFn integration. | — | [npm](https://www.npmjs.com/package/@searchfn/client) |
+| Function | Description |
+| --- | --- |
+| dataFn | Full stack data management framework with offline-first sync, reactive signals, sharing capability, and auto REST API.<br><br>**Packages:** [npm](https://www.npmjs.com/package/@datafn/client) · [PyPI](https://pypi.org/project/datafn/) |
+| fileFn | Complete file management with resumability, multi-part uploads, security, processing, versioning, storage quota and analytics.<br><br>**Packages:** [npm](https://www.npmjs.com/package/@filefn/client) · [PyPI](https://pypi.org/project/filefn/) |
+| searchFn | Adapter-first full-text search for browser, native mobile apps and server with offline IndexedDB and DataFn integration.<br><br>**Packages:** [npm](https://www.npmjs.com/package/@searchfn/client) |
 
 ## Application core
 
-| Function | Description | Comparable to | Packages |
-| --- | --- | --- | --- |
-| [authFn](https://authfn.com) | Drop-in authentication and user management. Social logins, magic links, session handling, AI agent authentication and more. | Clerk or Auth0 | [npm](https://www.npmjs.com/package/@authfn/client) · [PyPI](https://pypi.org/project/authfn/) |
-| [billFn](https://billfn.com) | Complete billing infrastructure. Subscriptions, one-time payments, usage-based billing, analytics, store integrations and invoicing. | Stripe Billing + Metronome + RevenueCat | [npm](https://www.npmjs.com/package/billfn) |
+| Function | Description |
+| --- | --- |
+| authFn | Drop-in authentication and user management. Social logins, magic links, session handling, AI agent authentication and more.<br><br>**Packages:** [npm](https://www.npmjs.com/package/@authfn/client) · [PyPI](https://pypi.org/project/authfn/) |
+| billFn | Complete billing infrastructure. Subscriptions, one-time payments, usage-based billing, analytics, store integrations and invoicing.<br><br>**Packages:** [npm](https://www.npmjs.com/package/billfn) |
+| plugFn | Universal API integration SDK. Connect to third-party services with a standardized interface and automatic auth handling.<br><br>**Packages:** [npm](https://www.npmjs.com/package/plugfn) |
+
+## User Interface
+
+| Function | Description |
+| --- | --- |
+| uiFn | Reusable frontend component primitives and a design studio.<br><br>**Packages:** [npm](https://www.npmjs.com/package/uifn) |
+| docFn | AI native documentation platform.<br><br>**Packages:** [npm](https://www.npmjs.com/package/docfn) |
+
+## Infrastructure and meta
+
+| Function | Description |
+| --- | --- |
+| hostFn | Handy CLI and dashboard for all hosting needs.<br><br>**Packages:** [npm](https://www.npmjs.com/package/hostfn) |
+| extFn | Complete extension development platform. Frontend framework agnostic, with hot-reload, automatic bundling, scanning and publishing.<br><br>**Packages:** [npm](https://www.npmjs.com/org/extfn) |
+| apiFn | AI native API client and testing.<br><br>**Packages:** [npm](https://www.npmjs.com/org/apifn) |
+
+
+## Contributing
+
+Due to the current size of our team, we are not accepting external contributions at this time. We appreciate your interest and understanding.
 
 ### License
 
