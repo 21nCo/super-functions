@@ -283,6 +283,7 @@
       --apifn-border: #2d3748; --apifn-text: #e2e8f0; --apifn-text-muted: #64748b;
       --apifn-accent: #7c3aed; --apifn-accent-text: #c4b5fd; --apifn-green: #6ee7b7;
       --apifn-blue: #93c5fd; --apifn-yellow: #fcd34d; --apifn-red: #fca5a5;
+      --apifn-purple: #c4b5fd; --apifn-orange: #fdba74;
     }
   }
   .topbar { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 52px; border-bottom: 1px solid var(--apifn-border); background: var(--apifn-bg-surface); flex-shrink: 0; }

@@ -248,7 +248,7 @@ export { ApifnTestAdapter }
 // diff, validation, snippets, mock, and integration types
 ```
 
-The `@apifn/core/types` subpath re-exports the full type surface for consumers who only need types.
+The `@apifn/core/types` subpath exports the shared model types declared by the core package, including HTTP/OpenAPI, schema, diff, validation, snippet, mock, and integration data shapes. Types declared alongside runtime modules, such as `FromRouterOptions`, `SchemaType`, and `DiffReportJson`, are exported from the package root.
 
 ## License
 

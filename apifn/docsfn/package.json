@@ -18,6 +18,7 @@
       "require": "./dist/react.cjs"
     },
     "./svelte": {
+      "types": "./src/svelte/ApifnApiReference.svelte.d.ts",
       "svelte": "./src/svelte/ApifnApiReference.svelte",
       "default": "./src/svelte/ApifnApiReference.svelte"
     }
@@ -35,6 +36,7 @@
   "peerDependencies": {
     "docsfn": "*",
     "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
     "svelte": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
@@ -42,6 +44,9 @@
       "optional": true
     },
     "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     },
     "svelte": {

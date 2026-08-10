@@ -45,7 +45,7 @@ const entries = await provider(); // RawContentEntry[]
 | `splitByTag` | `boolean` | `true` | One entry per tag, or a single full-spec entry |
 | `baseUrl` | `string` | — | Base URL embedded in entries (for Try-It) |
 
-With `splitByTag: true`, each tag becomes a `RawContentEntry` with slug `${basePath}/${tag}` and a sidebar group whose links point to per-endpoint anchors (`${slug}#${method}-${path}`). With `splitByTag: false`, a single entry contains every endpoint. Path-level parameters are merged into each operation.
+With `splitByTag: true`, each tag becomes a `RawContentEntry`. The tag is lowercased and each run of non-alphanumeric characters becomes `-`, so `My Tag Group` produces `${basePath}/my-tag-group`. Sidebar links use the lowercased method followed by the path with each non-alphanumeric character replaced by `-`; for example, `GET /users/{id}` links to `${slug}#get--users--id-`. With `splitByTag: false`, a single entry contains every endpoint. Path-level parameters are merged into each operation.
 
 ---
 

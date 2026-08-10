@@ -84,14 +84,14 @@ const s = {
 
 function EndpointCard({
     path, method, operation, tryIt, baseUrl, performanceMetrics,
-}: {
+}: Readonly<{
     path: string;
     method: string;
     operation: OperationObject;
     tryIt: boolean;
     baseUrl: string;
     performanceMetrics?: ApifnApiReferenceProps["performanceMetrics"];
-}) {
+}>) {
     const [open, setOpen] = useState(false);
     const [tab, setTab] = useState<"docs" | "tryit" | "perf">("docs");
 
@@ -134,7 +134,7 @@ function EndpointCard({
 
 export function ApifnApiReference({
     entry, tryIt = false, baseUrl, theme = "auto", performanceMetrics,
-}: ApifnApiReferenceProps): React.ReactElement {
+}: Readonly<ApifnApiReferenceProps>): React.ReactElement {
     const themeStyle = getThemeStyle(theme);
     const effectiveBaseUrl =
         baseUrl

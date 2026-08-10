@@ -13,7 +13,7 @@ npm install @apifn/collections
 - **Read / Write** — Load and persist an OpenCollection directory (`opencollection.yml` + per-request YAML + environments)
 - **Generate** — Produce a collection from an OpenAPI document or a `@superfunctions/http` router
 - **Run** — Execute a collection with sequential or parallel scheduling, retries, timeouts, and bail-on-failure
-- **Assertions** — Chai-like `expect`/`test` runtime with JSON-schema and JSONPath support
+- **Assertions** — Chai-like `expect`/`test` runtime with JSON Schema and JSONPath support
 - **Scripting** — Sandboxed pre-request and test scripts (Node `vm`, no `process`/`require`/`fetch`)
 - **Reporters** — Console, JSON, JUnit XML, and silent reporters
 - **Safety** — Secret redaction in captured request/response data, path-traversal-safe writes
@@ -122,7 +122,7 @@ console.log(report.summary);
 | `concurrency` | `number` | Max concurrent requests in parallel mode (default: 4) |
 | `timeout` | `number` | Per-request timeout in ms (default: 30000) |
 | `bail` | `boolean` | Stop on first failure |
-| `retries` | `number` | Retry failed requests / HTTP 5xx (default: 0) |
+| `retries` | `number` | Retry network errors and HTTP 5xx responses (default: 0) |
 | `delay` | `number` | Delay between sequential requests in ms |
 | `httpClient` | `HttpClient` | Custom client (default: built-in fetch-based) |
 | `cookieJar` | `CookieJar` | Shared cookie jar |
