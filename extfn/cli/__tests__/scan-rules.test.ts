@@ -103,8 +103,16 @@ describe('scan rules', () => {
         {
           absolutePath: '/tmp/popup.js',
           relativePath: 'popup.js',
-          contents:
-            'const NS = "http://www.w3.org/2000/svg"; el.setAttributeNS(NS, "x", "1");',
+          contents: [
+            'http://www.w3.org/1998/Math/MathML',
+            'http://www.w3.org/1999/xhtml',
+            'http://www.w3.org/1999/xlink',
+            'http://www.w3.org/2000/svg',
+            'http://www.w3.org/2000/xmlns/',
+            'http://www.w3.org/XML/1998/namespace',
+          ]
+            .map((uri, index) => `const NS_${index} = "${uri}";`)
+            .join(' '),
         },
       ],
     });
@@ -136,6 +144,30 @@ describe('scan rules', () => {
     ]);
   });
 
+  it('still flags insecure w3.org URLs that are not exact namespace identifiers', () => {
+    const findings = insecureTransportRule.evaluate({
+      target: 'chromium-mv3',
+      outputDir: 'dist/chromium-mv3',
+      manifestPath: 'dist/chromium-mv3/manifest.json',
+      manifest: {},
+      files: [
+        {
+          absolutePath: '/tmp/popup.js',
+          relativePath: 'popup.js',
+          contents:
+            'fetch("http://www.w3.org/api"); fetch("http://www.w3.org/2000/svg/network");',
+        },
+      ],
+    });
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        ruleId: 'SCAN-HTTP-001',
+        file: 'popup.js',
+      }),
+    ]);
+  });
+
   it('does not flag member-access methods named eval as dynamic execution', () => {
     const findings = dynamicExecutionRule.evaluate({
       target: 'chromium-mv3',
@@ -147,6 +179,24 @@ describe('scan rules', () => {
           absolutePath: '/tmp/vendor.js',
           relativePath: 'vendor.js',
           contents: 'sourceMap.eval(input);',
+        },
+      ],
+    });
+
+    expect(findings).toEqual([]);
+  });
+
+  it('does not treat nested objects named after browser globals as global eval', () => {
+    const findings = dynamicExecutionRule.evaluate({
+      target: 'chromium-mv3',
+      outputDir: 'dist/chromium-mv3',
+      manifestPath: 'dist/chromium-mv3/manifest.json',
+      manifest: {},
+      files: [
+        {
+          absolutePath: '/tmp/vendor.js',
+          relativePath: 'vendor.js',
+          contents: 'sandbox.window.eval(input);',
         },
       ],
     });
@@ -175,5 +225,34 @@ describe('scan rules', () => {
         file: 'vendor.js',
       }),
     ]);
+  });
+
+  it('flags eval accessed through browser global objects', () => {
+    for (const contents of [
+      'window.eval(untrusted);',
+      'globalThis.eval(untrusted);',
+      'self?.eval(untrusted);',
+    ]) {
+      const findings = dynamicExecutionRule.evaluate({
+        target: 'chromium-mv3',
+        outputDir: 'dist/chromium-mv3',
+        manifestPath: 'dist/chromium-mv3/manifest.json',
+        manifest: {},
+        files: [
+          {
+            absolutePath: '/tmp/vendor.js',
+            relativePath: 'vendor.js',
+            contents,
+          },
+        ],
+      });
+
+      expect(findings).toEqual([
+        expect.objectContaining({
+          ruleId: 'SCAN-DYN-001',
+          file: 'vendor.js',
+        }),
+      ]);
+    }
   });
 });

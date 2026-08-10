@@ -1,10 +1,10 @@
 import { createScanFinding, type ScanRule } from '../report.js';
 
-// Guard the `eval(` match with a negative lookbehind for `.` so member
-// accesses such as `sourceMap.eval(` on unrelated objects are not flagged as
-// direct calls to the global `eval`.
+// Guard the direct `eval(` match against member access so methods such as
+// `sourceMap.eval(` are not flagged, while still detecting explicit access
+// through browser global objects.
 const DYNAMIC_EXECUTION_PATTERN =
-  /(?<!\.)\beval\s*\(|\bnew Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+  /(?<![\w$.])eval\s*\(|(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*eval\s*\(|\bnew Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 
 export const dynamicExecutionRule: ScanRule = {
   id: 'SCAN-DYN-001',

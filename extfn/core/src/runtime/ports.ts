@@ -291,6 +291,9 @@ function createPortSession(options: {
       }
 
       if (options.reconnect === 'background-resume') {
+        // The server context is being discarded. Its listeners must not survive
+        // into the replacement context registered by the next onConnect call.
+        serverListeners.clear();
         setState('reconnecting');
         clearReconnectTimer();
         reconnectTimer = setTimeout(() => {
