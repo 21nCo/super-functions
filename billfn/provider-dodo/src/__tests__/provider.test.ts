@@ -1,5 +1,59 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { BillFnChangeSubscriptionInput } from '@billfn/core';
 import { createDodoProvider } from '../index.js';
+
+function changeSubscriptionInput(): BillFnChangeSubscriptionInput {
+  return {
+    subscription: {
+      id: 'sub_local',
+      billingAccountId: 'ba_user_123',
+      planKey: 'pro',
+      priceId: 'price_old',
+      provider: 'dodo',
+      providerSubscriptionId: 'sub_123',
+      status: 'active',
+      autoRenew: true,
+      createdAt: '2026-04-20T00:00:00.000Z',
+      updatedAt: '2026-04-20T00:00:00.000Z'
+    },
+    currentPlan: {
+      productKey: 'nucleus',
+      planKey: 'pro',
+      displayName: 'Pro',
+      features: {},
+      limits: {},
+      prices: []
+    },
+    currentPrice: {
+      priceId: 'price_old',
+      provider: 'dodo',
+      providerProductId: 'pdt_old',
+      amount: 12,
+      currency: 'USD',
+      interval: 'month',
+      kind: 'subscription'
+    },
+    targetPlan: {
+      productKey: 'nucleus',
+      planKey: 'pro',
+      displayName: 'Pro',
+      features: {},
+      limits: {},
+      prices: []
+    },
+    targetPrice: {
+      priceId: 'price_new',
+      provider: 'dodo',
+      providerProductId: 'pdt_new',
+      amount: 120,
+      currency: 'USD',
+      interval: 'year',
+      kind: 'subscription'
+    },
+    effectiveAt: 'immediate',
+    prorationBehavior: 'provider_default'
+  };
+}
 
 describe('@billfn/provider-dodo', () => {
   it('creates a checkout request against the correct endpoint', async () => {
@@ -188,6 +242,8 @@ describe('@billfn/provider-dodo', () => {
     expect(response?.raw).toMatchObject({
       fallback: 'replacement-checkout'
     });
+    const changeBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(changeBody).not.toHaveProperty('proration_billing_mode');
   });
 
   it('uses Dodo change-plan endpoint and schema for direct plan changes', async () => {
@@ -340,6 +396,19 @@ describe('@billfn/provider-dodo', () => {
       code: 'BILLFN_PROVIDER_ERROR'
     });
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 403, 404, 409])('surfaces status %s without canceling the live subscription', async (status) => {
+    const fetchMock = vi.fn(async () => new Response('provider rejection', { status })) as typeof fetch;
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      fetch: fetchMock
+    });
+
+    await expect(provider.changeSubscription?.(changeSubscriptionInput())).rejects.toMatchObject({
+      code: 'BILLFN_PROVIDER_ERROR'
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

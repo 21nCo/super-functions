@@ -26,6 +26,7 @@ from .types import (
 )
 
 T = TypeVar("T")
+DEFAULT_BASE_URL = "http://localhost:3000/billfn"
 
 
 def _normalize_base_url(base_url: str) -> str:
@@ -70,7 +71,7 @@ class BillFnClient:
     def __init__(
         self,
         *,
-        base_url: str = "/billfn",
+        base_url: str = DEFAULT_BASE_URL,
         client: Optional[httpx.Client] = None,
         timeout: float = 10.0,
     ) -> None:
@@ -195,7 +196,7 @@ class AsyncBillFnClient:
     def __init__(
         self,
         *,
-        base_url: str = "/billfn",
+        base_url: str = DEFAULT_BASE_URL,
         client: Optional[httpx.AsyncClient] = None,
         timeout: float = 10.0,
     ) -> None:

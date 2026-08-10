@@ -20,7 +20,13 @@ const activeBridgeReceivers = new Set<(message: unknown) => void>();
 function installGlobalReceiver() {
   if (typeof window !== 'undefined' && typeof window.__billfnBridgeReceive__ === 'undefined') {
     window.__billfnBridgeReceive__ = (message: unknown) => {
-      activeBridgeReceivers.forEach((receiver) => receiver(message));
+      activeBridgeReceivers.forEach((receiver) => {
+        try {
+          receiver(message);
+        } catch (error) {
+          console.error('BillFn bridge receiver failed', error);
+        }
+      });
     };
   }
 }
@@ -49,7 +55,13 @@ export function createWKWebViewBridgeBus(
     }
 
     if (isBridgeEventEnvelope(message)) {
-      eventHandlers.forEach((handler) => handler(message));
+      eventHandlers.forEach((handler) => {
+        try {
+          handler(message);
+        } catch (error) {
+          console.error('BillFn bridge event handler failed', error);
+        }
+      });
     }
   };
 

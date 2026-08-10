@@ -7,7 +7,7 @@ public struct BillFnBridgeConfiguration: Sendable, Equatable {
     public let authOwner: String
     public let capabilities: [String]
 
-    public init(baseURL: String, authOwner: String = "native", capabilities: [String] = ["subscriptions.manage", "health", "events"]) {
+    public init(baseURL: String, authOwner: String = "native", capabilities: [String] = ["subscription.manage", "health.check"]) {
         self.baseURL = baseURL
         self.authOwner = authOwner
         self.capabilities = capabilities

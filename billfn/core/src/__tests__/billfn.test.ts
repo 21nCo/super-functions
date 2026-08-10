@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { MemoryQueueAdapter } from '../../../../packages/queue/src/index.js';
 import { createBillFn, createBillFnReconciliationWorker } from '../index.js';
@@ -349,6 +349,79 @@ describe('@billfn/core', () => {
     expect(refunded.data.refund.providerRefundId).toContain('refund_');
   });
 
+  it('rejects cross-provider subscription changes before invoking the provider', async () => {
+    const changeSubscription = vi.fn(createMockProvider('dodo').changeSubscription);
+    const billfn = createBillFn({
+      db: memoryAdapter({ debug: false }),
+      catalog,
+      providers: {
+        dodo: {
+          ...createMockProvider('dodo'),
+          changeSubscription
+        }
+      }
+    });
+
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'user_cross_provider' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    await billfn.verifyCheckout({
+      subject: { principalId: 'user_cross_provider' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+
+    await expect(billfn.changeSubscription({
+      subject: { principalId: 'user_cross_provider' },
+      targetPriceId: 'price_pro_apple_month'
+    })).rejects.toMatchObject({
+      code: 'BILLFN_VALIDATION_ERROR'
+    });
+    expect(changeSubscription).not.toHaveBeenCalled();
+  });
+
+  it('keeps current entitlements for changes scheduled at next renewal', async () => {
+    const billfn = createBillFn({
+      db: memoryAdapter({ debug: false }),
+      catalog,
+      providers: {
+        dodo: createMockProvider('dodo')
+      }
+    });
+
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'user_scheduled_change' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    await billfn.verifyCheckout({
+      subject: { principalId: 'user_scheduled_change' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+
+    const changed = await billfn.changeSubscription({
+      subject: { principalId: 'user_scheduled_change' },
+      targetPriceId: 'price_pro_dodo_year',
+      effectiveAt: 'next_renewal'
+    });
+
+    expect(changed.ok).toBe(true);
+    if (!changed.ok) {
+      throw new Error('expected success');
+    }
+    expect(changed.data.subscription.priceId).toBe('price_pro_dodo_month');
+    expect(changed.data.entitlements.planKey).toBe('pro');
+  });
+
   it('enforces quota limits through the filefn-compatible quota provider', async () => {
     const billfn = createBillFn({
       db: memoryAdapter({ debug: false }),
@@ -470,6 +543,28 @@ describe('@billfn/core', () => {
     expect(payload.error.code).toBe('BILLFN_VALIDATION_ERROR');
   });
 
+  it('maps malformed JSON request bodies to validation errors', async () => {
+    const billfn = createBillFn({
+      db: memoryAdapter({ debug: false }),
+      catalog,
+      providers: {
+        dodo: createMockProvider('dodo')
+      }
+    });
+
+    const response = await billfn.router.handle(
+      new Request('https://billfn.example.test/billfn/checkouts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"planKey":'
+      })
+    );
+    const payload = (await response.json()) as { error: { code: string } };
+
+    expect(response.status).toBe(400);
+    expect(payload.error.code).toBe('BILLFN_VALIDATION_ERROR');
+  });
+
   it('rejects restoring a purchase that is linked to a different billing account', async () => {
     const billfn = createBillFn({
       db: memoryAdapter({ debug: false }),
@@ -571,6 +666,7 @@ describe('@billfn/core', () => {
       subject: { principalId: 'restore_owner' },
       planKey: 'pro',
       provider: 'dodo',
+      priceId: 'price_pro_dodo_month',
       purchaseReference: 'restore_batch'
     });
 
@@ -579,6 +675,25 @@ describe('@billfn/core', () => {
       throw new Error('expected success');
     }
     expect(restored.data.subscription.providerSubscriptionId).toBe(matchingProviderSubscriptionId);
+  });
+
+  it('requires a restore price discriminator when a provider has multiple prices', async () => {
+    const billfn = createBillFn({
+      db: memoryAdapter({ debug: false }),
+      catalog,
+      providers: {
+        dodo: createMockProvider('dodo')
+      }
+    });
+
+    await expect(billfn.restorePurchases({
+      subject: { principalId: 'restore_ambiguous' },
+      planKey: 'pro',
+      provider: 'dodo',
+      purchaseReference: 'provider_purchase_without_checkout'
+    })).rejects.toMatchObject({
+      code: 'BILLFN_VALIDATION_ERROR'
+    });
   });
 
   it('bootstraps subscription state from a checkout-linked webhook and dedupes repeat deliveries', async () => {
@@ -662,6 +777,42 @@ describe('@billfn/core', () => {
       throw new Error('expected success');
     }
     expect(second.data.processed).toBe(0);
+  });
+
+  it('does not enqueue a second job for a duplicate webhook receipt still being processed', async () => {
+    const queue = new MemoryQueueAdapter();
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async parseWebhook() {
+        return [{
+          providerEventId: 'evt_pending_duplicate',
+          type: 'subscription.updated',
+          signatureVerified: true,
+          raw: { ok: true }
+        }];
+      }
+    };
+    const billfn = createBillFn({
+      db: memoryAdapter({ debug: false }),
+      catalog,
+      queue,
+      providers: { dodo: provider }
+    });
+
+    const first = await billfn.handleWebhook({
+      provider: 'dodo',
+      rawBody: '{}',
+      headers: new Headers()
+    });
+    const second = await billfn.handleWebhook({
+      provider: 'dodo',
+      rawBody: '{}',
+      headers: new Headers()
+    });
+
+    expect(first.ok && first.data.processed).toBe(1);
+    expect(second.ok && second.data.processed).toBe(0);
+    expect(queue.size('billfn-reconciliation')).toBe(1);
   });
 
   it('supports reconciliation jobs through service methods, router ops auth, and the worker queue', async () => {
@@ -837,6 +988,59 @@ describe('@billfn/core', () => {
     );
 
     expect(subscriptionEventsAfterSecond).toHaveLength(subscriptionEventsAfterFirst.length);
+  });
+
+  it('skips notification-history receipts that are already pending', async () => {
+    const db = memoryAdapter({ debug: false });
+    const eventId = 'evt_history_pending';
+    await db.create({
+      model: 'webhookReceipts',
+      namespace: 'billfn',
+      data: {
+        id: `whr_dodo_${Buffer.from(eventId).toString('base64url')}`,
+        provider: 'dodo',
+        providerEventId: eventId,
+        eventType: 'subscription.updated',
+        signatureVerified: true,
+        rawPayload: { raw: {} },
+        createdAt: '2026-04-20T00:00:00.000Z'
+      }
+    });
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async fetchNotificationHistory() {
+        return {
+          events: [{
+            providerEventId: eventId,
+            type: 'subscription.updated',
+            signatureVerified: true,
+            raw: { ok: true }
+          }]
+        };
+      }
+    };
+    const billfn = createBillFn({
+      db,
+      catalog,
+      providers: { dodo: provider }
+    });
+    const job = await billfn.enqueueReconciliationJob({
+      kind: 'notification-history-backfill',
+      provider: 'dodo'
+    });
+    if (!job.ok) {
+      throw new Error('expected success');
+    }
+
+    const ran = await billfn.runReconciliationJob({ jobId: job.data.job.id });
+    const receipt = await db.findOne<{ processedAt?: string }>({
+      model: 'webhookReceipts',
+      namespace: 'billfn',
+      where: [{ field: 'providerEventId', operator: 'eq', value: eventId }]
+    });
+
+    expect(ran.ok).toBe(true);
+    expect(receipt?.processedAt).toBeUndefined();
   });
 
   it('rejects unverified notification-history events before projection', async () => {

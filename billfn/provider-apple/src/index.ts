@@ -50,7 +50,7 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
       changeSubscription: true,
       resumeSubscription: true,
       refundCharge: true,
-      notificationHistory: true
+      notificationHistory: Boolean(config.notificationVerifier)
     },
     async createCheckout(input: BillFnCreateCheckoutInput) {
       return {
@@ -210,6 +210,12 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
       return [mapAppleNotificationEvent(decoded, signedPayload)];
     },
     async fetchNotificationHistory(input: BillFnFetchNotificationHistoryInput): Promise<BillFnNotificationHistoryPage> {
+      if (!config.notificationVerifier) {
+        throw createBillFnError({
+          code: 'BILLFN_VALIDATION_ERROR',
+          message: 'Apple notification history requires notificationVerifier'
+        });
+      }
       const response = await requestStoreKitWithFallback(
         fetchImpl,
         config,
@@ -498,6 +504,12 @@ function mapAppleNotificationState(
 function mapAppleSubscriptionResponse(payload: Record<string, unknown>): BillFnVerifiedBillingState {
   const transactions = extractLastTransactions(payload);
   const transaction = transactions[0];
+  if (!transaction) {
+    throw createBillFnError({
+      code: 'BILLFN_NOT_FOUND',
+      message: 'Apple subscription response did not contain any transactions'
+    });
+  }
   const renewalInfo = extractRenewalInfo(payload);
   const statusCode = readNumber(transaction, ['status']) ?? readNumber(payload, ['status']) ?? 1;
   const subscriptionStatus = normalizeAppleStatus(statusCode);

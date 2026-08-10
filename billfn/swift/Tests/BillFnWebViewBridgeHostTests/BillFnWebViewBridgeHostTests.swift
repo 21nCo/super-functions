@@ -22,9 +22,8 @@ struct BillFnWebViewBridgeHostTests {
         #expect(response.result?["bridgeVersion"] == .integer(1))
         #expect(response.result?["billingOwner"] == .string("native"))
         #expect(response.result?["capabilities"] == .array([
-            .string("subscriptions.manage"),
-            .string("health"),
-            .string("events"),
+            .string("subscription.manage"),
+            .string("health.check"),
         ]))
     }
 
@@ -98,8 +97,17 @@ struct BillFnWebViewBridgeHostTests {
         let encoded = try JSONEncoder().encode(envelope)
         let decoded = try JSONDecoder().decode(BillFnBridgeResponseEnvelope.self, from: encoded)
 
-        #expect(decoded.error?.details["retryAfter"] == .integer(30))
-        #expect(decoded.error?.details["transient"] == .bool(true))
-        #expect(decoded.error?.details["context"] == .object(["phase": .string("postMessage")]))
+        #expect(decoded.error?.details?["retryAfter"] == .integer(30))
+        #expect(decoded.error?.details?["transient"] == .bool(true))
+        #expect(decoded.error?.details?["context"] == .object(["phase": .string("postMessage")]))
+    }
+
+    @Test("Bridge errors decode when details are omitted")
+    func bridgeErrorsAllowMissingDetails() throws {
+        let data = Data(#"{"protocol":"billfn-bridge/v1","id":"req_7","ok":false,"error":{"code":"BRIDGE_UNAVAILABLE","message":"Unavailable"}}"#.utf8)
+        let decoded = try JSONDecoder().decode(BillFnBridgeResponseEnvelope.self, from: data)
+
+        #expect(decoded.error?.code == "BRIDGE_UNAVAILABLE")
+        #expect(decoded.error?.details == nil)
     }
 }

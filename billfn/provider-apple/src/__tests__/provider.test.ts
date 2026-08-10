@@ -149,6 +149,31 @@ describe('@billfn/provider-apple', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects empty subscription responses instead of marking them active', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as typeof fetch;
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'token'
+    });
+
+    await expect(provider.fetchSubscription?.({
+      subscription: {
+        id: 'sub_local',
+        billingAccountId: 'ba_user_123',
+        planKey: 'pro',
+        priceId: 'price_apple',
+        provider: 'apple',
+        providerSubscriptionId: 'orig_123',
+        status: 'active',
+        autoRenew: true,
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      }
+    })).rejects.toMatchObject({
+      code: 'BILLFN_NOT_FOUND'
+    });
+  });
+
   it('uses the subscriptions endpoint when restoring Apple subscription purchases', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(
@@ -364,7 +389,20 @@ describe('@billfn/provider-apple', () => {
 
     const provider = createAppleProvider({
       fetch: fetchMock,
-      tokenProvider: async () => 'token'
+      tokenProvider: async () => 'token',
+      notificationVerifier: async () => ({
+        notificationUUID: 'notif_history',
+        notificationType: 'EXPIRED',
+        data: {
+          signedTransactionInfo: encodePayload({
+            originalTransactionId: 'orig_history',
+            transactionId: 'txn_history',
+            purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
+            expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+            status: 2
+          })
+        }
+      })
     });
 
     const page = await provider.fetchNotificationHistory?.({
@@ -383,5 +421,20 @@ describe('@billfn/provider-apple', () => {
     expect(page?.events).toHaveLength(1);
     expect(page?.events[0]?.billingState?.subscriptionStatus).toBe('expired');
     expect(page?.nextCursor).toBe('cursor_next');
+  });
+
+  it('fails before fetching notification history when notificationVerifier is missing', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 })) as typeof fetch;
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'token'
+    });
+
+    expect(provider.capabilities.notificationHistory).toBe(false);
+    await expect(provider.fetchNotificationHistory?.({ limit: 10 })).rejects.toMatchObject({
+      code: 'BILLFN_VALIDATION_ERROR',
+      message: expect.stringContaining('notificationVerifier')
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

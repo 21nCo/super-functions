@@ -414,14 +414,14 @@ function normalizeDodoStatus(status: string): BillFnVerifiedBillingState['subscr
   }
 }
 
-function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none') {
+function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none'): string | undefined {
   switch (value) {
     case 'prorate':
       return 'prorated_immediately';
     case 'none':
       return 'do_not_bill';
     default:
-      return 'prorated_immediately';
+      return undefined;
   }
 }
 
@@ -430,7 +430,7 @@ function normalizeDodoEffectiveAt(value: 'immediate' | 'next_renewal') {
 }
 
 function shouldFallbackToReplacementCheckout(status: number) {
-  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+  return status === 405;
 }
 
 function readString(record: Record<string, unknown>, keys: string[]): string | undefined {

@@ -529,6 +529,7 @@ export interface BillFnRestorePurchasesRequest {
   subject?: BillableSubject;
   planKey: string;
   provider: BillingProviderName;
+  priceId?: string;
   purchaseReference: string;
   payload?: Record<string, unknown>;
 }

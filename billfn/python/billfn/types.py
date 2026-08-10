@@ -208,6 +208,7 @@ class BillFnRestorePurchasesRequest(BillFnModel):
     subject: Optional[BillableSubject] = None
     plan_key: str = Field(alias="planKey")
     provider: str
+    price_id: Optional[str] = Field(default=None, alias="priceId")
     purchase_reference: str = Field(alias="purchaseReference")
     payload: Optional[Dict[str, Any]] = None
 

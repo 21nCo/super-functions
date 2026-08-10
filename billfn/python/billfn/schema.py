@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from superfunctions.db import TableSchema
 
-BILLFN_SCHEMA_VERSION = 1
+BILLFN_SCHEMA_VERSION = 2
 
 
 def get_schema() -> Dict[str, Any]:
@@ -152,6 +152,115 @@ def get_schema() -> Dict[str, Any]:
         },
     }
 
+    refunds: TableSchema = {
+        "modelName": "refunds",
+        "fields": {
+            "id": {"type": "string", "required": True},
+            "billingAccountId": {"type": "string", "required": True},
+            "subscriptionId": {"type": "string", "required": False},
+            "provider": {"type": "string", "required": True},
+            "providerChargeId": {"type": "string", "required": False},
+            "providerRefundId": {"type": "string", "required": False},
+            "mode": {"type": "string", "required": True},
+            "amount": {"type": "number", "required": False},
+            "currency": {"type": "string", "required": False},
+            "reason": {"type": "string", "required": False},
+            "status": {"type": "string", "required": True},
+            "operationStatus": {"type": "string", "required": True},
+            "metadata": {"type": "json", "required": False},
+            "createdAt": {"type": "string", "required": True},
+            "updatedAt": {"type": "string", "required": True},
+        },
+        "indexes": [
+            {"name": "refunds_subscription_idx", "fields": ["subscriptionId", "updatedAt"]},
+            {"name": "refunds_provider_charge_idx", "fields": ["provider", "providerChargeId"]},
+            {
+                "name": "refunds_provider_refund_idx",
+                "fields": ["provider", "providerRefundId"],
+                "unique": True,
+            },
+        ],
+    }
+
+    subscription_change_requests: TableSchema = {
+        "modelName": "subscriptionChangeRequests",
+        "fields": {
+            "id": {"type": "string", "required": True},
+            "billingAccountId": {"type": "string", "required": True},
+            "subscriptionId": {"type": "string", "required": True},
+            "provider": {"type": "string", "required": True},
+            "currentPriceId": {"type": "string", "required": True},
+            "targetPriceId": {"type": "string", "required": True},
+            "effectiveAt": {"type": "string", "required": True},
+            "prorationBehavior": {"type": "string", "required": True},
+            "status": {"type": "string", "required": True},
+            "operationStatus": {"type": "string", "required": True},
+            "clientAction": {"type": "json", "required": False},
+            "metadata": {"type": "json", "required": False},
+            "createdAt": {"type": "string", "required": True},
+            "updatedAt": {"type": "string", "required": True},
+        },
+        "indexes": [
+            {
+                "name": "subscription_change_requests_subscription_idx",
+                "fields": ["subscriptionId", "updatedAt"],
+            }
+        ],
+    }
+
+    reconciliation_jobs: TableSchema = {
+        "modelName": "reconciliationJobs",
+        "fields": {
+            "id": {"type": "string", "required": True},
+            "kind": {"type": "string", "required": True},
+            "status": {"type": "string", "required": True},
+            "provider": {"type": "string", "required": False},
+            "billingAccountId": {"type": "string", "required": False},
+            "subscriptionId": {"type": "string", "required": False},
+            "providerEventId": {"type": "string", "required": False},
+            "cursor": {"type": "string", "required": False},
+            "attempts": {"type": "number", "required": True},
+            "error": {"type": "string", "required": False},
+            "payload": {"type": "json", "required": False},
+            "createdAt": {"type": "string", "required": True},
+            "updatedAt": {"type": "string", "required": True},
+            "completedAt": {"type": "string", "required": False},
+        },
+        "indexes": [
+            {
+                "name": "reconciliation_jobs_kind_status_idx",
+                "fields": ["kind", "status", "updatedAt"],
+            },
+            {
+                "name": "reconciliation_jobs_subscription_idx",
+                "fields": ["subscriptionId", "updatedAt"],
+            },
+            {
+                "name": "reconciliation_jobs_account_idx",
+                "fields": ["billingAccountId", "updatedAt"],
+            },
+        ],
+    }
+
+    reconciliation_cursors: TableSchema = {
+        "modelName": "reconciliationCursors",
+        "fields": {
+            "id": {"type": "string", "required": True},
+            "provider": {"type": "string", "required": True},
+            "cursorKey": {"type": "string", "required": True},
+            "cursor": {"type": "string", "required": False},
+            "updatedAt": {"type": "string", "required": True},
+            "metadata": {"type": "json", "required": False},
+        },
+        "indexes": [
+            {
+                "name": "reconciliation_cursors_provider_key_idx",
+                "fields": ["provider", "cursorKey"],
+                "unique": True,
+            }
+        ],
+    }
+
     schemas: List[TableSchema] = [
         billing_accounts,
         subscriptions,
@@ -161,6 +270,10 @@ def get_schema() -> Dict[str, Any]:
         usage_ledger,
         webhook_receipts,
         billing_events,
+        refunds,
+        subscription_change_requests,
+        reconciliation_jobs,
+        reconciliation_cursors,
     ]
 
     return {"version": BILLFN_SCHEMA_VERSION, "schemas": schemas}

@@ -28,6 +28,18 @@ struct BillFnClientTests {
         #expect(url.absoluteString == "https://billfn.example.test/billfn/ops/reconciliation/jobs?cursor=abc&limit=10")
     }
 
+    @Test("Merges base and endpoint query strings")
+    func mergesBaseAndEndpointQueries() throws {
+        let client = BillFnClient(
+            configuration: BillFnClientConfiguration(
+                baseURL: URL(string: "https://billfn.example.test/billfn?workspace=main")!
+            )
+        )
+
+        let url = try client.endpoint("ops/reconciliation/jobs?cursor=abc&limit=10")
+        #expect(url.absoluteString == "https://billfn.example.test/billfn/ops/reconciliation/jobs?workspace=main&cursor=abc&limit=10")
+    }
+
     @Test("Normalizes trailing base slashes and leading path slashes")
     func normalizesEndpointSlashes() throws {
         let client = BillFnClient(

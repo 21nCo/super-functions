@@ -143,6 +143,21 @@ def test_sync_client_parses_catalog_and_checkout() -> None:
     assert checkout.checkout_session.checkout_session_id == "chk_123"
 
 
+def test_sync_client_default_base_url_is_absolute() -> None:
+    seen_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        return _handler(request)
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = BillFnClient(client=http_client)
+
+    client.get_catalog()
+
+    assert seen_urls == ["http://localhost:3000/billfn/catalog"]
+
+
 def test_sync_client_passes_subject_query_and_raises_api_errors() -> None:
     transport = httpx.MockTransport(_handler)
     http_client = httpx.Client(transport=transport)

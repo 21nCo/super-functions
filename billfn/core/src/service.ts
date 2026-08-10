@@ -546,6 +546,17 @@ export function createBillFnService(config: BillFnConfig) {
       const currentPlan = requirePlan(deps.catalog, subscription.planKey);
       const currentPrice = requirePriceById(currentPlan, subscription.priceId);
       const target = requirePriceReference(deps.catalog, input.targetPriceId);
+      if (target.price.provider !== subscription.provider) {
+        throw createBillFnError({
+          code: 'BILLFN_VALIDATION_ERROR',
+          message: 'Target price provider must match the active subscription provider',
+          details: {
+            subscriptionProvider: subscription.provider,
+            targetProvider: target.price.provider,
+            targetPriceId: target.price.priceId
+          }
+        });
+      }
       const provider = requireProvider(deps, subscription.provider, 'changeSubscription');
       const effectiveAt = input.effectiveAt ?? 'immediate';
       const prorationBehavior = input.prorationBehavior ?? 'provider_default';
@@ -577,11 +588,12 @@ export function createBillFnService(config: BillFnConfig) {
         updatedAt: timestamp
       });
 
+      const appliesTargetImmediately = operation.operationStatus === 'applied' && effectiveAt === 'immediate';
       const projection = operation.billingState
         ? await applyVerificationState(deps, {
             billingAccount,
-            plan: operation.operationStatus === 'applied' ? target.plan : currentPlan,
-            price: operation.operationStatus === 'applied' ? target.price : currentPrice,
+            plan: appliesTargetImmediately ? target.plan : currentPlan,
+            price: appliesTargetImmediately ? target.price : currentPrice,
             subscription,
             state: operation.billingState
           })
@@ -774,7 +786,32 @@ export function createBillFnService(config: BillFnConfig) {
       const subject = requireSubject(input.subject);
       const { billingAccount } = await getOrCreateBillingAccount(deps, subject);
       const plan = requirePlan(deps.catalog, input.planKey);
-      const price = requirePrice(plan, input.provider, undefined);
+      const checkoutSession = await findCheckoutSessionByProviderRef(
+        deps,
+        input.provider,
+        undefined,
+        undefined,
+        input.purchaseReference
+      );
+      const matchingPrices = plan.prices.filter((candidate) => candidate.provider === input.provider);
+      const price = input.priceId
+        ? requirePriceById(plan, input.priceId)
+        : checkoutSession
+          ? requirePriceById(plan, checkoutSession.priceId)
+          : matchingPrices.length === 1
+            ? matchingPrices[0]
+            : undefined;
+      if (!price || price.provider !== input.provider) {
+        throw createBillFnError({
+          code: 'BILLFN_VALIDATION_ERROR',
+          message: 'Restore purchases requires a priceId when the provider has multiple matching prices',
+          details: {
+            provider: input.provider,
+            priceId: input.priceId,
+            matchingPriceIds: matchingPrices.map((candidate) => candidate.priceId)
+          }
+        });
+      }
       const provider = requireProvider(deps, input.provider, 'restorePurchases');
       const states = await provider.restorePurchases({
         billingAccount,
@@ -912,14 +949,7 @@ export function createBillFnService(config: BillFnConfig) {
           if (!isDuplicateRecordError(error)) {
             throw error;
           }
-          const existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
-            model: TABLES.webhookReceipts,
-            where: [{ field: 'id', operator: 'eq', value: receiptId }],
-            namespace: deps.namespace
-          });
-          if (existingReceipt?.processedAt) {
-            continue;
-          }
+          continue;
         }
 
         const job = await enqueueReconciliationJobInternal({
@@ -1113,7 +1143,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
           where: [{ field: 'id', operator: 'eq', value: receiptId }],
           namespace: deps.namespace
         });
-        if (existingReceipt?.processedAt) {
+        if (existingReceipt) {
           continue;
         }
         if (!event.signatureVerified) {
@@ -1133,14 +1163,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
             if (!isDuplicateRecordError(error)) {
               throw error;
             }
-            const duplicatedReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
-              model: TABLES.webhookReceipts,
-              where: [{ field: 'id', operator: 'eq', value: receiptId }],
-              namespace: deps.namespace
-            });
-            if (duplicatedReceipt?.processedAt) {
-              continue;
-            }
+            continue;
           }
         }
         try {

@@ -5,6 +5,17 @@ import { normalizeBasePath, resolveRequestSubject } from './helpers.js';
 import { createBillFnService } from './service.js';
 import type { BillFnConfig, BillableSubject } from './types.js';
 
+async function parseJsonBody<T>(request: Request): Promise<T> {
+  try {
+    return await request.json() as T;
+  } catch {
+    throw createBillFnError({
+      code: 'BILLFN_VALIDATION_ERROR',
+      message: 'Request body must contain valid JSON'
+    });
+  }
+}
+
 export function createBillFnRouter(config: BillFnConfig) {
   const service = createBillFnService(config);
   const ensureOperationsAuthorized = async (request: Request) => {
@@ -77,7 +88,7 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/checkouts',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           planKey: string;
           provider: string;
@@ -91,7 +102,7 @@ export function createBillFnRouter(config: BillFnConfig) {
           returnUrl?: string;
           successUrl?: string;
           cancelUrl?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.createCheckout({
           subject,
@@ -114,11 +125,11 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/checkouts/verify',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           checkoutSessionId: string;
           payload?: Record<string, unknown>;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.verifyCheckout({
           subject,
@@ -135,11 +146,11 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/subscriptions/cancel',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           subscriptionId?: string;
           reason?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.cancelSubscription({
           subject,
@@ -156,14 +167,14 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/subscriptions/change',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           subscriptionId?: string;
           targetPriceId: string;
           effectiveAt?: 'immediate' | 'next_renewal';
           prorationBehavior?: 'provider_default' | 'prorate' | 'none';
           reason?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.changeSubscription({
           subject,
@@ -183,10 +194,10 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/subscriptions/resume',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           subscriptionId?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.resumeSubscription({
           subject,
@@ -202,14 +213,14 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/subscriptions/refund',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           subscriptionId?: string;
           providerChargeId?: string;
           mode?: 'full' | 'prorated_remaining_period' | 'custom';
           amount?: number;
           reason?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.refundCharge({
           subject,
@@ -229,10 +240,10 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/subscriptions/sync',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           subscriptionId?: string;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.syncSubscription({
           subject,
@@ -248,18 +259,20 @@ export function createBillFnRouter(config: BillFnConfig) {
       method: 'POST',
       path: '/purchases/restore',
       handler: async (request) => {
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           subject?: BillableSubject;
           planKey: string;
           provider: string;
+          priceId?: string;
           purchaseReference: string;
           payload?: Record<string, unknown>;
-        };
+        }>(request);
         const subject = await resolveRequestSubject(request, config.auth?.resolveSubject, body.subject);
         const response = await service.restorePurchases({
           subject,
           planKey: body.planKey,
           provider: body.provider as never,
+          priceId: body.priceId,
           purchaseReference: body.purchaseReference,
           payload: body.payload
         });
@@ -290,7 +303,7 @@ export function createBillFnRouter(config: BillFnConfig) {
       path: '/ops/reconciliation/jobs',
       handler: async (request) => {
         await ensureOperationsAuthorized(request);
-        const body = await request.json() as {
+        const body = await parseJsonBody<{
           kind: 'webhook-event' | 'subscription-sync' | 'account-scan' | 'notification-history-backfill' | 'webhook-replay';
           provider?: string;
           billingAccountId?: string;
@@ -298,7 +311,7 @@ export function createBillFnRouter(config: BillFnConfig) {
           providerEventId?: string;
           cursor?: string;
           payload?: Record<string, unknown>;
-        };
+        }>(request);
         const response = await service.enqueueReconciliationJob({
           kind: body.kind,
           provider: body.provider as never,

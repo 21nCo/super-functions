@@ -1,6 +1,6 @@
 import Foundation
 
-public struct BillFnClientConfiguration: Sendable, Equatable {
+public struct BillFnClientConfiguration: Sendable {
     public var baseURL: URL
     public var session: URLSession
 
@@ -47,7 +47,9 @@ public final class BillFnClient: @unchecked Sendable {
         let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
         components.path = pathPart.isEmpty ? basePath : "\(basePath)/\(pathPart)"
         if let queryPart {
-            components.percentEncodedQuery = queryPart
+            var endpointComponents = URLComponents()
+            endpointComponents.percentEncodedQuery = queryPart
+            components.queryItems = (components.queryItems ?? []) + (endpointComponents.queryItems ?? [])
         }
 
         guard let url = components.url, url.scheme != nil else {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BILLFN_BRIDGE_PROTOCOL, createNativeBackedBillFnClient, createWKWebViewBridgeBus } from '../index.js';
 
 describe('@billfn/swift-bridge', () => {
@@ -76,6 +76,39 @@ describe('@billfn/swift-bridge', () => {
         expect(response.error.details?.reason).toBe('native bridge down');
       }
     } finally {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: previousWindow
+      });
+    }
+  });
+
+  it('continues event fan-out when one subscriber throws', () => {
+    const previousWindow = globalThis.window;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {}
+    });
+
+    try {
+      const bus = createWKWebViewBridgeBus();
+      const received: string[] = [];
+      bus.subscribe(() => {
+        throw new Error('subscriber failed');
+      });
+      bus.subscribe((event) => received.push(event.event));
+
+      globalThis.window.__billfnBridgeReceive__?.({
+        protocol: BILLFN_BRIDGE_PROTOCOL,
+        event: 'bridge.ready',
+        payload: {}
+      });
+
+      expect(received).toEqual(['bridge.ready']);
+      expect(consoleError).toHaveBeenCalledOnce();
+    } finally {
+      consoleError.mockRestore();
       Object.defineProperty(globalThis, 'window', {
         configurable: true,
         value: previousWindow

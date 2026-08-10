@@ -78,6 +78,7 @@ export interface BillFnClient {
     subject?: import('@billfn/core').BillableSubject;
     planKey: string;
     provider: import('@billfn/core').BillingProviderName;
+    priceId?: string;
     purchaseReference: string;
     payload?: Record<string, unknown>;
   }): Promise<BillFnRestorePurchasesResponse | BillFnClientErrorEnvelope>;

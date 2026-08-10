@@ -29,9 +29,9 @@ public let BILLFN_BRIDGE_EVENT_NAMES: [String] = [
 public struct BillFnBridgeError: Codable, Sendable, Equatable, Error {
     public let code: String
     public let message: String
-    public let details: [String: BillFnBridgeValue]
+    public let details: [String: BillFnBridgeValue]?
 
-    public init(code: String, message: String, details: [String: BillFnBridgeValue] = [:]) {
+    public init(code: String, message: String, details: [String: BillFnBridgeValue]? = nil) {
         self.code = code
         self.message = message
         self.details = details
