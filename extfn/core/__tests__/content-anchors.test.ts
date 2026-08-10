@@ -182,10 +182,11 @@ describe('content anchors', () => {
     ]);
   });
 
-  it('falls back to the name attribute when an anchor has no id', async () => {
+  it('falls back to the name attribute when an anchor has no id or an empty id', async () => {
     const dom = new JSDOM(`
       <main>
         <input class="target" name="email" />
+        <input class="target" id="" name="username" />
         <input class="target" />
       </main>
     `);
@@ -205,7 +206,35 @@ describe('content anchors', () => {
 
     expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
       'field-script/email',
-      'field-script/anchor-1',
+      'field-script/username',
+      'field-script/anchor-2',
+    ]);
+  });
+
+  it('preserves index fallback for explicitly empty data attributes', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" data-extfn-anchor-key="" data-testid="test-id" id="field-id" />
+        <input class="target" data-testid="" id="second-field" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'empty-data-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'empty-data-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'empty-data-script/anchor-0',
+      'empty-data-script/anchor-1',
     ]);
   });
 

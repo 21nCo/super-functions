@@ -1,16 +1,30 @@
 import { createScanFinding, type ScanRule } from '../report.js';
 
-// Guard the direct `eval(` match against member access so methods such as
-// `sourceMap.eval(` are not flagged, while still detecting explicit access
-// through browser global objects.
-const DYNAMIC_EXECUTION_PATTERN =
-  /(?<![\w$.])eval\s*\(|(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*eval\s*\(|\bnew Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+const DIRECT_EVAL_PATTERN = /(?<![\w$.])eval(?:\s*\))*\s*\(/;
+const GLOBAL_DOT_EVAL_PATTERN =
+  /(?<![\w$.])(?:window|globalThis|self)(?:\s*\))*\s*(?:\?\.|\.)\s*eval\s*\(/;
+const GLOBAL_COMPUTED_EVAL_PATTERN =
+  /(?<![\w$.])(?:window|globalThis|self)(?:\s*\))*\s*(?:\?\.)?\s*\[\s*(['"])eval\1\s*\]\s*\(/;
+const FUNCTION_CONSTRUCTOR_PATTERN = /\bnew Function\s*\(/;
+const STRING_TIMER_PATTERN = /\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+
+const DYNAMIC_EXECUTION_PATTERNS = [
+  DIRECT_EVAL_PATTERN,
+  GLOBAL_DOT_EVAL_PATTERN,
+  GLOBAL_COMPUTED_EVAL_PATTERN,
+  FUNCTION_CONSTRUCTOR_PATTERN,
+  STRING_TIMER_PATTERN,
+] as const;
+
+function containsDynamicExecution(text: string): boolean {
+  return DYNAMIC_EXECUTION_PATTERNS.some((pattern) => pattern.test(text));
+}
 
 export const dynamicExecutionRule: ScanRule = {
   id: 'SCAN-DYN-001',
   evaluate(input) {
     return input.files
-      .filter((file) => DYNAMIC_EXECUTION_PATTERN.test(file.contents))
+      .filter((file) => containsDynamicExecution(file.contents))
       .map((file) =>
         createScanFinding({
           ruleId: 'SCAN-DYN-001',

@@ -228,4 +228,32 @@ describe('buildManifest', () => {
       type: 'module',
     });
   });
+
+  it('preserves existing firefox background scripts when translating a service worker', () => {
+    const manifest = applyFirefoxTargetManifest({
+      name: 'Firefox demo',
+      background: {
+        scripts: ['polyfill.js'],
+        service_worker: 'background.js',
+        type: 'module',
+      },
+    });
+
+    expect(manifest.background).toEqual({
+      scripts: ['polyfill.js', 'background.js'],
+      type: 'module',
+    });
+
+    const deduplicatedManifest = applyFirefoxTargetManifest({
+      name: 'Firefox demo',
+      background: {
+        scripts: ['polyfill.js', 'background.js'],
+        service_worker: 'background.js',
+      },
+    });
+
+    expect(deduplicatedManifest.background).toEqual({
+      scripts: ['polyfill.js', 'background.js'],
+    });
+  });
 });

@@ -42,11 +42,15 @@ function applyFirefoxBackground(
   }
 
   const { service_worker: _serviceWorker, ...rest } = background;
+  const existingScripts = Array.isArray(rest.scripts) ? rest.scripts : [];
+  const scripts = existingScripts.includes(serviceWorker)
+    ? [...existingScripts]
+    : [...existingScripts, serviceWorker];
 
   return {
     background: {
       ...rest,
-      scripts: [serviceWorker],
+      scripts,
     },
   };
 }

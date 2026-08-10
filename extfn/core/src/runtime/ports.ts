@@ -144,7 +144,10 @@ function createPortSession(options: {
   const serverListeners = new Set<
     (payload: unknown, envelope: RuntimePortEnvelope) => void | Promise<void>
   >();
-  const closeListeners = new Set<
+  const clientCloseListeners = new Set<
+    (envelope: RuntimePortCloseEnvelope) => void | Promise<void>
+  >();
+  const serverCloseListeners = new Set<
     (envelope: RuntimePortCloseEnvelope) => void | Promise<void>
   >();
   let state: RuntimePort['state'] = 'opening';
@@ -182,8 +185,8 @@ function createPortSession(options: {
       return () => serverListeners.delete(handler);
     },
     onClose(handler) {
-      closeListeners.add(handler);
-      return () => closeListeners.delete(handler);
+      serverCloseListeners.add(handler);
+      return () => serverCloseListeners.delete(handler);
     },
     close: async () => {
       await emitClose('target-closed');
@@ -232,8 +235,8 @@ function createPortSession(options: {
       return () => inboundListeners.delete(handler);
     },
     onClose(handler) {
-      closeListeners.add(handler);
-      return () => closeListeners.delete(handler);
+      clientCloseListeners.add(handler);
+      return () => clientCloseListeners.delete(handler);
     },
     close: async () => {
       await emitClose('client-closed');
@@ -253,7 +256,10 @@ function createPortSession(options: {
       source: options.source,
       reason,
     });
-    for (const listener of closeListeners) {
+    for (const listener of clientCloseListeners) {
+      await listener(envelope);
+    }
+    for (const listener of serverCloseListeners) {
       await listener(envelope);
     }
     if (typeof options.handler.onDisconnect === 'function') {
@@ -294,6 +300,7 @@ function createPortSession(options: {
         // The server context is being discarded. Its listeners must not survive
         // into the replacement context registered by the next onConnect call.
         serverListeners.clear();
+        serverCloseListeners.clear();
         setState('reconnecting');
         clearReconnectTimer();
         reconnectTimer = setTimeout(() => {

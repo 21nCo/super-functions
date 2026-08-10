@@ -4,7 +4,13 @@ import { createScanFinding, type ScanRule } from '../report.js';
 // transport. The boundary check keeps paths, queries, and other w3.org URLs
 // subject to the insecure-transport rule.
 const HTTP_PATTERN = /http:\/\//gi;
-const NAMESPACE_URI_BOUNDARY_PATTERN = /[\s'"`),\]}]/;
+const NAMESPACE_URI_BOUNDARY_PATTERN = /[\s'"`),\]}>]/;
+const EXPLICIT_HTTP_TRANSPORT_PATTERNS = [
+  /\b(?:fetch|Request|sendBeacon|WebSocket|EventSource|importScripts)\s*\(\s*['"`]http:\/\//i,
+  /\.open\s*\(\s*['"`][^'"`]*['"`]\s*,\s*['"`]http:\/\//i,
+  /\b(?:src|href|action|formaction)\s*=\s*['"]?http:\/\//i,
+  /\burl\s*\(\s*['"]?http:\/\//i,
+] as const;
 const WELL_KNOWN_NAMESPACE_URIS = [
   'http://www.w3.org/1998/Math/MathML',
   'http://www.w3.org/1999/xhtml',
@@ -15,6 +21,10 @@ const WELL_KNOWN_NAMESPACE_URIS = [
 ] as const;
 
 function containsInsecureTransport(text: string): boolean {
+  if (EXPLICIT_HTTP_TRANSPORT_PATTERNS.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+
   for (const match of text.matchAll(HTTP_PATTERN)) {
     const matchIndex = match.index;
     const isNamespaceIdentifier = WELL_KNOWN_NAMESPACE_URIS.some((uri) => {
