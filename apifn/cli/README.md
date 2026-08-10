@@ -189,7 +189,7 @@ export default defineConfig({
 });
 ```
 
-Config files (`.ts`/`.js`/`.mjs`) are loaded at runtime via `jiti`. Unknown fields are rejected.
+Config files (`.ts`/`.js`/`.mjs`) are loaded at runtime via `jiti`. Unknown top-level fields are rejected.
 
 ## Programmatic API
 

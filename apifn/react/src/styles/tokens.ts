@@ -67,9 +67,8 @@ export function getThemeStyle(theme: "light" | "dark" | "auto"): string {
     if (theme === "light") return `.apifn-root { ${LIGHT_THEME} }`;
     if (theme === "dark") return `.apifn-root { ${DARK_THEME} }`;
     return `
-    @media (prefers-color-scheme: dark) { .apifn-root { ${DARK_THEME} } }
-    @media (prefers-color-scheme: light) { .apifn-root { ${LIGHT_THEME} } }
     .apifn-root { ${LIGHT_THEME} }
+    @media (prefers-color-scheme: dark) { .apifn-root { ${DARK_THEME} } }
   `;
 }
 

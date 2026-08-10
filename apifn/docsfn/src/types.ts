@@ -53,6 +53,8 @@ export interface RawContentEntry {
     sidebar: SidebarGroup;
     /** Full OpenAPI spec (so renderers can look up $refs etc.) */
     spec: OpenAPIDocument;
+    /** Optional Try-It base URL supplied by the provider */
+    baseUrl?: string;
 }
 
 /** A DocsContentProvider is a callable that returns RawContentEntry[]. */

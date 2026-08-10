@@ -1,6 +1,6 @@
 # @apifn/mock
 
-Mock server for ApiFn. Spin up a zero-dependency HTTP server from any OpenAPI document that returns realistic responses, optionally validating incoming requests against the spec.
+Mock server for ApiFn. Spin up a framework-free HTTP server from any OpenAPI document that returns realistic responses, optionally validating incoming requests against the spec.
 
 ## Installation
 
@@ -53,7 +53,7 @@ await mock.stop();
 | `responseMode` | `"schema" \| "examples" \| "random"` | `"schema"` | How response bodies are generated |
 | `validateRequests` | `boolean` | `false` | Validate incoming params and JSON bodies |
 | `delay` | `number` | `0` | Response delay in ms (simulate latency) |
-| `maxRequestBodyBytes` | `number` | `10 MiB` | Max accepted request body size |
+| `maxRequestBodyBytes` | `number` | `10485760` | Max accepted request body size (10 MiB) |
 | `cors` | `boolean \| CorsOptions` | — | Enable/configure CORS |
 
 ### MockServer
@@ -98,7 +98,7 @@ generateFromSchema({ type: "object", properties: { id: { type: "string", format:
 
 ### generateRandom
 
-Like `generateFromSchema` but produces randomized values valid against the schema.
+Like `generateFromSchema`, but produces randomized primitive values. It respects `type`, string `enum`, and a small set of formats; it does not currently enforce constraints such as `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, or array bounds.
 
 ```typescript
 import { generateRandom } from "@apifn/mock";

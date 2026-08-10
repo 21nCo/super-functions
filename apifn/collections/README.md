@@ -164,13 +164,18 @@ await runCollection(collection, {
 import { createAssertionRuntime } from "@apifn/collections";
 
 const { expect, test, getResults } = createAssertionRuntime();
+const response = {
+  status: 200,
+  body: { id: "usr_123", roles: ["admin"], profile: { email: "dev@example.com" } },
+  responseTime: 120,
+};
 
 test("returns the user", () => {
-  expect(res.statusCode).to.equal(200);
-  expect(res.json()).to.have.property("id");
-  expect(res.json().roles).to.include("admin");
-  expect(res.json()).to.have.jsonPath("$.profile.email");
-  expect(res.durationMs).to.be.below(500);
+  expect(response.status).to.equal(200);
+  expect(response.body).to.have.property("id");
+  expect(response.body.roles).to.include("admin");
+  expect(response.body).to.have.jsonPath("$.profile.email");
+  expect(response.responseTime).to.be.below(500);
 });
 
 const results = getResults(); // AssertionResult[]
@@ -182,7 +187,7 @@ Supported matchers: `.equal`, `.include`, `.matchSchema`, `.have.property`, `.ha
 
 ## Scripting
 
-Pre-request and test scripts run in a locked-down Node `vm` sandbox (`SCRIPT_TIMEOUT_MS` = 10s). Available globals: `console`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `btoa`, `atob`. Disabled: `process`, `require`, `module`, `fetch`, `eval`, `Function`, timers.
+Pre-request and test scripts run in a locked-down Node `vm` sandbox (`SCRIPT_TIMEOUT_MS` = `10000` ms). Available globals: `console`, `URL`, `URLSearchParams`, `crypto.randomUUID`, `btoa`, `atob`. Disabled: `process`, `require`, `module`, `fetch`, `eval`, `Function`, timers.
 
 ```typescript
 import { executePreRequestScript, executeTestScript } from "@apifn/collections";
@@ -211,13 +216,16 @@ const context = resolveVariableContext({
   collection: {},
   environment: env.variables, // collection < environment < overrides
   overrides: loadDotEnvFile(".env"),
-  processEnv: process.env,
 });
 
-const { value, warnings } = interpolateVariables("{{baseUrl}}/users", context);
+const { value, warnings } = interpolateVariables(
+  "{{baseUrl}}/users?token={{process.env.API_TOKEN}}",
+  context,
+  { processEnv: process.env },
+);
 ```
 
-`{{var}}` tokens are replaced from the context; `{{process.env.X}}` reads from `processEnv`; unknown tokens are left intact and reported in `warnings`.
+`{{var}}` tokens are replaced from the context; unknown context tokens are left intact and reported in `warnings`. `{{process.env.X}}` reads from the `processEnv` interpolation option (or the current process by default) and throws if the requested environment variable is not set.
 
 ---
 

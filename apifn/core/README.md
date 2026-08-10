@@ -1,6 +1,6 @@
 # @apifn/core
 
-Core library for ApiFn — route introspection, schema conversion, OpenAPI generation, and diff. Every other ApiFn package depends on `@apifn/core`.
+Core JavaScript/TypeScript library for ApiFn — route introspection, schema conversion, OpenAPI generation, and diff. The other ApiFn npm packages build on `@apifn/core`.
 
 ## Installation
 

@@ -37,7 +37,7 @@ function getThemeStyle(theme: "light" | "dark" | "auto"): string {
   `;
     if (theme === "dark") return `.apifn-root{${dark}}`;
     if (theme === "light") return `.apifn-root{${light}}`;
-    return `@media(prefers-color-scheme:dark){.apifn-root{${dark}}}.apifn-root{${light}}`;
+    return `.apifn-root{${light}}@media(prefers-color-scheme:dark){.apifn-root{${dark}}}`;
 }
 
 const s = {
@@ -133,11 +133,14 @@ function EndpointCard({
 }
 
 export function ApifnApiReference({
-    entry, tryIt = false, baseUrl = "https://api.example.com", theme = "auto", performanceMetrics,
+    entry, tryIt = false, baseUrl, theme = "auto", performanceMetrics,
 }: ApifnApiReferenceProps): React.ReactElement {
     const themeStyle = getThemeStyle(theme);
     const effectiveBaseUrl =
-        (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url ?? baseUrl;
+        baseUrl
+        ?? entry.baseUrl
+        ?? (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url
+        ?? "https://api.example.com";
 
     return (
         <div className="apifn-root">

@@ -6,7 +6,7 @@
   import TryIt from "./TryIt.svelte";
   import RequestHistory from "./RequestHistory.svelte";
   import PerformanceOverlay from "./PerformanceOverlay.svelte";
-  import type { WatchFnClient, EndpointMetrics } from "@apifn/core";
+  import type { WatchFnClient, EndpointMetrics, RateLimitInfo } from "@apifn/core";
 
   export let spec: OpenAPIDocument;
   export let baseUrl: string | undefined = undefined;
@@ -48,7 +48,7 @@
     const light = `--apifn-bg:#ffffff;--apifn-bg-surface:#f8fafc;--apifn-bg-surface-hover:#f1f5f9;--apifn-border:#e2e8f0;--apifn-text:#0f172a;--apifn-text-muted:#64748b;--apifn-accent:#7c3aed;--apifn-accent-text:#6d28d9;--apifn-green:#059669;--apifn-blue:#2563eb;--apifn-yellow:#d97706;--apifn-red:#dc2626;--apifn-purple:#7c3aed;--apifn-orange:#ea580c;--apifn-radius:6px;--apifn-font-mono:'JetBrains Mono',monospace;--apifn-font-sans:-apple-system,sans-serif`;
     if (t === "dark") return dark;
     if (t === "light") return light;
-    return light; // auto defaults to light; media query in style handles dark
+    return "";
   }
 
   $: endpoints = collectEndpoints(spec);
@@ -148,7 +148,7 @@
   $: themeVars = getThemeCSS(theme);
 </script>
 
-<div class="apifn-root" style={themeVars}>
+<div class="apifn-root" class:auto-theme={theme === "auto"} style={themeVars}>
   <!-- Top Bar -->
   <header class="topbar">
     <button
@@ -263,6 +263,12 @@
 
 <style>
   .apifn-root {
+    --apifn-bg:#ffffff;--apifn-bg-surface:#f8fafc;--apifn-bg-surface-hover:#f1f5f9;
+    --apifn-border:#e2e8f0;--apifn-text:#0f172a;--apifn-text-muted:#64748b;
+    --apifn-accent:#7c3aed;--apifn-accent-text:#6d28d9;--apifn-green:#059669;
+    --apifn-blue:#2563eb;--apifn-yellow:#d97706;--apifn-red:#dc2626;
+    --apifn-purple:#7c3aed;--apifn-orange:#ea580c;--apifn-radius:6px;
+    --apifn-font-mono:'JetBrains Mono',monospace;--apifn-font-sans:-apple-system,sans-serif;
     font-family: var(--apifn-font-sans, sans-serif);
     background: var(--apifn-bg, #0f1117);
     color: var(--apifn-text, #e2e8f0);
@@ -272,7 +278,7 @@
     overflow: hidden;
   }
   @media (prefers-color-scheme: dark) {
-    .apifn-root {
+    .apifn-root.auto-theme {
       --apifn-bg: #0f1117; --apifn-bg-surface: #1a1d2e; --apifn-bg-surface-hover: #252840;
       --apifn-border: #2d3748; --apifn-text: #e2e8f0; --apifn-text-muted: #64748b;
       --apifn-accent: #7c3aed; --apifn-accent-text: #c4b5fd; --apifn-green: #6ee7b7;

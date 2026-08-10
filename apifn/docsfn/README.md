@@ -51,10 +51,15 @@ With `splitByTag: true`, each tag becomes a `RawContentEntry` with slug `${baseP
 
 ## Rendering the reference
 
-The package root (`@apifn/docsfn`) exports the provider and types. `ApifnApiReference` renderer components are provided for both React (`src/react/ApifnApiReference.tsx`) and Svelte (`src/svelte/ApifnApiReference.svelte`) and are imported from their component source; docsfn wires them up to render each `RawContentEntry`.
+The package root (`@apifn/docsfn`) exports the provider and types. Renderer components are available from framework-specific public subpaths:
+
+- React: `@apifn/docsfn/react`
+- Svelte: `@apifn/docsfn/svelte`
+
+Pass each `RawContentEntry` returned by the provider to the renderer used by your docsfn integration.
 
 ```tsx
-import { ApifnApiReference } from "@apifn/docsfn/src/react/ApifnApiReference";
+import { ApifnApiReference } from "@apifn/docsfn/react";
 
 <ApifnApiReference
   entry={entry}
@@ -67,7 +72,15 @@ import { ApifnApiReference } from "@apifn/docsfn/src/react/ApifnApiReference";
 />
 ```
 
-The Svelte renderer takes the same props (`entry`, `tryIt`, `baseUrl`, `theme`, `performanceMetrics`).
+The Svelte renderer takes the same props (`entry`, `tryIt`, `baseUrl`, `theme`, `performanceMetrics`):
+
+```svelte
+<script lang="ts">
+  import ApifnApiReference from "@apifn/docsfn/svelte";
+</script>
+
+<ApifnApiReference {entry} tryIt theme="auto" />
+```
 
 ### ApifnApiReferenceProps
 
@@ -75,17 +88,19 @@ The Svelte renderer takes the same props (`entry`, `tryIt`, `baseUrl`, `theme`, 
 |------|------|---------|-------------|
 | `entry` | `RawContentEntry` | — | A single entry from `createApifnProvider` (required) |
 | `tryIt` | `boolean` | `false` | Show an embedded Try-It console per endpoint |
-| `baseUrl` | `string` | `entry.spec.servers[0].url` | Base URL for Try-It requests |
+| `baseUrl` | `string` | See below | Base URL for Try-It requests |
 | `theme` | `"light" \| "dark" \| "auto"` | `"auto"` | Theme for embedded components |
 | `performanceMetrics` | `Record<string, …>` | — | Per-endpoint metrics keyed `"METHOD /path"` (you supply `p50Ms`/`p95Ms`/`p99Ms`/`errorRatePct`/`requestsPerMinute`) |
 
 Each endpoint renders as a collapsible card with Docs / Try It / Performance tabs, delegating to the `EndpointViewer`, `TryIt`, and `PerformanceOverlay` components from `@apifn/react` / `@apifn/svelte`.
 
+The Try-It base URL is selected in this order: the renderer's `baseUrl` prop, the provider's `baseUrl` embedded in the entry, the first URL in `entry.spec.servers`, then `https://api.example.com` as a placeholder fallback.
+
 ---
 
 ## How it plugs into docsfn
 
-`createApifnProvider(...)` yields a `DocsContentProvider` that docsfn's content pipeline consumes. Each `RawContentEntry` carries `kind: "api"` (signalling an API reference page), a `sidebar` group for navigation, and the full `spec`. docsfn renders each entry with the matching `ApifnApiReference` component.
+`createApifnProvider(...)` yields a `DocsContentProvider` suitable for a docsfn content pipeline. Each `RawContentEntry` carries `kind: "api"`, a `sidebar` group for navigation, and the full `spec`. Register the provider and the appropriate `ApifnApiReference` renderer in your docsfn application according to its integration API.
 
 ## Exports
 
@@ -97,7 +112,8 @@ export type {
   CreateApifnProviderOptions, ApifnApiReferenceProps,
   OpenAPIDocument, OperationObject,
 }
-// ApifnApiReference components live in src/react and src/svelte (imported from source)
+// React: import { ApifnApiReference } from "@apifn/docsfn/react"
+// Svelte: import ApifnApiReference from "@apifn/docsfn/svelte"
 ```
 
 ## License

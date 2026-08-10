@@ -4,18 +4,22 @@ ApiFn is a code-first, self-hosted API development toolkit. Generate OpenAPI spe
 
 Your router is the source of truth: introspect it into OpenAPI 3.1, then drive validation, diffing, testing, mocking, snippets, and documentation from the same spec.
 
-## Packages
+## npm packages
 
 | Package | Description |
 |---------|-------------|
-| [`@apifn/core`](./core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. Every package depends on it. |
+| [`@apifn/core`](./core) | Route introspection, schema conversion (Zod/TypeBox → JSON Schema), OpenAPI 3.1 generation, diff, and ecosystem integrations. The other ApiFn npm packages build on it. |
 | [`@apifn/cli`](./cli) | The `apifn` command — generate, export, import, validate, diff, test, mock, serve, snippet. |
 | [`@apifn/collections`](./collections) | OpenCollection YAML read/write/run: portable request collections with assertions, scripting, and reporters. |
-| [`@apifn/mock`](./mock) | Zero-dependency mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
+| [`@apifn/mock`](./mock) | Framework-free mock server from any OpenAPI spec, with schema/example/random responses and request validation. |
 | [`@apifn/snippets`](./snippets) | Generate request code snippets for 11 languages/clients (curl, fetch, axios, Python, Go, Java, …). |
 | [`@apifn/react`](./react) | React components — interactive API explorer, Try-It console, schema viewer, diff, performance overlays. |
 | [`@apifn/svelte`](./svelte) | The same UI surface for Svelte, shipped as `.svelte` source. |
 | [`@apifn/docsfn`](./docsfn) | docsfn plugin — render an OpenAPI spec as an interactive API reference. |
+
+## Python SDK
+
+[`apifn`](./python) provides Python helpers for OpenAPI generation, diffing, collections, FastAPI, and Flask. It requires Python 3.10 or newer and is versioned separately from the npm packages.
 
 ## Quick Start
 
