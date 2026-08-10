@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type {
   BillFnCancelSubscriptionInput,
   BillFnChangeSubscriptionInput,
@@ -15,7 +14,7 @@ import type {
   BillFnVerifyCheckoutInput
 } from '@billfn/core';
 import { createBillFnError } from '@billfn/core';
-import { verifyWebhookSignature } from '@superfunctions/webhooks';
+import { verifyStandardWebhookSignature } from '@superfunctions/webhooks';
 
 export interface DodoProviderConfig {
   apiKey: string;
@@ -28,7 +27,7 @@ export interface DodoProviderConfig {
 export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAdapter {
   const fetchImpl = config.fetch ?? fetch;
   const baseUrl = (config.baseUrl ?? 'https://live.dodopayments.com').replace(/\/$/, '');
-  const webhookSignatureHeader = (config.webhookSignatureHeader ?? 'x-dodo-signature').toLowerCase();
+  const webhookSignatureHeader = (config.webhookSignatureHeader ?? 'webhook-signature').toLowerCase();
 
   return {
     provider: 'dodo',
@@ -294,8 +293,19 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         });
       }
 
+      const webhookId = input.headers.get('webhook-id');
+      const webhookTimestamp = input.headers.get('webhook-timestamp');
       const signature = input.headers.get(webhookSignatureHeader);
-      if (!signature || !verifyWebhookSignature(input.rawBody, signature, config.webhookSecret)) {
+      if (
+        !webhookId ||
+        !webhookTimestamp ||
+        !signature ||
+        !verifyStandardWebhookSignature(input.rawBody, {
+          id: webhookId,
+          timestamp: webhookTimestamp,
+          signature
+        }, config.webhookSecret)
+      ) {
         throw createBillFnError({
           code: 'BILLFN_WEBHOOK_SIGNATURE_INVALID',
           message: 'Dodo webhook signature verification failed'
@@ -312,7 +322,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
         });
       }
       const type = readString(payload, ['type', 'event']) ?? 'unknown';
-      const eventId = readString(payload, ['id', 'event_id']) ?? `dodo_evt_${createHash('sha256').update(input.rawBody).digest('hex')}`;
+      const eventId = webhookId;
       const data = asRecord(payload.data) ?? payload;
       const isSubscription = Boolean(readString(data, ['subscription_id'])) || type.includes('subscription');
 
@@ -322,6 +332,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
           type,
           signatureVerified: true,
           occurredAt: readString(payload, ['created_at', 'timestamp']) ?? undefined,
+          priceId: readString(data, ['product_id']) ?? undefined,
           providerSubscriptionId: readString(data, ['subscription_id']) ?? undefined,
           providerChargeId: readString(data, ['payment_id']) ?? undefined,
           checkoutReferenceId: readString(data, ['checkout_session_id']) ?? undefined,
@@ -414,14 +425,14 @@ function normalizeDodoStatus(status: string): BillFnVerifiedBillingState['subscr
   }
 }
 
-function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none'): string | undefined {
+function normalizeDodoProration(value: 'provider_default' | 'prorate' | 'none'): string {
   switch (value) {
     case 'prorate':
       return 'prorated_immediately';
     case 'none':
       return 'do_not_bill';
     default:
-      return undefined;
+      return 'prorated_immediately';
   }
 }
 

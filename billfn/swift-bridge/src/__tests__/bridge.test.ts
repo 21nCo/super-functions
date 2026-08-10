@@ -86,6 +86,7 @@ describe('@billfn/swift-bridge', () => {
   it('continues event fan-out when one subscriber throws', () => {
     const previousWindow = globalThis.window;
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const unsubscribers: Array<() => void> = [];
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {}
@@ -94,10 +95,10 @@ describe('@billfn/swift-bridge', () => {
     try {
       const bus = createWKWebViewBridgeBus();
       const received: string[] = [];
-      bus.subscribe(() => {
+      unsubscribers.push(bus.subscribe(() => {
         throw new Error('subscriber failed');
-      });
-      bus.subscribe((event) => received.push(event.event));
+      }));
+      unsubscribers.push(bus.subscribe((event) => received.push(event.event)));
 
       globalThis.window.__billfnBridgeReceive__?.({
         protocol: BILLFN_BRIDGE_PROTOCOL,
@@ -108,6 +109,7 @@ describe('@billfn/swift-bridge', () => {
       expect(received).toEqual(['bridge.ready']);
       expect(consoleError).toHaveBeenCalledOnce();
     } finally {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
       consoleError.mockRestore();
       Object.defineProperty(globalThis, 'window', {
         configurable: true,

@@ -24,12 +24,12 @@ describe('@billfn/provider-apple', () => {
                     originalTransactionId: 'orig_123',
                     transactionId: 'txn_123',
                     purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
-                    status: 1
+                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z'))
                   }),
                   signedRenewalInfo: encodePayload({
                     autoRenewStatus: 1
-                  })
+                  }),
+                  status: 2
                 }
               ]
             }
@@ -89,7 +89,7 @@ describe('@billfn/provider-apple', () => {
       }
     });
 
-    expect(verified?.subscriptionStatus).toBe('active');
+    expect(verified?.subscriptionStatus).toBe('expired');
     expect(verified?.providerChargeId).toBe('txn_123');
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('https://api.storekit.itunes.apple.com/inApps/v1/subscriptions/txn_123');
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions/txn_123');
@@ -432,7 +432,7 @@ describe('@billfn/provider-apple', () => {
 
     expect(provider.capabilities.notificationHistory).toBe(false);
     await expect(provider.fetchNotificationHistory?.({ limit: 10 })).rejects.toMatchObject({
-      code: 'BILLFN_VALIDATION_ERROR',
+      code: 'BILLFN_FEATURE_UNAVAILABLE',
       message: expect.stringContaining('notificationVerifier')
     });
     expect(fetchMock).not.toHaveBeenCalled();

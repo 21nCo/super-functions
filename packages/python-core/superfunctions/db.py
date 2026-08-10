@@ -42,6 +42,7 @@ class OrderBy:
 class FieldSchema(TypedDict, total=False):
     type: str
     required: bool
+    unique: bool
     fieldName: str
 
 

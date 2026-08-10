@@ -6,14 +6,24 @@ import { createBillFnService } from './service.js';
 import type { BillFnConfig, BillableSubject } from './types.js';
 
 async function parseJsonBody<T>(request: Request): Promise<T> {
+  let body: unknown;
   try {
-    return await request.json() as T;
+    body = await request.json();
   } catch {
     throw createBillFnError({
       code: 'BILLFN_VALIDATION_ERROR',
       message: 'Request body must contain valid JSON'
     });
   }
+
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw createBillFnError({
+      code: 'BILLFN_VALIDATION_ERROR',
+      message: 'Request body must contain a JSON object'
+    });
+  }
+
+  return body as T;
 }
 
 export function createBillFnRouter(config: BillFnConfig) {

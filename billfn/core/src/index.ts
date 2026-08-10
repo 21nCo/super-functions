@@ -14,7 +14,7 @@ export function createBillFn(config: BillFnConfig): BillFnInstance {
 
   return {
     router,
-    getSchema: () => getSchema({ namespace: config.namespace }),
+    getSchema: () => getSchema(),
     getCatalog: service.getCatalog,
     createCheckout: service.createCheckout,
     verifyCheckout: service.verifyCheckout,

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { BillFnChangeSubscriptionInput } from '@billfn/core';
 import { createDodoProvider } from '../index.js';
@@ -52,6 +53,22 @@ function changeSubscriptionInput(): BillFnChangeSubscriptionInput {
     },
     effectiveAt: 'immediate',
     prorationBehavior: 'provider_default'
+  };
+}
+
+function standardWebhookHeaders(rawBody: string, id = 'evt_dodo_123') {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const secretBytes = Buffer.from('dodo-webhook-secret');
+  const signature = createHmac('sha256', secretBytes)
+    .update(`${id}.${timestamp}.${rawBody}`)
+    .digest('base64');
+  return {
+    secret: `whsec_${secretBytes.toString('base64')}`,
+    headers: new Headers({
+      'webhook-id': id,
+      'webhook-timestamp': timestamp,
+      'webhook-signature': `v1,${signature}`
+    })
   };
 }
 
@@ -243,7 +260,49 @@ describe('@billfn/provider-dodo', () => {
       fallback: 'replacement-checkout'
     });
     const changeBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
-    expect(changeBody).not.toHaveProperty('proration_billing_mode');
+    expect(changeBody.proration_billing_mode).toBe('prorated_immediately');
+  });
+
+  it('verifies Dodo webhooks with the Standard Webhooks headers and signed message', async () => {
+    const rawBody = JSON.stringify({
+      type: 'subscription.renewed',
+      timestamp: '2026-08-10T17:30:00.000Z',
+      data: {
+        subscription_id: 'sub_123',
+        payment_id: 'pay_123',
+        product_id: 'pdt_new',
+        status: 'active'
+      }
+    });
+    const { secret, headers } = standardWebhookHeaders(rawBody);
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      webhookSecret: secret
+    });
+
+    const events = await provider.parseWebhook?.({ rawBody, headers });
+
+    expect(events?.[0]).toMatchObject({
+      providerEventId: 'evt_dodo_123',
+      type: 'subscription.renewed',
+      signatureVerified: true,
+      priceId: 'pdt_new',
+      providerSubscriptionId: 'sub_123'
+    });
+  });
+
+  it('rejects Dodo webhook signatures that do not cover the id and timestamp', async () => {
+    const rawBody = JSON.stringify({ type: 'subscription.renewed', data: {} });
+    const { secret, headers } = standardWebhookHeaders(rawBody);
+    headers.set('webhook-id', 'tampered-id');
+    const provider = createDodoProvider({
+      apiKey: 'test-key',
+      webhookSecret: secret
+    });
+
+    await expect(provider.parseWebhook?.({ rawBody, headers })).rejects.toMatchObject({
+      code: 'BILLFN_WEBHOOK_SIGNATURE_INVALID'
+    });
   });
 
   it('uses Dodo change-plan endpoint and schema for direct plan changes', async () => {

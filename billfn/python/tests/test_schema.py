@@ -1,10 +1,10 @@
-from billfn import BILLFN_SCHEMA_VERSION, get_schema
+from billfn import get_schema
 
 
 def test_schema_exposes_expected_version_and_tables() -> None:
     schema = get_schema()
 
-    assert schema["version"] == BILLFN_SCHEMA_VERSION
+    assert schema["version"] == 2
     model_names = [table["modelName"] for table in schema["schemas"]]
     assert model_names == [
         "billingAccounts",
@@ -49,3 +49,10 @@ def test_schema_includes_lifecycle_and_reconciliation_indexes() -> None:
         index["fields"] == ["kind", "status", "updatedAt"]
         for index in tables["reconciliationJobs"]["indexes"]
     )
+    for model_name in [
+        "refunds",
+        "subscriptionChangeRequests",
+        "reconciliationJobs",
+        "reconciliationCursors",
+    ]:
+        assert tables[model_name]["fields"]["id"]["unique"] is True

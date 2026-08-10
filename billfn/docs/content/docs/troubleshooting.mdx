@@ -8,7 +8,7 @@ description: Common BillFn setup and integration failures grounded in the curren
 If Dodo webhook requests fail before processing, check these first:
 
 - `webhookSecret` must be configured on `createDodoProvider()`
-- the signature must arrive in the configured header
+- `webhook-id`, `webhook-timestamp`, and the signature must arrive in the Standard Webhooks headers
 - the raw body must be valid JSON
 
 Common errors:

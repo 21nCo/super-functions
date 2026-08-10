@@ -1,5 +1,11 @@
+import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { deliverWebhook, signWebhookPayload, verifyWebhookSignature } from '../index.js';
+import {
+  deliverWebhook,
+  signWebhookPayload,
+  verifyStandardWebhookSignature,
+  verifyWebhookSignature
+} from '../index.js';
 
 describe('webhooks package exports', () => {
   it('signs and verifies webhook payload using timing-safe verification path', () => {
@@ -35,6 +41,39 @@ describe('webhooks package exports', () => {
     expect(
       verifyWebhookSignature(payload, `${signature}=`, secret, { encoding: 'base64' })
     ).toBe(false);
+  });
+
+  it('verifies Standard Webhooks signatures and rotated signature lists', () => {
+    const payload = '{"type":"subscription.renewed"}';
+    const id = 'msg_123';
+    const timestamp = '1776038400';
+    const secretBytes = Buffer.from('standard-webhook-secret');
+    const secret = `whsec_${secretBytes.toString('base64')}`;
+    const signature = createHmac('sha256', secretBytes)
+      .update(`${id}.${timestamp}.${payload}`)
+      .digest('base64');
+
+    expect(verifyStandardWebhookSignature(payload, {
+      id,
+      timestamp,
+      signature: `v1,invalid v1,${signature}`
+    }, secret, {
+      now: () => Number(timestamp) * 1000
+    })).toBe(true);
+  });
+
+  it('rejects stale or malformed Standard Webhooks signatures', () => {
+    const payload = '{}';
+    const secret = `whsec_${Buffer.from('standard-webhook-secret').toString('base64')}`;
+
+    expect(verifyStandardWebhookSignature(payload, {
+      id: 'msg_123',
+      timestamp: '1776038000',
+      signature: 'v1,invalid'
+    }, secret, {
+      now: () => 1776038400 * 1000,
+      toleranceSeconds: 300
+    })).toBe(false);
   });
 
   it('delivers payload with bounded retries and returns structured attempts', async () => {

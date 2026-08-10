@@ -30,7 +30,7 @@ Optional config:
 
 The default API base URL is `https://live.dodopayments.com`.
 Set `baseUrl` explicitly if you need to target Dodo's test environment.
-The default webhook signature header is `x-dodo-signature`.
+The default webhook signature header is `webhook-signature`.
 
 ## What the Adapter Does
 
@@ -49,6 +49,8 @@ The default webhook signature header is `x-dodo-signature`.
 Dodo webhooks fail closed in Phase 1:
 
 - `webhookSecret` must be configured
+- `webhook-id`, `webhook-timestamp`, and `webhook-signature` must be present
+- the Standard Webhooks signature covers the webhook id, timestamp, and raw request body
 - invalid signatures raise `BILLFN_WEBHOOK_SIGNATURE_INVALID`
 - malformed JSON becomes a BillFn validation error
 - parsed events carry `signatureVerified: true`

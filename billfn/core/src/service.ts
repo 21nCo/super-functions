@@ -82,6 +82,8 @@ const TABLES = {
   reconciliationCursors: 'reconciliationCursors'
 } as const;
 
+const PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY = 'billfnProviderEventOccurredAt';
+
 type ServiceDeps = {
   db: Adapter;
   namespace: string;
@@ -689,18 +691,24 @@ export function createBillFnService(config: BillFnConfig) {
       const subscription = input.subscriptionId
         ? await getSubscriptionForAccount(deps, billingAccount.id, input.subscriptionId)
         : await findActiveSubscription(deps, billingAccount.id);
-      const providerName = subscription?.provider;
-      if (!providerName) {
+      if (!subscription) {
         throw createBillFnError({
           code: 'BILLFN_NOT_FOUND',
           message: 'Subscription not found for refund'
         });
       }
+      if (input.providerChargeId && input.providerChargeId !== subscription.providerChargeId) {
+        throw createBillFnError({
+          code: 'BILLFN_CONFLICT',
+          message: 'Refund charge does not belong to the resolved subscription'
+        });
+      }
+      const providerName = subscription.provider;
       const provider = requireProvider(deps, providerName, 'refundCharge');
       const mode = input.mode ?? 'full';
-      const providerChargeId = input.providerChargeId ?? subscription?.providerChargeId;
+      const providerChargeId = input.providerChargeId ?? subscription.providerChargeId;
       const operation = await provider.refundCharge({
-        subscription: subscription ?? undefined,
+        subscription,
         billingAccount,
         providerChargeId,
         mode,
@@ -711,13 +719,13 @@ export function createBillFnService(config: BillFnConfig) {
       const timestamp = toIsoString(deps.now());
       const refund = await createRefundRecord(deps, {
         billingAccountId: billingAccount.id,
-        subscriptionId: subscription?.id,
+        subscriptionId: subscription.id,
         provider: providerName,
         providerChargeId,
         providerRefundId: operation.providerRefundId,
         mode,
         amount: input.amount,
-        currency: subscription ? requirePriceById(requirePlan(deps.catalog, subscription.planKey), subscription.priceId).currency : undefined,
+        currency: requirePriceById(requirePlan(deps.catalog, subscription.planKey), subscription.priceId).currency,
         reason: input.reason,
         status: operation.operationStatus === 'applied' ? 'succeeded' : 'requires_action',
         operationStatus: operation.operationStatus,
@@ -726,8 +734,8 @@ export function createBillFnService(config: BillFnConfig) {
         updatedAt: timestamp
       });
 
-      let projectedSubscription = subscription ?? null;
-      let projectedEntitlements = subscription ? await findEntitlementSnapshot(deps, billingAccount.id) : null;
+      let projectedSubscription: BillFnSubscription | null = subscription;
+      let projectedEntitlements = await findEntitlementSnapshot(deps, billingAccount.id);
       if (subscription && operation.billingState) {
         const plan = requirePlan(deps.catalog, subscription.planKey);
         const price = requirePriceById(plan, subscription.priceId);
@@ -949,7 +957,31 @@ export function createBillFnService(config: BillFnConfig) {
           if (!isDuplicateRecordError(error)) {
             throw error;
           }
-          continue;
+          const existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+            model: TABLES.webhookReceipts,
+            where: [{ field: 'id', operator: 'eq', value: receiptId }],
+            namespace: deps.namespace
+          });
+          if (!existingReceipt) {
+            throw error;
+          }
+          if (existingReceipt.processedAt) {
+            continue;
+          }
+          const activeJob = await findActiveWebhookReconciliationJob(deps, input.provider, event.providerEventId);
+          if (activeJob) {
+            continue;
+          }
+          await deps.db.update({
+            model: TABLES.webhookReceipts,
+            where: [{ field: 'id', operator: 'eq', value: receiptId }],
+            data: {
+              eventType: receipt.eventType,
+              signatureVerified: receipt.signatureVerified,
+              rawPayload: receipt.rawPayload
+            },
+            namespace: deps.namespace
+          });
         }
 
         const job = await enqueueReconciliationJobInternal({
@@ -1138,19 +1170,19 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
           createdAt: toIsoString(deps.now()),
           processedAt: undefined
         };
-        const existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
-          model: TABLES.webhookReceipts,
-          where: [{ field: 'id', operator: 'eq', value: receiptId }],
-          namespace: deps.namespace
-        });
-        if (existingReceipt) {
-          continue;
-        }
         if (!event.signatureVerified) {
           throw createBillFnError({
             code: 'BILLFN_WEBHOOK_SIGNATURE_INVALID',
             message: 'Notification history event signature verification failed'
           });
+        }
+        let existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+          model: TABLES.webhookReceipts,
+          where: [{ field: 'id', operator: 'eq', value: receiptId }],
+          namespace: deps.namespace
+        });
+        if (existingReceipt?.processedAt) {
+          continue;
         }
         if (!existingReceipt) {
           try {
@@ -1163,8 +1195,29 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
             if (!isDuplicateRecordError(error)) {
               throw error;
             }
-            continue;
+            existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+              model: TABLES.webhookReceipts,
+              where: [{ field: 'id', operator: 'eq', value: receiptId }],
+              namespace: deps.namespace
+            });
+            if (!existingReceipt) {
+              throw error;
+            }
+            if (existingReceipt.processedAt) {
+              continue;
+            }
           }
+        } else {
+          await deps.db.update({
+            model: TABLES.webhookReceipts,
+            where: [{ field: 'id', operator: 'eq', value: receiptId }],
+            data: {
+              eventType: receipt.eventType,
+              signatureVerified: receipt.signatureVerified,
+              rawPayload: receipt.rawPayload
+            },
+            namespace: deps.namespace
+          });
         }
         try {
           await processParsedWebhookEvent(deps, job.provider, event);
@@ -1615,6 +1668,23 @@ async function getReconciliationJobRecord(deps: ServiceDeps, id: string) {
   });
 }
 
+async function findActiveWebhookReconciliationJob(
+  deps: ServiceDeps,
+  provider: BillingProviderName,
+  providerEventId: string
+) {
+  return deps.db.findOne<BillFnReconciliationJob>({
+    model: TABLES.reconciliationJobs,
+    where: [
+      { field: 'kind', operator: 'eq', value: 'webhook-event' },
+      { field: 'provider', operator: 'eq', value: provider },
+      { field: 'providerEventId', operator: 'eq', value: providerEventId },
+      { field: 'status', operator: 'in', value: ['pending', 'running'] }
+    ],
+    namespace: deps.namespace
+  });
+}
+
 async function findReconciliationCursor(deps: ServiceDeps, provider: BillingProviderName, cursorKey: string) {
   return deps.db.findOne<BillFnReconciliationCursor>({
     model: TABLES.reconciliationCursors,
@@ -1696,19 +1766,10 @@ async function applyVerificationState(
     checkoutSession?: BillFnCheckoutSession;
     subscription?: BillFnSubscription;
     state: NonNullable<Awaited<ReturnType<NonNullable<BillFnProviderAdapter['verifyCheckout']>>>>;
+    occurredAt?: string;
   }
 ) {
   const timestamp = toIsoString(deps.now());
-  const checkoutSession = input.checkoutSession
-    ? await updateCheckoutSession(deps, input.checkoutSession.checkoutSessionId, {
-        status: input.state.checkoutStatus,
-        providerSubscriptionId: input.state.providerSubscriptionId ?? input.checkoutSession.providerSubscriptionId,
-        providerChargeId: input.state.providerChargeId ?? input.checkoutSession.providerChargeId,
-        updatedAt: timestamp,
-        metadata: mergeJson(input.checkoutSession.metadata, input.state.raw)
-      })
-    : input.checkoutSession;
-
   const baseSubscription =
     input.subscription ??
     (await findSubscriptionByProviderRef(
@@ -1716,8 +1777,23 @@ async function applyVerificationState(
       input.price.provider,
       input.state.providerSubscriptionId,
       input.state.providerChargeId,
-      checkoutSession?.checkoutSessionId
+      input.checkoutSession?.checkoutSessionId
     ));
+
+  if (baseSubscription && baseSubscription.billingAccountId !== input.billingAccount.id) {
+    throw createBillFnError({
+      code: 'BILLFN_CONFLICT',
+      message: 'Provider billing reference belongs to a different billing account'
+    });
+  }
+
+  const mergedMetadata = mergeJson(baseSubscription?.metadata, input.state.raw);
+  const metadata = input.occurredAt
+    ? {
+        ...mergedMetadata,
+        [PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY]: input.occurredAt
+      }
+    : mergedMetadata;
 
   const subscriptionId = baseSubscription?.id ?? deps.generateId('sub');
   const record: BillFnSubscription = {
@@ -1727,13 +1803,13 @@ async function applyVerificationState(
     priceId: input.price.priceId,
     provider: input.price.provider,
     providerSubscriptionId: input.state.providerSubscriptionId ?? baseSubscription?.providerSubscriptionId,
-    providerCheckoutId: checkoutSession?.providerCheckoutId ?? baseSubscription?.providerCheckoutId,
+    providerCheckoutId: input.checkoutSession?.providerCheckoutId ?? baseSubscription?.providerCheckoutId,
     providerChargeId: input.state.providerChargeId ?? baseSubscription?.providerChargeId,
     status: input.state.subscriptionStatus,
     currentPeriodStart: input.state.currentPeriodStart ?? baseSubscription?.currentPeriodStart,
     currentPeriodEnd: input.state.currentPeriodEnd ?? baseSubscription?.currentPeriodEnd,
     autoRenew: input.state.autoRenew ?? baseSubscription?.autoRenew ?? false,
-    metadata: mergeJson(baseSubscription?.metadata, input.state.raw),
+    metadata,
     createdAt: baseSubscription?.createdAt ?? timestamp,
     updatedAt: timestamp,
     cancelAt: baseSubscription?.cancelAt,
@@ -1741,18 +1817,64 @@ async function applyVerificationState(
     trialEnd: baseSubscription?.trialEnd
   };
 
-  const subscription = baseSubscription
-    ? await deps.db.update<BillFnSubscription>({
-        model: TABLES.subscriptions,
-        where: [{ field: 'id', operator: 'eq', value: baseSubscription.id }],
-        data: record,
-        namespace: deps.namespace
-      })
-    : await deps.db.create<BillFnSubscription>({
+  let subscription: BillFnSubscription;
+  if (baseSubscription) {
+    subscription = await deps.db.update<BillFnSubscription>({
+      model: TABLES.subscriptions,
+      where: [{ field: 'id', operator: 'eq', value: baseSubscription.id }],
+      data: record,
+      namespace: deps.namespace
+    });
+  } else {
+    try {
+      subscription = await deps.db.create<BillFnSubscription>({
         model: TABLES.subscriptions,
         data: record,
         namespace: deps.namespace
       });
+    } catch (error) {
+      if (!isDuplicateRecordError(error)) {
+        throw error;
+      }
+      const duplicate = await findSubscriptionByProviderRef(
+        deps,
+        input.price.provider,
+        input.state.providerSubscriptionId,
+        input.state.providerChargeId,
+        input.checkoutSession?.checkoutSessionId
+      );
+      if (!duplicate) {
+        throw error;
+      }
+      if (duplicate.billingAccountId !== input.billingAccount.id) {
+        throw createBillFnError({
+          code: 'BILLFN_CONFLICT',
+          message: 'Provider billing reference belongs to a different billing account'
+        });
+      }
+      subscription = await deps.db.update<BillFnSubscription>({
+        model: TABLES.subscriptions,
+        where: [{ field: 'id', operator: 'eq', value: duplicate.id }],
+        data: {
+          ...record,
+          id: duplicate.id,
+          createdAt: duplicate.createdAt,
+          metadata: mergeJson(duplicate.metadata, metadata)
+        },
+        namespace: deps.namespace
+      });
+    }
+  }
+
+  const checkoutSession = input.checkoutSession
+    ? await updateCheckoutSession(deps, input.checkoutSession.checkoutSessionId, {
+        status: input.state.checkoutStatus,
+        providerSubscriptionId: input.state.providerSubscriptionId ?? input.checkoutSession.providerSubscriptionId,
+        providerChargeId: input.state.providerChargeId ?? input.checkoutSession.providerChargeId,
+        updatedAt: timestamp,
+        metadata: mergeJson(input.checkoutSession.metadata, input.state.raw)
+      })
+    : input.checkoutSession;
 
   const entitlements = await upsertEntitlements(deps, input.billingAccount.id, input.plan, subscription, timestamp);
 
@@ -2062,14 +2184,91 @@ async function processParsedWebhookEvent(
       message: `Webhook event could not be linked to a billing account: ${event.providerEventId}`
     });
   }
+  if (
+    projection.subscription &&
+    event.occurredAt &&
+    isProviderEventOlderThanSubscription(projection.subscription, event.occurredAt)
+  ) {
+    deps.metrics.track('reconciliation.event.skipped', {
+      provider: providerName,
+      providerEventId: event.providerEventId,
+      reason: 'out_of_order'
+    });
+    return null;
+  }
+  const eventPrice = await resolveProviderEventPriceReference(deps, providerName, event, projection.subscription);
   return applyVerificationState(deps, {
     billingAccount: projection.billingAccount,
-    plan: projection.plan,
-    price: projection.price,
+    plan: eventPrice?.plan ?? projection.plan,
+    price: eventPrice?.price ?? projection.price,
     checkoutSession: projection.checkoutSession ?? undefined,
     subscription: projection.subscription ?? undefined,
-    state: event.billingState
+    state: event.billingState,
+    occurredAt: event.occurredAt
   });
+}
+
+async function resolveProviderEventPriceReference(
+  deps: ServiceDeps,
+  provider: BillingProviderName,
+  event: {
+    type: string;
+    priceId?: string;
+    billingState?: NonNullable<Awaited<ReturnType<NonNullable<BillFnProviderAdapter['verifyCheckout']>>>>;
+  },
+  subscription: BillFnSubscription | null
+) {
+  const normalizedType = event.type.toLowerCase();
+  const schedulingOnly = normalizedType.includes('change_renewal_pref');
+  if (!schedulingOnly) {
+    const raw = asRecord(event.billingState?.raw);
+    const references = [
+      event.priceId,
+      raw ? readString(raw, 'product_id') : null,
+      raw ? readString(raw, 'productId') : null,
+      raw ? readString(raw, 'price_id') : null,
+      raw ? readString(raw, 'priceId') : null
+    ];
+    for (const reference of references) {
+      if (!reference) {
+        continue;
+      }
+      const resolved = findCatalogPriceReference(deps.catalog, provider, reference);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
+  if (!subscription || (!normalizedType.includes('renew') && !normalizedType.includes('plan_changed'))) {
+    return null;
+  }
+  const changeRequests = await deps.db.findMany<BillFnSubscriptionChangeRequest>({
+    model: TABLES.subscriptionChangeRequests,
+    where: [
+      { field: 'subscriptionId', operator: 'eq', value: subscription.id },
+      { field: 'effectiveAt', operator: 'eq', value: 'next_renewal' },
+      { field: 'status', operator: 'eq', value: 'applied' }
+    ],
+    orderBy: [{ field: 'updatedAt', direction: 'desc' }],
+    namespace: deps.namespace
+  });
+  const latest = changeRequests[0];
+  return latest ? requirePriceReference(deps.catalog, latest.targetPriceId) : null;
+}
+
+function findCatalogPriceReference(catalog: BillFnCatalog, provider: BillingProviderName, reference: string) {
+  for (const plan of catalog.plans) {
+    const price = plan.prices.find(
+      (candidate) =>
+        candidate.provider === provider &&
+        (candidate.priceId === reference || candidate.providerProductId === reference)
+    );
+    if (price) {
+      return { plan, price };
+    }
+  }
+  return null;
 }
 
 function jobToQueuePayload(job: BillFnReconciliationJob): BillFnQueuedJob {
@@ -2169,6 +2368,28 @@ function deserializeParsedWebhookEvent(value: unknown) {
 function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function isProviderEventOlderThanSubscription(subscription: BillFnSubscription, occurredAt: string) {
+  const metadata = asRecord(subscription.metadata);
+  const lastOccurredAt = metadata ? readString(metadata, PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY) : null;
+  if (!lastOccurredAt) {
+    return false;
+  }
+  const incomingTime = parseProviderEventTime(occurredAt);
+  const currentTime = parseProviderEventTime(lastOccurredAt);
+  return incomingTime !== null && currentTime !== null && incomingTime < currentTime;
+}
+
+function parseProviderEventTime(value: string): number | null {
+  if (/^\d+$/.test(value)) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

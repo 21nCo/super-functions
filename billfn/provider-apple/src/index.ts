@@ -212,7 +212,7 @@ export function createAppleProvider(config: AppleProviderConfig): BillFnProvider
     async fetchNotificationHistory(input: BillFnFetchNotificationHistoryInput): Promise<BillFnNotificationHistoryPage> {
       if (!config.notificationVerifier) {
         throw createBillFnError({
-          code: 'BILLFN_VALIDATION_ERROR',
+          code: 'BILLFN_FEATURE_UNAVAILABLE',
           message: 'Apple notification history requires notificationVerifier'
         });
       }
@@ -502,16 +502,16 @@ function mapAppleNotificationState(
 }
 
 function mapAppleSubscriptionResponse(payload: Record<string, unknown>): BillFnVerifiedBillingState {
-  const transactions = extractLastTransactions(payload);
-  const transaction = transactions[0];
+  const lastTransaction = extractLastTransactionRecords(payload)[0];
+  const transaction = lastTransaction ? decodeSignedPayload(lastTransaction, 'signedTransactionInfo') : null;
   if (!transaction) {
     throw createBillFnError({
       code: 'BILLFN_NOT_FOUND',
       message: 'Apple subscription response did not contain any transactions'
     });
   }
-  const renewalInfo = extractRenewalInfo(payload);
-  const statusCode = readNumber(transaction, ['status']) ?? readNumber(payload, ['status']) ?? 1;
+  const renewalInfo = lastTransaction ? decodeSignedPayload(lastTransaction, 'signedRenewalInfo') : null;
+  const statusCode = readNumber(lastTransaction ?? {}, ['status']) ?? readNumber(transaction, ['status']) ?? 1;
   const subscriptionStatus = normalizeAppleStatus(statusCode);
   return {
     subscriptionStatus,
@@ -573,18 +573,10 @@ function mapTransactionPayload(
   };
 }
 
-function extractLastTransactions(payload: Record<string, unknown>) {
+function extractLastTransactionRecords(payload: Record<string, unknown>) {
   const groups = Array.isArray(payload.data) ? payload.data : [];
   const first = groups[0];
-  const lastTransactions = asArrayOfRecords(asRecord(first)?.lastTransactions);
-  return lastTransactions.map((entry) => decodeSignedPayload(entry, 'signedTransactionInfo')).filter(Boolean) as Record<string, unknown>[];
-}
-
-function extractRenewalInfo(payload: Record<string, unknown>) {
-  const groups = Array.isArray(payload.data) ? payload.data : [];
-  const first = groups[0];
-  const lastTransactions = asArrayOfRecords(asRecord(first)?.lastTransactions);
-  return decodeSignedPayload(lastTransactions[0] ?? {}, 'signedRenewalInfo');
+  return asArrayOfRecords(asRecord(first)?.lastTransactions);
 }
 
 function extractHistoryTransactions(payload: Record<string, unknown>) {

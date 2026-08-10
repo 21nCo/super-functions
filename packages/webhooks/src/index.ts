@@ -8,6 +8,17 @@ export type WebhookSignatureOptions = {
   prefix?: string;
 };
 
+export type StandardWebhookHeaders = {
+  id: string;
+  timestamp: string;
+  signature: string;
+};
+
+export type StandardWebhookVerificationOptions = {
+  toleranceSeconds?: number;
+  now?: () => number;
+};
+
 export function signWebhookPayload(
   payload: string,
   secret: string,
@@ -49,6 +60,46 @@ export function verifyWebhookSignature(
   }
 
   return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+export function verifyStandardWebhookSignature(
+  payload: string,
+  headers: StandardWebhookHeaders,
+  secret: string,
+  options: StandardWebhookVerificationOptions = {}
+): boolean {
+  const timestamp = Number(headers.timestamp);
+  const toleranceSeconds = options.toleranceSeconds ?? 300;
+  const now = options.now?.() ?? Date.now();
+
+  if (
+    !/^\d+$/.test(headers.timestamp) ||
+    !Number.isSafeInteger(timestamp) ||
+    !Number.isFinite(toleranceSeconds) ||
+    toleranceSeconds < 0 ||
+    Math.abs(Math.floor(now / 1000) - timestamp) > toleranceSeconds
+  ) {
+    return false;
+  }
+
+  const serializedSecret = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
+  const secretBuffer = decodeSignature(serializedSecret, 'base64');
+  if (!secretBuffer) {
+    return false;
+  }
+
+  const expected = createHmac('sha256', secretBuffer)
+    .update(`${headers.id}.${headers.timestamp}.${payload}`, 'utf8')
+    .digest();
+
+  return headers.signature.split(/\s+/).some((candidate) => {
+    const [version, encoded, ...remainder] = candidate.split(',');
+    if (version !== 'v1' || !encoded || remainder.length > 0) {
+      return false;
+    }
+    const provided = decodeSignature(encoded, 'base64');
+    return Boolean(provided && provided.length === expected.length && timingSafeEqual(provided, expected));
+  });
 }
 
 export type WebhookDeliveryInput = {

@@ -26,7 +26,7 @@ description: The normalized BillFn persistence model in the current TypeScript c
 
 Phase 1 relies on a few critical indexes:
 
-- `subscriptions.provider + providerSubscriptionId`
+- `subscriptions.provider + providerSubscriptionId` as a unique provider reference
 - `subscriptions.provider + providerChargeId`
 - `checkoutSessions.provider + providerCheckoutId`
 - `checkoutSessions.provider + providerSubscriptionId`
@@ -45,4 +45,4 @@ console.log(schema.version);
 console.log(schema.schemas.map((table) => table.modelName));
 ```
 
-The Python SDK does **not** mirror schema v2 yet. `billfn/python/billfn/schema.py` still exposes schema version `1` with the original eight-table layout, so treat the Python helper as an older compatibility snapshot until it is upgraded.
+The Python SDK mirrors schema version `2`, including the four lifecycle and reconciliation tables. Both helpers expose the same twelve logical model names and mark record identifiers as unique.

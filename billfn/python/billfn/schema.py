@@ -13,7 +13,7 @@ def get_schema() -> Dict[str, Any]:
     billing_accounts: TableSchema = {
         "modelName": "billingAccounts",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "ownerType": {"type": "string", "required": True},
             "ownerId": {"type": "string", "required": True},
             "currency": {"type": "string", "required": False},
@@ -27,7 +27,7 @@ def get_schema() -> Dict[str, Any]:
     subscriptions: TableSchema = {
         "modelName": "subscriptions",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "planKey": {"type": "string", "required": True},
             "priceId": {"type": "string", "required": True},
@@ -56,7 +56,7 @@ def get_schema() -> Dict[str, Any]:
     checkout_sessions: TableSchema = {
         "modelName": "checkoutSessions",
         "fields": {
-            "checkoutSessionId": {"type": "string", "required": True},
+            "checkoutSessionId": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "planKey": {"type": "string", "required": True},
             "priceId": {"type": "string", "required": True},
@@ -82,7 +82,7 @@ def get_schema() -> Dict[str, Any]:
     entitlement_snapshots: TableSchema = {
         "modelName": "entitlementSnapshots",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "planKey": {"type": "string", "required": True},
             "status": {"type": "string", "required": True},
@@ -102,7 +102,7 @@ def get_schema() -> Dict[str, Any]:
     usage_meters: TableSchema = {
         "modelName": "usageMeters",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "resource": {"type": "string", "required": True},
             "current": {"type": "number", "required": True},
@@ -116,7 +116,7 @@ def get_schema() -> Dict[str, Any]:
     usage_ledger: TableSchema = {
         "modelName": "usageLedger",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "resource": {"type": "string", "required": True},
             "amount": {"type": "number", "required": True},
@@ -127,7 +127,7 @@ def get_schema() -> Dict[str, Any]:
     webhook_receipts: TableSchema = {
         "modelName": "webhookReceipts",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "provider": {"type": "string", "required": True},
             "providerEventId": {"type": "string", "required": True},
             "eventType": {"type": "string", "required": True},
@@ -144,7 +144,7 @@ def get_schema() -> Dict[str, Any]:
     billing_events: TableSchema = {
         "modelName": "billingEvents",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "type": {"type": "string", "required": True},
             "payload": {"type": "json", "required": True},
@@ -155,7 +155,7 @@ def get_schema() -> Dict[str, Any]:
     refunds: TableSchema = {
         "modelName": "refunds",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "subscriptionId": {"type": "string", "required": False},
             "provider": {"type": "string", "required": True},
@@ -185,7 +185,7 @@ def get_schema() -> Dict[str, Any]:
     subscription_change_requests: TableSchema = {
         "modelName": "subscriptionChangeRequests",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "billingAccountId": {"type": "string", "required": True},
             "subscriptionId": {"type": "string", "required": True},
             "provider": {"type": "string", "required": True},
@@ -211,7 +211,7 @@ def get_schema() -> Dict[str, Any]:
     reconciliation_jobs: TableSchema = {
         "modelName": "reconciliationJobs",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "kind": {"type": "string", "required": True},
             "status": {"type": "string", "required": True},
             "provider": {"type": "string", "required": False},
@@ -245,7 +245,7 @@ def get_schema() -> Dict[str, Any]:
     reconciliation_cursors: TableSchema = {
         "modelName": "reconciliationCursors",
         "fields": {
-            "id": {"type": "string", "required": True},
+            "id": {"type": "string", "required": True, "unique": True},
             "provider": {"type": "string", "required": True},
             "cursorKey": {"type": "string", "required": True},
             "cursor": {"type": "string", "required": False},
