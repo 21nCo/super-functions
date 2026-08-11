@@ -203,12 +203,15 @@ function createMockProvider(provider: 'dodo' | 'apple'): BillFnProviderAdapter {
 describe('@billfn/core', () => {
   it('keeps schema model names logical for custom namespaces and enforces provider reference uniqueness', () => {
     const schema = getSchema({ namespace: 'custom_billfn' });
+    expect(schema.version).toBe(3);
     expect(schema.schemas.map((table) => table.modelName)).toContain('subscriptions');
     expect(schema.schemas.some((table) => table.modelName.startsWith('custom_billfn_'))).toBe(false);
     const subscriptions = schema.schemas.find((table) => table.modelName === 'subscriptions');
     expect(subscriptions?.indexes?.find(
       (index) => index.fields.join(',') === 'provider,providerSubscriptionId'
     )?.unique).toBe(true);
+    const receipts = schema.schemas.find((table) => table.modelName === 'webhookReceipts');
+    expect(receipts?.fields.processingClaimedAt).toEqual({ type: 'string', required: false });
   });
 
   it('creates, verifies, and reads entitlements for a Dodo checkout', async () => {
@@ -1107,6 +1110,57 @@ describe('@billfn/core', () => {
     expect(queue.size('billfn-reconciliation')).toBe(1);
   });
 
+  it('reclaims an unfinished webhook receipt after its processing lease expires', async () => {
+    const db = memoryAdapter({ debug: false });
+    const queue = new MemoryQueueAdapter();
+    let currentTime = new Date('2026-04-20T00:00:00.000Z');
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async parseWebhook() {
+        return [{
+          providerEventId: 'evt_stale_claim',
+          type: 'subscription.updated',
+          signatureVerified: true,
+          raw: { ok: true }
+        }];
+      }
+    };
+    const billfn = createBillFn({
+      db,
+      catalog,
+      queue,
+      now: () => currentTime,
+      providers: { dodo: provider }
+    });
+
+    await billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() });
+    await queue.dequeue('billfn-reconciliation');
+    const firstReceipt = await db.findOne<{ processingJobId: string; processingClaimedAt: string }>({
+      model: 'webhookReceipts',
+      where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_stale_claim' }],
+      namespace: 'billfn'
+    });
+    currentTime = new Date(currentTime.getTime() + 16 * 60 * 1000);
+
+    const retried = await billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() });
+    const reclaimedReceipt = await db.findOne<{ processingJobId: string; processingClaimedAt: string }>({
+      model: 'webhookReceipts',
+      where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_stale_claim' }],
+      namespace: 'billfn'
+    });
+    const jobs = await db.findMany({
+      model: 'reconciliationJobs',
+      where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_stale_claim' }],
+      namespace: 'billfn'
+    });
+
+    expect(retried.ok && retried.data.processed).toBe(1);
+    expect(reclaimedReceipt?.processingJobId).not.toBe(firstReceipt?.processingJobId);
+    expect(reclaimedReceipt?.processingClaimedAt).toBe('2026-04-20T00:16:00.000Z');
+    expect(jobs).toHaveLength(2);
+    expect(queue.size('billfn-reconciliation')).toBe(1);
+  });
+
   it('re-enqueues an unfinished webhook receipt after its prior job failed', async () => {
     const db = memoryAdapter({ debug: false });
     const queue = new MemoryQueueAdapter();
@@ -1183,6 +1237,29 @@ describe('@billfn/core', () => {
       })
     );
     expect(unauthorized.status).toBe(403);
+
+    const invalidWebhookJob = await billfn.router.handle(
+      new Request('https://billfn.example.test/billfn/ops/reconciliation/jobs', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-ops-key': 'secret'
+        },
+        body: JSON.stringify({
+          kind: 'webhook-event',
+          provider: 'dodo',
+          providerEventId: 'evt_ops'
+        })
+      })
+    );
+    expect(invalidWebhookJob.status).toBe(400);
+    await expect(invalidWebhookJob.json()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'BILLFN_VALIDATION_ERROR',
+        message: expect.stringContaining('webhook-replay')
+      }
+    });
 
     const enqueuedResponse = await billfn.router.handle(
       new Request('https://billfn.example.test/billfn/ops/reconciliation/jobs', {
@@ -1347,6 +1424,7 @@ describe('@billfn/core', () => {
         rawPayload: { raw: {} },
         createdAt: '2026-04-20T00:00:00.000Z',
         processingJobId: null,
+        processingClaimedAt: null,
         processedAt: null
       }
     });
@@ -1385,6 +1463,76 @@ describe('@billfn/core', () => {
 
     expect(ran.ok).toBe(true);
     expect(receipt?.processedAt).toEqual(expect.any(String));
+  });
+
+  it('releases notification-history claims when refreshing a receipt fails', async () => {
+    const db = memoryAdapter({ debug: false });
+    const eventId = 'evt_history_refresh_failure';
+    let refreshFailed = false;
+    const failingDb = {
+      ...db,
+      async update<T>(params: Parameters<typeof db.update>[0]): Promise<T> {
+        if (
+          params.model === 'webhookReceipts' &&
+          'rawPayload' in params.data &&
+          !refreshFailed
+        ) {
+          refreshFailed = true;
+          throw new Error('receipt refresh failed');
+        }
+        return db.update<T>(params);
+      }
+    };
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async fetchNotificationHistory() {
+        return {
+          events: [{
+            providerEventId: eventId,
+            type: 'subscription.updated',
+            signatureVerified: true,
+            raw: { ok: true }
+          }]
+        };
+      }
+    };
+    const billfn = createBillFn({
+      db: failingDb,
+      catalog,
+      providers: { dodo: provider }
+    });
+    const first = await billfn.enqueueReconciliationJob({
+      kind: 'notification-history-backfill',
+      provider: 'dodo'
+    });
+    if (!first.ok) {
+      throw new Error('expected success');
+    }
+
+    await expect(billfn.runReconciliationJob({ jobId: first.data.job.id })).rejects.toThrow('receipt refresh failed');
+    const released = await db.findOne<{ processingJobId?: string | null }>({
+      model: 'webhookReceipts',
+      namespace: 'billfn',
+      where: [{ field: 'providerEventId', operator: 'eq', value: eventId }]
+    });
+    expect(released?.processingJobId).toBeNull();
+
+    const second = await billfn.enqueueReconciliationJob({
+      kind: 'notification-history-backfill',
+      provider: 'dodo'
+    });
+    if (!second.ok) {
+      throw new Error('expected success');
+    }
+    const ran = await billfn.runReconciliationJob({ jobId: second.data.job.id });
+    const processed = await db.findOne<{ processedAt?: string | null }>({
+      model: 'webhookReceipts',
+      namespace: 'billfn',
+      where: [{ field: 'providerEventId', operator: 'eq', value: eventId }]
+    });
+
+    expect(ran.ok).toBe(true);
+    expect(processed?.processedAt).toEqual(expect.any(String));
   });
 
   it('rejects unverified notification-history events before projection', async () => {
@@ -1465,7 +1613,12 @@ describe('@billfn/core', () => {
         if ((params.model === 'entitlementSnapshots' || params.model === 'reconciliationCursors') && !duplicatedModels.has(params.model)) {
           duplicatedModels.add(params.model);
           await db.create(params);
-          throw new Error(`UNIQUE constraint failed: record with id "${String(params.data.id)}" already exists in ${params.model}`);
+          if (params.model === 'entitlementSnapshots') {
+            throw Object.assign(new Error('Prisma unique constraint'), { code: 'P2002' });
+          }
+          throw Object.assign(new Error('Kysely insert failed'), {
+            cause: Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' })
+          });
         }
         return db.create<T>(params);
       }
@@ -1508,8 +1661,25 @@ describe('@billfn/core', () => {
   });
 
   it('retries concurrent usage updates and rejects negative usage deltas', async () => {
+    const db = memoryAdapter({ debug: false });
+    let usageCasCalls = 0;
+    const casOnlyDb = {
+      ...db,
+      async update<T>(params: Parameters<typeof db.update>[0]): Promise<T> {
+        if (params.model === 'usageMeters') {
+          throw new Error('usage updates must use affected-row CAS');
+        }
+        return db.update<T>(params);
+      },
+      async updateMany(params: Parameters<typeof db.updateMany>[0]): Promise<number> {
+        if (params.model === 'usageMeters') {
+          usageCasCalls += 1;
+        }
+        return db.updateMany(params);
+      }
+    };
     const billfn = createBillFn({
-      db: memoryAdapter({ debug: false }),
+      db: casOnlyDb,
       catalog,
       providers: {
         dodo: createMockProvider('dodo')
@@ -1543,6 +1713,7 @@ describe('@billfn/core', () => {
 
     const usage = await billfn.quotaProvider.getUsage('usage_user');
     expect(usage.current).toBe(25);
+    expect(usageCasCalls).toBeGreaterThan(0);
 
     await expect(
       billfn.quotaProvider.recordUsage({

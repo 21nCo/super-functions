@@ -15,6 +15,28 @@ describe('@billfn/swift-bridge', () => {
     expect(second).not.toBe(first);
   });
 
+  it('keeps generating unique request ids when Web Crypto UUIDs are unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined
+    });
+
+    try {
+      const first = nextBridgeRequestId();
+      const second = nextBridgeRequestId();
+
+      expect(first).toMatch(/^bridge-\d+-fallback-[0-9a-z]+$/);
+      expect(second).not.toBe(first);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'crypto', descriptor);
+      } else {
+        delete (globalThis as { crypto?: Crypto }).crypto;
+      }
+    }
+  });
+
   it('requires handshake before native-backed requests', async () => {
     const client = createNativeBackedBillFnClient(
       {

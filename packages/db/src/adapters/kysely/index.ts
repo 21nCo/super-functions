@@ -58,10 +58,10 @@ function applyWhere(qb: any, where: WhereClause[]): any {
 
     switch (operator) {
       case 'eq':
-        builder = builder[method](field, '=', value);
+        builder = builder[method](field, value === null ? 'is' : '=', value);
         break;
       case 'ne':
-        builder = builder[method](field, '!=', value);
+        builder = builder[method](field, value === null ? 'is not' : '!=', value);
         break;
       case 'gt':
         builder = builder[method](field, '>', value);

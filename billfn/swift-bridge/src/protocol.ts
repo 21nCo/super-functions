@@ -137,6 +137,7 @@ declare global {
 
 const BRIDGE_METHOD_SET = new Set<string>(BILLFN_BRIDGE_METHODS);
 const BRIDGE_EVENT_SET = new Set<string>(BILLFN_BRIDGE_EVENT_NAMES);
+let bridgeRequestSequence = 0;
 
 export function isBillFnBridgeMethod(method: string): method is BillFnBridgeMethod {
   return BRIDGE_METHOD_SET.has(method);
@@ -173,7 +174,17 @@ export function isBridgeHandshakeResult(value: unknown): value is BillFnBridgeHa
 }
 
 export function nextBridgeRequestId() {
-  return `bridge-${Date.now()}-${globalThis.crypto.randomUUID()}`;
+  let nonce: string | undefined;
+  try {
+    nonce = globalThis.crypto?.randomUUID?.();
+  } catch {
+    nonce = undefined;
+  }
+  if (!nonce) {
+    bridgeRequestSequence = (bridgeRequestSequence + 1) % Number.MAX_SAFE_INTEGER;
+    nonce = `fallback-${bridgeRequestSequence.toString(36)}`;
+  }
+  return `bridge-${Date.now()}-${nonce}`;
 }
 
 export function createBridgeErrorResponse(

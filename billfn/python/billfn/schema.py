@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from superfunctions.db import TableSchema
 
-BILLFN_SCHEMA_VERSION = 2
+BILLFN_SCHEMA_VERSION = 3
 
 
 def get_schema() -> Dict[str, Any]:
@@ -139,6 +139,7 @@ def get_schema() -> Dict[str, Any]:
             "rawPayload": {"type": "json", "required": True},
             "createdAt": {"type": "string", "required": True},
             "processingJobId": {"type": "string", "required": False},
+            "processingClaimedAt": {"type": "string", "required": False},
             "processedAt": {"type": "string", "required": False},
         },
         "indexes": [

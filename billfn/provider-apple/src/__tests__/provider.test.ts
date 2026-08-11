@@ -1,22 +1,14 @@
-import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createAppleProvider } from '../index.js';
+
+// Golden vectors keep the billing-account mapping stable without duplicating its implementation.
+const USER_APP_ACCOUNT_TOKEN = 'a727af00-9265-52ac-a07b-56be001cdbb7';
+const OTHER_APP_ACCOUNT_TOKEN = 'd4d32fe2-cc28-51ad-8443-6b8b1931780d';
 
 function encodePayload(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   return `${header}.${body}.signature`;
-}
-
-function appAccountToken(billingAccountId: string): string {
-  const bytes = createHash('sha256')
-    .update(`billfn:apple:${billingAccountId}`, 'utf8')
-    .digest()
-    .subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const value = bytes.toString('hex');
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 describe('@billfn/provider-apple', () => {
@@ -36,7 +28,7 @@ describe('@billfn/provider-apple', () => {
                     originalTransactionId: 'orig_other',
                     transactionId: 'txn_other',
                     productId: 'apple.other.month',
-                    appAccountToken: appAccountToken('ba_other'),
+                    appAccountToken: OTHER_APP_ACCOUNT_TOKEN,
                     purchaseDate: Date.parse('2026-04-01T00:00:00.000Z'),
                     expiresDate: Date.parse('2026-06-01T00:00:00.000Z')
                   }),
@@ -47,7 +39,7 @@ describe('@billfn/provider-apple', () => {
                     originalTransactionId: 'orig_123',
                     transactionId: 'txn_123',
                     productId: 'apple.pro.month',
-                    appAccountToken: appAccountToken('ba_user_123'),
+                    appAccountToken: USER_APP_ACCOUNT_TOKEN,
                     purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
                     expiresDate: Date.parse('2026-05-20T00:00:00.000Z')
                   }),
@@ -159,7 +151,7 @@ describe('@billfn/provider-apple', () => {
     expect(result?.clientAction).toMatchObject({
       type: 'apple-purchase',
       productId: 'apple.pro.month',
-      metadata: { appAccountToken: appAccountToken('ba_user_123') }
+      metadata: { appAccountToken: USER_APP_ACCOUNT_TOKEN }
     });
   });
 
@@ -270,7 +262,7 @@ describe('@billfn/provider-apple', () => {
                     originalTransactionId: 'orig_restore',
                     transactionId: 'txn_restore',
                     productId: 'apple.pro.month',
-                    appAccountToken: appAccountToken('ba_user_123'),
+                    appAccountToken: USER_APP_ACCOUNT_TOKEN,
                     purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
                     expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
                     status: 1
@@ -335,7 +327,7 @@ describe('@billfn/provider-apple', () => {
               originalTransactionId: 'orig_lifetime',
               transactionId: 'txn_lifetime',
               productId: 'apple.lifetime',
-              appAccountToken: appAccountToken('ba_user_123'),
+              appAccountToken: USER_APP_ACCOUNT_TOKEN,
               purchaseDate: Date.parse('2026-04-20T00:00:00.000Z')
             })
           ]
@@ -397,7 +389,7 @@ describe('@billfn/provider-apple', () => {
             originalTransactionId: 'orig_123',
             transactionId: 'txn_123',
             productId: 'apple.pro.month',
-            appAccountToken: appAccountToken('ba_user_123'),
+            appAccountToken: USER_APP_ACCOUNT_TOKEN,
             purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
             expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
             status: 1
@@ -462,7 +454,7 @@ describe('@billfn/provider-apple', () => {
                     originalTransactionId: 'orig_history',
                     transactionId: 'txn_history',
                     productId: 'apple.pro.month',
-                    appAccountToken: appAccountToken('ba_user_123'),
+                    appAccountToken: USER_APP_ACCOUNT_TOKEN,
                     purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
                     expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
                     status: 2
@@ -494,7 +486,7 @@ describe('@billfn/provider-apple', () => {
             originalTransactionId: 'orig_history',
             transactionId: 'txn_history',
             productId: 'apple.pro.month',
-            appAccountToken: appAccountToken('ba_user_123'),
+            appAccountToken: USER_APP_ACCOUNT_TOKEN,
             purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
             expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
             status: 2
@@ -531,7 +523,7 @@ describe('@billfn/provider-apple', () => {
               originalTransactionId: 'orig_123',
               transactionId: 'txn_123',
               productId: 'apple.pro.month',
-              appAccountToken: appAccountToken('ba_other')
+              appAccountToken: OTHER_APP_ACCOUNT_TOKEN
             }),
             status: 1
           }]

@@ -130,6 +130,7 @@ export function getSchema(_options: BillFnSchemaOptions = {}): { version: number
       rawPayload: { type: 'json', required: true },
       createdAt: { type: 'string', required: true },
       processingJobId: { type: 'string', required: false },
+      processingClaimedAt: { type: 'string', required: false },
       processedAt: { type: 'string', required: false }
     },
     indexes: [
@@ -253,7 +254,7 @@ export function getSchema(_options: BillFnSchemaOptions = {}): { version: number
   ];
 
   return {
-    version: 2,
+    version: 3,
     schemas
   };
 }

@@ -1,4 +1,4 @@
-import { AdapterErrorCode, DuplicateKeyError, NotFoundError, type Adapter, type WhereClause } from '@superfunctions/db';
+import { DuplicateKeyError, type Adapter, type WhereClause } from '@superfunctions/db';
 import { ok } from '@superfunctions/envelope';
 import { createNamespacedEmitter, createMetricsEmitter, type MetricsEmitter } from '@superfunctions/metrics';
 import type { QueueAdapter } from '@superfunctions/queue';
@@ -83,6 +83,15 @@ const TABLES = {
 } as const;
 
 const PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY = 'billfnProviderEventOccurredAt';
+const WEBHOOK_RECEIPT_CLAIM_LEASE_MS = 15 * 60 * 1000;
+const DUPLICATE_RECORD_ERROR_CODES = new Set([
+  'P2002',
+  '23505',
+  'ER_DUP_ENTRY',
+  'SQLITE_CONSTRAINT_UNIQUE',
+  'SQLITE_CONSTRAINT_PRIMARYKEY',
+  '11000'
+]);
 
 type ServiceDeps = {
   db: Adapter;
@@ -960,6 +969,7 @@ export function createBillFnService(config: BillFnConfig) {
           },
           createdAt: toIsoString(deps.now()),
           processingJobId: null,
+          processingClaimedAt: null,
           processedAt: null
         };
         let existingReceipt: BillFnWebhookReceipt | null = null;
@@ -1046,6 +1056,12 @@ export function createBillFnService(config: BillFnConfig) {
       return ok(response);
     },
     async enqueueReconciliationJob(input: BillFnEnqueueReconciliationJobRequest): Promise<BillFnReconciliationJobResponse> {
+      if (input.kind === 'webhook-event') {
+        throw createBillFnError({
+          code: 'BILLFN_VALIDATION_ERROR',
+          message: 'webhook-event jobs are created by webhook ingestion; use webhook-replay for operations reprocessing'
+        });
+      }
       const job = await enqueueReconciliationJobInternal(input);
       return ok({ job });
     },
@@ -1140,7 +1156,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
       if (parsed?.billingState) {
         await processParsedWebhookEvent(deps, job.provider, parsed);
       }
-      await deps.db.update({
+      await deps.db.updateMany({
         model: TABLES.webhookReceipts,
         where: job.kind === 'webhook-event'
           ? [
@@ -1150,6 +1166,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
           : [{ field: 'id', operator: 'eq', value: receipt.id }],
         data: {
           processingJobId: null,
+          processingClaimedAt: null,
           processedAt: toIsoString(deps.now())
         },
         namespace: deps.namespace
@@ -1217,6 +1234,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
           },
           createdAt: toIsoString(deps.now()),
           processingJobId: null,
+          processingClaimedAt: null,
           processedAt: null
         };
         if (!event.signatureVerified) {
@@ -1260,44 +1278,58 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
         if (!(await claimWebhookReceipt(deps, receiptId, job.id))) {
           continue;
         }
-        await deps.db.update({
-          model: TABLES.webhookReceipts,
-          where: [
-            { field: 'id', operator: 'eq', value: receiptId },
-            { field: 'processingJobId', operator: 'eq', value: job.id }
-          ],
-          data: {
-            eventType: receipt.eventType,
-            signatureVerified: receipt.signatureVerified,
-            rawPayload: receipt.rawPayload
-          },
-          namespace: deps.namespace
-        });
+        let receiptCompleted = false;
         try {
-          await processParsedWebhookEvent(deps, job.provider, event);
-        } catch (error) {
-          if (!isBillFnNotFoundError(error)) {
-            await releaseWebhookReceiptClaim(deps, receiptId, job.id);
-            throw error;
-          }
-          deps.metrics.track('reconciliation.event.skipped', {
-            provider: job.provider,
-            providerEventId: event.providerEventId,
-            reason: 'billing_account_not_found'
+          await deps.db.update({
+            model: TABLES.webhookReceipts,
+            where: [
+              { field: 'id', operator: 'eq', value: receiptId },
+              { field: 'processingJobId', operator: 'eq', value: job.id }
+            ],
+            data: {
+              eventType: receipt.eventType,
+              signatureVerified: receipt.signatureVerified,
+              rawPayload: receipt.rawPayload
+            },
+            namespace: deps.namespace
           });
+          try {
+            await processParsedWebhookEvent(deps, job.provider, event);
+          } catch (error) {
+            if (!isBillFnNotFoundError(error)) {
+              throw error;
+            }
+            deps.metrics.track('reconciliation.event.skipped', {
+              provider: job.provider,
+              providerEventId: event.providerEventId,
+              reason: 'billing_account_not_found'
+            });
+          }
+          const finalized = await deps.db.updateMany({
+            model: TABLES.webhookReceipts,
+            where: [
+              { field: 'id', operator: 'eq', value: receiptId },
+              { field: 'processingJobId', operator: 'eq', value: job.id }
+            ],
+            data: {
+              processingJobId: null,
+              processingClaimedAt: null,
+              processedAt: toIsoString(deps.now())
+            },
+            namespace: deps.namespace
+          });
+          if (finalized !== 1) {
+            throw createBillFnError({
+              code: 'BILLFN_CONFLICT',
+              message: 'Notification history receipt claim changed before processing completed'
+            });
+          }
+          receiptCompleted = true;
+        } finally {
+          if (!receiptCompleted) {
+            await releaseWebhookReceiptClaim(deps, receiptId, job.id);
+          }
         }
-        await deps.db.update({
-          model: TABLES.webhookReceipts,
-          where: [
-            { field: 'id', operator: 'eq', value: receiptId },
-            { field: 'processingJobId', operator: 'eq', value: job.id }
-          ],
-          data: {
-            processingJobId: null,
-            processedAt: toIsoString(deps.now())
-          },
-          namespace: deps.namespace
-        });
       }
 
       await upsertReconciliationCursor(deps, {
@@ -1732,6 +1764,8 @@ async function claimWebhookReceipt(
   receiptId: string,
   jobId: string
 ) {
+  const claimTime = deps.now();
+  const claimedAt = toIsoString(claimTime);
   const claimed = await deps.db.updateMany({
     model: TABLES.webhookReceipts,
     where: [
@@ -1739,10 +1773,51 @@ async function claimWebhookReceipt(
       { field: 'processingJobId', operator: 'eq', value: null },
       { field: 'processedAt', operator: 'eq', value: null }
     ],
-    data: { processingJobId: jobId },
+    data: {
+      processingJobId: jobId,
+      processingClaimedAt: claimedAt
+    },
     namespace: deps.namespace
   });
-  return claimed === 1;
+  if (claimed === 1) {
+    return true;
+  }
+
+  const existing = await deps.db.findOne<BillFnWebhookReceipt>({
+    model: TABLES.webhookReceipts,
+    where: [{ field: 'id', operator: 'eq', value: receiptId }],
+    namespace: deps.namespace
+  });
+  if (!existing || existing.processedAt || !existing.processingJobId) {
+    return false;
+  }
+  const previousClaimedAt = existing.processingClaimedAt
+    ? Date.parse(existing.processingClaimedAt)
+    : Number.NaN;
+  const claimIsStale =
+    !Number.isFinite(previousClaimedAt) ||
+    claimTime.getTime() - previousClaimedAt >= WEBHOOK_RECEIPT_CLAIM_LEASE_MS;
+  if (!claimIsStale) {
+    return false;
+  }
+
+  const where: WhereClause[] = [
+    { field: 'id', operator: 'eq', value: receiptId },
+    { field: 'processingJobId', operator: 'eq', value: existing.processingJobId }
+  ];
+  if (existing.processingClaimedAt) {
+    where.push({ field: 'processingClaimedAt', operator: 'eq', value: existing.processingClaimedAt });
+  }
+  const reclaimed = await deps.db.updateMany({
+    model: TABLES.webhookReceipts,
+    where,
+    data: {
+      processingJobId: jobId,
+      processingClaimedAt: claimedAt
+    },
+    namespace: deps.namespace
+  });
+  return reclaimed === 1;
 }
 
 async function releaseWebhookReceiptClaim(deps: ServiceDeps, receiptId: string, jobId: string) {
@@ -1753,7 +1828,10 @@ async function releaseWebhookReceiptClaim(deps: ServiceDeps, receiptId: string, 
       { field: 'processingJobId', operator: 'eq', value: jobId },
       { field: 'processedAt', operator: 'eq', value: null }
     ],
-    data: { processingJobId: null },
+    data: {
+      processingJobId: null,
+      processingClaimedAt: null
+    },
     namespace: deps.namespace
   });
 }
@@ -2110,29 +2188,23 @@ async function incrementUsage(deps: ServiceDeps, billingAccountId: string, resou
       }
     }
 
-    try {
-      await deps.db.update({
-        model: TABLES.usageMeters,
-        where: [
-          { field: 'id', operator: 'eq', value: existing.id },
-          { field: 'current', operator: 'eq', value: existing.current }
-        ],
-        data: {
-          ...existing,
-          current: existing.current + amount,
-          updatedAt: timestamp
-        } satisfies BillFnUsageMeter,
-        namespace: deps.namespace
-      });
+    const affected = await deps.db.updateMany({
+      model: TABLES.usageMeters,
+      where: [
+        { field: 'id', operator: 'eq', value: existing.id },
+        { field: 'current', operator: 'eq', value: existing.current }
+      ],
+      data: {
+        current: existing.current + amount,
+        updatedAt: timestamp
+      },
+      namespace: deps.namespace
+    });
+    if (affected === 1) {
       updated = true;
       break;
-    } catch (error) {
-      if (isOptimisticUsageConflict(error)) {
-        await Promise.resolve();
-        continue;
-      }
-      throw error;
     }
+    await Promise.resolve();
   }
 
   if (!updated) {
@@ -2479,14 +2551,34 @@ function assertNonNegativeFiniteAmount(value: number, fieldName: string) {
 }
 
 function isDuplicateRecordError(error: unknown) {
-  return error instanceof DuplicateKeyError || (error instanceof Error && error.message.includes('UNIQUE constraint failed'));
-}
-
-function isOptimisticUsageConflict(error: unknown) {
-  return (
-    error instanceof NotFoundError ||
-    (error instanceof Error && 'code' in error && (error as { code?: string }).code === AdapterErrorCode.NOT_FOUND)
-  );
+  const seen = new Set<unknown>();
+  let current = error;
+  while (typeof current === 'object' && current !== null && !seen.has(current)) {
+    if (current instanceof DuplicateKeyError) {
+      return true;
+    }
+    seen.add(current);
+    const record = current as Record<string, unknown>;
+    const code = record.code;
+    const errno = record.errno;
+    if (
+      ((typeof code === 'string' || typeof code === 'number') && DUPLICATE_RECORD_ERROR_CODES.has(String(code))) ||
+      errno === 1062
+    ) {
+      return true;
+    }
+    const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
+    if (
+      message.includes('unique constraint failed') ||
+      message.includes('duplicate key value violates unique constraint') ||
+      message.includes('duplicate entry') ||
+      message.includes('e11000 duplicate key')
+    ) {
+      return true;
+    }
+    current = record.cause;
+  }
+  return false;
 }
 
 function isBillFnNotFoundError(error: unknown) {

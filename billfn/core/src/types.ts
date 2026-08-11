@@ -180,6 +180,7 @@ export interface BillFnWebhookReceipt {
   rawPayload: Record<string, unknown>;
   createdAt: string;
   processingJobId?: string | null;
+  processingClaimedAt?: string | null;
   processedAt?: string | null;
 }
 
