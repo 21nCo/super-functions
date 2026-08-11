@@ -119,6 +119,10 @@ describe('@billfn/provider-dodo', () => {
         currency: 'USD',
         interval: 'month',
         kind: 'subscription'
+      },
+      metadata: {
+        campaign: 'launch',
+        billfn_billing_account_id: 'ba_attacker'
       }
     });
 
@@ -128,7 +132,83 @@ describe('@billfn/provider-dodo', () => {
         method: 'POST'
       })
     );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      product_id: 'pdt_123',
+      metadata: {
+        campaign: 'launch',
+        billfn_checkout_session_id: 'chk_123',
+        billfn_billing_account_id: 'ba_user_123',
+        billfn_product_id: 'pdt_123'
+      }
+    });
     expect(response?.providerSubscriptionId).toBe('sub_123');
+  });
+
+  it('uses a server-recorded Dodo reference and verifies its checkout ownership', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      subscription_id: 'sub_server',
+      product_id: 'pdt_123',
+      status: 'active',
+      metadata: {
+        billfn_checkout_session_id: 'chk_123',
+        billfn_billing_account_id: 'ba_user_123',
+        billfn_product_id: 'pdt_123'
+      }
+    }), { status: 200 })) as typeof fetch;
+    const provider = createDodoProvider({ apiKey: 'test-key', fetch: fetchMock });
+
+    const result = await provider.verifyCheckout?.({
+      checkoutSession: {
+        checkoutSessionId: 'chk_123', billingAccountId: 'ba_user_123', planKey: 'pro', priceId: 'price_123',
+        provider: 'dodo', providerSubscriptionId: 'sub_server', status: 'requires_action',
+        createdAt: '2026-04-20T00:00:00.000Z', updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      billingAccount: {
+        id: 'ba_user_123', ownerType: 'user', ownerId: 'user_123', createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: { productKey: 'nucleus', planKey: 'pro', displayName: 'Pro', features: {}, limits: {}, prices: [] },
+      price: {
+        priceId: 'price_123', provider: 'dodo', providerProductId: 'pdt_123', amount: 12, currency: 'USD',
+        interval: 'month', kind: 'subscription'
+      },
+      payload: { subscriptionId: 'sub_attacker' }
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/subscriptions/sub_server');
+    expect(result?.providerSubscriptionId).toBe('sub_server');
+  });
+
+  it('rejects a Dodo resource that is not bound to the checkout billing account', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      subscription_id: 'sub_payload',
+      product_id: 'pdt_123',
+      status: 'active',
+      metadata: {
+        billfn_checkout_session_id: 'chk_123',
+        billfn_billing_account_id: 'ba_other',
+        billfn_product_id: 'pdt_123'
+      }
+    }), { status: 200 })) as typeof fetch;
+    const provider = createDodoProvider({ apiKey: 'test-key', fetch: fetchMock });
+
+    await expect(provider.verifyCheckout?.({
+      checkoutSession: {
+        checkoutSessionId: 'chk_123', billingAccountId: 'ba_user_123', planKey: 'pro', priceId: 'price_123',
+        provider: 'dodo', status: 'requires_action', createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      billingAccount: {
+        id: 'ba_user_123', ownerType: 'user', ownerId: 'user_123', createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: { productKey: 'nucleus', planKey: 'pro', displayName: 'Pro', features: {}, limits: {}, prices: [] },
+      price: {
+        priceId: 'price_123', provider: 'dodo', providerProductId: 'pdt_123', amount: 12, currency: 'USD',
+        interval: 'month', kind: 'subscription'
+      },
+      payload: { subscriptionId: 'sub_payload' }
+    })).rejects.toMatchObject({ code: 'BILLFN_CONFLICT' });
   });
 
   it('issues refunds through the refunds endpoint', async () => {

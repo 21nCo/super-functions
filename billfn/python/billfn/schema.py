@@ -48,7 +48,11 @@ def get_schema() -> Dict[str, Any]:
         },
         "indexes": [
             {"name": "subscriptions_billing_account_updated_idx", "fields": ["billingAccountId", "updatedAt"]},
-            {"name": "subscriptions_provider_subscription_idx", "fields": ["provider", "providerSubscriptionId"]},
+            {
+                "name": "subscriptions_provider_subscription_idx",
+                "fields": ["provider", "providerSubscriptionId"],
+                "unique": True,
+            },
             {"name": "subscriptions_provider_charge_idx", "fields": ["provider", "providerChargeId"]},
         ],
     }
@@ -134,6 +138,7 @@ def get_schema() -> Dict[str, Any]:
             "signatureVerified": {"type": "boolean", "required": True},
             "rawPayload": {"type": "json", "required": True},
             "createdAt": {"type": "string", "required": True},
+            "processingJobId": {"type": "string", "required": False},
             "processedAt": {"type": "string", "required": False},
         },
         "indexes": [

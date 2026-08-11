@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BILLFN_BRIDGE_PROTOCOL, createNativeBackedBillFnClient, createWKWebViewBridgeBus } from '../index.js';
+import {
+  BILLFN_BRIDGE_PROTOCOL,
+  createNativeBackedBillFnClient,
+  createWKWebViewBridgeBus,
+  nextBridgeRequestId
+} from '../index.js';
 
 describe('@billfn/swift-bridge', () => {
+  it('uses cryptographically secure UUIDs for bridge request ids', () => {
+    const first = nextBridgeRequestId();
+    const second = nextBridgeRequestId();
+
+    expect(first).toMatch(/^bridge-\d+-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(second).not.toBe(first);
+  });
+
   it('requires handshake before native-backed requests', async () => {
     const client = createNativeBackedBillFnClient(
       {

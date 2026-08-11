@@ -179,7 +179,8 @@ export interface BillFnWebhookReceipt {
   signatureVerified: boolean;
   rawPayload: Record<string, unknown>;
   createdAt: string;
-  processedAt?: string;
+  processingJobId?: string | null;
+  processedAt?: string | null;
 }
 
 export interface BillFnBillingEvent {

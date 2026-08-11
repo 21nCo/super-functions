@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createAppleProvider } from '../index.js';
 
@@ -5,6 +6,17 @@ function encodePayload(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   return `${header}.${body}.signature`;
+}
+
+function appAccountToken(billingAccountId: string): string {
+  const bytes = createHash('sha256')
+    .update(`billfn:apple:${billingAccountId}`, 'utf8')
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const value = bytes.toString('hex');
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 describe('@billfn/provider-apple', () => {
@@ -21,10 +33,23 @@ describe('@billfn/provider-apple', () => {
               lastTransactions: [
                 {
                   signedTransactionInfo: encodePayload({
+                    originalTransactionId: 'orig_other',
+                    transactionId: 'txn_other',
+                    productId: 'apple.other.month',
+                    appAccountToken: appAccountToken('ba_other'),
+                    purchaseDate: Date.parse('2026-04-01T00:00:00.000Z'),
+                    expiresDate: Date.parse('2026-06-01T00:00:00.000Z')
+                  }),
+                  status: 1
+                },
+                {
+                  signedTransactionInfo: encodePayload({
                     originalTransactionId: 'orig_123',
                     transactionId: 'txn_123',
-                    purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z'))
+                    productId: 'apple.pro.month',
+                    appAccountToken: appAccountToken('ba_user_123'),
+                    purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
+                    expiresDate: Date.parse('2026-05-20T00:00:00.000Z')
                   }),
                   signedRenewalInfo: encodePayload({
                     autoRenewStatus: 1
@@ -91,9 +116,51 @@ describe('@billfn/provider-apple', () => {
 
     expect(verified?.subscriptionStatus).toBe('expired');
     expect(verified?.providerChargeId).toBe('txn_123');
+    expect(verified?.currentPeriodStart).toBe('2026-04-20T00:00:00.000Z');
+    expect(verified?.currentPeriodEnd).toBe('2026-05-20T00:00:00.000Z');
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('https://api.storekit.itunes.apple.com/inApps/v1/subscriptions/txn_123');
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions/txn_123');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a stable StoreKit app account token in the purchase client action', async () => {
+    const provider = createAppleProvider({
+      tokenProvider: async () => 'token'
+    });
+
+    const result = await provider.createCheckout?.({
+      checkoutSessionId: 'chk_123',
+      billingAccount: {
+        id: 'ba_user_123',
+        ownerType: 'user',
+        ownerId: 'user_123',
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: {
+        productKey: 'nucleus',
+        planKey: 'pro',
+        displayName: 'Pro',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      price: {
+        priceId: 'price_apple',
+        provider: 'apple',
+        providerProductId: 'apple.pro.month',
+        amount: 12,
+        currency: 'USD',
+        interval: 'month',
+        kind: 'subscription'
+      }
+    });
+
+    expect(result?.clientAction).toMatchObject({
+      type: 'apple-purchase',
+      productId: 'apple.pro.month',
+      metadata: { appAccountToken: appAccountToken('ba_user_123') }
+    });
   });
 
   it('does not fall back to sandbox when production auth fails', async () => {
@@ -168,6 +235,23 @@ describe('@billfn/provider-apple', () => {
         autoRenew: true,
         createdAt: '2026-04-20T00:00:00.000Z',
         updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: {
+        productKey: 'nucleus',
+        planKey: 'pro',
+        displayName: 'Pro',
+        features: {},
+        limits: {},
+        prices: []
+      },
+      price: {
+        priceId: 'price_apple',
+        provider: 'apple',
+        providerProductId: 'apple.pro.month',
+        amount: 12,
+        currency: 'USD',
+        interval: 'month',
+        kind: 'subscription'
       }
     })).rejects.toMatchObject({
       code: 'BILLFN_NOT_FOUND'
@@ -185,8 +269,10 @@ describe('@billfn/provider-apple', () => {
                   signedTransactionInfo: encodePayload({
                     originalTransactionId: 'orig_restore',
                     transactionId: 'txn_restore',
-                    purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+                    productId: 'apple.pro.month',
+                    appAccountToken: appAccountToken('ba_user_123'),
+                    purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
+                    expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
                     status: 1
                   })
                 }
@@ -248,7 +334,9 @@ describe('@billfn/provider-apple', () => {
             encodePayload({
               originalTransactionId: 'orig_lifetime',
               transactionId: 'txn_lifetime',
-              purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z'))
+              productId: 'apple.lifetime',
+              appAccountToken: appAccountToken('ba_user_123'),
+              purchaseDate: Date.parse('2026-04-20T00:00:00.000Z')
             })
           ]
         }),
@@ -303,12 +391,15 @@ describe('@billfn/provider-apple', () => {
       notificationVerifier: async () => ({
         notificationUUID: 'notif_123',
         notificationType: 'DID_RENEW',
+        signedDate: Date.parse('2026-04-21T00:00:00.000Z'),
         data: {
           signedTransactionInfo: encodePayload({
             originalTransactionId: 'orig_123',
             transactionId: 'txn_123',
-            purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-            expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+            productId: 'apple.pro.month',
+            appAccountToken: appAccountToken('ba_user_123'),
+            purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
+            expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
             status: 1
           }),
           signedRenewalInfo: encodePayload({
@@ -328,6 +419,7 @@ describe('@billfn/provider-apple', () => {
     expect(events).toHaveLength(1);
     expect(events?.[0]?.signatureVerified).toBe(true);
     expect(events?.[0]?.billingState?.subscriptionStatus).toBe('active');
+    expect(events?.[0]?.occurredAt).toBe('2026-04-21T00:00:00.000Z');
   });
 
   it('returns manage-subscription actions when Advanced Commerce is unavailable', async () => {
@@ -364,12 +456,15 @@ describe('@billfn/provider-apple', () => {
               signedPayload: encodePayload({
                 notificationUUID: 'notif_history',
                 notificationType: 'EXPIRED',
+                signedDate: Date.parse('2026-05-21T00:00:00.000Z'),
                 data: {
                   signedTransactionInfo: encodePayload({
                     originalTransactionId: 'orig_history',
                     transactionId: 'txn_history',
-                    purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-                    expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+                    productId: 'apple.pro.month',
+                    appAccountToken: appAccountToken('ba_user_123'),
+                    purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
+                    expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
                     status: 2
                   })
                 }
@@ -393,12 +488,15 @@ describe('@billfn/provider-apple', () => {
       notificationVerifier: async () => ({
         notificationUUID: 'notif_history',
         notificationType: 'EXPIRED',
+        signedDate: Date.parse('2026-05-21T00:00:00.000Z'),
         data: {
           signedTransactionInfo: encodePayload({
             originalTransactionId: 'orig_history',
             transactionId: 'txn_history',
-            purchaseDate: String(Date.parse('2026-04-20T00:00:00.000Z')),
-            expiresDate: String(Date.parse('2026-05-20T00:00:00.000Z')),
+            productId: 'apple.pro.month',
+            appAccountToken: appAccountToken('ba_user_123'),
+            purchaseDate: Date.parse('2026-04-20T00:00:00.000Z'),
+            expiresDate: Date.parse('2026-05-20T00:00:00.000Z'),
             status: 2
           })
         }
@@ -420,7 +518,44 @@ describe('@billfn/provider-apple', () => {
     });
     expect(page?.events).toHaveLength(1);
     expect(page?.events[0]?.billingState?.subscriptionStatus).toBe('expired');
+    expect(page?.events[0]?.occurredAt).toBe('2026-05-21T00:00:00.000Z');
     expect(page?.nextCursor).toBe('cursor_next');
+  });
+
+  it('rejects signed transactions owned by a different billing account', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        data: [{
+          lastTransactions: [{
+            signedTransactionInfo: encodePayload({
+              originalTransactionId: 'orig_123',
+              transactionId: 'txn_123',
+              productId: 'apple.pro.month',
+              appAccountToken: appAccountToken('ba_other')
+            }),
+            status: 1
+          }]
+        }]
+      }), { status: 200 })) as typeof fetch;
+    const provider = createAppleProvider({ fetch: fetchMock, tokenProvider: async () => 'token' });
+
+    await expect(provider.verifyCheckout?.({
+      checkoutSession: {
+        checkoutSessionId: 'chk_123', billingAccountId: 'ba_user_123', planKey: 'pro', priceId: 'price_apple',
+        provider: 'apple', status: 'requires_action', createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      billingAccount: {
+        id: 'ba_user_123', ownerType: 'user', ownerId: 'user_123', createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      plan: { productKey: 'nucleus', planKey: 'pro', displayName: 'Pro', features: {}, limits: {}, prices: [] },
+      price: {
+        priceId: 'price_apple', provider: 'apple', providerProductId: 'apple.pro.month', amount: 12,
+        currency: 'USD', interval: 'month', kind: 'subscription'
+      },
+      payload: { transactionId: 'txn_123' }
+    })).rejects.toMatchObject({ code: 'BILLFN_CONFLICT' });
   });
 
   it('fails before fetching notification history when notificationVerifier is missing', async () => {

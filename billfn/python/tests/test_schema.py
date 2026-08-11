@@ -28,9 +28,14 @@ def test_schema_includes_webhook_and_usage_uniqueness_indexes() -> None:
 
     usage_indexes = tables["usageMeters"]["indexes"]
     webhook_indexes = tables["webhookReceipts"]["indexes"]
+    subscription_indexes = tables["subscriptions"]["indexes"]
 
     assert any(index["unique"] and index["fields"] == ["billingAccountId", "resource"] for index in usage_indexes)
     assert any(index["unique"] and index["fields"] == ["provider", "providerEventId"] for index in webhook_indexes)
+    assert any(
+        index.get("unique") and index["fields"] == ["provider", "providerSubscriptionId"]
+        for index in subscription_indexes
+    )
 
 
 def test_schema_includes_lifecycle_and_reconciliation_indexes() -> None:

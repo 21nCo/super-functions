@@ -64,15 +64,28 @@ describe('webhooks package exports', () => {
 
   it('rejects stale or malformed Standard Webhooks signatures', () => {
     const payload = '{}';
-    const secret = `whsec_${Buffer.from('standard-webhook-secret').toString('base64')}`;
+    const secretBytes = Buffer.from('standard-webhook-secret');
+    const secret = `whsec_${secretBytes.toString('base64')}`;
+    const timestamp = '1776038000';
+    const validSignature = createHmac('sha256', secretBytes)
+      .update(`msg_123.${timestamp}.${payload}`)
+      .digest('base64');
 
     expect(verifyStandardWebhookSignature(payload, {
       id: 'msg_123',
-      timestamp: '1776038000',
+      timestamp,
       signature: 'v1,invalid'
     }, secret, {
       now: () => 1776038400 * 1000,
       toleranceSeconds: 300
+    })).toBe(false);
+
+    expect(verifyStandardWebhookSignature(payload, {
+      id: 'msg_123',
+      timestamp,
+      signature: `v1,${validSignature}`
+    }, secret, {
+      now: () => Number.NaN
     })).toBe(false);
   });
 

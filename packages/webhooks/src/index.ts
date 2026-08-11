@@ -75,6 +75,7 @@ export function verifyStandardWebhookSignature(
   if (
     !/^\d+$/.test(headers.timestamp) ||
     !Number.isSafeInteger(timestamp) ||
+    !Number.isFinite(now) ||
     !Number.isFinite(toleranceSeconds) ||
     toleranceSeconds < 0 ||
     Math.abs(Math.floor(now / 1000) - timestamp) > toleranceSeconds

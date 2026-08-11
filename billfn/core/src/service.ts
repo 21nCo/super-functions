@@ -247,6 +247,7 @@ export function createBillFnService(config: BillFnConfig) {
   }
 
   async function createReconciliationJobRecord(input: {
+    jobId?: string;
     kind: BillFnReconciliationJobKind;
     provider?: BillingProviderName;
     billingAccountId?: string;
@@ -257,7 +258,7 @@ export function createBillFnService(config: BillFnConfig) {
   }) {
     const timestamp = toIsoString(deps.now());
     const job: BillFnReconciliationJob = {
-      id: deps.generateId('rcj'),
+      id: input.jobId ?? deps.generateId('rcj'),
       kind: input.kind,
       status: 'pending',
       provider: input.provider,
@@ -278,7 +279,9 @@ export function createBillFnService(config: BillFnConfig) {
     return job;
   }
 
-  async function enqueueReconciliationJobInternal(input: BillFnEnqueueReconciliationJobRequest) {
+  async function enqueueReconciliationJobInternal(
+    input: BillFnEnqueueReconciliationJobRequest & { jobId?: string }
+  ) {
     const job = await createReconciliationJobRecord(input);
     const queuedJob = jobToQueuePayload(job);
     if (deps.queue) {
@@ -338,16 +341,26 @@ export function createBillFnService(config: BillFnConfig) {
       });
       return job;
     } catch (error) {
-      await deps.db.update<BillFnReconciliationJob>({
-        model: TABLES.reconciliationJobs,
-        where: [{ field: 'id', operator: 'eq', value: job.id }],
-        data: {
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-          updatedAt: toIsoString(deps.now())
-        },
-        namespace: deps.namespace
-      });
+      try {
+        await deps.db.update<BillFnReconciliationJob>({
+          model: TABLES.reconciliationJobs,
+          where: [{ field: 'id', operator: 'eq', value: job.id }],
+          data: {
+            status: 'failed',
+            error: error instanceof Error ? error.message : String(error),
+            updatedAt: toIsoString(deps.now())
+          },
+          namespace: deps.namespace
+        });
+      } finally {
+        if (job.kind === 'webhook-event' && job.provider && job.providerEventId) {
+          await releaseWebhookReceiptClaim(
+            deps,
+            buildWebhookReceiptId(job.provider, job.providerEventId),
+            job.id
+          );
+        }
+      }
       throw error;
     }
   }
@@ -945,8 +958,11 @@ export function createBillFnService(config: BillFnConfig) {
             raw: event.raw,
             parsed: serializeParsedWebhookEvent(event)
           },
-          createdAt: toIsoString(deps.now())
+          createdAt: toIsoString(deps.now()),
+          processingJobId: null,
+          processedAt: null
         };
+        let existingReceipt: BillFnWebhookReceipt | null = null;
         try {
           await deps.db.create({
             model: TABLES.webhookReceipts,
@@ -957,7 +973,7 @@ export function createBillFnService(config: BillFnConfig) {
           if (!isDuplicateRecordError(error)) {
             throw error;
           }
-          const existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
+          existingReceipt = await deps.db.findOne<BillFnWebhookReceipt>({
             model: TABLES.webhookReceipts,
             where: [{ field: 'id', operator: 'eq', value: receiptId }],
             namespace: deps.namespace
@@ -968,13 +984,20 @@ export function createBillFnService(config: BillFnConfig) {
           if (existingReceipt.processedAt) {
             continue;
           }
-          const activeJob = await findActiveWebhookReconciliationJob(deps, input.provider, event.providerEventId);
-          if (activeJob) {
-            continue;
-          }
+        }
+
+        const jobId = deps.generateId('rcj');
+        if (!(await claimWebhookReceipt(deps, receiptId, jobId))) {
+          continue;
+        }
+
+        if (existingReceipt) {
           await deps.db.update({
             model: TABLES.webhookReceipts,
-            where: [{ field: 'id', operator: 'eq', value: receiptId }],
+            where: [
+              { field: 'id', operator: 'eq', value: receiptId },
+              { field: 'processingJobId', operator: 'eq', value: jobId }
+            ],
             data: {
               eventType: receipt.eventType,
               signatureVerified: receipt.signatureVerified,
@@ -984,17 +1007,33 @@ export function createBillFnService(config: BillFnConfig) {
           });
         }
 
-        const job = await enqueueReconciliationJobInternal({
-          kind: 'webhook-event',
-          provider: input.provider,
-          providerEventId: event.providerEventId,
-          payload: {
-            parsedEvent: serializeParsedWebhookEvent(event)
-          }
-        });
+        try {
+          const job = await enqueueReconciliationJobInternal({
+            jobId,
+            kind: 'webhook-event',
+            provider: input.provider,
+            providerEventId: event.providerEventId,
+            payload: {
+              parsedEvent: serializeParsedWebhookEvent(event)
+            }
+          });
 
-        if (!deps.queue) {
-          await runReconciliationJobInternal(job.id);
+          if (!deps.queue) {
+            await runReconciliationJobInternal(job.id);
+          }
+        } catch (error) {
+          await deps.db.updateMany({
+            model: TABLES.reconciliationJobs,
+            where: [{ field: 'id', operator: 'eq', value: jobId }],
+            data: {
+              status: 'failed',
+              error: error instanceof Error ? error.message : String(error),
+              updatedAt: toIsoString(deps.now())
+            },
+            namespace: deps.namespace
+          });
+          await releaseWebhookReceiptClaim(deps, receiptId, jobId);
+          throw error;
         }
 
         processed += 1;
@@ -1094,14 +1133,23 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
       if (receipt.processedAt && job.kind === 'webhook-event') {
         return;
       }
+      if (job.kind === 'webhook-event' && receipt.processingJobId !== job.id) {
+        return;
+      }
       const parsed = deserializeParsedWebhookEvent(asRecord(receipt.rawPayload)?.parsed);
       if (parsed?.billingState) {
         await processParsedWebhookEvent(deps, job.provider, parsed);
       }
       await deps.db.update({
         model: TABLES.webhookReceipts,
-        where: [{ field: 'id', operator: 'eq', value: receipt.id }],
+        where: job.kind === 'webhook-event'
+          ? [
+              { field: 'id', operator: 'eq', value: receipt.id },
+              { field: 'processingJobId', operator: 'eq', value: job.id }
+            ]
+          : [{ field: 'id', operator: 'eq', value: receipt.id }],
         data: {
+          processingJobId: null,
           processedAt: toIsoString(deps.now())
         },
         namespace: deps.namespace
@@ -1168,7 +1216,8 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
             parsed: serializeParsedWebhookEvent(event)
           },
           createdAt: toIsoString(deps.now()),
-          processedAt: undefined
+          processingJobId: null,
+          processedAt: null
         };
         if (!event.signatureVerified) {
           throw createBillFnError({
@@ -1207,22 +1256,28 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
               continue;
             }
           }
-        } else {
-          await deps.db.update({
-            model: TABLES.webhookReceipts,
-            where: [{ field: 'id', operator: 'eq', value: receiptId }],
-            data: {
-              eventType: receipt.eventType,
-              signatureVerified: receipt.signatureVerified,
-              rawPayload: receipt.rawPayload
-            },
-            namespace: deps.namespace
-          });
         }
+        if (!(await claimWebhookReceipt(deps, receiptId, job.id))) {
+          continue;
+        }
+        await deps.db.update({
+          model: TABLES.webhookReceipts,
+          where: [
+            { field: 'id', operator: 'eq', value: receiptId },
+            { field: 'processingJobId', operator: 'eq', value: job.id }
+          ],
+          data: {
+            eventType: receipt.eventType,
+            signatureVerified: receipt.signatureVerified,
+            rawPayload: receipt.rawPayload
+          },
+          namespace: deps.namespace
+        });
         try {
           await processParsedWebhookEvent(deps, job.provider, event);
         } catch (error) {
           if (!isBillFnNotFoundError(error)) {
+            await releaseWebhookReceiptClaim(deps, receiptId, job.id);
             throw error;
           }
           deps.metrics.track('reconciliation.event.skipped', {
@@ -1233,8 +1288,12 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
         }
         await deps.db.update({
           model: TABLES.webhookReceipts,
-          where: [{ field: 'id', operator: 'eq', value: receiptId }],
+          where: [
+            { field: 'id', operator: 'eq', value: receiptId },
+            { field: 'processingJobId', operator: 'eq', value: job.id }
+          ],
           data: {
+            processingJobId: null,
             processedAt: toIsoString(deps.now())
           },
           namespace: deps.namespace
@@ -1668,19 +1727,33 @@ async function getReconciliationJobRecord(deps: ServiceDeps, id: string) {
   });
 }
 
-async function findActiveWebhookReconciliationJob(
+async function claimWebhookReceipt(
   deps: ServiceDeps,
-  provider: BillingProviderName,
-  providerEventId: string
+  receiptId: string,
+  jobId: string
 ) {
-  return deps.db.findOne<BillFnReconciliationJob>({
-    model: TABLES.reconciliationJobs,
+  const claimed = await deps.db.updateMany({
+    model: TABLES.webhookReceipts,
     where: [
-      { field: 'kind', operator: 'eq', value: 'webhook-event' },
-      { field: 'provider', operator: 'eq', value: provider },
-      { field: 'providerEventId', operator: 'eq', value: providerEventId },
-      { field: 'status', operator: 'in', value: ['pending', 'running'] }
+      { field: 'id', operator: 'eq', value: receiptId },
+      { field: 'processingJobId', operator: 'eq', value: null },
+      { field: 'processedAt', operator: 'eq', value: null }
     ],
+    data: { processingJobId: jobId },
+    namespace: deps.namespace
+  });
+  return claimed === 1;
+}
+
+async function releaseWebhookReceiptClaim(deps: ServiceDeps, receiptId: string, jobId: string) {
+  await deps.db.updateMany({
+    model: TABLES.webhookReceipts,
+    where: [
+      { field: 'id', operator: 'eq', value: receiptId },
+      { field: 'processingJobId', operator: 'eq', value: jobId },
+      { field: 'processedAt', operator: 'eq', value: null }
+    ],
+    data: { processingJobId: null },
     namespace: deps.namespace
   });
 }

@@ -173,7 +173,7 @@ export function isBridgeHandshakeResult(value: unknown): value is BillFnBridgeHa
 }
 
 export function nextBridgeRequestId() {
-  return `bridge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `bridge-${Date.now()}-${globalThis.crypto.randomUUID()}`;
 }
 
 export function createBridgeErrorResponse(

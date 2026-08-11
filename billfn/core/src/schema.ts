@@ -129,6 +129,7 @@ export function getSchema(_options: BillFnSchemaOptions = {}): { version: number
       signatureVerified: { type: 'boolean', required: true },
       rawPayload: { type: 'json', required: true },
       createdAt: { type: 'string', required: true },
+      processingJobId: { type: 'string', required: false },
       processedAt: { type: 'string', required: false }
     },
     indexes: [

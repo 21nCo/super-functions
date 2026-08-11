@@ -24,6 +24,10 @@ export interface DodoProviderConfig {
   webhookSignatureHeader?: string;
 }
 
+const DODO_CHECKOUT_SESSION_METADATA_KEY = 'billfn_checkout_session_id';
+const DODO_BILLING_ACCOUNT_METADATA_KEY = 'billfn_billing_account_id';
+const DODO_PRODUCT_METADATA_KEY = 'billfn_product_id';
+
 export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAdapter {
   const fetchImpl = config.fetch ?? fetch;
   const baseUrl = (config.baseUrl ?? 'https://live.dodopayments.com').replace(/\/$/, '');
@@ -44,6 +48,7 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
     },
     async createCheckout(input: BillFnCreateCheckoutInput) {
       const isSubscription = input.price.kind === 'subscription';
+      const metadata = createDodoMetadata(input);
       const response = await requestJson(fetchImpl, `${baseUrl}/${isSubscription ? 'subscriptions' : 'payments'}`, {
         method: 'POST',
         headers: createHeaders(config.apiKey),
@@ -55,14 +60,16 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
                 payment_link: true,
                 return_url: input.returnUrl ?? input.successUrl ?? '',
                 product_id: input.price.providerProductId,
-                quantity: 1
+                quantity: 1,
+                metadata
               }
             : {
                 customer: input.customer,
                 billing: input.customer?.billing,
                 payment_link: true,
                 return_url: input.returnUrl ?? input.successUrl ?? '',
-                product_cart: [{ product_id: input.price.providerProductId, quantity: 1 }]
+                product_cart: [{ product_id: input.price.providerProductId, quantity: 1 }],
+                metadata
               }
         )
       });
@@ -78,12 +85,12 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
     },
     async verifyCheckout(input: BillFnVerifyCheckoutInput): Promise<BillFnVerifiedBillingState> {
       const subscriptionId =
-        readString(input.payload ?? {}, ['subscriptionId', 'subscription_id']) ??
-        input.checkoutSession.providerSubscriptionId;
+        input.checkoutSession.providerSubscriptionId ??
+        readString(input.payload ?? {}, ['subscriptionId', 'subscription_id']);
       const chargeId =
-        readString(input.payload ?? {}, ['paymentId', 'payment_id']) ??
         input.checkoutSession.providerChargeId ??
-        input.checkoutSession.providerCheckoutId;
+        input.checkoutSession.providerCheckoutId ??
+        readString(input.payload ?? {}, ['paymentId', 'payment_id']);
 
       const isSubscription = input.price.kind === 'subscription';
       const resourceId = isSubscription ? subscriptionId : chargeId;
@@ -102,6 +109,8 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
           headers: createHeaders(config.apiKey)
         }
       );
+
+      assertDodoVerificationOwnership(input, isSubscription, resourceId, response);
 
       return mapDodoState(isSubscription, response);
     },
@@ -351,6 +360,47 @@ function createHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+function createDodoMetadata(input: BillFnCreateCheckoutInput): Record<string, string> {
+  const metadata: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input.metadata ?? {})) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      metadata[key] = String(value);
+    }
+  }
+  metadata[DODO_CHECKOUT_SESSION_METADATA_KEY] = input.checkoutSessionId;
+  metadata[DODO_BILLING_ACCOUNT_METADATA_KEY] = input.billingAccount.id;
+  metadata[DODO_PRODUCT_METADATA_KEY] = input.price.providerProductId;
+  return metadata;
+}
+
+function assertDodoVerificationOwnership(
+  input: BillFnVerifyCheckoutInput,
+  isSubscription: boolean,
+  resourceId: string,
+  response: Record<string, unknown>
+) {
+  const responseId = isSubscription
+    ? readString(response, ['subscription_id', 'id'])
+    : readString(response, ['payment_id', 'id']);
+  const metadata = asRecord(response.metadata);
+  const productMatches = isSubscription
+    ? readString(response, ['product_id']) === input.price.providerProductId
+    : asArrayOfRecords(response.product_cart).some(
+        (item) => readString(item, ['product_id']) === input.price.providerProductId
+      );
+  const metadataMatches =
+    metadata?.[DODO_CHECKOUT_SESSION_METADATA_KEY] === input.checkoutSession.checkoutSessionId &&
+    metadata[DODO_BILLING_ACCOUNT_METADATA_KEY] === input.billingAccount.id &&
+    metadata[DODO_PRODUCT_METADATA_KEY] === input.price.providerProductId;
+
+  if (responseId !== resourceId || !productMatches || !metadataMatches) {
+    throw createBillFnError({
+      code: 'BILLFN_CONFLICT',
+      message: 'Dodo resource does not match the checkout session, billing account, and product'
+    });
+  }
+}
+
 async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestInit) {
   const response = await fetchImpl(url, init);
   const raw = await response.text();
@@ -456,4 +506,10 @@ function readString(record: Record<string, unknown>, keys: string[]): string | u
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function asArrayOfRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
+    : [];
 }

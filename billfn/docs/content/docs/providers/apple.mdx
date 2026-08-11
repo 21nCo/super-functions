@@ -50,11 +50,14 @@ When you create an Apple checkout, the adapter returns:
 ```json
 {
   "type": "apple-purchase",
-  "productId": "apple.pro.month"
+  "productId": "apple.pro.month",
+  "metadata": {
+    "appAccountToken": "2e54f6b7-3e0d-5b18-98d2-2a2f84a70f7f"
+  }
 }
 ```
 
-Your client app is expected to hand off to the native Apple purchase flow using that product id.
+Your client app is expected to hand off to the native Apple purchase flow using that product id and pass `metadata.appAccountToken` as StoreKit's `.appAccountToken(UUID)` purchase option. Apple returns that token in the signed transaction, allowing BillFn to verify that the transaction belongs to the billing account that opened the checkout.
 
 For lifecycle operations that Apple still owns, BillFn returns:
 

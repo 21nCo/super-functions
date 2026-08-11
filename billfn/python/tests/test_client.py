@@ -10,40 +10,12 @@ from billfn import (
     BillFnCheckoutCreateRequest,
     BillFnClient,
 )
+from examples.mock_api import create_mock_handler
+
+_mock_api_handler = create_mock_handler()
 
 
 def _handler(request: httpx.Request) -> httpx.Response:
-    if request.url.path.endswith("/catalog"):
-        return httpx.Response(
-            200,
-            json={
-                "ok": True,
-                "data": {
-                    "plans": [
-                        {
-                            "productKey": "nucleus",
-                            "planKey": "pro",
-                            "displayName": "Pro",
-                            "features": {"sync": True},
-                            "limits": {"storage": 1000},
-                            "prices": [
-                                {
-                                    "priceId": "price_pro_dodo_month",
-                                    "provider": "dodo",
-                                    "providerProductId": "pdt_pro_month",
-                                    "currency": "USD",
-                                    "amount": 12,
-                                    "kind": "subscription",
-                                    "interval": "month",
-                                }
-                            ],
-                        }
-                    ]
-                },
-                "meta": {"timestamp": "2026-04-20T00:00:00.000Z"},
-            },
-        )
-
     if request.url.path.endswith("/entitlements"):
         assert request.url.params.get("principalId") == "user_123"
         return httpx.Response(
@@ -75,53 +47,7 @@ def _handler(request: httpx.Request) -> httpx.Response:
             },
         )
 
-    if request.url.path.endswith("/checkouts"):
-        return httpx.Response(
-            201,
-            json={
-                "ok": True,
-                "data": {
-                    "checkoutSession": {
-                        "checkoutSessionId": "chk_123",
-                        "billingAccountId": "ba_user_user_123",
-                        "planKey": "pro",
-                        "priceId": "price_pro_dodo_month",
-                        "provider": "dodo",
-                        "status": "requires_action",
-                        "checkoutUrl": "https://checkout.example.test",
-                        "createdAt": "2026-04-20T00:00:00.000Z",
-                        "updatedAt": "2026-04-20T00:00:00.000Z",
-                    },
-                    "billingAccount": {
-                        "id": "ba_user_user_123",
-                        "ownerType": "user",
-                        "ownerId": "user_123",
-                        "createdAt": "2026-04-20T00:00:00.000Z",
-                        "updatedAt": "2026-04-20T00:00:00.000Z",
-                    },
-                    "plan": {
-                        "planKey": "pro",
-                        "productKey": "nucleus",
-                        "displayName": "Pro",
-                    },
-                },
-                "meta": {"timestamp": "2026-04-20T00:00:00.000Z"},
-            },
-        )
-
-    return httpx.Response(
-        404,
-        json={
-            "ok": False,
-            "error": {
-                "code": "BILLFN_NOT_FOUND",
-                "message": "not found",
-                "status": 404,
-                "retryable": False,
-            },
-            "meta": {"timestamp": "2026-04-20T00:00:00.000Z"},
-        },
-    )
+    return _mock_api_handler(request)
 
 
 def test_sync_client_parses_catalog_and_checkout() -> None:

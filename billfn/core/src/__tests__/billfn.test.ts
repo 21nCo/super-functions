@@ -1072,6 +1072,7 @@ describe('@billfn/core', () => {
   });
 
   it('does not enqueue a second job for a duplicate webhook receipt still being processed', async () => {
+    const db = memoryAdapter({ debug: false });
     const queue = new MemoryQueueAdapter();
     const provider: BillFnProviderAdapter = {
       ...createMockProvider('dodo'),
@@ -1085,25 +1086,24 @@ describe('@billfn/core', () => {
       }
     };
     const billfn = createBillFn({
-      db: memoryAdapter({ debug: false }),
+      db,
       catalog,
       queue,
       providers: { dodo: provider }
     });
 
-    const first = await billfn.handleWebhook({
-      provider: 'dodo',
-      rawBody: '{}',
-      headers: new Headers()
-    });
-    const second = await billfn.handleWebhook({
-      provider: 'dodo',
-      rawBody: '{}',
-      headers: new Headers()
+    const deliveries = await Promise.all([
+      billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() }),
+      billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() })
+    ]);
+    const jobs = await db.findMany({
+      model: 'reconciliationJobs',
+      where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_pending_duplicate' }],
+      namespace: 'billfn'
     });
 
-    expect(first.ok && first.data.processed).toBe(1);
-    expect(second.ok && second.data.processed).toBe(0);
+    expect(deliveries.map((delivery) => delivery.ok ? delivery.data.processed : -1).sort()).toEqual([0, 1]);
+    expect(jobs).toHaveLength(1);
     expect(queue.size('billfn-reconciliation')).toBe(1);
   });
 
@@ -1117,6 +1117,13 @@ describe('@billfn/core', () => {
           providerEventId: 'evt_failed_redelivery',
           type: 'subscription.updated',
           signatureVerified: true,
+          providerSubscriptionId: 'sub_missing',
+          billingState: {
+            subscriptionStatus: 'active',
+            checkoutStatus: 'succeeded',
+            providerSubscriptionId: 'sub_missing',
+            autoRenew: true
+          },
           raw: { delivery: 'latest' }
         }];
       }
@@ -1134,11 +1141,8 @@ describe('@billfn/core', () => {
       where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_failed_redelivery' }],
       namespace: 'billfn'
     });
-    await db.update({
-      model: 'reconciliationJobs',
-      where: [{ field: 'id', operator: 'eq', value: firstJob?.id }],
-      data: { status: 'failed' },
-      namespace: 'billfn'
+    await expect(billfn.runReconciliationJob({ jobId: firstJob?.id ?? '' })).rejects.toMatchObject({
+      code: 'BILLFN_NOT_FOUND'
     });
 
     const retried = await billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() });
@@ -1341,7 +1345,9 @@ describe('@billfn/core', () => {
         eventType: 'subscription.updated',
         signatureVerified: true,
         rawPayload: { raw: {} },
-        createdAt: '2026-04-20T00:00:00.000Z'
+        createdAt: '2026-04-20T00:00:00.000Z',
+        processingJobId: null,
+        processedAt: null
       }
     });
     const provider: BillFnProviderAdapter = {
