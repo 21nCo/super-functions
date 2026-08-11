@@ -42,8 +42,8 @@ export const contentSocketsRule: ScanRule = {
 };
 
 function readOutputDirPrefix(outputDir: string): string {
-  const segments = outputDir.replace(/\\/g, '/').split('/').filter(Boolean);
-  const directoryName = segments[segments.length - 1];
+  const segments = outputDir.replaceAll('\\', '/').split('/').filter(Boolean);
+  const directoryName = segments.at(-1);
   return directoryName ? `${directoryName}/` : '';
 }
 

@@ -202,6 +202,8 @@ describe('scan rules', () => {
       'fetch("http://www.w3.org/2000/svg");',
       'new Request("http://www.w3.org/2000/svg");',
       'xhr.open("GET", "http://www.w3.org/2000/svg");',
+      'xhr.open(method, "http://www.w3.org/2000/svg");',
+      'window.open("http://www.w3.org/2000/svg");',
       '<img src=http://www.w3.org/2000/svg>',
       'background: url(http://www.w3.org/2000/svg)',
     ]) {
@@ -274,8 +276,19 @@ describe('scan rules', () => {
         {
           absolutePath: '/tmp/vendor.js',
           relativePath: 'vendor.js',
-          contents:
-            'sandbox.window.eval(input); sandbox.window["eval"](input); (sandbox.window).eval(input);',
+          contents: [
+            'sandbox.window.eval(input);',
+            'sandbox.window["eval"](input);',
+            '(sandbox.window).eval(input);',
+            'foo(window).eval(input);',
+            'parse(self).eval(input);',
+            'Object(self)?.eval(input);',
+            'wrap(globalThis)["eval"](input);',
+            'foo(eval)(input);',
+            'foo(Function)(input);',
+            '/* window.eval(input); */',
+            'const source = "window/* retained */.eval(input)";',
+          ].join('\n'),
         },
       ],
     });
@@ -314,8 +327,39 @@ describe('scan rules', () => {
       'globalThis.eval(untrusted);',
       'self?.eval(untrusted);',
       '(window).eval(untrusted);',
+      'return (window).eval(untrusted);',
       'window["eval"](untrusted);',
       '(globalThis)?.["eval"](untrusted);',
+      'window/* retained */.eval(untrusted);',
+    ]) {
+      const findings = dynamicExecutionRule.evaluate({
+        target: 'chromium-mv3',
+        outputDir: 'dist/chromium-mv3',
+        manifestPath: 'dist/chromium-mv3/manifest.json',
+        manifest: {},
+        files: [
+          {
+            absolutePath: '/tmp/vendor.js',
+            relativePath: 'vendor.js',
+            contents,
+          },
+        ],
+      });
+
+      expect(findings).toEqual([
+        expect.objectContaining({
+          ruleId: 'SCAN-DYN-001',
+          file: 'vendor.js',
+        }),
+      ]);
+    }
+  });
+
+  it('flags Function constructor calls with and without new', () => {
+    for (const contents of [
+      'Function("return 1");',
+      'new Function("return 1");',
+      '(Function)("return 1");',
     ]) {
       const findings = dynamicExecutionRule.evaluate({
         target: 'chromium-mv3',
