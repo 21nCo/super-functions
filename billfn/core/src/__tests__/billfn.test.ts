@@ -1563,6 +1563,192 @@ describe('@billfn/core', () => {
     });
   });
 
+  it('fences an expired reconciliation runner before it can project after reclamation', async () => {
+    const db = memoryAdapter({ debug: false });
+    const baseProvider = createMockProvider('dodo');
+    let currentTime = new Date('2026-04-20T00:00:00.000Z');
+    let fetchCalls = 0;
+    let notifyFirstFetch!: () => void;
+    let releaseFirstFetch!: () => void;
+    const firstFetchStarted = new Promise<void>((resolve) => {
+      notifyFirstFetch = resolve;
+    });
+    const firstFetchGate = new Promise<void>((resolve) => {
+      releaseFirstFetch = resolve;
+    });
+    const provider: BillFnProviderAdapter = {
+      ...baseProvider,
+      async fetchSubscription(input) {
+        fetchCalls += 1;
+        if (fetchCalls === 1) {
+          notifyFirstFetch();
+          await firstFetchGate;
+        }
+        return baseProvider.fetchSubscription!(input);
+      }
+    };
+    const billfn = createBillFn({
+      db,
+      catalog,
+      now: () => currentTime,
+      providers: { dodo: provider }
+    });
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'fenced_runner' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    const verified = await billfn.verifyCheckout({
+      subject: { principalId: 'fenced_runner' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+    if (!verified.ok) {
+      throw new Error('expected success');
+    }
+    const enqueued = await billfn.enqueueReconciliationJob({
+      kind: 'subscription-sync',
+      provider: 'dodo',
+      subscriptionId: verified.data.subscription.id
+    });
+    if (!enqueued.ok) {
+      throw new Error('expected success');
+    }
+    const eventsBefore = await db.findMany<{ type: string }>({
+      model: 'billingEvents',
+      where: [{ field: 'type', operator: 'eq', value: 'billfn.subscription.active' }],
+      namespace: 'billfn'
+    });
+
+    const expiredRun = billfn.runReconciliationJob({ jobId: enqueued.data.job.id });
+    await firstFetchStarted;
+    currentTime = new Date('2026-04-20T00:16:00.000Z');
+
+    await expect(
+      billfn.runReconciliationJob({ jobId: enqueued.data.job.id })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { job: { status: 'succeeded', attempts: 2 } }
+    });
+    releaseFirstFetch();
+    await expect(expiredRun).rejects.toMatchObject({ code: 'BILLFN_CONFLICT' });
+
+    const eventsAfter = await db.findMany<{ type: string }>({
+      model: 'billingEvents',
+      where: [{ field: 'type', operator: 'eq', value: 'billfn.subscription.active' }],
+      namespace: 'billfn'
+    });
+    expect(eventsAfter).toHaveLength(eventsBefore.length + 1);
+    expect(fetchCalls).toBe(2);
+  });
+
+  it('lets only one overlapping webhook replay hold the receipt claim', async () => {
+    const db = memoryAdapter({ debug: false });
+    let providerSubscriptionId = '';
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async parseWebhook() {
+        return [{
+          providerEventId: 'evt_overlapping_replay',
+          type: 'subscription.updated',
+          signatureVerified: true,
+          providerSubscriptionId,
+          billingState: {
+            subscriptionStatus: 'active',
+            checkoutStatus: 'succeeded',
+            providerSubscriptionId,
+            currentPeriodStart: '2026-04-20T00:00:00.000Z',
+            currentPeriodEnd: '2026-05-20T00:00:00.000Z',
+            autoRenew: true
+          },
+          raw: { ok: true }
+        }];
+      }
+    };
+    const setupBillfn = createBillFn({ db, catalog, providers: { dodo: provider } });
+    const created = await setupBillfn.createCheckout({
+      subject: { principalId: 'replay_user' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    const verified = await setupBillfn.verifyCheckout({
+      subject: { principalId: 'replay_user' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+    if (!verified.ok) {
+      throw new Error('expected success');
+    }
+    providerSubscriptionId = verified.data.subscription.providerSubscriptionId ?? '';
+    await setupBillfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() });
+
+    let firstReplayJobId = '';
+    let notifyFirstClaim!: () => void;
+    let releaseFirstClaim!: () => void;
+    const firstClaimed = new Promise<void>((resolve) => {
+      notifyFirstClaim = resolve;
+    });
+    const firstClaimGate = new Promise<void>((resolve) => {
+      releaseFirstClaim = resolve;
+    });
+    const gatedDb = {
+      ...db,
+      async updateMany(params: Parameters<typeof db.updateMany>[0]): Promise<number> {
+        const affected = await db.updateMany(params);
+        if (
+          params.model === 'webhookReceipts' &&
+          String(params.data.processingJobId).startsWith(`${firstReplayJobId}:attempt:`) &&
+          affected === 1
+        ) {
+          notifyFirstClaim();
+          await firstClaimGate;
+        }
+        return affected;
+      }
+    };
+    const billfn = createBillFn({ db: gatedDb, catalog, providers: { dodo: provider } });
+    const firstReplay = await billfn.enqueueReconciliationJob({
+      kind: 'webhook-replay',
+      provider: 'dodo',
+      providerEventId: 'evt_overlapping_replay'
+    });
+    const secondReplay = await billfn.enqueueReconciliationJob({
+      kind: 'webhook-replay',
+      provider: 'dodo',
+      providerEventId: 'evt_overlapping_replay'
+    });
+    if (!firstReplay.ok || !secondReplay.ok) {
+      throw new Error('expected success');
+    }
+    firstReplayJobId = firstReplay.data.job.id;
+    const eventsBefore = await db.findMany({
+      model: 'billingEvents',
+      where: [{ field: 'type', operator: 'eq', value: 'billfn.subscription.active' }],
+      namespace: 'billfn'
+    });
+
+    const firstRun = billfn.runReconciliationJob({ jobId: firstReplay.data.job.id });
+    await firstClaimed;
+    await expect(
+      billfn.runReconciliationJob({ jobId: secondReplay.data.job.id })
+    ).resolves.toMatchObject({ ok: true, data: { job: { status: 'succeeded' } } });
+    releaseFirstClaim();
+    await expect(firstRun).resolves.toMatchObject({ ok: true, data: { job: { status: 'succeeded' } } });
+
+    const eventsAfter = await db.findMany({
+      model: 'billingEvents',
+      where: [{ field: 'type', operator: 'eq', value: 'billfn.subscription.active' }],
+      namespace: 'billfn'
+    });
+    expect(eventsAfter).toHaveLength(eventsBefore.length + 1);
+  });
+
   it('skips already processed notification-history receipts during replay', async () => {
     const db = memoryAdapter({ debug: false });
     let providerSubscriptionId = '';
@@ -1907,7 +2093,7 @@ describe('@billfn/core', () => {
     expect(ran.ok).toBe(true);
   });
 
-  it('retries concurrent usage updates and rejects negative usage deltas', async () => {
+  it('retries concurrent usage updates and floors signed usage deltas at zero', async () => {
     const db = memoryAdapter({ debug: false });
     let usageCasCalls = 0;
     const casOnlyDb = {
@@ -1979,12 +2165,28 @@ describe('@billfn/core', () => {
     expect(usage.current).toBe(25);
     expect(usageCasCalls).toBeGreaterThan(0);
 
-    await expect(
-      billfn.quotaProvider.recordUsage({
-        principalId: 'usage_user',
-        bytes: -1
-      })
-    ).rejects.toMatchObject({
+    await billfn.quotaProvider.recordUsage({
+      principalId: 'usage_user',
+      bytes: -10
+    });
+    await expect(billfn.quotaProvider.getUsage('usage_user')).resolves.toMatchObject({ current: 15 });
+
+    await billfn.quotaProvider.recordUsage({
+      principalId: 'usage_user',
+      bytes: -100
+    });
+    await expect(billfn.quotaProvider.getUsage('usage_user')).resolves.toMatchObject({ current: 0 });
+
+    await billfn.quotaProvider.recordUsage({
+      principalId: 'usage_user',
+      bytes: -1
+    });
+    await expect(billfn.quotaProvider.getUsage('usage_user')).resolves.toMatchObject({ current: 0 });
+
+    await expect(billfn.quotaProvider.recordUsage({
+      principalId: 'usage_user',
+      bytes: Number.NaN
+    })).rejects.toMatchObject({
       code: 'BILLFN_VALIDATION_ERROR'
     });
   });

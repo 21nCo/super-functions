@@ -79,6 +79,37 @@ describe('memoryAdapter transactions', () => {
     ).resolves.toBeNull();
   });
 
+  it('waits for an already-admitted write before taking a transaction snapshot', async () => {
+    const adapter = memoryAdapter({ debug: false });
+    const externalWrite = adapter.create({
+      model: 'records',
+      data: { id: 'external', value: 1 }
+    });
+
+    const failedTransaction = adapter.transaction(async (transaction) => {
+      await externalWrite;
+      await transaction.create({
+        model: 'records',
+        data: { id: 'rolled-back', value: 2 }
+      });
+      throw new Error('rollback');
+    });
+
+    await expect(failedTransaction).rejects.toThrow('rollback');
+    await expect(
+      adapter.findOne({
+        model: 'records',
+        where: [{ field: 'id', operator: 'eq', value: 'external' }]
+      })
+    ).resolves.toMatchObject({ id: 'external', value: 1 });
+    await expect(
+      adapter.findOne({
+        model: 'records',
+        where: [{ field: 'id', operator: 'eq', value: 'rolled-back' }]
+      })
+    ).resolves.toBeNull();
+  });
+
   it('rolls back transaction-bound internal CRUD mutations', async () => {
     const adapter = memoryAdapter({ debug: false });
     await adapter.internal.ensureTable('__datafn_records', [

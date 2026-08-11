@@ -220,8 +220,24 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
  */
 export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
   let adapter!: Adapter;
-  let transactionTail = Promise.resolve();
+  let operationTail = Promise.resolve();
   const internalCrudState = createMemoryInternalCrud();
+  const enqueueOperation = <T>(operation: () => Promise<T>): Promise<T> => {
+    let releaseOperation!: () => void;
+    const previousOperation = operationTail;
+    operationTail = new Promise<void>((resolve) => {
+      releaseOperation = resolve;
+    });
+
+    return (async () => {
+      await previousOperation;
+      try {
+        return await operation();
+      } finally {
+        releaseOperation();
+      }
+    })();
+  };
   const factory = createAdapterFactory({
     config: {
       adapterId: 'memory',
@@ -542,13 +558,6 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
         async transaction<R>(
           callback: (trx: TransactionAdapter) => Promise<R>
         ): Promise<R> {
-          let releaseTransaction!: () => void;
-          const previousTransaction = transactionTail;
-          transactionTail = new Promise<void>((resolve) => {
-            releaseTransaction = resolve;
-          });
-          await previousTransaction;
-
           const storeSnapshot = cloneStore();
           const schemaVersionsSnapshot = new Map(schemaVersions);
           const internalSnapshot = internalCrudState.snapshot();
@@ -575,8 +584,6 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
               internalCrudState.restore(internalSnapshot);
             }
             throw error;
-          } finally {
-            releaseTransaction();
           }
         },
 
@@ -614,15 +621,15 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
   });
 
   adapter = Object.assign(factory({}), { internal: internalCrudState.crud });
+  const queuedAdapterMethods = new Map(
+    Reflect.ownKeys(adapter).map((property) => [property, Reflect.get(adapter, property)])
+  );
 
   const transactionAwareInternal = new Proxy(internalCrudState.crud, {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver);
       if (typeof value !== 'function') return value;
-      return async (...args: unknown[]) => {
-        await transactionTail;
-        return Reflect.apply(value, target, args);
-      };
+      return (...args: unknown[]) => enqueueOperation(() => Promise.resolve(Reflect.apply(value, target, args)));
     },
   });
 
@@ -631,11 +638,11 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
       if (property === 'internal') return transactionAwareInternal;
 
       const value = Reflect.get(target, property, receiver);
-      if (typeof value !== 'function' || property === 'transaction') return value;
-      return async (...args: unknown[]) => {
-        await transactionTail;
-        return Reflect.apply(value, target, args);
-      };
+      if (typeof value !== 'function') return value;
+      if (value !== queuedAdapterMethods.get(property)) {
+        return value.bind(target);
+      }
+      return (...args: unknown[]) => enqueueOperation(() => Promise.resolve(Reflect.apply(value, target, args)));
     },
   });
 }
