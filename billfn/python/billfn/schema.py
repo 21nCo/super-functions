@@ -53,7 +53,11 @@ def get_schema() -> Dict[str, Any]:
                 "fields": ["provider", "providerSubscriptionId"],
                 "unique": True,
             },
-            {"name": "subscriptions_provider_charge_idx", "fields": ["provider", "providerChargeId"]},
+            {
+                "name": "subscriptions_provider_charge_idx",
+                "fields": ["provider", "providerChargeId"],
+                "unique": True,
+            },
         ],
     }
 

@@ -16,7 +16,9 @@ describe('@billfn/provider-apple', () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
       const value = new URL(String(url));
       if (value.hostname === 'api.storekit.itunes.apple.com') {
-        return new Response('not found', { status: 404 });
+        return new Response(JSON.stringify({ errorCode: 4040010, errorMessage: 'Transaction id not found.' }), {
+          status: 404
+        });
       }
       return new Response(
         JSON.stringify({
@@ -205,6 +207,59 @@ describe('@billfn/provider-apple', () => {
     ).rejects.toMatchObject({
       code: 'BILLFN_PROVIDER_ERROR'
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fall back to sandbox for unrelated production request errors', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ errorCode: 4040002, errorMessage: 'Account not found. Please try again.' }),
+      { status: 404 }
+    )) as typeof fetch;
+    const provider = createAppleProvider({
+      fetch: fetchMock,
+      tokenProvider: async () => 'token'
+    });
+
+    await expect(
+      provider.verifyCheckout?.({
+        checkoutSession: {
+          checkoutSessionId: 'chk_bad_request',
+          billingAccountId: 'ba_user_123',
+          planKey: 'pro',
+          priceId: 'price_apple',
+          provider: 'apple',
+          status: 'requires_action',
+          createdAt: '2026-04-20T00:00:00.000Z',
+          updatedAt: '2026-04-20T00:00:00.000Z'
+        },
+        billingAccount: {
+          id: 'ba_user_123',
+          ownerType: 'user',
+          ownerId: 'user_123',
+          createdAt: '2026-04-20T00:00:00.000Z',
+          updatedAt: '2026-04-20T00:00:00.000Z'
+        },
+        plan: {
+          productKey: 'nucleus',
+          planKey: 'pro',
+          displayName: 'Pro',
+          features: {},
+          limits: {},
+          prices: []
+        },
+        price: {
+          priceId: 'price_apple',
+          provider: 'apple',
+          providerProductId: 'apple.pro.month',
+          amount: 12,
+          currency: 'USD',
+          interval: 'month',
+          kind: 'subscription'
+        },
+        payload: { transactionId: 'malformed' }
+      })
+    ).rejects.toMatchObject({ code: 'BILLFN_PROVIDER_ERROR' });
+
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

@@ -380,13 +380,19 @@ function shouldFallbackToSandbox(error: unknown, environment: 'production' | 'sa
   if (environment !== 'production') {
     return false;
   }
-  return Boolean(
-    error &&
-      typeof error === 'object' &&
-      'details' in error &&
-      typeof (error as { details?: { status?: unknown } }).details?.status === 'number' &&
-      [400, 404].includes((error as { details: { status: number } }).details.status)
-  );
+  if (!error || typeof error !== 'object' || !('details' in error)) {
+    return false;
+  }
+  const details = (error as { details?: { status?: unknown; body?: unknown } }).details;
+  if (details?.status !== 404 || typeof details.body !== 'string') {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(details.body) as { errorCode?: unknown };
+    return payload.errorCode === 4040010;
+  } catch {
+    return false;
+  }
 }
 
 async function decodeNotificationPayload(

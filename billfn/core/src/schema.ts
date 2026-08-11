@@ -44,7 +44,7 @@ export function getSchema(_options: BillFnSchemaOptions = {}): { version: number
     indexes: [
       { name: 'subscriptions_billing_account_updated_idx', fields: ['billingAccountId', 'updatedAt'] },
       { name: 'subscriptions_provider_subscription_idx', fields: ['provider', 'providerSubscriptionId'], unique: true },
-      { name: 'subscriptions_provider_charge_idx', fields: ['provider', 'providerChargeId'] }
+      { name: 'subscriptions_provider_charge_idx', fields: ['provider', 'providerChargeId'], unique: true }
     ]
   };
 

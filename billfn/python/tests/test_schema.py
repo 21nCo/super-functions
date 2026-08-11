@@ -40,6 +40,10 @@ def test_schema_includes_webhook_and_usage_uniqueness_indexes() -> None:
         index.get("unique") and index["fields"] == ["provider", "providerSubscriptionId"]
         for index in subscription_indexes
     )
+    assert any(
+        index.get("unique") and index["fields"] == ["provider", "providerChargeId"]
+        for index in subscription_indexes
+    )
 
 
 def test_schema_includes_lifecycle_and_reconciliation_indexes() -> None:

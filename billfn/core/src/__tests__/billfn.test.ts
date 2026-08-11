@@ -211,6 +211,9 @@ describe('@billfn/core', () => {
     expect(subscriptions?.indexes?.find(
       (index) => index.fields.join(',') === 'provider,providerSubscriptionId'
     )?.unique).toBe(true);
+    expect(subscriptions?.indexes?.find(
+      (index) => index.fields.join(',') === 'provider,providerChargeId'
+    )?.unique).toBe(true);
     const receipts = schema.schemas.find((table) => table.modelName === 'webhookReceipts');
     expect(receipts?.fields.processingClaimedAt).toEqual({ type: 'string', required: false });
   });
@@ -1069,8 +1072,53 @@ describe('@billfn/core', () => {
     expect(second.data.processed).toBe(0);
   });
 
-  it('does not let an older provider event replace newer subscription state', async () => {
+  it('atomically prevents an older provider event from replacing newer subscription state', async () => {
     let providerSubscriptionId = '';
+    const db = memoryAdapter({ debug: false });
+    let releaseOlderCas!: () => void;
+    let markOlderCasStarted!: () => void;
+    let releaseOlderEntitlementCas!: () => void;
+    let markOlderEntitlementCasStarted!: () => void;
+    const olderCasStarted = new Promise<void>((resolve) => {
+      markOlderCasStarted = resolve;
+    });
+    const olderCasRelease = new Promise<void>((resolve) => {
+      releaseOlderCas = resolve;
+    });
+    const olderEntitlementCasStarted = new Promise<void>((resolve) => {
+      markOlderEntitlementCasStarted = resolve;
+    });
+    const olderEntitlementCasRelease = new Promise<void>((resolve) => {
+      releaseOlderEntitlementCas = resolve;
+    });
+    let delayedOlderCas = false;
+    let delayedOlderEntitlementCas = false;
+    const racingDb = {
+      ...db,
+      async updateMany(params: Parameters<typeof db.updateMany>[0]): Promise<number> {
+        if (
+          !delayedOlderCas &&
+          params.model === 'subscriptions' &&
+          params.data.status === 'canceled' &&
+          params.where.some((clause) => clause.field === 'updatedAt')
+        ) {
+          delayedOlderCas = true;
+          markOlderCasStarted();
+          await olderCasRelease;
+        }
+        if (
+          !delayedOlderEntitlementCas &&
+          params.model === 'entitlementSnapshots' &&
+          params.data.status === 'inactive' &&
+          params.where.some((clause) => clause.field === 'sourceEventId')
+        ) {
+          delayedOlderEntitlementCas = true;
+          markOlderEntitlementCasStarted();
+          await olderEntitlementCasRelease;
+        }
+        return db.updateMany(params);
+      }
+    };
     const provider: BillFnProviderAdapter = {
       ...createMockProvider('dodo'),
       async parseWebhook(input) {
@@ -1098,7 +1146,7 @@ describe('@billfn/core', () => {
       }
     };
     const billfn = createBillFn({
-      db: memoryAdapter({ debug: false }),
+      db: racingDb,
       catalog,
       providers: { dodo: provider }
     });
@@ -1120,16 +1168,7 @@ describe('@billfn/core', () => {
     }
     providerSubscriptionId = verified.data.subscription.providerSubscriptionId ?? '';
 
-    await billfn.handleWebhook({
-      provider: 'dodo',
-      rawBody: JSON.stringify({
-        id: 'evt_newer',
-        occurredAt: '2026-06-20T00:00:00.000Z',
-        status: 'active'
-      }),
-      headers: new Headers()
-    });
-    await billfn.handleWebhook({
+    const older = billfn.handleWebhook({
       provider: 'dodo',
       rawBody: JSON.stringify({
         id: 'evt_older',
@@ -1138,10 +1177,52 @@ describe('@billfn/core', () => {
       }),
       headers: new Headers()
     });
+    await olderCasStarted;
+    const newer = await billfn.handleWebhook({
+      provider: 'dodo',
+      rawBody: JSON.stringify({
+        id: 'evt_newer',
+        occurredAt: '2026-06-20T00:00:00.000Z',
+        status: 'active'
+      }),
+      headers: new Headers()
+    });
+    releaseOlderCas();
+    const olderResult = await older;
 
     const current = await billfn.getEntitlements({ principalId: 'out_of_order_user' });
+    expect(newer.ok).toBe(true);
+    expect(olderResult.ok).toBe(true);
     expect(current.ok && current.data.subscription?.status).toBe('active');
     expect(current.ok && current.data.entitlements?.status).toBe('active');
+
+    const olderWithCommittedSubscription = billfn.handleWebhook({
+      provider: 'dodo',
+      rawBody: JSON.stringify({
+        id: 'evt_older_committed',
+        occurredAt: '2026-07-20T00:00:00.000Z',
+        status: 'canceled'
+      }),
+      headers: new Headers()
+    });
+    await olderEntitlementCasStarted;
+    const newest = await billfn.handleWebhook({
+      provider: 'dodo',
+      rawBody: JSON.stringify({
+        id: 'evt_newest',
+        occurredAt: '2026-08-20T00:00:00.000Z',
+        status: 'active'
+      }),
+      headers: new Headers()
+    });
+    releaseOlderEntitlementCas();
+    const olderCommittedResult = await olderWithCommittedSubscription;
+
+    const final = await billfn.getEntitlements({ principalId: 'out_of_order_user' });
+    expect(newest.ok).toBe(true);
+    expect(olderCommittedResult.ok).toBe(true);
+    expect(final.ok && final.data.subscription?.status).toBe('active');
+    expect(final.ok && final.data.entitlements?.status).toBe('active');
   });
 
   it('does not enqueue a second job for a duplicate webhook receipt still being processed', async () => {
@@ -2235,6 +2316,59 @@ describe('@billfn/core', () => {
 
     await expect(
       billfn.quotaProvider.getUsage('usage_rollback_user')
+    ).resolves.toMatchObject({ current: 7 });
+    await expect(
+      db.findMany({ model: 'usageLedger', where: [], namespace: 'billfn' })
+    ).resolves.toHaveLength(1);
+  });
+
+  it('records usage without transactions and compensates a failed ledger write', async () => {
+    const db = memoryAdapter({ debug: false });
+    let failLedgerWrite = true;
+    const nonTransactionalDb = {
+      ...db,
+      capabilities: {
+        ...db.capabilities,
+        transactions: {
+          ...db.capabilities.transactions,
+          supported: false
+        }
+      },
+      async transaction(): Promise<never> {
+        throw new Error('transaction should not be called');
+      },
+      async create<T>(params: Parameters<typeof db.create>[0]): Promise<T> {
+        if (failLedgerWrite && params.model === 'usageLedger') {
+          throw new Error('ledger write failed');
+        }
+        return db.create<T>(params);
+      }
+    };
+    const billfn = createBillFn({
+      db: nonTransactionalDb,
+      catalog,
+      providers: { dodo: createMockProvider('dodo') }
+    });
+
+    await expect(billfn.quotaProvider.recordUsage({
+      principalId: 'usage_non_transactional_user',
+      bytes: 7
+    })).rejects.toThrow('ledger write failed');
+    await expect(
+      billfn.quotaProvider.getUsage('usage_non_transactional_user')
+    ).resolves.toMatchObject({ current: 0 });
+    await expect(
+      db.findMany({ model: 'usageLedger', where: [], namespace: 'billfn' })
+    ).resolves.toHaveLength(0);
+
+    failLedgerWrite = false;
+    await billfn.quotaProvider.recordUsage({
+      principalId: 'usage_non_transactional_user',
+      bytes: 7
+    });
+
+    await expect(
+      billfn.quotaProvider.getUsage('usage_non_transactional_user')
     ).resolves.toMatchObject({ current: 7 });
     await expect(
       db.findMany({ model: 'usageLedger', where: [], namespace: 'billfn' })

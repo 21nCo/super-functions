@@ -106,7 +106,21 @@ type ServiceDeps = {
   queue?: QueueAdapter<BillFnQueuedJob>;
 };
 
-type ProjectionResult = Awaited<ReturnType<typeof applyVerificationState>>;
+type VerifiedBillingState = NonNullable<Awaited<ReturnType<NonNullable<BillFnProviderAdapter['verifyCheckout']>>>>;
+type ApplyVerificationStateInput = {
+  billingAccount: BillFnBillingAccount;
+  plan: ReturnType<typeof requirePlan>;
+  price: BillFnPriceDefinition;
+  checkoutSession?: BillFnCheckoutSession;
+  subscription?: BillFnSubscription;
+  state: VerifiedBillingState;
+  occurredAt?: string;
+};
+type ProjectionResult = {
+  checkoutSession: BillFnCheckoutSession | undefined;
+  subscription: BillFnSubscription;
+  entitlements: BillFnEntitlementSnapshot;
+};
 type ReconciliationLeaseGuard = () => Promise<void>;
 
 export function createBillFnService(config: BillFnConfig) {
@@ -2074,20 +2088,23 @@ function mapSubscriptionToEntitlementStatus(status: SubscriptionStatus): Entitle
   }
 }
 
+function applyVerificationState(
+  deps: ServiceDeps,
+  input: ApplyVerificationStateInput & { occurredAt: string }
+): Promise<ProjectionResult | null>;
+function applyVerificationState(
+  deps: ServiceDeps,
+  input: ApplyVerificationStateInput & { occurredAt?: undefined }
+): Promise<ProjectionResult>;
+function applyVerificationState(
+  deps: ServiceDeps,
+  input: ApplyVerificationStateInput
+): Promise<ProjectionResult | null>;
 async function applyVerificationState(
   deps: ServiceDeps,
-  input: {
-    billingAccount: BillFnBillingAccount;
-    plan: ReturnType<typeof requirePlan>;
-    price: BillFnPriceDefinition;
-    checkoutSession?: BillFnCheckoutSession;
-    subscription?: BillFnSubscription;
-    state: NonNullable<Awaited<ReturnType<NonNullable<BillFnProviderAdapter['verifyCheckout']>>>>;
-    occurredAt?: string;
-  }
-) {
-  const timestamp = toIsoString(deps.now());
-  const baseSubscription =
+  input: ApplyVerificationStateInput
+): Promise<ProjectionResult | null> {
+  let baseSubscription =
     input.subscription ??
     (await findSubscriptionByProviderRef(
       deps,
@@ -2096,59 +2113,97 @@ async function applyVerificationState(
       input.state.providerChargeId,
       input.checkoutSession?.checkoutSessionId
     ));
+  let subscription: BillFnSubscription | null = null;
+  let timestamp = toIsoString(deps.now());
 
-  if (baseSubscription && baseSubscription.billingAccountId !== input.billingAccount.id) {
-    throw createBillFnError({
-      code: 'BILLFN_CONFLICT',
-      message: 'Provider billing reference belongs to a different billing account'
-    });
-  }
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (baseSubscription && baseSubscription.billingAccountId !== input.billingAccount.id) {
+      throw createBillFnError({
+        code: 'BILLFN_CONFLICT',
+        message: 'Provider billing reference belongs to a different billing account'
+      });
+    }
+    if (
+      baseSubscription &&
+      input.occurredAt &&
+      isProviderEventOlderThanSubscription(baseSubscription, input.occurredAt)
+    ) {
+      return null;
+    }
 
-  const mergedMetadata = mergeJson(baseSubscription?.metadata, input.state.raw);
-  const metadata = input.occurredAt
-    ? {
-        ...mergedMetadata,
-        [PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY]: input.occurredAt
+    timestamp = nextSubscriptionUpdatedAt(deps.now(), baseSubscription?.updatedAt);
+    const mergedMetadata = mergeJson(baseSubscription?.metadata, input.state.raw);
+    const metadata = input.occurredAt
+      ? {
+          ...mergedMetadata,
+          [PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY]: input.occurredAt
+        }
+      : mergedMetadata;
+
+    const subscriptionId = baseSubscription?.id ?? deps.generateId('sub');
+    const record: BillFnSubscription = {
+      id: subscriptionId,
+      billingAccountId: input.billingAccount.id,
+      planKey: input.plan.planKey,
+      priceId: input.price.priceId,
+      provider: input.price.provider,
+      providerSubscriptionId: input.state.providerSubscriptionId ?? baseSubscription?.providerSubscriptionId,
+      providerCheckoutId: input.checkoutSession?.providerCheckoutId ?? baseSubscription?.providerCheckoutId,
+      providerChargeId: input.state.providerChargeId ?? baseSubscription?.providerChargeId,
+      status: input.state.subscriptionStatus,
+      currentPeriodStart: input.state.currentPeriodStart ?? baseSubscription?.currentPeriodStart,
+      currentPeriodEnd: input.state.currentPeriodEnd ?? baseSubscription?.currentPeriodEnd,
+      autoRenew: input.state.autoRenew ?? baseSubscription?.autoRenew ?? false,
+      metadata,
+      createdAt: baseSubscription?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      cancelAt: baseSubscription?.cancelAt,
+      canceledAt: input.state.subscriptionStatus === 'canceled' ? timestamp : baseSubscription?.canceledAt,
+      trialEnd: baseSubscription?.trialEnd
+    };
+
+    if (baseSubscription) {
+      if (input.occurredAt) {
+        const updated = await deps.db.updateMany({
+          model: TABLES.subscriptions,
+          where: [
+            { field: 'id', operator: 'eq', value: baseSubscription.id },
+            { field: 'updatedAt', operator: 'eq', value: baseSubscription.updatedAt }
+          ],
+          data: record,
+          namespace: deps.namespace
+        });
+        if (updated === 1) {
+          subscription = record;
+          break;
+        }
+        const current = await getSubscriptionById(deps, baseSubscription.id);
+        if (!current) {
+          throw createBillFnError({
+            code: 'BILLFN_CONFLICT',
+            message: 'Subscription changed while applying provider event state'
+          });
+        }
+        baseSubscription = current;
+        await Promise.resolve();
+        continue;
       }
-    : mergedMetadata;
+      subscription = await deps.db.update<BillFnSubscription>({
+        model: TABLES.subscriptions,
+        where: [{ field: 'id', operator: 'eq', value: baseSubscription.id }],
+        data: record,
+        namespace: deps.namespace
+      });
+      break;
+    }
 
-  const subscriptionId = baseSubscription?.id ?? deps.generateId('sub');
-  const record: BillFnSubscription = {
-    id: subscriptionId,
-    billingAccountId: input.billingAccount.id,
-    planKey: input.plan.planKey,
-    priceId: input.price.priceId,
-    provider: input.price.provider,
-    providerSubscriptionId: input.state.providerSubscriptionId ?? baseSubscription?.providerSubscriptionId,
-    providerCheckoutId: input.checkoutSession?.providerCheckoutId ?? baseSubscription?.providerCheckoutId,
-    providerChargeId: input.state.providerChargeId ?? baseSubscription?.providerChargeId,
-    status: input.state.subscriptionStatus,
-    currentPeriodStart: input.state.currentPeriodStart ?? baseSubscription?.currentPeriodStart,
-    currentPeriodEnd: input.state.currentPeriodEnd ?? baseSubscription?.currentPeriodEnd,
-    autoRenew: input.state.autoRenew ?? baseSubscription?.autoRenew ?? false,
-    metadata,
-    createdAt: baseSubscription?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-    cancelAt: baseSubscription?.cancelAt,
-    canceledAt: input.state.subscriptionStatus === 'canceled' ? timestamp : baseSubscription?.canceledAt,
-    trialEnd: baseSubscription?.trialEnd
-  };
-
-  let subscription: BillFnSubscription;
-  if (baseSubscription) {
-    subscription = await deps.db.update<BillFnSubscription>({
-      model: TABLES.subscriptions,
-      where: [{ field: 'id', operator: 'eq', value: baseSubscription.id }],
-      data: record,
-      namespace: deps.namespace
-    });
-  } else {
     try {
       subscription = await deps.db.create<BillFnSubscription>({
         model: TABLES.subscriptions,
         data: record,
         namespace: deps.namespace
       });
+      break;
     } catch (error) {
       if (!isDuplicateRecordError(error)) {
         throw error;
@@ -2163,24 +2218,16 @@ async function applyVerificationState(
       if (!duplicate) {
         throw error;
       }
-      if (duplicate.billingAccountId !== input.billingAccount.id) {
-        throw createBillFnError({
-          code: 'BILLFN_CONFLICT',
-          message: 'Provider billing reference belongs to a different billing account'
-        });
-      }
-      subscription = await deps.db.update<BillFnSubscription>({
-        model: TABLES.subscriptions,
-        where: [{ field: 'id', operator: 'eq', value: duplicate.id }],
-        data: {
-          ...record,
-          id: duplicate.id,
-          createdAt: duplicate.createdAt,
-          metadata: mergeJson(duplicate.metadata, metadata)
-        },
-        namespace: deps.namespace
-      });
+      baseSubscription = duplicate;
+      await Promise.resolve();
     }
+  }
+
+  if (!subscription) {
+    throw createBillFnError({
+      code: 'BILLFN_CONFLICT',
+      message: 'Unable to apply provider event state after multiple retries'
+    });
   }
 
   const checkoutSession = input.checkoutSession
@@ -2226,55 +2273,62 @@ async function upsertEntitlements(
   subscription: BillFnSubscription,
   timestamp: string
 ) {
-  const existing = await findEntitlementSnapshot(deps, billingAccountId);
-  const snapshot: BillFnEntitlementSnapshot = {
-    id: existing?.id ?? `ent_${billingAccountId}`,
-    billingAccountId,
-    planKey: plan.planKey,
-    status: mapSubscriptionToEntitlementStatus(subscription.status),
-    features: { ...plan.features },
-    limits: { ...plan.limits },
-    effectiveAt: timestamp,
-    expiresAt: subscription.currentPeriodEnd,
-    sourceEventId: subscription.id,
-    createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: timestamp
-  };
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const existing = await findEntitlementSnapshot(deps, billingAccountId);
+    if (existing && isEntitlementFromNewerSubscription(existing, subscription)) {
+      return existing;
+    }
+    const snapshot: BillFnEntitlementSnapshot = {
+      id: existing?.id ?? `ent_${billingAccountId}`,
+      billingAccountId,
+      planKey: plan.planKey,
+      status: mapSubscriptionToEntitlementStatus(subscription.status),
+      features: { ...plan.features },
+      limits: { ...plan.limits },
+      effectiveAt: timestamp,
+      expiresAt: subscription.currentPeriodEnd,
+      sourceEventId: buildEntitlementSourceEventId(subscription),
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
+    };
 
-  if (existing) {
-    return deps.db.update<BillFnEntitlementSnapshot>({
-      model: TABLES.entitlementSnapshots,
-      where: [{ field: 'billingAccountId', operator: 'eq', value: billingAccountId }],
-      data: snapshot,
-      namespace: deps.namespace
-    });
+    if (existing) {
+      const updated = await deps.db.updateMany({
+        model: TABLES.entitlementSnapshots,
+        where: [
+          { field: 'billingAccountId', operator: 'eq', value: billingAccountId },
+          existing.sourceEventId
+            ? { field: 'sourceEventId', operator: 'eq', value: existing.sourceEventId }
+            : { field: 'updatedAt', operator: 'eq', value: existing.updatedAt }
+        ],
+        data: snapshot,
+        namespace: deps.namespace
+      });
+      if (updated === 1) {
+        return snapshot;
+      }
+      await Promise.resolve();
+      continue;
+    }
+
+    try {
+      return await deps.db.create<BillFnEntitlementSnapshot>({
+        model: TABLES.entitlementSnapshots,
+        data: snapshot,
+        namespace: deps.namespace
+      });
+    } catch (error) {
+      if (!isDuplicateRecordError(error)) {
+        throw error;
+      }
+      await Promise.resolve();
+    }
   }
 
-  try {
-    return await deps.db.create<BillFnEntitlementSnapshot>({
-      model: TABLES.entitlementSnapshots,
-      data: snapshot,
-      namespace: deps.namespace
-    });
-  } catch (error) {
-    if (!isDuplicateRecordError(error)) {
-      throw error;
-    }
-    const duplicate = await findEntitlementSnapshot(deps, billingAccountId);
-    if (!duplicate) {
-      throw error;
-    }
-    return deps.db.update<BillFnEntitlementSnapshot>({
-      model: TABLES.entitlementSnapshots,
-      where: [{ field: 'billingAccountId', operator: 'eq', value: billingAccountId }],
-      data: {
-        ...snapshot,
-        id: duplicate.id,
-        createdAt: duplicate.createdAt
-      },
-      namespace: deps.namespace
-    });
-  }
+  throw createBillFnError({
+    code: 'BILLFN_CONFLICT',
+    message: 'Unable to update entitlements after multiple retries'
+  });
 }
 
 async function recordBillingEvent(deps: ServiceDeps, event: BillFnBillingEvent) {
@@ -2323,17 +2377,42 @@ async function incrementUsage(deps: ServiceDeps, billingAccountId: string, resou
     return;
   }
 
-  await deps.db.transaction(async (transaction) => {
-    await incrementUsageInTransaction(
-      {
-        ...deps,
-        db: transaction as unknown as Adapter
-      },
-      billingAccountId,
-      resource,
-      amount
-    );
-  });
+  if (deps.db.capabilities.transactions.supported) {
+    await deps.db.transaction(async (transaction) => {
+      await incrementUsageInTransaction(
+        {
+          ...deps,
+          db: transaction as unknown as Adapter
+        },
+        billingAccountId,
+        resource,
+        amount
+      );
+    });
+    return;
+  }
+
+  const appliedAmount = await updateUsageMeter(deps, billingAccountId, resource, amount);
+  if (appliedAmount === 0) {
+    return;
+  }
+  try {
+    await appendUsageLedgerEntry(deps, billingAccountId, resource, appliedAmount);
+  } catch (error) {
+    try {
+      await updateUsageMeter(deps, billingAccountId, resource, -appliedAmount);
+    } catch (compensationError) {
+      throw createBillFnError({
+        code: 'BILLFN_INTERNAL_ERROR',
+        message: `Usage ledger write failed and the ${resource} meter could not be compensated`,
+        details: {
+          ledgerError: error instanceof Error ? error.message : String(error),
+          compensationError: compensationError instanceof Error ? compensationError.message : String(compensationError)
+        }
+      });
+    }
+    throw error;
+  }
 }
 
 async function incrementUsageInTransaction(
@@ -2342,6 +2421,19 @@ async function incrementUsageInTransaction(
   resource: string,
   amount: number
 ) {
+  const appliedAmount = await updateUsageMeter(deps, billingAccountId, resource, amount);
+  if (appliedAmount === 0) {
+    return;
+  }
+  await appendUsageLedgerEntry(deps, billingAccountId, resource, appliedAmount);
+}
+
+async function updateUsageMeter(
+  deps: ServiceDeps,
+  billingAccountId: string,
+  resource: string,
+  amount: number
+): Promise<number> {
   const timestamp = toIsoString(deps.now());
   const meterId = `${billingAccountId}:${resource}`;
   let updated = false;
@@ -2352,7 +2444,7 @@ async function incrementUsageInTransaction(
 
     if (!existing) {
       if (amount < 0) {
-        return;
+        return 0;
       }
       try {
         await deps.db.create({
@@ -2380,7 +2472,7 @@ async function incrementUsageInTransaction(
     const nextCurrent = Math.max(0, existing.current + amount);
     const nextAppliedAmount = nextCurrent - existing.current;
     if (nextAppliedAmount === 0) {
-      return;
+      return 0;
     }
     const affected = await deps.db.updateMany({
       model: TABLES.usageMeters,
@@ -2409,12 +2501,21 @@ async function incrementUsageInTransaction(
     });
   }
 
+  return appliedAmount;
+}
+
+async function appendUsageLedgerEntry(
+  deps: ServiceDeps,
+  billingAccountId: string,
+  resource: string,
+  amount: number
+) {
   const ledger: BillFnUsageLedgerEntry = {
     id: deps.generateId('ulg'),
     billingAccountId,
     resource,
-    amount: appliedAmount,
-    createdAt: timestamp
+    amount,
+    createdAt: toIsoString(deps.now())
   };
   await deps.db.create({
     model: TABLES.usageLedger,
@@ -2537,7 +2638,7 @@ async function processParsedWebhookEvent(
     return null;
   }
   const eventPrice = await resolveProviderEventPriceReference(deps, providerName, event, projection.subscription);
-  return applyVerificationState(deps, {
+  const applied = await applyVerificationState(deps, {
     billingAccount: projection.billingAccount,
     plan: eventPrice?.plan ?? projection.plan,
     price: eventPrice?.price ?? projection.price,
@@ -2546,6 +2647,14 @@ async function processParsedWebhookEvent(
     state: event.billingState,
     occurredAt: event.occurredAt
   });
+  if (!applied) {
+    deps.metrics.track('reconciliation.event.skipped', {
+      provider: providerName,
+      providerEventId: event.providerEventId,
+      reason: 'out_of_order'
+    });
+  }
+  return applied;
 }
 
 async function resolveProviderEventPriceReference(
@@ -2719,6 +2828,29 @@ function isProviderEventOlderThanSubscription(subscription: BillFnSubscription, 
   const incomingTime = parseProviderEventTime(occurredAt);
   const currentTime = parseProviderEventTime(lastOccurredAt);
   return incomingTime !== null && currentTime !== null && incomingTime < currentTime;
+}
+
+function nextSubscriptionUpdatedAt(now: Date, previous?: string) {
+  const currentTime = now.getTime();
+  const previousTime = previous ? Date.parse(previous) : Number.NaN;
+  return toIsoString(new Date(Number.isFinite(previousTime) && currentTime <= previousTime ? previousTime + 1 : currentTime));
+}
+
+function buildEntitlementSourceEventId(subscription: BillFnSubscription) {
+  return `${subscription.id}@${subscription.updatedAt}`;
+}
+
+function isEntitlementFromNewerSubscription(
+  snapshot: BillFnEntitlementSnapshot,
+  subscription: BillFnSubscription
+) {
+  const prefix = `${subscription.id}@`;
+  if (!snapshot.sourceEventId?.startsWith(prefix)) {
+    return false;
+  }
+  const snapshotTime = Date.parse(snapshot.sourceEventId.slice(prefix.length));
+  const subscriptionTime = Date.parse(subscription.updatedAt);
+  return Number.isFinite(snapshotTime) && Number.isFinite(subscriptionTime) && snapshotTime > subscriptionTime;
 }
 
 function parseProviderEventTime(value: string): number | null {
