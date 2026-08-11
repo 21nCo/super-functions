@@ -148,4 +148,42 @@ describe('send governance governor', () => {
       message: 'max retry attempts exceeded',
     });
   });
+
+  it('rejects reprocessing a send job after it reaches a terminal state', async () => {
+    const governor = new SendGovernor();
+    const queued = await governor.scheduleSend({
+      providerId: 'gmail',
+      tenantId: 't1',
+      userId: 'u1',
+      recipientCount: 1,
+      idempotencyKey: 'ik_terminal_send',
+    });
+    let sendCalls = 0;
+    const transport = {
+      send: async () => {
+        sendCalls += 1;
+        return { providerMessageId: 'pm-terminal' };
+      },
+    };
+
+    await expect(
+      governor.processQueuedSend({
+        jobId: queued.jobId,
+        scope: { tenantId: 't1', userId: 'u1' },
+        transport,
+      })
+    ).resolves.toMatchObject({ sent: true, jobId: queued.jobId });
+
+    await expect(
+      governor.processQueuedSend({
+        jobId: queued.jobId,
+        scope: { tenantId: 't1', userId: 'u1' },
+        transport,
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: `send job is not queued: ${queued.jobId} (sent)`,
+    });
+    expect(sendCalls).toBe(1);
+  });
 });

@@ -144,10 +144,8 @@ export function createPlugFnRouter(
       path: '/webhooks/:provider',
       handler: async (req, ctx) => {
         const { provider } = ctx.params;
-        const headers = normalizeHeaders(req.headers);
-        const event = inferWebhookEvent(provider, headers);
 
-        return handleWebhookRoute(req, ctx, provider, event, {
+        return handleWebhookRoute(req, ctx, provider, undefined, {
           maxWebhookPayloadBytes,
           webhookSecret: options.webhookSecret,
         });
@@ -757,7 +755,7 @@ async function handleWebhookRoute(
   req: Request,
   ctx: PlugFnContext,
   provider: string,
-  event: string,
+  event: string | undefined,
   options: Pick<PlugFnRouterOptions, 'webhookSecret'> & { maxWebhookPayloadBytes: number }
 ): Promise<Response> {
   let deliveryId: string | undefined;
@@ -766,10 +764,14 @@ async function handleWebhookRoute(
   let headers: Record<string, string> | undefined;
   let payloadHash: string | undefined;
   let idempotencyKey: string | undefined;
+  let resolvedEvent = event ?? 'event';
 
   try {
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
     headers = normalizeHeaders(req.headers);
+    if (!event) {
+      resolvedEvent = inferWebhookEvent(provider, headers, rawBody);
+    }
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
     const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
     payloadHash = currentPayloadHash;
@@ -800,7 +802,7 @@ async function handleWebhookRoute(
             receiptId: existing.id,
             event: {
               provider,
-              event,
+              event: resolvedEvent,
               verified: true,
             },
           });
@@ -808,11 +810,13 @@ async function handleWebhookRoute(
       }
     }
 
-    await ctx.plugFn.webhooks.verify(provider, event, undefined, headers, secret, { rawBody });
+    await ctx.plugFn.webhooks.verify(provider, resolvedEvent, undefined, headers, secret, {
+      rawBody,
+    });
 
     const receipt = await ctx.plugFn.runtime.webhooks.createReceipt({
       provider,
-      event,
+      event: resolvedEvent,
       payloadHash: currentPayloadHash,
       idempotencyKey,
       headersRedacted: redactHeaders(headers),
@@ -830,11 +834,11 @@ async function handleWebhookRoute(
     }
     const delivery = await ctx.plugFn.runtime.webhooks.createDelivery({
       receiptId: receipt.id,
-      handlerName: `${provider}.${event}`,
+      handlerName: `${provider}.${resolvedEvent}`,
       status: 'running',
       metadata: {
         provider,
-        event,
+        event: resolvedEvent,
         payloadHash: currentPayloadHash,
         idempotencyKey,
       },
@@ -843,7 +847,7 @@ async function handleWebhookRoute(
 
     const webhookEvent = await ctx.plugFn.webhooks.handle(
       provider,
-      event,
+      resolvedEvent,
       undefined,
       headers,
       secret,
@@ -865,7 +869,7 @@ async function handleWebhookRoute(
       await createFailedWebhookReceipt(
         ctx,
         provider,
-        event,
+        resolvedEvent,
         headers,
         payloadHash,
         idempotencyKey,
@@ -919,9 +923,15 @@ async function createFailedWebhookReceipt(
   }
 }
 
-function inferWebhookEvent(provider: string, headers: Record<string, string>): string {
+function inferWebhookEvent(
+  provider: string,
+  headers: Record<string, string>,
+  rawBody?: Uint8Array
+): string {
   if (provider === 'github') {
-    return headers['x-github-event'] || 'event';
+    const family = headers['x-github-event'] || 'event';
+    const action = readWebhookAction(rawBody);
+    return action ? `${family}.${action}` : family;
   }
   if (provider === 'linear') {
     return headers['linear-event'] || headers['x-linear-event'] || 'event';
@@ -933,6 +943,21 @@ function inferWebhookEvent(provider: string, headers: Record<string, string>): s
     return headers['x-goog-resource-state'] || 'message';
   }
   return headers['x-plugfn-event'] || 'event';
+}
+
+function readWebhookAction(rawBody?: Uint8Array): string | undefined {
+  if (!rawBody || rawBody.byteLength === 0) {
+    return undefined;
+  }
+
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+    return typeof payload.action === 'string' && payload.action.length > 0
+      ? payload.action
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readWebhookIdempotencyKey(

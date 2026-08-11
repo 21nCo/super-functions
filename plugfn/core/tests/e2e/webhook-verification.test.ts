@@ -58,6 +58,51 @@ describe('PlugFn webhook verification e2e', () => {
     expect(receipt?.verificationStatus).toBe('verified');
   });
 
+  it('resolves canonical GitHub webhook routes to action-specific triggers', async () => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'pull_request.closed', handler);
+
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody = JSON.stringify({
+      action: 'closed',
+      pull_request: {
+        id: 9,
+        number: 42,
+        title: 'PR title',
+        html_url: 'https://example.test/pulls/42',
+        merged: true,
+      },
+      repository: {
+        name: 'repo',
+        owner: { login: 'octo' },
+      },
+    });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-delivery': 'delivery_action_specific',
+          'x-github-event': 'pull_request',
+          'x-hub-signature-256': signRawBody(rawBody, 'whsec_github'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: { event: { event: string } };
+    };
+    expect(payload.data.event.event).toBe('pull_request.closed');
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a signature when the signed bytes and transmitted bytes differ', async () => {
     const plug = createPlug();
     plug.providers.register(githubProvider);

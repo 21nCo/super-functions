@@ -64,7 +64,7 @@ plug.webhooks.on('github', 'issues.opened', async (event) => {
 // Mount PlugFn routes
 const plugfnRouter = createPlugFnRouter(plug);
 const parsePlugFnJson = express.json();
-app.use('/api/plugfn/webhooks', express.raw({ type: '*/*' }));
+app.use('/api/plugfn/webhooks', express.raw({ type: '*/*', limit: '2mb' }));
 app.use('/api/plugfn', (req, res, next) => {
   if (req.path.startsWith('/webhooks/')) {
     next();

@@ -262,6 +262,29 @@ describe('PlugFn SDK', () => {
         })
       ).rejects.toThrow('Action failed');
     });
+
+    it('applies per-call retry options', async () => {
+      let attempts = 0;
+      const provider = mockProvider('test', {
+        'mutatingAction': mockResponse({ ok: true }),
+      });
+      provider.actions.mutatingAction.execute = async () => {
+        attempts += 1;
+        throw Object.assign(new Error('temporary failure'), { status: 500 });
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      await expect(
+        plug.test.mutatingAction({
+          userId: 'test-user',
+          params: {},
+          retry: { maxAttempts: 1 },
+        })
+      ).rejects.toThrow('temporary failure');
+      expect(attempts).toBe(1);
+    });
   });
 
   describe('Batch Execution', () => {

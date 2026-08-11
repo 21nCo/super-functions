@@ -37,8 +37,12 @@ export class RetryMiddleware {
     this.now = dependencies.now ?? (() => Date.now());
   }
 
-  async execute<T>(fn: () => Promise<T>, context?: string): Promise<{ data: T; retries: number }> {
-    const opts = { ...DEFAULT_RETRY_OPTIONS, ...this.options };
+  async execute<T>(
+    fn: () => Promise<T>,
+    context?: string,
+    overrides: RetryOptions = {}
+  ): Promise<{ data: T; retries: number }> {
+    const opts = { ...DEFAULT_RETRY_OPTIONS, ...this.options, ...overrides };
     let attempt = 0;
 
     while (attempt < opts.maxAttempts) {

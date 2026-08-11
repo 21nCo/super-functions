@@ -88,6 +88,12 @@ export class SendGovernor {
     if (!job) {
       throw new SendGovernanceError('VALIDATION_ERROR', `send job not found: ${input.jobId}`);
     }
+    if (job.status !== 'queued') {
+      throw new SendGovernanceError(
+        'VALIDATION_ERROR',
+        `send job is not queued: ${input.jobId} (${job.status})`
+      );
+    }
 
     const providerLimitConfig = {
       requests: 1,
@@ -101,7 +107,16 @@ export class SendGovernor {
       providerLimitConfig
     );
 
-    this.queue.updateStatus(job.jobId, input.scope, 'processing');
+    const currentJob = this.queue.get(input.jobId, input.scope);
+    if (!currentJob || currentJob.status !== 'queued') {
+      const status = currentJob?.status ?? 'missing';
+      throw new SendGovernanceError(
+        'VALIDATION_ERROR',
+        `send job is not queued: ${input.jobId} (${status})`
+      );
+    }
+
+    this.queue.updateStatus(currentJob.jobId, input.scope, 'processing');
 
     try {
       const result = await this.retryMiddleware.execute(

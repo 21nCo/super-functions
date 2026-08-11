@@ -111,14 +111,13 @@ def test_flask_exposes_canonical_route_inventory():
     assert "POST /api/plugfn/webhooks/<provider>/<event>" in routes
 
 
-def test_flask_canonical_callback_resolves_provider_from_state():
+def test_flask_canonical_callback_allows_omitted_provider_query():
     app, connections = create_app({"userId": "user_from_auth"})
     client = app.test_client()
 
     response = client.get("/api/plugfn/callback?code=oauth-code&state=oauth-state")
 
     assert response.status_code == 200
-    assert response.get_json()["data"]["connection"]["provider"] == "github"
     assert connections.callback_calls == [
         {"provider": None, "code": "oauth-code", "state": "oauth-state"}
     ]

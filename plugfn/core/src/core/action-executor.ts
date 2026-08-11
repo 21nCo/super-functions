@@ -183,7 +183,11 @@ export class ActionExecutor {
         if (!this.enableRetry) {
           return { data: await executeAction(), retries: 0 };
         }
-        return this.retryMiddleware.execute(executeAction, `${provider}.${action}`);
+        return this.retryMiddleware.execute(
+          executeAction,
+          `${provider}.${action}`,
+          options.retry ?? {}
+        );
       });
 
       retries = result.retries;

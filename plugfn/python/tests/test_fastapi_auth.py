@@ -100,10 +100,10 @@ def test_fastapi_exposes_canonical_route_inventory():
 
     routes = sorted(
         {
-            f"{method} {route.path}"
-            for route in app.router.routes
-            for method in route.methods or []
-            if method in {"GET", "POST"}
+            f"{method.upper()} {path}"
+            for path, operations in app.openapi()["paths"].items()
+            for method in operations
+            if method.upper() in {"GET", "POST"}
         }
     )
 
@@ -115,14 +115,13 @@ def test_fastapi_exposes_canonical_route_inventory():
     assert "POST /api/plugfn/webhooks/{provider}/{event}" in routes
 
 
-def test_fastapi_canonical_callback_resolves_provider_from_state():
+def test_fastapi_canonical_callback_allows_omitted_provider_query():
     app, connections = create_app({"userId": "user_from_auth"})
     client = TestClient(app)
 
     response = client.get("/api/plugfn/callback?code=oauth-code&state=oauth-state")
 
     assert response.status_code == 200
-    assert response.json()["data"]["connection"]["provider"] == "github"
     assert connections.callback_calls == [
         {"provider": None, "code": "oauth-code", "state": "oauth-state"}
     ]

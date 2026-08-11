@@ -4,6 +4,7 @@ import type {
   WorkflowExecution,
   WorkflowStats,
   ListWorkflowsOptions,
+  WorkflowStep,
 } from '../types/workflow.js';
 import { WorkflowStatus, WorkflowExecutionStatus } from '../types/workflow.js';
 import type { Logger } from '../types/action.js';
@@ -199,6 +200,20 @@ export class WorkflowEngine {
         },
         data: contextData,
       };
+      const checkpointStep = async (stepId: string): Promise<void> => {
+        if (!completedStepIds.includes(stepId)) {
+          completedStepIds.push(stepId);
+        }
+        await this.workflowStorage.updateExecution(execution.id, {
+          status: WorkflowExecutionStatus.Running,
+          output: this.buildExecutionOutput(context.data, {
+            idempotencyKey,
+            completedStepIds,
+            retriable: false,
+            resumed,
+          }),
+        });
+      };
 
       const startedAtMs = execution.startedAt ? execution.startedAt.getTime() : Date.now();
       let activeStepId: string | undefined;
@@ -230,18 +245,8 @@ export class WorkflowEngine {
             continue;
           }
 
-          await this.executeStep(step, context);
-          completedStepIds.push(step.id);
-
-          await this.workflowStorage.updateExecution(execution.id, {
-            status: WorkflowExecutionStatus.Running,
-            output: this.buildExecutionOutput(context.data, {
-              idempotencyKey,
-              completedStepIds,
-              retriable: false,
-              resumed,
-            }),
-          });
+          await this.executeStep(step, context, completedStepIds, checkpointStep);
+          await checkpointStep(step.id);
         }
 
         await this.workflowStorage.updateExecution(execution.id, {
@@ -310,7 +315,12 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeStep(step: any, context: WorkflowContext): Promise<void> {
+  private async executeStep(
+    step: WorkflowStep,
+    context: WorkflowContext,
+    completedStepIds: string[],
+    checkpointStep: (stepId: string) => Promise<void>
+  ): Promise<void> {
     switch (step.type) {
       case 'action': {
         const result = await step.action(context);
@@ -331,7 +341,11 @@ export class WorkflowEngine {
         const branch = condition ? step.then : step.else;
         if (branch) {
           for (const branchStep of branch) {
-            await this.executeStep(branchStep, context);
+            if (completedStepIds.includes(branchStep.id)) {
+              continue;
+            }
+            await this.executeStep(branchStep, context, completedStepIds, checkpointStep);
+            await checkpointStep(branchStep.id);
           }
         }
         break;
@@ -354,8 +368,10 @@ export class WorkflowEngine {
         );
       }
 
-      default:
-        throw new Error(`Unknown workflow step type: ${step.type}`);
+      default: {
+        const unsupportedType = (step as { type?: unknown }).type;
+        throw new Error(`Unknown workflow step type: ${String(unsupportedType)}`);
+      }
     }
   }
 

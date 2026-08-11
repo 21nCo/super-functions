@@ -56,15 +56,18 @@ interface KVSetInput {
 interface FixedWindowState {
   count: number;
   windowStart: number;
+  expiresAt?: number;
 }
 
 interface SlidingWindowState {
   timestamps: number[];
+  expiresAt?: number;
 }
 
 interface TokenBucketState {
   tokens: number;
   lastRefill: number;
+  expiresAt?: number;
 }
 
 function createInMemoryKVStore(now: () => number = Date.now): KVStoreAdapter {
@@ -215,6 +218,10 @@ function remainingStateTtl(
 
   try {
     const state = JSON.parse(value) as FixedWindowState | SlidingWindowState | TokenBucketState;
+    if (typeof state.expiresAt === 'number' && Number.isFinite(state.expiresAt)) {
+      return Math.max(1, state.expiresAt - options.currentTime);
+    }
+
     if (options.algorithm === 'fixed-window' && 'windowStart' in state) {
       return Math.max(1, state.windowStart + options.windowMs - options.currentTime);
     }
@@ -333,7 +340,12 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const oldest = timestamps[0] ?? currentTime;
       const resetAt = oldest + effectiveWindowMs;
       if (commit) {
-        await setState(kv, key, { timestamps }, Math.max(1, resetAt - currentTime));
+        await setState(
+          kv,
+          key,
+          { timestamps, expiresAt: resetAt },
+          Math.max(1, resetAt - currentTime)
+        );
       }
 
       return {
@@ -370,12 +382,14 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const resetAt = currentTime + msUntilNextToken;
 
       if (commit) {
+        const expiresAt = currentTime + Math.max(1, msUntilFull);
         await setState(
           kv,
           key,
           {
             tokens: nextTokens,
             lastRefill: currentTime,
+            expiresAt,
           },
           Math.max(1, msUntilFull)
         );
@@ -405,7 +419,12 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
 
     const resetAt = windowState.windowStart + effectiveWindowMs;
     if (commit) {
-      await setState(kv, key, windowState, Math.max(1, resetAt - currentTime));
+      await setState(
+        kv,
+        key,
+        { ...windowState, expiresAt: resetAt },
+        Math.max(1, resetAt - currentTime)
+      );
     }
 
     return {

@@ -252,11 +252,16 @@ describe('rate-limit', () => {
       await limiter.check({ key: 'provider' });
       currentTime = 30000;
 
-      await expect(limiter.checkMany({ keys: ['provider', 'tenant'] })).rejects.toThrow(
-        'write failed'
-      );
+      await expect(
+        limiter.checkMany({ keys: ['provider', 'tenant'], windowSeconds: 10 })
+      ).rejects.toThrow('write failed');
 
       expect(ttlByKey.get('ratelimit:provider')).toBe(30);
+      expect(JSON.parse(internalStore.get('ratelimit:provider') ?? '{}')).toMatchObject({
+        count: 1,
+        windowStart: 0,
+        expiresAt: 60000,
+      });
     });
 
     it('resets key state', async () => {
