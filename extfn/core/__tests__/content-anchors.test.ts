@@ -182,6 +182,122 @@ describe('content anchors', () => {
     ]);
   });
 
+  it('falls back to the name attribute when an anchor has no id or an empty id', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" name="email" />
+        <input class="target" id="" name="username" />
+        <input class="target" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'field-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'field-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'field-script/email',
+      'field-script/username',
+      'field-script/anchor-2',
+    ]);
+  });
+
+  it('preserves index fallback for explicitly empty data attributes', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" data-extfn-anchor-key="" data-testid="test-id" id="field-id" />
+        <input class="target" data-testid="" id="second-field" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'empty-data-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'empty-data-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'empty-data-script/anchor-0',
+      'empty-data-script/anchor-1',
+    ]);
+  });
+
+  it('disambiguates anchors that share a name attribute', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" type="radio" name="plan" value="free" />
+        <input class="target" type="radio" name="plan" value="pro" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'radio-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'radio-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'radio-script/plan-0',
+      'radio-script/plan-1',
+    ]);
+  });
+
+  it('keeps a name-derived key stable when another named anchor is inserted', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" type="radio" name="plan" value="free" />
+      </main>
+    `);
+    const script = defineContentScript({
+      id: 'dynamic-radio-script',
+      entry: './__tests__/fixtures/content/twitter-post.ts',
+      matches: ['https://x.com/*'],
+      anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+    });
+    const context = {
+      document: dom.window.document,
+      moduleId: 'dynamic-radio-script',
+    };
+
+    const initialAnchors = await resolveAnchors(script, context);
+    dom.window.document.querySelector('main')?.insertAdjacentHTML(
+      'beforeend',
+      '<input class="target" type="radio" name="plan" value="pro" />'
+    );
+    const updatedAnchors = await resolveAnchors(script, context);
+
+    expect(initialAnchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'dynamic-radio-script/plan',
+    ]);
+    expect(updatedAnchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'dynamic-radio-script/plan',
+      'dynamic-radio-script/plan-1',
+    ]);
+  });
+
   it('validates content script ids, entries, and style isolation deterministically', async () => {
     await expect(
       validateContentScripts(
