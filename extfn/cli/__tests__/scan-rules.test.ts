@@ -355,6 +355,9 @@ describe('scan rules', () => {
             'parse(self).eval(input);',
             'Object(self)?.eval(input);',
             'wrap(globalThis)["eval"](input);',
+            'sandbox.window.Function("return 1");',
+            'foo(window).Function("return 1");',
+            'wrap(globalThis)["Function"]("return 1");',
             'foo(eval)(input);',
             'foo(Function)(input);',
             'foo()(eval)(input);',
@@ -406,11 +409,14 @@ describe('scan rules', () => {
       'globalThis.eval(untrusted);',
       'self?.eval(untrusted);',
       '(window).eval(untrusted);',
+      '((window)).eval(untrusted);',
+      '(((window)))?.eval(untrusted);',
       'return (window).eval(untrusted);',
       'while (ready) (window).eval(untrusted);',
       'window["eval"](untrusted);',
       'window[`eval`](untrusted);',
       '(globalThis)?.["eval"](untrusted);',
+      '((globalThis))["eval"](untrusted);',
       'window/* retained */.eval(untrusted);',
     ]) {
       const findings = dynamicExecutionRule.evaluate({
@@ -441,6 +447,12 @@ describe('scan rules', () => {
       'Function("return 1");',
       'new Function("return 1");',
       '(Function)("return 1");',
+      'window.Function("return 1");',
+      'globalThis?.Function("return 1");',
+      'self["Function"]("return 1");',
+      'window[`Function`]("return 1");',
+      '((window)).Function("return 1");',
+      '((globalThis))["Function"]("return 1");',
     ]) {
       const findings = dynamicExecutionRule.evaluate({
         target: 'chromium-mv3',

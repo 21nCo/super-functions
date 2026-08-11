@@ -20,6 +20,8 @@ export interface ResolvedAnchorMount {
   mountMode: ContentMountMode;
 }
 
+const cachedNameAnchorKeys = new WeakMap<Element, Map<string, string>>();
+
 export async function resolveAnchors(
   contentScript: ContentScriptConfig,
   context: AnchorContext
@@ -87,14 +89,44 @@ export function createAnchorKey(
 
   const name = anchor.getAttribute('name');
   if (name) {
-    const key =
-      anchor.ownerDocument.getElementsByName(name).length > 1
-        ? `${name}-${index}`
-        : name;
+    const key = getStableNameAnchorKey(moduleId, anchor, name, index);
     return `${moduleId}/${key}`;
   }
 
   return `${moduleId}/anchor-${index}`;
+}
+
+function getStableNameAnchorKey(
+  moduleId: string,
+  anchor: Element,
+  name: string,
+  index: number
+): string {
+  const cachedKey = cachedNameAnchorKeys.get(anchor)?.get(moduleId);
+  if (cachedKey) {
+    return cachedKey;
+  }
+
+  const namedAnchors = Array.from(anchor.ownerDocument.getElementsByName(name));
+  const usedKeys = new Set(
+    namedAnchors
+      .map((candidate) => cachedNameAnchorKeys.get(candidate)?.get(moduleId))
+      .filter((key): key is string => key !== undefined)
+  );
+
+  let key = name;
+  if (namedAnchors.length > 1 || usedKeys.has(key)) {
+    let suffix = index;
+    while (usedKeys.has(`${name}-${suffix}`)) {
+      suffix += 1;
+    }
+    key = `${name}-${suffix}`;
+  }
+
+  const elementKeys = cachedNameAnchorKeys.get(anchor) ?? new Map();
+  elementKeys.set(moduleId, key);
+  cachedNameAnchorKeys.set(anchor, elementKeys);
+  return key;
 }
 
 async function resolveResolverAnchors(

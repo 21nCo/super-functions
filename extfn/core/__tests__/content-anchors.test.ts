@@ -265,6 +265,39 @@ describe('content anchors', () => {
     ]);
   });
 
+  it('keeps a name-derived key stable when another named anchor is inserted', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" type="radio" name="plan" value="free" />
+      </main>
+    `);
+    const script = defineContentScript({
+      id: 'dynamic-radio-script',
+      entry: './__tests__/fixtures/content/twitter-post.ts',
+      matches: ['https://x.com/*'],
+      anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+    });
+    const context = {
+      document: dom.window.document,
+      moduleId: 'dynamic-radio-script',
+    };
+
+    const initialAnchors = await resolveAnchors(script, context);
+    dom.window.document.querySelector('main')?.insertAdjacentHTML(
+      'beforeend',
+      '<input class="target" type="radio" name="plan" value="pro" />'
+    );
+    const updatedAnchors = await resolveAnchors(script, context);
+
+    expect(initialAnchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'dynamic-radio-script/plan',
+    ]);
+    expect(updatedAnchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'dynamic-radio-script/plan',
+      'dynamic-radio-script/plan-1',
+    ]);
+  });
+
   it('validates content script ids, entries, and style isolation deterministically', async () => {
     await expect(
       validateContentScripts(

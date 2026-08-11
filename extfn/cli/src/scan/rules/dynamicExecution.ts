@@ -5,14 +5,22 @@ const PARENTHESIZED_DIRECT_EVAL_PATTERN = /\(\s*eval\s*\)\s*\(/g;
 const GLOBAL_DOT_EVAL_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*eval\s*\(/;
 const PARENTHESIZED_GLOBAL_DOT_EVAL_PATTERN =
-  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.|\.)\s*eval\s*\(/g;
+  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.|\.)\s*eval\s*\(/g;
 const GLOBAL_COMPUTED_EVAL_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/;
 const PARENTHESIZED_GLOBAL_COMPUTED_EVAL_PATTERN =
-  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/g;
+  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/g;
 const FUNCTION_CONSTRUCTOR_PATTERN = /(?<![\w$.])(?:new\s+)?Function\s*\(/;
 const PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN =
   /\(\s*Function\s*\)\s*\(/g;
+const GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN =
+  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*Function\s*\(/;
+const PARENTHESIZED_GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN =
+  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.|\.)\s*Function\s*\(/g;
+const GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN =
+  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"`])Function\1\s*\]\s*\(/;
+const PARENTHESIZED_GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN =
+  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.\s*)?\[\s*(['"`])Function\1\s*\]\s*\(/g;
 const STRING_TIMER_PATTERN = /\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 const NON_CALLABLE_KEYWORD_PATTERN =
   /\b(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/;
@@ -25,6 +33,8 @@ const DYNAMIC_EXECUTION_PATTERNS = [
   GLOBAL_DOT_EVAL_PATTERN,
   GLOBAL_COMPUTED_EVAL_PATTERN,
   FUNCTION_CONSTRUCTOR_PATTERN,
+  GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN,
+  GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN,
   STRING_TIMER_PATTERN,
 ] as const;
 
@@ -47,6 +57,14 @@ function containsDynamicExecution(text: string): boolean {
     containsUnboundParenthesizedCall(
       commentFreeText,
       PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN
+    ) ||
+    containsUnboundParenthesizedCall(
+      commentFreeText,
+      PARENTHESIZED_GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN
+    ) ||
+    containsUnboundParenthesizedCall(
+      commentFreeText,
+      PARENTHESIZED_GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN
     )
   );
 }
