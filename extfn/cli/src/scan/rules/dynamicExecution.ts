@@ -69,22 +69,24 @@ function containsUnboundParenthesizedCall(
 
 function removeJavaScriptComments(text: string): string {
   const chunks: string[] = [];
+  let index = 0;
 
-  for (let index = 0; index < text.length; index += 1) {
+  while (index < text.length) {
     const character = text[index];
 
     if (isQuote(character)) {
       const quotedText = readQuotedText(text, index, character);
       chunks.push(quotedText.value);
-      index = quotedText.endIndex;
+      index = quotedText.endIndex + 1;
     } else if (text.startsWith('//', index)) {
-      index = skipLineComment(text, index);
       chunks.push('\n');
+      index = skipLineComment(text, index) + 1;
     } else if (text.startsWith('/*', index)) {
-      index = skipBlockComment(text, index);
       chunks.push(' ');
+      index = skipBlockComment(text, index) + 1;
     } else {
       chunks.push(character);
+      index += 1;
     }
   }
 
