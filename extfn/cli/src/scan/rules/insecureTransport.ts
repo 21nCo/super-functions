@@ -12,6 +12,8 @@ const EXPLICIT_HTTP_TRANSPORT_PATTERNS = [
   /\b(?:src|href|action|formaction)\s*=\s*['"]?http:\/\//i,
   /\burl\s*\(\s*['"]?http:\/\//i,
 ] as const;
+const NAMESPACE_ASSIGNMENT_PATTERN =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])([^'"`]+)\2/g;
 const WELL_KNOWN_NAMESPACE_URIS = [
   'http://www.w3.org/1998/Math/MathML',
   'http://www.w3.org/1999/xhtml',
@@ -22,7 +24,10 @@ const WELL_KNOWN_NAMESPACE_URIS = [
 ] as const;
 
 function containsInsecureTransport(text: string): boolean {
-  if (EXPLICIT_HTTP_TRANSPORT_PATTERNS.some((pattern) => pattern.test(text))) {
+  if (
+    containsIndirectNamespaceTransport(text) ||
+    EXPLICIT_HTTP_TRANSPORT_PATTERNS.some((pattern) => pattern.test(text))
+  ) {
     return true;
   }
 
@@ -46,6 +51,50 @@ function containsInsecureTransport(text: string): boolean {
   }
 
   return false;
+}
+
+function containsIndirectNamespaceTransport(text: string): boolean {
+  for (const match of text.matchAll(NAMESPACE_ASSIGNMENT_PATTERN)) {
+    const identifier = match[1];
+    const value = match[3];
+    const isNamespaceIdentifier = WELL_KNOWN_NAMESPACE_URIS.some(
+      (uri) => uri === value
+    );
+    if (
+      isNamespaceIdentifier &&
+      containsIdentifierTransport(text, identifier)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function containsIdentifierTransport(text: string, identifier: string): boolean {
+  const identifierReference = `(?<![\\w$])${escapeRegExp(identifier)}(?![\\w$])`;
+  return [
+    new RegExp(
+      `\\b(?:fetch|Request|sendBeacon|WebSocket|EventSource|importScripts)\\s*\\(\\s*${identifierReference}`,
+      'i'
+    ),
+    new RegExp(
+      `\\.open\\s*\\([^,\\r\\n]*,\\s*${identifierReference}`,
+      'i'
+    ),
+    new RegExp(
+      `(?<![\\w$.])(?:window|globalThis|self)\\s*(?:\\?\\.|\\.)\\s*open\\s*\\(\\s*${identifierReference}`,
+      'i'
+    ),
+    new RegExp(
+      `(?<![\\w$.])(?:(?:window|globalThis|self)\\s*\\.\\s*)?location(?:\\s*\\.\\s*href)?\\s*=\\s*${identifierReference}`,
+      'i'
+    ),
+  ].some((pattern) => pattern.test(text));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export const insecureTransportRule: ScanRule = {

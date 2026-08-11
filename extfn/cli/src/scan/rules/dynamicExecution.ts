@@ -7,9 +7,9 @@ const GLOBAL_DOT_EVAL_PATTERN =
 const PARENTHESIZED_GLOBAL_DOT_EVAL_PATTERN =
   /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.|\.)\s*eval\s*\(/g;
 const GLOBAL_COMPUTED_EVAL_PATTERN =
-  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"])eval\1\s*\]\s*\(/;
+  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/;
 const PARENTHESIZED_GLOBAL_COMPUTED_EVAL_PATTERN =
-  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.\s*)?\[\s*(['"])eval\1\s*\]\s*\(/g;
+  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/g;
 const FUNCTION_CONSTRUCTOR_PATTERN = /(?<![\w$.])(?:new\s+)?Function\s*\(/;
 const PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN =
   /\(\s*Function\s*\)\s*\(/g;

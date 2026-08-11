@@ -248,6 +248,36 @@ describe('scan rules', () => {
     expect(findings).toEqual([]);
   });
 
+  it('flags allowlisted namespace constants used by transport APIs', () => {
+    for (const contents of [
+      'const endpoint = "http://www.w3.org/2000/svg"; fetch(endpoint);',
+      'const endpoint = "http://www.w3.org/2000/svg"; xhr.open(method, endpoint);',
+      'const endpoint = "http://www.w3.org/2000/svg"; window.open(endpoint);',
+      'const endpoint = "http://www.w3.org/2000/svg"; location.href = endpoint;',
+    ]) {
+      const findings = insecureTransportRule.evaluate({
+        target: 'chromium-mv3',
+        outputDir: 'dist/chromium-mv3',
+        manifestPath: 'dist/chromium-mv3/manifest.json',
+        manifest: {},
+        files: [
+          {
+            absolutePath: '/tmp/popup.js',
+            relativePath: 'popup.js',
+            contents,
+          },
+        ],
+      });
+
+      expect(findings).toEqual([
+        expect.objectContaining({
+          ruleId: 'SCAN-HTTP-001',
+          file: 'popup.js',
+        }),
+      ]);
+    }
+  });
+
   it('does not flag member-access methods named eval as dynamic execution', () => {
     const findings = dynamicExecutionRule.evaluate({
       target: 'chromium-mv3',
@@ -329,6 +359,7 @@ describe('scan rules', () => {
       '(window).eval(untrusted);',
       'return (window).eval(untrusted);',
       'window["eval"](untrusted);',
+      'window[`eval`](untrusted);',
       '(globalThis)?.["eval"](untrusted);',
       'window/* retained */.eval(untrusted);',
     ]) {
