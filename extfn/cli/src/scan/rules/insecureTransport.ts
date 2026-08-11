@@ -7,7 +7,7 @@ const HTTP_PATTERN = /http:\/\//gi;
 const NAMESPACE_URI_BOUNDARY_PATTERN = /[\s'"`),\]}>]/;
 const EXPLICIT_HTTP_TRANSPORT_PATTERNS = [
   /\b(?:fetch|Request|sendBeacon|WebSocket|EventSource|importScripts)\s*\(\s*['"`]http:\/\//i,
-  /\.open\s*\(\s*[^,\r\n]*,\s*['"`]http:\/\//i,
+  /\.open\s*\([^,\r\n]*,\s*['"`]http:\/\//i,
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*open\s*\(\s*['"`]http:\/\//i,
   /\b(?:src|href|action|formaction)\s*=\s*['"]?http:\/\//i,
   /\burl\s*\(\s*['"]?http:\/\//i,

@@ -7,9 +7,9 @@ const GLOBAL_DOT_EVAL_PATTERN =
 const PARENTHESIZED_GLOBAL_DOT_EVAL_PATTERN =
   /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.|\.)\s*eval\s*\(/g;
 const GLOBAL_COMPUTED_EVAL_PATTERN =
-  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.)?\s*\[\s*(['"])eval\1\s*\]\s*\(/;
+  /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"])eval\1\s*\]\s*\(/;
 const PARENTHESIZED_GLOBAL_COMPUTED_EVAL_PATTERN =
-  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.)?\s*\[\s*(['"])eval\1\s*\]\s*\(/g;
+  /\(\s*(?:window|globalThis|self)\s*\)\s*(?:\?\.\s*)?\[\s*(['"])eval\1\s*\]\s*\(/g;
 const FUNCTION_CONSTRUCTOR_PATTERN = /(?<![\w$.])(?:new\s+)?Function\s*\(/;
 const PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN =
   /\(\s*Function\s*\)\s*\(/g;
@@ -68,62 +68,63 @@ function containsUnboundParenthesizedCall(
 }
 
 function removeJavaScriptComments(text: string): string {
-  let result = '';
-  let quote: "'" | '"' | '`' | undefined;
+  const chunks: string[] = [];
 
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
-    const nextCharacter = text[index + 1];
 
-    if (quote !== undefined) {
-      result += character;
-      if (character === '\\' && nextCharacter !== undefined) {
-        result += nextCharacter;
-        index += 1;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-      continue;
+    if (isQuote(character)) {
+      const quotedText = readQuotedText(text, index, character);
+      chunks.push(quotedText.value);
+      index = quotedText.endIndex;
+    } else if (text.startsWith('//', index)) {
+      index = skipLineComment(text, index);
+      chunks.push('\n');
+    } else if (text.startsWith('/*', index)) {
+      index = skipBlockComment(text, index);
+      chunks.push(' ');
+    } else {
+      chunks.push(character);
     }
-
-    if (character === "'" || character === '"' || character === '`') {
-      quote = character;
-      result += character;
-      continue;
-    }
-
-    if (character === '/' && nextCharacter === '/') {
-      result += ' ';
-      index += 2;
-      while (index < text.length && text[index] !== '\n') {
-        index += 1;
-      }
-      if (index < text.length) {
-        result += '\n';
-      }
-      continue;
-    }
-
-    if (character === '/' && nextCharacter === '*') {
-      result += ' ';
-      index += 2;
-      while (
-        index < text.length &&
-        !(text[index] === '*' && text[index + 1] === '/')
-      ) {
-        if (text[index] === '\n') {
-          result += '\n';
-        }
-        index += 1;
-      }
-      index += 1;
-      continue;
-    }
-
-    result += character;
   }
 
-  return result;
+  return chunks.join('');
+}
+
+function isQuote(character: string): character is "'" | '"' | '`' {
+  return character === "'" || character === '"' || character === '`';
+}
+
+function readQuotedText(
+  text: string,
+  startIndex: number,
+  quote: "'" | '"' | '`'
+): { value: string; endIndex: number } {
+  for (let index = startIndex + 1; index < text.length; index += 1) {
+    if (text[index] === '\\') {
+      index += 1;
+    } else if (text[index] === quote) {
+      return {
+        value: text.slice(startIndex, index + 1),
+        endIndex: index,
+      };
+    }
+  }
+
+  return {
+    value: text.slice(startIndex),
+    endIndex: text.length - 1,
+  };
+}
+
+function skipLineComment(text: string, startIndex: number): number {
+  const newlineIndex = text.indexOf('\n', startIndex + 2);
+  return newlineIndex === -1 ? text.length - 1 : newlineIndex;
+}
+
+function skipBlockComment(text: string, startIndex: number): number {
+  const closingIndex = text.indexOf('*/', startIndex + 2);
+  return closingIndex === -1 ? text.length - 1 : closingIndex + 1;
 }
 
 export const dynamicExecutionRule: ScanRule = {
