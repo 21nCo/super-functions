@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import type { BillFnChangeSubscriptionInput } from '@billfn/core';
+import type { BillFnChangeSubscriptionInput, BillFnRestorePurchasesInput } from '@billfn/core';
 import { createDodoProvider } from '../index.js';
 
 function changeSubscriptionInput(): BillFnChangeSubscriptionInput {
@@ -53,6 +53,36 @@ function changeSubscriptionInput(): BillFnChangeSubscriptionInput {
     },
     effectiveAt: 'immediate',
     prorationBehavior: 'provider_default'
+  };
+}
+
+function restorePurchasesInput(): BillFnRestorePurchasesInput {
+  return {
+    billingAccount: {
+      id: 'ba_user_123',
+      ownerType: 'user',
+      ownerId: 'user_123',
+      createdAt: '2026-04-20T00:00:00.000Z',
+      updatedAt: '2026-04-20T00:00:00.000Z'
+    },
+    plan: {
+      productKey: 'nucleus',
+      planKey: 'pro',
+      displayName: 'Pro',
+      features: {},
+      limits: {},
+      prices: []
+    },
+    price: {
+      priceId: 'price_123',
+      provider: 'dodo',
+      providerProductId: 'pdt_123',
+      amount: 12,
+      currency: 'USD',
+      interval: 'month',
+      kind: 'subscription'
+    },
+    purchaseReference: 'sub_123'
   };
 }
 
@@ -209,6 +239,56 @@ describe('@billfn/provider-dodo', () => {
       },
       payload: { subscriptionId: 'sub_payload' }
     })).rejects.toMatchObject({ code: 'BILLFN_CONFLICT' });
+  });
+
+  it('validates the Dodo purchase reference, billing account, and product before restoring', async () => {
+    const matchingMetadata = {
+      billfn_billing_account_id: 'ba_user_123',
+      billfn_product_id: 'pdt_123'
+    };
+    const invalidResources = [
+      {
+        subscription_id: 'sub_other',
+        product_id: 'pdt_123',
+        metadata: matchingMetadata
+      },
+      {
+        subscription_id: 'sub_123',
+        product_id: 'pdt_other',
+        metadata: matchingMetadata
+      },
+      {
+        subscription_id: 'sub_123',
+        product_id: 'pdt_123',
+        metadata: { ...matchingMetadata, billfn_billing_account_id: 'ba_other' }
+      }
+    ];
+
+    for (const resource of invalidResources) {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify(resource), { status: 200 })) as typeof fetch;
+      const provider = createDodoProvider({ apiKey: 'test-key', fetch: fetchMock });
+
+      await expect(provider.restorePurchases?.(restorePurchasesInput())).rejects.toMatchObject({
+        code: 'BILLFN_CONFLICT'
+      });
+    }
+  });
+
+  it('restores a Dodo purchase only when its ownership metadata matches', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      subscription_id: 'sub_123',
+      product_id: 'pdt_123',
+      status: 'active',
+      metadata: {
+        billfn_billing_account_id: 'ba_user_123',
+        billfn_product_id: 'pdt_123'
+      }
+    }), { status: 200 })) as typeof fetch;
+    const provider = createDodoProvider({ apiKey: 'test-key', fetch: fetchMock });
+
+    await expect(provider.restorePurchases?.(restorePurchasesInput())).resolves.toEqual([
+      expect.objectContaining({ providerSubscriptionId: 'sub_123' })
+    ]);
   });
 
   it('issues refunds through the refunds endpoint', async () => {

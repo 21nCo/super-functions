@@ -84,6 +84,7 @@ const TABLES = {
 
 const PROVIDER_EVENT_OCCURRED_AT_METADATA_KEY = 'billfnProviderEventOccurredAt';
 const WEBHOOK_RECEIPT_CLAIM_LEASE_MS = 15 * 60 * 1000;
+const RECONCILIATION_JOB_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const DUPLICATE_RECORD_ERROR_CODES = new Set([
   'P2002',
   '23505',
@@ -326,20 +327,27 @@ export function createBillFnService(config: BillFnConfig) {
     if (job.status === 'succeeded') {
       return job;
     }
-    if (job.status === 'running') {
+    const claimTime = deps.now();
+    const previousUpdatedAt = Date.parse(job.updatedAt);
+    const runningClaimIsFresh =
+      job.status === 'running' &&
+      Number.isFinite(previousUpdatedAt) &&
+      claimTime.getTime() - previousUpdatedAt < RECONCILIATION_JOB_CLAIM_LEASE_MS;
+    if (runningClaimIsFresh) {
       throw createBillFnError({
         code: 'BILLFN_CONFLICT',
         message: 'Reconciliation job is already running'
       });
     }
 
-    const runningAt = toIsoString(deps.now());
+    const runningAt = toIsoString(claimTime);
     const attempts = job.attempts + 1;
     const claimed = await deps.db.updateMany({
       model: TABLES.reconciliationJobs,
       where: [
         { field: 'id', operator: 'eq', value: job.id },
-        { field: 'status', operator: 'eq', value: job.status }
+        { field: 'status', operator: 'eq', value: job.status },
+        { field: 'updatedAt', operator: 'eq', value: job.updatedAt }
       ],
       data: {
         status: 'running',
@@ -369,22 +377,44 @@ export function createBillFnService(config: BillFnConfig) {
 
     try {
       await processReconciliationJob(deps, job);
-      job = await deps.db.update<BillFnReconciliationJob>({
+      const completedAt = toIsoString(deps.now());
+      const finalized = await deps.db.updateMany({
         model: TABLES.reconciliationJobs,
-        where: [{ field: 'id', operator: 'eq', value: job.id }],
+        where: [
+          { field: 'id', operator: 'eq', value: job.id },
+          { field: 'status', operator: 'eq', value: 'running' },
+          { field: 'updatedAt', operator: 'eq', value: runningAt }
+        ],
         data: {
           status: 'succeeded',
-          completedAt: toIsoString(deps.now()),
-          updatedAt: toIsoString(deps.now())
+          completedAt,
+          updatedAt: completedAt
         },
         namespace: deps.namespace
       });
-      return job;
+      if (finalized !== 1) {
+        throw createBillFnError({
+          code: 'BILLFN_CONFLICT',
+          message: 'Reconciliation job processing lease was lost before finalization'
+        });
+      }
+      const completedJob: BillFnReconciliationJob = {
+        ...job,
+        status: 'succeeded',
+        completedAt,
+        updatedAt: completedAt
+      };
+      return completedJob;
     } catch (error) {
+      let failed = 0;
       try {
-        await deps.db.update<BillFnReconciliationJob>({
+        failed = await deps.db.updateMany({
           model: TABLES.reconciliationJobs,
-          where: [{ field: 'id', operator: 'eq', value: job.id }],
+          where: [
+            { field: 'id', operator: 'eq', value: job.id },
+            { field: 'status', operator: 'eq', value: 'running' },
+            { field: 'updatedAt', operator: 'eq', value: runningAt }
+          ],
           data: {
             status: 'failed',
             error: error instanceof Error ? error.message : String(error),
@@ -393,7 +423,7 @@ export function createBillFnService(config: BillFnConfig) {
           namespace: deps.namespace
         });
       } finally {
-        if (job.kind === 'webhook-event' && job.provider && job.providerEventId) {
+        if (failed === 1 && job.kind === 'webhook-event' && job.provider && job.providerEventId) {
           await releaseWebhookReceiptClaim(
             deps,
             buildWebhookReceiptId(job.provider, job.providerEventId),

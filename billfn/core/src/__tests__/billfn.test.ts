@@ -1525,6 +1525,44 @@ describe('@billfn/core', () => {
     expect(fetchCalls).toBe(1);
   });
 
+  it('reclaims a reconciliation job after its running lease expires', async () => {
+    const db = memoryAdapter({ debug: false });
+    let currentTime = new Date('2026-04-20T00:16:00.000Z');
+    await db.create({
+      model: 'reconciliationJobs',
+      data: {
+        id: 'job_stale_running',
+        kind: 'account-scan',
+        status: 'running',
+        billingAccountId: 'ba_stale_running',
+        attempts: 1,
+        createdAt: '2026-04-20T00:00:00.000Z',
+        updatedAt: '2026-04-20T00:00:00.000Z'
+      },
+      namespace: 'billfn'
+    });
+    const billfn = createBillFn({
+      db,
+      catalog,
+      now: () => currentTime
+    });
+
+    await expect(
+      billfn.runReconciliationJob({ jobId: 'job_stale_running' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { job: { status: 'succeeded', attempts: 2 } }
+    });
+
+    currentTime = new Date('2026-04-20T00:17:00.000Z');
+    await expect(
+      billfn.runReconciliationJob({ jobId: 'job_stale_running' })
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { job: { status: 'succeeded', attempts: 2 } }
+    });
+  });
+
   it('skips already processed notification-history receipts during replay', async () => {
     const db = memoryAdapter({ debug: false });
     let providerSubscriptionId = '';

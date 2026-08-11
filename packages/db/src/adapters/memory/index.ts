@@ -35,7 +35,18 @@ export interface MemoryAdapterConfig {
   debug?: boolean;
 }
 
-function createMemoryInternalCrud(): InternalCrud {
+type MemoryInternalSnapshot = {
+  store: Map<string, Map<string, Record<string, unknown>>>;
+  ensuredTables: Set<string>;
+};
+
+type MemoryInternalCrudState = {
+  crud: InternalCrud;
+  snapshot(): MemoryInternalSnapshot;
+  restore(snapshot: MemoryInternalSnapshot): void;
+};
+
+function createMemoryInternalCrud(): MemoryInternalCrudState {
   const internalStore = new Map<string, Map<string, Record<string, unknown>>>();
   const ensuredTables = new Set<string>();
   const TABLE_NAME_RE = /^__datafn_[a-z0-9_]+$/;
@@ -60,7 +71,7 @@ function createMemoryInternalCrud(): InternalCrud {
     });
   }
 
-  return {
+  const crud: InternalCrud = {
     async ensureTable(name: string, _columns: InternalColumnDef[]): Promise<void> {
       if (!TABLE_NAME_RE.test(name)) {
         throw new Error(`ensureTable: table name must start with "__datafn_": "${name}"`);
@@ -174,6 +185,34 @@ function createMemoryInternalCrud(): InternalCrud {
       return results;
     },
   };
+
+  return {
+    crud,
+    snapshot() {
+      return {
+        store: new Map(
+          Array.from(internalStore, ([tableName, records]) => [
+            tableName,
+            new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+          ]),
+        ),
+        ensuredTables: new Set(ensuredTables),
+      };
+    },
+    restore(snapshot) {
+      internalStore.clear();
+      for (const [tableName, records] of snapshot.store) {
+        internalStore.set(
+          tableName,
+          new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+        );
+      }
+      ensuredTables.clear();
+      for (const tableName of snapshot.ensuredTables) {
+        ensuredTables.add(tableName);
+      }
+    },
+  };
 }
 
 /**
@@ -181,6 +220,8 @@ function createMemoryInternalCrud(): InternalCrud {
  */
 export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
   let adapter!: Adapter;
+  let transactionTail = Promise.resolve();
+  const internalCrudState = createMemoryInternalCrud();
   const factory = createAdapterFactory({
     config: {
       adapterId: 'memory',
@@ -231,7 +272,6 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
       const store = new Map<string, Map<string, any>>();
       const schemaVersions = new Map<string, number>();
       const startTime = Date.now();
-      let transactionTail = Promise.resolve();
 
       const cloneStore = () => new Map(
         Array.from(store, ([tableName, records]) => [
@@ -511,6 +551,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
 
           const storeSnapshot = cloneStore();
           const schemaVersionsSnapshot = new Map(schemaVersions);
+          const internalSnapshot = internalCrudState.snapshot();
           let rolledBack = false;
           const transactionAdapter = Object.assign(
             Object.fromEntries(
@@ -520,6 +561,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
               async commit() {},
               async rollback() {
                 restoreStore(storeSnapshot, schemaVersionsSnapshot);
+                internalCrudState.restore(internalSnapshot);
                 rolledBack = true;
               },
             },
@@ -530,6 +572,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           } catch (error) {
             if (!rolledBack) {
               restoreStore(storeSnapshot, schemaVersionsSnapshot);
+              internalCrudState.restore(internalSnapshot);
             }
             throw error;
           } finally {
@@ -570,9 +613,31 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  adapter = factory({});
-  const internalCrud = createMemoryInternalCrud();
-  return Object.assign(adapter, { internal: internalCrud });
+  adapter = Object.assign(factory({}), { internal: internalCrudState.crud });
+
+  const transactionAwareInternal = new Proxy(internalCrudState.crud, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== 'function') return value;
+      return async (...args: unknown[]) => {
+        await transactionTail;
+        return Reflect.apply(value, target, args);
+      };
+    },
+  });
+
+  return new Proxy(adapter, {
+    get(target, property, receiver) {
+      if (property === 'internal') return transactionAwareInternal;
+
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== 'function' || property === 'transaction') return value;
+      return async (...args: unknown[]) => {
+        await transactionTail;
+        return Reflect.apply(value, target, args);
+      };
+    },
+  });
 }
 
 /**

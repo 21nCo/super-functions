@@ -280,19 +280,19 @@ export function createDodoProvider(config: DodoProviderConfig): BillFnProviderAd
       } satisfies BillFnProviderOperationResult;
     },
     async restorePurchases(input: BillFnRestorePurchasesInput) {
-      if (input.price.kind === 'subscription') {
-        const response = await requestJson(fetchImpl, `${baseUrl}/subscriptions/${input.purchaseReference}`, {
+      const isSubscription = input.price.kind === 'subscription';
+      const response = await requestJson(
+        fetchImpl,
+        `${baseUrl}/${isSubscription ? 'subscriptions' : 'payments'}/${input.purchaseReference}`,
+        {
           method: 'GET',
           headers: createHeaders(config.apiKey)
-        });
-        return [mapDodoState(true, response)];
-      }
+        }
+      );
 
-      const response = await requestJson(fetchImpl, `${baseUrl}/payments/${input.purchaseReference}`, {
-        method: 'GET',
-        headers: createHeaders(config.apiKey)
-      });
-      return [mapDodoState(false, response)];
+      assertDodoRestoreOwnership(input, isSubscription, response);
+
+      return [mapDodoState(isSubscription, response)];
     },
     async parseWebhook(input: BillFnParseWebhookInput): Promise<BillFnParsedWebhookEvent[]> {
       if (!config.webhookSecret) {
@@ -383,11 +383,7 @@ function assertDodoVerificationOwnership(
     ? readString(response, ['subscription_id', 'id'])
     : readString(response, ['payment_id', 'id']);
   const metadata = asRecord(response.metadata);
-  const productMatches = isSubscription
-    ? readString(response, ['product_id']) === input.price.providerProductId
-    : asArrayOfRecords(response.product_cart).some(
-        (item) => readString(item, ['product_id']) === input.price.providerProductId
-      );
+  const productMatches = dodoProductMatches(response, isSubscription, input.price.providerProductId);
   const metadataMatches =
     metadata?.[DODO_CHECKOUT_SESSION_METADATA_KEY] === input.checkoutSession.checkoutSessionId &&
     metadata[DODO_BILLING_ACCOUNT_METADATA_KEY] === input.billingAccount.id &&
@@ -399,6 +395,40 @@ function assertDodoVerificationOwnership(
       message: 'Dodo resource does not match the checkout session, billing account, and product'
     });
   }
+}
+
+function assertDodoRestoreOwnership(
+  input: BillFnRestorePurchasesInput,
+  isSubscription: boolean,
+  response: Record<string, unknown>
+) {
+  const responseId = isSubscription
+    ? readString(response, ['subscription_id', 'id'])
+    : readString(response, ['payment_id', 'id']);
+  const metadata = asRecord(response.metadata);
+  const productMatches = dodoProductMatches(response, isSubscription, input.price.providerProductId);
+  const metadataMatches =
+    metadata?.[DODO_BILLING_ACCOUNT_METADATA_KEY] === input.billingAccount.id &&
+    metadata[DODO_PRODUCT_METADATA_KEY] === input.price.providerProductId;
+
+  if (responseId !== input.purchaseReference || !productMatches || !metadataMatches) {
+    throw createBillFnError({
+      code: 'BILLFN_CONFLICT',
+      message: 'Dodo resource does not match the purchase reference, billing account, and product'
+    });
+  }
+}
+
+function dodoProductMatches(
+  response: Record<string, unknown>,
+  isSubscription: boolean,
+  providerProductId: string
+) {
+  return isSubscription
+    ? readString(response, ['product_id']) === providerProductId
+    : asArrayOfRecords(response.product_cart).some(
+        (item) => readString(item, ['product_id']) === providerProductId
+      );
 }
 
 async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestInit) {
