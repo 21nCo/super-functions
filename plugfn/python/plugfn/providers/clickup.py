@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 from ..types import AuthType, Provider
+from ._shared import require_object_response
 
 
 class ClickUpTaskGetParams(BaseModel):
@@ -23,7 +24,7 @@ class ClickUpTaskListParams(BaseModel):
 class ClickUpAction:
     """ClickUp action definition."""
 
-    def __init__(self, name: str, display_name: str, description: str):
+    def __init__(self, name: str, display_name: str, description: str) -> None:
         self.name = name
         self.display_name = display_name
         self.description = description
@@ -35,7 +36,7 @@ class ClickUpAction:
 class ClickUpTasksGetAction(ClickUpAction):
     """Fetch a ClickUp task."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="tasks.get",
             display_name="Get Task",
@@ -44,13 +45,14 @@ class ClickUpTasksGetAction(ClickUpAction):
 
     async def execute(self, params: Dict[str, Any], context: Any) -> Dict[str, Any]:
         validated = ClickUpTaskGetParams(**params)
-        return await context.http.get(f"task/{validated.task_id}")
+        response = await context.http.get(f"task/{validated.task_id}")
+        return require_object_response(response)
 
 
 class ClickUpTasksListAction(ClickUpAction):
     """List ClickUp tasks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="tasks.list",
             display_name="List Tasks",
@@ -60,7 +62,10 @@ class ClickUpTasksListAction(ClickUpAction):
     async def execute(self, params: Dict[str, Any], context: Any) -> Dict[str, Any]:
         validated = ClickUpTaskListParams(**params)
         query_params = {"page": validated.page} if validated.page is not None else None
-        return await context.http.get(f"list/{validated.list_id}/task", params=query_params)
+        response = await context.http.get(
+            f"list/{validated.list_id}/task", params=query_params
+        )
+        return require_object_response(response)
 
 
 clickup_provider = Provider(

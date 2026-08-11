@@ -1,9 +1,11 @@
 """GitHub provider implementation."""
 
 from typing import Any, Dict
+
 from pydantic import BaseModel, Field
 
-from ..types import Provider, AuthType
+from ..types import AuthType, Provider
+from ._shared import require_object_response
 
 
 class GitHubIssueParams(BaseModel):
@@ -59,7 +61,7 @@ class GitHubPRParams(BaseModel):
 class GitHubAction:
     """GitHub action definition."""
 
-    def __init__(self, name: str, display_name: str, description: str):
+    def __init__(self, name: str, display_name: str, description: str) -> None:
         self.name = name
         self.display_name = display_name
         self.description = description
@@ -72,7 +74,7 @@ class GitHubAction:
 class GitHubIssuesCreateAction(GitHubAction):
     """Create a GitHub issue."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="issues.create",
             display_name="Create Issue",
@@ -93,13 +95,13 @@ class GitHubIssuesCreateAction(GitHubAction):
             },
         )
 
-        return response
+        return require_object_response(response)
 
 
 class GitHubIssuesGetAction(GitHubAction):
     """Get a GitHub issue."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="issues.get",
             display_name="Get Issue",
@@ -114,13 +116,13 @@ class GitHubIssuesGetAction(GitHubAction):
             f"/repos/{validated.owner}/{validated.repo}/issues/{validated.issue_number}"
         )
 
-        return response
+        return require_object_response(response)
 
 
 class GitHubReposGetAction(GitHubAction):
     """Get a GitHub repository."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="repos.get",
             display_name="Get Repository",
@@ -135,13 +137,13 @@ class GitHubReposGetAction(GitHubAction):
             f"/repos/{validated.owner}/{validated.repo}"
         )
 
-        return response
+        return require_object_response(response)
 
 
 class GitHubPRsCreateAction(GitHubAction):
     """Create a GitHub pull request."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="pulls.create",
             display_name="Create Pull Request",
@@ -162,7 +164,7 @@ class GitHubPRsCreateAction(GitHubAction):
             },
         )
 
-        return response
+        return require_object_response(response)
 
 
 # GitHub provider definition

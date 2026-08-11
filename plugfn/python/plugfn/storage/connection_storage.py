@@ -2,13 +2,13 @@
 
 from typing import Any, Dict, List, Optional
 
-from ..types import Connection
+from ..types import Connection, DatabaseAdapter
 
 
 class ConnectionStorage:
     """Storage layer for connections."""
 
-    def __init__(self, adapter: Any):
+    def __init__(self, adapter: DatabaseAdapter):
         """Initialize connection storage.
 
         Args:

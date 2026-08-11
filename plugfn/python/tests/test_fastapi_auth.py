@@ -178,3 +178,23 @@ def test_fastapi_connections_auth_uses_authenticated_user_for_oauth_start():
             "connection_name": None,
         }
     ]
+
+
+def test_fastapi_redacts_unexpected_exception_details():
+    app, connections = create_app({"userId": "user_from_auth"})
+
+    async def fail_list(*_args, **_kwargs):
+        raise RuntimeError("database password is secret-value")
+
+    connections.list = fail_list
+    response = TestClient(app).get("/api/plugfn/connections")
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "An internal error occurred",
+        "status": 500,
+        "details": {},
+    }
+    assert "secret-value" not in response.text

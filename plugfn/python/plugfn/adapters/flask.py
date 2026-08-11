@@ -8,7 +8,7 @@ try:
 except ImportError:
     raise ImportError(
         "Flask is required for this adapter. Install it with: pip install plugfn[flask]"
-    )
+    ) from None
 
 from ._shared import (
     AdapterSecurityError,
@@ -40,23 +40,23 @@ def mount_plugfn(
             loop.close()
 
     @bp.route("/connections/auth", methods=["POST"])
-    def create_connection_auth():
+    def create_connection_auth() -> Any:
         return run_async(_handle_auth_url_request(plug, auth))
 
     @bp.route("/auth/<provider>", methods=["GET"])
-    def legacy_get_auth_url(provider: str):
+    def legacy_get_auth_url(provider: str) -> Any:
         return run_async(_handle_auth_url_request(plug, auth, provider_override=provider))
 
     @bp.route("/callback", methods=["GET"])
-    def canonical_callback():
+    def canonical_callback() -> Any:
         return run_async(_handle_callback(request.values.get("provider"), request.values.get("code"), request.values.get("state"), plug))
 
     @bp.route("/auth/<provider>/callback", methods=["GET"])
-    def legacy_callback(provider: str):
+    def legacy_callback(provider: str) -> Any:
         return run_async(_handle_callback(provider, request.values.get("code"), request.values.get("state"), plug))
 
     @bp.route("/connections", methods=["GET"])
-    def list_connections():
+    def list_connections() -> Any:
         try:
             provider = request.values.get("provider")
             principal = run_async(resolve_principal(request, plug, auth))
@@ -67,7 +67,7 @@ def mount_plugfn(
             return _error_from_exception(error)
 
     @bp.route("/connections/disconnect", methods=["POST"])
-    def disconnect_connection():
+    def disconnect_connection() -> Any:
         try:
             payload = request.get_json(silent=False)
             if not isinstance(payload, dict):
@@ -83,7 +83,7 @@ def mount_plugfn(
             return _error_from_exception(error)
 
     @bp.route("/connections/<connection_id>", methods=["DELETE"])
-    def legacy_disconnect(connection_id: str):
+    def legacy_disconnect(connection_id: str) -> Any:
         try:
             principal = run_async(resolve_principal(request, plug, auth))
             run_async(plug.connections.disconnect(connection_id=connection_id, user_id=principal["user_id"]))
@@ -92,7 +92,7 @@ def mount_plugfn(
             return _error_from_exception(error)
 
     @bp.route("/webhooks/<provider>/<event>", methods=["POST"])
-    def handle_webhook(provider: str, event: str):
+    def handle_webhook(provider: str, event: str) -> Any:
         try:
             raw_body = request.get_data(cache=True, as_text=False)
             headers = normalize_headers(dict(request.headers))
@@ -112,7 +112,7 @@ def mount_plugfn(
             return _error_from_exception(error)
 
     @bp.route("/providers", methods=["GET"])
-    def list_providers():
+    def list_providers() -> Any:
         try:
             run_async(resolve_principal(request, plug, auth))
             providers = plug.providers.list()
@@ -128,7 +128,7 @@ async def _handle_auth_url_request(
     plug: Any,
     auth_override: Optional[Any],
     provider_override: Optional[str] = None,
-):
+) -> Any:
     try:
         if request.method == "POST":
             payload = request.get_json(silent=False)
@@ -165,7 +165,7 @@ async def _handle_auth_url_request(
         return _error_from_exception(error)
 
 
-async def _handle_callback(provider: Any, code: Any, state: Any, plug: Any):
+async def _handle_callback(provider: Any, code: Any, state: Any, plug: Any) -> Any:
     try:
         if provider is not None and (not isinstance(provider, str) or not provider):
             raise AdapterSecurityError("VALIDATION_ERROR", "provider is required", 400)
@@ -198,10 +198,10 @@ def _provider_json(provider: Any) -> dict[str, Any]:
     }
 
 
-def _success(data: dict[str, Any], status_code: int = 200):
+def _success(data: dict[str, Any], status_code: int = 200) -> tuple[Any, int]:
     return jsonify(success_payload(data)), status_code
 
 
-def _error_from_exception(error: Exception):
+def _error_from_exception(error: Exception) -> tuple[Any, int]:
     payload, status_code = error_payload(error)
     return jsonify(payload), status_code

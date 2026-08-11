@@ -12,8 +12,17 @@ class AdapterSecurityError(Exception):
     ):
         super().__init__(message)
         self.code = code
+        self.public_message = message
         self.status_code = status_code
         self.details = details or {}
+
+
+PUBLIC_ERROR_MESSAGES = {
+    "VALIDATION_ERROR": "Invalid request",
+    "WEBHOOK_RAW_BODY_REQUIRED": "Raw webhook body is required",
+    "WEBHOOK_SECRET_NOT_FOUND": "Webhook secret is not configured",
+    "WEBHOOK_SIGNATURE_INVALID": "Webhook signature is invalid",
+}
 
 
 async def resolve_principal(request_obj: Any, plug: Any, auth_override: Optional[Any]) -> dict[str, Any]:
@@ -88,7 +97,8 @@ def normalize_scopes(value: Any) -> Optional[list[str]]:
 def resolve_webhook_secret(plug: Any, provider: str) -> Optional[str]:
     connection_manager = getattr(plug, "_connection_manager", None)
     if connection_manager and hasattr(connection_manager, "resolve_webhook_secret"):
-        return connection_manager.resolve_webhook_secret(provider)
+        secret = connection_manager.resolve_webhook_secret(provider)
+        return secret if isinstance(secret, str) and secret else None
 
     integrations = getattr(getattr(plug, "config", None), "integrations", {}) or {}
     provider_config = integrations.get(provider, {})
@@ -118,7 +128,7 @@ def error_payload(error: Exception) -> tuple[dict[str, Any], int]:
                 "ok": False,
                 "error": {
                     "code": error.code,
-                    "message": str(error),
+                    "message": error.public_message,
                     "status": error.status_code,
                     "details": error.details,
                 },
@@ -126,14 +136,29 @@ def error_payload(error: Exception) -> tuple[dict[str, Any], int]:
             error.status_code,
         )
 
-    error_code = getattr(error, "code", "VALIDATION_ERROR")
-    status_code = getattr(error, "status", 400)
+    error_code = getattr(error, "code", None)
+    if error_code not in PUBLIC_ERROR_MESSAGES:
+        return (
+            {
+                "ok": False,
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "An internal error occurred",
+                    "status": 500,
+                    "details": {},
+                },
+            },
+            500,
+        )
+
+    raw_status = getattr(error, "status", 400)
+    status_code = raw_status if isinstance(raw_status, int) and 400 <= raw_status <= 599 else 400
     return (
         {
             "ok": False,
             "error": {
                 "code": error_code,
-                "message": str(error),
+                "message": PUBLIC_ERROR_MESSAGES[error_code],
                 "status": status_code,
                 "details": {},
             },

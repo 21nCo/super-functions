@@ -3,10 +3,11 @@
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from plugfn import PlugFn, AuthProvider, DatabaseAdapter
+from plugfn import AuthProvider, DatabaseAdapter, PlugFn
+from plugfn.providers import github_provider, slack_provider
 
 
 # Use the same adapters from basic_usage.py
@@ -124,16 +125,14 @@ plug = PlugFn(
 )
 
 # Register providers
-from plugfn.providers import github_provider, slack_provider
-
 plug.providers.register(github_provider)
 plug.providers.register(slack_provider)
 
 # Mount PlugFn routes
 try:
-    from plugfn.adapters.fastapi import mount_plugfn_fastapi
+    from plugfn.adapters.fastapi import mount_plugfn
 
-    mount_plugfn_fastapi(app, plug, prefix="/api/plugfn")
+    mount_plugfn(app, plug, prefix="/api/plugfn")
 except ImportError:
     print("FastAPI adapter not available. Install with: pip install plugfn[fastapi]")
 
@@ -187,8 +186,8 @@ async def create_github_issue(
             },
         }
 
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception:
+        return {"success": False, "error": "Unable to create GitHub issue"}
 
 
 # Register webhook handlers
@@ -196,7 +195,7 @@ async def create_github_issue(
 async def on_github_issue_opened(event):
     """Handle GitHub issue opened webhook."""
     print(f"New GitHub issue: {event.get('issue', {}).get('title')}")
-    
+
     # Could post to Slack, create Linear issue, etc.
     return {"processed": True}
 

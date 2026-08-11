@@ -22,14 +22,14 @@ __license__ = "Apache-2.0"
 
 from .core.plug_fn import PlugFn, PlugFnConfig
 from .types import (
-    AuthType,
-    ConnectionStatus,
-    WorkflowStatus,
-    Connection,
-    Workflow,
-    Provider,
-    DatabaseAdapter,
     AuthProvider,
+    AuthType,
+    Connection,
+    ConnectionStatus,
+    DatabaseAdapter,
+    Provider,
+    Workflow,
+    WorkflowStatus,
 )
 
 __all__ = [

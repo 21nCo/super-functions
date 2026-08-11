@@ -153,9 +153,10 @@ async def test_get_auth_url(plug):
         redirect_uri="https://test.com/callback",
     )
 
-    assert url is not None
-    assert "github.com" in url
-    assert "client_id" in url
+    parsed_url = urlparse(url)
+    assert parsed_url.scheme == "https"
+    assert parsed_url.hostname == "github.com"
+    assert "client_id" in parse_qs(parsed_url.query)
 
 
 @pytest.mark.asyncio
@@ -171,7 +172,7 @@ async def test_canonical_callback_resolves_provider_from_stored_state(plug):
         return {"access_token": "token", "token_type": "bearer"}
 
     plug._connection_manager.oauth_handler.exchange_code_for_token = exchange_code_for_token
-    plug._connection_manager.token_storage.encrypt = lambda value: {"encrypted": value}
+    plug._connection_manager.token_storage.encrypt = lambda value: f"encrypted:{value}"
 
     connection = await plug.connections.handle_callback(
         provider=None,
@@ -204,6 +205,16 @@ async def test_webhook_handler_registration(plug):
     # Handler should be registered
     assert "github" in plug._webhook_handler._handlers
     assert "issues.opened" in plug._webhook_handler._handlers["github"]
+
+
+def test_webhook_handler_decorator_registration(plug):
+    """Documented decorator syntax registers and preserves the callback."""
+
+    @plug.webhooks.on("github", "issues.closed")
+    async def handler(event):
+        return {"event": event}
+
+    assert handler in plug._webhook_handler._handlers["github"]["issues.closed"]
 
 
 @pytest.mark.asyncio

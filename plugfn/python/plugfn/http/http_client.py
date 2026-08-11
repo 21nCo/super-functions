@@ -1,6 +1,6 @@
 """HTTP client for making API requests."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import httpx
 
@@ -78,7 +78,10 @@ class HttpClient:
             response.raise_for_status()
             if response.status_code == 204 or not response.content:
                 return {}
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Provider API response must be a JSON object")
+            return cast(Dict[str, Any], payload)
 
     async def get(
         self, path: str, params: Optional[Dict[str, Any]] = None, **kwargs: Any

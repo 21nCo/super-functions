@@ -638,6 +638,16 @@ describe('@filefn/server files', () => {
         async check(_input: any) {
           return { allowed: false, remaining: 0, resetAt: new Date(Date.now() + 60000).toISOString(), total: 10 };
         },
+        async checkMany(input: { keys: string[] }) {
+          const resetAt = new Date(Date.now() + 60000).toISOString();
+          return {
+            allowed: false,
+            remainingByKey: new Map(input.keys.map(key => [key, 0])),
+            resetAtByKey: new Map(input.keys.map(key => [key, resetAt])),
+            resetAt,
+            total: 10,
+          };
+        },
         async reset(_key: string) {},
       };
 

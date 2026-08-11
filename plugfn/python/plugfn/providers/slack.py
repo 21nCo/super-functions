@@ -1,9 +1,11 @@
 """Slack provider implementation."""
 
 from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field
 
-from ..types import Provider, AuthType
+from ..types import AuthType, Provider
+from ._shared import require_object_response
 
 
 class SlackMessageParams(BaseModel):
@@ -33,7 +35,7 @@ class SlackUserParams(BaseModel):
 class SlackAction:
     """Slack action definition."""
 
-    def __init__(self, name: str, display_name: str, description: str):
+    def __init__(self, name: str, display_name: str, description: str) -> None:
         self.name = name
         self.display_name = display_name
         self.description = description
@@ -46,7 +48,7 @@ class SlackAction:
 class SlackChatPostMessageAction(SlackAction):
     """Post a message to Slack."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="chat.postMessage",
             display_name="Post Message",
@@ -57,7 +59,7 @@ class SlackChatPostMessageAction(SlackAction):
         """Post a message to Slack."""
         validated = SlackMessageParams(**params)
 
-        payload = {
+        payload: Dict[str, Any] = {
             "channel": validated.channel,
             "text": validated.text,
         }
@@ -70,13 +72,13 @@ class SlackChatPostMessageAction(SlackAction):
 
         response = await context.http.post("/chat.postMessage", json=payload)
 
-        return response
+        return require_object_response(response)
 
 
 class SlackConversationsCreateAction(SlackAction):
     """Create a Slack channel."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="conversations.create",
             display_name="Create Channel",
@@ -95,13 +97,13 @@ class SlackConversationsCreateAction(SlackAction):
             },
         )
 
-        return response
+        return require_object_response(response)
 
 
 class SlackUsersInfoAction(SlackAction):
     """Get Slack user information."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="users.info",
             display_name="Get User Info",
@@ -116,7 +118,7 @@ class SlackUsersInfoAction(SlackAction):
             "/users.info", params={"user": validated.user}
         )
 
-        return response
+        return require_object_response(response)
 
 
 # Slack provider definition

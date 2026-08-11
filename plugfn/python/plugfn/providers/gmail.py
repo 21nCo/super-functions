@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 from ..types import AuthType, Provider
+from ._shared import require_object_response
 
 
 class GmailMailSyncParams(BaseModel):
@@ -23,7 +24,7 @@ class GmailMessageGetParams(BaseModel):
 class GmailAction:
     """Gmail action definition."""
 
-    def __init__(self, name: str, display_name: str, description: str):
+    def __init__(self, name: str, display_name: str, description: str) -> None:
         self.name = name
         self.display_name = display_name
         self.description = description
@@ -35,7 +36,7 @@ class GmailAction:
 class GmailMailSyncAction(GmailAction):
     """List Gmail messages for sync/bootstrap flows."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="mail.sync",
             display_name="Sync Mail",
@@ -49,13 +50,14 @@ class GmailMailSyncAction(GmailAction):
             query_params["maxResults"] = validated.max_results
         if validated.query:
             query_params["q"] = validated.query
-        return await context.http.get("messages", params=query_params or None)
+        response = await context.http.get("messages", params=query_params or None)
+        return require_object_response(response)
 
 
 class GmailMessageGetAction(GmailAction):
     """Fetch a Gmail message."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="messages.get",
             display_name="Get Message",
@@ -64,7 +66,8 @@ class GmailMessageGetAction(GmailAction):
 
     async def execute(self, params: Dict[str, Any], context: Any) -> Dict[str, Any]:
         validated = GmailMessageGetParams(**params)
-        return await context.http.get(f"messages/{validated.message_id}")
+        response = await context.http.get(f"messages/{validated.message_id}")
+        return require_object_response(response)
 
 
 gmail_provider = Provider(

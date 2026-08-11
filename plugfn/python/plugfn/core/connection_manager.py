@@ -2,14 +2,14 @@
 
 import json
 import secrets
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from ..types import Connection, ConnectionStatus, AuthType
-from ..storage.connection_storage import ConnectionStorage
 from ..auth.oauth_flow import OAuthFlowHandler
 from ..auth.token_store import MemoryTokenStore
+from ..storage.connection_storage import ConnectionStorage
 from ..storage.token_storage import SecureTokenStorage
+from ..types import AuthType, Connection, ConnectionStatus
 
 
 class ConnectionManager:
@@ -82,6 +82,17 @@ class ConnectionManager:
 
         # Get OAuth config from provider
         oauth_config = provider_obj.auth_config
+        if oauth_config is None:
+            raise ValueError(f"Provider {provider} has no OAuth configuration")
+
+        client_id = self._required_config_string(config, "client_id", provider)
+        client_secret = self._required_config_string(config, "client_secret", provider)
+        configured_scopes = oauth_config.get("scopes", [])
+        default_scopes = (
+            [scope for scope in configured_scopes if isinstance(scope, str)]
+            if isinstance(configured_scopes, list)
+            else []
+        )
 
         # Generate state if not provided
         if not state:
@@ -90,10 +101,10 @@ class ConnectionManager:
         # Build authorization URL
         url, final_state = await self.oauth_handler.get_authorization_url(
             oauth_config=oauth_config,
-            client_id=config.get("client_id"),
-            client_secret=config.get("client_secret"),
+            client_id=client_id,
+            client_secret=client_secret,
             redirect_uri=redirect_uri,
-            scopes=scopes or oauth_config.get("scopes", []),
+            scopes=scopes or default_scopes,
             state=state,
         )
 
@@ -137,7 +148,7 @@ class ConnectionManager:
         if not state_data_str:
             raise ValueError("Invalid or expired OAuth state")
 
-        state_data = json.loads(state_data_str)
+        state_data = self._decode_json_object(state_data_str)
         await self.oauth_handler.token_store.delete(state_key)
 
         state_provider = state_data.get("provider")
@@ -158,12 +169,25 @@ class ConnectionManager:
         if not config:
             raise ValueError(f"Provider {provider} not configured")
 
+        client_id = self._required_config_string(config, "client_id", provider)
+        client_secret = self._required_config_string(config, "client_secret", provider)
+        oauth_config = provider_obj.auth_config
+        if oauth_config is None:
+            raise ValueError(f"Provider {provider} has no OAuth configuration")
+
+        redirect_uri = state_data.get("redirect_uri")
+        user_id = state_data.get("user_id")
+        if not isinstance(redirect_uri, str) or not redirect_uri:
+            raise ValueError("Redirect URI missing from OAuth state")
+        if not isinstance(user_id, str) or not user_id:
+            raise ValueError("User ID missing from OAuth state")
+
         # Exchange code for tokens
         tokens = await self.oauth_handler.exchange_code_for_token(
-            oauth_config=provider_obj.auth_config,
-            client_id=config.get("client_id"),
-            client_secret=config.get("client_secret"),
-            redirect_uri=state_data["redirect_uri"],
+            oauth_config=oauth_config,
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
             code=code,
         )
 
@@ -175,12 +199,13 @@ class ConnectionManager:
         now = datetime.now()
 
         expires_at = None
-        if tokens.get("expires_in"):
-            expires_at = now + timedelta(seconds=tokens["expires_in"])
+        expires_in = tokens.get("expires_in")
+        if isinstance(expires_in, (int, float)) and not isinstance(expires_in, bool):
+            expires_at = now + timedelta(seconds=expires_in)
 
         connection = Connection(
             id=connection_id,
-            user_id=state_data["user_id"],
+            user_id=user_id,
             provider=provider,
             name=state_data.get("connection_name"),
             status=ConnectionStatus.ACTIVE,
@@ -199,7 +224,7 @@ class ConnectionManager:
 
         self.logger.info(
             f"Created connection for {provider}",
-            {"user_id": state_data["user_id"], "connection_id": connection_id},
+            {"user_id": user_id, "connection_id": connection_id},
         )
 
         return connection
@@ -282,21 +307,32 @@ class ConnectionManager:
 
         # Decrypt credentials
         creds_str = self.token_storage.decrypt(connection.credentials)
-        creds = json.loads(creds_str)
+        creds = self._decode_json_object(creds_str)
 
-        if "refresh_token" not in creds:
+        refresh_token = creds.get("refresh_token")
+        if not isinstance(refresh_token, str) or not refresh_token:
             raise ValueError("No refresh token available")
 
         config = self.integration_configs.get(connection.provider)
         if not config:
             raise ValueError(f"Provider {connection.provider} not configured")
 
+        client_id = self._required_config_string(config, "client_id", connection.provider)
+        client_secret = self._required_config_string(
+            config, "client_secret", connection.provider
+        )
+        oauth_config = provider_obj.auth_config
+        if oauth_config is None:
+            raise ValueError(
+                f"Provider {connection.provider} has no OAuth configuration"
+            )
+
         # Refresh tokens
         new_tokens = await self.oauth_handler.refresh_token(
-            oauth_config=provider_obj.auth_config,
-            client_id=config.get("client_id"),
-            client_secret=config.get("client_secret"),
-            refresh_token=creds["refresh_token"],
+            oauth_config=oauth_config,
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=refresh_token,
         )
 
         # Update credentials
@@ -304,8 +340,9 @@ class ConnectionManager:
 
         now = datetime.now()
         expires_at = None
-        if new_tokens.get("expires_in"):
-            expires_at = now + timedelta(seconds=new_tokens["expires_in"])
+        expires_in = new_tokens.get("expires_in")
+        if isinstance(expires_in, (int, float)) and not isinstance(expires_in, bool):
+            expires_at = now + timedelta(seconds=expires_in)
 
         # Update connection
         await self.storage.update_connection(
@@ -337,7 +374,7 @@ class ConnectionManager:
 
         # Decrypt credentials
         creds_str = self.token_storage.decrypt(connection.credentials)
-        return json.loads(creds_str)
+        return self._decode_json_object(creds_str)
 
     async def update_last_used(self, connection_id: str) -> None:
         """Update the last used timestamp for a connection.
@@ -360,3 +397,19 @@ class ConnectionManager:
 
     def _encode_json(self, value: Dict[str, Any]) -> str:
         return self._json_encoder.encode(value)
+
+    @staticmethod
+    def _decode_json_object(value: str) -> Dict[str, Any]:
+        decoded = json.loads(value)
+        if not isinstance(decoded, dict):
+            raise ValueError("Stored JSON payload must be an object")
+        return decoded
+
+    @staticmethod
+    def _required_config_string(
+        config: Dict[str, Any], key: str, provider: str
+    ) -> str:
+        value = config.get(key)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"Provider {provider} requires {key}")
+        return value

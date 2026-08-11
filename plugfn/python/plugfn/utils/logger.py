@@ -35,7 +35,7 @@ class ConsoleLogger(Logger):
         """
         self.prefix = prefix
         self.logger = logging.getLogger(__name__)
-        
+
         # Configure logging if not already configured
         if not self.logger.handlers:
             handler = logging.StreamHandler()
@@ -57,10 +57,10 @@ class ConsoleLogger(Logger):
             Formatted message
         """
         msg = f"{self.prefix} {message}" if self.prefix else message
-        
+
         if meta:
             msg += f" | {meta}"
-        
+
         return msg
 
     def debug(self, message: str, meta: Optional[Any] = None) -> None:

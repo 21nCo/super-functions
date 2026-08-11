@@ -1,15 +1,18 @@
 """Workflow engine for managing and executing workflows."""
 
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from ..storage.workflow_storage import WorkflowStorage
 from ..types import Workflow, WorkflowStatus
 
 
 class WorkflowEngine:
     """Engine for managing workflows."""
 
-    def __init__(self, storage: Any, webhook_handler: Any, logger: Any):
+    def __init__(
+        self, storage: WorkflowStorage, webhook_handler: Any, logger: Any
+    ) -> None:
         """Initialize workflow engine.
 
         Args:

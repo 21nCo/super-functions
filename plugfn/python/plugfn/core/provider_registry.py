@@ -2,7 +2,8 @@
 
 from typing import Dict, List, Optional, Set
 
-from ..types import Provider, AuthType
+from ..types import AuthType, Provider
+from ..utils.logger import Logger
 
 
 class ProviderStatus:
@@ -42,7 +43,7 @@ class ProviderInfo:
 class ProviderRegistry:
     """Registry for managing providers."""
 
-    def __init__(self, logger: Optional[any] = None):
+    def __init__(self, logger: Optional[Logger] = None):
         """Initialize provider registry.
 
         Args:
@@ -129,11 +130,12 @@ class ProviderRegistry:
         Returns:
             List of provider info
         """
-        return [
-            self.get_provider_info(name)
-            for name in self._providers.keys()
-            if self.get_provider_info(name) is not None
-        ]
+        provider_info: List[ProviderInfo] = []
+        for name in self._providers:
+            info = self.get_provider_info(name)
+            if info is not None:
+                provider_info.append(info)
+        return provider_info
 
     def mark_configured(self, name: str) -> None:
         """Mark a provider as configured.

@@ -239,7 +239,7 @@ export class WebhookHandler {
 
       const path = trigger.webhookConfig?.path;
       if (typeof path === 'string' && path.length > 0) {
-        const normalizedPathKey = canonicalizeEvent(path.replace(/^\/+/, ''));
+        const normalizedPathKey = canonicalizeEvent(path);
         setEventMapping(eventMap, normalizedPathKey, triggerKey);
       }
     }
@@ -281,11 +281,18 @@ function setEventMapping(eventMap: Map<string, string>, canonicalEvent: string, 
 }
 
 function canonicalizeEvent(event: string): string {
-  return decodeURIComponent(event)
-    .replace(/^\/+|\/+$/g, '')
-    .replace(/\//g, '.')
-    .trim()
-    .toLowerCase();
+  const decodedEvent = decodeURIComponent(event);
+  let start = 0;
+  let end = decodedEvent.length;
+
+  while (start < end && decodedEvent.charCodeAt(start) === 47) {
+    start += 1;
+  }
+  while (end > start && decodedEvent.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+
+  return decodedEvent.slice(start, end).split('/').join('.').trim().toLowerCase();
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {

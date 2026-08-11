@@ -1,10 +1,8 @@
 """Action executor for executing provider actions with middleware."""
 
 import time
-from typing import Any, Dict, List, Optional
 from datetime import datetime
-
-from ..types import ActionResult
+from typing import Any, Dict, List, Optional
 
 
 class ActionExecutor:
@@ -93,12 +91,12 @@ class ActionExecutor:
                 user_id, provider
             )
             active_connections = [c for c in connections if c.status == "active"]
-            
+
             if not active_connections:
                 raise ValueError(
                     f"No active connection found for provider {provider} and user {user_id}"
                 )
-            
+
             connection = active_connections[0]
 
         # Update last used
@@ -168,7 +166,7 @@ class ActionExecutor:
                         # Wait before retry
                         delay = retry.get("delay", 1000) if retry else 1000
                         backoff = retry.get("backoff", "exponential") if retry else "exponential"
-                        
+
                         if backoff == "exponential":
                             wait_time = (delay / 1000) * (2 ** attempt)
                         else:
@@ -272,19 +270,19 @@ class ActionExecutor:
             logs = list(logs)
 
         if filters.get("provider"):
-            logs = [l for l in logs if l.get("provider") == filters["provider"]]
+            logs = [log for log in logs if log.get("provider") == filters["provider"]]
 
         if filters.get("user_id"):
-            logs = [l for l in logs if l.get("user_id") == filters["user_id"]]
+            logs = [log for log in logs if log.get("user_id") == filters["user_id"]]
 
         # Calculate metrics
         total = len(logs)
-        successful = len([l for l in logs if l.get("success")])
+        successful = len([log for log in logs if log.get("success")])
         failed = total - successful
 
         avg_duration = 0
         if logs:
-            avg_duration = sum(l.get("duration", 0) for l in logs) / len(logs)
+            avg_duration = sum(log.get("duration", 0) for log in logs) / len(logs)
 
         return {
             "total_requests": total,

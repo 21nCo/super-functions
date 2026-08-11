@@ -2,13 +2,13 @@
 
 from typing import Any, Dict, List, Optional
 
-from ..types import Workflow
+from ..types import DatabaseAdapter, Workflow
 
 
 class WorkflowStorage:
     """Storage layer for workflows."""
 
-    def __init__(self, adapter: Any):
+    def __init__(self, adapter: DatabaseAdapter):
         """Initialize workflow storage.
 
         Args:

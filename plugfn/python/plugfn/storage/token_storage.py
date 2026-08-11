@@ -1,8 +1,9 @@
 """Secure token storage with encryption."""
 
-from cryptography.fernet import Fernet
 import base64
 import hashlib
+
+from cryptography.fernet import Fernet
 
 
 class SecureTokenStorage:
@@ -19,14 +20,14 @@ class SecureTokenStorage:
         """
         # Derive a proper Fernet key from the encryption key
         key_bytes = encryption_key.encode("utf-8")
-        
+
         # Ensure we have exactly 32 bytes by hashing
         if len(key_bytes) != 32:
             key_bytes = hashlib.sha256(key_bytes).digest()
-        
+
         # Convert to base64 for Fernet
         fernet_key = base64.urlsafe_b64encode(key_bytes)
-        
+
         self.cipher = Fernet(fernet_key)
 
     def encrypt(self, data: str) -> str:

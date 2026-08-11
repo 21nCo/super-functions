@@ -1,5 +1,5 @@
 """Utility modules."""
 
-from .logger import Logger, ConsoleLogger
+from .logger import ConsoleLogger, Logger
 
 __all__ = ["Logger", "ConsoleLogger"]

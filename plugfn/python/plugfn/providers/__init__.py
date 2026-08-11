@@ -1,8 +1,8 @@
 """Provider implementations for PlugFn."""
 
 from .clickup import clickup_provider
-from .gmail import gmail_provider
 from .github import github_provider
+from .gmail import gmail_provider
 from .linear import linear_provider
 from .slack import slack_provider
 

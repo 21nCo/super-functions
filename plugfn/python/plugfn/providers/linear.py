@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 from ..types import AuthType, Provider
+from ._shared import require_object_response
 
 
 class LinearIssueGetParams(BaseModel):
@@ -23,7 +24,7 @@ class LinearIssueSearchParams(BaseModel):
 class LinearAction:
     """Linear action definition."""
 
-    def __init__(self, name: str, display_name: str, description: str):
+    def __init__(self, name: str, display_name: str, description: str) -> None:
         self.name = name
         self.display_name = display_name
         self.description = description
@@ -35,7 +36,7 @@ class LinearAction:
 class LinearIssuesGetAction(LinearAction):
     """Fetch a single Linear issue."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="issues.get",
             display_name="Get Issue",
@@ -55,17 +56,24 @@ class LinearIssuesGetAction(LinearAction):
         }
         """
 
-        response = await context.http.post(
-            "",
-            json={"query": query, "variables": {"id": validated.issue_id}},
+        response = require_object_response(
+            await context.http.post(
+                "",
+                json={"query": query, "variables": {"id": validated.issue_id}},
+            )
         )
-        return response.get("data", {}).get("issue", response)
+        data = response.get("data")
+        if isinstance(data, dict):
+            issue = data.get("issue")
+            if isinstance(issue, dict):
+                return require_object_response(issue)
+        return response
 
 
 class LinearIssuesSearchAction(LinearAction):
     """Search Linear issues."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="issues.search",
             display_name="Search Issues",
@@ -92,14 +100,21 @@ class LinearIssuesSearchAction(LinearAction):
         }
         """
 
-        response = await context.http.post(
-            "",
-            json={
-                "query": query,
-                "variables": {"teamId": validated.team_id, "query": validated.query},
-            },
+        response = require_object_response(
+            await context.http.post(
+                "",
+                json={
+                    "query": query,
+                    "variables": {"teamId": validated.team_id, "query": validated.query},
+                },
+            )
         )
-        return response.get("data", {}).get("issues", response)
+        data = response.get("data")
+        if isinstance(data, dict):
+            issues = data.get("issues")
+            if isinstance(issues, dict):
+                return require_object_response(issues)
+        return response
 
 
 linear_provider = Provider(

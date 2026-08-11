@@ -170,3 +170,23 @@ def test_flask_disconnect_uses_authenticated_user():
     assert connections.disconnect_calls == [
         {"connection_id": "conn_1", "user_id": "user_from_auth"}
     ]
+
+
+def test_flask_redacts_unexpected_exception_details():
+    app, connections = create_app({"userId": "user_from_auth"})
+
+    async def fail_list(*_args, **_kwargs):
+        raise RuntimeError("database password is secret-value")
+
+    connections.list = fail_list
+    response = app.test_client().get("/api/plugfn/connections")
+
+    assert response.status_code == 500
+    body = response.get_json()
+    assert body["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "An internal error occurred",
+        "status": 500,
+        "details": {},
+    }
+    assert "secret-value" not in response.get_data(as_text=True)

@@ -1,15 +1,16 @@
 """Core type definitions for PlugFn Python SDK."""
 
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Protocol, TypeVar, Union
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional, Protocol, TypeVar, Union
+
 from pydantic import BaseModel, Field
 
 
 # Auth Types
 class AuthType(str, Enum):
     """Authentication type enum."""
-    
+
     OAUTH2 = "oauth2"
     API_KEY = "api-key"
     JWT = "jwt"
@@ -19,7 +20,7 @@ class AuthType(str, Enum):
 
 class ConnectionStatus(str, Enum):
     """Connection status enum."""
-    
+
     ACTIVE = "active"
     EXPIRED = "expired"
     REVOKED = "revoked"
@@ -29,7 +30,7 @@ class ConnectionStatus(str, Enum):
 # Configuration Models
 class OAuth2Config(BaseModel):
     """OAuth 2.0 configuration."""
-    
+
     authorization_url: str
     token_url: str
     scopes: List[str]
@@ -38,7 +39,7 @@ class OAuth2Config(BaseModel):
 
 class ApiKeyConfig(BaseModel):
     """API Key configuration."""
-    
+
     header_name: Optional[str] = None
     param_name: Optional[str] = None
     prefix: Optional[str] = None
@@ -46,7 +47,7 @@ class ApiKeyConfig(BaseModel):
 
 class JWTConfig(BaseModel):
     """JWT configuration."""
-    
+
     algorithm: str
     public_key: Optional[str] = None
     private_key: Optional[str] = None
@@ -56,7 +57,7 @@ class JWTConfig(BaseModel):
 
 class BasicAuthConfig(BaseModel):
     """Basic authentication configuration."""
-    
+
     username_field: str = "username"
     password_field: str = "password"
 
@@ -64,13 +65,13 @@ class BasicAuthConfig(BaseModel):
 # Connection Models
 class Connection(BaseModel):
     """User connection to a provider."""
-    
+
     id: str
     user_id: str
     provider: str
     name: Optional[str] = None
     status: ConnectionStatus
-    credentials: Dict[str, Any]  # Encrypted
+    credentials: str  # Encrypted JSON payload
     scopes: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
     expires_at: Optional[datetime] = None
@@ -83,7 +84,7 @@ class Connection(BaseModel):
 # Action Models
 class ActionOptions(BaseModel):
     """Options for executing an action."""
-    
+
     user_id: str
     connection_id: Optional[str] = None
     params: Dict[str, Any]
@@ -94,7 +95,7 @@ class ActionOptions(BaseModel):
 
 class ActionResult(BaseModel):
     """Result of an action execution."""
-    
+
     success: bool
     data: Optional[Any] = None
     error: Optional[str] = None
@@ -109,7 +110,7 @@ class ActionResult(BaseModel):
 # Provider Models
 class Provider(BaseModel):
     """Provider definition."""
-    
+
     name: str
     display_name: str
     version: str
@@ -126,7 +127,7 @@ class Provider(BaseModel):
 # Workflow Models
 class WorkflowStatus(str, Enum):
     """Workflow status enum."""
-    
+
     ENABLED = "enabled"
     DISABLED = "disabled"
     DRAFT = "draft"
@@ -134,7 +135,7 @@ class WorkflowStatus(str, Enum):
 
 class WorkflowExecutionStatus(str, Enum):
     """Workflow execution status enum."""
-    
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -144,7 +145,7 @@ class WorkflowExecutionStatus(str, Enum):
 
 class Workflow(BaseModel):
     """Workflow definition."""
-    
+
     id: str
     user_id: str
     name: str
@@ -159,28 +160,54 @@ class Workflow(BaseModel):
 # Protocols for dependency injection
 class DatabaseAdapter(Protocol):
     """Protocol for database adapters."""
-    
-    async def create_connection(self, connection: Connection) -> None:
+
+    async def createConnection(self, connection: Dict[str, Any]) -> None:
         """Create a new connection."""
         ...
-    
-    async def get_connection(self, id: str) -> Optional[Connection]:
+
+    async def getConnection(self, id: str) -> Optional[Dict[str, Any]]:
         """Get a connection by ID."""
         ...
-    
-    async def list_connections(self, user_id: str, provider: Optional[str] = None) -> List[Connection]:
+
+    async def listConnections(
+        self, userId: str, provider: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """List connections for a user."""
         ...
+
+    async def updateConnection(self, id: str, updates: Dict[str, Any]) -> None: ...
+
+    async def deleteConnection(self, id: str) -> None: ...
+
+    async def createWorkflow(self, workflow: Dict[str, Any]) -> None: ...
+
+    async def getWorkflow(self, id: str) -> Optional[Dict[str, Any]]: ...
+
+    async def listWorkflows(
+        self, userId: Optional[str] = None, status: Optional[str] = None
+    ) -> List[Dict[str, Any]]: ...
+
+    async def updateWorkflow(self, id: str, updates: Dict[str, Any]) -> None: ...
+
+    async def deleteWorkflow(self, id: str) -> None: ...
+
+    async def createWorkflowExecution(self, execution: Dict[str, Any]) -> None: ...
+
+    async def updateWorkflowExecution(self, id: str, updates: Dict[str, Any]) -> None: ...
+
+    async def listWorkflowExecutions(
+        self, workflowId: str, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]: ...
 
 
 class AuthProvider(Protocol):
     """Protocol for auth providers."""
-    
-    async def get_user_id(self, request: Any) -> Optional[str]:
+
+    async def getUserId(self, request: Any) -> Optional[str]:
         """Get user ID from request."""
         ...
-    
-    async def require_auth(self, request: Any) -> str:
+
+    async def requireAuth(self, request: Any) -> str:
         """Require authentication, raise error if not authenticated."""
         ...
 

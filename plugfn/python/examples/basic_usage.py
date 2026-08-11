@@ -4,7 +4,7 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
-from plugfn import PlugFn, AuthProvider, DatabaseAdapter, Connection
+from plugfn import AuthProvider, DatabaseAdapter, PlugFn
 
 
 # Example database adapter implementation
@@ -122,7 +122,7 @@ class SimpleAuthProvider(AuthProvider):
 
 async def main():
     """Example usage of PlugFn."""
-    
+
     # Initialize PlugFn
     plug = PlugFn(
         database=MemoryAdapter(),
