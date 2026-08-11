@@ -106,6 +106,7 @@ function buildEntries(
     const {
         basePath = "/api",
         splitByTag = true,
+        baseUrl,
     } = options;
 
     const info = spec.info as { title?: string; version?: string } | undefined;
@@ -123,6 +124,7 @@ function buildEntries(
             endpoints: allEndpoints,
             sidebar,
             spec,
+            ...(baseUrl !== undefined ? { baseUrl } : {}),
         }];
     }
 
@@ -145,6 +147,7 @@ function buildEntries(
             endpoints,
             sidebar,
             spec,
+            ...(baseUrl !== undefined ? { baseUrl } : {}),
         };
     });
 }

@@ -10,6 +10,7 @@ build/
 *.tsbuildinfo
 **/*.js
 **/*.d.ts
+!apifn/docsfn/src/svelte/ApifnApiReference.svelte.d.ts
 **/*.d.ts.map
 **/*.js.map
 

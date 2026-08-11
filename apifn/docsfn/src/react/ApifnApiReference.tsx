@@ -37,7 +37,7 @@ function getThemeStyle(theme: "light" | "dark" | "auto"): string {
   `;
     if (theme === "dark") return `.apifn-root{${dark}}`;
     if (theme === "light") return `.apifn-root{${light}}`;
-    return `@media(prefers-color-scheme:dark){.apifn-root{${dark}}}.apifn-root{${light}}`;
+    return `.apifn-root{${light}}@media(prefers-color-scheme:dark){.apifn-root{${dark}}}`;
 }
 
 const s = {
@@ -84,14 +84,14 @@ const s = {
 
 function EndpointCard({
     path, method, operation, tryIt, baseUrl, performanceMetrics,
-}: {
+}: Readonly<{
     path: string;
     method: string;
     operation: OperationObject;
     tryIt: boolean;
     baseUrl: string;
     performanceMetrics?: ApifnApiReferenceProps["performanceMetrics"];
-}) {
+}>) {
     const [open, setOpen] = useState(false);
     const [tab, setTab] = useState<"docs" | "tryit" | "perf">("docs");
 
@@ -133,11 +133,14 @@ function EndpointCard({
 }
 
 export function ApifnApiReference({
-    entry, tryIt = false, baseUrl = "https://api.example.com", theme = "auto", performanceMetrics,
-}: ApifnApiReferenceProps): React.ReactElement {
+    entry, tryIt = false, baseUrl, theme = "auto", performanceMetrics,
+}: Readonly<ApifnApiReferenceProps>): React.ReactElement {
     const themeStyle = getThemeStyle(theme);
     const effectiveBaseUrl =
-        (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url ?? baseUrl;
+        baseUrl
+        ?? entry.baseUrl
+        ?? (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url
+        ?? "https://api.example.com";
 
     return (
         <div className="apifn-root">

@@ -180,6 +180,15 @@ describe("TV-DOCS-001: createApifnProvider — split by tag", () => {
         await provider();
         expect(provider.entries.length).toBeGreaterThan(0);
     });
+
+    it("embeds an explicit Try-It base URL in every entry", async () => {
+        const provider = createApifnProvider({
+            spec: TAGGED_SPEC,
+            baseUrl: "https://staging.example.com",
+        });
+        const entries = await provider();
+        expect(entries.every((entry) => entry.baseUrl === "https://staging.example.com")).toBe(true);
+    });
 });
 
 // ─── TV-DOCS-001: splitByTag=false ───────────────────────────────────────────
@@ -207,6 +216,16 @@ describe("TV-DOCS-001: createApifnProvider — full spec (splitByTag: false)", (
         const provider = createApifnProvider({ spec: TAGGED_SPEC, splitByTag: false });
         const entries = await provider();
         expect(entries[0].title).toBe("Test API");
+    });
+
+    it("embeds an explicit Try-It base URL in the single entry", async () => {
+        const provider = createApifnProvider({
+            spec: TAGGED_SPEC,
+            splitByTag: false,
+            baseUrl: "https://staging.example.com",
+        });
+        const entries = await provider();
+        expect(entries[0].baseUrl).toBe("https://staging.example.com");
     });
 });
 

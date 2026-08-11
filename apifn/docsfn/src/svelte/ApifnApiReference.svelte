@@ -3,11 +3,11 @@
   import EndpointViewer from "@apifn/svelte/EndpointViewer.svelte";
   import TryIt from "@apifn/svelte/TryIt.svelte";
   import PerformanceOverlay from "@apifn/svelte/PerformanceOverlay.svelte";
-  import type { ApifnApiReferenceProps, RawContentEntry, ApiEndpoint } from "../types.js";
+  import type { ApifnApiReferenceProps, RawContentEntry, ApiEndpoint } from "@apifn/docsfn";
 
   export let entry: RawContentEntry;
   export let tryIt: boolean = false;
-  export let baseUrl: string = "https://api.example.com";
+  export let baseUrl: string | undefined = undefined;
   export let theme: "light" | "dark" | "auto" = "auto";
   export let performanceMetrics: ApifnApiReferenceProps["performanceMetrics"] = undefined;
 
@@ -21,7 +21,10 @@
     return METHOD_COLORS[method.toLowerCase()] ?? { bg: "#2d3748", text: "#9ca3af" };
   }
 
-  $: effectiveBaseUrl = (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url ?? baseUrl;
+  $: effectiveBaseUrl = baseUrl
+    ?? entry.baseUrl
+    ?? (entry.spec as { servers?: Array<{ url: string }> }).servers?.[0]?.url
+    ?? "https://api.example.com";
 
   // Per-endpoint card open/tab state
   let openStates: Record<string, boolean> = {};
@@ -36,11 +39,13 @@
   function getThemeVars(t: "light" | "dark" | "auto"): string {
     const dark = `--apifn-bg:#0f1117;--apifn-bg-surface:#1a1d2e;--apifn-bg-surface-hover:#252840;--apifn-border:#2d3748;--apifn-text:#e2e8f0;--apifn-text-muted:#64748b;--apifn-accent:#7c3aed;--apifn-accent-text:#c4b5fd;--apifn-green:#6ee7b7;--apifn-blue:#93c5fd;--apifn-yellow:#fcd34d;--apifn-red:#fca5a5;--apifn-radius:6px;--apifn-font-mono:'JetBrains Mono',monospace;--apifn-font-sans:-apple-system,sans-serif`;
     const light = `--apifn-bg:#ffffff;--apifn-bg-surface:#f8fafc;--apifn-bg-surface-hover:#f1f5f9;--apifn-border:#e2e8f0;--apifn-text:#0f172a;--apifn-text-muted:#64748b;--apifn-accent:#7c3aed;--apifn-accent-text:#6d28d9;--apifn-green:#059669;--apifn-blue:#2563eb;--apifn-yellow:#d97706;--apifn-red:#dc2626;--apifn-radius:6px;--apifn-font-mono:'JetBrains Mono',monospace;--apifn-font-sans:-apple-system,sans-serif`;
-    return t === "dark" ? dark : light;
+    if (t === "dark") return dark;
+    if (t === "light") return light;
+    return "";
   }
 </script>
 
-<div class="apifn-root" style={getThemeVars(theme)}>
+<div class="apifn-root" class:auto-theme={theme === "auto"} style={getThemeVars(theme)}>
   <div class="page">
     <h1 class="page-title">{entry.title}</h1>
     {#if entry.tag}
@@ -101,7 +106,23 @@
 </div>
 
 <style>
-  .apifn-root { font-family: var(--apifn-font-sans, sans-serif); color: var(--apifn-text); background: var(--apifn-bg); }
+  .apifn-root {
+    --apifn-bg:#ffffff;--apifn-bg-surface:#f8fafc;--apifn-bg-surface-hover:#f1f5f9;
+    --apifn-border:#e2e8f0;--apifn-text:#0f172a;--apifn-text-muted:#64748b;
+    --apifn-accent:#7c3aed;--apifn-accent-text:#6d28d9;--apifn-green:#059669;
+    --apifn-blue:#2563eb;--apifn-yellow:#d97706;--apifn-red:#dc2626;
+    --apifn-radius:6px;--apifn-font-mono:'JetBrains Mono',monospace;
+    --apifn-font-sans:-apple-system,sans-serif;
+    font-family: var(--apifn-font-sans, sans-serif); color: var(--apifn-text); background: var(--apifn-bg);
+  }
+  @media (prefers-color-scheme: dark) {
+    .apifn-root.auto-theme {
+      --apifn-bg:#0f1117;--apifn-bg-surface:#1a1d2e;--apifn-bg-surface-hover:#252840;
+      --apifn-border:#2d3748;--apifn-text:#e2e8f0;--apifn-text-muted:#64748b;
+      --apifn-accent:#7c3aed;--apifn-accent-text:#c4b5fd;--apifn-green:#6ee7b7;
+      --apifn-blue:#93c5fd;--apifn-yellow:#fcd34d;--apifn-red:#fca5a5;
+    }
+  }
   .page { max-width: 960px; margin: 0 auto; padding: 0 24px 48px; }
   .page-title { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
   .page-subtitle { font-size: 14px; color: var(--apifn-text-muted); margin-bottom: 40px; }

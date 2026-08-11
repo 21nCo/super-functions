@@ -15,6 +15,9 @@ export interface ApiExplorerProps {
     baseUrl?: string;
     theme?: "light" | "dark" | "auto";
     showHistory?: boolean;
+    watchfn?: import("@apifn/core").WatchFnClient;
+    watchfnInterval?: number;
+    rateLimits?: Record<string, import("@apifn/core").RateLimitInfo>;
 }
 
 export interface EndpointViewerProps {
