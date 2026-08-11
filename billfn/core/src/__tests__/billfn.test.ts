@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { TransactionAdapter } from '@superfunctions/db';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { MemoryQueueAdapter } from '../../../../packages/queue/src/index.js';
 import { createBillFn, createBillFnReconciliationWorker, getSchema } from '../index.js';
@@ -255,6 +256,42 @@ describe('@billfn/core', () => {
     }
     expect(entitlements.data.entitlements?.features.sync).toBe(true);
     expect(entitlements.data.entitlements?.limits.storage).toBe(1000);
+  });
+
+  it('does not grant retained feature flags from an inactive entitlement snapshot', async () => {
+    const db = memoryAdapter({ debug: false });
+    const billfn = createBillFn({
+      db,
+      catalog,
+      providers: { dodo: createMockProvider('dodo') }
+    });
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'inactive_feature_user' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    const verified = await billfn.verifyCheckout({
+      subject: { principalId: 'inactive_feature_user' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+    if (!verified.ok) {
+      throw new Error('expected success');
+    }
+
+    await db.update({
+      model: 'entitlementSnapshots',
+      where: [{ field: 'billingAccountId', operator: 'eq', value: verified.data.subscription.billingAccountId }],
+      data: { status: 'inactive' },
+      namespace: 'billfn'
+    });
+
+    await expect(
+      billfn.subscriptionProvider.hasFeature({ principalId: 'inactive_feature_user' }, 'sync')
+    ).resolves.toBe(false);
   });
 
   it('rejects checkout verification when its provider reference belongs to another account', async () => {
@@ -897,6 +934,39 @@ describe('@billfn/core', () => {
     expect(restored.data.subscription.providerSubscriptionId).toBe(matchingProviderSubscriptionId);
   });
 
+  it('bootstraps local subscription state from a provider-verified restored purchase', async () => {
+    const db = memoryAdapter({ debug: false });
+    const billfn = createBillFn({
+      db,
+      catalog,
+      providers: { dodo: createMockProvider('dodo') }
+    });
+
+    const restored = await billfn.restorePurchases({
+      subject: { principalId: 'restore_new_deployment' },
+      planKey: 'pro',
+      provider: 'dodo',
+      priceId: 'price_pro_dodo_month',
+      purchaseReference: 'provider_purchase_without_local_state'
+    });
+
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) {
+      throw new Error('expected success');
+    }
+    expect(restored.data.subscription.providerSubscriptionId).toBe(
+      'restored_provider_purchase_without_local_state'
+    );
+    expect(restored.data.entitlements.status).toBe('active');
+    await expect(
+      db.findMany({
+        model: 'subscriptions',
+        where: [{ field: 'billingAccountId', operator: 'eq', value: restored.data.subscription.billingAccountId }],
+        namespace: 'billfn'
+      })
+    ).resolves.toHaveLength(1);
+  });
+
   it('requires a restore price discriminator when a provider has multiple prices', async () => {
     const billfn = createBillFn({
       db: memoryAdapter({ debug: false }),
@@ -1211,6 +1281,80 @@ describe('@billfn/core', () => {
     expect(queue.size('billfn-reconciliation')).toBe(1);
   });
 
+  it('fails a webhook job when another worker replaces its receipt lease before finalization', async () => {
+    const db = memoryAdapter({ debug: false });
+    const queue = new MemoryQueueAdapter();
+    let replaceLease = true;
+    const leaseLosingDb = {
+      ...db,
+      async updateMany(params: Parameters<typeof db.updateMany>[0]): Promise<number> {
+        const expectedClaim = params.where.find((clause) => clause.field === 'processingJobId');
+        const receiptId = params.where.find((clause) => clause.field === 'id');
+        if (
+          replaceLease &&
+          params.model === 'webhookReceipts' &&
+          expectedClaim &&
+          receiptId &&
+          'processedAt' in params.data
+        ) {
+          replaceLease = false;
+          await db.updateMany({
+            model: params.model,
+            where: [{ field: 'id', operator: 'eq', value: receiptId.value }],
+            data: {
+              processingJobId: 'replacement_job',
+              processingClaimedAt: '2026-04-20T00:05:00.000Z'
+            },
+            namespace: params.namespace
+          });
+        }
+        return db.updateMany(params);
+      }
+    };
+    const provider: BillFnProviderAdapter = {
+      ...createMockProvider('dodo'),
+      async parseWebhook() {
+        return [{
+          providerEventId: 'evt_lost_lease',
+          type: 'subscription.updated',
+          signatureVerified: true,
+          raw: { ok: true }
+        }];
+      }
+    };
+    const billfn = createBillFn({
+      db: leaseLosingDb,
+      catalog,
+      queue,
+      providers: { dodo: provider }
+    });
+
+    await billfn.handleWebhook({ provider: 'dodo', rawBody: '{}', headers: new Headers() });
+    const job = await db.findOne<{ id: string }>({
+      model: 'reconciliationJobs',
+      where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_lost_lease' }],
+      namespace: 'billfn'
+    });
+
+    await expect(billfn.runReconciliationJob({ jobId: job?.id ?? '' })).rejects.toMatchObject({
+      code: 'BILLFN_CONFLICT'
+    });
+    await expect(
+      db.findOne<{ processingJobId: string }>({
+        model: 'webhookReceipts',
+        where: [{ field: 'providerEventId', operator: 'eq', value: 'evt_lost_lease' }],
+        namespace: 'billfn'
+      })
+    ).resolves.toMatchObject({ processingJobId: 'replacement_job' });
+    await expect(
+      db.findOne<{ status: string }>({
+        model: 'reconciliationJobs',
+        where: [{ field: 'id', operator: 'eq', value: job?.id }],
+        namespace: 'billfn'
+      })
+    ).resolves.toMatchObject({ status: 'failed' });
+  });
+
   it('supports reconciliation jobs through service methods, router ops auth, and the worker queue', async () => {
     const db = memoryAdapter({ debug: false });
     const queue = new MemoryQueueAdapter();
@@ -1314,6 +1458,71 @@ describe('@billfn/core', () => {
       throw new Error('expected success');
     }
     expect(jobAfter.data.job.status).toBe('succeeded');
+  });
+
+  it('allows only one runner to claim and process a reconciliation job', async () => {
+    const db = memoryAdapter({ debug: false });
+    const baseProvider = createMockProvider('dodo');
+    let fetchCalls = 0;
+    let notifyFetchStarted!: () => void;
+    let releaseFetch!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      notifyFetchStarted = resolve;
+    });
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const provider: BillFnProviderAdapter = {
+      ...baseProvider,
+      async fetchSubscription(input) {
+        fetchCalls += 1;
+        notifyFetchStarted();
+        await fetchGate;
+        return baseProvider.fetchSubscription!(input);
+      }
+    };
+    const billfn = createBillFn({
+      db,
+      catalog,
+      providers: { dodo: provider }
+    });
+    const created = await billfn.createCheckout({
+      subject: { principalId: 'single_job_runner' },
+      planKey: 'pro',
+      provider: 'dodo',
+      interval: 'month'
+    });
+    if (!created.ok) {
+      throw new Error('expected success');
+    }
+    const verified = await billfn.verifyCheckout({
+      subject: { principalId: 'single_job_runner' },
+      checkoutSessionId: created.data.checkoutSession.checkoutSessionId
+    });
+    if (!verified.ok) {
+      throw new Error('expected success');
+    }
+    const enqueued = await billfn.enqueueReconciliationJob({
+      kind: 'subscription-sync',
+      provider: 'dodo',
+      subscriptionId: verified.data.subscription.id
+    });
+    if (!enqueued.ok) {
+      throw new Error('expected success');
+    }
+
+    const firstRun = billfn.runReconciliationJob({ jobId: enqueued.data.job.id });
+    await fetchStarted;
+    await expect(
+      billfn.runReconciliationJob({ jobId: enqueued.data.job.id })
+    ).rejects.toMatchObject({ code: 'BILLFN_CONFLICT' });
+    releaseFetch();
+
+    await expect(firstRun).resolves.toMatchObject({
+      ok: true,
+      data: { job: { status: 'succeeded', attempts: 1 } }
+    });
+    expect(fetchCalls).toBe(1);
   });
 
   it('skips already processed notification-history receipts during replay', async () => {
@@ -1676,6 +1885,23 @@ describe('@billfn/core', () => {
           usageCasCalls += 1;
         }
         return db.updateMany(params);
+      },
+      async transaction<R>(callback: (transaction: TransactionAdapter) => Promise<R>): Promise<R> {
+        return db.transaction(async (transaction) => callback({
+          ...transaction,
+          async update<T>(params: Parameters<typeof transaction.update>[0]): Promise<T> {
+            if (params.model === 'usageMeters') {
+              throw new Error('usage updates must use affected-row CAS');
+            }
+            return transaction.update<T>(params);
+          },
+          async updateMany(params: Parameters<typeof transaction.updateMany>[0]): Promise<number> {
+            if (params.model === 'usageMeters') {
+              usageCasCalls += 1;
+            }
+            return transaction.updateMany(params);
+          }
+        } as TransactionAdapter));
       }
     };
     const billfn = createBillFn({
@@ -1723,5 +1949,55 @@ describe('@billfn/core', () => {
     ).rejects.toMatchObject({
       code: 'BILLFN_VALIDATION_ERROR'
     });
+  });
+
+  it('rolls back a usage meter increment when its ledger write fails', async () => {
+    const db = memoryAdapter({ debug: false });
+    let failLedgerWrite = true;
+    const failingLedgerDb = {
+      ...db,
+      async transaction<R>(callback: (transaction: TransactionAdapter) => Promise<R>): Promise<R> {
+        return db.transaction(async (transaction) => callback({
+          ...transaction,
+          async create<T>(params: Parameters<typeof transaction.create>[0]): Promise<T> {
+            if (failLedgerWrite && params.model === 'usageLedger') {
+              throw new Error('ledger write failed');
+            }
+            return transaction.create<T>(params);
+          }
+        } as TransactionAdapter));
+      }
+    };
+    const billfn = createBillFn({
+      db: failingLedgerDb,
+      catalog,
+      providers: { dodo: createMockProvider('dodo') }
+    });
+
+    await expect(
+      billfn.quotaProvider.recordUsage({
+        principalId: 'usage_rollback_user',
+        bytes: 7
+      })
+    ).rejects.toThrow('ledger write failed');
+    await expect(
+      db.findMany({ model: 'usageMeters', where: [], namespace: 'billfn' })
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.findMany({ model: 'usageLedger', where: [], namespace: 'billfn' })
+    ).resolves.toHaveLength(0);
+
+    failLedgerWrite = false;
+    await billfn.quotaProvider.recordUsage({
+      principalId: 'usage_rollback_user',
+      bytes: 7
+    });
+
+    await expect(
+      billfn.quotaProvider.getUsage('usage_rollback_user')
+    ).resolves.toMatchObject({ current: 7 });
+    await expect(
+      db.findMany({ model: 'usageLedger', where: [], namespace: 'billfn' })
+    ).resolves.toHaveLength(1);
   });
 });

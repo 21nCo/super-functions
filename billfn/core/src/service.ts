@@ -147,7 +147,11 @@ export function createBillFnService(config: BillFnConfig) {
     },
     hasFeature: async (subject: BillableSubject, feature: string) => {
       const snapshot = await subscriptionProvider.getEntitlementSnapshot(subject);
-      return Boolean(snapshot?.features[feature]);
+      return Boolean(
+        snapshot &&
+        (snapshot.status === 'active' || snapshot.status === 'trialing' || snapshot.status === 'grace') &&
+        snapshot.features[feature]
+      );
     }
   };
 
@@ -322,19 +326,46 @@ export function createBillFnService(config: BillFnConfig) {
     if (job.status === 'succeeded') {
       return job;
     }
+    if (job.status === 'running') {
+      throw createBillFnError({
+        code: 'BILLFN_CONFLICT',
+        message: 'Reconciliation job is already running'
+      });
+    }
 
     const runningAt = toIsoString(deps.now());
-    job = await deps.db.update<BillFnReconciliationJob>({
+    const attempts = job.attempts + 1;
+    const claimed = await deps.db.updateMany({
       model: TABLES.reconciliationJobs,
-      where: [{ field: 'id', operator: 'eq', value: job.id }],
+      where: [
+        { field: 'id', operator: 'eq', value: job.id },
+        { field: 'status', operator: 'eq', value: job.status }
+      ],
       data: {
         status: 'running',
-        attempts: job.attempts + 1,
+        attempts,
         error: undefined,
         updatedAt: runningAt
       },
       namespace: deps.namespace
     });
+    if (claimed !== 1) {
+      const current = await getReconciliationJobRecord(deps, job.id);
+      if (current?.status === 'succeeded') {
+        return current;
+      }
+      throw createBillFnError({
+        code: 'BILLFN_CONFLICT',
+        message: 'Reconciliation job was claimed by another runner'
+      });
+    }
+    job = {
+      ...job,
+      status: 'running',
+      attempts,
+      error: undefined,
+      updatedAt: runningAt
+    };
 
     try {
       await processReconciliationJob(deps, job);
@@ -866,7 +897,17 @@ export function createBillFnService(config: BillFnConfig) {
         });
 
         if (!projection) {
-          continue;
+          const applied = await applyVerificationState(deps, {
+            billingAccount,
+            plan,
+            price,
+            state
+          });
+          const response: BillFnRestorePurchasesResponseData = {
+            subscription: applied.subscription,
+            entitlements: applied.entitlements
+          };
+          return ok(response);
         }
 
         if (projection.billingAccount.id !== billingAccount.id) {
@@ -1156,7 +1197,7 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
       if (parsed?.billingState) {
         await processParsedWebhookEvent(deps, job.provider, parsed);
       }
-      await deps.db.updateMany({
+      const finalized = await deps.db.updateMany({
         model: TABLES.webhookReceipts,
         where: job.kind === 'webhook-event'
           ? [
@@ -1171,6 +1212,12 @@ async function processReconciliationJob(deps: ServiceDeps, job: BillFnReconcilia
         },
         namespace: deps.namespace
       });
+      if (finalized !== 1) {
+        throw createBillFnError({
+          code: 'BILLFN_CONFLICT',
+          message: 'Webhook receipt processing lease was lost before finalization'
+        });
+      }
       return;
     }
     case 'subscription-sync': {
@@ -2157,6 +2204,25 @@ async function incrementUsage(deps: ServiceDeps, billingAccountId: string, resou
     return;
   }
 
+  await deps.db.transaction(async (transaction) => {
+    await incrementUsageInTransaction(
+      {
+        ...deps,
+        db: transaction as unknown as Adapter
+      },
+      billingAccountId,
+      resource,
+      amount
+    );
+  });
+}
+
+async function incrementUsageInTransaction(
+  deps: ServiceDeps,
+  billingAccountId: string,
+  resource: string,
+  amount: number
+) {
   const timestamp = toIsoString(deps.now());
   const meterId = `${billingAccountId}:${resource}`;
   let updated = false;

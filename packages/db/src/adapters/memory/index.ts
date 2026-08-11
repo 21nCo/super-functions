@@ -3,7 +3,7 @@
  */
 
 import { createAdapterFactory } from '../../adapter/factory.js';
-import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
+import { NotFoundError } from '../../adapter/errors.js';
 import type {
   Adapter,
   CreateParams,
@@ -180,6 +180,7 @@ function createMemoryInternalCrud(): InternalCrud {
  * In-memory adapter for testing
  */
 export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
+  let adapter!: Adapter;
   const factory = createAdapterFactory({
     config: {
       adapterId: 'memory',
@@ -202,7 +203,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           strictUpdateNotFound: true,
         },
         transactions: {
-          supported: false, // Simple in-memory, no real transactions
+          supported: true,
           nested: false,
         },
         performance: {
@@ -230,6 +231,31 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
       const store = new Map<string, Map<string, any>>();
       const schemaVersions = new Map<string, number>();
       const startTime = Date.now();
+      let transactionTail = Promise.resolve();
+
+      const cloneStore = () => new Map(
+        Array.from(store, ([tableName, records]) => [
+          tableName,
+          new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+        ]),
+      );
+
+      const restoreStore = (
+        storeSnapshot: Map<string, Map<string, any>>,
+        schemaVersionsSnapshot: Map<string, number>,
+      ) => {
+        store.clear();
+        for (const [tableName, records] of storeSnapshot) {
+          store.set(
+            tableName,
+            new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+          );
+        }
+        schemaVersions.clear();
+        for (const [namespace, version] of schemaVersionsSnapshot) {
+          schemaVersions.set(namespace, version);
+        }
+      };
 
       return {
         async create<T>(params: CreateParams): Promise<T> {
@@ -474,9 +500,41 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
         },
 
         async transaction<R>(
-          _callback: (trx: TransactionAdapter) => Promise<R>
+          callback: (trx: TransactionAdapter) => Promise<R>
         ): Promise<R> {
-          throw new OperationNotSupportedError('transaction', 'Memory Adapter');
+          let releaseTransaction!: () => void;
+          const previousTransaction = transactionTail;
+          transactionTail = new Promise<void>((resolve) => {
+            releaseTransaction = resolve;
+          });
+          await previousTransaction;
+
+          const storeSnapshot = cloneStore();
+          const schemaVersionsSnapshot = new Map(schemaVersions);
+          let rolledBack = false;
+          const transactionAdapter = Object.assign(
+            Object.fromEntries(
+              Object.entries(adapter).filter(([key]) => key !== 'transaction' && key !== 'close'),
+            ),
+            {
+              async commit() {},
+              async rollback() {
+                restoreStore(storeSnapshot, schemaVersionsSnapshot);
+                rolledBack = true;
+              },
+            },
+          ) as unknown as TransactionAdapter;
+
+          try {
+            return await callback(transactionAdapter);
+          } catch (error) {
+            if (!rolledBack) {
+              restoreStore(storeSnapshot, schemaVersionsSnapshot);
+            }
+            throw error;
+          } finally {
+            releaseTransaction();
+          }
         },
 
         async initialize(): Promise<void> {
@@ -512,7 +570,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  const adapter = factory({});
+  adapter = factory({});
   const internalCrud = createMemoryInternalCrud();
   return Object.assign(adapter, { internal: internalCrud });
 }

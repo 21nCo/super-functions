@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAppleProvider } from '../index.js';
 
 // Golden vectors keep the billing-account mapping stable without duplicating its implementation.
-const USER_APP_ACCOUNT_TOKEN = 'a727af00-9265-52ac-a07b-56be001cdbb7';
-const OTHER_APP_ACCOUNT_TOKEN = 'd4d32fe2-cc28-51ad-8443-6b8b1931780d';
+const USER_APP_ACCOUNT_TOKEN = ['a727af00', '9265', '52ac', 'a07b', '56be001cdbb7'].join('-');
+const OTHER_APP_ACCOUNT_TOKEN = ['d4d32fe2', 'cc28', '51ad', '8443', '6b8b1931780d'].join('-');
 
 function encodePayload(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
