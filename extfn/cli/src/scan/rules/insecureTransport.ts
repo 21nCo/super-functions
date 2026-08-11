@@ -9,11 +9,15 @@ const EXPLICIT_HTTP_TRANSPORT_PATTERNS = [
   /\b(?:fetch|Request|sendBeacon|WebSocket|EventSource|importScripts)\s*\(\s*['"`]http:\/\//i,
   /\.open\s*\([^,\r\n]*,\s*['"`]http:\/\//i,
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*open\s*\(\s*['"`]http:\/\//i,
+  /(?<![\w$.])(?:(?:window|globalThis|self|document)\s*\.\s*)?location\s*(?:\.\s*href\s*)?=\s*['"`]http:\/\//i,
+  /(?<![\w$.])(?:(?:window|globalThis|self|document)\s*\.\s*)?location\s*\.\s*(?:assign|replace)\s*\(\s*['"`]http:\/\//i,
   /\b(?:src|href|action|formaction)\s*=\s*['"]?http:\/\//i,
   /\burl\s*\(\s*['"]?http:\/\//i,
 ] as const;
 const NAMESPACE_ASSIGNMENT_PATTERN =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])([^'"`]+)\2/g;
+const ASSIGNMENT_OPERATOR_PATTERN =
+  /^(?:\+\+|--|&&=|\|\|=|\?\?=|>>>?=|<<=|\*\*=|[+\-*/%&|^]?=(?!=|>))/;
 const WELL_KNOWN_NAMESPACE_URIS: readonly string[] = [
   'http://www.w3.org/1998/Math/MathML',
   'http://www.w3.org/1999/xhtml',
@@ -58,9 +62,16 @@ function containsIndirectNamespaceTransport(text: string): boolean {
     const identifier = match[1];
     const value = match[3];
     const isNamespaceIdentifier = WELL_KNOWN_NAMESPACE_URIS.includes(value);
+    const assignmentEnd = match.index + match[0].length;
+    const bindingTail = text.slice(assignmentEnd);
+    const nextAssignment = findIdentifierAssignment(bindingTail, identifier);
+    const stableBinding =
+      nextAssignment === -1
+        ? bindingTail
+        : bindingTail.slice(0, nextAssignment);
     if (
       isNamespaceIdentifier &&
-      containsIdentifierTransport(text, identifier)
+      containsIdentifierTransport(stableBinding, identifier)
     ) {
       return true;
     }
@@ -85,10 +96,29 @@ function containsIdentifierTransport(text: string, identifier: string): boolean 
       'i'
     ),
     new RegExp(
-      String.raw`(?<![\w$.])(?:(?:window|globalThis|self)\s*\.\s*)?location\s*(?:\.\s*href\s*)?=\s*${identifierReference}`,
+      String.raw`(?<![\w$.])(?:(?:window|globalThis|self|document)\s*\.\s*)?location\s*(?:\.\s*href\s*)?=\s*${identifierReference}`,
+      'i'
+    ),
+    new RegExp(
+      String.raw`(?<![\w$.])(?:(?:window|globalThis|self|document)\s*\.\s*)?location\s*\.\s*(?:assign|replace)\s*\(\s*${identifierReference}`,
       'i'
     ),
   ].some((pattern) => pattern.test(text));
+}
+
+function findIdentifierAssignment(text: string, identifier: string): number {
+  const identifierPattern = new RegExp(
+    String.raw`(?<![\w$.])${escapeRegExp(identifier)}(?![\w$])`,
+    'g'
+  );
+  for (const match of text.matchAll(identifierPattern)) {
+    const suffix = text.slice(match.index + match[0].length).trimStart();
+    if (ASSIGNMENT_OPERATOR_PATTERN.test(suffix)) {
+      return match.index;
+    }
+  }
+
+  return -1;
 }
 
 function escapeRegExp(value: string): string {

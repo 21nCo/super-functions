@@ -17,6 +17,8 @@ const STRING_TIMER_PATTERN = /\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 const NON_CALLABLE_KEYWORD_PATTERN =
   /\b(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/;
 const CONTROL_FLOW_KEYWORD_PATTERN = /\b(?:for|if|while|with)$/;
+const REGEX_PREFIX_KEYWORD_PATTERN =
+  /\b(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/;
 
 const DYNAMIC_EXECUTION_PATTERNS = [
   DIRECT_EVAL_PATTERN,
@@ -116,6 +118,10 @@ function removeJavaScriptComments(text: string): string {
     } else if (text.startsWith('/*', index)) {
       chunks.push(' ');
       index = skipBlockComment(text, index) + 1;
+    } else if (character === '/' && isRegexLiteralStart(text, index)) {
+      const regexLiteral = readRegexLiteral(text, index);
+      chunks.push(regexLiteral.value);
+      index = regexLiteral.endIndex + 1;
     } else {
       chunks.push(character);
       index += 1;
@@ -159,6 +165,49 @@ function skipLineComment(text: string, startIndex: number): number {
 function skipBlockComment(text: string, startIndex: number): number {
   const closingIndex = text.indexOf('*/', startIndex + 2);
   return closingIndex === -1 ? text.length - 1 : closingIndex + 1;
+}
+
+function isRegexLiteralStart(text: string, startIndex: number): boolean {
+  const prefix = text.slice(0, startIndex).trimEnd();
+  const previousCharacter = prefix.at(-1);
+  return (
+    previousCharacter === undefined ||
+    /[\[({=,:;!?&|+\-*%^~<>]/.test(previousCharacter) ||
+    REGEX_PREFIX_KEYWORD_PATTERN.test(prefix) ||
+    endsWithControlFlowCondition(prefix)
+  );
+}
+
+function readRegexLiteral(
+  text: string,
+  startIndex: number
+): { value: string; endIndex: number } {
+  let insideCharacterClass = false;
+  let index = startIndex + 1;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === '\\') {
+      index += 2;
+      continue;
+    } else if (character === '[') {
+      insideCharacterClass = true;
+    } else if (character === ']') {
+      insideCharacterClass = false;
+    } else if (character === '/' && !insideCharacterClass) {
+      let endIndex = index;
+      while (/[A-Za-z]/.test(text[endIndex + 1] ?? '')) {
+        endIndex += 1;
+      }
+      return {
+        value: text.slice(startIndex, endIndex + 1),
+        endIndex,
+      };
+    }
+
+    index += 1;
+  }
+
+  return { value: '/', endIndex: startIndex };
 }
 
 export const dynamicExecutionRule: ScanRule = {

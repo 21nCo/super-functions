@@ -204,6 +204,9 @@ describe('scan rules', () => {
       'xhr.open("GET", "http://www.w3.org/2000/svg");',
       'xhr.open(method, "http://www.w3.org/2000/svg");',
       'window.open("http://www.w3.org/2000/svg");',
+      'location = "http://www.w3.org/2000/svg";',
+      'window.location.href = "http://www.w3.org/2000/svg";',
+      'location.assign("http://www.w3.org/2000/svg");',
       '<img src=http://www.w3.org/2000/svg>',
       'background: url(http://www.w3.org/2000/svg)',
     ]) {
@@ -278,6 +281,44 @@ describe('scan rules', () => {
     }
   });
 
+  it('does not flag namespace constants reassigned before transport', () => {
+    const findings = insecureTransportRule.evaluate({
+      target: 'chromium-mv3',
+      outputDir: 'dist/chromium-mv3',
+      manifestPath: 'dist/chromium-mv3/manifest.json',
+      manifest: {},
+      files: [
+        {
+          absolutePath: '/tmp/popup.js',
+          relativePath: 'popup.js',
+          contents:
+            'let endpoint = "http://www.w3.org/2000/svg"; endpoint = "https://example.com"; fetch(endpoint);',
+        },
+      ],
+    });
+
+    expect(findings).toEqual([]);
+  });
+
+  it('does not treat property writes as namespace variable reassignment', () => {
+    const findings = insecureTransportRule.evaluate({
+      target: 'chromium-mv3',
+      outputDir: 'dist/chromium-mv3',
+      manifestPath: 'dist/chromium-mv3/manifest.json',
+      manifest: {},
+      files: [
+        {
+          absolutePath: '/tmp/popup.js',
+          relativePath: 'popup.js',
+          contents:
+            'const endpoint = "http://www.w3.org/2000/svg"; config.endpoint = "https://example.com"; fetch(endpoint);',
+        },
+      ],
+    });
+
+    expect(findings).toHaveLength(1);
+  });
+
   it('does not flag member-access methods named eval as dynamic execution', () => {
     const findings = dynamicExecutionRule.evaluate({
       target: 'chromium-mv3',
@@ -333,6 +374,8 @@ describe('scan rules', () => {
       'eval(untrusted);',
       '(eval)(untrusted);',
       'if (ready) (eval)(untrusted);',
+      'const slash = /[//]/; eval(untrusted);',
+      'const star = /[/*]/; eval(untrusted);',
     ]) {
       const findings = dynamicExecutionRule.evaluate({
         target: 'chromium-mv3',
