@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SecurityIsolationError,
   assertScopedAccess,
   assertValidScope,
   filterScopedRecords,
@@ -20,8 +19,8 @@ describe('tenant and user isolation guards', () => {
     expect(scoped).toEqual([{ id: 'conn_t1', tenantId: 't1', userId: 'u1' }]);
   });
 
-  it('denies cross-tenant reads by connection id', () => {
-    expect(() =>
+  it('does not reveal whether a connection id exists outside the active scope', () => {
+    expect(
       getScopedRecordById(
         [
           { id: 'conn_t1', tenantId: 't1', userId: 'u1' },
@@ -30,18 +29,18 @@ describe('tenant and user isolation guards', () => {
         'conn_t2',
         { tenantId: 't1', userId: 'u1' }
       )
-    ).toThrowError(SecurityIsolationError);
+    ).toBeNull();
 
-    expect(() =>
+    expect(
       getScopedRecordById(
         [
           { id: 'conn_t1', tenantId: 't1', userId: 'u1' },
           { id: 'conn_t2', tenantId: 't2', userId: 'u2' },
         ],
-        'conn_t2',
+        'conn_missing',
         { tenantId: 't1', userId: 'u1' }
       )
-    ).toThrowError('cross-tenant access denied');
+    ).toBeNull();
   });
 
   it('returns null for unknown ids in-scope without throwing', () => {

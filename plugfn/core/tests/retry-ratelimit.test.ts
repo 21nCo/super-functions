@@ -145,4 +145,42 @@ describe('retry and rate limit hardening', () => {
 
     limiter.destroy();
   });
+
+  it('keeps per-key reset times after a blocked multi-key acquire', async () => {
+    let now = 0;
+    let wake!: () => void;
+    let notifySleepScheduled!: () => void;
+    const sleepScheduled = new Promise<void>((resolve) => {
+      notifySleepScheduled = resolve;
+    });
+    const limiter = new RateLimiter({
+      now: () => now,
+      setTimeoutFn: (callback) => {
+        wake = callback;
+        notifySleepScheduled();
+        return 1 as unknown as NodeJS.Timeout;
+      },
+      clearTimeoutFn: () => {},
+    });
+    const config = { requests: 1, window: 1000 };
+
+    await limiter.acquire('provider:gmail', config);
+    now = 500;
+    await limiter.acquire('provider:gmail:tenant:user-1', config);
+    now = 600;
+    const pending = limiter.acquireMany(
+      ['provider:gmail', 'provider:gmail:tenant:user-1'],
+      config
+    );
+    await sleepScheduled;
+
+    now = 1100;
+    expect(limiter.wouldExceed('provider:gmail', config)).toBe(false);
+    expect(limiter.wouldExceed('provider:gmail:tenant:user-1', config)).toBe(true);
+
+    now = 1500;
+    wake();
+    await pending;
+    limiter.destroy();
+  });
 });

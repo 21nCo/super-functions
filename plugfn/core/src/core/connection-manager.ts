@@ -1098,8 +1098,8 @@ function isConnectionOwner(value: unknown): value is PlugFnConnectionOwner {
 
 function isOAuthSecretResolverConfig(value: unknown): value is OAuthSecretResolverConfig {
   return (
+    !!value &&
     typeof value === 'object' &&
-    value !== null &&
     'resolveOAuthClient' in value &&
     typeof (value as OAuthSecretResolverConfig).resolveOAuthClient === 'function'
   );

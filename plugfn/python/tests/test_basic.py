@@ -1,9 +1,11 @@
 """Basic tests for PlugFn Python SDK."""
 
-import pytest
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
-from plugfn import PlugFn, AuthProvider, DatabaseAdapter
+import pytest
+
+from plugfn import AuthProvider, DatabaseAdapter, PlugFn
 from plugfn.providers import github_provider, slack_provider
 
 
@@ -154,6 +156,30 @@ async def test_get_auth_url(plug):
     assert url is not None
     assert "github.com" in url
     assert "client_id" in url
+
+
+@pytest.mark.asyncio
+async def test_canonical_callback_resolves_provider_from_stored_state(plug):
+    url = await plug.connections.get_auth_url(
+        provider="github",
+        user_id="test-user",
+        redirect_uri="https://test.com/callback",
+    )
+    state = parse_qs(urlparse(url).query)["state"][0]
+
+    async def exchange_code_for_token(**_kwargs):
+        return {"access_token": "token", "token_type": "bearer"}
+
+    plug._connection_manager.oauth_handler.exchange_code_for_token = exchange_code_for_token
+    plug._connection_manager.token_storage.encrypt = lambda value: {"encrypted": value}
+
+    connection = await plug.connections.handle_callback(
+        provider=None,
+        code="oauth-code",
+        state=state,
+    )
+
+    assert connection.provider == "github"
 
 
 @pytest.mark.asyncio

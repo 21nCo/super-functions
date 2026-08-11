@@ -22,6 +22,7 @@ class MockConnections:
         self.list_calls = []
         self.auth_url_calls = []
         self.disconnect_calls = []
+        self.callback_calls = []
 
     async def list(self, user_id, provider=None):
         self.list_calls.append({"user_id": user_id, "provider": provider})
@@ -51,7 +52,8 @@ class MockConnections:
         self.disconnect_calls.append({"connection_id": connection_id, "user_id": user_id})
 
     async def handle_callback(self, provider, code, state):
-        return SimpleNamespace(id="conn_1", provider=provider, status="active")
+        self.callback_calls.append({"provider": provider, "code": code, "state": state})
+        return SimpleNamespace(id="conn_1", provider=provider or "github", status="active")
 
 
 def create_app(principal):
@@ -111,6 +113,19 @@ def test_fastapi_exposes_canonical_route_inventory():
     assert "POST /api/plugfn/connections/auth" in routes
     assert "POST /api/plugfn/connections/disconnect" in routes
     assert "POST /api/plugfn/webhooks/{provider}/{event}" in routes
+
+
+def test_fastapi_canonical_callback_resolves_provider_from_state():
+    app, connections = create_app({"userId": "user_from_auth"})
+    client = TestClient(app)
+
+    response = client.get("/api/plugfn/callback?code=oauth-code&state=oauth-state")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["connection"]["provider"] == "github"
+    assert connections.callback_calls == [
+        {"provider": None, "code": "oauth-code", "state": "oauth-state"}
+    ]
 
 
 def test_fastapi_rejects_query_user_spoofing():

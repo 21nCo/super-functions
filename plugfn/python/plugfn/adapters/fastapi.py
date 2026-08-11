@@ -40,7 +40,7 @@ def mount_plugfn(
         return await _handle_auth_url_request(request, plug, auth, provider_override=provider)
 
     @router.get("/callback")
-    async def canonical_callback(provider: str, code: str, state: str):
+    async def canonical_callback(code: str, state: str, provider: Optional[str] = None):
         return await _handle_callback(provider, code, state, plug)
 
     @router.get("/auth/{provider}/callback")
@@ -152,7 +152,9 @@ async def _handle_auth_url_request(
         return _error_from_exception(error)
 
 
-async def _handle_callback(provider: str, code: str, state: str, plug: Any) -> JSONResponse:
+async def _handle_callback(
+    provider: Optional[str], code: str, state: str, plug: Any
+) -> JSONResponse:
     try:
         connection = await plug.connections.handle_callback(provider=provider, code=code, state=state)
         return _success({"connection": {"id": connection.id, "provider": connection.provider, "status": connection.status}})

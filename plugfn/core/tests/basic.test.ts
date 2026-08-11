@@ -57,6 +57,26 @@ describe('PlugFn SDK', () => {
     });
   });
 
+  describe('Authentication normalization', () => {
+    it('rejects a malformed auth session without dereferencing a null subject', async () => {
+      const malformed = plugFn({
+        database: new MemoryAdapter(),
+        auth: {
+          async authenticate() {
+            return { subject: null } as any;
+          },
+        },
+        baseUrl: 'https://test.com',
+        encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        integrations: {},
+      });
+
+      await expect(
+        malformed.config.auth.authenticate(new Request('https://test.com/connections'))
+      ).resolves.toBeNull();
+    });
+  });
+
   describe('Action Execution', () => {
     it('should execute an action successfully', async () => {
       const provider = mockProvider('test', {
@@ -77,7 +97,7 @@ describe('PlugFn SDK', () => {
       expect(result).toEqual({ data: 'test-data' });
     });
 
-    it('does not cache actions unless cache is explicitly requested', async () => {
+    it('does not cache mutating actions unless cache is explicitly requested', async () => {
       let executions = 0;
       const provider = mockProvider('test', {
         'createThing': mockResponse({ count: 0 }),
@@ -98,9 +118,50 @@ describe('PlugFn SDK', () => {
         userId: 'test-user',
         params: {},
       });
+      const explicitlyCached = await plug.test.createThing({
+        userId: 'test-user',
+        params: {},
+        cache: true,
+      });
+      const explicitCacheHit = await plug.test.createThing({
+        userId: 'test-user',
+        params: {},
+        cache: true,
+      });
 
       expect(first).toEqual({ count: 1 });
       expect(second).toEqual({ count: 2 });
+      expect(explicitlyCached).toEqual({ count: 3 });
+      expect(explicitCacheHit).toEqual({ count: 3 });
+      expect(executions).toBe(3);
+    });
+
+    it('caches cacheable actions by default', async () => {
+      let executions = 0;
+      const provider = mockProvider('test', {
+        'getThing': mockResponse({ count: 0 }),
+      });
+      provider.actions.getThing.cacheable = true;
+      provider.actions.getThing.execute = async () => {
+        executions += 1;
+        return { count: executions };
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      const first = await plug.test.getThing({
+        userId: 'test-user',
+        params: {},
+      });
+      const second = await plug.test.getThing({
+        userId: 'test-user',
+        params: {},
+      });
+
+      expect(first).toEqual({ count: 1 });
+      expect(second).toEqual({ count: 1 });
+      expect(executions).toBe(1);
     });
 
     it('separates explicit cache entries by resolved connection', async () => {
@@ -233,6 +294,34 @@ describe('PlugFn SDK', () => {
       expect(results).toHaveLength(2);
       expect(results[0].success).toBe(true);
       expect(results[1].success).toBe(true);
+    });
+
+    it('preserves default caching for cacheable batch actions', async () => {
+      let executions = 0;
+      const provider = mockProvider('test', {
+        'getBatchValue': mockResponse({ count: 0 }),
+      });
+      provider.actions.getBatchValue.cacheable = true;
+      provider.actions.getBatchValue.execute = async () => {
+        executions += 1;
+        return { count: executions };
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      const action = {
+        provider: 'test',
+        action: 'getBatchValue',
+        userId: 'test-user',
+        params: {},
+      };
+      await plug.batch([action]);
+      const second = await plug.batch([action]);
+
+      expect(second[0]?.data).toEqual({ count: 1 });
+      expect(second[0]?.cached).toBe(true);
+      expect(executions).toBe(1);
     });
   });
 

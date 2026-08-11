@@ -167,7 +167,7 @@ async def _handle_auth_url_request(
 
 async def _handle_callback(provider: Any, code: Any, state: Any, plug: Any):
     try:
-        if not isinstance(provider, str) or not provider:
+        if provider is not None and (not isinstance(provider, str) or not provider):
             raise AdapterSecurityError("VALIDATION_ERROR", "provider is required", 400)
         if not isinstance(code, str) or not code or not isinstance(state, str) or not state:
             raise AdapterSecurityError("VALIDATION_ERROR", "code and state are required", 400)

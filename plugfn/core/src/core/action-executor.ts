@@ -101,7 +101,9 @@ export class ActionExecutor {
       // Validate parameters
       const validatedParams = actionObj.parameters.parse(options.params);
       const shouldUseCache =
-        this.enableCache && options.cache !== false && options.cache !== undefined;
+        this.enableCache &&
+        options.cache !== false &&
+        (options.cache !== undefined || actionObj.cacheable === true);
 
       // Get or select connection
       const connection = await this.connectionManager.resolveConnectionForAction({
@@ -293,6 +295,7 @@ export class ActionExecutor {
         userId: action.userId,
         connectionId: action.connectionId,
         params: action.params,
+        cache: action.cache,
       })
     );
 

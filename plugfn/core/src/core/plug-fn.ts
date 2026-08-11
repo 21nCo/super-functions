@@ -885,6 +885,10 @@ async function executeSyncResource(input: {
     };
   }
 
+  if (input.shouldContinue && !(await input.shouldContinue())) {
+    throw syncCancelledError();
+  }
+
   const result = await input.actionExecutor.execute(input.provider, fallbackAction, {
     userId: input.userId,
     connectionId: input.connectionId,
@@ -1168,11 +1172,15 @@ function normalizePrincipal(
     return value as PlugFnPrincipal;
   }
 
+  const subject =
+    typeof value === 'object' && 'subject' in value
+      ? (value as Partial<AuthSession>).subject
+      : null;
   if (
-    typeof value === 'object' &&
-    'subject' in value &&
-    typeof (value as AuthSession).subject.actorId === 'string' &&
-    (value as AuthSession).subject.actorId.length > 0
+    subject !== null &&
+    typeof subject === 'object' &&
+    typeof subject.actorId === 'string' &&
+    subject.actorId.length > 0
   ) {
     const session = value as AuthSession;
     return {

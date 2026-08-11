@@ -11,7 +11,10 @@ describe('PlugFn legacy OAuth shim', () => {
     const mod = await import('../src/auth/oauth-flow.js');
     const notice = mod.getLegacyOAuthFlowDeprecationNotice();
 
-    expect(warningSpy).toHaveBeenCalledWith(notice.message, notice.code);
+    expect(warningSpy).toHaveBeenCalledWith(notice.message, {
+      code: notice.code,
+      type: 'DeprecationWarning',
+    });
     expect(notice).toEqual({
       code: 'DEPRECATED_PATH',
       message: expect.stringContaining('plugfn/auth/oauth-flow is deprecated'),

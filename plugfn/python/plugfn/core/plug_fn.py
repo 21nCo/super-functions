@@ -94,7 +94,7 @@ class ConnectionsAPI:
         )
 
     async def handle_callback(
-        self, provider: str, code: str, state: str
+        self, provider: Optional[str], code: str, state: str
     ) -> Connection:
         """Handle OAuth callback and create connection.
 

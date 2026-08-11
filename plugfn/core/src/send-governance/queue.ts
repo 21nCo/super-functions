@@ -29,6 +29,7 @@ export class SendQueue {
   private readonly jobByScopeAndId = new Map<string, SendJob>();
   private readonly jobScopeByJobId = new Map<string, SendScope>();
   private readonly idempotencyByScope = new Map<string, string>();
+  private readonly enqueueLocks = new Map<string, Promise<void>>();
 
   constructor(dependencies: QueueDependencies = {}) {
     this.now = dependencies.now ?? (() => new Date().toISOString());
@@ -41,43 +42,45 @@ export class SendQueue {
     this.cleanupExpiredTerminalJobs();
 
     const idempotencyKey = scopedIdempotencyKey(request);
-    const existingJobId = this.idempotencyByScope.get(idempotencyKey);
-    if (existingJobId) {
-      const existing = this.mustGetByScopedId(existingJobId, request);
-      return {
-        job: existing,
-        duplicate: true,
+    return this.withEnqueueLock(idempotencyKey, async () => {
+      const existingJobId = this.idempotencyByScope.get(idempotencyKey);
+      if (existingJobId) {
+        const existing = this.mustGetByScopedId(existingJobId, request);
+        return {
+          job: existing,
+          duplicate: true,
+        };
+      }
+
+      const timestamp = this.now();
+      const jobId = createSendJobId(request.providerId, request.idempotencyKey);
+      const job: SendJob = {
+        ...request,
+        jobId,
+        status: 'queued',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        attempts: 0,
       };
-    }
 
-    const timestamp = this.now();
-    const jobId = createSendJobId(request.providerId, request.idempotencyKey);
-    const job: SendJob = {
-      ...request,
-      jobId,
-      status: 'queued',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      attempts: 0,
-    };
+      const scopedId = scopedJobId(jobId, request);
+      this.jobByScopeAndId.set(scopedId, job);
+      this.jobScopeByJobId.set(jobId, { tenantId: request.tenantId, userId: request.userId });
+      this.idempotencyByScope.set(idempotencyKey, jobId);
+      try {
+        await this.queueAdapter.enqueue(scopedQueueName(request), job);
+      } catch (error) {
+        this.jobByScopeAndId.delete(scopedId);
+        this.jobScopeByJobId.delete(jobId);
+        this.idempotencyByScope.delete(idempotencyKey);
+        throw error;
+      }
 
-    const scopedId = scopedJobId(jobId, request);
-    this.jobByScopeAndId.set(scopedId, job);
-    this.jobScopeByJobId.set(jobId, { tenantId: request.tenantId, userId: request.userId });
-    this.idempotencyByScope.set(idempotencyKey, jobId);
-    try {
-      await this.queueAdapter.enqueue(scopedQueueName(request), job);
-    } catch (error) {
-      this.jobByScopeAndId.delete(scopedId);
-      this.jobScopeByJobId.delete(jobId);
-      this.idempotencyByScope.delete(idempotencyKey);
-      throw error;
-    }
-
-    return {
-      job,
-      duplicate: false,
-    };
+      return {
+        job,
+        duplicate: false,
+      };
+    });
   }
 
   get(jobId: string, scope: SendScope): SendJob | undefined {
@@ -125,6 +128,26 @@ export class SendQueue {
       throw new SendGovernanceError('VALIDATION_ERROR', `send job not found: ${jobId}`);
     }
     return job;
+  }
+
+  private async withEnqueueLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const prior = this.enqueueLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = prior.then(() => current);
+    this.enqueueLocks.set(key, tail);
+
+    await prior;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.enqueueLocks.get(key) === tail) {
+        this.enqueueLocks.delete(key);
+      }
+    }
   }
 
   private cleanupExpiredTerminalJobs(): void {

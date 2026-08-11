@@ -61,6 +61,11 @@ export interface Action<TParams = any, TReturn = any> {
   name: string;
   displayName: string;
   description: string;
+  /**
+   * Opt in to caching when callers do not provide an explicit cache option.
+   * Mutating actions should leave this unset or set it to false.
+   */
+  cacheable?: boolean;
   parameters: z.ZodSchema<TParams>;
   returns: z.ZodSchema<TReturn>;
   execute: (params: TParams, context: ActionContext) => Promise<TReturn>;
@@ -121,6 +126,7 @@ export interface BatchAction {
   userId: string;
   connectionId?: string;
   params: Record<string, any>;
+  cache?: boolean | CacheOptions;
 }
 
 /**

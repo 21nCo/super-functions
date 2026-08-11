@@ -160,4 +160,52 @@ describe('send governance idempotency and isolation', () => {
     expect(queue.list({ tenantId: 't1', userId: 'u1' })).toEqual([]);
     await expect(queue.enqueue(request)).rejects.toThrow('queue unavailable');
   });
+
+  it('does not expose duplicate state until the first adapter enqueue is durable', async () => {
+    let releaseEnqueue!: () => void;
+    const firstEnqueue = new Promise<void>((resolve) => {
+      releaseEnqueue = resolve;
+    });
+    let enqueueCalls = 0;
+    const delayedQueue: QueueAdapter<SendJob> = {
+      async enqueue() {
+        enqueueCalls += 1;
+        await firstEnqueue;
+      },
+      async dequeue() {
+        return null;
+      },
+      async dequeueMatching() {
+        return null;
+      },
+      peek() {
+        return [];
+      },
+      size() {
+        return 0;
+      },
+    };
+    const queue = new SendQueue({ queueAdapter: delayedQueue });
+    const request = {
+      providerId: 'gmail',
+      tenantId: 't1',
+      userId: 'u1',
+      recipientCount: 1,
+      idempotencyKey: 'ik_concurrent_enqueue',
+    };
+
+    const firstPromise = queue.enqueue(request);
+    await Promise.resolve();
+    const secondPromise = queue.enqueue(request);
+    await Promise.resolve();
+
+    expect(enqueueCalls).toBe(1);
+    releaseEnqueue();
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+    expect(first.duplicate).toBe(false);
+    expect(second.duplicate).toBe(true);
+    expect(second.job.jobId).toBe(first.job.jobId);
+    expect(enqueueCalls).toBe(1);
+  });
 });

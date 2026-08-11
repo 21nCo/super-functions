@@ -184,6 +184,8 @@ describe('rate-limit', () => {
 
       expect(multi.allowed).toBe(false);
       expect(multi.resetAt).toBe('2026-03-12T00:00:01.500Z');
+      expect(multi.resetAtByKey.get('provider')).toBe('2026-03-12T00:00:01.000Z');
+      expect(multi.resetAtByKey.get('tenant')).toBe('2026-03-12T00:00:01.500Z');
     });
 
     it('rolls back multi-key quota commits when a later persistence write fails', async () => {
@@ -217,6 +219,44 @@ describe('rate-limit', () => {
 
       expect(internalStore.has('ratelimit:provider')).toBe(false);
       expect((await limiter.check({ key: 'provider' })).allowed).toBe(true);
+    });
+
+    it('restores the original remaining TTL after a partial commit failure', async () => {
+      const internalStore = new Map<string, string>();
+      const ttlByKey = new Map<string, number | undefined>();
+      let currentTime = 0;
+      const customStore: KVStoreAdapter = {
+        async get(key: string) {
+          return internalStore.get(key) ?? null;
+        },
+        async set(input: KVSetInput) {
+          if (input.key === 'ratelimit:tenant') {
+            throw new Error('write failed');
+          }
+          internalStore.set(input.key, input.value);
+          ttlByKey.set(input.key, input.ttlSeconds);
+        },
+        async delete(key: string) {
+          internalStore.delete(key);
+          ttlByKey.delete(key);
+        },
+      };
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 2,
+        algorithm: 'fixed-window',
+        persistence: customStore,
+        now: () => currentTime,
+      });
+
+      await limiter.check({ key: 'provider' });
+      currentTime = 30000;
+
+      await expect(limiter.checkMany({ keys: ['provider', 'tenant'] })).rejects.toThrow(
+        'write failed'
+      );
+
+      expect(ttlByKey.get('ratelimit:provider')).toBe(30);
     });
 
     it('resets key state', async () => {

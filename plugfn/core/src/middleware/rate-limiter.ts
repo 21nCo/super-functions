@@ -71,10 +71,16 @@ export class RateLimiter {
       }
 
       const result = await limiter.checkMany({ keys: uniqueKeys });
-      const resetAt = Date.parse(result.resetAt);
       for (const key of uniqueKeys) {
-        this.setSnapshot(key, config, result.remainingByKey.get(key) ?? 0, resetAt);
+        this.setSnapshot(
+          key,
+          config,
+          result.remainingByKey.get(key) ?? 0,
+          Date.parse(result.resetAtByKey.get(key) ?? result.resetAt)
+        );
       }
+
+      const resetAt = Date.parse(result.resetAt);
 
       if (result.allowed) {
         return;

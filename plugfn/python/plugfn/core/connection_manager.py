@@ -115,7 +115,7 @@ class ConnectionManager:
         return url
 
     async def handle_callback(
-        self, provider: str, code: str, state: str
+        self, provider: Optional[str], code: str, state: str
     ) -> Connection:
         """Handle OAuth callback and create connection.
 
@@ -140,9 +140,15 @@ class ConnectionManager:
         state_data = json.loads(state_data_str)
         await self.oauth_handler.token_store.delete(state_key)
 
-        # Verify provider matches
-        if state_data["provider"] != provider:
+        state_provider = state_data.get("provider")
+        if not isinstance(state_provider, str) or not state_provider:
+            raise ValueError("Provider missing from OAuth state")
+
+        # Legacy callback routes may supply the provider explicitly; the
+        # canonical route resolves it from the authenticated OAuth state.
+        if provider is not None and state_provider != provider:
             raise ValueError("Provider mismatch in OAuth callback")
+        provider = state_provider
 
         provider_obj = self.providers.get_provider(provider)
         if not provider_obj:
