@@ -190,7 +190,7 @@ function isRegexLiteralStart(text: string, startIndex: number): boolean {
   const previousCharacter = prefix.at(-1);
   return (
     previousCharacter === undefined ||
-    /[\[({=,:;!?&|+\-*%^~<>]/.test(previousCharacter) ||
+    /[[({=,:;!?&|+*%^~<>-]/.test(previousCharacter) ||
     REGEX_PREFIX_KEYWORD_PATTERN.test(prefix) ||
     endsWithControlFlowCondition(prefix)
   );

@@ -17,7 +17,7 @@ const EXPLICIT_HTTP_TRANSPORT_PATTERNS = [
 const NAMESPACE_ASSIGNMENT_PATTERN =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])([^'"`]+)\2/g;
 const ASSIGNMENT_OPERATOR_PATTERN =
-  /^(?:\+\+|--|&&=|\|\|=|\?\?=|>>>?=|<<=|\*\*=|[+\-*/%&|^]?=(?!=|>))/;
+  /^(?:\+\+|--|&&=|\|\|=|\?\?=|>>>?=|<<=|\*\*=|[+\-*/%&|^]?=(?![=>]))/;
 const WELL_KNOWN_NAMESPACE_URIS: readonly string[] = [
   'http://www.w3.org/1998/Math/MathML',
   'http://www.w3.org/1999/xhtml',
