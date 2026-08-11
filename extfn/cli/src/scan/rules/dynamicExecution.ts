@@ -83,8 +83,8 @@ function containsUnboundParenthesizedGlobalCall(
 
     let prefix = text.slice(0, match.index).trimEnd();
     let hasMatchingOpeningParentheses = true;
-    for (let index = 0; index < closingParentheses.length; index += 1) {
-      if (!prefix.endsWith('(')) {
+    for (const closingParenthesis of closingParentheses) {
+      if (closingParenthesis !== ')' || !prefix.endsWith('(')) {
         hasMatchingOpeningParentheses = false;
         break;
       }
