@@ -4,23 +4,19 @@ const DIRECT_EVAL_PATTERN = /(?<![\w$.])eval\s*\(/;
 const PARENTHESIZED_DIRECT_EVAL_PATTERN = /\(\s*eval\s*\)\s*\(/g;
 const GLOBAL_DOT_EVAL_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*eval\s*\(/;
-const PARENTHESIZED_GLOBAL_DOT_EVAL_PATTERN =
-  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.|\.)\s*eval\s*\(/g;
 const GLOBAL_COMPUTED_EVAL_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/;
-const PARENTHESIZED_GLOBAL_COMPUTED_EVAL_PATTERN =
-  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.\s*)?\[\s*(['"`])eval\1\s*\]\s*\(/g;
 const FUNCTION_CONSTRUCTOR_PATTERN = /(?<![\w$.])(?:new\s+)?Function\s*\(/;
 const PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN =
   /\(\s*Function\s*\)\s*\(/g;
 const GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.|\.)\s*Function\s*\(/;
-const PARENTHESIZED_GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN =
-  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.|\.)\s*Function\s*\(/g;
 const GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN =
   /(?<![\w$.])(?:window|globalThis|self)\s*(?:\?\.\s*)?\[\s*(['"`])Function\1\s*\]\s*\(/;
-const PARENTHESIZED_GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN =
-  /(?:\(\s*)+(?:window|globalThis|self)(?:\s*\))+\s*(?:\?\.\s*)?\[\s*(['"`])Function\1\s*\]\s*\(/g;
+const PARENTHESIZED_GLOBAL_DOT_CALL_PATTERN =
+  /\b(?:window|globalThis|self)([\s)]*)(?:\?\.|\.)\s*(?:eval|Function)\s*\(/g;
+const PARENTHESIZED_GLOBAL_COMPUTED_CALL_PATTERN =
+  /\b(?:window|globalThis|self)([\s)]*)(?:\?\.\s*)?\[\s*(['"`])(?:eval|Function)\2\s*\]\s*\(/g;
 const STRING_TIMER_PATTERN = /\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 const NON_CALLABLE_KEYWORD_PATTERN =
   /\b(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/;
@@ -46,25 +42,17 @@ function containsDynamicExecution(text: string): boolean {
       commentFreeText,
       PARENTHESIZED_DIRECT_EVAL_PATTERN
     ) ||
-    containsUnboundParenthesizedCall(
+    containsUnboundParenthesizedGlobalCall(
       commentFreeText,
-      PARENTHESIZED_GLOBAL_DOT_EVAL_PATTERN
+      PARENTHESIZED_GLOBAL_DOT_CALL_PATTERN
     ) ||
-    containsUnboundParenthesizedCall(
+    containsUnboundParenthesizedGlobalCall(
       commentFreeText,
-      PARENTHESIZED_GLOBAL_COMPUTED_EVAL_PATTERN
+      PARENTHESIZED_GLOBAL_COMPUTED_CALL_PATTERN
     ) ||
     containsUnboundParenthesizedCall(
       commentFreeText,
       PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN
-    ) ||
-    containsUnboundParenthesizedCall(
-      commentFreeText,
-      PARENTHESIZED_GLOBAL_DOT_FUNCTION_CONSTRUCTOR_PATTERN
-    ) ||
-    containsUnboundParenthesizedCall(
-      commentFreeText,
-      PARENTHESIZED_GLOBAL_COMPUTED_FUNCTION_CONSTRUCTOR_PATTERN
     )
   );
 }
@@ -75,18 +63,50 @@ function containsUnboundParenthesizedCall(
 ): boolean {
   for (const match of text.matchAll(pattern)) {
     const prefix = text.slice(0, match.index).trimEnd();
-    const previousCharacter = prefix.at(-1);
-    if (
-      previousCharacter === undefined ||
-      !/[\w$.)\]]/.test(previousCharacter) ||
-      NON_CALLABLE_KEYWORD_PATTERN.test(prefix) ||
-      endsWithControlFlowCondition(prefix)
-    ) {
+    if (isUnboundCallPrefix(prefix)) {
       return true;
     }
   }
 
   return false;
+}
+
+function containsUnboundParenthesizedGlobalCall(
+  text: string,
+  pattern: RegExp
+): boolean {
+  for (const match of text.matchAll(pattern)) {
+    const closingParentheses = match[1].replaceAll(/\s/g, '');
+    if (closingParentheses.length === 0) {
+      continue;
+    }
+
+    let prefix = text.slice(0, match.index).trimEnd();
+    let hasMatchingOpeningParentheses = true;
+    for (let index = 0; index < closingParentheses.length; index += 1) {
+      if (!prefix.endsWith('(')) {
+        hasMatchingOpeningParentheses = false;
+        break;
+      }
+      prefix = prefix.slice(0, -1).trimEnd();
+    }
+
+    if (hasMatchingOpeningParentheses && isUnboundCallPrefix(prefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isUnboundCallPrefix(prefix: string): boolean {
+  const previousCharacter = prefix.at(-1);
+  return (
+    previousCharacter === undefined ||
+    !/[\w$.)\]]/.test(previousCharacter) ||
+    NON_CALLABLE_KEYWORD_PATTERN.test(prefix) ||
+    endsWithControlFlowCondition(prefix)
+  );
 }
 
 function endsWithControlFlowCondition(prefix: string): boolean {
