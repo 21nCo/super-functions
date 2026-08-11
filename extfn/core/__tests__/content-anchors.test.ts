@@ -238,6 +238,33 @@ describe('content anchors', () => {
     ]);
   });
 
+  it('disambiguates anchors that share a name attribute', async () => {
+    const dom = new JSDOM(`
+      <main>
+        <input class="target" type="radio" name="plan" value="free" />
+        <input class="target" type="radio" name="plan" value="pro" />
+      </main>
+    `);
+
+    const anchors = await resolveAnchors(
+      defineContentScript({
+        id: 'radio-script',
+        entry: './__tests__/fixtures/content/twitter-post.ts',
+        matches: ['https://x.com/*'],
+        anchors: [{ kind: 'selector-list', selector: '.target', mountMode: 'append' }],
+      }),
+      {
+        document: dom.window.document,
+        moduleId: 'radio-script',
+      }
+    );
+
+    expect(anchors.map((anchor) => anchor.anchorKey)).toEqual([
+      'radio-script/plan-0',
+      'radio-script/plan-1',
+    ]);
+  });
+
   it('validates content script ids, entries, and style isolation deterministically', async () => {
     await expect(
       validateContentScripts(

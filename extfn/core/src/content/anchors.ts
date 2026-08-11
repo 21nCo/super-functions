@@ -71,15 +71,27 @@ export function createAnchorKey(
   anchor: Element,
   index: number
 ): string {
-  const preferred =
+  const explicitKey =
     anchor.getAttribute('data-extfn-anchor-key') ??
     anchor.getAttribute('data-testid') ??
     // `anchor.id` is always a string ('' when the attribute is absent), so the
     // empty string must be treated as "no id" to fall through to `name`.
-    ((anchor.id !== '' ? anchor.id : null) ?? anchor.getAttribute('name'));
+    (anchor.id !== '' ? anchor.id : null);
 
-  if (preferred) {
-    return `${moduleId}/${preferred}`;
+  if (explicitKey) {
+    return `${moduleId}/${explicitKey}`;
+  }
+  if (explicitKey === '') {
+    return `${moduleId}/anchor-${index}`;
+  }
+
+  const name = anchor.getAttribute('name');
+  if (name) {
+    const key =
+      anchor.ownerDocument.getElementsByName(name).length > 1
+        ? `${name}-${index}`
+        : name;
+    return `${moduleId}/${key}`;
   }
 
   return `${moduleId}/anchor-${index}`;

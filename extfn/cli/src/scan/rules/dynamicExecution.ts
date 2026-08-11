@@ -15,7 +15,8 @@ const PARENTHESIZED_FUNCTION_CONSTRUCTOR_PATTERN =
   /\(\s*Function\s*\)\s*\(/g;
 const STRING_TIMER_PATTERN = /\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
 const NON_CALLABLE_KEYWORD_PATTERN =
-  /\b(?:await|case|delete|in|instanceof|new|return|throw|typeof|void|yield)$/;
+  /\b(?:await|case|delete|do|else|in|instanceof|new|return|throw|typeof|void|yield)$/;
+const CONTROL_FLOW_KEYWORD_PATTERN = /\b(?:for|if|while|with)$/;
 
 const DYNAMIC_EXECUTION_PATTERNS = [
   DIRECT_EVAL_PATTERN,
@@ -58,13 +59,44 @@ function containsUnboundParenthesizedCall(
     if (
       previousCharacter === undefined ||
       !/[\w$.)\]]/.test(previousCharacter) ||
-      NON_CALLABLE_KEYWORD_PATTERN.test(prefix)
+      NON_CALLABLE_KEYWORD_PATTERN.test(prefix) ||
+      endsWithControlFlowCondition(prefix)
     ) {
       return true;
     }
   }
 
   return false;
+}
+
+function endsWithControlFlowCondition(prefix: string): boolean {
+  if (!prefix.endsWith(')')) {
+    return false;
+  }
+
+  const openingParenthesis = findOpeningParenthesis(prefix);
+  return (
+    openingParenthesis !== -1 &&
+    CONTROL_FLOW_KEYWORD_PATTERN.test(
+      prefix.slice(0, openingParenthesis).trimEnd()
+    )
+  );
+}
+
+function findOpeningParenthesis(text: string): number {
+  let depth = 0;
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    if (text[index] === ')') {
+      depth += 1;
+    } else if (text[index] === '(') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
 }
 
 function removeJavaScriptComments(text: string): string {

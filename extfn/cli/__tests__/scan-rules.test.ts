@@ -316,6 +316,8 @@ describe('scan rules', () => {
             'wrap(globalThis)["eval"](input);',
             'foo(eval)(input);',
             'foo(Function)(input);',
+            'foo()(eval)(input);',
+            'if (ready) foo (eval)(input);',
             '/* window.eval(input); */',
             'const source = "window/* retained */.eval(input)";',
           ].join('\n'),
@@ -327,7 +329,11 @@ describe('scan rules', () => {
   });
 
   it('flags direct calls to the global eval', () => {
-    for (const contents of ['eval(untrusted);', '(eval)(untrusted);']) {
+    for (const contents of [
+      'eval(untrusted);',
+      '(eval)(untrusted);',
+      'if (ready) (eval)(untrusted);',
+    ]) {
       const findings = dynamicExecutionRule.evaluate({
         target: 'chromium-mv3',
         outputDir: 'dist/chromium-mv3',
@@ -358,6 +364,7 @@ describe('scan rules', () => {
       'self?.eval(untrusted);',
       '(window).eval(untrusted);',
       'return (window).eval(untrusted);',
+      'while (ready) (window).eval(untrusted);',
       'window["eval"](untrusted);',
       'window[`eval`](untrusted);',
       '(globalThis)?.["eval"](untrusted);',
