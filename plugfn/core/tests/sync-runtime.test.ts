@@ -399,6 +399,130 @@ describe('PlugFn sync runtime', () => {
     expect(receivedTenantId).toBe('tenant_1');
   });
 
+  it('persists fallback sync records and reuses the durable checkpoint', async () => {
+    const database = new MemoryAdapter();
+    const encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'user_1', tenantId: 'tenant_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey,
+      integrations: {},
+    });
+    const receivedCheckpoints: unknown[] = [];
+    let invocation = 0;
+    plug.use({
+      ...testSyncProvider,
+      name: 'fallback-sync-persisted',
+      sync: undefined,
+      actions: {
+        'mail.sync': {
+          name: 'mail.sync',
+          displayName: 'Mail sync',
+          description: 'Fallback mail sync with returned records',
+          parameters: z.object({
+            tenantId: z.string(),
+            mode: z.enum(['full', 'incremental']),
+            checkpoint: z.string().optional(),
+            cursor: z.string().optional(),
+          }),
+          returns: z.object({
+            fetched: z.number(),
+            upserted: z.number(),
+            skipped: z.number(),
+            checkpoint: z.string(),
+            messages: z.array(z.object({ id: z.string(), value: z.string() })),
+          }),
+          execute: async (params) => {
+            invocation += 1;
+            receivedCheckpoints.push(params.checkpoint);
+            return {
+              fetched: 1,
+              upserted: 1,
+              skipped: 0,
+              checkpoint: `checkpoint-${invocation}`,
+              messages: [{ id: 'message-1', value: `value-${invocation}` }],
+            };
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_fallback_persisted',
+      userId: 'user_1',
+      provider: 'fallback-sync-persisted',
+      tenantId: 'tenant_1',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: {
+        encrypted: encrypt(JSON.stringify({ type: 'api-key', apiKey: 'test' }), encryptionKey),
+        algorithm: 'aes-256-gcm',
+      },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    plug.runtime.sinks.register(
+      createDbSink({
+        adapter: database,
+        id: 'fallback.messages',
+        provider: 'fallback-sync-persisted',
+        resource: 'messages',
+        model: 'test_fallback_messages',
+        uniqueBy: ['provider', 'externalId'],
+        transform: (record: any) => ({
+          provider: 'fallback-sync-persisted',
+          externalId: record.id,
+          value: record.value,
+        }),
+      })
+    );
+
+    const backfill = await plug.sync.backfill({
+      provider: 'fallback-sync-persisted',
+      connectionId: 'conn_fallback_persisted',
+      resource: 'messages',
+      sinkId: 'fallback.messages',
+      actor: { userId: 'user_1', tenantId: 'tenant_1' },
+    });
+    const incremental = await plug.sync.incremental({
+      provider: 'fallback-sync-persisted',
+      connectionId: 'conn_fallback_persisted',
+      resource: 'messages',
+      sinkId: 'fallback.messages',
+      actor: { userId: 'user_1', tenantId: 'tenant_1' },
+    });
+
+    expect(backfill).toMatchObject({
+      checkpoint: 'checkpoint-1',
+      fetchedCount: 1,
+      persistedCount: 1,
+    });
+    expect(incremental).toMatchObject({
+      checkpoint: 'checkpoint-2',
+      fetchedCount: 1,
+      persistedCount: 1,
+    });
+    expect(receivedCheckpoints).toEqual([undefined, 'checkpoint-1']);
+    expect(
+      await database.findMany<any>({ model: 'test_fallback_messages', where: [] })
+    ).toMatchObject([
+      {
+        provider: 'fallback-sync-persisted',
+        externalId: 'message-1',
+        value: 'value-2',
+      },
+    ]);
+  });
+
   it('retries persisted webhook deliveries and dead-letters after max attempts', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({

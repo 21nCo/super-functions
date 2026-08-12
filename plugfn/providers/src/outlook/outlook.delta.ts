@@ -19,6 +19,7 @@ export interface OutlookDeltaSyncRequest {
   userId: string;
   connectionId: string;
   mode: OutlookSyncMode;
+  checkpoint?: string;
   maxMessages?: number;
   featureMode?: ProviderFeatureMode;
 }
@@ -112,7 +113,9 @@ export async function runOutlookDeltaSync(
     window: 60000,
   };
 
-  const existingCheckpoint = await dependencies.checkpointStore.get(request.connectionId);
+  const existingCheckpoint = request.checkpoint
+    ? { deltaToken: request.checkpoint, updatedAt: now() }
+    : await dependencies.checkpointStore.get(request.connectionId);
   const currentDeltaToken = existingCheckpoint?.deltaToken;
 
   if (request.mode === 'incremental' && !currentDeltaToken) {

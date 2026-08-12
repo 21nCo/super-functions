@@ -81,6 +81,7 @@ export const linearProvider: Provider = {
               priority: params.priority,
               labelIds: params.labels,
               assigneeId: params.assigneeId,
+              externalId: params.externalId,
             },
           },
         });

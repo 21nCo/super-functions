@@ -109,6 +109,34 @@ describe('gmail sync', () => {
     expect(incremental.skipped).toBe(1);
   });
 
+  it('uses a durable runtime checkpoint when the local checkpoint store is empty', async () => {
+    const checkpointStore = new MemoryGmailCheckpointStore();
+    let receivedHistoryId: string | undefined;
+
+    const result = await runGmailSync(
+      {
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        connectionId: 'conn-1',
+        mode: 'incremental',
+        checkpoint: 'h-durable',
+      },
+      {
+        source: {
+          listBaseline: async () => ({ historyId: 'h-1', messages: [] }),
+          listIncremental: async ({ startHistoryId }) => {
+            receivedHistoryId = startHistoryId;
+            return { historyId: 'h-next', messages: [] };
+          },
+        },
+        checkpointStore,
+      }
+    );
+
+    expect(receivedHistoryId).toBe('h-durable');
+    expect(result.checkpoint).toBe('h-next');
+  });
+
   it('returns canonical MAIL_SYNC_CHECKPOINT_INVALID when incremental checkpoint is invalid', async () => {
     const checkpointStore = new MemoryGmailCheckpointStore();
     const messageStore = new MemoryGmailMessageStore();

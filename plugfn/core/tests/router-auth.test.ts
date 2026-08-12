@@ -283,7 +283,12 @@ describe('HTTP router auth boundaries', () => {
   });
 
   it('includes authorized organization-owned connections in admin listings', async () => {
-    const personal = { id: 'conn_personal', userId: 'admin', provider: 'gmail' };
+    const personal = {
+      id: 'conn_personal',
+      userId: 'admin',
+      provider: 'gmail',
+      tenantId: 'tenant_1',
+    };
     const organization = {
       id: 'conn_org',
       userId: 'installer',

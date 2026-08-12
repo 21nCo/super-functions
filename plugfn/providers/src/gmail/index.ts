@@ -37,6 +37,7 @@ const googleOidcIssuers = ['accounts.google.com', 'https://accounts.google.com']
 const syncParamsSchema = z.object({
   tenantId: z.string().min(1),
   mode: z.enum(['full', 'incremental']).default('incremental'),
+  checkpoint: z.string().min(1).optional(),
   maxMessages: z.number().int().min(1).max(500).optional(),
   featureMode: z.enum(['metadata-only', 'snippet', 'full-body']).optional(),
 });
@@ -176,6 +177,7 @@ export const gmailProvider: Provider = {
             userId: context.userId,
             connectionId,
             mode: params.mode,
+            checkpoint: params.checkpoint,
             maxMessages: params.maxMessages,
             featureMode: params.featureMode,
           },
@@ -515,8 +517,17 @@ export async function verifyGmailPubSubAuthorization(
 }
 
 function readBearerToken(authorizationHeader: string | undefined): string | undefined {
-  const match = authorizationHeader?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || undefined;
+  if (!authorizationHeader) {
+    return undefined;
+  }
+
+  const separator = authorizationHeader.indexOf(' ');
+  if (separator < 0 || authorizationHeader.slice(0, separator).toLowerCase() !== 'bearer') {
+    return undefined;
+  }
+
+  const token = authorizationHeader.slice(separator + 1).trim();
+  return token.length > 0 ? token : undefined;
 }
 
 function parseGmailPubSubVerificationConfig(value: string): {

@@ -9,7 +9,7 @@ import pytest
 from plugfn.core.provider_registry import ProviderRegistry
 from plugfn.providers import github_provider, linear_provider, slack_provider
 from plugfn.utils.logger import ConsoleLogger
-from plugfn.webhooks.webhook_handler import WebhookHandler
+from plugfn.webhooks.webhook_handler import WebhookHandler, WebhookHandlerError
 
 
 def create_handler() -> WebhookHandler:
@@ -77,7 +77,7 @@ async def test_slack_webhook_verifies_raw_bytes():
 async def test_slack_webhook_rejects_malformed_timestamp_deterministically():
     handler = create_handler()
 
-    with pytest.raises(Exception) as error:
+    with pytest.raises(WebhookHandlerError) as error:
         await handler.handle_webhook(
             provider="slack",
             event="app_mention",

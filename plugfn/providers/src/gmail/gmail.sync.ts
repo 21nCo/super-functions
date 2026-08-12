@@ -17,6 +17,7 @@ export interface GmailSyncRequest {
   userId: string;
   connectionId: string;
   mode: MailSyncMode;
+  checkpoint?: string;
   maxMessages?: number;
   featureMode?: ProviderFeatureMode;
 }
@@ -126,7 +127,9 @@ export async function runGmailSync(
     };
   }
 
-  const checkpoint = await dependencies.checkpointStore.get(request.connectionId);
+  const checkpoint = request.checkpoint
+    ? { historyId: request.checkpoint, updatedAt: now() }
+    : await dependencies.checkpointStore.get(request.connectionId);
   if (!checkpoint || !checkpoint.historyId) {
     throw new GmailSyncError(
       'MAIL_SYNC_CHECKPOINT_INVALID',

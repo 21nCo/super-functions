@@ -89,6 +89,17 @@ describe('workflow lifecycle trigger handling', () => {
       details: { reservedStepIds: ['__parallel__:step-1:0'] },
     });
   });
+
+  it('rejects persisted workflow steps with non-string IDs deterministically', async () => {
+    const { engine } = createHarness();
+    const definition = createWorkflowDefinition(WorkflowStatus.Draft) as any;
+    definition.definition.steps[0].id = undefined;
+
+    await expect(engine.create(definition)).rejects.toMatchObject({
+      code: 'WORKFLOW_DEFINITION_INVALID',
+      message: 'workflow step IDs must be strings',
+    });
+  });
 });
 
 function createHarness() {

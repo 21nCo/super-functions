@@ -72,6 +72,24 @@ describe('Gmail Pub/Sub push authentication', () => {
       )
     ).resolves.toBe(false);
   });
+
+  it('rejects a JWT signed by a key outside the configured key set', async () => {
+    const trustedFixture = await createTokenFixture();
+    const attackerFixture = await createTokenFixture();
+    const forgedToken = await attackerFixture.sign({
+      audience,
+      email: serviceAccountEmail,
+      emailVerified: true,
+    });
+
+    await expect(
+      verifyGmailPubSubAuthorization(
+        `Bearer ${forgedToken}`,
+        verificationConfig,
+        trustedFixture.keySet
+      )
+    ).resolves.toBe(false);
+  });
 });
 
 async function createTokenFixture() {

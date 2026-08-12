@@ -1,10 +1,14 @@
 import { z } from 'zod';
 import { createDefaultProviderPolicyRegistry } from '@superfunctions/oauth-providers';
-import type { Provider } from 'plugfn';
-import { AuthType } from 'plugfn';
-import { TriggerType } from 'plugfn';
-import type { ActionContext } from 'plugfn';
-import type { HttpError } from 'plugfn';
+import {
+  AuthType,
+  NormalizedMailMessageSchema,
+  TriggerType,
+  type ActionContext,
+  type HttpError,
+  type Provider,
+} from 'plugfn';
+import { secureStringEqual } from '../shared/signature.js';
 import {
   MemoryOutlookDeltaTokenStore,
   MemoryOutlookMessageStore,
@@ -28,6 +32,7 @@ const defaultPolicyRegistry = createDefaultProviderPolicyRegistry();
 const syncParamsSchema = z.object({
   tenantId: z.string().min(1),
   mode: z.enum(['full', 'incremental']).default('incremental'),
+  checkpoint: z.string().min(1).optional(),
   maxMessages: z.number().int().min(1).max(500).optional(),
   featureMode: z.enum(['metadata-only', 'snippet', 'full-body']).optional(),
 });
@@ -37,7 +42,7 @@ const subscriptionParamsSchema = z.object({
   resource: z.string().default("/me/mailFolders('Inbox')/messages"),
   notificationUrl: z.string().url(),
   expirationDateTime: z.string().datetime({ offset: true }).optional(),
-  clientState: z.string().optional(),
+  clientState: z.string().min(1),
   renewThresholdMs: z.number().int().min(1).optional(),
   forceRenew: z.boolean().optional(),
   featureMode: z.enum(['metadata-only', 'snippet', 'full-body']).optional(),
@@ -153,6 +158,7 @@ export const outlookProvider: Provider = {
         upserted: z.number().int().nonnegative(),
         skipped: z.number().int().nonnegative(),
         partial: z.boolean(),
+        messages: z.array(NormalizedMailMessageSchema),
       }),
       execute: async (
         params: z.infer<typeof syncParamsSchema>,
@@ -166,6 +172,7 @@ export const outlookProvider: Provider = {
             userId: context.userId,
             connectionId,
             mode: params.mode,
+            checkpoint: params.checkpoint,
             maxMessages: params.maxMessages,
             featureMode: params.featureMode,
           },
@@ -183,6 +190,7 @@ export const outlookProvider: Provider = {
           upserted: result.upserted,
           skipped: result.skipped,
           partial: result.partial,
+          messages: result.messages,
         };
       },
     },
@@ -287,6 +295,8 @@ export const outlookProvider: Provider = {
       webhookConfig: {
         path: '/webhooks/outlook/mail-update',
         method: 'POST',
+        verifySignature: (payload, _signature, secret) =>
+          verifyOutlookClientState(payload, secret),
       },
       schema: z.object({
         value: z.array(z.unknown()),
@@ -305,6 +315,30 @@ export const outlookProvider: Provider = {
     window: 60000,
   },
 };
+
+export function verifyOutlookClientState(
+  payload: unknown,
+  expectedClientState: string
+): boolean {
+  if (!payload || typeof payload !== 'object' || !expectedClientState) {
+    return false;
+  }
+
+  const entries = (payload as Record<string, unknown>).value;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return false;
+  }
+
+  return entries.every((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+    const clientState = (entry as Record<string, unknown>).clientState;
+    return (
+      typeof clientState === 'string' && secureStringEqual(clientState, expectedClientState)
+    );
+  });
+}
 
 function requireConnectionId(context: ActionContext): string {
   if (context.connectionId && context.connectionId.length > 0) {

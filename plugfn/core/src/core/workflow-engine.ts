@@ -643,6 +643,13 @@ function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
   const reserved = new Set<string>();
 
   const visit = (step: WorkflowStep): void => {
+    if (typeof step.id !== 'string') {
+      throw new WorkflowEngineError(
+        'WORKFLOW_DEFINITION_INVALID',
+        'workflow step IDs must be strings',
+        { stepId: step.id }
+      );
+    }
     if (step.id.startsWith(PARALLEL_ACTION_CHECKPOINT_PREFIX)) {
       reserved.add(step.id);
     }

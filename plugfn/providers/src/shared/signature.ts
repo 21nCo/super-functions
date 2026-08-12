@@ -28,11 +28,13 @@ export function verifyRawBodyHmac(input: VerifyRawBodyHmacInput): boolean {
     .update(Buffer.from(rawBody))
     .digest('hex');
 
-  const actualBuffer = Buffer.from(normalizedSignature, 'utf8');
-  const expectedBuffer = Buffer.from(expected, 'utf8');
-  if (actualBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
+  return secureStringEqual(normalizedSignature, expected);
+}
 
-  return timingSafeEqual(actualBuffer, expectedBuffer);
+export function secureStringEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  return (
+    actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer)
+  );
 }

@@ -534,6 +534,11 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       );
     }
 
+    const persistedCheckpoint =
+      mode === 'incremental' && options.checkpoint === undefined
+        ? await runtimeStorage.getSyncCheckpoint(options.connectionId, options.resource)
+        : null;
+
     return runtimeStorage.createSyncJob({
       provider: options.provider,
       connectionId: options.connectionId,
@@ -541,7 +546,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       mode,
       owner: connectionToOwner(connection),
       cursor: options.cursor,
-      checkpoint: options.checkpoint,
+      checkpoint: options.checkpoint ?? persistedCheckpoint?.checkpoint,
       metadata: {
         ...(options.metadata ?? {}),
         plugfnSync: {
@@ -927,13 +932,71 @@ async function executeSyncResource(input: {
   }
 
   const data = (result.data ?? {}) as Record<string, unknown>;
+  const fallbackSink = resolveFallbackSyncSink(input);
+  const persistedCount = fallbackSink
+    ? await persistFallbackSyncItems(fallbackSink, data, input, fallbackAction)
+    : asNumber(data.upserted) ?? asNumber(data.persistedCount) ?? 0;
+
   return {
     fetchedCount: asNumber(data.fetched) ?? asNumber(data.fetchedCount) ?? 0,
-    persistedCount: asNumber(data.upserted) ?? asNumber(data.persistedCount) ?? 0,
+    persistedCount,
     skippedCount: asNumber(data.skipped) ?? asNumber(data.skippedCount) ?? 0,
     checkpoint: data.checkpoint,
     cursor: typeof data.cursor === 'string' ? data.cursor : undefined,
   };
+}
+
+function resolveFallbackSyncSink(input: {
+  persistenceSinks: Map<string, PlugFnPersistenceSink>;
+  provider: string;
+  resource: string;
+  sinkId?: string;
+}): PlugFnPersistenceSink | undefined {
+  if (input.sinkId) {
+    const sink = input.persistenceSinks.get(input.sinkId);
+    if (!sink) {
+      throw new PlugFnRuntimeError(
+        'SYNC_SINK_NOT_FOUND',
+        `persistence sink ${input.sinkId} is not registered`,
+        404
+      );
+    }
+    return sink;
+  }
+
+  return [...input.persistenceSinks.values()].find((candidate) => {
+    return candidate.provider === input.provider && candidate.resource === input.resource;
+  });
+}
+
+async function persistFallbackSyncItems(
+  sink: PlugFnPersistenceSink,
+  data: Record<string, unknown>,
+  input: { provider: string; resource: string; connectionId: string },
+  fallbackAction: string
+): Promise<number> {
+  let items: unknown[] | undefined;
+  if (Array.isArray(data.items)) {
+    items = data.items;
+  } else if (Array.isArray(data.messages)) {
+    items = data.messages;
+  }
+  if (!items) {
+    throw new PlugFnRuntimeError(
+      'SYNC_FALLBACK_ITEMS_REQUIRED',
+      `fallback action ${input.provider}.${fallbackAction} must return items for persistence`,
+      500
+    );
+  }
+
+  for (const item of items) {
+    await persistSinkItem(sink, item, {
+      provider: input.provider,
+      resource: input.resource,
+      connectionId: input.connectionId,
+    });
+  }
+  return items.length;
 }
 
 async function executeProviderSyncDefinition(input: {
