@@ -127,6 +127,7 @@ export interface BatchAction {
   connectionId?: string;
   params: Record<string, any>;
   cache?: boolean | CacheOptions;
+  timeout?: number;
 }
 
 /**

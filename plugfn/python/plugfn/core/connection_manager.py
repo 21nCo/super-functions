@@ -337,7 +337,7 @@ class ConnectionManager:
         )
 
         # Providers commonly omit refresh_token when it has not rotated.
-        merged_tokens = {**creds, **new_tokens}
+        merged_tokens = dict(new_tokens)
         if not new_tokens.get("refresh_token"):
             merged_tokens["refresh_token"] = refresh_token
         encrypted_creds = self.token_storage.encrypt(self._encode_json(merged_tokens))

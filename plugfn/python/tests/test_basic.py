@@ -233,7 +233,11 @@ async def test_refresh_preserves_an_unrotated_refresh_token(plug):
         }
     )
     plug._connection_manager.token_storage.decrypt = lambda _value: json.dumps(
-        {"access_token": "old", "refresh_token": "keep-me"}
+        {
+            "access_token": "old",
+            "refresh_token": "keep-me",
+            "stale_provider_field": "discard-me",
+        }
     )
     plug._connection_manager.token_storage.encrypt = lambda value: value
 
@@ -246,6 +250,7 @@ async def test_refresh_preserves_an_unrotated_refresh_token(plug):
     credentials = json.loads(refreshed.credentials)
     assert credentials["access_token"] == "new"
     assert credentials["refresh_token"] == "keep-me"
+    assert "stale_provider_field" not in credentials
 
 
 @pytest.mark.asyncio

@@ -170,7 +170,7 @@ export class ActionExecutor {
           type: providerObj.auth.type,
           credentials,
         },
-        http: this.createAuthenticatedHttpClient(providerObj, credentials),
+        http: this.createAuthenticatedHttpClient(providerObj, credentials, options.timeout),
         logger: this.logger,
       };
 
@@ -300,6 +300,7 @@ export class ActionExecutor {
         connectionId: action.connectionId,
         params: action.params,
         cache: action.cache,
+        timeout: action.timeout,
       })
     );
 
@@ -316,7 +317,11 @@ export class ActionExecutor {
   /**
    * Create HTTP client with authentication
    */
-  private createAuthenticatedHttpClient(provider: Provider, credentials: Credentials): any {
+  private createAuthenticatedHttpClient(
+    provider: Provider,
+    credentials: Credentials,
+    defaultTimeout?: number
+  ): any {
     const baseHeaders: Record<string, string> = {
       ...provider.headers,
     };
@@ -355,26 +360,31 @@ export class ActionExecutor {
       get: (url: string, config?: any) =>
         this.httpClient.get(url, {
           ...config,
+          timeout: config?.timeout ?? defaultTimeout,
           headers: { ...baseHeaders, ...config?.headers },
         }),
       post: (url: string, data?: any, config?: any) =>
         this.httpClient.post(url, data, {
           ...config,
+          timeout: config?.timeout ?? defaultTimeout,
           headers: { ...baseHeaders, ...config?.headers },
         }),
       put: (url: string, data?: any, config?: any) =>
         this.httpClient.put(url, data, {
           ...config,
+          timeout: config?.timeout ?? defaultTimeout,
           headers: { ...baseHeaders, ...config?.headers },
         }),
       patch: (url: string, data?: any, config?: any) =>
         this.httpClient.patch(url, data, {
           ...config,
+          timeout: config?.timeout ?? defaultTimeout,
           headers: { ...baseHeaders, ...config?.headers },
         }),
       delete: (url: string, config?: any) =>
         this.httpClient.delete(url, {
           ...config,
+          timeout: config?.timeout ?? defaultTimeout,
           headers: { ...baseHeaders, ...config?.headers },
         }),
     };

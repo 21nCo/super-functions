@@ -78,6 +78,17 @@ describe('workflow lifecycle trigger handling', () => {
     });
     expect(webhookHandler.getHandlerCount('github', 'issues.opened')).toBe(0);
   });
+
+  it('rejects workflow step IDs in the internal parallel checkpoint namespace', async () => {
+    const { engine } = createHarness();
+    const definition = createWorkflowDefinition(WorkflowStatus.Draft);
+    definition.definition.steps[0].id = '__parallel__:step-1:0';
+
+    await expect(engine.create(definition)).rejects.toMatchObject({
+      code: 'WORKFLOW_DEFINITION_INVALID',
+      details: { reservedStepIds: ['__parallel__:step-1:0'] },
+    });
+  });
 });
 
 function createHarness() {

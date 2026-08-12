@@ -18,7 +18,8 @@ export interface ConnectionStorage {
     ownerKind: PlugFnOwnerKind,
     ownerId: string,
     provider?: string,
-    status?: ConnectionStatus
+    status?: ConnectionStatus,
+    tenantId?: string
   ): Promise<Connection[]>;
   update(id: string, updates: Partial<Connection>): Promise<Connection>;
   delete(id: string): Promise<void>;
@@ -72,7 +73,8 @@ export class AdapterConnectionStorage implements ConnectionStorage {
     ownerKind: PlugFnOwnerKind,
     ownerId: string,
     provider?: string,
-    status?: ConnectionStatus
+    status?: ConnectionStatus,
+    tenantId?: string
   ): Promise<Connection[]> {
     const where = [
       { field: 'ownerKind', operator: 'eq' as const, value: ownerKind },
@@ -82,6 +84,9 @@ export class AdapterConnectionStorage implements ConnectionStorage {
         : []),
       ...(status
         ? [{ field: 'status', operator: 'eq' as const, value: status }]
+        : []),
+      ...(tenantId
+        ? [{ field: 'tenantId', operator: 'eq' as const, value: tenantId }]
         : []),
     ];
 

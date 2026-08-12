@@ -8,6 +8,7 @@ import type { PlugFnPrincipal } from '../types/config.js';
 import type { Connection, HandleCallbackResult } from '../types/connection.js';
 import type { PlugFnApiEnvelope, PlugFnResponseMeta } from '../types/protocol.js';
 import type { PlugFnConnectionOwner } from '../types/runtime.js';
+import { tenantMatches } from '../security/tenancy.js';
 
 export interface RouteAuthContext {
   userId: string;
@@ -726,10 +727,6 @@ function connectionMatchesAuthContext(
   return false;
 }
 
-function tenantMatches(connectionTenantId: string | undefined, actorTenantId: string | undefined): boolean {
-  return !connectionTenantId || !actorTenantId || connectionTenantId === actorTenantId;
-}
-
 function deduplicateConnections(connections: Connection[]): Connection[] {
   return [...new Map(connections.map((connection) => [connection.id, connection])).values()];
 }
@@ -993,9 +990,34 @@ function inferWebhookEvent(
     return headers['stripe-event-type'] || 'event';
   }
   if (provider === 'gmail' || provider === 'google') {
-    return headers['x-goog-resource-state'] || 'message';
+    const resourceState = headers['x-goog-resource-state'];
+    if (resourceState) {
+      return resourceState;
+    }
+    if ('mail.update' in triggers && isGmailPubSubEnvelope(rawBody)) {
+      return 'mail.update';
+    }
+    return 'message';
   }
   return headers['x-plugfn-event'] || 'event';
+}
+
+function isGmailPubSubEnvelope(rawBody?: Uint8Array): boolean {
+  if (!rawBody || rawBody.byteLength === 0) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+    const message = payload.message;
+    return (
+      typeof message === 'object' &&
+      message !== null &&
+      typeof (message as Record<string, unknown>).data === 'string'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function readWebhookAction(rawBody?: Uint8Array): string | undefined {
@@ -1110,20 +1132,12 @@ function parseJsonText(body: string): Record<string, any> {
 function assertIdentityMatches(body: Record<string, any>, authContext: RouteAuthContext): void {
   const bodyUserId = asOptionalString(body.userId);
   if (bodyUserId && bodyUserId !== authContext.userId) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   const bodyTenantId = asOptionalString(body.tenantId);
   if (bodyTenantId && authContext.tenantId && bodyTenantId !== authContext.tenantId) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   const bodyOrganizationId = asOptionalString(body.organizationId);
@@ -1132,11 +1146,7 @@ function assertIdentityMatches(body: Record<string, any>, authContext: RouteAuth
     authContext.organizationId &&
     bodyOrganizationId !== authContext.organizationId
   ) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   const owner = asConnectionOwner(body.owner);
@@ -1152,41 +1162,25 @@ function assertOwnerMatchesAuthContext(
   authContext: RouteAuthContext
 ): void {
   if (owner.tenantId && authContext.tenantId && owner.tenantId !== authContext.tenantId) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   if (owner.kind === 'user' && owner.userId !== authContext.userId) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   if (
     owner.kind === 'organization' &&
     owner.installedByUserId !== authContext.userId
   ) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   if (
     owner.kind === 'organization' &&
     (!authContext.organizationId || owner.organizationId !== authContext.organizationId)
   ) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   if (
@@ -1194,11 +1188,7 @@ function assertOwnerMatchesAuthContext(
     owner.installedByUserId !== authContext.userId &&
     owner.delegatedToUserId !== authContext.userId
   ) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
 
   if (
@@ -1206,12 +1196,17 @@ function assertOwnerMatchesAuthContext(
     authContext.organizationId &&
     owner.organizationId !== authContext.organizationId
   ) {
-    throw {
-      code: 'TENANT_ACCESS_DENIED',
-      message: 'identity mismatch',
-      status: 403,
-    };
+    throw identityMismatchError();
   }
+}
+
+function identityMismatchError(): SuperfunctionError {
+  return new SuperfunctionError({
+    code: 'TENANT_ACCESS_DENIED',
+    message: 'identity mismatch',
+    status: 403,
+    retryable: false,
+  });
 }
 
 function assertIdentityMatchesQuery(

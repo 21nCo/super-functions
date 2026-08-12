@@ -70,6 +70,22 @@ describe('Webhook verification and mapping', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('maps declared webhook route suffixes to canonical trigger keys', async () => {
+    const { webhookHandler } = createWebhookHarness();
+    const handler = vi.fn();
+    webhookHandler.on('gmail', 'mail.update', handler);
+
+    await webhookHandler.handleWebhook(
+      'gmail',
+      'mail-update',
+      { id: 'evt_declared_path' },
+      { 'x-signature': 'sig:secret' },
+      'secret'
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes repeated leading and trailing path separators without regex backtracking', async () => {
     const { webhookHandler } = createWebhookHarness();
     const handler = vi.fn();
@@ -126,7 +142,7 @@ function createWebhookHarness() {
         type: TriggerType.Webhook,
         schema: z.any(),
         webhookConfig: {
-          path: '/mail/update',
+          path: '/webhooks/gmail/mail-update',
           method: 'POST',
           verifySignature: async (_payload, signature, secret) => {
             return signature === `sig:${secret}`;

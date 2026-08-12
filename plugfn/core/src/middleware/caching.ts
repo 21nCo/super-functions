@@ -47,6 +47,7 @@ export class CacheMiddleware {
     this.keyPrefix = options.keyPrefix ?? 'plugfn:action-cache:';
     // Cleanup expired entries every minute
     this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+    this.cleanupInterval.unref?.();
   }
 
   /**

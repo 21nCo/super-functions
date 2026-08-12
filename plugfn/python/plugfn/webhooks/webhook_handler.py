@@ -127,7 +127,13 @@ def _verify_slack_signature(
     timestamp = headers.get("x-slack-request-timestamp", "")
     if not signature_header or not timestamp:
         raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature headers")
-    if abs(time.time() - int(timestamp)) > 60 * 5:
+    try:
+        timestamp_value = int(timestamp)
+    except (TypeError, ValueError) as error:
+        raise WebhookHandlerError(
+            "WEBHOOK_SIGNATURE_INVALID", "Invalid request timestamp"
+        ) from error
+    if abs(time.time() - timestamp_value) > 60 * 5:
         raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Request timestamp too old")
 
     signature_payload = f"v0:{timestamp}:".encode("utf-8") + raw_body

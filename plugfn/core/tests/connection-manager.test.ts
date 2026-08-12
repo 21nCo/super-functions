@@ -394,6 +394,21 @@ describe('ConnectionManager OAuth shared integration', () => {
       createdAt: now,
       updatedAt: now,
     });
+    await adapter.createConnection({
+      id: 'conn-org-other-tenant',
+      userId: 'other-installer',
+      provider: 'google',
+      ownerKind: 'organization',
+      ownerId: 'org-1',
+      organizationId: 'org-1',
+      installedByUserId: 'other-installer',
+      tenantId: 'tenant-2',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     const connections = await env.manager.list({
       userId: 'different-admin',

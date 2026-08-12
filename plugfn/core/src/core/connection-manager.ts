@@ -312,7 +312,8 @@ export class ConnectionManager {
       expected.ownerKind!,
       expected.ownerId!,
       options.provider,
-      options.status
+      options.status,
+      expected.tenantId
     );
   }
 

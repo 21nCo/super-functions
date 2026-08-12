@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import {
   createDefaultProviderPolicyRegistry,
 } from '@superfunctions/oauth-providers';
@@ -23,12 +24,15 @@ import {
   type GmailWatchClient,
 } from './gmail.watch.js';
 import type { WebhookVerificationContext } from 'plugfn';
-import { verifyRawBodyHmac } from '../shared/signature.js';
 
 const defaultCheckpointStore = new MemoryGmailCheckpointStore();
 const defaultMessageStore = new MemoryGmailMessageStore();
 const defaultWatchStore = new MemoryGmailWatchStore();
 const defaultPolicyRegistry = createDefaultProviderPolicyRegistry();
+const googleOidcKeySet = createRemoteJWKSet(
+  new URL('https://www.googleapis.com/oauth2/v3/certs')
+);
+const googleOidcIssuers = ['accounts.google.com', 'https://accounts.google.com'];
 
 const syncParamsSchema = z.object({
   tenantId: z.string().min(1),
@@ -469,9 +473,68 @@ export function isHydratedGmailApiMessage(value: unknown): value is GmailApiMess
 
 function verifyGmailSignature(
   _payload: unknown,
-  signature: string,
-  secret: string,
+  _signature: string,
+  verificationConfig: string,
   context: WebhookVerificationContext
-): boolean {
-  return verifyRawBodyHmac({ signature, secret, context, algorithm: 'sha256' });
+): Promise<boolean> {
+  return verifyGmailPubSubAuthorization(
+    context.headers.authorization,
+    verificationConfig
+  );
+}
+
+/**
+ * Verify an authenticated Cloud Pub/Sub push. The verification config is the
+ * JSON-encoded `{ audience, serviceAccountEmail }` value supplied through the
+ * router's per-provider webhook credential resolver.
+ */
+export async function verifyGmailPubSubAuthorization(
+  authorizationHeader: string | undefined,
+  verificationConfig: string,
+  keySet: Parameters<typeof jwtVerify>[1] = googleOidcKeySet
+): Promise<boolean> {
+  const token = readBearerToken(authorizationHeader);
+  const config = parseGmailPubSubVerificationConfig(verificationConfig);
+  if (!token || !config) {
+    return false;
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, keySet, {
+      algorithms: ['RS256'],
+      audience: config.audience,
+      issuer: googleOidcIssuers,
+    });
+    return (
+      payload.email === config.serviceAccountEmail &&
+      payload.email_verified === true
+    );
+  } catch {
+    return false;
+  }
+}
+
+function readBearerToken(authorizationHeader: string | undefined): string | undefined {
+  const match = authorizationHeader?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
+}
+
+function parseGmailPubSubVerificationConfig(value: string): {
+  audience: string;
+  serviceAccountEmail: string;
+} | undefined {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const audience = typeof parsed.audience === 'string' ? parsed.audience.trim() : '';
+    const serviceAccountEmail =
+      typeof parsed.serviceAccountEmail === 'string'
+        ? parsed.serviceAccountEmail.trim()
+        : '';
+    if (!audience || !serviceAccountEmail) {
+      return undefined;
+    }
+    return { audience, serviceAccountEmail };
+  } catch {
+    return undefined;
+  }
 }

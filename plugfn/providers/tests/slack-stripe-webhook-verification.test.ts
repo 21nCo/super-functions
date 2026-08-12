@@ -124,8 +124,22 @@ describe('Slack and Stripe webhook verification', () => {
     { provider: stripeProvider, name: 'stripe', event: 'customer.created' },
   ])('rejects $name verification without raw request bytes', async ({ provider, name, event }) => {
     const handler = createHandler(provider);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const rawBody = '{"type":"event_callback"}';
+    const headers = name === 'slack'
+      ? {
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': `v0=${createHmac('sha256', 'secret')
+            .update(`v0:${timestamp}:${rawBody}`)
+            .digest('hex')}`,
+        }
+      : {
+          'stripe-signature': `t=${timestamp},v1=${createHmac('sha256', 'secret')
+            .update(`${timestamp}.${rawBody}`)
+            .digest('hex')}`,
+        };
     await expect(
-      handler.handleWebhook(name, event, {}, {}, 'secret')
+      handler.handleWebhook(name, event, {}, headers, 'secret')
     ).rejects.toMatchObject({ code: 'WEBHOOK_SIGNATURE_INVALID' });
   });
 

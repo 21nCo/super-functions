@@ -246,6 +246,10 @@ export class WebhookHandler {
       if (typeof path === 'string' && path.length > 0) {
         const normalizedPathKey = canonicalizeEvent(path);
         setEventMapping(eventMap, normalizedPathKey, triggerKey);
+        const routeSuffix = webhookRouteSuffix(provider, path);
+        if (routeSuffix) {
+          setEventMapping(eventMap, canonicalizeEvent(routeSuffix), triggerKey);
+        }
       }
     }
 
@@ -298,6 +302,17 @@ function canonicalizeEvent(event: string): string {
   }
 
   return decodedEvent.slice(start, end).split('/').join('.').trim().toLowerCase();
+}
+
+function webhookRouteSuffix(provider: string, path: string): string | undefined {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const prefix = `/webhooks/${provider}/`;
+  if (!normalizedPath.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return undefined;
+  }
+
+  const suffix = normalizedPath.slice(prefix.length);
+  return suffix.length > 0 ? suffix : undefined;
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {

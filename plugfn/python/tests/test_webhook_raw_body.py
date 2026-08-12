@@ -74,6 +74,27 @@ async def test_slack_webhook_verifies_raw_bytes():
 
 
 @pytest.mark.asyncio
+async def test_slack_webhook_rejects_malformed_timestamp_deterministically():
+    handler = create_handler()
+
+    with pytest.raises(Exception) as error:
+        await handler.handle_webhook(
+            provider="slack",
+            event="app_mention",
+            payload=None,
+            headers={
+                "x-slack-request-timestamp": "not-a-timestamp",
+                "x-slack-signature": "v0=invalid",
+            },
+            secret="slack-secret",
+            raw_body=b'{}',
+        )
+
+    assert getattr(error.value, "code", None) == "WEBHOOK_SIGNATURE_INVALID"
+    assert str(error.value) == "Invalid request timestamp"
+
+
+@pytest.mark.asyncio
 async def test_linear_webhook_verifies_raw_bytes():
     handler = create_handler()
     raw_body = b'{"action":"create","data":{"id":"issue_1"}}'

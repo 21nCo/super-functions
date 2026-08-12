@@ -344,43 +344,12 @@ export class WorkflowEngine {
       }
 
       case 'branch': {
-        const condition = step.condition(context);
-        const branch = condition ? step.then : step.else;
-        if (branch) {
-          for (const branchStep of branch) {
-            if (completedStepIds.includes(branchStep.id)) {
-              continue;
-            }
-            await this.executeStep(branchStep, context, completedStepIds, checkpointStep);
-            await checkpointStep(branchStep.id);
-          }
-        }
+        await this.executeBranchStep(step, context, completedStepIds, checkpointStep);
         break;
       }
 
       case 'parallel': {
-        const pendingActions = step.actions
-          .map((action, index) => ({
-            action,
-            checkpointId: parallelActionCheckpointId(step.id, index),
-          }))
-          .filter(({ checkpointId }) => !completedStepIds.includes(checkpointId));
-        const results = await Promise.allSettled(
-          pendingActions.map(({ action }) => action(context))
-        );
-
-        for (const [index, result] of results.entries()) {
-          if (result.status === 'fulfilled') {
-            await checkpointStep(pendingActions[index].checkpointId);
-          }
-        }
-
-        const failure = results.find(
-          (result): result is PromiseRejectedResult => result.status === 'rejected'
-        );
-        if (failure) {
-          throw failure.reason;
-        }
+        await this.executeParallelStep(step, context, completedStepIds, checkpointStep);
         break;
       }
 
@@ -400,6 +369,56 @@ export class WorkflowEngine {
         const unsupportedType = (step as { type?: unknown }).type;
         throw new Error(`Unknown workflow step type: ${String(unsupportedType)}`);
       }
+    }
+  }
+
+  private async executeBranchStep(
+    step: Extract<WorkflowStep, { type: 'branch' }>,
+    context: WorkflowContext,
+    completedStepIds: string[],
+    checkpointStep: (stepId: string) => Promise<void>
+  ): Promise<void> {
+    const branch = step.condition(context) ? step.then : step.else;
+    if (!branch) {
+      return;
+    }
+
+    for (const branchStep of branch) {
+      if (completedStepIds.includes(branchStep.id)) {
+        continue;
+      }
+      await this.executeStep(branchStep, context, completedStepIds, checkpointStep);
+      await checkpointStep(branchStep.id);
+    }
+  }
+
+  private async executeParallelStep(
+    step: Extract<WorkflowStep, { type: 'parallel' }>,
+    context: WorkflowContext,
+    completedStepIds: string[],
+    checkpointStep: (stepId: string) => Promise<void>
+  ): Promise<void> {
+    const pendingActions = step.actions
+      .map((action, index) => ({
+        action,
+        checkpointId: parallelActionCheckpointId(step.id, index),
+      }))
+      .filter(({ checkpointId }) => !completedStepIds.includes(checkpointId));
+    const results = await Promise.allSettled(
+      pendingActions.map(({ action }) => action(context))
+    );
+
+    for (const [index, result] of results.entries()) {
+      if (result.status === 'fulfilled') {
+        await checkpointStep(pendingActions[index].checkpointId);
+      }
+    }
+
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    if (failure) {
+      throw failure.reason;
     }
   }
 
@@ -612,15 +631,21 @@ export class WorkflowEngine {
   }
 }
 
+const PARALLEL_ACTION_CHECKPOINT_PREFIX = '__parallel__:';
+
 function parallelActionCheckpointId(stepId: string, actionIndex: number): string {
-  return `__parallel__:${stepId}:${actionIndex}`;
+  return `${PARALLEL_ACTION_CHECKPOINT_PREFIX}${stepId}:${actionIndex}`;
 }
 
 function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
+  const reserved = new Set<string>();
 
   const visit = (step: WorkflowStep): void => {
+    if (step.id.startsWith(PARALLEL_ACTION_CHECKPOINT_PREFIX)) {
+      reserved.add(step.id);
+    }
     if (seen.has(step.id)) {
       duplicates.add(step.id);
     } else {
@@ -636,6 +661,15 @@ function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
 
   for (const step of steps) {
     visit(step);
+  }
+
+  if (reserved.size > 0) {
+    const reservedStepIds = [...reserved].sort((left, right) => left.localeCompare(right));
+    throw new WorkflowEngineError(
+      'WORKFLOW_DEFINITION_INVALID',
+      `workflow step IDs cannot use the reserved ${PARALLEL_ACTION_CHECKPOINT_PREFIX} prefix: ${reservedStepIds.join(', ')}`,
+      { reservedStepIds }
+    );
   }
 
   if (duplicates.size > 0) {

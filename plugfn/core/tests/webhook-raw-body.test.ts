@@ -69,6 +69,38 @@ describe('raw-body webhook verification', () => {
     );
   });
 
+  it('infers Gmail Pub/Sub envelopes as the registered mail.update trigger', async () => {
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_gmail', verified: true }));
+    const router = createPlugFnRouter(createRouterPlugMock(handleWebhook), {
+      webhookSecret: { gmail: 'gmail-verification-config' },
+    });
+    const rawBody = JSON.stringify({
+      message: {
+        data: 'eyJlbWFpbEFkZHJlc3MiOiJ1c2VyQGV4YW1wbGUuY29tIiwiaGlzdG9yeUlkIjoiMTIzIn0=',
+        messageId: 'pubsub-1',
+      },
+      subscription: 'projects/demo/subscriptions/gmail',
+    });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/gmail', {
+        method: 'POST',
+        headers: { authorization: 'Bearer token' },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledWith(
+      'gmail',
+      'mail.update',
+      undefined,
+      expect.any(Object),
+      'gmail-verification-config',
+      expect.any(Object)
+    );
+  });
+
   it('does not dispatch when another request already claimed the delivery key', async () => {
     const handleWebhook = vi.fn(async () => ({ id: 'evt_duplicate', verified: true }));
     const plug = createRouterPlugMock(handleWebhook);
@@ -122,13 +154,6 @@ describe('raw-body webhook verification', () => {
       secret: 'clickup-secret',
       rawBody: '{"event":"taskUpdated","task_id":"task_1"}',
     },
-    {
-      provider: 'gmail',
-      event: 'mail.update',
-      header: 'x-goog-signature-256',
-      secret: 'gmail-secret',
-      rawBody: '{"message":{"data":"eyJoaXN0b3J5SWQiOiIxMjMifQ=="}}',
-    },
   ])(
     'verifies $provider signatures against raw bytes',
     async ({ provider, event, header, secret, rawBody }) => {
@@ -173,14 +198,6 @@ describe('raw-body webhook verification', () => {
       secret: 'clickup-secret',
       originalRawBody: '{"event":"taskUpdated","task_id":"task_1"}',
       alteredRawBody: '{"task_id":"task_1","event":"taskUpdated"}',
-    },
-    {
-      provider: 'gmail',
-      event: 'mail.update',
-      header: 'x-goog-signature-256',
-      secret: 'gmail-secret',
-      originalRawBody: '{"message":{"data":"eyJoaXN0b3J5SWQiOiIxMjMifQ=="}}',
-      alteredRawBody: '{"message":{"data":"eyJoaXN0b3J5SWQiOiIxMjMifQ=="}, "historyId":"123"}',
     },
   ])(
     'rejects $provider when parsed JSON matches but raw bytes differ',
@@ -312,7 +329,11 @@ function createRouterPlugMock(handleWebhook: ReturnType<typeof vi.fn>) {
     },
     providers: {
       list: vi.fn(() => []),
-      get: vi.fn((provider: string) => (provider === 'github' ? githubProvider : undefined)),
+      get: vi.fn((provider: string) => {
+        if (provider === 'github') return githubProvider;
+        if (provider === 'gmail') return gmailProvider;
+        return undefined;
+      }),
       register: vi.fn(),
     },
     batch: vi.fn(async () => []),

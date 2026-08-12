@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { KVStoreAdapter } from '@superfunctions/db';
 import {
   CacheClearUnsupportedError,
@@ -6,6 +6,22 @@ import {
 } from '../src/middleware/caching.js';
 
 describe('CacheMiddleware', () => {
+  it('unrefs its cleanup timer so idle runtimes can exit', () => {
+    const unref = vi.fn();
+    const timer = { unref } as unknown as NodeJS.Timeout;
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue(timer);
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => {});
+
+    try {
+      const cache = new CacheMiddleware();
+      expect(unref).toHaveBeenCalledTimes(1);
+      cache.destroy();
+    } finally {
+      intervalSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
+  });
+
   it('caches undefined results distinctly from misses', async () => {
     const cache = new CacheMiddleware();
     let executions = 0;

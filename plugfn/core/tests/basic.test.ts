@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { plugFn } from '../src/index.js';
 import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { mockProvider, mockResponse, mockConnection } from '../src/testing/index.js';
@@ -238,6 +238,40 @@ describe('PlugFn SDK', () => {
       ]);
 
       expect(maxInFlight).toBe(1);
+    });
+
+    it('applies the per-call timeout to provider HTTP requests', async () => {
+      const provider = mockProvider('test', {
+        'slowRequest': mockResponse({ ok: true }),
+      });
+      provider.actions.slowRequest.execute = async (_params, context) => {
+        return (await context.http.get('https://mock-test.com/slow')).data;
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((
+        (_input, init) => new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          });
+        })
+      ) as typeof fetch);
+
+      try {
+        await expect(
+          plug.test.slowRequest({
+            userId: 'test-user',
+            params: {},
+            timeout: 10,
+            retry: { maxAttempts: 1 },
+          })
+        ).rejects.toThrow('Request timeout after 10ms');
+      } finally {
+        fetchMock.mockRestore();
+      }
     });
 
     it('should handle action errors', async () => {
