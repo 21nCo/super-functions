@@ -1,0 +1,79 @@
+---
+title: Status and Envelopes
+description: Status capabilities, envelope shapes, and the normalized response model.
+---
+
+## Status Route
+
+`GET /billfn/status` returns a compact capability response:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "ok": true,
+    "version": 1,
+    "namespace": "default",
+    "providers": ["dodo", "apple"],
+    "capabilities": [
+      "catalog.read",
+      "checkout.create",
+      "checkout.verify",
+      "subscription.cancel",
+      "subscription.sync",
+      "purchase.restore",
+      "entitlements.read",
+      "usage.read",
+      "webhook.ingest"
+    ]
+  }
+}
+```
+
+## Envelope Shape
+
+BillFn uses the shared `@superfunctions/envelope` pattern.
+
+Successful responses:
+
+```json
+{
+  "ok": true,
+  "data": {},
+  "meta": {
+    "timestamp": "2026-04-20T00:00:00.000Z"
+  }
+}
+```
+
+Failures:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "BILLFN_VALIDATION_ERROR",
+    "message": "planKey is required",
+    "status": 400,
+    "retryable": false
+  },
+  "meta": {
+    "timestamp": "2026-04-20T00:00:00.000Z"
+  }
+}
+```
+
+## Common Response Payloads
+
+BillFn’s main successful payloads include:
+
+- `BillFnCreateCheckoutResponseData`
+- `BillFnVerifyCheckoutResponseData`
+- `BillFnCancelSubscriptionResponseData`
+- `BillFnSyncSubscriptionResponseData`
+- `BillFnRestorePurchasesResponseData`
+- `BillFnEntitlementsResponseData`
+- `BillFnUsageResponseData`
+- `BillFnWebhookResponseData`
+
+These all stay inside envelopes rather than becoming ad hoc response shapes route by route.

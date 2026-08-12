@@ -1,0 +1,14 @@
+{
+  "title": "BillFn",
+  "pages": [
+    "index",
+    "getting-started",
+    "architecture",
+    "production-readiness",
+    "server",
+    "clients",
+    "providers",
+    "reference",
+    "troubleshooting"
+  ]
+}

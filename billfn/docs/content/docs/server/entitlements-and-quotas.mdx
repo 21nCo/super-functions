@@ -1,0 +1,62 @@
+---
+title: Entitlements and Quotas
+description: Use BillFn’s normalized providers to gate features and enforce storage or usage limits.
+---
+
+The most important consumer surface in BillFn is not the raw subscription row. It is the normalized read model:
+
+- `subscriptionProvider`
+- `quotaProvider`
+- `GET /entitlements`
+- `GET /usage`
+
+## Subscription Provider
+
+`subscriptionProvider` gives other functions a stable way to answer feature and plan questions.
+
+```ts
+const subscription = await billfn.subscriptionProvider.getActiveSubscription({
+  principalId: "user_123",
+});
+
+const entitlements = await billfn.subscriptionProvider.getEntitlementSnapshot({
+  principalId: "user_123",
+});
+
+const canSync = await billfn.subscriptionProvider.hasFeature(
+  { principalId: "user_123" },
+  "sync",
+);
+```
+
+## Quota Provider
+
+`quotaProvider` is designed to be consumed by resource-heavy functions such as `filefn`.
+
+```ts
+const quota = await billfn.quotaProvider.checkQuota({
+  principalId: "user_123",
+  requestedBytes: 200,
+  resource: "storage",
+});
+
+if (!quota.allowed) {
+  throw new Error(quota.reason ?? "quota_exceeded");
+}
+
+await billfn.quotaProvider.recordUsage({
+  principalId: "user_123",
+  bytes: 128,
+  resource: "storage",
+});
+```
+
+Phase 1 quota behavior includes:
+
+- negative usage deltas are rejected
+- usage meter updates retry instead of doing a naive read-modify-write once
+- limits come from the entitlement snapshot’s `limits`
+
+## Why This Matters
+
+If every consumer reaches straight into `subscriptions`, billing logic will drift across the codebase. By keeping integration points at the entitlement and quota level, provider churn stays local to BillFn.

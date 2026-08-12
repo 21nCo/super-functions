@@ -1,0 +1,112 @@
+---
+title: Routes
+description: The BillFn HTTP surface and the response envelopes it returns.
+---
+
+BillFn’s router divides its surface into:
+
+- consumer-facing reads
+- operational billing writes
+- provider webhook ingestion
+- operational reconciliation
+
+## Status and Read Routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/billfn/status` | Health-style capability response |
+| `GET` | `/billfn/catalog` | Returns the configured billing catalog |
+| `GET` | `/billfn/entitlements` | Returns billing account, entitlement snapshot, and current subscription |
+| `GET` | `/billfn/usage` | Returns usage and limit information for the account |
+
+`/billfn/entitlements` and `/billfn/usage` resolve the subject from query params or from the configured auth resolver.
+
+## Write Routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/billfn/checkouts` | Create a checkout session |
+| `POST` | `/billfn/checkouts/verify` | Verify a checkout and project subscription state |
+| `POST` | `/billfn/subscriptions/cancel` | Cancel a subscription when the provider supports it |
+| `POST` | `/billfn/subscriptions/change` | Change a subscription to a target price id |
+| `POST` | `/billfn/subscriptions/resume` | Resume or reactivate a subscription |
+| `POST` | `/billfn/subscriptions/refund` | Create a refund or provider-managed revoke flow |
+| `POST` | `/billfn/subscriptions/sync` | Re-fetch normalized subscription state from the provider |
+| `POST` | `/billfn/purchases/restore` | Restore a purchase into an existing billing account context |
+
+When a plan has multiple prices for the same provider, pass `priceId` to `/billfn/purchases/restore` so the provider can select the correct recurring or one-time restore flow. BillFn can infer the price when the purchase reference matches a known checkout or when only one provider price exists.
+
+Lifecycle responses can return `operationStatus: "applied"` or `operationStatus: "requires_action"`, plus an optional `clientAction`.
+
+## Operations Routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/billfn/ops/reconciliation/jobs` | Queue a reconciliation job |
+| `GET` | `/billfn/ops/reconciliation/jobs/:jobId` | Fetch a reconciliation job |
+| `POST` | `/billfn/ops/reconciliation/jobs/:jobId/run` | Run a reconciliation job immediately |
+
+## Webhooks
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/billfn/webhooks/:provider` | Parse, dedupe, and project provider webhook events |
+
+Current provider support:
+
+- Dodo ingests and replays webhooks
+- Apple ingests App Store Server Notifications v2 and notification history backfills
+
+## Checkout Request Example
+
+```json
+{
+  "planKey": "pro",
+  "provider": "dodo",
+  "interval": "month",
+  "subject": {
+    "principalId": "user_123"
+  },
+  "customer": {
+    "email": "user@example.com",
+    "name": "Nucleus User"
+  },
+  "successUrl": "https://app.example.com/settings/billing/success",
+  "cancelUrl": "https://app.example.com/settings/billing/cancel"
+}
+```
+
+Successful responses use the shared envelope shape:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "checkoutSession": {
+      "checkoutSessionId": "chk_123"
+    }
+  },
+  "meta": {
+    "timestamp": "2026-04-20T00:00:00.000Z"
+  }
+}
+```
+
+Failures remain envelope-based:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "BILLFN_NOT_FOUND",
+    "message": "not found",
+    "status": 404,
+    "retryable": false
+  },
+  "meta": {
+    "timestamp": "2026-04-20T00:00:00.000Z"
+  }
+}
+```
+
+The client SDKs preserve this shape instead of flattening it away.

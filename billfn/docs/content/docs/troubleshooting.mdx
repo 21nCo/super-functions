@@ -1,0 +1,83 @@
+---
+title: Troubleshooting
+description: Common BillFn setup and integration failures grounded in the current implementation.
+---
+
+## Dodo webhooks fail immediately
+
+If Dodo webhook requests fail before processing, check these first:
+
+- `webhookSecret` must be configured on `createDodoProvider()`
+- `webhook-id`, `webhook-timestamp`, and the signature must arrive in the Standard Webhooks headers
+- the raw body must be valid JSON
+
+Common errors:
+
+- `BILLFN_VALIDATION_ERROR`
+- `BILLFN_WEBHOOK_SIGNATURE_INVALID`
+
+## Apple verification fails with a validation error
+
+Apple verification requires a `transactionId` or `originalTransactionId` in the verification payload.
+
+```ts
+await billfn.verifyCheckout({
+  subject: { principalId: "user_apple" },
+  checkoutSessionId: "chk_123",
+  payload: {
+    transactionId: "200000001",
+  },
+});
+```
+
+If that value is missing, the adapter raises `BILLFN_VALIDATION_ERROR`.
+
+## A provider operation is unsupported
+
+`BILLFN_PROVIDER_UNSUPPORTED` now usually means one of two things:
+
+- you mounted a custom adapter that does not implement the requested capability
+- you are calling a provider that is not yet shipped in this repo and the route is still provider-aware in your app
+
+Do not assume every provider supports every lifecycle action. Check the mounted adapter capabilities and keep your route or UI flow provider-aware where needed.
+
+## Entitlements or usage return empty state
+
+BillFn only has something meaningful to project once it can resolve a billing account and there is subscription state to read.
+
+Check:
+
+- the subject actually includes `principalId`, `actorId`, `organizationId`, or `tenantId`
+- your auth resolver returns the subject you expect
+- the checkout was verified and projected into subscription and entitlement state
+
+## TypeScript client fails before it sees a BillFn response
+
+The TypeScript client can synthesize these envelope errors:
+
+- `BILLFN_NETWORK_ERROR`
+- `BILLFN_EMPTY_RESPONSE`
+- `BILLFN_INVALID_RESPONSE`
+
+These usually point to:
+
+- the wrong `baseUrl`
+- a proxy or route that returned no body
+- a non-JSON upstream response
+
+## Python local setup fails
+
+The Python package requires Python `3.10+`.
+
+For monorepo development:
+
+```bash
+cd billfn/python
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ../../packages/python-core
+pip install -e ".[dev]"
+```
+
+If you use an older default `python3`, editable installation can fail before the package even imports.

@@ -1,0 +1,39 @@
+{
+  "name": "@billfn/svelte",
+  "version": "0.0.1",
+  "description": "Svelte wrappers for billfn client",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@billfn/client": "^0.0.1",
+    "@billfn/core": "^0.0.1",
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@billfn/client": "^0.0.1",
+    "@billfn/core": "^0.0.1",
+    "@types/node": "^22.0.0",
+    "svelte": "^5.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

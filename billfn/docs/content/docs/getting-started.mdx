@@ -1,0 +1,144 @@
+---
+title: Getting Started
+description: Configure BillFn with a catalog, database adapter, and provider adapters.
+---
+
+BillFn needs three things to start:
+
+1. A `@superfunctions/db` adapter
+2. A billing catalog
+3. At least one provider adapter
+
+## Install the Packages You Need
+
+```bash
+npm install @billfn/core @billfn/provider-dodo @superfunctions/db
+```
+
+Add the client surfaces as needed:
+
+```bash
+npm install @billfn/client @billfn/svelte
+```
+
+Python consumers use the separate SDK documented in [Python](/docs/clients/python).
+
+## Minimal Server Setup
+
+```ts
+import { createBillFn, type BillFnCatalog } from "@billfn/core";
+import { createDodoProvider } from "@billfn/provider-dodo";
+
+const catalog: BillFnCatalog = {
+  plans: [
+    {
+      productKey: "nucleus",
+      planKey: "pro",
+      displayName: "Pro",
+      features: {
+        sync: true,
+        analytics: true,
+      },
+      limits: {
+        storage: 1_000,
+      },
+      prices: [
+        {
+          priceId: "price_pro_dodo_month",
+          provider: "dodo",
+          providerProductId: "pdt_pro_month",
+          currency: "USD",
+          amount: 12,
+          kind: "subscription",
+          interval: "month",
+        },
+      ],
+    },
+  ],
+};
+
+declare function createYourDbAdapter(): Parameters<typeof createBillFn>[0]["db"];
+
+const db = createYourDbAdapter();
+
+const billfn = createBillFn({
+  db,
+  catalog,
+  providers: {
+    dodo: createDodoProvider({
+      apiKey: process.env.DODO_API_KEY!,
+      webhookSecret: process.env.DODO_WEBHOOK_SECRET!,
+    }),
+  },
+});
+```
+
+`createBillFn()` returns a service instance with:
+
+- `router`
+- `getSchema()`
+- direct methods such as `createCheckout()` and `verifyCheckout()`
+- `subscriptionProvider`
+- `quotaProvider`
+
+## Defaults Worth Knowing
+
+If you do not override them:
+
+- `namespace` defaults to `"billfn"`
+- `basePath` defaults to `"/billfn"`
+- ids are generated with the built-in `defaultIdFactory()`
+- billing account resolution uses the default resolver
+
+The default billing account resolver behaves like this:
+
+- `organizationId` or `tenantId` becomes an organization billing account
+- otherwise `principalId` or `actorId` becomes a user billing account
+- if no subject fields are present, billing account resolution fails
+
+## Route Base Path
+
+The default base path is `/billfn`.
+
+If you use the router directly, the public surface includes:
+
+- `GET /billfn/status`
+- `GET /billfn/catalog`
+- `GET /billfn/entitlements`
+- `GET /billfn/usage`
+- `POST /billfn/checkouts`
+- `POST /billfn/checkouts/verify`
+- `POST /billfn/subscriptions/cancel`
+- `POST /billfn/subscriptions/sync`
+- `POST /billfn/purchases/restore`
+- `POST /billfn/webhooks/:provider`
+
+You can override the base path with `basePath` in `BillFnConfig`.
+
+## Subject Resolution
+
+BillFn resolves billing state from a `BillableSubject`:
+
+```ts
+type BillableSubject = {
+  actorId?: string;
+  actorType?: "user" | "api-key" | "service";
+  principalId?: string;
+  tenantId?: string;
+  organizationId?: string;
+};
+```
+
+The cleanest production setup is:
+
+- app authentication resolves the subject
+- `billingAccountResolver` turns that subject into a stable billing account
+- consumers use entitlement and quota providers rather than inventing their own account mapping
+
+If you configure `auth.resolveSubject`, that auth-resolved subject takes precedence over any `subject` passed in the request body.
+
+## Next Steps
+
+- [Server setup](/docs/server/setup)
+- [TypeScript client](/docs/clients/typescript)
+- [Provider overview](/docs/providers/overview)

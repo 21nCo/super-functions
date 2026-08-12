@@ -1,0 +1,155 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  BILLFN_BRIDGE_PROTOCOL,
+  createNativeBackedBillFnClient,
+  createWKWebViewBridgeBus,
+  nextBridgeRequestId
+} from '../index.js';
+
+describe('@billfn/swift-bridge', () => {
+  it('uses cryptographically secure UUIDs for bridge request ids', () => {
+    const first = nextBridgeRequestId();
+    const second = nextBridgeRequestId();
+
+    expect(first).toMatch(/^bridge-\d+-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(second).not.toBe(first);
+  });
+
+  it('keeps generating unique request ids when Web Crypto UUIDs are unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined
+    });
+
+    try {
+      const first = nextBridgeRequestId();
+      const second = nextBridgeRequestId();
+
+      expect(first).toMatch(/^bridge-\d+-fallback-[0-9a-z]+$/);
+      expect(second).not.toBe(first);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'crypto', descriptor);
+      } else {
+        delete (globalThis as { crypto?: Crypto }).crypto;
+      }
+    }
+  });
+
+  it('requires handshake before native-backed requests', async () => {
+    const client = createNativeBackedBillFnClient(
+      {
+        clientId: 'client_1',
+        mode: 'native-backed',
+        baseURL: 'https://billfn.example.test/billfn'
+      },
+      {
+        async request(message) {
+          if (message.method === 'handshake') {
+            return {
+              protocol: BILLFN_BRIDGE_PROTOCOL,
+              id: message.id,
+              ok: true,
+              result: {
+                bridgeVersion: 1,
+                billingOwner: 'native',
+                authOwner: 'native',
+                capabilities: ['billing', 'entitlements']
+              }
+            };
+          }
+          return {
+            protocol: BILLFN_BRIDGE_PROTOCOL,
+            id: message.id,
+            ok: true,
+            result: {}
+          };
+        },
+        subscribe() {
+          return () => undefined;
+        }
+      }
+    );
+
+    await expect(client.getBillingStatus()).rejects.toMatchObject({
+      code: 'BRIDGE_HANDSHAKE_REQUIRED'
+    });
+
+    const handshake = await client.handshake();
+    expect(handshake.bridgeVersion).toBe(1);
+  });
+
+  it('resolves with an error envelope when postMessage throws synchronously', async () => {
+    const previousWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        webkit: {
+          messageHandlers: {
+            billfn: {
+              postMessage() {
+                throw new Error('native bridge down');
+              }
+            }
+          }
+        }
+      }
+    });
+
+    try {
+      const bus = createWKWebViewBridgeBus({ timeoutMs: 10 });
+      const response = await bus.request({
+        protocol: BILLFN_BRIDGE_PROTOCOL,
+        id: 'req_throw',
+        method: 'health.check'
+      });
+
+      expect(response.ok).toBe(false);
+      if (!response.ok) {
+        expect(response.error.code).toBe('BRIDGE_UNAVAILABLE');
+        expect(response.error.details?.reason).toBe('native bridge down');
+      }
+    } finally {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: previousWindow
+      });
+    }
+  });
+
+  it('continues event fan-out when one subscriber throws', () => {
+    const previousWindow = globalThis.window;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const unsubscribers: Array<() => void> = [];
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {}
+    });
+
+    try {
+      const bus = createWKWebViewBridgeBus();
+      const received: string[] = [];
+      unsubscribers.push(bus.subscribe(() => {
+        throw new Error('subscriber failed');
+      }));
+      unsubscribers.push(bus.subscribe((event) => received.push(event.event)));
+
+      globalThis.window.__billfnBridgeReceive__?.({
+        protocol: BILLFN_BRIDGE_PROTOCOL,
+        event: 'bridge.ready',
+        payload: {}
+      });
+
+      expect(received).toEqual(['bridge.ready']);
+      expect(consoleError).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      consoleError.mockRestore();
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: previousWindow
+      });
+    }
+  });
+});

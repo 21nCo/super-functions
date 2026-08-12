@@ -1,0 +1,70 @@
+---
+title: Errors and Defaults
+description: Important default behaviors and the error codes users are most likely to encounter.
+---
+
+## Core Defaults
+
+These defaults come from the live implementation:
+
+| Surface | Default |
+| --- | --- |
+| Service namespace | `"billfn"` |
+| Router base path | `"/billfn"` |
+| TypeScript client base URL | `"/billfn"` |
+| TypeScript client credentials | `"include"` |
+| Dodo base URL | `https://live.dodopayments.com` |
+| Dodo webhook signature header | `webhook-signature` |
+| Apple environment | `"production"` |
+
+## Default Billing Account Resolution
+
+If you do not pass a custom `billingAccountResolver`, BillFn uses the built-in resolver:
+
+- `organizationId` or `tenantId` maps to an organization billing account
+- otherwise `principalId` or `actorId` maps to a user billing account
+- if none of those fields are present, billing account resolution returns `null`
+
+Generated billing account ids use:
+
+```text
+ba_<ownerType>_<ownerId>
+```
+
+## Core Error Codes
+
+The core error registry currently defines:
+
+- `BILLFN_VALIDATION_ERROR`
+- `BILLFN_NOT_FOUND`
+- `BILLFN_CONFLICT`
+- `BILLFN_UNAUTHORIZED`
+- `BILLFN_PROVIDER_ERROR`
+- `BILLFN_PROVIDER_UNSUPPORTED`
+- `BILLFN_WEBHOOK_SIGNATURE_INVALID`
+- `BILLFN_SUBSCRIPTION_INACTIVE`
+- `BILLFN_QUOTA_EXCEEDED`
+- `BILLFN_FEATURE_UNAVAILABLE`
+- `BILLFN_CATALOG_PRICE_NOT_FOUND`
+- `BILLFN_INTERNAL_ERROR`
+
+## Client-Side Synthetic Errors
+
+The TypeScript and Python clients can also fail before they receive a valid BillFn response.
+
+The TypeScript client normalizes these transport failures into envelope-shaped errors:
+
+- `BILLFN_NETWORK_ERROR`
+- `BILLFN_EMPTY_RESPONSE`
+- `BILLFN_INVALID_RESPONSE`
+
+The Python client raises:
+
+- `BillFnTransportError` for transport, protocol, and parse failures
+- `BillFnApiError` when you call `unwrap()` on an error envelope
+
+## Provider Capability Errors
+
+When a route asks a provider to do something it does not support, core returns `BILLFN_PROVIDER_UNSUPPORTED`.
+
+Typical examples are custom adapters that only implement checkout and verification, or future provider names that exist in the shared types but do not have a mounted adapter in your deployment.

@@ -3,7 +3,7 @@
  */
 
 import { createAdapterFactory } from '../../adapter/factory.js';
-import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
+import { NotFoundError } from '../../adapter/errors.js';
 import type {
   Adapter,
   AdapterSchemaInput,
@@ -38,7 +38,18 @@ export interface MemoryAdapterConfig {
   debug?: boolean;
 }
 
-function createMemoryInternalCrud(): InternalCrud {
+type MemoryInternalSnapshot = {
+  store: Map<string, Map<string, Record<string, unknown>>>;
+  ensuredTables: Set<string>;
+};
+
+type MemoryInternalCrudState = {
+  crud: InternalCrud;
+  snapshot(): MemoryInternalSnapshot;
+  restore(snapshot: MemoryInternalSnapshot): void;
+};
+
+function createMemoryInternalCrud(): MemoryInternalCrudState {
   const internalStore = new Map<string, Map<string, Record<string, unknown>>>();
   const ensuredTables = new Set<string>();
   const TABLE_NAME_RE = /^__datafn_[a-z0-9_]+$/;
@@ -63,7 +74,7 @@ function createMemoryInternalCrud(): InternalCrud {
     });
   }
 
-  return {
+  const crud: InternalCrud = {
     async ensureTable(name: string, _columns: InternalColumnDef[]): Promise<void> {
       if (!TABLE_NAME_RE.test(name)) {
         throw new Error(`ensureTable: table name must start with "__datafn_": "${name}"`);
@@ -177,12 +188,59 @@ function createMemoryInternalCrud(): InternalCrud {
       return results;
     },
   };
+
+  return {
+    crud,
+    snapshot() {
+      return {
+        store: new Map(
+          Array.from(internalStore, ([tableName, records]) => [
+            tableName,
+            new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+          ]),
+        ),
+        ensuredTables: new Set(ensuredTables),
+      };
+    },
+    restore(snapshot) {
+      internalStore.clear();
+      for (const [tableName, records] of snapshot.store) {
+        internalStore.set(
+          tableName,
+          new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+        );
+      }
+      ensuredTables.clear();
+      for (const tableName of snapshot.ensuredTables) {
+        ensuredTables.add(tableName);
+      }
+    },
+  };
 }
 
 /**
  * In-memory adapter for testing
  */
 export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
+  let adapter!: Adapter;
+  let operationTail = Promise.resolve();
+  const internalCrudState = createMemoryInternalCrud();
+  const enqueueOperation = <T>(operation: () => Promise<T>): Promise<T> => {
+    let releaseOperation!: () => void;
+    const previousOperation = operationTail;
+    operationTail = new Promise<void>((resolve) => {
+      releaseOperation = resolve;
+    });
+
+    return (async () => {
+      await previousOperation;
+      try {
+        return await operation();
+      } finally {
+        releaseOperation();
+      }
+    })();
+  };
   const factory = createAdapterFactory({
     config: {
       adapterId: 'memory',
@@ -205,7 +263,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           strictUpdateNotFound: true,
         },
         transactions: {
-          supported: false, // Simple in-memory, no real transactions
+          supported: true,
           nested: false,
         },
         performance: {
@@ -233,6 +291,30 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
       const store = new Map<string, Map<string, any>>();
       const schemaVersions = new Map<string, number>();
       const startTime = Date.now();
+
+      const cloneStore = () => new Map(
+        Array.from(store, ([tableName, records]) => [
+          tableName,
+          new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+        ]),
+      );
+
+      const restoreStore = (
+        storeSnapshot: Map<string, Map<string, any>>,
+        schemaVersionsSnapshot: Map<string, number>,
+      ) => {
+        store.clear();
+        for (const [tableName, records] of storeSnapshot) {
+          store.set(
+            tableName,
+            new Map(Array.from(records, ([id, record]) => [id, structuredClone(record)])),
+          );
+        }
+        schemaVersions.clear();
+        for (const [namespace, version] of schemaVersionsSnapshot) {
+          schemaVersions.set(namespace, version);
+        }
+      };
 
       return {
         async create<T>(params: CreateParams): Promise<T> {
@@ -477,9 +559,35 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
         },
 
         async transaction<R>(
-          _callback: (trx: TransactionAdapter) => Promise<R>
+          callback: (trx: TransactionAdapter) => Promise<R>
         ): Promise<R> {
-          throw new OperationNotSupportedError('transaction', 'Memory Adapter');
+          const storeSnapshot = cloneStore();
+          const schemaVersionsSnapshot = new Map(schemaVersions);
+          const internalSnapshot = internalCrudState.snapshot();
+          let rolledBack = false;
+          const transactionAdapter = Object.assign(
+            Object.fromEntries(
+              Object.entries(adapter).filter(([key]) => key !== 'transaction' && key !== 'close'),
+            ),
+            {
+              async commit() {},
+              async rollback() {
+                restoreStore(storeSnapshot, schemaVersionsSnapshot);
+                internalCrudState.restore(internalSnapshot);
+                rolledBack = true;
+              },
+            },
+          ) as unknown as TransactionAdapter;
+
+          try {
+            return await callback(transactionAdapter);
+          } catch (error) {
+            if (!rolledBack) {
+              restoreStore(storeSnapshot, schemaVersionsSnapshot);
+              internalCrudState.restore(internalSnapshot);
+            }
+            throw error;
+          }
         },
 
         async initialize(): Promise<void> {
@@ -515,11 +623,33 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  const adapter = factory({
+  adapter = Object.assign(factory({
     schema: normalizeAdapterSchema(config?.adapterSchema),
+  }), { internal: internalCrudState.crud });
+  const queuedAdapterMethods = new Map(
+    Reflect.ownKeys(adapter).map((property) => [property, Reflect.get(adapter, property)])
+  );
+
+  const transactionAwareInternal = new Proxy(internalCrudState.crud, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]) => enqueueOperation(() => Promise.resolve(Reflect.apply(value, target, args)));
+    },
   });
-  const internalCrud = createMemoryInternalCrud();
-  return Object.assign(adapter, { internal: internalCrud });
+
+  return new Proxy(adapter, {
+    get(target, property, receiver) {
+      if (property === 'internal') return transactionAwareInternal;
+
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== 'function') return value;
+      if (value !== queuedAdapterMethods.get(property)) {
+        return value.bind(target);
+      }
+      return (...args: unknown[]) => enqueueOperation(() => Promise.resolve(Reflect.apply(value, target, args)));
+    },
+  });
 }
 
 /**

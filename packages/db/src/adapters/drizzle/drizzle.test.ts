@@ -3,7 +3,7 @@
  * Uses better-sqlite3 with Drizzle for in-memory testing
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import Database from 'better-sqlite3';
@@ -399,48 +399,12 @@ describe('DrizzleAdapter - SQLite', () => {
   });
 
   describe('Transactions', () => {
-    it.skip('should execute transaction and commit (SQLite transactions not fully supported)', async () => {
-      await adapter.transaction(async (trx) => {
-        await trx.create({
-          model: 'users',
-          data: { id: '24', name: 'Uma', email: 'uma@example.com', age: 42 },
-        });
-        await trx.create({
-          model: 'posts',
-          data: { id: 'p1', title: 'Post 1', content: 'Content', authorId: '24' },
-        });
-      });
+    it('does not advertise or enter unsafe async SQLite transactions', async () => {
+      const callback = vi.fn();
 
-      const user = await adapter.findOne({
-        model: 'users',
-        where: [{ field: 'id', operator: 'eq', value: '24' }],
-      });
-      const post = await adapter.findOne({
-        model: 'posts',
-        where: [{ field: 'id', operator: 'eq', value: 'p1' }],
-      });
-
-      expect(user).not.toBeNull();
-      expect(post).not.toBeNull();
-    });
-
-    it.skip('should rollback transaction on error (SQLite transactions not fully supported)', async () => {
-      await expect(
-        adapter.transaction(async (trx) => {
-          await trx.create({
-            model: 'users',
-            data: { id: '25', name: 'Victor', email: 'victor@example.com', age: 43 },
-          });
-          throw new Error('Rollback');
-        })
-      ).rejects.toThrow('Rollback');
-
-      const user = await adapter.findOne({
-        model: 'users',
-        where: [{ field: 'id', operator: 'eq', value: '25' }],
-      });
-
-      expect(user).toBeNull();
+      expect(adapter.capabilities.transactions.supported).toBe(false);
+      await expect(adapter.transaction(callback)).rejects.toThrow('SQLite async transactions');
+      expect(callback).not.toHaveBeenCalled();
     });
   });
 

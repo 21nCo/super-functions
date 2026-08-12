@@ -1,0 +1,76 @@
+---
+title: Python
+description: The BillFn Python SDK for sync and async HTTP access plus schema helpers.
+---
+
+The Python package mirrors the typed remote-consumption surface of the TypeScript implementation. It is a client and schema helper package, not a second billing engine.
+
+## Install
+
+For local development in this monorepo:
+
+```bash
+cd billfn/python
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ../../packages/python-core
+pip install -e ".[dev]"
+```
+
+## Sync Client
+
+```python
+from billfn import BillFnCheckoutCreateRequest, BillFnClient, BillableSubject
+
+client = BillFnClient(base_url="https://api.example.com/billfn")
+
+response = client.create_checkout(
+    BillFnCheckoutCreateRequest(
+        subject=BillableSubject(principal_id="user_123"),
+        plan_key="pro",
+        provider="dodo",
+        interval="month",
+    )
+)
+
+checkout = response.unwrap()
+print(checkout.checkout_session.checkout_session_id)
+client.close()
+```
+
+## Async Client
+
+```python
+import asyncio
+
+from billfn import AsyncBillFnClient
+
+
+async def main() -> None:
+    client = AsyncBillFnClient(base_url="https://api.example.com/billfn")
+    try:
+        response = await client.get_catalog()
+        catalog = response.unwrap()
+        print([plan.plan_key for plan in catalog.plans])
+    finally:
+        await client.aclose()
+
+
+asyncio.run(main())
+```
+
+## Included Python Surface
+
+- sync and async HTTP clients
+- typed request and response models
+- canonical envelope parsing
+- transport and API error types
+- `get_schema()` parity with the TypeScript schema helper
+
+## Runnable Examples
+
+- `billfn/python/examples/basic_usage.py`
+- `billfn/python/examples/mock_transport.py`
+
+`basic_usage.py` runs with an in-memory mock transport by default and switches to a live server when `BILLFN_BASE_URL` is set.

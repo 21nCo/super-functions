@@ -1,0 +1,37 @@
+---
+title: Reconciliation
+description: Queue-driven replay, provider backfills, and operational job control.
+---
+
+BillFn Phase 2 adds a first-class reconciliation layer instead of treating webhook replay and subscription repair as ad hoc scripts.
+
+## Routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/billfn/ops/reconciliation/jobs` | Queue a reconciliation job |
+| `GET` | `/billfn/ops/reconciliation/jobs/:jobId` | Read job state |
+| `POST` | `/billfn/ops/reconciliation/jobs/:jobId/run` | Execute a queued job immediately |
+
+These routes require `operations.authorize(request)` to succeed.
+
+## Job kinds
+
+- `webhook-event`
+- `webhook-replay`
+- `subscription-sync`
+- `account-scan`
+- `notification-history-backfill`
+
+## Worker
+
+Use `createBillFnReconciliationWorker(config)` with the same BillFn config you mount in your server.
+
+```ts
+import { createBillFnReconciliationWorker } from "@billfn/core";
+
+const worker = createBillFnReconciliationWorker(config);
+await worker.runNext();
+```
+
+If you provide `queue`, webhook ingestion and manual ops jobs both enqueue `billfn-reconciliation` work items. If you do not provide a queue, webhook reconciliation is processed inline.

@@ -1,0 +1,91 @@
+---
+title: Apple
+description: Apple StoreKit, ASSN v2, Advanced Commerce, and native-managed lifecycle behavior.
+---
+
+`@billfn/provider-apple` covers StoreKit verification, restore, App Store Server Notifications v2, notification history backfills, and Apple-managed lifecycle fallbacks.
+
+## Install
+
+```bash
+npm install @billfn/provider-apple
+```
+
+## Create the Adapter
+
+```ts
+import { createAppleProvider } from "@billfn/provider-apple";
+
+const apple = createAppleProvider({
+  environment: "sandbox",
+  tokenProvider: async () => {
+    return process.env.APPLE_STOREKIT_JWT!;
+  },
+  notificationVerifier: async ({ signedPayload }) => {
+    return verifyAppleSignedPayload(signedPayload);
+  },
+  advancedCommerce: {
+    enabled: true,
+    tokenProvider: async () => process.env.APPLE_ADVANCED_COMMERCE_JWT!,
+  },
+});
+```
+
+`tokenProvider` is required. `environment` defaults to `"production"`.
+
+## Current Capabilities
+
+- checkout creation returns a client action rather than a hosted server checkout url
+- verification uses Apple transaction ids
+- subscription sync is supported
+- restore is supported
+- ASSN v2 ingestion is supported
+- notification history backfills are supported
+- server-side cancel and revoke are supported when Advanced Commerce is configured and eligible
+
+## Client Action Flow
+
+When you create an Apple checkout, the adapter returns:
+
+```json
+{
+  "type": "apple-purchase",
+  "productId": "apple.pro.month",
+  "metadata": {
+    "appAccountToken": "2e54f6b7-3e0d-5b18-98d2-2a2f84a70f7f"
+  }
+}
+```
+
+Your client app is expected to hand off to the native Apple purchase flow using that product id and pass `metadata.appAccountToken` as StoreKit's `.appAccountToken(UUID)` purchase option. Apple returns that token in the signed transaction, allowing BillFn to verify that the transaction belongs to the billing account that opened the checkout.
+
+For lifecycle operations that Apple still owns, BillFn returns:
+
+```json
+{
+  "operationStatus": "requires_action",
+  "clientAction": {
+    "type": "manage-subscription"
+  }
+}
+```
+
+## Verification
+
+Verification expects a `transactionId` or `originalTransactionId` in the payload:
+
+```ts
+await billfn.verifyCheckout({
+  subject: { principalId: "user_apple" },
+  checkoutSessionId: "chk_123",
+  payload: {
+    transactionId: "200000001",
+  },
+});
+```
+
+The adapter decodes StoreKit JWT payloads and maps them into normalized BillFn billing state.
+
+## Notifications
+
+BillFn expects App Store Server Notifications v2 payloads with `signedPayload`. If you provide `notificationVerifier`, BillFn marks the resulting events as signature-verified before projecting entitlement state.

@@ -351,71 +351,23 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       },
 
       async transaction<R>(fn: (trx: any) => Promise<R>): Promise<R> {
-        // Drizzle's transaction API varies by dialect
-        // For async dialects (postgres, mysql): db.transaction returns Promise
-        // For better-sqlite3: db.transaction must be synchronous
         if (dialect === 'sqlite') {
-          // better-sqlite3 uses synchronous transactions
-          // We need to wrap the async callback in a way that works with sync transactions
-          let result: R;
-          let error: any;
-
-          try {
-            // Execute the transaction synchronously
-            // The callback fn is async, but we'll handle it specially
-            const child = drizzleAdapter({ ...config, db });
-            const txAdapter: any = {
-              ...child,
-              transaction: async () => {
-                throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (nested transaction)');
-              },
-              close: async () => { },
-              commit: async () => { },
-              rollback: async () => { },
-            };
-
-            // For SQLite, we execute the async function and wait for it
-            // better-sqlite3 transactions are immediate mode by default
-            // We use db.transaction() which provides ACID guarantees
-            if (typeof db.transaction === 'function') {
-              // Use better-sqlite3's transaction wrapper
-              const syncResult = db.transaction(() => {
-                // This is a hack: we can't await inside a sync function
-                // So we'll execute the async function and store the promise
-                const promise = fn(txAdapter);
-                // For better-sqlite3, operations are synchronous anyway
-                // The async wrapper is just for API compatibility
-                return promise;
-              })();
-
-              // Wait for the promise to resolve
-              result = await syncResult;
-            } else {
-              // Fallback if transaction method doesn't exist
-              result = await fn(txAdapter);
-            }
-          } catch (err) {
-            error = err;
-          }
-
-          if (error) throw error;
-          return result!;
-        } else {
-          // Async transaction for postgres/mysql
-          return await db.transaction(async (trx: any) => {
-            const child = drizzleAdapter({ ...config, db: trx });
-            const txAdapter: any = {
-              ...child,
-              transaction: async () => {
-                throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (nested transaction)');
-              },
-              close: async () => { },
-              commit: async () => { },
-              rollback: async () => { },
-            };
-            return await fn(txAdapter);
-          });
+          throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (SQLite async transactions)');
         }
+
+        return await db.transaction(async (trx: any) => {
+          const child = drizzleAdapter({ ...config, db: trx });
+          const txAdapter: any = {
+            ...child,
+            transaction: async () => {
+              throw new OperationNotSupportedError('transaction', 'DrizzleAdapter (nested transaction)');
+            },
+            close: async () => { },
+            commit: async () => { },
+            rollback: async () => { },
+          };
+          return await fn(txAdapter);
+        });
       },
 
       async initialize(): Promise<void> { return; },
@@ -479,7 +431,7 @@ export function drizzleAdapter(config: DrizzleAdapterConfig): Adapter {
       capabilities: {
         types: { json: true, dates: true, booleans: true, bigint: true, uuid: true, enum: true },
         operations: { batch: true, upsert: true, streaming: false, fulltext: false, returning: config.dialect !== 'mysql', strictUpdateNotFound: true },
-        transactions: { supported: true, nested: false, isolation: undefined },
+        transactions: { supported: config.dialect !== 'sqlite', nested: false, isolation: undefined },
         performance: { supportsJoins: true, supportsPreparedStatements: true },
         schema: { migrations: false, constraints: true, indexes: true },
         advanced: { customIdGeneration: false, numericIds: true, schemaNamespaces: true, customTypes: true },
