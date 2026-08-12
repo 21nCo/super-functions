@@ -333,6 +333,64 @@ describe('HTTP router auth boundaries', () => {
       },
     });
   });
+
+  it('includes authorized organization-owned jobs in sync listings', async () => {
+    const personalJob = {
+      id: 'job_personal',
+      connectionId: 'conn_personal',
+      ownerKind: 'user',
+      ownerId: 'admin',
+    };
+    const organizationJob = {
+      id: 'job_org',
+      connectionId: 'conn_org',
+      ownerKind: 'organization',
+      ownerId: 'org_1',
+    };
+    const listSyncJobs = vi.fn(async (filters) =>
+      filters.ownerKind === 'organization' ? [organizationJob] : [personalJob]
+    );
+    const plug = createMockPlugFn({
+      listSyncJobs,
+      getSyncJob: vi.fn(async () => organizationJob),
+      getConnection: vi.fn(async () => ({
+        id: 'conn_org',
+        userId: 'installer',
+        provider: 'gmail',
+        ownerKind: 'organization',
+        ownerId: 'org_1',
+        organizationId: 'org_1',
+        installedByUserId: 'installer',
+        tenantId: 'tenant_1',
+      })),
+      authenticate: vi.fn(async () => ({
+        userId: 'admin',
+        tenantId: 'tenant_1',
+        organizationId: 'org_1',
+        roles: ['org:admin'],
+      })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/sync/jobs?provider=gmail', { method: 'GET' })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { jobs: [personalJob, organizationJob] },
+    });
+    expect(listSyncJobs).toHaveBeenNthCalledWith(1, {
+      provider: 'gmail',
+      ownerKind: 'user',
+      ownerId: 'admin',
+    });
+    expect(listSyncJobs).toHaveBeenNthCalledWith(2, {
+      provider: 'gmail',
+      ownerKind: 'organization',
+      ownerId: 'org_1',
+    });
+  });
 });
 
 function createMockPlugFn(overrides: {
@@ -342,6 +400,8 @@ function createMockPlugFn(overrides: {
   handleWebhook?: ReturnType<typeof vi.fn>;
   authenticate?: ReturnType<typeof vi.fn>;
   createJob?: ReturnType<typeof vi.fn>;
+  listSyncJobs?: ReturnType<typeof vi.fn>;
+  getSyncJob?: ReturnType<typeof vi.fn>;
 } = {}) {
   const listConnections = overrides.listConnections ?? vi.fn(async () => []);
   const getConnection = overrides.getConnection ?? vi.fn(async () => ({ id: 'conn_1', userId: 'u1' }));
@@ -386,7 +446,10 @@ function createMockPlugFn(overrides: {
       handle: handleWebhook,
       verify: vi.fn(async () => ({ verified: true })),
     },
-    runtime: createMockRuntime(),
+    runtime: createMockRuntime({
+      listSyncJobs: overrides.listSyncJobs,
+      getSyncJob: overrides.getSyncJob,
+    }),
     providers: {
       list: vi.fn(() => []),
       get: vi.fn(() => undefined),
@@ -399,7 +462,10 @@ function createMockPlugFn(overrides: {
   } as any;
 }
 
-function createMockRuntime() {
+function createMockRuntime(overrides: {
+  listSyncJobs?: ReturnType<typeof vi.fn>;
+  getSyncJob?: ReturnType<typeof vi.fn>;
+} = {}) {
   return {
     installations: {
       create: vi.fn(),
@@ -429,8 +495,8 @@ function createMockRuntime() {
     },
     sync: {
       createJob: vi.fn(async () => ({ id: 'job_1' })),
-      getJob: vi.fn(async () => ({ id: 'job_1' })),
-      listJobs: vi.fn(async () => []),
+      getJob: overrides.getSyncJob ?? vi.fn(async () => ({ id: 'job_1' })),
+      listJobs: overrides.listSyncJobs ?? vi.fn(async () => []),
       updateJob: vi.fn(async () => ({ id: 'job_1' })),
       completeJob: vi.fn(async () => ({ id: 'job_1' })),
       failJob: vi.fn(async () => ({ id: 'job_1' })),

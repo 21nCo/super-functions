@@ -22,6 +22,7 @@ import type { PlugFnSyncFetchResult, Provider } from '../types/provider.js';
 import type {
   PlugFnConnectionGrant,
   PlugFnConnectionOwner,
+  PlugFnActor,
   PlugFnProviderEvent,
   PlugFnProviderInstallation,
   PlugFnPersistenceSink,
@@ -225,11 +226,7 @@ export interface PlugFnSyncRunOptions {
   checkpoint?: unknown;
   maxPages?: number;
   metadata?: Record<string, unknown>;
-  actor?: {
-    userId: string;
-    tenantId?: string;
-    organizationId?: string;
-  };
+  actor?: PlugFnActor;
 }
 
 export interface PlugFnSyncQueueOptions extends PlugFnSyncRunOptions {
@@ -519,7 +516,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       );
     }
 
-    if (options.actor && !connectionMatchesActor(connection, options.actor.userId)) {
+    if (options.actor && !connectionMatchesActor(connection, options.actor)) {
       throw new PlugFnRuntimeError(
         'TENANT_ACCESS_DENIED',
         'connection owner mismatch',
@@ -546,7 +543,10 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       mode,
       owner: connectionToOwner(connection),
       cursor: options.cursor,
-      checkpoint: options.checkpoint ?? persistedCheckpoint?.checkpoint,
+      checkpoint:
+        options.checkpoint !== undefined
+          ? options.checkpoint
+          : persistedCheckpoint?.checkpoint,
       metadata: {
         ...(options.metadata ?? {}),
         plugfnSync: {
@@ -607,7 +607,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     }
 
     const workerOptions = readSyncJobWorkerMetadata(job);
-    if (workerOptions.actor && !connectionMatchesActor(connection, workerOptions.actor.userId)) {
+    if (workerOptions.actor && !connectionMatchesActor(connection, workerOptions.actor)) {
       await runtimeStorage.failSyncJob(job.id, 'connection owner mismatch');
       throw new PlugFnRuntimeError(
         'TENANT_ACCESS_DENIED',
@@ -932,13 +932,19 @@ async function executeSyncResource(input: {
   }
 
   const data = (result.data ?? {}) as Record<string, unknown>;
+  const fallbackItems = resolveFallbackSyncItems(data);
   const fallbackSink = resolveFallbackSyncSink(input);
   const persistedCount = fallbackSink
-    ? await persistFallbackSyncItems(fallbackSink, data, input, fallbackAction)
+    ? await persistFallbackSyncItems(fallbackSink, fallbackItems, input, fallbackAction)
     : asNumber(data.upserted) ?? asNumber(data.persistedCount) ?? 0;
 
   return {
-    fetchedCount: asNumber(data.fetched) ?? asNumber(data.fetchedCount) ?? 0,
+    fetchedCount:
+      asNumber(data.fetched) ??
+      asNumber(data.fetchedCount) ??
+      asNumber(data.count) ??
+      fallbackItems?.length ??
+      0,
     persistedCount,
     skippedCount: asNumber(data.skipped) ?? asNumber(data.skippedCount) ?? 0,
     checkpoint: data.checkpoint,
@@ -971,16 +977,10 @@ function resolveFallbackSyncSink(input: {
 
 async function persistFallbackSyncItems(
   sink: PlugFnPersistenceSink,
-  data: Record<string, unknown>,
+  items: unknown[] | undefined,
   input: { provider: string; resource: string; connectionId: string },
   fallbackAction: string
 ): Promise<number> {
-  let items: unknown[] | undefined;
-  if (Array.isArray(data.items)) {
-    items = data.items;
-  } else if (Array.isArray(data.messages)) {
-    items = data.messages;
-  }
   if (!items) {
     throw new PlugFnRuntimeError(
       'SYNC_FALLBACK_ITEMS_REQUIRED',
@@ -997,6 +997,16 @@ async function persistFallbackSyncItems(
     });
   }
   return items.length;
+}
+
+function resolveFallbackSyncItems(data: Record<string, unknown>): unknown[] | undefined {
+  if (Array.isArray(data.items)) {
+    return data.items;
+  }
+  if (Array.isArray(data.messages)) {
+    return data.messages;
+  }
+  return undefined;
 }
 
 async function executeProviderSyncDefinition(input: {
@@ -1145,13 +1155,41 @@ function resolveSyncActionName(provider: Provider, resource: string): string | u
   return candidates.find((candidate) => candidate in provider.actions);
 }
 
-function connectionMatchesActor(connection: Connection, actorUserId: string): boolean {
-  return (
-    connection.userId === actorUserId ||
-    (connection.ownerKind === 'user' && connection.ownerId === actorUserId) ||
-    connection.installedByUserId === actorUserId ||
-    connection.delegatedToUserId === actorUserId
-  );
+function connectionMatchesActor(connection: Connection, actor: PlugFnActor): boolean {
+  if (
+    connection.userId === actor.userId ||
+    (connection.ownerKind === 'user' && connection.ownerId === actor.userId)
+  ) {
+    return true;
+  }
+
+  if (connection.ownerKind === 'organization') {
+    return (
+      connection.installedByUserId === actor.userId ||
+      (Boolean(connection.organizationId) &&
+        Boolean(actor.organizationId) &&
+        connection.organizationId === actor.organizationId &&
+        hasAny(actor.roles, ['admin', 'owner', 'org:admin']))
+    );
+  }
+
+  if (connection.ownerKind === 'delegated') {
+    return (
+      connection.delegatedToUserId === actor.userId ||
+      connection.installedByUserId === actor.userId ||
+      hasAny(actor.grants, connection.grants ?? [])
+    );
+  }
+
+  return false;
+}
+
+function hasAny(values: string[] | undefined, candidates: string[]): boolean {
+  if (!values || values.length === 0) {
+    return false;
+  }
+  const valueSet = new Set(values);
+  return candidates.some((candidate) => valueSet.has(candidate));
 }
 
 function connectionTenantMatchesActor(

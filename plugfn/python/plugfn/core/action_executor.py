@@ -1,8 +1,38 @@
 """Action executor for executing provider actions with middleware."""
 
+import asyncio
 import time
+from collections import deque
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
+
+
+class RateLimitExceededError(RuntimeError):
+    """Raised when an action exceeds its configured provider quota."""
+
+
+class InMemoryRateLimiter:
+    """Atomic sliding-window limiter shared by an action executor instance."""
+
+    def __init__(self) -> None:
+        self._buckets: Dict[str, Deque[float]] = {}
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, keys: List[str], requests: int, window_ms: int) -> None:
+        if requests <= 0 or window_ms <= 0:
+            raise ValueError("rate limit requests and window must be positive")
+
+        now = time.monotonic()
+        cutoff = now - (window_ms / 1000)
+        async with self._lock:
+            buckets = [self._buckets.setdefault(key, deque()) for key in keys]
+            for bucket in buckets:
+                while bucket and bucket[0] <= cutoff:
+                    bucket.popleft()
+            if any(len(bucket) >= requests for bucket in buckets):
+                raise RateLimitExceededError("provider action rate limit exceeded")
+            for bucket in buckets:
+                bucket.append(now)
 
 
 class ActionExecutor:
@@ -33,6 +63,7 @@ class ActionExecutor:
         self.enable_retry = enable_retry
         self.enable_rate_limit = enable_rate_limit
         self.enable_cache = enable_cache
+        self._rate_limiter = InMemoryRateLimiter()
 
         # Store action logs for metrics
         self._action_logs: List[Dict[str, Any]] = []
@@ -108,6 +139,13 @@ class ActionExecutor:
         credentials = await self.connection_manager.get_credentials(connection.id)
 
         try:
+            if self.enable_rate_limit and provider_obj.rate_limit:
+                await self._rate_limiter.acquire(
+                    [f"provider:{provider}", f"provider:{provider}:user:{user_id}"],
+                    provider_obj.rate_limit["requests"],
+                    provider_obj.rate_limit["window"],
+                )
+
             # Execute action (with retry if enabled)
             max_attempts = 1
             if self.enable_retry and retry:
@@ -124,6 +162,7 @@ class ActionExecutor:
                         credentials=credentials,
                         auth_type=provider_obj.auth_type,
                         logger=self.logger,
+                        timeout=timeout if timeout is not None else 30,
                     )
 
                     context = ActionContext(
@@ -184,7 +223,6 @@ class ActionExecutor:
                             },
                         )
 
-                        import asyncio
                         await asyncio.sleep(wait_time)
 
             # All retries exhausted
@@ -236,8 +274,6 @@ class ActionExecutor:
         Returns:
             List of action results
         """
-        import asyncio
-
         tasks = [
             self.execute(
                 provider=action["provider"],

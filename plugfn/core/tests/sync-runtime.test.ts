@@ -184,6 +184,67 @@ describe('PlugFn sync runtime', () => {
     expect(result.jobs[0]?.fetchedCount).toBe(2);
   });
 
+  it('allows an organization admin to enqueue and run organization sync work', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'admin', tenantId: 'tenant_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    plug.use(testSyncProvider);
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_org',
+      userId: 'installer',
+      provider: 'test-sync',
+      tenantId: 'tenant_1',
+      ownerKind: 'organization',
+      ownerId: 'org_1',
+      organizationId: 'org_1',
+      installedByUserId: 'installer',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    plug.runtime.sinks.register(
+      createDbSink({
+        adapter: database,
+        id: 'test.org.records',
+        provider: 'test-sync',
+        resource: 'records',
+        model: 'test_external_org_records',
+        uniqueBy: ['provider', 'externalId'],
+        transform: (record: any) => ({
+          provider: 'test-sync',
+          externalId: record.id,
+          value: record.value,
+        }),
+      })
+    );
+
+    const job = await plug.sync.backfill({
+      provider: 'test-sync',
+      connectionId: 'conn_sync_org',
+      resource: 'records',
+      actor: {
+        userId: 'admin',
+        tenantId: 'tenant_1',
+        organizationId: 'org_1',
+        roles: ['org:admin'],
+      },
+    });
+
+    expect(job).toMatchObject({ status: 'completed', fetchedCount: 2 });
+  });
+
   it('rejects tenant mismatches during enqueue and worker execution', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({
@@ -427,11 +488,11 @@ describe('PlugFn sync runtime', () => {
           parameters: z.object({
             tenantId: z.string(),
             mode: z.enum(['full', 'incremental']),
-            checkpoint: z.string().optional(),
+            checkpoint: z.unknown().optional(),
             cursor: z.string().optional(),
           }),
           returns: z.object({
-            fetched: z.number(),
+            count: z.number(),
             upserted: z.number(),
             skipped: z.number(),
             checkpoint: z.string(),
@@ -441,7 +502,7 @@ describe('PlugFn sync runtime', () => {
             invocation += 1;
             receivedCheckpoints.push(params.checkpoint);
             return {
-              fetched: 1,
+              count: 1,
               upserted: 1,
               skipped: 0,
               checkpoint: `checkpoint-${invocation}`,
@@ -500,6 +561,14 @@ describe('PlugFn sync runtime', () => {
       sinkId: 'fallback.messages',
       actor: { userId: 'user_1', tenantId: 'tenant_1' },
     });
+    const reset = await plug.sync.incremental({
+      provider: 'fallback-sync-persisted',
+      connectionId: 'conn_fallback_persisted',
+      resource: 'messages',
+      checkpoint: null,
+      sinkId: 'fallback.messages',
+      actor: { userId: 'user_1', tenantId: 'tenant_1' },
+    });
 
     expect(backfill).toMatchObject({
       checkpoint: 'checkpoint-1',
@@ -511,14 +580,19 @@ describe('PlugFn sync runtime', () => {
       fetchedCount: 1,
       persistedCount: 1,
     });
-    expect(receivedCheckpoints).toEqual([undefined, 'checkpoint-1']);
+    expect(reset).toMatchObject({
+      checkpoint: 'checkpoint-3',
+      fetchedCount: 1,
+      persistedCount: 1,
+    });
+    expect(receivedCheckpoints).toEqual([undefined, 'checkpoint-1', null]);
     expect(
       await database.findMany<any>({ model: 'test_fallback_messages', where: [] })
     ).toMatchObject([
       {
         provider: 'fallback-sync-persisted',
         externalId: 'message-1',
-        value: 'value-2',
+        value: 'value-3',
       },
     ]);
   });

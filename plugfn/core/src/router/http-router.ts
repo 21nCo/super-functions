@@ -473,10 +473,7 @@ export function createPlugFnRouter(
         const connectionId = asOptionalString(ctx.query.get('connectionId'));
         const status = asOptionalString(ctx.query.get('status'));
         const authContext = requireAuthContext(ctx);
-        const filters: Record<string, unknown> = {
-          ownerKind: 'user',
-          ownerId: authContext.userId,
-        };
+        const filters: Record<string, unknown> = {};
         if (provider) {
           filters.provider = provider;
         }
@@ -487,7 +484,25 @@ export function createPlugFnRouter(
           filters.status = status;
         }
 
-        const jobs = await ctx.plugFn.runtime.sync.listJobs(filters);
+        const ownJobs = await ctx.plugFn.runtime.sync.listJobs({
+          ...filters,
+          ownerKind: 'user',
+          ownerId: authContext.userId,
+        });
+        let jobs = ownJobs;
+        if (authContext.organizationId) {
+          const organizationJobs = await ctx.plugFn.runtime.sync.listJobs({
+            ...filters,
+            ownerKind: 'organization',
+            ownerId: authContext.organizationId,
+          });
+          const authorizedOrganizationJobs = await filterAuthorizedSyncJobs(
+            ctx,
+            organizationJobs,
+            authContext
+          );
+          jobs = deduplicateSyncJobs([...ownJobs, ...authorizedOrganizationJobs]);
+        }
         return successResponse({ jobs });
       },
     },
@@ -691,6 +706,24 @@ async function requireAuthorizedSyncJob(
   };
 }
 
+async function filterAuthorizedSyncJobs(
+  context: PlugFnContext,
+  jobs: Awaited<ReturnType<PlugFn['runtime']['sync']['listJobs']>>,
+  authContext: RouteAuthContext
+) {
+  const authorizationResults = await Promise.all(
+    jobs.map(async (job) => {
+      try {
+        await requireAuthorizedSyncJob(context, job.id, authContext);
+        return job;
+      } catch {
+        return undefined;
+      }
+    })
+  );
+  return authorizationResults.filter((job): job is NonNullable<typeof job> => Boolean(job));
+}
+
 function connectionMatchesAuthContext(
   connection: Connection,
   authContext: RouteAuthContext
@@ -729,6 +762,12 @@ function connectionMatchesAuthContext(
 
 function deduplicateConnections(connections: Connection[]): Connection[] {
   return [...new Map(connections.map((connection) => [connection.id, connection])).values()];
+}
+
+function deduplicateSyncJobs(
+  jobs: Awaited<ReturnType<PlugFn['runtime']['sync']['listJobs']>>
+) {
+  return [...new Map(jobs.map((job) => [job.id, job])).values()];
 }
 
 function hasAny(values: string[] | undefined, candidates: string[]): boolean {

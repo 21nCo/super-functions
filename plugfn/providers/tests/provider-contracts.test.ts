@@ -8,7 +8,10 @@ import {
   imapSmtpProvider,
 } from '../src/index.js';
 import { assertGmailProviderConfig } from '../src/gmail/index.js';
-import { assertOutlookProviderConfig } from '../src/outlook/index.js';
+import {
+  assertOutlookProviderConfig,
+  resolveOutlookDeltaRequestUrl,
+} from '../src/outlook/index.js';
 import { assertYahooProviderConfig } from '../src/yahoo/index.js';
 import { assertIcloudProviderConfig } from '../src/icloud/index.js';
 import { assertImapSmtpProviderConfig } from '../src/imap-smtp/index.js';
@@ -127,6 +130,21 @@ describe('provider contracts', () => {
     expect(() => assertOutlookProviderConfig(undefined)).toThrowError(
       'outlook provider config is required'
     );
+  });
+
+  it('restricts Outlook delta checkpoints to the Microsoft Graph origin', () => {
+    expect(
+      resolveOutlookDeltaRequestUrl(
+        'https://graph.microsoft.com',
+        'https://graph.microsoft.com/v1.0/me/messages/delta?$skiptoken=abc'
+      )
+    ).toBe('https://graph.microsoft.com/v1.0/me/messages/delta?$skiptoken=abc');
+    expect(() =>
+      resolveOutlookDeltaRequestUrl(
+        'https://graph.microsoft.com',
+        'https://attacker.example/collect'
+      )
+    ).toThrowError('outlook delta checkpoint URL must use the Microsoft Graph origin');
   });
 
   it('returns deterministic validation error for missing yahoo config', () => {

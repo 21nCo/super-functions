@@ -354,7 +354,7 @@ function requireConnectionId(context: ActionContext): string {
 function createOutlookDeltaSource(context: ActionContext): OutlookDeltaSource {
   return {
     listDelta: async ({ deltaToken, maxMessages }) => {
-      const url = deltaToken ?? `${context.provider.baseUrl}/v1.0/me/messages/delta`;
+      const url = resolveOutlookDeltaRequestUrl(context.provider.baseUrl, deltaToken);
 
       try {
         const response = await context.http.get<{
@@ -400,6 +400,38 @@ function createOutlookDeltaSource(context: ActionContext): OutlookDeltaSource {
       }
     },
   };
+}
+
+export function resolveOutlookDeltaRequestUrl(
+  baseUrl: string,
+  deltaToken?: string
+): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
+  const defaultUrl = `${normalizedBaseUrl}/v1.0/me/messages/delta`;
+  if (!deltaToken) {
+    return defaultUrl;
+  }
+
+  let requestUrl: URL;
+  let providerUrl: URL;
+  try {
+    providerUrl = new URL(normalizedBaseUrl);
+    requestUrl = new URL(deltaToken, `${normalizedBaseUrl}/`);
+  } catch {
+    throw new OutlookProviderError(
+      'VALIDATION_ERROR',
+      'outlook delta checkpoint URL is invalid'
+    );
+  }
+
+  if (requestUrl.origin !== providerUrl.origin) {
+    throw new OutlookProviderError(
+      'VALIDATION_ERROR',
+      'outlook delta checkpoint URL must use the Microsoft Graph origin'
+    );
+  }
+
+  return requestUrl.toString();
 }
 
 function createOutlookSubscriptionClient(context: ActionContext): OutlookSubscriptionClient {
