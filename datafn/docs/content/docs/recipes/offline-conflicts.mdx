@@ -1,0 +1,130 @@
+---
+title: "Recipe: Offline Conflict Resolution"
+description: "Last-writer-wins, version guards, and explicit merge policies for offline-first writes."
+audience: guide
+applies_to: both
+---
+
+When two clients edit the same row offline and reconnect at different times, you need a conflict policy. DataFn ships three patterns. Pick per-resource based on what the user expects to happen.
+
+## Last-writer-wins (default)
+
+Most fields don't need conflict resolution. The default is **last-writer-wins by server timestamp**: when push delivers two competing edits, the one with the later `updatedAt` wins. The earlier edit is silently dropped.
+
+This is correct for status toggles, single-value fields, and any field where the meaningful state is "the most recent value the user intended".
+
+No configuration needed.
+
+## Version guards (optimistic concurrency)
+
+For fields where you want the second writer to **fail** instead of silently overwrite, use `if` guards.
+
+```typescript
+const task = await client.table("tasks").get(taskId);
+
+await client.table("tasks").mutate({
+  operation: "merge",
+  id: taskId,
+  record: { title: newTitle },
+  if: { updatedAt: { $eq: task.updatedAt } },
+});
+```
+
+The server checks the guard atomically with the write. If `updatedAt` has changed since `task` was loaded, the mutation fails with `CONFLICT`. Catch and prompt the user:
+
+```typescript
+const env = await client.table("tasks").mutate({ /* …with guard… */ });
+if (!env.ok && env.error.code === "CONFLICT") {
+  const fresh = await client.table("tasks").get(taskId);
+  if (await confirm("Someone else edited this. Use their version?")) return; // discard local
+  // …else: retry with fresh.updatedAt as the new guard
+}
+```
+
+This pattern is correct for important singular fields: a price, a name, a permissions list.
+
+## Explicit merge (per-field policy)
+
+When you want field-level merge semantics, hook `beforeMutation` and reconcile against the on-disk row:
+
+```typescript
+{
+  event: "beforeMutation",
+  filter: { resource: "items", operation: "merge" },
+  handler: async (ctx) => {
+    const mut = ctx.payload as DfqlMutation;
+    const current = await server.db.findOne("items", mut.id);
+    if (!current) return;
+
+    const merged = {
+      ...mut.record,
+      tags: union(current.tags ?? [], mut.record.tags ?? []), // set-union tags
+      version: (current.version ?? 0) + 1,
+    };
+    return { ...mut, record: merged };
+  },
+}
+```
+
+This runs on the server, with the canonical state. Use it for accumulator fields ("number of views"), set-shaped fields ("tags"), or anything where two concurrent edits both produce information you want to keep.
+
+## Patterns by data shape
+
+| Shape | Recommended |
+| --- | --- |
+| Single value (status, priority) | last-writer-wins |
+| Counter | server-side hook with atomic `incr` (use Redis for true atomicity) |
+| Set (tags, categories) | server-side merge (union) |
+| List of children (line items) | model children as separate resources |
+| Boolean flag | last-writer-wins |
+| User-typed text (title, description) | version guard + UI prompt |
+| Position in an ordered list | fractional indexing (see [Kanban](/docs/recipes/kanban-board)) |
+
+## Offline buffer
+
+Mutations queued offline are stored locally and replayed on reconnect. While offline, your local optimistic state is the truth as far as the user can see. On reconnect, two things happen:
+
+1. The sync engine pushes each queued mutation in order.
+2. Each push response may include `errors` for individual mutations.
+
+Failed mutations are surfaced via the `onSyncEvent` callback:
+
+```typescript
+const client = createDatafnClient({
+  // ...
+  onSyncEvent: (event) => {
+    if (event.type === "push:error") {
+      // event.mutation, event.error.code, event.error.message
+      showRetryToast(event);
+    }
+  },
+});
+```
+
+If you don't handle the error, the local store will be reconciled with the server state on the next pull — your optimistic write will be reverted silently.
+
+## Listening for conflicts proactively
+
+For workflows where conflicts matter (rare-but-critical), call out to your monitoring on the server:
+
+```typescript
+hooks: [
+  {
+    event: "afterMutation",
+    handler: async (ctx) => {
+      const mut = ctx.payload as DfqlMutation;
+      if (mut.if && mut.serverSeqBefore && mut.serverSeqAfter !== mut.serverSeqBefore + 1) {
+        await metrics.increment("conflict_loser", { resource: ctx.resource });
+      }
+    },
+  },
+],
+```
+
+(The exact field names depend on your DataFn version; see [Events Reference](/docs/reference/events).)
+
+## See also
+
+- [Sync → Offline-first](/docs/documentation/sync/offline-first)
+- [Guards](/docs/documentation/advanced/guards)
+- [Idempotency](/docs/documentation/advanced/idempotency)

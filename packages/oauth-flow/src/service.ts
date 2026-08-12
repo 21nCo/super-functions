@@ -309,6 +309,9 @@ export async function invokeIdentityHook<T extends HookName>(
     const result = await hook(payload);
     return result as T extends "resolveBrowserAuthIdentity" ? OAuthFlowResolvedIdentity | null : void;
   } catch (error) {
+    if (!(error instanceof OAuthFlowError) && isStructuredHookError(error)) {
+      throw error;
+    }
     throw new OAuthFlowError("OAUTH_HOOK_FAILED", "identity hook failed", {
       status: 500,
       retryable: false,
@@ -318,6 +321,20 @@ export async function invokeIdentityHook<T extends HookName>(
       })
     });
   }
+}
+
+function isStructuredHookError(
+  error: unknown
+): error is { code: string; message: string; status?: number; retryable?: boolean } {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as Record<string, unknown>;
+  return typeof candidate.code === "string"
+    && typeof candidate.message === "string"
+    && (candidate.status === undefined || typeof candidate.status === "number")
+    && (candidate.retryable === undefined || typeof candidate.retryable === "boolean");
 }
 
 class DefaultOAuthFlowService implements OAuthFlowService {
@@ -347,9 +364,9 @@ class DefaultOAuthFlowService implements OAuthFlowService {
       exchangeCodeForToken: async (input) => {
         const runtime = await this.getRuntimeConfig({
           providerId: input.provider.id,
-          subject: input.subject,
+          subject: (input as unknown as { subject: CoreOAuthIntentSubject }).subject,
           redirectUri: input.redirectUri,
-          scopes: input.scopes
+          scopes: input.scopes ?? []
         });
         const response = await exchangeToken({
           provider: input.provider,
@@ -516,6 +533,20 @@ class DefaultOAuthFlowService implements OAuthFlowService {
 
       return result;
     } catch (error) {
+      if (!(error instanceof OAuthFlowError) && isStructuredHookError(error)) {
+        this.emitEvent({
+          name: "oauth.flow.callback.failed",
+          requestId,
+          providerId: providerId ?? input.providerId ?? "unknown",
+          at: this.now().toISOString(),
+          ok: false,
+          subjectKind: subjectPreview?.kind,
+          connectionId: subjectPreview?.connectionId,
+          errorCode: error.code as OAuthFlowErrorCode,
+          details: sanitizeDetails(readStructuredHookErrorDetails(error))
+        });
+        throw error;
+      }
       const mapped = mapToOAuthFlowError(error);
       this.emitEvent({
         name: "oauth.flow.callback.failed",
@@ -576,7 +607,7 @@ class DefaultOAuthFlowService implements OAuthFlowService {
           connectionId: existing.record.connectionId
         },
         redirectUri: input.redirectUri,
-        scopes: input.scopes
+        scopes: input.scopes ?? []
       });
 
       const response = await exchangeToken({
@@ -659,12 +690,8 @@ class DefaultOAuthFlowService implements OAuthFlowService {
             tenantId: tokenRecord.record.tenantId,
             userId: tokenRecord.record.userId,
             connectionId: tokenRecord.record.connectionId
-          },
-          redirectUri: undefined,
-          scopes: undefined,
-          prompt: undefined,
-          loginHint: undefined
-        });
+          }
+        } as OAuthProviderRuntimeConfigResolverInput);
         const tokenToRevoke =
           input.tokenTypeHint === "access_token"
             ? tokenRecord.tokenSet.accessToken ?? tokenRecord.tokenSet.refreshToken
@@ -1046,6 +1073,19 @@ class DefaultOAuthFlowService implements OAuthFlowService {
   }
 }
 
+function readStructuredHookErrorDetails(error: {
+  status?: number;
+  retryable?: boolean;
+  details?: unknown;
+}): Record<string, unknown> | undefined {
+  const details = isRecord(error.details) ? error.details : {};
+  return {
+    ...details,
+    status: error.status,
+    retryable: error.retryable
+  };
+}
+
 function normalizeStartSubject(input: OAuthFlowStartInput): OAuthFlowSubject {
   if ("subject" in input) {
     return toFlowSubject(input.subject);
@@ -1158,8 +1198,22 @@ function mapToOAuthFlowError(error: unknown): OAuthFlowError {
 
   return new OAuthFlowError("INTERNAL_ERROR", "Unexpected OAuth flow error", {
     status: 500,
-    retryable: false
+    retryable: false,
+    details: sanitizeDetails({
+      causeName: error instanceof Error ? error.name : typeof error,
+      causeMessage: error instanceof Error ? error.message : String(error),
+      causeKind: readStructuredErrorCode(error)
+    })
   });
+}
+
+function readStructuredErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
 }
 
 function readOAuthLibraryError(error: unknown): {
@@ -1170,8 +1224,9 @@ function readOAuthLibraryError(error: unknown): {
   details?: Record<string, unknown>;
 } | null {
   if (error instanceof OAuthCoreError || error instanceof OAuthHttpError) {
+    const code = readOAuthFlowErrorCode(error.code);
     return {
-      code: error.code as OAuthFlowErrorCode,
+      code: code ?? "INTERNAL_ERROR",
       message: error.message,
       status: error.status ?? 400,
       retryable: error.retryable ?? false,
@@ -1201,12 +1256,36 @@ function readOAuthLibraryError(error: unknown): {
   }
 
   return {
-    code: raw.code as OAuthFlowErrorCode,
+    code: readOAuthFlowErrorCode(raw.code) ?? "INTERNAL_ERROR",
     message: raw.message,
     status: raw.status,
     retryable: raw.retryable,
     details: isRecord(raw.details) ? raw.details : undefined
   };
+}
+
+const OAUTH_FLOW_ERROR_CODES = new Set<OAuthFlowErrorCode>([
+  "OAUTH_HOOK_FAILED",
+  "NOT_IMPLEMENTED",
+  "OAUTH_STATE_INVALID",
+  "OAUTH_STATE_REPLAYED",
+  "OAUTH_CALLBACK_MISMATCH",
+  "OAUTH_REDIRECT_DISALLOWED",
+  "OAUTH_PROVIDER_UNSUPPORTED",
+  "OAUTH_RUNTIME_CONFIG_INVALID",
+  "OAUTH_SECRET_RESOLUTION_FAILED",
+  "OAUTH_TOKEN_STORAGE_UNSAFE",
+  "OAUTH_TOKEN_REFRESH_FAILED",
+  "OAUTH_TOKEN_EXCHANGE_FAILED",
+  "VALIDATION_ERROR",
+  "INTERNAL_ERROR",
+  "PROVIDER_RATE_LIMITED"
+]);
+
+function readOAuthFlowErrorCode(value: unknown): OAuthFlowErrorCode | undefined {
+  return typeof value === "string" && OAUTH_FLOW_ERROR_CODES.has(value as OAuthFlowErrorCode)
+    ? value as OAuthFlowErrorCode
+    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

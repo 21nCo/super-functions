@@ -13,10 +13,16 @@ export interface SuperfunctionsPackageMetadata {
   packageName: string;
   initFunction: string;
   schemaVersion?: number;
+  libraryNames: string[];
 }
 
 export interface PackageRegistry {
-  [initFunction: string]: string; // initFunction -> packageName
+  [initFunction: string]:
+    | string
+    | {
+        packageName: string;
+        libraryName: string;
+      };
 }
 
 /**
@@ -25,17 +31,38 @@ export interface PackageRegistry {
 export function discoverSuperfunctionsPackages(
   cwd: string = process.cwd()
 ): SuperfunctionsPackageMetadata[] {
+  const nodeModulesPaths = findNodeModulesPaths(cwd);
   const discovered: SuperfunctionsPackageMetadata[] = [];
-  const nodeModulesPath = path.join(cwd, "node_modules");
+  const seenPackageNames = new Set<string>();
 
-  if (!fs.existsSync(nodeModulesPath)) {
-    return discovered;
+  for (const nodeModulesPath of nodeModulesPaths) {
+    scanDirectory(nodeModulesPath, discovered, seenPackageNames);
   }
 
-  // Scan node_modules
-  scanDirectory(nodeModulesPath, discovered);
-
   return discovered;
+}
+
+export function findNodeModulesPaths(startDir: string): string[] {
+  const paths: string[] = [];
+  let currentDir = path.resolve(startDir);
+
+  while (true) {
+    const nodeModulesPath = path.join(currentDir, "node_modules");
+    if (fs.existsSync(nodeModulesPath)) {
+      paths.push(nodeModulesPath);
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return paths;
+    }
+
+    currentDir = parentDir;
+  }
+}
+
+export function findNearestNodeModulesPath(startDir: string): string | null {
+  return findNodeModulesPaths(startDir)[0] ?? null;
 }
 
 /**
@@ -47,7 +74,10 @@ export function buildRegistry(
   const registry: PackageRegistry = {};
 
   for (const pkg of packages) {
-    registry[pkg.initFunction] = pkg.packageName;
+    registry[pkg.initFunction] = {
+      packageName: pkg.packageName,
+      libraryName: pkg.libraryNames[0] ?? deriveLibraryNames(pkg.packageName)[0] ?? pkg.packageName
+    };
   }
 
   return registry;
@@ -55,7 +85,8 @@ export function buildRegistry(
 
 function scanDirectory(
   dir: string,
-  discovered: SuperfunctionsPackageMetadata[]
+  discovered: SuperfunctionsPackageMetadata[],
+  seenPackageNames: Set<string> = new Set()
 ): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -78,7 +109,7 @@ function scanDirectory(
 
     // Handle scoped packages (@superfunctions/authfn, etc.)
     if (entry.name.startsWith("@")) {
-      scanDirectory(entryPath, discovered);
+      scanDirectory(entryPath, discovered, seenPackageNames);
       continue;
     }
 
@@ -95,10 +126,21 @@ function scanDirectory(
           packageJson.superfunctions &&
           packageJson.superfunctions.initFunction
         ) {
+          const packageName = String(packageJson.name ?? entry.name);
+          if (seenPackageNames.has(packageName)) {
+            continue;
+          }
+          seenPackageNames.add(packageName);
+
           discovered.push({
-            packageName: packageJson.name,
+            packageName,
             initFunction: packageJson.superfunctions.initFunction,
             schemaVersion: packageJson.superfunctions.schemaVersion,
+            libraryNames: deriveLibraryNames(
+              packageName,
+              packageJson.superfunctions.libraryNames,
+              packageJson.superfunctions.namespace,
+            ),
           });
         }
       } catch (e) {
@@ -118,4 +160,41 @@ export function getSuperfunctionsRegistry(
 ): PackageRegistry {
   const packages = discoverSuperfunctionsPackages(cwd);
   return buildRegistry(packages);
+}
+
+function deriveLibraryNames(
+  packageName: string,
+  explicitLibraryNames?: unknown,
+  explicitNamespace?: unknown,
+): string[] {
+  if (Array.isArray(explicitLibraryNames)) {
+    const normalized = explicitLibraryNames
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim());
+    if (normalized.length > 0) {
+      return [...new Set(normalized)];
+    }
+  }
+
+  if (typeof explicitNamespace === "string" && explicitNamespace.trim().length > 0) {
+    return [explicitNamespace.trim()];
+  }
+
+  if (packageName.startsWith("@superfunctions/")) {
+    return [packageName.slice("@superfunctions/".length)];
+  }
+
+  if (packageName.startsWith("@")) {
+    const [scope, name] = packageName.split("/");
+    if (scope && name) {
+      const scopeName = scope.slice(1);
+      if (name === "core") {
+        return [scopeName];
+      }
+
+      return [name];
+    }
+  }
+
+  return [packageName];
 }

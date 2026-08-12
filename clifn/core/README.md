@@ -2,41 +2,41 @@
 
 Reusable CLI primitives for Superfunctions packages and downstream CLIs.
 
-`clifn` remains a single package at `clifn/core`, published as `clifn`. It is the shared parser-agnostic CLI toolkit for generic concerns that repeat across Superfunctions CLIs, while each owning CLI keeps its product-specific command graph and behavior.
+`clifn` remains a single package at `clifn/core`, published as `@clifn/core`. It is the shared parser-agnostic CLI toolkit for generic concerns that repeat across Superfunctions CLIs, while each owning CLI keeps its product-specific command graph and behavior.
 
-Current compatibility subpaths remain intact:
+Current public subpaths:
 
-- `clifn/credentials`
-- `clifn/config`
-- `clifn/client`
-- `clifn/ui`
-- `clifn/stdio`
-- `clifn/prompt`
+- `@clifn/core/credentials`
+- `@clifn/core/config`
+- `@clifn/core/client`
+- `@clifn/core/ui`
+- `@clifn/core/stdio`
+- `@clifn/core/prompt`
 
 New additive subpaths are exported for the generic CLI-builder surface:
 
-- `clifn/output`
-- `clifn/runner`
-- `clifn/config-loader`
-- `clifn/env`
-- `clifn/diagnostics`
-- `clifn/exec`
-- `clifn/scaffold`
+- `@clifn/core/output`
+- `@clifn/core/runner`
+- `@clifn/core/config-loader`
+- `@clifn/core/env`
+- `@clifn/core/diagnostics`
+- `@clifn/core/exec`
+- `@clifn/core/scaffold`
 
 ## Install
 
 ```bash
-npm install clifn
+npm install @clifn/core
 ```
 
 ## Conduct CLI-style usage
 
 ```ts
-import { createCredentialStore } from "clifn/credentials";
-import { createProjectConfig } from "clifn/config";
-import { createApiClient } from "clifn/client";
-import { readJsonStdin, writeJsonStdout } from "clifn/stdio";
-import { ui } from "clifn/ui";
+import { createCredentialStore } from "@clifn/core/credentials";
+import { createProjectConfig } from "@clifn/core/config";
+import { createApiClient } from "@clifn/core/client";
+import { readJsonStdin, writeJsonStdout } from "@clifn/core/stdio";
+import { ui } from "@clifn/core/ui";
 
 const credentials = createCredentialStore();
 const config = createProjectConfig();
@@ -57,8 +57,8 @@ writeJsonStdout(result.data);
 ## Generic CLI usage
 
 ```ts
-import { prompt } from "clifn/prompt";
-import { ui } from "clifn/ui";
+import { prompt } from "@clifn/core/prompt";
+import { ui } from "@clifn/core/ui";
 
 const target = await prompt.select("Target environment", [
   "local",
@@ -77,7 +77,7 @@ if (!confirmed) {
 ## Shared CLI-builder quick start
 
 ```ts
-import { runAction } from "clifn/runner";
+import { runAction } from "@clifn/core/runner";
 
 const exitCode = await runAction(
   async ({ name }, ctx) => {
@@ -108,7 +108,7 @@ The parser canaries under `clifn/core/tests/fixtures/*` prove that `runAction()`
 
 ```ts
 import { Command } from "commander";
-import { runAction } from "clifn/runner";
+import { runAction } from "@clifn/core/runner";
 
 const program = new Command();
 
@@ -135,7 +135,7 @@ program
 
 ```ts
 import { cac } from "cac";
-import { runAction } from "clifn/runner";
+import { runAction } from "@clifn/core/runner";
 
 const cli = cac("demo");
 
@@ -165,7 +165,7 @@ cli
 
 ```ts
 import { parseArgs } from "node:util";
-import { runAction } from "clifn/runner";
+import { runAction } from "@clifn/core/runner";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -198,39 +198,39 @@ Consumer ownership stays explicit:
 
 ### Compatibility promise
 
-- Existing imports for `clifn/credentials`, `clifn/config`, `clifn/client`, `clifn/ui`, `clifn/stdio`, and `clifn/prompt` remain valid.
+- Existing imports for `@clifn/core/credentials`, `@clifn/core/config`, `@clifn/core/client`, `@clifn/core/ui`, `@clifn/core/stdio`, and `@clifn/core/prompt` remain valid.
 - The new subpaths are additive and do not replace any existing import path.
-- `clifn/ui` remains the compatibility-facing terminal helper path even as newer shared output primitives land in `clifn/output`.
+- `@clifn/core/ui` remains the compatibility-facing terminal helper path even as newer shared output primitives land in `@clifn/core/output`.
 
-### `clifn/credentials`
+### `@clifn/core/credentials`
 
 - `createCredentialStore(path?)` -> INI profile store.
 - `MissingProfileError` -> typed error when profile is not found.
 
-### `clifn/config`
+### `@clifn/core/config`
 
 - `createProjectConfig(path?)` -> JSON project config store.
 - `InvalidConfigError` -> typed error for invalid JSON/object shapes.
 
-### `clifn/client`
+### `@clifn/core/client`
 
 - `createApiClient(config)` -> authenticated HTTP client with retries.
 - `HttpFailureError` -> typed error for non-2xx responses.
 - `HttpRequestError` -> typed error for network/transport failures.
 
-### `clifn/ui`
+### `@clifn/core/ui`
 
 - `ui.success`, `ui.error`, `ui.warn`, `ui.info`
 - `ui.spinner(message)` -> start/stop/succeed/fail
 - `ui.table(rows)` -> deterministic table output
 
-### `clifn/stdio`
+### `@clifn/core/stdio`
 
 - `readJsonStdin<T>()` -> parse one JSON document from stdin.
 - `writeJsonStdout(value)` -> serialize one JSON document + trailing newline.
 - `InvalidJsonStdinError` -> typed deterministic parse failure.
 
-### `clifn/prompt`
+### `@clifn/core/prompt`
 
 - `prompt.select`
 - `prompt.multiSelect`
@@ -241,25 +241,25 @@ Consumer ownership stays explicit:
 
 These module entrypoints are the generic surface that repository CLIs can share:
 
-- `clifn/output`
+- `@clifn/core/output`
   - generic text/JSON output service contract
   - quiet/verbose behavior
   - deterministic table rendering
   - spinner surface
-- `clifn/runner`
+- `@clifn/core/runner`
   - parser-agnostic action runner contract
   - normalized action context with output, diagnostics, exec, scaffold, cwd, env, and non-interactive state
-- `clifn/config-loader`
+- `@clifn/core/config-loader`
   - shared config discovery and typed loading contract for TS/JS/MJS/CJS/JSON configs
   - uses the same Jiti-informed `.ts` loading path already established in `packages/cli` and `apifn/cli`
-- `clifn/env`
+- `@clifn/core/env`
   - generic environment readers for strings, integers, and booleans
   - explicit missing, invalid, and out-of-range error codes for shared CLI callers
-- `clifn/diagnostics`
+- `@clifn/core/diagnostics`
   - shared diagnostic model plus deterministic sort/redaction/formatting surface
-- `clifn/exec`
+- `@clifn/core/exec`
   - subprocess execution contract for buffered capture, streaming, and timeout reporting
-- `clifn/scaffold`
+- `@clifn/core/scaffold`
   - deterministic file and directory scaffolding contract with explicit overwrite policy
 
 ## Adoption boundary
@@ -296,7 +296,7 @@ Responsibilities that stay in the owning CLI:
   - config discovery and loading in `packages/cli/src/utils/load-library-config.ts`
   - config-path fallback logic in `packages/cli/src/utils/config.ts`
 - `clifn` adoption target:
-  - `clifn/config-loader` for deterministic TS/JS/MJS/CJS/JSON loading
+  - `@clifn/core/config-loader` for deterministic TS/JS/MJS/CJS/JSON loading
 - Product-owned concerns that stay local:
   - schema and library semantics specific to `@superfunctions/cli`
 
@@ -307,7 +307,7 @@ Responsibilities that stay in the owning CLI:
   - config loading in `apifn/cli/src/config.ts`
   - output helpers in `apifn/cli/src/utils/output.ts`
 - `clifn` adoption target:
-  - keep `cac`, but move generic concerns onto `clifn/runner`, `clifn/output`, and `clifn/config-loader`
+  - keep `cac`, but move generic concerns onto `@clifn/core/runner`, `@clifn/core/output`, and `@clifn/core/config-loader`
 - Product-owned concerns that stay local:
   - OpenAPI generation, diff semantics, mock/serve behavior, and collection rules
 
@@ -317,7 +317,7 @@ Responsibilities that stay in the owning CLI:
   - `commander` command registration and repeated async `try/catch` wrappers in `hostfn/cli/src/index.ts`
   - logger formatting in `hostfn/cli/src/utils/logger.ts`
 - `clifn` adoption target:
-  - keep `commander`, but move shared action execution and output concerns onto `clifn/runner`, `clifn/output`, and `clifn/exec`
+  - keep `commander`, but move shared action execution and output concerns onto `@clifn/core/runner`, `@clifn/core/output`, and `@clifn/core/exec`
 - Product-owned concerns that stay local:
   - deployment workflows, SSH/server orchestration, runtime adapters, and host-specific validation
 
@@ -326,7 +326,7 @@ Responsibilities that stay in the owning CLI:
 - Repeated pattern today:
   - text/json rendering and table-like formatting in `recfn/cli/src/output.ts`
 - `clifn` adoption target:
-  - `clifn/output` for generic mode switching and transport
+  - `@clifn/core/output` for generic mode switching and transport
   - keep domain-specific formatters local where they encode recording/bot semantics
 - Product-owned concerns that stay local:
   - recording analytics formatting, transcript search semantics, and recorder-specific data shapes
@@ -337,13 +337,13 @@ Responsibilities that stay in the owning CLI:
 
 `extfn/cli` SHOULD use:
 
-- `clifn/runner` for normalized action execution and exit handling
-- `clifn/output` for text/json output, quiet/verbose behavior, and spinner usage
-- `clifn/diagnostics` for stable formatting and redaction of generic diagnostics
-- `clifn/config-loader` for extension config discovery and loading
-- `clifn/env` for generic env parsing
-- `clifn/exec` for subprocess orchestration during builds and packaging
-- `clifn/scaffold` for template-free deterministic file creation
+- `@clifn/core/runner` for normalized action execution and exit handling
+- `@clifn/core/output` for text/json output, quiet/verbose behavior, and spinner usage
+- `@clifn/core/diagnostics` for stable formatting and redaction of generic diagnostics
+- `@clifn/core/config-loader` for extension config discovery and loading
+- `@clifn/core/env` for generic env parsing
+- `@clifn/core/exec` for subprocess orchestration during builds and packaging
+- `@clifn/core/scaffold` for template-free deterministic file creation
 
 `extfn/cli` MAY keep:
 
@@ -363,21 +363,21 @@ If `extfn/cli` needs a generic capability that is not yet exported by `clifn`, t
 
 ## Notes
 
-- Package path follows repo convention: `clifn/core` workspace, package name `clifn`.
+- Package path follows repo convention: `clifn/core` workspace, package name `@clifn/core`.
 - `clifn` is designed for public imports only; no private/internal path imports are required.
 - The generic modules prefer repository-shared mechanisms, including the existing `packages/cli` loader pattern, before introducing new runtime dependencies.
-- `clifn/config-loader` rejects remote config URLs and unsupported extensions with explicit error codes.
-- `clifn/env` uses explicit `CLIFN_ENV_*` error codes for missing, invalid, and out-of-range values.
+- `@clifn/core/config-loader` rejects remote config URLs and unsupported extensions with explicit error codes.
+- `@clifn/core/env` uses explicit `CLIFN_ENV_*` error codes for missing, invalid, and out-of-range values.
 
 ## Conduct v0.3 compatibility note
 
 `clifn` intentionally exposes stable subpath imports for Conduct and other CLIs:
 
-- `clifn/credentials`
-- `clifn/config`
-- `clifn/client`
-- `clifn/ui`
-- `clifn/stdio`
-- `clifn/prompt`
+- `@clifn/core/credentials`
+- `@clifn/core/config`
+- `@clifn/core/client`
+- `@clifn/core/ui`
+- `@clifn/core/stdio`
+- `@clifn/core/prompt`
 
 Use these public subpaths directly; do not import from internal `dist/*` paths.

@@ -6,6 +6,7 @@ import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError } from '../../adapter/errors.js';
 import type {
   Adapter,
+  AdapterSchemaInput,
   CreateParams,
   FindOneParams,
   FindManyParams,
@@ -25,8 +26,10 @@ import type {
   InternalCrud,
   InternalColumnDef,
 } from '../../adapter/types.js';
+import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export interface MemoryAdapterConfig {
+  adapterSchema?: AdapterSchemaInput;
   namespace?: {
     enabled: boolean;
     separator?: string;
@@ -620,7 +623,9 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
     },
   });
 
-  adapter = Object.assign(factory({}), { internal: internalCrudState.crud });
+  adapter = Object.assign(factory({
+    schema: normalizeAdapterSchema(config?.adapterSchema),
+  }), { internal: internalCrudState.crud });
   const queuedAdapterMethods = new Map(
     Reflect.ownKeys(adapter).map((property) => [property, Reflect.get(adapter, property)])
   );

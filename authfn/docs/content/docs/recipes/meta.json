@@ -1,0 +1,21 @@
+{
+  "title": "Recipes",
+  "pages": [
+    "index",
+    "email-verification",
+    "magic-link",
+    "password-reset",
+    "adding-2fa",
+    "adding-password",
+    "account-deletion",
+    "multi-region-deployment",
+    "native-mobile-handoff",
+    "custom-oauth-provider",
+    "google-one-tap",
+    "cli-auth",
+    "admin-tool",
+    "rotate-2fa-encryption",
+    "observability-otel",
+    "custom-validation"
+  ]
+}

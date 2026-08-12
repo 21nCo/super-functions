@@ -1,6 +1,6 @@
 {
   "name": "@datafn/server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "DataFn server runtime - HTTP endpoints for DFQL query, mutations, and sync",
   "license": "MIT",
   "type": "module",
@@ -47,12 +47,14 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@datafn/core": "*",
-    "@superfunctions/db": "*",
-    "@superfunctions/http": "*"
+    "@datafn/core": "0.0.3",
+    "@superfunctions/db": "0.1.4",
+    "@superfunctions/http": "0.1.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.9.1",
+    "better-sqlite3": "^12.5.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

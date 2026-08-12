@@ -1,0 +1,111 @@
+---
+title: "Cursor"
+description: "Wire DataFn into Cursor with project rules, raw-markdown lookups, and MCP."
+audience: guide
+applies_to: both
+---
+
+This page covers three integrations Cursor users typically want when working in a DataFn codebase.
+
+## 1. Project rules
+
+Cursor reads `.cursor/rules/*.mdc` for codebase-wide guidance. Drop in a single rule file for DataFn:
+
+```mdc
+---
+description: DataFn conventions
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.svelte"
+alwaysApply: true
+---
+
+# DataFn
+
+This project uses DataFn for the client/server data layer.
+
+## Public surfaces
+- `@datafn/core` — schema, DFQL types, error codes
+- `@datafn/server` — HTTP routes, validation, sync engine
+- `@datafn/client` — client envelope, signals, offline storage
+- `@datafn/svelte` — Svelte adapter
+
+## Rules
+- All schema changes go through `defineSchema(...)` and `validateSchema(...)`.
+- All client-side data access goes through `client.table(...)`. Never write to IndexedDB directly.
+- Sync routes are mounted on `/datafn/*` and should not be wrapped in custom middleware. Cross-cutting concerns belong in the `authorize` callback or a server plugin.
+- Errors travel as `DatafnEnvelope`. Surface `error.code` to the UI for routing; never show raw `error.message` to end users.
+
+See the docs at https://datafn.21n.co/docs.
+```
+
+See the [Skills](/docs/ai-resources/skills) page for a fuller starter template.
+
+## 2. Raw markdown for grounding
+
+The "Open in Cursor" button on every page sends the page URL to Cursor's prompt panel. From there Cursor can fetch the raw markdown:
+
+```
+fetch https://datafn.21n.co/api/docs/raw/dfql/queries.mdx
+```
+
+Cursor also accepts `@docs` references in the chat panel. If you've added DataFn as a docs source (Cursor settings → Indexing → Docs → Add → `https://datafn.21n.co/docs`), every page is searchable as `@docs:datafn`.
+
+## 3. MCP server
+
+Cursor 0.43+ supports MCP servers. Register `datafn-mcp` in `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "datafn": {
+      "command": "node",
+      "args": ["./tools/datafn-mcp/index.js"]
+    }
+  }
+}
+```
+
+Once registered, the `search_docs`, `fetch_page`, `get_route`, and `get_error` tools become available to Cursor's agent mode. See the [MCP](/docs/ai-resources/mcp) page for the reference implementation.
+
+## 4. Snippets
+
+Save the following as `.cursor/snippets/datafn.json` to get quick scaffolds:
+
+```json
+{
+  "DFQL Query": {
+    "prefix": "dfquery",
+    "body": [
+      "const $1: DfqlQuery = {",
+      "  resource: \"$2\",",
+      "  version: 1,",
+      "  filters: { $3 },",
+      "  sort: [\"$4:desc\"],",
+      "  limit: $5",
+      "};"
+    ]
+  },
+  "DFQL Mutation": {
+    "prefix": "dfmutation",
+    "body": [
+      "const $1: DfqlMutation = {",
+      "  resource: \"$2\",",
+      "  version: 1,",
+      "  operation: \"$3|insert,merge,replace,delete|\",",
+      "  id: $4,",
+      "  record: { $5 }",
+      "};"
+    ]
+  }
+}
+```
+
+## Verifying it works
+
+Open a Cursor chat in a DataFn project and ask:
+
+> "Show me how to define an `archivable` resource with `idPrefix: \"prj\"` and a `title` field."
+
+You should see the assistant reach for `defineSchema` and reference `@datafn/core` without prompting.

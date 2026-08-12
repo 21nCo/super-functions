@@ -9,6 +9,7 @@ import {
   signInWithPassword,
   type AuthFnConfig,
   type AuthFnDeliveryRequest,
+  type AuthFnEvent,
   type AuthFnOtpChallengeLifecycleEvent
 } from '../index.js';
 
@@ -354,6 +355,253 @@ describe('@authfn/core otp plugin', () => {
         primaryEmail: 'ada@example.com'
       }
     });
+  });
+
+  it('supports otp sign-up and issues a session for the new verified user', async () => {
+    const hookCalls: string[] = [];
+    const config = createConfig({
+      hooks: {
+        beforeUserCreate: async (_ctx, input) => {
+          hookCalls.push('beforeUserCreate');
+          return {
+            ...input,
+            metadata: {
+              ...(input.metadata as Record<string, unknown>),
+              source: 'otp-sign-up'
+            }
+          };
+        },
+        afterUserCreate: async (_ctx, user) => {
+          hookCalls.push(`afterUserCreate:${String(user.primaryEmail)}`);
+        }
+      }
+    }) as AuthFnConfig & {
+      __clock: ReturnType<typeof createClock>;
+      __delivery: ReturnType<typeof createDeliveryRecorder>;
+    };
+    const auth = createAuthFn(config);
+
+    const sendResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'new-user@example.com'
+        })
+      })
+    );
+    expect(sendResponse.status).toBe(200);
+
+    const verifyResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'new-user@example.com',
+          code: config.__delivery.codeFor('sign-up', 'new-user@example.com'),
+          profile: {
+            name: 'New User'
+          },
+          sessionMode: 'hybrid'
+        })
+      })
+    );
+
+    expect(verifyResponse.status).toBe(200);
+    const verifyBody = await verifyResponse.json();
+    expect(verifyBody.data.token).toEqual(expect.any(String));
+    expect(verifyBody.data.session.methods).toEqual(['email-otp']);
+    expect(verifyResponse.headers.getSetCookie().length).toBe(2);
+
+    const user = await config.database.findOne({
+      model: 'users',
+      where: [{ field: 'primaryEmail', operator: 'eq', value: 'new-user@example.com' }],
+      namespace: 'authfn'
+    });
+    expect(user).toMatchObject({
+      primaryEmail: 'new-user@example.com',
+      metadata: {
+        name: 'New User',
+        source: 'otp-sign-up'
+      }
+    });
+    expect(user?.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(hookCalls).toEqual([
+      'beforeUserCreate',
+      'afterUserCreate:new-user@example.com'
+    ]);
+
+    config.__clock.advance(1);
+    const duplicateSendResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'new-user@example.com'
+        })
+      })
+    );
+    expect(duplicateSendResponse.status).toBe(200);
+
+    const duplicateVerifyResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'new-user@example.com',
+          code: config.__delivery.codeFor('sign-up', 'new-user@example.com')
+        })
+      })
+    );
+    expect(duplicateVerifyResponse.status).toBe(409);
+    expect((await duplicateVerifyResponse.json()).error.code).toBe('AUTHFN_CONFLICT');
+  });
+
+  it('can treat otp sign-up for an existing email as verified-email account linking', async () => {
+    const events: AuthFnEvent[] = [];
+    const config = createConfig({
+      accountLinking: {
+        otpSignUpExistingUser: true
+      },
+      observability: {
+        emit: (event) => events.push(event)
+      }
+    }) as AuthFnConfig & {
+      __delivery: ReturnType<typeof createDeliveryRecorder>;
+    };
+    const auth = createAuthFn(config);
+    const user = await createUser(config, {
+      primaryEmail: 'ada@example.com'
+    });
+
+    const sendResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'ada@example.com'
+        })
+      })
+    );
+    expect(sendResponse.status).toBe(200);
+
+    const verifyResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'ada@example.com',
+          code: config.__delivery.codeFor('sign-up', 'ada@example.com'),
+          sessionMode: 'hybrid'
+        })
+      })
+    );
+
+    expect(verifyResponse.status).toBe(200);
+    const body = await verifyResponse.json();
+    expect(body.data.session.actorId).toBe(user.id);
+    expect(body.data.session.methods).toEqual(['email-otp']);
+    const linkedUser = await config.database.findOne({
+      model: 'users',
+      where: [{ field: 'id', operator: 'eq', value: user.id }],
+      namespace: 'authfn'
+    });
+    expect(linkedUser?.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(events.some((event) => event.type === 'authfn.account_linked')).toBe(true);
+  });
+
+  it('does not duplicate an already verified existing user during otp sign-up linking', async () => {
+    const config = createConfig({
+      accountLinking: {
+        otpSignUpExistingUser: true
+      }
+    }) as AuthFnConfig & {
+      __delivery: ReturnType<typeof createDeliveryRecorder>;
+    };
+    const auth = createAuthFn(config);
+    const verifiedAt = new Date('2026-03-22T00:00:00.000Z');
+    const user = await createUser(config, {
+      primaryEmail: 'verified@example.com',
+      emailVerifiedAt: verifiedAt
+    });
+
+    await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'verified@example.com'
+        })
+      })
+    );
+
+    const verifyResponse = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-up',
+          email: 'verified@example.com',
+          code: config.__delivery.codeFor('sign-up', 'verified@example.com'),
+          sessionMode: 'hybrid'
+        })
+      })
+    );
+
+    expect(verifyResponse.status).toBe(200);
+    const body = await verifyResponse.json();
+    expect(body.data.session.actorId).toBe(user.id);
+    const users = await config.database.findMany({
+      model: 'users',
+      where: [{ field: 'primaryEmail', operator: 'eq', value: 'verified@example.com' }],
+      namespace: 'authfn'
+    });
+    expect(users).toHaveLength(1);
+    expect(users[0]?.id).toBe(user.id);
+  });
+
+  it('rejects otp sign-in for missing users before consuming the challenge', async () => {
+    const config = createConfig() as AuthFnConfig & {
+      __delivery: ReturnType<typeof createDeliveryRecorder>;
+    };
+    const auth = createAuthFn(config);
+
+    await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-in',
+          email: 'missing@example.com'
+        })
+      })
+    );
+
+    const response = await auth.router.handle(
+      new Request('https://account.example.com/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          purpose: 'sign-in',
+          email: 'missing@example.com',
+          code: config.__delivery.codeFor('sign-in', 'missing@example.com')
+        })
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('AUTHFN_OTP_INVALID');
+
+    const challenge = await getLatestOtpChallenge(config, 'sign-in', 'missing@example.com');
+    expect(challenge?.consumedAt).toBeNull();
+    expect(challenge?.attemptCount).toBe(0);
   });
 
   it('applies beforeChallengeSend transformations and keeps afterChallengeSend fail-open', async () => {

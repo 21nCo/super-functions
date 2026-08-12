@@ -2,13 +2,14 @@ import type { Route } from '@superfunctions/http';
 import type { PasswordPluginConfig } from '../plugin-types.js';
 import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from '../types.js';
 import { createAuthFnRouteMeta, readOptionalJson } from '../http/router.js';
-import { issueSession } from '../core/sessions.js';
-import { issueSessionCookies } from '../core/cookies.js';
+import { authenticateRequest, issueSession } from '../core/sessions.js';
 import { resolveRuntime } from '../core/runtime.js';
 import { signInWithPassword, signUpWithPassword } from '../core/passwords.js';
 import { jsonSuccess } from '../http/envelopes.js';
 import { completeResetPassword, sendOtpChallenge } from '../core/verifications.js';
 import { emitAuthEvent, eventRequestId } from '../core/observability.js';
+import { emitAccountLinkedEvent } from '../core/account-linking.js';
+import { buildSessionResponse, type AuthFnSessionResponseMode } from '../core/session-responses.js';
 import {
   beginTwoFactorChallenge,
   createPendingTwoFactorResponse,
@@ -77,8 +78,10 @@ function createPasswordRoutes(
           email?: string;
           password?: string;
           profile?: Record<string, unknown>;
+          sessionMode?: AuthFnSessionResponseMode;
         }>(request);
         const runtime = await resolveRuntime(ctx.config, request);
+        const authenticatedSession = await authenticateRequest(ctx.config, request);
         const result = await signUpWithPassword(ctx.config, ctx.hooks, {
           email: body.email ?? '',
           password: body.password ?? '',
@@ -86,33 +89,41 @@ function createPasswordRoutes(
         }, {
           request,
           runtime,
+          authenticatedSession,
           policy: {
             compromisedPasswordChecker: config.compromisedPasswordChecker
           }
         });
-        await emitAuthEvent(ctx.config, {
-          type: 'authfn.user.created',
-          requestId: eventRequestId(request),
-          actorId: result.user.id,
-          userId: result.user.id,
-          regionId: runtime.regionId,
-          outcome: 'created',
-          metadata: {
-            email: result.user.primaryEmail
-          }
-        });
+        if (result.linkedExistingUser) {
+          await emitAccountLinkedEvent(ctx.config, {
+            request,
+            user: result.user,
+            method: 'password',
+            regionId: runtime.regionId
+          });
+        } else {
+          await emitAuthEvent(ctx.config, {
+            type: 'authfn.user.created',
+            requestId: eventRequestId(request),
+            actorId: result.user.id,
+            userId: result.user.id,
+            regionId: runtime.regionId,
+            outcome: 'created',
+            metadata: {
+              email: result.user.primaryEmail
+            }
+          });
+        }
         const issued = await issueSession(ctx.config, ctx.hooks, {
           request,
           userId: result.user.id,
           primaryEmail: result.user.primaryEmail,
           methods: ['password']
         });
-        const cookies = issueSessionCookies(issued.cookiePolicy!, issued.sessionToken, issued.csrfToken);
+        const response = buildSessionResponse(issued, body.sessionMode);
 
-        return jsonSuccess(request, {
-          session: issued.session
-        }, {
-          setCookies: Object.values(cookies)
+        return jsonSuccess(request, response.data, {
+          setCookies: response.setCookies
         });
       }
     },
@@ -176,6 +187,7 @@ function createPasswordRoutes(
         const body = await request.json() as {
           email?: string;
           password?: string;
+          sessionMode?: AuthFnSessionResponseMode;
         };
         const result = await signInWithPassword(ctx.config, {
           email: body.email ?? '',
@@ -212,12 +224,10 @@ function createPasswordRoutes(
           primaryEmail: result.user.primaryEmail,
           methods: ['password']
         });
-        const cookies = issueSessionCookies(issued.cookiePolicy!, issued.sessionToken, issued.csrfToken);
+        const response = buildSessionResponse(issued, body.sessionMode);
 
-        return jsonSuccess(request, {
-          session: issued.session
-        }, {
-          setCookies: Object.values(cookies)
+        return jsonSuccess(request, response.data, {
+          setCookies: response.setCookies
         });
       }
     }

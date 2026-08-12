@@ -92,7 +92,7 @@ async function createDrizzleAdapter(
   }
 
   // Import adapter factory
-  const { drizzleAdapter } = await import('@superfunctions/db/adapters');
+  const { drizzleAdapter } = await import('@superfunctions/db/adapters/drizzle');
 
   const adapter = drizzleAdapter({
     db,

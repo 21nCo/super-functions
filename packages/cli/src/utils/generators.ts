@@ -3,7 +3,7 @@
  */
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
-import type { TableDiff, MigrationPlan } from './schema-diff.js';
+import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
 
 export type Dialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -12,6 +12,10 @@ export type Dialect = 'postgres' | 'mysql' | 'sqlite';
  */
 function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
   const baseType = field.type;
+
+  if (isDateField(field)) {
+    return dateFieldToSQL(field, dialect);
+  }
 
   switch (dialect) {
     case 'postgres':
@@ -24,8 +28,6 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'BIGINT';
         case 'boolean':
           return 'BOOLEAN';
-        case 'date':
-          return 'TIMESTAMP';
         case 'json':
           return 'JSONB';
         default:
@@ -42,8 +44,6 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'BIGINT';
         case 'boolean':
           return 'BOOLEAN';
-        case 'date':
-          return 'DATETIME';
         case 'json':
           return 'JSON';
         default:
@@ -59,13 +59,49 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
           return 'INTEGER';
         case 'boolean':
           return 'INTEGER'; // SQLite uses INTEGER for boolean
-        case 'date':
-          return 'TEXT'; // SQLite stores dates as TEXT
         case 'json':
           return 'TEXT'; // SQLite stores JSON as TEXT
         default:
           return 'TEXT';
       }
+  }
+}
+
+function dateFieldToSQL(field: FieldSchema, dialect: Dialect): string {
+  switch (resolveDateStorageType(field)) {
+    case 'timestamp':
+      return dialect === 'mysql' ? 'DATETIME' : dialect === 'sqlite' ? 'INTEGER' : 'TIMESTAMP';
+    case 'timestamptz':
+      return dialect === 'postgres' ? 'TIMESTAMPTZ' : dialect === 'sqlite' ? 'INTEGER' : 'TIMESTAMP';
+    case 'iso-text':
+      return 'TEXT';
+    case 'epoch-ms-integer':
+      return 'BIGINT';
+    case 'epoch-ms-bigint':
+      return 'BIGINT';
+  }
+}
+
+function isDateField(field: FieldSchema): boolean {
+  return field.type === 'date' || field.type === 'datetime';
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
   }
 }
 
@@ -91,7 +127,8 @@ function escapeSqlString(value: string, dialect: Dialect): string {
 function generateCreateTableSQL(
   schema: TableSchema,
   dialect: Dialect,
-  ifNotExists: boolean = true
+  ifNotExists: boolean = true,
+  tableName: string = schema.modelName
 ): string {
   const columns: string[] = [];
 
@@ -127,7 +164,20 @@ function generateCreateTableSQL(
   }
 
   const ifNotExistsClause = ifNotExists ? 'IF NOT EXISTS ' : '';
-  return `CREATE TABLE ${ifNotExistsClause}${schema.modelName} (\n${columns.join(',\n')}\n);`;
+  return `CREATE TABLE ${ifNotExistsClause}${tableName} (\n${columns.join(',\n')}\n);`;
+}
+
+function findSchemaForTable(
+  schemas: TableSchema[],
+  namespace: string,
+  tableName: string
+): TableSchema | undefined {
+  return schemas.find((schema) => {
+    return (
+      schema.modelName === tableName
+      || resolvePhysicalTableName(namespace, schema.modelName) === tableName
+    );
+  });
 }
 
 /**
@@ -218,13 +268,13 @@ export function generateDrizzleMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
-        statements.push(generateCreateTableSQL(schema, dialect));
+        statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         const alterStatements = generateAlterTableSQL(diff, schema, dialect);
         statements.push(...alterStatements);
@@ -278,13 +328,13 @@ export function generatePrismaMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
-        statements.push(generateCreateTableSQL(schema, dialect));
+        statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         const alterStatements = generateAlterTableSQL(diff, schema, dialect);
         statements.push(...alterStatements);
@@ -336,11 +386,11 @@ export function generateKyselyMigration(
 
   for (const diff of plan.changes) {
     if (diff.action === 'create') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         // Up: create table
         upStatements.push(
-          `  await db.schema.createTable('${schema.modelName}')`,
+          `  await db.schema.createTable('${diff.tableName}')`,
         );
 
         for (const [fieldName, field] of Object.entries(schema.fields)) {
@@ -356,10 +406,10 @@ export function generateKyselyMigration(
         upStatements.push(`    .execute();`);
 
         // Down: drop table
-        downStatements.push(`  await db.schema.dropTable('${schema.modelName}').execute();`);
+        downStatements.push(`  await db.schema.dropTable('${diff.tableName}').execute();`);
       }
     } else if (diff.action === 'alter') {
-      const schema = schemas.find((s) => s.modelName === diff.tableName);
+      const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema && diff.missingColumns) {
         for (const colName of diff.missingColumns) {
           const field = Object.entries(schema.fields).find(

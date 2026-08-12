@@ -2,11 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pathToFileURL } from 'node:url';
 
 import { unzipSync } from 'fflate';
-import { createExec } from 'clifn/exec';
-import { createOutput } from 'clifn/output';
+import { createExec } from '@clifn/core/exec';
+import { createOutput } from '@clifn/core/output';
 
 import { runPackageCommand } from '../src/index.js';
 
@@ -16,9 +15,7 @@ const REPO_ROOT = path.resolve(
   '..',
   '..'
 );
-const EXTFN_IMPORT_URL = pathToFileURL(
-  path.join(REPO_ROOT, 'extfn/core/dist/index.js')
-).href;
+const EXTFN_IMPORT_SPECIFIER = '@extfn/core';
 
 function createTestContext() {
   const stdout: string[] = [];
@@ -59,7 +56,7 @@ async function createFixtureExtension(backgroundSource: string): Promise<string>
   await fs.writeFile(
     path.join(fixtureDir, 'extfn.config.ts'),
     `
-      import { defineExtension } from '${EXTFN_IMPORT_URL}';
+      import { defineExtension } from '${EXTFN_IMPORT_SPECIFIER}';
 
       export default defineExtension({
         name: 'Spec Demo',

@@ -1,0 +1,153 @@
+---
+title: "Request Authorization"
+description: "The authorize callback — coarse-grained gating per request."
+audience: guide
+applies_to: server
+---
+
+`authorize` is DataFn's coarse-grained authentication and authorization gate. It runs once per request, after JSON parsing and before schema validation. Its job is to answer one question: "Is this caller allowed to make this kind of request at all?"
+
+## Signature
+
+```typescript
+authorize: async (
+  ctx: TContext,            // your HTTP framework's context
+  action: DatafnAction,     // "status" | "query" | "mutation" | "transact" | "seed" | "clone" | "pull" | "push" | "reconcile" | "search"
+  payload: unknown,         // the parsed JSON body (null for GETs)
+) => boolean | Promise<boolean>
+```
+
+Return `true` to allow, `false` to deny. Throwing has the same effect as `false`.
+
+## What it's for
+
+- Authentication: "is the caller signed in?"
+- Coarse resource gating: "is this endpoint open to this role?"
+- Tenant gating: "is this caller allowed to touch this server instance?"
+
+## What it's not for
+
+- Field-level checks (use [`permissions`](/docs/documentation/security/field-level-authz))
+- Row-level filtering (use [namespaces](/docs/documentation/security/namespace-isolation))
+- Capability-driven sharing rules (the `shareable` capability handles these directly)
+
+`authorize` runs before the schema is validated, which means `payload` is untrusted JSON. Don't treat field values as authoritative until DataFn has validated them.
+
+## Minimum production callback
+
+```typescript
+authorize: async (ctx) => Boolean(ctx.session?.userId);
+```
+
+Anonymous-by-default deployments need to invert this: deny on `seed`, allow others. But "deny anonymous" is the right default for SaaS.
+
+## Per-action gating
+
+```typescript
+authorize: async (ctx, action) => {
+  if (action === "status") return true;        // public health check
+  if (!ctx.session?.userId) return false;      // require auth otherwise
+  if (action === "seed") return ctx.session.isAdmin;
+  return true;
+}
+```
+
+`status` is the only action you might want anonymous-accessible. `seed` is typically admin-only.
+
+## Per-resource gating
+
+The `payload` includes the target resource for `query`, `mutation`, and `transact`. Use it to deny entire resources by role:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (!ctx.session?.userId) return false;
+  if (action === "mutation" && payload?.resource === "billing") {
+    return ctx.session.roles.includes("billing-admin");
+  }
+  return true;
+}
+```
+
+For batch payloads (`mutation` or `transact`), `payload` may be an array; check every element if you want strict gating.
+
+## Throwing for richer errors
+
+If you need to surface a specific error code, throw a `DatafnError`:
+
+```typescript
+import { DatafnExecutionError } from "@datafn/server";
+
+authorize: async (ctx, action) => {
+  if (!ctx.session) {
+    throw new DatafnExecutionError("FORBIDDEN", "Not authenticated", "$", { reason: "no-session" });
+  }
+  return true;
+}
+```
+
+The thrown error becomes the response's `error` field. (You can also just `return false` and accept the generic `FORBIDDEN` message; throw only when you need richer details.)
+
+## Common patterns
+
+### Cookie session
+
+```typescript
+authorize: async (ctx) => {
+  const session = await readCookieSession(ctx.req); // your function
+  ctx.session = session;
+  return session != null;
+}
+```
+
+### Bearer token
+
+```typescript
+authorize: async (ctx) => {
+  const header = ctx.req.headers.get("authorization");
+  const token = header?.replace(/^Bearer\s+/, "");
+  const session = token ? await verifyJWT(token) : null;
+  ctx.session = session;
+  return session != null;
+}
+```
+
+### Internal service-to-service
+
+```typescript
+authorize: async (ctx, action) => {
+  if (ctx.req.headers.get("x-internal-token") === process.env.INTERNAL_TOKEN) {
+    ctx.session = { userId: "system", role: "service" };
+    return true;
+  }
+  return Boolean(ctx.session?.userId);
+}
+```
+
+### Replay-aware (idempotent push)
+
+For mutations, `authorize` runs even on idempotency cache hits — so the answer for a given `(ctx, action, payload)` must be stable. Don't, for example, increment a counter inside `authorize`; it'll get hit twice if a client replays.
+
+## Testing
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { makeTestServer } from "./test-helpers";
+
+describe("authorize", () => {
+  it("denies anonymous", async () => {
+    const server = await makeTestServer({ authorize: (ctx) => Boolean(ctx.session?.userId) });
+    const env = await server.router.fetch(
+      new Request("http://t/datafn/query", { method: "POST", body: "{}" }),
+    );
+    const body = await env.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+});
+```
+
+## See also
+
+- [Field-level authorization](/docs/documentation/security/field-level-authz)
+- [Namespace isolation](/docs/documentation/security/namespace-isolation)
+- [AuthFn integration recipe](/docs/recipes/authfn-integration)

@@ -1,0 +1,126 @@
+---
+title: "Quickstart: Swift"
+description: "Launch a SwiftUI app backed by DataFn's Apple runtime in 5 minutes."
+audience: guide
+applies_to: client
+---
+
+The DataFn Apple runtime owns a local CoreData store and syncs with your DataFn server (or, optionally, CloudKit). It surfaces records through `DatafnRuntimeObservationSource`, with SwiftUI bindings via `DatafnObservedQuery`.
+
+## 1. Add the package
+
+In Xcode → **File → Add Packages…** add `https://github.com/21nCo/super-functions`. Pick the `DatafnAppleRuntime` product.
+
+In `Package.swift` (for a SwiftPM project):
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/21nCo/super-functions", from: "0.1.0"),
+],
+targets: [
+    .executableTarget(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "DatafnAppleRuntime", package: "super-functions"),
+        ]
+    ),
+]
+```
+
+## 2. Bundle your schema
+
+Export the schema from your TypeScript codebase to a JSON file, then add it to your iOS bundle as `schema.json`:
+
+```bash
+npx @datafn/cli generate --schema shared/schema.ts --format json --out ios/schema.json
+```
+
+## 3. Launch the runtime
+
+`App.swift`:
+
+```swift
+import SwiftUI
+import DatafnAppleRuntime
+
+@main
+struct MyApp: App {
+    @State private var runtime: DatafnAppleRuntime?
+
+    var body: some Scene {
+        WindowGroup {
+            if let runtime {
+                ContentView(runtime: runtime)
+            } else {
+                ProgressView().task {
+                    do {
+                        let url = Bundle.main.url(forResource: "schema", withExtension: "json")!
+                        let schemaData = try Data(contentsOf: url)
+                        let config = DatafnAppleRuntimeConfiguration(
+                            schemaJSON: schemaData,
+                            schemaHash: "my-app-schema-v1",
+                            namespace: "org-1:user-1",
+                            clientID: UUID().uuidString,
+                            storeRootURL: FileManager.default
+                                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                                .appendingPathComponent("datafn-store", isDirectory: true),
+                            syncBackend: .datafnServer(
+                                DatafnServerSyncConfiguration(
+                                    baseURL: URL(string: "http://localhost:3000/datafn")!,
+                                    websocketURL: URL(string: "ws://localhost:3000/datafn/ws")!,
+                                    profileID: "default"
+                                )
+                            )
+                        )
+                        let rt = try await DatafnAppleRuntime(configuration: config)
+                        try await rt.start()
+                        runtime = rt
+                    } catch {
+                        print("Failed to start DataFn:", error)
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## 4. Observe a resource
+
+`ContentView.swift`:
+
+```swift
+import SwiftUI
+import DatafnAppleRuntime
+
+struct ContentView: View {
+    let runtime: DatafnAppleRuntime
+    @State private var query: DatafnObservedQuery<[DatafnJSONObject]>?
+
+    var body: some View {
+        Group {
+            if let query {
+                List(query.value, id: \.self) { row in
+                    Text(String(describing: row["title"] ?? ""))
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            let source = await runtime.makeObservationSource()
+            query = DatafnObservedQuery(resource: "tasks", source: source)
+        }
+    }
+}
+```
+
+## 5. Run
+
+Spin up the DataFn server (see [Quickstart: Hono](/docs/quickstart/hono)), then `cmd+R` in Xcode. New rows you insert on the server propagate to the iOS app via WebSocket within seconds.
+
+## Where to next
+
+- Skip the DataFn server and sync directly through iCloud: see [Apple Runtime](/docs/documentation/apple/cloudkit)
+- Issue mutations from JavaScript inside a WebView via [Apple → WebView Bridge](/docs/documentation/apple/webview-bridge)
+- Add app-intent integration: [Apple → Intents](/docs/documentation/apple/intents)

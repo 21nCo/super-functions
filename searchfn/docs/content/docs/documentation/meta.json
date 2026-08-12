@@ -1,0 +1,14 @@
+{
+  "title": "Documentation",
+  "description": "Deep-dives into SearchFn's internals and operations",
+  "pages": [
+    "core",
+    "security",
+    "deploy",
+    "performance",
+    "apple",
+    "python",
+    "core-wasm",
+    "advanced"
+  ]
+}

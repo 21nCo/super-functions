@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import {
   createAuthFn,
+  createUser,
   authFnSocialOAuthPlugin,
+  markUserEmailVerified,
+  type AuthFnEvent,
   type AuthFnConfig
 } from '../index.js';
 
@@ -114,8 +117,13 @@ describe('@authfn/core google social oauth', () => {
         { method: 'GET' }
       )
     );
-    expect(replay.status).toBe(409);
-    expect((await replay.json()).error.code).toBe('AUTHFN_OAUTH_STATE_REPLAYED');
+    expect(replay.status).toBe(303);
+    const replayRedirect = new URL(replay.headers.get('location')!);
+    expect(replayRedirect.origin + replayRedirect.pathname).toBe('https://app.example.com/post-auth');
+    expect(replayRedirect.searchParams.get('auth_error')).toBe('oauth_callback_failed');
+    expect(replayRedirect.searchParams.get('auth_error_code')).toBe('AUTHFN_OAUTH_STATE_REPLAYED');
+    expect(replayRedirect.searchParams.get('auth_provider')).toBe('google');
+    expect(replayRedirect.searchParams.get('auth_request_id')).toEqual(expect.any(String));
 
     const invalidReturnTo = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -160,6 +168,101 @@ describe('@authfn/core google social oauth', () => {
     );
     expect(callback.status).toBe(303);
     expect(callback.headers.get('location')).toBe('https://app.example.com/alternate-post-auth');
+  });
+
+  it('links verified Google OAuth to an existing verified same-email user through account linking policy', async () => {
+    const events: AuthFnEvent[] = [];
+    const config = createConfig({
+      accountLinking: {
+        oauthByVerifiedEmail: {
+          providers: ['google']
+        }
+      },
+      observability: {
+        emit: (event) => events.push(event)
+      }
+    });
+    const auth = createAuthFn(config);
+    const user = await createUser(config, {
+      primaryEmail: 'ada@example.com'
+    });
+    await markUserEmailVerified(config, user.id, new Date('2026-03-22T00:00:00.000Z'));
+
+    const start = await auth.router.handle(
+      new Request('https://account.example.com/auth/social/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          callbackMode: 'json'
+        })
+      })
+    );
+    const startBody = await start.json();
+
+    const callback = await auth.router.handle(
+      new Request(
+        `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+        { method: 'GET' }
+      )
+    );
+
+    expect(callback.status).toBe(200);
+    const body = await callback.json();
+    expect(body.data.session.actorId).toBe(user.id);
+    expect(body.data.session.methods).toEqual(['oauth-google']);
+    const linkedAccount = await config.database.findOne?.({
+      model: 'oauth_accounts',
+      where: [
+        { field: 'provider', operator: 'eq', value: 'google' },
+        { field: 'providerAccountId', operator: 'eq', value: 'google-user-01' }
+      ],
+      namespace: 'authfn'
+    });
+    expect(linkedAccount?.userId).toBe(user.id);
+    expect(events.some((event) => event.type === 'authfn.account_linked')).toBe(true);
+  });
+
+  it('emits account-linking conflict when same-email OAuth is not verified enough to link', async () => {
+    const events: AuthFnEvent[] = [];
+    const config = createConfig({
+      accountLinking: {
+        oauthByVerifiedEmail: {
+          providers: ['google']
+        }
+      },
+      observability: {
+        emit: (event) => events.push(event)
+      }
+    });
+    const auth = createAuthFn(config);
+    await createUser(config, {
+      primaryEmail: 'ada@example.com'
+    });
+
+    const start = await auth.router.handle(
+      new Request('https://account.example.com/auth/social/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          callbackMode: 'json'
+        })
+      })
+    );
+    const startBody = await start.json();
+
+    const callback = await auth.router.handle(
+      new Request(
+        `https://account.example.com/auth/social/callback/google?code=abc123&state=${encodeURIComponent(startBody.data.stateId)}`,
+        { method: 'GET' }
+      )
+    );
+
+    const body = await callback.json();
+    expect(body.error.code).toBe('AUTHFN_CONFLICT');
+    expect(callback.status).toBe(409);
+    expect(events.some((event) => event.type === 'authfn.account_linking.conflict')).toBe(true);
   });
 
   it('preserves existing fragment params when appending session handoff details', async () => {

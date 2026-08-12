@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { discoverSuperfunctionsPackages } from "../utils/discover-packages.js";
+import {
+  discoverSuperfunctionsPackages,
+  findNearestNodeModulesPath
+} from "../utils/discover-packages.js";
 
 const TEST_DIR = path.join(__dirname, "discover-test-env");
 
@@ -32,8 +35,9 @@ describe("discoverSuperfunctionsPackages", () => {
     );
 
     const result = discoverSuperfunctionsPackages(TEST_DIR);
-    expect(result).toHaveLength(1);
-    expect(result[0].packageName).toBe("my-lib");
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "my-lib"
+    }));
   });
 
   it("should discover symlinked packages", () => {
@@ -61,7 +65,37 @@ describe("discoverSuperfunctionsPackages", () => {
     }
 
     const result = discoverSuperfunctionsPackages(TEST_DIR);
-    expect(result).toHaveLength(1);
-    expect(result[0].packageName).toBe("linked-lib");
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "linked-lib"
+    }));
+  });
+
+  it("should discover packages from the nearest parent node_modules", () => {
+    const nestedDir = path.join(TEST_DIR, "apps/example/server");
+    fs.mkdirSync(nestedDir, { recursive: true });
+
+    const pkgPath = path.join(TEST_DIR, "node_modules/parent-lib");
+    fs.mkdirSync(pkgPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkgPath, "package.json"),
+      JSON.stringify({
+        name: "parent-lib",
+        superfunctions: { initFunction: "initFromParent" },
+      })
+    );
+
+    const result = discoverSuperfunctionsPackages(nestedDir);
+    expect(result).toContainEqual(expect.objectContaining({
+      packageName: "parent-lib"
+    }));
+  });
+
+  it("should expose the nearest parent node_modules path for nested workspaces", () => {
+    const nestedDir = path.join(TEST_DIR, "apps/example/server");
+    fs.mkdirSync(nestedDir, { recursive: true });
+
+    expect(findNearestNodeModulesPath(nestedDir)).toBe(
+      path.join(TEST_DIR, "node_modules")
+    );
   });
 });

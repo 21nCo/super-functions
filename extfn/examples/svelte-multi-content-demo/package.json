@@ -8,9 +8,9 @@
     "dev": "vite dev"
   },
   "dependencies": {
-    "@superfunctions/extfn": "*",
-    "@superfunctions/extfn-svelte": "*",
-    "@superfunctions/extfn-vite": "*",
+    "@extfn/core": "*",
+    "@extfn/svelte": "*",
+    "@extfn/vite": "*",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

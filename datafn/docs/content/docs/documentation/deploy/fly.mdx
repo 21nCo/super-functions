@@ -1,0 +1,173 @@
+---
+title: "Deploy to Fly.io"
+description: "Run DataFn on Fly with managed Postgres and multi-region scaling."
+audience: guide
+applies_to: server
+---
+
+Fly.io is a great fit for DataFn. Long-lived WebSockets, multi-region, low operational overhead, and the runtime closely resembles a normal Node process (no cold starts, no FaaS quirks).
+
+## Tradeoffs
+
+- **Excellent**: WebSockets, multi-region, stateful workloads, persistent storage.
+- **Good**: Cost scales with traffic. The full toolchain (`fly deploy`, `fly logs`, `fly ssh`) is friendly.
+- **Watch out**: Network egress costs add up if you push large `/datafn/clone` payloads frequently. Use D1 or Turso for read replicas in distant regions.
+
+## 1. Project scaffold
+
+```bash
+fly launch --no-deploy
+# pick a region — typically your largest user concentration
+```
+
+Edit `fly.toml`:
+
+```toml
+app = "my-app"
+primary_region = "ord"  # Chicago — or wherever your users are
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+```
+
+For production, bump to `cpu_kind = "performance"` and `memory_mb = 1024`.
+
+## 2. Database
+
+```bash
+fly postgres create --name my-app-db --region ord
+fly postgres attach --app my-app my-app-db
+```
+
+`fly postgres attach` injects `DATABASE_URL` into the app's secrets.
+
+## 3. Application
+
+```typescript
+// server/index.ts
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toHono } from "@superfunctions/http-hono";
+import { schema } from "../shared/schema";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db: drizzle(pool), dialect: "postgres" }),
+  authorize: async (ctx) => Boolean(ctx.session?.userId),
+  ws: { maxConnections: 10_000, maxConnectionsPerNamespace: 100 },
+  observability: {
+    timing: true,
+    onTiming: (event) => console.log(JSON.stringify(event)),
+  },
+});
+
+const app = new Hono();
+app.route("/", toHono(datafn.router));
+
+serve({ fetch: app.fetch, port: 3000 });
+```
+
+## 4. Dockerfile
+
+Fly auto-detects a Node app but a custom Dockerfile gives you control:
+
+```dockerfile
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:22-slim
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY package*.json ./
+ENV NODE_ENV=production
+CMD ["node", "dist/index.js"]
+```
+
+## 5. Deploy
+
+```bash
+fly deploy
+fly logs
+```
+
+## 6. Multi-region
+
+For latency-sensitive global apps, add read replicas:
+
+```bash
+fly postgres replicate my-app-db --region fra  # Frankfurt
+fly postgres replicate my-app-db --region syd  # Sydney
+```
+
+Then scale your app machine:
+
+```bash
+fly scale count 3 --region ord,fra,syd
+```
+
+Each machine connects to the local read replica for reads and the primary in `ord` for writes. The Fly Postgres driver does this automatically via the `fly-replay` header when needed.
+
+DataFn doesn't natively know about replicas, but the Drizzle adapter takes a `db` you can wrap with read/write splitting (e.g. via [drizzle-orm/postgres-js with two pools](https://orm.drizzle.team/docs/connect-postgresql#postgresjs)).
+
+## 7. Redis for sequence store
+
+When you have more than one machine, the in-process sequence store doesn't coordinate. Add Upstash Redis:
+
+```bash
+fly redis create
+fly redis status
+```
+
+Configure DataFn to use Redis:
+
+```typescript
+import IORedis from "ioredis";
+
+const redis = new IORedis(process.env.REDIS_URL!);
+
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  redis,
+  // dbMapping is implicit — when redis is configured, serverSeq routes there.
+});
+```
+
+Without Redis, two machines will allocate overlapping sequence numbers, which breaks sync.
+
+## 8. WebSocket broadcasting across machines
+
+A single machine's WS handler only knows about its own connections. To broadcast a push notification to subscribers on other machines, DataFn uses Redis pub/sub (when `redis` is configured) to fan out cursor notifications. No extra configuration needed.
+
+## 9. Background pruning
+
+`retention.pruneOnStartup: true` runs once at boot. For periodic pruning, the in-process timer (`retention.pruneIntervalMs`) works fine on Fly — machines don't sleep.
+
+## 10. Scaling
+
+- **Vertical**: bump `[[vm]] cpus` / `memory_mb`. DataFn is mostly CPU-bound when handling DFQL validation; bump CPUs first.
+- **Horizontal**: `fly scale count N`. Each machine is interchangeable; Redis coordinates the shared state.
+
+## See also
+
+- [Scaling](/docs/documentation/deploy/scaling)
+- [Production Checklist](/docs/documentation/security/production-checklist)

@@ -1,0 +1,60 @@
+---
+title: llms.txt and llms-full.txt
+description: Plain-text documentation feeds for AI coding tools.
+---
+
+SearchFn publishes two LLM-optimized feeds on every build:
+
+| File | Size | Purpose |
+| --- | --- | --- |
+| `/llms.txt` | ~10 KB | Outline of all docs pages with deep links and one-line descriptions. Cheap to paste into an agent's context. |
+| `/llms-full.txt` | ~300 KB+ | Full body of every page concatenated, organized by section. For agents that can ingest the whole corpus. |
+
+## Where to find them
+
+- `https://searchfn.com/llms.txt`
+- `https://searchfn.com/llms-full.txt`
+
+Or, when you self-host the docs, `<your-site>/llms.txt` and `<your-site>/llms-full.txt`.
+
+## How they're generated
+
+`scripts/generate-llms.mjs` walks `content/docs/`, parses MDX frontmatter, and emits both files into `public/` during `prebuild`. The script is self-contained (no Fumadocs runtime dependency) and runs before `next build`.
+
+Regenerate manually with:
+
+```bash
+npm --prefix searchfn/docs run generate:llms
+```
+
+## Format
+
+### `llms.txt`
+
+```
+# SearchFn Documentation
+
+> Full-text search engine and adapter system for TypeScript, Python, and Swift...
+
+## Top Level
+- [SearchFn](https://searchfn.com/docs): A full-text search engine and adapter system...
+- [Architecture](https://searchfn.com/docs/architecture): Built-in engine, package layers...
+
+## Quickstart
+- [Quickstart Overview](https://searchfn.com/docs/quickstart)
+- [Hono](https://searchfn.com/docs/quickstart/hono)
+...
+```
+
+### `llms-full.txt`
+
+Same outline plus the full markdown body of every page, including code blocks, tables, and Mermaid diagrams.
+
+## Using these in your agent
+
+Paste `llms.txt` into the agent's system prompt as a navigation aid; fetch specific pages from the listed URLs when the agent needs detail. Or load `llms-full.txt` once at session start for self-contained context.
+
+## See also
+
+- [MCP server](/docs/ai-resources/mcp)
+- [Cursor setup](/docs/ai-resources/cursor)

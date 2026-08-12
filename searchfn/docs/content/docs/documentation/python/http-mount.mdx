@@ -1,0 +1,155 @@
+---
+title: HTTP Mount
+description: Mount the SearchFn routes on FastAPI, Starlette, or Flask.
+---
+
+`create_searchfn_server` returns a dict of route handlers in the format:
+
+```python
+{
+    "routes": {
+        "POST /searchfn/index":  async_handler,
+        "POST /searchfn/search": async_handler,
+    }
+}
+```
+
+Each handler has the signature `async def handler(ctx, payload) -> dict`. `ctx` is unused (reserved); `payload` is the parsed JSON body.
+
+## FastAPI
+
+```python
+from fastapi import FastAPI, Request, HTTPException
+from searchfn import create_searchfn_server
+
+app = FastAPI()
+
+plugin = create_searchfn_server({"schema": schema, "db": db})
+routes = plugin["routes"]
+
+@app.post("/searchfn/index")
+async def search_index_route(request: Request):
+    payload = await request.json() if await request.body() else {}
+    result = await routes["POST /searchfn/index"](None, payload)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+@app.post("/searchfn/search")
+async def search_search_route(request: Request):
+    payload = await request.json()
+    result = await routes["POST /searchfn/search"](None, payload)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+```
+
+A small wrapper translates `{"ok": False, "error": ...}` into HTTP 400. Successful responses pass through.
+
+## Starlette
+
+```python
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from searchfn import create_searchfn_server
+
+plugin = create_searchfn_server({"schema": schema, "db": db})
+routes_map = plugin["routes"]
+
+async def handle(spec: str):
+    handler = routes_map[spec]
+
+    async def endpoint(request):
+        body = await request.body()
+        payload = await request.json() if body else {}
+        result = await handler(None, payload)
+        if not result.get("ok"):
+            return JSONResponse(result, status_code=400)
+        return JSONResponse(result)
+
+    return endpoint
+
+app = Starlette(routes=[
+    Route("/searchfn/index", endpoint=await handle("POST /searchfn/index"), methods=["POST"]),
+    Route("/searchfn/search", endpoint=await handle("POST /searchfn/search"), methods=["POST"]),
+])
+```
+
+## Flask
+
+Flask is sync; bridge with `asyncio.run`:
+
+```python
+import asyncio
+from flask import Flask, request, jsonify
+from searchfn import create_searchfn_server
+
+app = Flask(__name__)
+plugin = create_searchfn_server({"schema": schema, "db": db})
+routes = plugin["routes"]
+
+def _bridge(handler):
+    def view():
+        payload = request.get_json(silent=True) or {}
+        result = asyncio.run(handler(None, payload))
+        return jsonify(result), (200 if result.get("ok") else 400)
+    return view
+
+app.add_url_rule("/searchfn/index", view_func=_bridge(routes["POST /searchfn/index"]),
+                 methods=["POST"], endpoint="sf_index")
+app.add_url_rule("/searchfn/search", view_func=_bridge(routes["POST /searchfn/search"]),
+                 methods=["POST"], endpoint="sf_search")
+```
+
+For high-throughput Flask deployments, prefer Quart (Flask-API-compatible, async-native).
+
+## Auth wrapper
+
+The handlers don't authenticate. Wrap them:
+
+```python
+def require_admin(handler):
+    async def wrapped(ctx, payload):
+        # ctx carries request-derived auth in your wrapper
+        if not ctx or not ctx.get("is_admin"):
+            return {"ok": False, "error": "Forbidden"}
+        return await handler(ctx, payload)
+    return wrapped
+
+routes["POST /searchfn/index"] = require_admin(routes["POST /searchfn/index"])
+```
+
+Or gate in the HTTP framework layer (FastAPI dependency, Starlette middleware, Flask decorator).
+
+## CORS
+
+CORS isn't handled by `create_searchfn_server` — it's a transport concern. Use your framework's CORS middleware:
+
+- FastAPI: `fastapi.middleware.cors.CORSMiddleware`
+- Starlette: `starlette.middleware.cors.CORSMiddleware`
+- Flask: `flask-cors`
+
+## Tests
+
+You don't need HTTP to test:
+
+```python
+import pytest
+from searchfn import create_searchfn_server
+
+@pytest.mark.asyncio
+async def test_search_returns_results(test_schema, test_db):
+    plugin = create_searchfn_server({"schema": test_schema, "db": test_db})
+    handler = plugin["routes"]["POST /searchfn/search"]
+    result = await handler(None, {"query": "hello"})
+    assert result["ok"]
+    assert len(result["results"]) > 0
+```
+
+## See also
+
+- [FastAPI quickstart](/docs/quickstart/fastapi)
+- [Starlette quickstart](/docs/quickstart/starlette)
+- [Flask quickstart](/docs/quickstart/flask)
+- [Python reference](/docs/reference/python)

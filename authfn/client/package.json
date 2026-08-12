@@ -1,6 +1,6 @@
 {
   "name": "@authfn/client",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "description": "Typed browser client for authfn",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@authfn/core": "^0.0.1"
+    "@authfn/core": "0.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -122,7 +122,7 @@ export class DefaultOAuthService implements OAuthService {
     });
 
     const authorizationUrl = new URL(provider.authorizationUrl);
-    authorizationUrl.searchParams.set("response_type", "code");
+    authorizationUrl.searchParams.set("response_type", provider.responseType ?? "code");
     authorizationUrl.searchParams.set("client_id", runtime.clientId);
     authorizationUrl.searchParams.set("redirect_uri", input.redirectUri);
     authorizationUrl.searchParams.set("state", stateId);

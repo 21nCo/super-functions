@@ -1,0 +1,288 @@
+---
+title: Writing an Adapter
+description: Implement SearchAdapter against your own backend — full guide.
+---
+
+A SearchFn adapter is the layer between the SearchFn server and a storage backend. The contract is intentionally small. If your backend can index text and return ranked IDs, you can write an adapter for it.
+
+## The contract
+
+From `@searchfn/adapter-contracts`:
+
+```typescript
+export interface SearchAdapter {
+  readonly name: string;
+  readonly capabilities?: SearchAdapterCapabilities;
+
+  initialize?(params: InitializeParams): Promise<void>;
+  index(params: IndexParams): Promise<void>;
+  search(params: SearchParams): Promise<Array<string | number>>;
+  searchAll?(params: SearchAllParams): Promise<SearchAllResult[]>;
+  remove(params: RemoveParams): Promise<void>;
+  clear(resource: string, signal?: AbortSignal): Promise<void>;
+  dispose?(): Promise<void>;
+}
+```
+
+Six required methods (plus two optional). The server calls these; you do the work.
+
+## Step 1 — pick capabilities
+
+```typescript
+const capabilities: SearchAdapterCapabilities = {
+  persistent: true,        // does the index survive process restarts?
+  searchAll: false,        // do you implement searchAll natively?
+  fuzzy: true,             // do you support fuzzy queries?
+  prefix: true,            // do you support prefix queries?
+  fieldBoosts: true,       // do you respect field weights?
+  maxBatchSize: 1000,      // max docs per index() call
+};
+```
+
+If you set `searchAll: false`, the server falls back to running `search` per resource in parallel — fine for most cases.
+
+## Step 2 — implement initialize
+
+```typescript
+async initialize(params: InitializeParams): Promise<void> {
+  for (const config of params.resources) {
+    // create per-resource storage (table, index, mapping)
+    await this.createResourceIfNeeded(config.name, config.searchFields);
+  }
+}
+```
+
+Idempotent — called every time the server boots. If the resource already exists, no-op.
+
+## Step 3 — implement index
+
+```typescript
+async index(params: IndexParams): Promise<void> {
+  const { resource, documents, signal } = params;
+
+  for (let i = 0; i < documents.length; i += BATCH_SIZE) {
+    if (signal?.aborted) throw new Error("aborted");
+    const batch = documents.slice(i, i + BATCH_SIZE);
+    await this.writeBatch(resource, batch);
+  }
+}
+```
+
+Important details:
+
+- **Upserts, not appends.** Re-indexing the same `id` must replace, not duplicate.
+- **AbortSignal.** Respect it — bail out cleanly.
+- **Field set.** Use the `searchFields` from `initialize`. Index only those.
+- **Multi-line atomic writes.** A failed batch should either fully apply or fully rollback.
+
+## Step 4 — implement search
+
+```typescript
+async search(params: SearchParams): Promise<Array<string | number>> {
+  const { resource, query, fields, limit, fuzzy, prefix, fieldBoosts } = params;
+
+  const ids = await this.backendQuery({
+    resource,
+    query,
+    fields: fields ?? this.resourceConfig[resource].searchFields,
+    limit: limit ?? 20,
+    fuzzy,
+    prefix,
+    fieldBoosts,
+  });
+
+  return ids;
+}
+```
+
+Returns **IDs only**, ranked. The server hydrates records separately.
+
+For backends that don't support fuzzy/prefix natively (Postgres FTS doesn't do edit-distance fuzzy):
+
+- Either degrade gracefully (treat fuzzy as exact) and document the limitation.
+- Or run a parallel n-gram match and merge results.
+
+## Step 5 — implement remove
+
+```typescript
+async remove(params: RemoveParams): Promise<void> {
+  const { resource, ids } = params;
+  await this.backendDelete(resource, ids);
+}
+```
+
+If a backend rejects unknown IDs, swallow that — `remove` should be idempotent.
+
+## Step 6 — implement clear
+
+```typescript
+async clear(resource: string, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new Error("aborted");
+  await this.backendDeleteAll(resource);
+}
+```
+
+Removes all documents for a resource. Resource configuration (from `initialize`) is preserved.
+
+## Step 7 — implement dispose
+
+```typescript
+async dispose(): Promise<void> {
+  await this.connection?.close();
+  this.disposed = true;
+}
+```
+
+After `dispose`, subsequent methods should throw `SEARCH_ADAPTER_DISPOSED`. The server detects this code and emits a clean error.
+
+## Step 8 — implement searchAll (optional but recommended)
+
+```typescript
+async searchAll(params: SearchAllParams): Promise<SearchAllResult[]> {
+  const resources = params.resources ?? this.allResources();
+  const perResourceLimit = params.limitPerResource ?? 10;
+
+  // Native multi-resource query if your backend supports it
+  const rows = await this.backendMultiQuery({
+    resources,
+    query: params.query,
+    perResourceLimit,
+    fieldBoosts: params.fieldBoosts,
+  });
+
+  // Merge & rank
+  return rows
+    .sort((a, b) => b.score - a.score)
+    .slice(0, params.limit ?? 20);
+}
+```
+
+Don't implement this if your backend can't do it efficiently — the server's fallback (parallel `search` per resource) is fine for `<10` resources.
+
+## Step 9 — wire up errors
+
+Use `SearchAdapterError`:
+
+```typescript
+import { SearchAdapterError } from "@searchfn/adapter-contracts";
+
+throw new SearchAdapterError("MY_CUSTOM_CODE", "human-readable message");
+```
+
+Standard codes the server already knows:
+
+- `SEARCH_ADAPTER_DISPOSED`
+- `SEARCH_ADAPTER_NOT_INITIALIZED`
+- `SEARCH_ADAPTER_RESOURCE_NOT_FOUND`
+
+Beyond these, define your own codes — the server passes them through.
+
+## Step 10 — test
+
+Use the shared test suite:
+
+```typescript
+import { runAdapterContractTests } from "@searchfn/adapter-contracts/testing";
+import { MyAdapter } from "./my-adapter";
+
+describe("MyAdapter contract", () => {
+  runAdapterContractTests({
+    name: "my-adapter",
+    create: async () => new MyAdapter({ /* config */ }),
+    teardown: async (adapter) => adapter.dispose?.(),
+  });
+});
+```
+
+The contract suite exercises every method, edge case, abort handling, idempotency, and concurrent access. If your adapter passes, the server can use it.
+
+## Skeleton
+
+```typescript
+import {
+  SearchAdapter,
+  SearchAdapterCapabilities,
+  SearchAdapterError,
+  IndexParams,
+  SearchParams,
+  RemoveParams,
+  InitializeParams,
+  SEARCH_ADAPTER_DISPOSED,
+} from "@searchfn/adapter-contracts";
+
+export class MyAdapter implements SearchAdapter {
+  readonly name = "my-adapter";
+  readonly capabilities: SearchAdapterCapabilities = {
+    persistent: true,
+    fuzzy: false,
+    prefix: true,
+    fieldBoosts: true,
+    maxBatchSize: 1000,
+  };
+
+  private disposed = false;
+  private resources = new Map<string, { searchFields: string[] }>();
+
+  constructor(private readonly config: { /* your config */ }) {}
+
+  async initialize(params: InitializeParams): Promise<void> {
+    this.assertNotDisposed();
+    for (const r of params.resources) {
+      this.resources.set(r.name, { searchFields: r.searchFields });
+      // create backend storage
+    }
+  }
+
+  async index(params: IndexParams): Promise<void> {
+    this.assertNotDisposed();
+    // write docs
+  }
+
+  async search(params: SearchParams): Promise<Array<string | number>> {
+    this.assertNotDisposed();
+    // query backend, return ranked IDs
+    return [];
+  }
+
+  async remove(params: RemoveParams): Promise<void> {
+    this.assertNotDisposed();
+    // delete docs
+  }
+
+  async clear(resource: string): Promise<void> {
+    this.assertNotDisposed();
+    // delete all docs for resource
+  }
+
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    // close handles
+  }
+
+  private assertNotDisposed(): void {
+    if (this.disposed) {
+      throw new SearchAdapterError(SEARCH_ADAPTER_DISPOSED, "Adapter disposed");
+    }
+  }
+}
+```
+
+Copy this, fill in the backend logic, run the contract suite.
+
+## Publishing
+
+Conventions across `@searchfn/adapter-*` packages:
+
+- Package name: `@searchfn/adapter-<backend>`.
+- Default export and named export both expose the adapter class.
+- Peer-dependency on `@searchfn/adapter-contracts`.
+- Tests in `__tests__/` directory.
+- Include a `README.md` with usage example.
+
+See `searchfn/adapter-postgres/` for a reference implementation.
+
+## See also
+
+- [Adapter migration](/docs/documentation/advanced/adapter-migration)
+- [Capabilities reference](/docs/reference/capabilities)
+- [Errors reference](/docs/reference/errors)

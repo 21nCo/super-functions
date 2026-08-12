@@ -62,7 +62,7 @@ describe('@authfn/client social flows', () => {
     });
   });
 
-  it('requests json callback mode by default for browser-safe redirects', async () => {
+  it('lets the server infer callback mode when none is requested', async () => {
     let receivedCallbackMode: unknown;
     const auth = createAuthFn(createConfig());
 
@@ -86,7 +86,7 @@ describe('@authfn/client social flows', () => {
     });
 
     expect(started.ok).toBe(true);
-    expect(receivedCallbackMode).toBe('json');
+    expect(receivedCallbackMode).toBeUndefined();
   });
 
   it('treats bare redirect responses as navigation-required errors', async () => {
@@ -115,7 +115,7 @@ describe('@authfn/client social flows', () => {
     expect(started.requestId).toBe('req_redirect');
   });
 
-  it('keeps callback mode pinned to json', async () => {
+  it('does not force json callback mode when returnTo is provided', async () => {
     let receivedCallbackMode: unknown;
     const auth = createAuthFn(createConfig());
 
@@ -140,10 +140,10 @@ describe('@authfn/client social flows', () => {
     });
 
     expect(started.ok).toBe(true);
-    expect(receivedCallbackMode).toBe('json');
+    expect(receivedCallbackMode).toBeUndefined();
   });
 
-  it('ignores raw caller attempts to force redirect callback mode', async () => {
+  it('honors explicit redirect callback mode for browser navigation flows', async () => {
     let receivedCallbackMode: unknown;
     const auth = createAuthFn(createConfig());
 
@@ -165,10 +165,10 @@ describe('@authfn/client social flows', () => {
     const started = await client.startSocialSignIn({
       provider: 'google',
       returnTo: 'https://app.example.com/post-auth',
-      callbackMode: 'redirect' as never
+      callbackMode: 'redirect'
     });
 
     expect(started.ok).toBe(true);
-    expect(receivedCallbackMode).toBe('json');
+    expect(receivedCallbackMode).toBe('redirect');
   });
 });

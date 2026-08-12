@@ -33,11 +33,12 @@ describe('@authfn/svelte session store', () => {
 
     await store.refresh();
 
-    expect(get(store)).toMatchObject({
+    expect(get(store).session).toMatchObject({
       id: 'sess_01',
       primaryEmail: 'ada@example.com',
       methods: ['password']
     });
+    expect(get(store).authenticated).toBe(true);
     expect(calls).toEqual(['getSession', 'getSession']);
   });
 
@@ -70,10 +71,14 @@ describe('@authfn/svelte session store', () => {
     } as any);
 
     await store.refresh();
-    expect(get(store)).toBeNull();
+    expect(get(store)).toMatchObject({
+      loading: false,
+      session: null,
+      authenticated: false
+    });
 
     store.clear();
-    expect(get(store)).toBeNull();
+    expect(get(store).session).toBeNull();
   });
 
   it('does not let an older refresh overwrite a newer session state', async () => {
@@ -123,7 +128,7 @@ describe('@authfn/svelte session store', () => {
     });
     await firstRefresh;
 
-    expect(get(store)?.id).toBe('sess_newer');
+    expect(get(store).session?.id).toBe('sess_newer');
   });
 
   it('returns the current store state when an older refresh resolves late', async () => {
@@ -187,6 +192,6 @@ describe('@authfn/svelte session store', () => {
 
     expect(secondResult?.id).toBe('sess_current');
     expect(firstResult?.id).toBe('sess_current');
-    expect(get(store)?.id).toBe('sess_current');
+    expect(get(store).session?.id).toBe('sess_current');
   });
 });

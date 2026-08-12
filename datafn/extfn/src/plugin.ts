@@ -5,7 +5,7 @@ import type {
 import type { DatafnSchema } from "@datafn/core";
 import type {
   RuntimePlugin,
-} from "@superfunctions/extfn";
+} from "@extfn/core";
 import {
   createDatafnExtfnAuthority,
   type CreateDatafnExtfnAuthorityOptions,

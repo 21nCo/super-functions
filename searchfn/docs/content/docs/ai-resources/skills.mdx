@@ -1,0 +1,31 @@
+---
+title: Skills
+description: Factory Droid skills for SearchFn setup, indexing, and adapter selection.
+---
+
+If you use [Factory Droid](https://factory.ai), the following skills are available out of the box.
+
+## Available skills
+
+| Skill | Use when |
+| --- | --- |
+| `searchfn-setup` | Pick an adapter and bootstrap server+client+initialize in one pass |
+| `searchfn-indexing` | Generate batch indexing code for an existing data source (DB, CSV, API) |
+| `searchfn-relevance` | Tune BM25 weights, field boosts, and stop word lists for a specific corpus |
+| `searchfn-datafn` | Wire SearchFn as a DataFn search provider end-to-end |
+| `searchfn-migrate` | Migrate between adapters (Memory → Postgres, etc.) |
+
+## Invocation
+
+In a Droid session:
+
+```
+/skill searchfn-setup
+```
+
+The skill drives a short questionnaire (runtime, persistence, tenancy, scale) and produces the matching scaffold.
+
+## See also
+
+- [MCP server](/docs/ai-resources/mcp)
+- [Adapters reference](/docs/reference/adapters)

@@ -71,7 +71,7 @@ export const svelteKitHost = {
 Extension adapter in the consumer repo:
 
 ```ts
-import { createRuntime } from "@superfunctions/extfn";
+import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
   globals: globalThis as never,

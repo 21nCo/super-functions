@@ -1,4 +1,18 @@
 {
   "title": "Sync",
-  "pages": ["overview", "offline-first", "clone", "pull-push", "hydration", "clone-up", "cross-tab", "sharing-sync-lifecycle"]
+  "pages": [
+    "overview",
+    "offline-first",
+    "clone",
+    "pull-push",
+    "hydration",
+    "clone-up",
+    "cross-tab",
+    "sharing-sync-lifecycle",
+    "conflict-resolution",
+    "ordering-guarantees",
+    "retry-and-backoff",
+    "schema-migration",
+    "sequence-store"
+  ]
 }

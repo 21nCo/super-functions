@@ -1,5 +1,5 @@
 import type { Adapter } from "@superfunctions/db";
-import type { DatafnSchema } from "../../core-types.js";
+import type { DatafnSchema } from "@datafn/core/types";
 import type { SearchProvider } from "../../search-provider.js";
 import type { DatafnLogger } from "../../logger.js";
 import { DatafnExecutionError } from "../errors.js";
@@ -128,7 +128,7 @@ export async function executeCrossResourceSearch(
   await Promise.all(
     Array.from(byResource.entries()).map(async ([resource, resourceCandidates]) => {
       assertNotAborted(params.signal);
-      const resourceSchema = schema.resources.find((r) => r.name === resource);
+      const resourceSchema = schema.resources.find((r: DatafnSchema["resources"][number]) => r.name === resource);
       if (!resourceSchema) return;
       const ids = resourceCandidates.map((c) => c.id);
       try {

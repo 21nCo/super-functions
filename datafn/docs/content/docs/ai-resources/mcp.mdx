@@ -1,0 +1,104 @@
+---
+title: "MCP Server (Experimental)"
+description: "Expose the DataFn documentation and schema as Model Context Protocol tools for agentic clients."
+audience: guide
+applies_to: both
+---
+
+[Model Context Protocol](https://modelcontextprotocol.io) is a JSON-RPC protocol that lets LLM clients (Claude Desktop, Cursor, agentic frameworks) discover and call tools. The DataFn project ships a minimal MCP server that exposes the documentation and the live HTTP surface as tools.
+
+## Suggested tools to expose
+
+A working DataFn MCP server typically registers four tools:
+
+| Tool | Inputs | Returns |
+| --- | --- | --- |
+| `search_docs` | `query: string`, optional `section: string` | Top N pages with title, URL, and a snippet. |
+| `fetch_page` | `path: string` | Raw markdown body of the requested page. |
+| `get_route` | `method: string`, `path: string` | Request/response schema and error codes for an HTTP route. |
+| `get_error` | `code: string` (e.g. `DFQL_INVALID`) | Description, common causes, and fix suggestions. |
+
+Optional extras:
+
+- `list_resources` — enumerate resources, fields, and capabilities from a running DataFn server's `/datafn/status`.
+- `run_query` — execute a read-only DFQL query against a developer instance (only behind a feature flag).
+
+## Reference implementation
+
+A minimal Node.js implementation that wraps the static documentation and the running server:
+
+```typescript
+import { McpServer, StdioServerTransport } from "@modelcontextprotocol/sdk/server";
+
+const docsRoot = "https://datafn.21n.co";
+
+const server = new McpServer({ name: "datafn-docs", version: "0.1.0" });
+
+server.tool(
+  "search_docs",
+  { query: { type: "string" } },
+  async ({ query }) => {
+    const llms = await fetch(`${docsRoot}/llms.txt`).then((r) => r.text());
+    const matches = llms
+      .split("\n")
+      .filter((line) => line.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 10);
+    return { content: [{ type: "text", text: matches.join("\n") }] };
+  },
+);
+
+server.tool(
+  "fetch_page",
+  { path: { type: "string" } },
+  async ({ path }) => {
+    const md = await fetch(`${docsRoot}/api/docs/raw/${path}`).then((r) => r.text());
+    return { content: [{ type: "text", text: md }] };
+  },
+);
+
+await server.connect(new StdioServerTransport());
+```
+
+## Wiring it into clients
+
+### Claude Desktop
+
+Add the server to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "datafn": {
+      "command": "node",
+      "args": ["/path/to/datafn-mcp/index.js"]
+    }
+  }
+}
+```
+
+### Cursor
+
+Cursor reads MCP servers from `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "datafn": {
+      "command": "node",
+      "args": ["/path/to/datafn-mcp/index.js"]
+    }
+  }
+}
+```
+
+### Other agentic frameworks
+
+Any MCP-compatible client (LangChain, LlamaIndex via plugins, OpenAI's Responses API in beta) can target the same stdio or HTTP transport.
+
+## Hosting the MCP server
+
+The reference implementation runs over stdio, which works well for local tools. For team use you can wrap the same handlers in an HTTP transport and host on Cloudflare Workers, Fly.io, or your existing infrastructure. The handlers are pure functions of the documentation and the running server's status, so they can run anywhere there's outbound HTTP access.
+
+## Roadmap
+
+Planned additions: `get_schema` (return the resolved schema from a target deployment), `simulate_mutation` (dry-run a mutation through validation), `explain_query` (return the parsed AST for a DFQL query). Open an issue if your agent needs a tool that isn't listed.

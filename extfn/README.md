@@ -4,13 +4,13 @@
 
 ## Package map
 
-- `@superfunctions/extfn`
+- `extfn`
   - Core config types, runtime helpers, browser facade, envelopes, handlers, ports, and content-script primitives.
-- `@superfunctions/extfn-vite`
+- `@extfn/vite`
   - Vite plugin and target-aware build/dev pipeline.
-- `@superfunctions/extfn-cli`
+- `@extfn/cli`
   - Canonical `extfn` binary for `dev`, `build`, `scan`, and `package`.
-- `@superfunctions/extfn-svelte`
+- `@extfn/svelte`
   - Thin Svelte adapter for page and content mounts.
 - `@datafn/extfn`
   - DataFn authority/proxy bridge for extension contexts.
@@ -30,7 +30,7 @@
 Every extension is described by one `extfn.config.ts` file that default-exports `defineExtension(...)`.
 
 ```ts
-import { defineExtension } from "@superfunctions/extfn";
+import { defineExtension } from "@extfn/core";
 
 export default defineExtension({
   name: "My Extension",
@@ -67,7 +67,7 @@ export default defineExtension({
 Use the root package exports for runtime setup and browser access.
 
 ```ts
-import { createRuntime } from "@superfunctions/extfn";
+import { createRuntime } from "@extfn/core";
 
 const runtime = createRuntime({
   globals: globalThis as never,

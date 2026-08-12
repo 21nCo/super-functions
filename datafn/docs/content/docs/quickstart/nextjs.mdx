@@ -1,0 +1,158 @@
+---
+title: "Quickstart: Next.js"
+description: "Full-stack DataFn on Next.js App Router with the official adapter."
+audience: guide
+applies_to: both
+---
+
+Next.js hosts both the DataFn server (under `/api/datafn/*`) and the DataFn client (reactive queries in your React components).
+
+## 1. Scaffold
+
+```bash
+npx create-next-app@latest my-app --typescript --app
+cd my-app
+npm install @datafn/server @datafn/core @datafn/client
+npm install @superfunctions/db @superfunctions/http-next
+npm install drizzle-orm pg
+```
+
+## 2. Schema
+
+`shared/schema.ts`:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["title", "completed"] },
+    },
+  ],
+});
+```
+
+## 3. Server routes
+
+`app/api/datafn/[...path]/route.ts`:
+
+```typescript
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toNext } from "@superfunctions/http-next";
+import { schema } from "@/shared/schema";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "postgres" }),
+  rest: true,
+  authorize: async () => true,
+});
+
+export const { GET, POST } = toNext(datafn.router);
+```
+
+## 4. Client
+
+`lib/client.ts`:
+
+```typescript
+"use client";
+
+import { createDatafnClient, IndexedDbStorageAdapter } from "@datafn/client";
+import { schema } from "@/shared/schema";
+
+let _client: ReturnType<typeof createDatafnClient> | undefined;
+
+export function getClient() {
+  if (!_client) {
+    _client = createDatafnClient({
+      schema,
+      clientId: "device-1",
+      storage: new IndexedDbStorageAdapter("my-app-db"),
+      sync: {
+        remote: "/api/datafn",
+        offlinability: true,
+        ws: true,
+      },
+    });
+  }
+  return _client;
+}
+```
+
+## 5. Component
+
+`app/page.tsx`:
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { getClient } from "@/lib/client";
+
+export default function Home() {
+  const client = getClient();
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    const signal = client.table("tasks").signal({
+      filters: { completed: { $eq: false } },
+      sort: ["createdAt:desc"],
+      limit: 20,
+    });
+    const unsub = signal.subscribe((value) => setTasks(value ?? []));
+    return () => unsub();
+  }, [client]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    await client.table("tasks").mutate({
+      operation: "insert",
+      record: { title, completed: false },
+    });
+    setTitle("");
+  }
+
+  return (
+    <main>
+      <form onSubmit={add}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <button>Add</button>
+      </form>
+      <ul>{tasks.map((t) => <li key={t.id}>{t.title}</li>)}</ul>
+    </main>
+  );
+}
+```
+
+> A typed React hook (`useDatafnQuery`) is on the roadmap as `@datafn/react`. Until it ships, wrap `signal.subscribe(...)` in `useEffect` as above.
+
+## 6. Run
+
+```bash
+DATABASE_URL=postgres://localhost/datafn_dev npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Where to next
+
+- Pair with [AuthFn](/docs/recipes) — derive `namespaceProvider` from the AuthFn session.
+- Add Edge runtime support: see [Deploy → Cloudflare Workers](/docs/documentation/deploy)
+- Add server actions that wrap DataFn mutations: see [Recipes](/docs/recipes)

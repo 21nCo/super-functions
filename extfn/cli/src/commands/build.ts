@@ -8,18 +8,18 @@ import {
   type BrowserTarget,
   type ExtensionConfig,
   SUPPORTED_BROWSER_TARGETS,
-} from '@superfunctions/extfn';
+} from '@extfn/core';
 import {
   extfnVite,
   getTargetOutputDir,
   loadExtensionConfig,
-} from '@superfunctions/extfn-vite';
+} from '@extfn/vite';
 import {
   createDiagnostic,
   redactValue,
-} from 'clifn/diagnostics';
-import { readStringEnv } from 'clifn/env';
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+} from '@clifn/core/diagnostics';
+import { readStringEnv } from '@clifn/core/env';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

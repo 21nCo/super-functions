@@ -1,0 +1,47 @@
+---
+title: "Recipes"
+sidebarTitle: "Overview"
+description: "Production-tested patterns for shipping with DataFn. Each recipe is self-contained: the schema, the server config, and the client glue."
+audience: landing
+applies_to: both
+---
+
+Recipes are working patterns, not exhaustive guides. Read them when you're about to ship a feature and you want a reference shape for it.
+
+## App patterns
+
+| Recipe | What it covers |
+| --- | --- |
+| [Todo app](/docs/recipes/todo-app) | The minimum viable end-to-end: schema, server, client, optimistic UI. |
+| [Kanban board](/docs/recipes/kanban-board) | Ordered lists, drag-and-drop with `position` fields, atomic moves via `transact`. |
+| [Chat app](/docs/recipes/chat-app) | Append-only resources, cursor pagination, WebSocket live updates. |
+| [Document collab](/docs/recipes/document-collab) | Per-document presence and conflict-free edit semantics. |
+
+## Architecture patterns
+
+| Recipe | What it covers |
+| --- | --- |
+| [Multi-tenant SaaS](/docs/recipes/multi-tenant-saas) | Namespace per tenant; deriving namespaces from auth. |
+| [Sharing flows](/docs/recipes/sharing-flows) | Invite-by-email, link-share, share-with-role with the `shareable` capability. |
+| [Presence and cursors](/docs/recipes/presence-cursors) | Ephemeral state alongside persisted state. |
+| [Offline conflict resolution](/docs/recipes/offline-conflicts) | LWW, version guards, and merge policies. |
+| [Optimistic UI](/docs/recipes/optimistic-ui) | Snappy mutations with deterministic rollback. |
+| [List virtualization](/docs/recipes/virtualization) | Subscriptions over windowed slices. |
+| [Encryption at rest](/docs/recipes/encryption-at-rest) | Field-level encryption via plugins. |
+| [Audit logging](/docs/recipes/audit-logging) | Capability-driven audit + outbound logging. |
+| [Testing patterns](/docs/recipes/testing) | Deterministic sync, fixture seeding, mock clients. |
+
+## Integration patterns
+
+| Recipe | What it covers |
+| --- | --- |
+| [AuthFn integration](/docs/recipes/authfn-integration) | Sessions → namespaces, role checks in `authorize`. |
+| [FileFn integration](/docs/recipes/filefn-integration) | Attaching files to DataFn records. |
+| [SearchFn integration](/docs/recipes/searchfn-integration) | Cross-resource search via the `SearchProvider` interface. |
+
+## How to use a recipe
+
+1. Read the recipe end to end before copying.
+2. Adapt the schema to your domain. Capabilities (`timestamps`, `audit`, `trash`, etc.) are the levers; pick the ones you need.
+3. Mount the routes on the framework you actually use. The recipes lean on Hono in examples, but the pattern is the same for any framework — see the [Quickstart](/docs/quickstart) section.
+4. Steal whatever you need from the client glue, then delete the rest.

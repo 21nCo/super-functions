@@ -1,0 +1,155 @@
+---
+title: "Observation"
+description: "DatafnRuntimeObservationSource and DatafnObservedQuery — how SwiftUI sees DataFn records."
+audience: guide
+applies_to: client
+---
+
+The Apple runtime exposes records through two layers:
+
+1. **`DatafnRuntimeObservationSource`** — the bridge between the CoreData store and your application code. Supports both pull (`listRecords`) and observation (subscribe-to-changes).
+2. **`DatafnObservedQuery`** — an `@Observable @MainActor` class that wraps the observation source for direct SwiftUI binding.
+
+## Construct an observation source
+
+```swift
+let source = await runtime.makeObservationSource()
+```
+
+The source is `Sendable` and can be shared across views. One per runtime is the right granularity; don't construct one per view.
+
+## Single read
+
+```swift
+let tasks = try source.listRecords(resource: "tasks")
+let task  = try source.getRecord(resource: "tasks", id: "tsk:42")
+let filteredTasks = try source.listRecords(
+    resource: "tasks",
+    filters: ["completed": .equal(false)],
+    sort: [.ascending("priority")],
+    limit: 50
+)
+```
+
+`listRecords` returns `[DatafnJSONObject]` — a `[String: AnyHashable]` map. For typed access, decode into your own `Codable` types.
+
+## Observed query in SwiftUI
+
+```swift
+import SwiftUI
+import DatafnAppleRuntime
+
+struct TaskListView: View {
+    let source: DatafnRuntimeObservationSource
+
+    @State private var tasks: DatafnObservedQuery<[DatafnJSONObject]>?
+
+    var body: some View {
+        Group {
+            if let tasks {
+                List(tasks.value, id: \.self) { row in
+                    Text(String(describing: row["title"] ?? ""))
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            tasks = DatafnObservedQuery(
+                resource: "tasks",
+                source: source,
+                filters: ["completed": .equal(false)],
+                sort: [.ascending("priority")],
+                limit: 50
+            )
+        }
+    }
+}
+```
+
+The observed query re-runs whenever the underlying records change. SwiftUI re-renders the body automatically — no `onReceive`, no Combine plumbing.
+
+## Lifecycle
+
+`DatafnObservedQuery` holds a CoreData fetch results controller behind the scenes. When the SwiftUI view leaves the screen, the controller is released and the underlying observation cancels. No leaks.
+
+For long-lived observation outside SwiftUI:
+
+```swift
+let task = Task {
+    for await change in source.observe(resource: "tasks") {
+        print("change:", change)
+    }
+}
+
+// Later:
+task.cancel()
+```
+
+`source.observe(...)` returns an `AsyncStream<DatafnObservationChange>`.
+
+## DatafnObservationChange
+
+```swift
+enum DatafnObservationChange {
+    case inserted(id: String, record: DatafnJSONObject)
+    case updated(id: String, before: DatafnJSONObject, after: DatafnJSONObject)
+    case deleted(id: String)
+}
+```
+
+For most UIs, work with `DatafnObservedQuery` and let SwiftUI handle diffing. Use `observe()` directly when you need to trigger imperative side effects (push notifications, analytics).
+
+## Filtering and sorting
+
+`DatafnFilter` mirrors DFQL:
+
+```swift
+.equal("active")
+.notEqual("archived")
+.in(["active", "pending"])
+.greaterThan(100)
+.contains("substring")
+.and(...)
+.or(...)
+```
+
+`DatafnSort`:
+
+```swift
+.ascending("priority")
+.descending("createdAt")
+```
+
+The compiler enforces field names against the bundled schema (when you use the generated `DatafnSchema` enum). Hand-typed strings work but skip type checking.
+
+## Pagination
+
+Cursor-based pagination is supported via `cursor`:
+
+```swift
+let firstPage = try source.listRecords(resource: "messages", sort: [.descending("createdAt")], limit: 30)
+let cursor = firstPage.cursor
+let nextPage = try source.listRecords(resource: "messages", sort: [.descending("createdAt")], limit: 30, cursor: cursor)
+```
+
+(API subject to evolution — confirm against `DatafnRuntimeObservationSource` in your version.)
+
+## Threading
+
+The observation source is `@MainActor`-aware. `DatafnObservedQuery` is `@MainActor` by design — SwiftUI is too. For background reads:
+
+```swift
+Task.detached {
+    let snapshot = try await source.snapshot(resource: "tasks")
+    await MainActor.run { /* use it */ }
+}
+```
+
+`snapshot(...)` is a non-MainActor variant that returns a one-shot result.
+
+## See also
+
+- [SwiftUI](/docs/documentation/apple/swiftui)
+- [CoreData store](/docs/documentation/apple/coredata)
+- [Setup](/docs/documentation/apple/setup)

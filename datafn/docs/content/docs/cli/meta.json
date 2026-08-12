@@ -7,6 +7,11 @@
     "generate",
     "validate",
     "type-codegen",
-    "drizzle-codegen"
+    "drizzle-codegen",
+    "schema-diff",
+    "schema-migrate",
+    "env-profiles",
+    "multi-env",
+    "ci-integration"
   ]
 }

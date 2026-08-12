@@ -13,13 +13,13 @@
     }
   },
   "scripts": {
-    "build": "npm --prefix ../core run build && npm --prefix ../client run build && tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@datafn/client": "^0.0.2",
-    "@datafn/core": "^0.0.2"
+    "@datafn/client": "0.0.3",
+    "@datafn/core": "0.0.3"
   },
   "files": [
     "dist"
@@ -27,5 +27,8 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

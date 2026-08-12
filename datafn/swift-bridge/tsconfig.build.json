@@ -7,8 +7,8 @@
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
-      "@datafn/client": ["../client/dist/index.d.ts"],
-      "@datafn/core": ["../core/dist/index.d.ts"]
+      "@datafn/client": ["./node_modules/@datafn/client/dist/index.d.ts"],
+      "@datafn/core": ["./node_modules/@datafn/core/dist/index.d.ts"]
     },
     "declaration": true,
     "declarationMap": false,

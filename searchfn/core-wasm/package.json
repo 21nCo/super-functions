@@ -15,8 +15,7 @@
     }
   },
   "files": [
-    "dist",
-    "rust"
+    "dist"
   ],
   "scripts": {
     "build": "npm run build:wasm && tsup && npm run copy:wasm",
@@ -29,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@searchfn/core": "file:../core"
+    "@searchfn/core": "0.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",
@@ -37,5 +36,8 @@
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

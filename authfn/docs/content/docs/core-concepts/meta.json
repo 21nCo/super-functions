@@ -1,0 +1,21 @@
+{
+  "title": "Core Concepts",
+  "pages": [
+    "index",
+    "architecture",
+    "sessions",
+    "cookies",
+    "csrf",
+    "envelopes",
+    "errors",
+    "plugins",
+    "hooks",
+    "runtime",
+    "regions",
+    "account-linking",
+    "observability",
+    "openapi",
+    "rate-limiting",
+    "security"
+  ]
+}

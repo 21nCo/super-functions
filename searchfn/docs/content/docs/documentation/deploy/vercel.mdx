@@ -1,0 +1,122 @@
+---
+title: "Deploy: Vercel"
+description: Run SearchFn server-side on Vercel using Next.js API routes or serverless functions.
+---
+
+Vercel runs SearchFn well if you pick an external adapter (Postgres, Meilisearch, Elasticsearch). The MemoryAdapter is wrong for serverless — every cold start rebuilds.
+
+## Recommended adapter
+
+| Use case | Adapter |
+| --- | --- |
+| Mostly read-heavy, already on Postgres | `@searchfn/adapter-postgres` (with Neon, Supabase, or Vercel Postgres) |
+| Dedicated search service | `@searchfn/adapter-meilisearch` |
+| Large scale | `@searchfn/adapter-elasticsearch` (managed Elastic Cloud) |
+
+## Next.js App Router
+
+```typescript
+// app/searchfn/[...path]/route.ts
+import { createSearchFnServer } from "@searchfn/server";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+
+let sfPromise: ReturnType<typeof createSearchFnServer> | null = null;
+
+function getServer() {
+  if (!sfPromise) {
+    sfPromise = createSearchFnServer({
+      adapter: new PostgresAdapter({
+        connectionString: process.env.SEARCH_DB_URL!,
+      }),
+      basePath: "/searchfn",
+    }).then(async (sf) => {
+      await sf.adapter.initialize?.({
+        resources: [{ name: "articles", searchFields: ["title", "body"] }],
+      });
+      return sf;
+    });
+  }
+  return sfPromise;
+}
+
+const handler = async (request: Request) => {
+  const sf = await getServer();
+  return sf.router.handle({
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body: request.body,
+  });
+};
+
+export const GET = handler;
+export const POST = handler;
+```
+
+The `sfPromise` cache makes the adapter survive within a single Lambda invocation — across invocations it might not, depending on Vercel's container reuse.
+
+## Database connection pooling
+
+Vercel Functions are stateless and ephemeral. Use a pooler:
+
+- **Neon**: built-in connection pool — connect with `pooler` host.
+- **Supabase**: built-in pgBouncer.
+- **Vercel Postgres**: pre-pooled.
+
+Without a pooler, Postgres exhausts max_connections under traffic.
+
+```typescript
+const adapter = new PostgresAdapter({
+  connectionString: process.env.SEARCH_DB_URL!, // pooler URL
+  poolSize: 1, // one connection per Lambda
+});
+```
+
+## Edge runtime
+
+Vercel's Edge runtime is V8 isolates, not Node. Direct DB drivers don't work. For Edge:
+
+- Use `@searchfn/adapter-meilisearch` (HTTP) or `@searchfn/adapter-elasticsearch` (HTTP).
+- Don't use `@searchfn/adapter-postgres` on Edge.
+
+## CORS
+
+If the SearchFn server is on a different domain than your app, configure CORS:
+
+```typescript
+const handler = async (request: Request) => {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": process.env.APP_ORIGIN!,
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }
+  // ... regular handler
+};
+```
+
+## Logs
+
+Vercel's logs are Datadog-flavoured by default. Send structured JSON; Vercel parses it:
+
+```typescript
+const sf = await createSearchFnServer({
+  adapter,
+  logger: {
+    info: (msg, ctx) => console.log(JSON.stringify({ level: "info", msg, ...ctx })),
+    warn: (msg, ctx) => console.warn(JSON.stringify({ level: "warn", msg, ...ctx })),
+    error: (msg, ctx) => console.error(JSON.stringify({ level: "error", msg, ...ctx })),
+    debug: () => {},
+  },
+});
+```
+
+## See also
+
+- [Next.js quickstart](/docs/quickstart/nextjs)
+- [Postgres adapter](/docs/reference/adapters/postgres)
+- [Scaling](/docs/documentation/deploy/scaling)

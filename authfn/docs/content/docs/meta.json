@@ -1,0 +1,19 @@
+{
+  "title": "authfn",
+  "pages": [
+    "index",
+    "getting-started",
+    "quickstart",
+    "core-concepts",
+    "plugins",
+    "sdk",
+    "adapters",
+    "frameworks",
+    "recipes",
+    "admin",
+    "examples",
+    "ai-resources",
+    "reference",
+    "api"
+  ]
+}

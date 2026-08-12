@@ -1,0 +1,5 @@
+{
+  "title": "AI Resources",
+  "description": "Use SearchFn with AI coding tools",
+  "pages": ["index", "llms-txt", "mcp", "skills", "cursor", "claude", "codex"]
+}

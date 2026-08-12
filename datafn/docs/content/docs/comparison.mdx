@@ -1,0 +1,135 @@
+---
+title: "Comparison"
+description: "Where DataFn sits relative to Replicache, ElectricSQL, PowerSync, RxDB, WatermelonDB, InstantDB, Convex, TinyBase, and a Drizzle+TanStack Query stack."
+audience: landing
+applies_to: both
+---
+
+This page exists so you can quickly decide whether DataFn is the right tool for your problem — and where it isn't. The short version: DataFn is a self-hosted, schema-first, offline-capable data layer with built-in capabilities (sharing, audit, soft-delete) and an extensible query language. If you want managed backend-as-a-service (Firebase / Convex / InstantDB), DataFn is the wrong shape. If you want a thin sync layer over your own Postgres with native iOS support, it's the right one.
+
+## When to reach for DataFn
+
+- You own your backend and want to keep owning it (no SaaS lock-in).
+- You need offline-first with multi-device sync and you don't want to write the conflict resolution yourself.
+- You want capabilities (trash, archive, share, audit) as first-class declarations, not bespoke boolean fields.
+- Your client surface includes native iOS/macOS, not just web.
+- You want a schema-first contract where the same definition drives types, validation, sync, and (optionally) ORM tables.
+
+## When DataFn is the wrong fit
+
+- You want a serverless backend you don't manage (use **Convex**, **InstantDB**, **Firebase**).
+- You're only on web and you're happy with TanStack Query + raw fetch.
+- You need full SQL on the client (use **PowerSync** or **ElectricSQL** with a SQLite-shaped client API).
+- You want CRDTs with arbitrary ordering and partial-state replication (use **Automerge**, **Yjs**, or **Liveblocks**).
+- Your data is read-mostly and a static export plus revalidation is enough.
+
+## At a glance
+
+| | DataFn | Replicache | ElectricSQL | PowerSync | RxDB | WatermelonDB | InstantDB | Convex | TinyBase | Drizzle + TanStack Query |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Backend** | Self-hosted (Node or Python) | Self-hosted | Self-hosted | Self-hosted | BYO | BYO | Managed | Managed | None / BYO | Self-hosted |
+| **Offline-first** | Yes | Yes | Yes | Yes | Yes | Yes | Limited | Limited | Yes (in memory) | No (without extra work) |
+| **Native iOS / macOS** | First-class (CoreData) | No | No | Yes (Kotlin/Swift) | Web/RN | RN, native bridges | No | No | Web only | No |
+| **Query language** | DFQL (JSON) | KV scan via JS | SQL | SQL | Mongo-like | Lokijs / custom | InstaQL | Document store | None | SQL |
+| **Schema-first** | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes | Optional | Yes |
+| **Built-in sharing/ACL** | Yes (`shareable` capability) | No | No | No | No | No | Yes | Limited | No | No |
+| **Built-in soft-delete/audit** | Yes (capabilities) | No | No | No | No | No | No | No | No | Manual |
+| **Multi-tenancy primitives** | Yes (namespaces) | No | Manual | Manual | Manual | Manual | Limited | Limited | No | Manual |
+| **REST auto-generation** | Yes (opt-in) | No | No | No | No | No | No | No | No | No |
+| **Pluggable search** | Yes (provider interface) | No | Manual | Manual | Yes (lite) | Yes (lite) | Yes | Yes | No | Manual |
+| **Live updates (WS)** | Yes | Yes (poke) | Yes | Yes | Yes (via plugin) | Yes (via plugin) | Yes | Yes | No | Manual |
+| **Mature LLM tooling** | Yes (llms.txt, MCP) | No | No | No | No | No | No | No | No | No |
+
+A `Yes` in the table means "shipped in the box without writing custom code"; a `Manual` means "possible but you build it".
+
+## Detailed comparisons
+
+### vs Replicache
+
+Replicache is a great choice when you want a thin "client-server sync with a server you control" and you'll build everything else yourself.
+
+- **Schema:** Replicache is schema-less (key/value records keyed by ID + an opaque value). DataFn requires a schema; you get type safety for free, plus capability-driven behaviour.
+- **Query language:** Replicache asks you to write JavaScript scans for every read. DataFn ships DFQL, which is JSON in/JSON out and identical on client and server.
+- **Server work:** Replicache's server is "all yours" — you implement `push` and `pull` from scratch. DataFn ships them.
+- **Sharing/ACL:** Replicache is BYO; DataFn ships `shareable` + per-resource policies.
+- **Native:** Replicache is web-only. DataFn ships an Apple runtime.
+
+If you want full control of the wire protocol and you're going to build sharing yourself anyway, Replicache wins on minimalism. If you want batteries, DataFn wins.
+
+### vs ElectricSQL
+
+ElectricSQL replicates a Postgres shape into a local SQLite. You write SQL on both sides.
+
+- **Mental model:** ElectricSQL is "Postgres on the client". DataFn is "a typed query language with sync, capabilities, and an optional REST surface".
+- **Schema flexibility:** ElectricSQL ties you to a specific Postgres dialect. DataFn abstracts the database so you can run on Postgres, SQLite, MySQL, or D1.
+- **Built-in capabilities:** ElectricSQL doesn't model sharing, soft-delete, or audit. You add columns yourself.
+- **Native:** ElectricSQL has Swift bindings via SQLite; DataFn ships a CoreData-backed runtime that integrates with SwiftUI's observation system.
+- **Migration story:** ElectricSQL relies on Postgres logical replication. DataFn uses a server-side sequence store and incremental cursors.
+
+If your team is deeply invested in SQL on every layer, ElectricSQL fits. If you want a JSON-shaped query language with capabilities, DataFn fits.
+
+### vs PowerSync
+
+PowerSync also replicates Postgres → SQLite, with strong support for native iOS, Android, and React Native.
+
+- **Native support:** PowerSync's native story is strong. DataFn's iOS/macOS story is also strong but is CoreData-based rather than SQLite-based. If your existing iOS app uses CoreData, DataFn fits naturally.
+- **Server topology:** PowerSync runs as a managed service or self-hosted gateway in front of your Postgres. DataFn runs inside your existing HTTP server.
+- **Pricing model:** PowerSync has a paid tier for hosted infrastructure. DataFn is OSS, no hosted offering.
+
+### vs RxDB
+
+RxDB is a TypeScript-only client-side database with optional sync plugins.
+
+- **Server:** RxDB asks you to bring or write a server. DataFn ships one.
+- **Native:** RxDB runs in React Native via a SQLite adapter; DataFn's native runtime is purpose-built for SwiftUI.
+- **Sharing/ACL:** Manual in RxDB; first-class in DataFn.
+- **Query language:** RxDB uses a Mongo-like query language. DataFn uses DFQL — similar shape, but with explicit field-level authz and aggregation primitives.
+
+### vs WatermelonDB
+
+WatermelonDB is the Lego-block local database for React Native, with manual sync.
+
+- **Sync:** WatermelonDB ships a sync API but doesn't ship a server. DataFn ships both.
+- **Web:** WatermelonDB on web is uncommon; DataFn's web story is first-class.
+- **Capabilities:** Manual in WatermelonDB.
+
+### vs InstantDB
+
+InstantDB is a managed backend with a graph-shaped data model.
+
+- **Hosting:** InstantDB is SaaS. DataFn is self-hosted.
+- **Data model:** InstantDB is graph-shaped (triples). DataFn is relational with capabilities.
+- **iOS:** InstantDB is web-first. DataFn ships a native runtime.
+
+### vs Convex
+
+Convex is a managed backend with functions, queries, and real-time subscriptions.
+
+- **Hosting:** Convex is SaaS. DataFn is self-hosted.
+- **Language:** Convex queries are TS functions on the server; DataFn queries are JSON DFQL that run on the client and server.
+- **Mental model:** Convex feels like Firebase rewritten for TypeScript devs. DataFn feels like a schema-first ORM that happens to sync.
+
+### vs TinyBase
+
+TinyBase is a strict client-only reactive state store.
+
+- **Server:** TinyBase has none. DataFn ships one.
+- **Sync:** TinyBase has persistence plugins but no server-coordinated sync. DataFn's sync engine is the point.
+
+### vs Drizzle + TanStack Query
+
+The default React/Vue/Svelte stack: Drizzle on the server, TanStack Query on the client, REST or tRPC in between.
+
+- **Offline:** This stack does not give you offline writes. DataFn does.
+- **Sharing/ACL:** You build it. DataFn ships it.
+- **Native:** Not in scope. DataFn ships an iOS runtime.
+- **DX:** TanStack Query is a great query cache but does not understand your schema. DataFn understands the schema and uses it for sync, validation, and codegen.
+
+Use Drizzle + TanStack Query if you don't need offline and you want the smallest, simplest stack. Use DataFn when you need offline sync, multi-device, native iOS, or capabilities like sharing and audit.
+
+## Migration tips
+
+- **From Replicache** → reuse your existing push/pull endpoints by mounting them at `/replicache/*` and gradually move resources behind `/datafn/*`.
+- **From ElectricSQL** → keep Postgres as your database, swap the client layer in stages, resource by resource.
+- **From TanStack Query** → start with a single resource and migrate incrementally; the DataFn client can co-exist with your existing fetch logic.
+- **From InstantDB / Convex** → expect to redesign the data model; capability-driven schemas are usually a simplification, not a translation.

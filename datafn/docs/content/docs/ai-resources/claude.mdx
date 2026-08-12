@@ -1,0 +1,95 @@
+---
+title: "Claude"
+description: "Wire DataFn into Claude Code and Claude Desktop with project memory, raw-markdown lookups, and MCP."
+audience: guide
+applies_to: both
+---
+
+## Claude Code
+
+Claude Code reads `CLAUDE.md` from the project root on every session start. This file is the primary surface for teaching Claude about your DataFn conventions.
+
+### CLAUDE.md starter
+
+```md
+# Project: <name>
+
+This project uses DataFn as the data layer.
+
+## Architecture
+- Server: TypeScript, mounted on Hono via `@datafn/http-hono`.
+- Database: Postgres via Drizzle.
+- Client: React + `@datafn/client`.
+- Auth: AuthFn provides sessions; the namespaceProvider derives `ns(orgId, userId)`.
+
+## DataFn conventions
+- Schemas live in `shared/schema.ts` and are imported by both server and client.
+- All resource access goes through DFQL. We do not query the database directly outside of migrations.
+- Mutations are wrapped in transactions when more than one record changes.
+- Field-level authorization rules live in `server/authz.ts`.
+- Error envelopes are surfaced to the UI via the `useError` hook.
+
+## When implementing a feature
+1. Add fields to `shared/schema.ts`.
+2. Run `npm --workspace @datafn/cli run generate -- --schema shared/schema.ts`.
+3. Update `server/authz.ts` if the resource is restricted.
+4. Add UI bindings via `client.table(...)`.
+5. Write at least one integration test under `tests/integration/`.
+
+## Docs
+The full DataFn documentation is at https://datafn.21n.co/docs. Raw markdown for any page is at /api/docs/raw/<path>.mdx. For example: https://datafn.21n.co/api/docs/raw/dfql/mutations.mdx
+```
+
+### Skills
+
+For multi-skill projects, drop individual files into `.claude/skills/`:
+
+```
+.claude/
+├── skills/
+│   ├── datafn-schema.md       (schema and capabilities)
+│   ├── datafn-dfql.md         (writing queries and mutations)
+│   ├── datafn-sync.md         (clone/pull/push semantics)
+│   └── datafn-server.md       (authz, plugins, routes)
+```
+
+Each skill is a short Markdown file. Claude Code loads them based on the current task.
+
+## Claude Desktop
+
+Claude Desktop supports MCP servers via `claude_desktop_config.json`:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "datafn": {
+      "command": "node",
+      "args": ["/abs/path/to/datafn-mcp/index.js"]
+    }
+  }
+}
+```
+
+After restart, Claude Desktop exposes the DataFn MCP tools as native skills. See [MCP](/docs/ai-resources/mcp) for the reference server.
+
+## One-click open
+
+The "Open in Claude" button on every documentation page constructs a deep link to `claude.ai/new?q=...` with a prompt that asks Claude to read the current page. No setup required for this — it works in the browser.
+
+## Verifying it works
+
+In Claude Code with a `CLAUDE.md` in place:
+
+> "Add a `dueDate: timestamp` field to the `tasks` resource and update the relevant client UI."
+
+Claude should:
+
+1. Read `shared/schema.ts`.
+2. Add the field with `type: "date"` (DataFn convention).
+3. Re-run codegen.
+4. Update the React/Svelte component without asking what `client.table("tasks")` is.
+
+If Claude reaches for raw SQL or skips DFQL, your `CLAUDE.md` needs to be more explicit about conventions.

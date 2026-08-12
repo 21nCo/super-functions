@@ -1,0 +1,119 @@
+---
+title: "Swift: In-Memory Example"
+description: SearchFnInMemoryExample — runs the in-memory adapter end-to-end.
+---
+
+A self-contained Swift program that exercises every SearchFn client method against `SearchFnMemoryAdapter`. Source:
+
+`searchfn/swift/Examples/InMemoryExample/main.swift`
+
+## Run it
+
+```bash
+swift run --package-path searchfn/swift SearchFnInMemoryExample
+```
+
+Exits cleanly when all operations succeed.
+
+## What it does
+
+```swift
+import SearchFnAdapterContracts
+import SearchFnConvenience
+
+@main
+struct SearchFnInMemoryExample {
+    static func main() async throws {
+        let search = InMemorySearchFn(
+            defaults: SearchFnDefaults(
+                limit: 20,
+                limitPerResource: 10,
+                fuzzy: .enabled,
+                prefix: true
+            )
+        )
+
+        let client = search.client()
+
+        try await client.initialize(
+            SearchFnInitializeParams(
+                resources: [
+                    SearchFnInitializeResourceConfig(name: "tasks",
+                                                    searchFields: ["title", "body"]),
+                    SearchFnInitializeResourceConfig(name: "notes",
+                                                    searchFields: ["body"]),
+                ]
+            )
+        )
+
+        try await client.index(
+            SearchFnIndexParams(
+                resource: "tasks",
+                documents: [
+                    SearchFnDocument(id: "t1",
+                                     fields: ["title": "Hybrid search",
+                                              "body": "Swift local index"]),
+                    SearchFnDocument(id: "t2",
+                                     fields: ["title": "Fix launch checklist",
+                                              "body": "Coordinate docs and release"]),
+                ]
+            )
+        )
+
+        try await client.index(
+            SearchFnIndexParams(
+                resource: "notes",
+                documents: [
+                    SearchFnDocument(id: "n1",
+                                     fields: ["body": "Launch notes for the Swift package"]),
+                ]
+            )
+        )
+
+        _ = try await client.search(
+            SearchFnSearchParams(resource: "tasks", query: "hybrid")
+        )
+
+        _ = try await client.searchAll(
+            SearchFnSearchAllParams(query: "launch",
+                                    resources: ["tasks", "notes"])
+        )
+
+        try await client.remove(resource: "tasks", ids: ["t2"])
+        try await client.clear(resource: "notes")
+        try await client.dispose()
+    }
+}
+```
+
+## What to take away
+
+- `InMemorySearchFn` is the one-liner for the memory adapter.
+- `defaults` is where `limit`, `limitPerResource`, `fuzzy`, and `prefix` live.
+- The example calls every public method on `SearchFnClient`: `initialize`, `index`, `search`, `searchAll`, `remove`, `clear`, `dispose`.
+
+## Modify and run
+
+Drop in your own data:
+
+```swift
+try await client.index(
+    SearchFnIndexParams(
+        resource: "tasks",
+        documents: realData.map { d in
+            SearchFnDocument(id: d.id, fields: ["title": d.title, "body": d.body])
+        }
+    )
+)
+
+let hits = try await client.search(SearchFnSearchParams(resource: "tasks", query: "ranking"))
+print(hits)
+```
+
+For SwiftUI integration, see [SwiftUI binding](/docs/documentation/apple/swiftui).
+
+## See also
+
+- [Swift quickstart](/docs/quickstart/swift)
+- [SQLite example](/docs/examples/swift-sqlite)
+- [Memory adapter](/docs/documentation/apple/memory-adapter)

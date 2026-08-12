@@ -190,11 +190,30 @@ export interface TableSchema {
   constraints?: ConstraintSchema[];
 }
 
+export type DateFieldValueType = 'date' | 'iso-string' | 'epoch-ms';
+
+export type DateFieldStorageType =
+  | 'timestamp'
+  | 'timestamptz'
+  | 'iso-text'
+  | 'epoch-ms-integer'
+  | 'epoch-ms-bigint';
+
 export interface FieldSchema {
-  type: 'string' | 'number' | 'boolean' | 'date' | 'json' | 'bigint';
+  type: 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'json' | 'bigint';
   required?: boolean;
   unique?: boolean;
   defaultValue?: any;
+  /**
+   * Runtime value shape expected by the library for `date`/`datetime` fields.
+   * Defaults to `date` for legacy `type: "date"` schemas.
+   */
+  dateValueType?: DateFieldValueType;
+  /**
+   * Physical value shape used by the adapter/storage layer.
+   * Defaults are derived from `dateValueType`.
+   */
+  dateStorageType?: DateFieldStorageType;
   references?: {
     model: string;
     field: string;
@@ -218,6 +237,13 @@ export interface ConstraintSchema {
 }
 
 export type TableSchemaMap = Record<string, TableSchema>;
+
+export type AdapterSchemaInput =
+  | TableSchemaMap
+  | TableSchema[]
+  | {
+      schemas: TableSchema[];
+    };
 
 export interface ValidationResult {
   valid: boolean;

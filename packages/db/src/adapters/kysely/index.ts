@@ -7,6 +7,7 @@
 
 import type {
   Adapter,
+  AdapterSchemaInput,
   AdapterImplementation,
   CreateParams,
   FindOneParams,
@@ -24,6 +25,7 @@ import type {
 import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError, OperationNotSupportedError } from '../../adapter/errors.js';
 import { createKyselyInternalCrud } from './internal.js';
+import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
 
 export type KyselyDialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -31,6 +33,7 @@ export interface KyselyAdapterConfig {
   db: any; // Kysely instance
   dialect: KyselyDialect;
   schema: Record<string, string>; // model name -> table name
+  adapterSchema?: AdapterSchemaInput;
   schemaVersionsTable?: string; // optional table name for schema versions
   namespace?: any;
   debug?: boolean;
@@ -58,10 +61,14 @@ function applyWhere(qb: any, where: WhereClause[]): any {
 
     switch (operator) {
       case 'eq':
-        builder = builder[method](field, value === null ? 'is' : '=', value);
+        builder = value === null
+          ? builder[method](field, 'is', null)
+          : builder[method](field, '=', value);
         break;
       case 'ne':
-        builder = builder[method](field, value === null ? 'is not' : '!=', value);
+        builder = value === null
+          ? builder[method](field, 'is not', null)
+          : builder[method](field, '!=', value);
         break;
       case 'gt':
         builder = builder[method](field, '>', value);
@@ -405,7 +412,9 @@ export function kyselyAdapter(config: KyselyAdapterConfig): Adapter {
     adapter: createImpl,
   });
 
-  const adapter = factory({});
+  const adapter = factory({
+    schema: normalizeAdapterSchema(config.adapterSchema),
+  });
   const internalCrud = createKyselyInternalCrud(config.db, config.dialect);
   return Object.assign(adapter, { internal: internalCrud });
 }

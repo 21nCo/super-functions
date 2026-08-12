@@ -1,8 +1,8 @@
 import os from 'node:os';
 import path from 'node:path';
 
-import type { BrowserTarget } from '@superfunctions/extfn';
-import type { ExecService } from 'clifn/exec';
+import type { BrowserTarget } from '@extfn/core';
+import type { ExecService } from '@clifn/core/exec';
 
 export interface OpenBrowserOptions {
   exec: ExecService;

@@ -1,0 +1,36 @@
+{
+  "name": "@authfn/docs",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 6005",
+    "build": "vite build",
+    "preview": "vite preview --port 6005",
+    "test": "vitest run --passWithNoTests",
+    "generate:openapi": "node scripts/generate-openapi.mjs",
+    "generate:llms": "node scripts/generate-llms.mjs",
+    "prebuild": "npm run generate:openapi && npm run generate:llms"
+  },
+  "dependencies": {
+    "@21n/fonts": "^1.0.1",
+    "@docsfn/core": "0.0.5",
+    "@docsfn/provider-fs": "0.0.2",
+    "@docsfn/svelte": "0.0.3",
+    "@docsfn/sveltekit": "0.0.2"
+  },
+  "devDependencies": {
+    "@authfn/core": "0.1.1",
+    "@docsfn/cli": "0.0.2",
+    "@superfunctions/db": "0.1.4",
+    "@sveltejs/adapter-auto": "^3.0.0",
+    "@sveltejs/adapter-cloudflare": "^7.0.0",
+    "@sveltejs/kit": "^2.0.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "svelte": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.4.0"
+  }
+}

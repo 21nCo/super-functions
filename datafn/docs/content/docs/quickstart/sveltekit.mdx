@@ -1,0 +1,138 @@
+---
+title: "Quickstart: SvelteKit"
+description: "Full-stack DataFn on SvelteKit with the official adapter."
+audience: guide
+applies_to: both
+---
+
+SvelteKit hosts both the DataFn server (under `/datafn/*` API routes) and the DataFn client (reactive queries in your Svelte components).
+
+## 1. Scaffold
+
+```bash
+npm create svelte@latest my-app && cd my-app
+npm install
+npm install @datafn/server @datafn/core @datafn/client @datafn/svelte
+npm install @superfunctions/db @superfunctions/http-sveltekit
+npm install drizzle-orm better-sqlite3
+```
+
+## 2. Schema
+
+`src/lib/schema.ts`:
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "tasks",
+      version: 1,
+      idPrefix: "tsk",
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "completed", type: "boolean", required: true, default: false },
+      ],
+      indices: { base: ["title", "completed"] },
+    },
+  ],
+});
+```
+
+## 3. Server routes
+
+`src/routes/datafn/[...path]/+server.ts`:
+
+```typescript
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import { createDatafnServer } from "@datafn/server";
+import { drizzleAdapter } from "@superfunctions/db/adapters";
+import { toSveltekit } from "@superfunctions/http-sveltekit";
+import { schema } from "$lib/schema";
+
+const sqlite = new Database("dev.db");
+const db = drizzle(sqlite);
+
+const datafn = await createDatafnServer({
+  schema,
+  db: drizzleAdapter({ db, dialect: "sqlite" }),
+  rest: true,
+  authorize: async () => true,
+});
+
+export const { GET, POST } = toSveltekit(datafn.router);
+```
+
+## 4. Client
+
+`src/lib/client.ts`:
+
+```typescript
+import { createDatafnClient, IndexedDbStorageAdapter } from "@datafn/client";
+import { schema } from "./schema";
+
+export const client = createDatafnClient({
+  schema,
+  clientId: "device-1",
+  storage: new IndexedDbStorageAdapter("my-app-db"),
+  sync: {
+    remote: "/datafn",
+    offlinability: true,
+    ws: true,
+  },
+});
+```
+
+## 5. Component
+
+`src/routes/+page.svelte`:
+
+```svelte
+<script lang="ts">
+  import { client } from "$lib/client";
+  import { observeTable } from "@datafn/svelte";
+
+  const tasks = observeTable(client, "tasks", {
+    filters: { completed: { $eq: false } },
+    sort: ["createdAt:desc"],
+    limit: 20,
+  });
+
+  async function add(title: string) {
+    await client.table("tasks").mutate({
+      operation: "insert",
+      record: { title, completed: false },
+    });
+  }
+
+  let title = "";
+</script>
+
+<form on:submit|preventDefault={() => { add(title); title = ""; }}>
+  <input bind:value={title} placeholder="New task" />
+  <button>Add</button>
+</form>
+
+<ul>
+  {#each $tasks ?? [] as task (task.id)}
+    <li>{task.title}</li>
+  {/each}
+</ul>
+```
+
+## 6. Run
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173), add a task, refresh, and watch it survive — local-first storage at work.
+
+## Where to next
+
+- Add multi-tenancy via [Namespaces](/docs/documentation/namespaces)
+- Pair DataFn with AuthFn: [Recipes: AuthFn integration](/docs/recipes)
+- Deploy: [Production / Deploy → Vercel](/docs/documentation/deploy)

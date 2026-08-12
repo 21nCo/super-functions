@@ -5,22 +5,34 @@ import { fileURLToPath } from 'node:url';
 import { discoverLibraryConfigs } from '../utils/discover-configs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const mockSuperfunctionsPackages = vi.hoisted(() => [
+  {
+    packageName: '@superfunctions/conduct',
+    initFunction: 'createConduct',
+    schemaVersion: 1,
+    libraryNames: ['conduct'],
+  },
+  {
+    packageName: '@superfunctions/authfn',
+    initFunction: 'createAuthFn',
+    schemaVersion: 1,
+    libraryNames: ['authfn'],
+  },
+]);
 
-// Mock detectInstalledLibraries
-vi.mock('../utils/libraries.js', () => ({
-  detectInstalledLibraries: vi.fn(() => [
-    { name: '@superfunctions/conduct', version: '1.0.0' },
-    { name: '@superfunctions/authfn', version: '1.0.0' },
-  ]),
+vi.mock('../utils/discover-packages.js', () => ({
+  discoverSuperfunctionsPackages: vi.fn(() => mockSuperfunctionsPackages),
 }));
 
 describe('discoverLibraryConfigs', () => {
   let testDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Create a temporary test directory
     testDir = path.join(__dirname, `test-temp-${Date.now()}`);
     fs.mkdirSync(testDir, { recursive: true });
+    const { discoverSuperfunctionsPackages } = await import('../utils/discover-packages.js');
+    vi.mocked(discoverSuperfunctionsPackages).mockReturnValue(mockSuperfunctionsPackages);
   });
 
   afterEach(() => {
@@ -158,11 +170,16 @@ describe('discoverLibraryConfigs', () => {
   });
 
   it('should only discover configs for installed libraries', async () => {
-    const { detectInstalledLibraries } = await import('../utils/libraries.js');
+    const { discoverSuperfunctionsPackages } = await import('../utils/discover-packages.js');
     
     // Mock to only have conduct installed
-    vi.mocked(detectInstalledLibraries).mockReturnValue([
-      { name: '@superfunctions/conduct', version: '1.0.0' },
+    vi.mocked(discoverSuperfunctionsPackages).mockReturnValue([
+      {
+        packageName: '@superfunctions/conduct',
+        initFunction: 'createConduct',
+        schemaVersion: 1,
+        libraryNames: ['conduct'],
+      },
     ]);
 
     fs.writeFileSync(
@@ -233,12 +250,22 @@ describe('discoverLibraryConfigs', () => {
   });
 
   it('should handle multiple config files in nested directories', async () => {
-    const { detectInstalledLibraries } = await import('../utils/libraries.js');
+    const { discoverSuperfunctionsPackages } = await import('../utils/discover-packages.js');
     
     // Reset mock to have both libraries
-    vi.mocked(detectInstalledLibraries).mockReturnValue([
-      { name: '@superfunctions/conduct', version: '1.0.0' },
-      { name: '@superfunctions/authfn', version: '1.0.0' },
+    vi.mocked(discoverSuperfunctionsPackages).mockReturnValue([
+      {
+        packageName: '@superfunctions/conduct',
+        initFunction: 'createConduct',
+        schemaVersion: 1,
+        libraryNames: ['conduct'],
+      },
+      {
+        packageName: '@superfunctions/authfn',
+        initFunction: 'createAuthFn',
+        schemaVersion: 1,
+        libraryNames: ['authfn'],
+      },
     ]);
     
     const srcDir = path.join(testDir, 'src', 'config');
@@ -315,11 +342,26 @@ describe('discoverLibraryConfigs', () => {
       'export const config = {};'
     );
     
-    const { detectInstalledLibraries } = await import('../utils/libraries.js');
-    vi.mocked(detectInstalledLibraries).mockReturnValue([
-      { name: '@superfunctions/conduct', version: '1.0.0' },
-      { name: '@superfunctions/authfn', version: '1.0.0' },
-      { name: '@superfunctions/sendfn', version: '1.0.0' },
+    const { discoverSuperfunctionsPackages } = await import('../utils/discover-packages.js');
+    vi.mocked(discoverSuperfunctionsPackages).mockReturnValue([
+      {
+        packageName: '@superfunctions/conduct',
+        initFunction: 'createConduct',
+        schemaVersion: 1,
+        libraryNames: ['conduct'],
+      },
+      {
+        packageName: '@superfunctions/authfn',
+        initFunction: 'createAuthFn',
+        schemaVersion: 1,
+        libraryNames: ['authfn'],
+      },
+      {
+        packageName: '@superfunctions/sendfn',
+        initFunction: 'createSendFn',
+        schemaVersion: 1,
+        libraryNames: ['sendfn'],
+      },
     ]);
     
     const srcDir = path.join(testDir, 'src');

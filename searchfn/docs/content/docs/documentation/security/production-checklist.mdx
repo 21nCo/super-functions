@@ -1,0 +1,92 @@
+---
+title: Production Checklist
+description: Pre-launch audit for a SearchFn deployment.
+---
+
+Run through this before exposing SearchFn to real users.
+
+## Authentication
+
+- [ ] `authorize` callback is wired and rejects anonymous requests by default.
+- [ ] Service accounts use distinct credentials from user sessions.
+- [ ] At least one test asserts that unauthorized requests return `FORBIDDEN`.
+
+## Multi-tenancy (if applicable)
+
+- [ ] Resources include the tenant in the name (or per-tenant adapters are in use).
+- [ ] `authorize` cross-checks the resource against the caller's tenant.
+- [ ] A test asserts cross-tenant resource access is denied.
+
+## Limits
+
+- [ ] `maxPayloadBytes` matches the HTTP framework's body limit.
+- [ ] `maxQueryLength` is set conservatively (`500`–`1000` for most apps).
+- [ ] `maxIndexBatch` is tuned to your backfill plan, not the default.
+- [ ] Rate limiting (in `authorize` or upstream) caps per-user request frequency.
+
+## Adapter
+
+- [ ] Adapter credentials are loaded from a secret manager, not committed.
+- [ ] Backend has its own backup / DR plan (separate from SearchFn).
+- [ ] Postgres: migration SQL has been run; tables and indexes exist.
+- [ ] Meilisearch / Elasticsearch / OpenSearch: indices are created with correct settings.
+- [ ] `dispose()` is called on shutdown to release connections.
+
+## Logging
+
+- [ ] Structured logger is wired (`info`, `warn`, `error`, `debug`).
+- [ ] Logs are forwarded to a central system (Datadog, ELK, Splunk).
+- [ ] Logs are tested for credential leakage (search for known secrets).
+- [ ] `authorization.denied` events are flagged to a security alert channel.
+
+## Observability
+
+- [ ] `GET /searchfn/status` is wired as a load-balancer health check.
+- [ ] `durationMs` percentiles are tracked (p50, p95, p99).
+- [ ] `INTERNAL` error rate has an alert.
+- [ ] Backend (Postgres, Meili, ES) has its own monitoring.
+
+## Network
+
+- [ ] TLS is enforced (no plaintext HTTP).
+- [ ] CORS is configured per origin allowlist, not wildcard.
+- [ ] Internal-only services (admin search) are firewalled separately.
+- [ ] WebSocket / streaming endpoints (if any) honor the same `authorize` rules.
+
+## Backup and recovery
+
+- [ ] Postgres / external backend has a tested restore procedure.
+- [ ] Snapshot mechanism (if used) is included in the backup rotation.
+- [ ] Reindex from primary store is rehearsed end-to-end.
+- [ ] Recovery time objective (RTO) is documented and matches the rehearsal.
+
+## Index ownership
+
+- [ ] If client-side IndexedDB is in use, schema-hash bumps clear stale indexes.
+- [ ] DataFn provider's `resourceFields` excludes sensitive fields (`passwordHash`, etc.).
+- [ ] Re-indexing tooling is documented (manual runbook + scripts).
+
+## Testing
+
+- [ ] Authorization tests cover happy path + denial path per action.
+- [ ] Multi-tenant tests cover same-tenant pass + cross-tenant fail.
+- [ ] Relevance tests exist and run in CI.
+- [ ] Load test exists at expected p99 traffic.
+
+## Documentation
+
+- [ ] Internal runbook for backfill, reindex, snapshot, restore.
+- [ ] On-call doc covers `LIMIT_EXCEEDED`, `INTERNAL`, `FORBIDDEN` first-response.
+- [ ] Schema / `resourceFields` change procedure is documented.
+
+## Operational
+
+- [ ] CI fails on schema changes that haven't been reviewed by the team.
+- [ ] Deploy procedure (server + adapter + secrets) is automated.
+- [ ] Rollback procedure is documented and tested.
+
+## See also
+
+- [Request authz](/docs/documentation/security/request-authz)
+- [Multi-tenant isolation](/docs/documentation/security/multi-tenant-isolation)
+- [Deploy](/docs/documentation/deploy/index)

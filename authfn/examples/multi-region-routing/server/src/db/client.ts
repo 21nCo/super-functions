@@ -1,5 +1,5 @@
 import type { Adapter } from '@superfunctions/db';
-import { drizzleAdapter } from '@superfunctions/db/adapters';
+import { drizzleAdapter } from '@superfunctions/db/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as authSchema from './generated/authfn-schema.js';

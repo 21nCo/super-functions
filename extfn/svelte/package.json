@@ -1,5 +1,5 @@
 {
-  "name": "@superfunctions/extfn-svelte",
+  "name": "@extfn/svelte",
   "version": "0.1.0",
   "description": "Svelte helpers for extfn page and content surfaces",
   "type": "module",
@@ -34,7 +34,7 @@
     "svelte": "^5.0.0"
   },
   "dependencies": {
-    "@superfunctions/extfn": "*"
+    "@extfn/core": "0.1.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.4",

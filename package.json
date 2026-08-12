@@ -8,8 +8,10 @@
     "botfn/*",
     "hostfn/*",
     "authfn/*",
+    "authfn/adapters/*",
     "authfn/examples/*",
     "authfn/examples/*/*",
+    "apifn/*",
     "extfn/*",
     "extfn/examples/*",
     "datafn/client",
@@ -24,7 +26,8 @@
     "clifn/*",
     "packages/*",
     "filefn/*",
-    "filefn/examples/full-demo/*"
+    "filefn/examples/full-demo/*",
+    "filefn/examples/production/*"
   ],
   "scripts": {
     "build": "turbo run build",

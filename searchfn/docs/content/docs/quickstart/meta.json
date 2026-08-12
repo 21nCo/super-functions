@@ -1,0 +1,17 @@
+{
+  "title": "Quickstart",
+  "description": "Get SearchFn running in your stack",
+  "pages": [
+    "index",
+    "hono",
+    "express",
+    "fastify",
+    "bun",
+    "sveltekit",
+    "nextjs",
+    "fastapi",
+    "starlette",
+    "flask",
+    "swift"
+  ]
+}

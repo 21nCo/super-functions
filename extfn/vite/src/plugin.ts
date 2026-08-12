@@ -5,8 +5,8 @@ import type {
   BrowserTarget,
   ExtensionConfig,
   ResolvedExtensionConfig,
-} from '@superfunctions/extfn';
-import { ExtfnError } from '@superfunctions/extfn';
+} from '@extfn/core';
+import { ExtfnError } from '@extfn/core';
 import type {
   Plugin,
   ResolvedConfig as ViteResolvedConfig,
@@ -27,6 +27,7 @@ import {
   formatReloadDecisionLog,
 } from './dev/reloadPolicy.js';
 import { buildManifest, createTargetBuildOutputs } from './manifest/buildManifest.js';
+import { loadConfigModule } from './loadConfigModule.js';
 import { loadExtensionConfig } from './loadExtensionConfig.js';
 
 export interface ExtfnViteOptions {
@@ -44,9 +45,15 @@ export async function prepareResolvedExtensionConfig(
 ): Promise<LoadedResolvedConfig> {
   if (options.extension) {
     const configPath = options.configPath ?? path.resolve('extfn.config.ts');
-    const { resolveExtensionConfig } = await import('@superfunctions/extfn');
+    const { resolveExtensionConfig } = await import('@extfn/core');
     const resolved = await resolveExtensionConfig(options.extension, {
       configPath,
+      loadModule: async (modulePath) =>
+        (
+          await loadConfigModule(modulePath, {
+            resolveFunctions: false,
+          })
+        ).module,
     });
     return {
       configPath: await realpathIfExists(configPath),

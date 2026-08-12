@@ -1,0 +1,32 @@
+info:
+  name: sample mutation
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/datafn/mutation
+  body:
+    type: json
+    data: |-
+      {
+        "resource": "todos",
+        "version": 1,
+        "operation": "insert",
+        "record": {
+          "text": "todo one",
+          "completed": false,
+          "createdAt": "2026-01-26T17:16:08.993Z",
+          "updatedAt": "2026-01-26T17:16:08.993Z"
+        },
+        "id": "1884fb3b-0c28-4fd5-aa6a-fce77b8385b1",
+        "clientId": "client-8tq7g1ehm9n",
+        "mutationId": "mut-1769447768995-yaiu59kpy"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

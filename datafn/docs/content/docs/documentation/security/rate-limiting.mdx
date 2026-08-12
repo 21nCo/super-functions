@@ -1,0 +1,142 @@
+---
+title: "Rate Limiting"
+description: "Per-endpoint rate limits backed by Redis or memory."
+audience: guide
+applies_to: server
+---
+
+DataFn ships rate limiting as the first defense layer. It runs **before** body parsing and authorization, so floods are dropped cheaply.
+
+## Quick start
+
+```typescript
+const datafn = await createDatafnServer({
+  schema, db,
+  rateLimit: {
+    enabled: true,
+    maxRequests: 100,
+    windowSeconds: 60,
+  },
+});
+```
+
+This applies a 100-req/min cap per caller (by source IP by default) across every endpoint.
+
+## Per-endpoint caps
+
+Tighter limits on writes; looser on reads:
+
+```typescript
+rateLimit: {
+  enabled: true,
+  maxRequests: 200,
+  windowSeconds: 60,
+  endpoints: {
+    push:  { maxRequests: 50,  windowSeconds: 60 },
+    mutation: { maxRequests: 50, windowSeconds: 60 },
+    transact: { maxRequests: 30, windowSeconds: 60 },
+    query: { maxRequests: 200, windowSeconds: 60 },
+    pull:  { maxRequests: 300, windowSeconds: 60 },
+    clone: { maxRequests: 5,   windowSeconds: 300 }, // 5 per 5min — clone is heavy
+  },
+},
+```
+
+Endpoint keys: `status`, `query`, `mutation`, `transact`, `seed`, `clone`, `pull`, `push`, `reconcile`, `search`. Missing entries fall back to the top-level `maxRequests` / `windowSeconds`.
+
+## Choosing the rate key
+
+The default key is the source IP. For authenticated apps you almost always want the user id:
+
+```typescript
+rateLimit: {
+  enabled: true,
+  maxRequests: 100,
+  windowSeconds: 60,
+  keyExtractor: (ctx) => ctx.session?.userId ?? ctx.req.ip ?? "anonymous",
+},
+```
+
+For multi-tenant SaaS, the user-id key correctly isolates traffic between tenants. For public APIs, IP is the right default.
+
+## Backends
+
+| Backend | When |
+| --- | --- |
+| `InMemoryRateLimiter` (default) | Single-instance or development. Counts live in process memory. |
+| `RedisRateLimiter` | Multi-instance production. Counts live in Redis. Uses Lua scripts for atomic INCR+EXPIRE when available. |
+
+To enable Redis:
+
+```typescript
+import { createDatafnServer, RedisRateLimiter } from "@datafn/server";
+import IORedis from "ioredis";
+
+const redis = new IORedis(process.env.REDIS_URL!);
+
+const datafn = await createDatafnServer({
+  schema, db,
+  rateLimit: { enabled: true, maxRequests: 100, windowSeconds: 60 },
+  redis,
+});
+```
+
+When `redis` is configured, DataFn picks `RedisRateLimiter` automatically.
+
+## Response on rejection
+
+A rate-limited request returns `429 Too Many Requests` at the HTTP layer with a `Retry-After` header. There is no envelope — this is transport-level.
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 47
+Content-Type: text/plain
+
+Rate limit exceeded
+```
+
+Client behavior:
+
+- The DataFn client automatically retries with exponential backoff plus jitter, honoring `Retry-After`.
+- The DataFn Apple runtime does the same.
+
+## Bursting
+
+The window is a fixed sliding window in the default implementation. There is no burst credit. If you need burst-tolerant rates (e.g. allow 1000 in the first second, then throttle), use a Redis-backed token bucket via a custom rate limiter:
+
+```typescript
+import type { RateLimiter } from "@datafn/server";
+
+class TokenBucketLimiter implements RateLimiter { /* ... */ }
+
+const datafn = await createDatafnServer({
+  schema, db,
+  rateLimiter: new TokenBucketLimiter({ ... }),
+});
+```
+
+(The injectable `rateLimiter` option is forward-looking; until it ships, wrap the request with your own middleware before the DataFn router.)
+
+## What's not rate-limited
+
+- WebSocket cursor messages — those go through the WS connection limit (`ws.maxConnections`, `ws.maxConnectionsPerNamespace`) rather than per-message rate limits.
+- Internal subroutines (validation, namespacing) — they execute only after the rate check passes.
+
+## Monitoring
+
+The `observability.onTiming` callback fires for every request, including rate-limited ones. A spike in `httpStatus === 429` is the canonical signal of rate-limit pressure:
+
+```typescript
+observability: {
+  timing: true,
+  onTiming: (event) => {
+    if (event.httpStatus === 429) metrics.increment("rate_limited", { endpoint: event.endpoint });
+  },
+},
+```
+
+## See also
+
+- [Layered model](/docs/documentation/security/layered-model)
+- [Observability](/docs/documentation/server/observability)
+- [Server Setup → rateLimit](/docs/documentation/server/rate-limiting)

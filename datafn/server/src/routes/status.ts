@@ -3,7 +3,7 @@
  * Returns server metadata, capabilities, limits, and schema hash
  */
 
-import type { DatafnSchema } from "../core-types.js";
+import type { DatafnSchema } from "@datafn/core/types";
 import { normalizeDfql } from "@datafn/core";
 import { okResponse, errorResponse } from "../http/errors.js";
 import { createHash } from "crypto";

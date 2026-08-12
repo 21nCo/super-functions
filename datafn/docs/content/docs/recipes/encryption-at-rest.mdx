@@ -1,0 +1,140 @@
+---
+title: "Recipe: Encryption at Rest"
+description: "Field-level encryption via plugins, with the server holding only ciphertext."
+audience: guide
+applies_to: both
+---
+
+DataFn does not encrypt fields by default. The database handles disk-level encryption (Postgres encrypted volumes, SQLite encryption extensions), but values are stored plaintext in the row. For sensitive fields you can layer **field-level encryption** via a plugin, so the server never sees plaintext.
+
+## When to use this
+
+- **PII**: SSN, payment details, medical records.
+- **End-to-end encryption** between users: only the recipients hold the key.
+- **Defense-in-depth**: rate-limit blast radius if the database is exfiltrated.
+
+When **not** to use this: if your server needs to filter or sort on the field. Encrypted fields are opaque — you can fetch them but you can't query them.
+
+## Pattern: client-side WebCrypto
+
+The simplest case is encrypting on the client before the mutation hits the wire.
+
+```typescript
+// shared/encryption.ts
+const ALG = { name: "AES-GCM", length: 256 };
+
+export async function encrypt(plaintext: string, key: CryptoKey): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder().encode(plaintext);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc);
+  return btoa(JSON.stringify({ iv: Array.from(iv), ct: Array.from(new Uint8Array(ct)) }));
+}
+
+export async function decrypt(envelope: string, key: CryptoKey): Promise<string> {
+  const { iv, ct } = JSON.parse(atob(envelope));
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: new Uint8Array(iv) },
+    key,
+    new Uint8Array(ct).buffer,
+  );
+  return new TextDecoder().decode(pt);
+}
+```
+
+Wire it as a client plugin:
+
+```typescript
+import type { DatafnPlugin } from "@datafn/core";
+
+const encryptedFields = new Set(["ssn", "creditCard"]);
+
+export function encryptionPlugin(key: CryptoKey): DatafnPlugin {
+  return {
+    name: "encryption-at-rest",
+    hooks: [
+      {
+        event: "beforeMutation",
+        handler: async (ctx) => {
+          const mut = ctx.payload as DfqlMutation;
+          if (!mut.record) return;
+          const record = { ...mut.record };
+          for (const field of Object.keys(record)) {
+            if (encryptedFields.has(field) && typeof record[field] === "string") {
+              record[field] = await encrypt(record[field] as string, key);
+            }
+          }
+          return { ...mut, record };
+        },
+      },
+      {
+        event: "afterQuery",
+        handler: async (ctx) => {
+          const result = ctx.payload as { data: any[] };
+          return {
+            ...result,
+            data: await Promise.all(
+              result.data.map(async (row) => {
+                const out = { ...row };
+                for (const field of Object.keys(out)) {
+                  if (encryptedFields.has(field) && typeof out[field] === "string") {
+                    out[field] = await decrypt(out[field] as string, key);
+                  }
+                }
+                return out;
+              }),
+            ),
+          };
+        },
+      },
+    ],
+  };
+}
+```
+
+Register on the client:
+
+```typescript
+const userKey = await deriveUserKey(); // your key management
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  plugins: [encryptionPlugin(userKey)],
+});
+```
+
+Now `ssn` and `creditCard` travel encrypted; the server stores opaque base64 blobs.
+
+## Pattern: server-managed encryption
+
+When the **server** is the trust boundary (PCI-style), keep the key in the server and decrypt only at egress. Mirror the same plugin on the server with a server-held key:
+
+```typescript
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  plugins: [encryptionPlugin(SERVER_KEY)], // same plugin, server-side
+});
+```
+
+This puts the server in the trust path. Use it when the client can't be trusted to hold keys (a kiosk app, an automated agent).
+
+## Key management
+
+Encryption is the easy part. Keys are the hard part. A few principles:
+
+- **Never store the key in the DataFn schema.** Per-user keys live in your auth system; per-org keys live in a KMS (AWS KMS, GCP KMS, HashiCorp Vault).
+- **Rotate annually.** Store a version tag alongside the ciphertext (`{ v: 2, iv, ct }`) so you can decrypt with the right key during transitions.
+- **Lose-the-key story.** Either: the user has the only copy (lost = lost forever, surface this to the user) or you escrow recovery (typically via a separate "recovery key" that lives elsewhere).
+- **Backups inherit the model.** If keys aren't in the backup, the backup is useless without external key restoration — which is usually the right answer for high-sensitivity fields.
+
+## Limitations
+
+- **Can't filter or sort** on encrypted fields. Use a separate hashed index column if you need lookup-by-encrypted-value (e.g. `ssnHash = sha256(ssn)` for "does a record exist with this SSN" without exposing the value).
+- **Search doesn't work** on encrypted fields. Decrypt on the client side, build a local index.
+- **Sync overhead.** Every encrypted field is 30–50% larger than the plaintext due to base64.
+
+## See also
+
+- [Custom Plugins](/docs/documentation/plugins/custom-plugins)
+- [Security overview](/docs/documentation/security)

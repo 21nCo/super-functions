@@ -1,0 +1,115 @@
+---
+title: Events
+description: Server log events and Swift diagnostics events.
+---
+
+SearchFn emits structured events from two surfaces: the TypeScript server's `logger`, and the Swift `SearchFnDiagnosticsSink`. Both are opt-in and field-redacted by default.
+
+## TypeScript server events
+
+Pass a `logger` to `createSearchFnServer`:
+
+```typescript
+const sf = await createSearchFnServer({
+  adapter,
+  logger: {
+    info: (msg, ctx) => console.log(JSON.stringify({ level: "info", msg, ...ctx })),
+    warn: (msg, ctx) => console.warn(JSON.stringify({ level: "warn", msg, ...ctx })),
+    error: (msg, ctx) => console.error(JSON.stringify({ level: "error", msg, ...ctx })),
+    debug: (msg, ctx) => console.debug(JSON.stringify({ level: "debug", msg, ...ctx })),
+  },
+});
+```
+
+### Event names
+
+| Event | Emitted when | Level |
+| --- | --- | --- |
+| `request.start` | Inbound request enters the router | info |
+| `request.end` | Request completes successfully | info |
+| `request.error` | Request fails (any error code) | error |
+| `authorization.denied` | `authorize` returned `false` | warn |
+| `authorization.error` | `authorize` threw | error |
+| `server.close` | `close()` was called on the server | info |
+
+### Context fields
+
+Every event carries:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `operation` | `string` | `status`, `index`, `search`, `searchAll`, `remove`, `clear` |
+| `adapter` | `string` | Adapter name (`memory`, `postgres`, `meilisearch`, etc.) |
+| `durationMs` | `number` | Operation duration |
+| `status` | `number` | HTTP status code |
+| `success` | `boolean` | True for `request.end`, false for `request.error` |
+| `errorCode` | `string?` | Set on failures |
+| `requestId` | `string?` | Inherited from inbound request headers |
+
+### Secret redaction
+
+These keys are recursively redacted before being passed to the logger:
+
+`apiKey`, `password`, `secret`, `token`, `authorization`, `connectionString`
+
+This applies to the payload context that's attached to events; the logger never sees raw credentials.
+
+## Swift diagnostics events
+
+```swift
+let sink = SearchFnDiagnosticsSink { event in
+    switch event {
+    case .client(let group, let detail):
+        log("client.\(group):", detail)
+    case .adapter(let group, let detail):
+        log("adapter.\(group):", detail)
+    case .persistence(let group, let detail):
+        log("persistence.\(group):", detail)
+    }
+}
+
+let client = search.client(configuration: SearchFnClientConfiguration(diagnostics: sink))
+```
+
+### Groups
+
+**Client groups:**
+`initialize`, `index`, `search`, `searchAll`, `searchAll.fallback`, `remove`, `clear`, `dispose`
+
+**Adapter groups:**
+`initialize`, `index`, `search`, `searchAll`, `remove`, `clear`, `dispose`
+
+**Persistence groups:**
+`open`, `reopen`, `close`
+
+### What's in a diagnostics event
+
+Counts and metadata: resource names, query length, document count per index batch, index key, deterministic directory name, schema version. Raw query strings and indexed field values are **not** included by design — diagnostics are safe to log.
+
+## Aggregating into observability tools
+
+### Datadog
+
+```typescript
+const dd = new TracingApi();
+
+const sf = await createSearchFnServer({
+  adapter,
+  logger: {
+    info: (msg, ctx) => dd.send({ message: msg, ...ctx, service: "searchfn" }),
+    warn: (msg, ctx) => dd.send({ message: msg, level: "warn", ...ctx, service: "searchfn" }),
+    error: (msg, ctx) => dd.send({ message: msg, level: "error", ...ctx, service: "searchfn" }),
+    debug: () => {},
+  },
+});
+```
+
+### OpenTelemetry
+
+Wrap each handler to start a span; emit `searchfn` span attributes from the event context fields. Search latency goes on `durationMs`; status code on `http.status_code`.
+
+## See also
+
+- [Server reference](/docs/reference/server)
+- [Errors](/docs/reference/errors)
+- [Observability](/docs/operations/observability)

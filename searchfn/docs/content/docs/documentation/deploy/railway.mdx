@@ -1,0 +1,90 @@
+---
+title: "Deploy: Railway"
+description: SearchFn on Railway with Railway Postgres or external Meilisearch.
+---
+
+Railway's templated Postgres + auto-deploy fit SearchFn well.
+
+## Provisioning
+
+1. Create a new Railway project.
+2. Add a **Postgres** plugin. Railway sets `DATABASE_URL` automatically.
+3. Add a **Node** service. Point it at your repo's `searchfn-server` directory.
+
+## Server code
+
+```typescript
+import { createServer } from "node:http";
+import { createSearchFnServer } from "@searchfn/server";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+
+const sf = await createSearchFnServer({
+  adapter: new PostgresAdapter({
+    connectionString: process.env.DATABASE_URL!,
+  }),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [{ name: "articles", searchFields: ["title", "body"] }],
+});
+
+const httpServer = createServer(async (req, res) => {
+  if (!req.url?.startsWith("/searchfn/")) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const body = Buffer.concat(chunks).toString("utf8");
+
+  const response = await sf.router.handle({
+    method: req.method ?? "GET",
+    url: `http://${req.headers.host}${req.url}`,
+    headers: new Headers(req.headers as Record<string, string>),
+    body: body || undefined,
+  });
+
+  res.writeHead(response.status, Object.fromEntries(response.headers));
+  res.end(await response.text());
+});
+
+httpServer.listen(parseInt(process.env.PORT ?? "8080"));
+```
+
+## Migrations
+
+Run the Postgres migration on first deploy:
+
+```bash
+railway run npx @searchfn/adapter-postgres migrate
+```
+
+Or programmatically at app start (idempotent):
+
+```typescript
+import { getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
+import postgres from "postgres";
+
+const sql = postgres(process.env.DATABASE_URL!);
+await sql.unsafe(getPostgresMigrationSQL());
+```
+
+## Meilisearch on Railway
+
+Railway has a one-click Meilisearch template. After deploying it:
+
+- `MEILI_HOST` and `MEILI_MASTER_KEY` are exposed to the SearchFn service via Railway's internal variable wiring.
+- Use `MeilisearchAdapter` instead of `PostgresAdapter`.
+
+## Health check
+
+In the Railway service settings, set the health check path to `/searchfn/status`. Railway auto-restarts unhealthy instances.
+
+## See also
+
+- [Postgres adapter](/docs/reference/adapters/postgres)
+- [Meilisearch adapter](/docs/reference/adapters/meilisearch)
+- [Production checklist](/docs/documentation/security/production-checklist)

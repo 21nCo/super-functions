@@ -46,6 +46,109 @@ describe('ports', () => {
     expect(closed).toEqual(['client-closed']);
   });
 
+  it('delivers client messages to server-side onMessage listeners', async () => {
+    const serverReceived: unknown[] = [];
+    const broker = createPortBroker({
+      address: {
+        context: 'popup',
+        surfaceId: 'popup',
+      },
+      handlers: [
+        {
+          channel: 'flux',
+          onConnect(_runtime, port) {
+            port.onMessage(async (payload) => {
+              serverReceived.push(payload);
+            });
+          },
+        },
+      ],
+    });
+
+    const port = await broker.client.open('flux');
+    await port.send({ method: 'start' });
+    await port.send({ method: 'status' });
+
+    expect(serverReceived).toEqual([{ method: 'start' }, { method: 'status' }]);
+  });
+
+  it('replaces server-side listeners when the background context resumes', async () => {
+    const serverReceived: Array<{ generation: number; payload: unknown }> = [];
+    let generation = 0;
+    const broker = createPortBroker({
+      address: {
+        context: 'popup',
+        surfaceId: 'popup',
+      },
+      handlers: [
+        {
+          channel: 'flux',
+          onConnect(_runtime, port) {
+            generation += 1;
+            const listenerGeneration = generation;
+            port.onMessage(async (payload) => {
+              serverReceived.push({
+                generation: listenerGeneration,
+                payload,
+              });
+            });
+          },
+        },
+      ],
+    });
+
+    const port = await broker.client.open('flux', undefined, {
+      reconnect: 'background-resume',
+    });
+    await port.send({ phase: 'before' });
+    await broker.suspendBackground();
+    await broker.resumeBackground();
+    await port.send({ phase: 'after' });
+
+    expect(generation).toBe(2);
+    expect(serverReceived).toEqual([
+      { generation: 1, payload: { phase: 'before' } },
+      { generation: 2, payload: { phase: 'after' } },
+    ]);
+  });
+
+  it('replaces server close listeners while preserving client listeners on resume', async () => {
+    const closed: string[] = [];
+    let generation = 0;
+    const broker = createPortBroker({
+      address: {
+        context: 'popup',
+        surfaceId: 'popup',
+      },
+      handlers: [
+        {
+          channel: 'flux',
+          onConnect(_runtime, port) {
+            generation += 1;
+            const listenerGeneration = generation;
+            port.onClose(async () => {
+              closed.push(`server-${listenerGeneration}`);
+            });
+          },
+        },
+      ],
+    });
+
+    const port = await broker.client.open('flux', undefined, {
+      reconnect: 'background-resume',
+    });
+    port.onClose(async () => {
+      closed.push('client');
+    });
+
+    await broker.suspendBackground();
+    await broker.resumeBackground();
+    await port.close();
+
+    expect(generation).toBe(2);
+    expect(closed).toEqual(['client', 'server-2']);
+  });
+
   it('rejects unknown channels', async () => {
     const broker = createPortBroker({
       address: {

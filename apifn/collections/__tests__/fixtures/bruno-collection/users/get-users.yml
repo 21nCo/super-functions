@@ -1,0 +1,8 @@
+info:
+  name: Get Users
+  type: http
+http:
+  method: GET
+  url: '{{baseUrl}}/users'
+settings:
+  timeout: 5000

@@ -1,0 +1,134 @@
+---
+title: Multi-Tenant Isolation
+description: Stop tenants from leaking into each other's search results.
+---
+
+Multi-tenant search is one of the easiest places to ship a data leak. SearchFn's defense isn't a single config — it's a discipline. Pick the right pattern, then enforce it everywhere.
+
+## Threat: data leakage across tenants
+
+If tenant A and tenant B share an index, and you filter results in application code after a query returns, the existence of matches across tenants is observable through scoring artifacts (matched documents per query, IDF changes, etc.). A malicious tenant can probe.
+
+## Correct: resource-name isolation
+
+Encode tenant into the resource name itself:
+
+```typescript
+// Tenant A's resource
+await adapter.index({ resource: "articles:tenant-a", documents: [...] });
+
+// Tenant B's resource (independent)
+await adapter.index({ resource: "articles:tenant-b", documents: [...] });
+
+// Queries are tenant-scoped
+await adapter.search({ resource: "articles:tenant-a", query });
+```
+
+Each resource has its own vocabulary, IDF, posting lists. A query against `articles:tenant-a` cannot return anything from `articles:tenant-b`.
+
+## Correct: per-tenant adapter
+
+For strict isolation (regulated industries, multi-region compliance):
+
+```typescript
+const tenantAdapters = new Map<string, SearchAdapter>();
+
+function getAdapter(tenantId: string) {
+  if (!tenantAdapters.has(tenantId)) {
+    tenantAdapters.set(tenantId, new PostgresAdapter({
+      connectionString: tenantConnectionStrings[tenantId],
+    }));
+  }
+  return tenantAdapters.get(tenantId)!;
+}
+```
+
+Each tenant gets its own physical adapter (its own Postgres database, Meilisearch instance, etc.). Memory and connection cost scale linearly with tenants.
+
+## Wrong: query-time filtering
+
+Don't do this:
+
+```typescript
+// WRONG
+const allIds = await client.search({ resource: "articles", query });
+const myTenantIds = allIds.filter((id) => isMyTenant(id));
+return myTenantIds;
+```
+
+The query touched documents from other tenants. The scoring, IDF, and term frequencies all included cross-tenant data. The fact that you discard the results doesn't undo that.
+
+## Authorize as the enforcement layer
+
+Even with resource-name isolation, the `authorize` callback must cross-check the resource against the caller's tenant:
+
+```typescript
+async function authorize(ctx, action, payload) {
+  const session = await getSession(ctx.request);
+  if (!session) return false;
+
+  const resources = collectResources(payload);
+  return resources.every((r) => resourceBelongsToTenant(r, session.user.tenantId));
+}
+
+function collectResources(payload: any): string[] {
+  if (payload.resource) return [payload.resource];
+  if (payload.resources) return payload.resources;
+  return [];
+}
+
+function resourceBelongsToTenant(resource: string, tenantId: string): boolean {
+  const parts = resource.split(":");
+  return parts.length === 2 && parts[1] === tenantId;
+}
+```
+
+A malicious tenant who tries `resource: "articles:other-tenant"` gets `FORBIDDEN`.
+
+## Logging
+
+Every cross-tenant attempt is a potential incident. Log them:
+
+```typescript
+logger: {
+  warn: (msg, ctx) => {
+    if (msg === "authorization.denied" && ctx.crossTenant) {
+      pagerduty.send({
+        severity: "high",
+        title: "Cross-tenant search attempt",
+        ...ctx,
+      });
+    }
+  },
+}
+```
+
+## Backend-specific notes
+
+### Postgres
+
+`PostgresAdapter` writes resources to separate tables (`_searchfn_articles_tenant_a`, `_searchfn_articles_tenant_b`). Row-level security isn't needed — the rows are physically separate.
+
+### Meilisearch
+
+Each resource becomes a Meili index. Indices are independent; an API key can be scoped to specific indices via Meili's `actions` system.
+
+### Elasticsearch / OpenSearch
+
+Each resource becomes an ES index. Use ES's [API key with index-scoped privileges](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html) for defense-in-depth.
+
+### IndexedDB
+
+Per-user isolation in the browser is implicit (different users = different browsers). But if multiple tenants share a device (kiosk, public terminal), use a per-tenant `dbName`.
+
+## Audit before launch
+
+- Search for `payload.resource` and `payload.resources` references in your `authorize` — make sure they're inspected.
+- Try a manual cross-tenant request in staging and confirm it returns `FORBIDDEN`.
+- Confirm the test catches a regression where someone removes the `authorize` check.
+
+## See also
+
+- [Multi-tenant search recipe](/docs/recipes/multi-tenant)
+- [Request authz](/docs/documentation/security/request-authz)
+- [Production checklist](/docs/documentation/security/production-checklist)

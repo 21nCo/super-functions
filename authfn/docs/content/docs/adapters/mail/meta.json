@@ -1,0 +1,4 @@
+{
+  "title": "Mail",
+  "pages": ["index", "resend", "postmark", "sendgrid", "ses", "custom"]
+}

@@ -1,0 +1,150 @@
+---
+title: Backfill From An Existing Database
+description: Populate SearchFn from Postgres, MySQL, or Mongo without re-fetching everything twice.
+---
+
+When you bolt SearchFn onto an existing app, the initial population can be the longest job in your bootstrap. A few patterns to do it right.
+
+## Pattern 1 — streaming cursor
+
+For Postgres / MySQL:
+
+```typescript
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+
+const sql = postgres(process.env.DB_URL!);
+const adapter = new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! });
+
+const cursor = sql`SELECT id, title, body FROM articles`.cursor(500);
+
+for await (const batch of cursor) {
+  await adapter.index({
+    resource: "articles",
+    documents: batch.map((row) => ({
+      id: row.id,
+      fields: { title: row.title, body: row.body },
+    })),
+  });
+  console.log("indexed", batch.length);
+}
+```
+
+Postgres's server-side cursor streams in 500-row batches; SearchFn indexes them in the same loop. Memory usage stays bounded.
+
+## Pattern 2 — keyset pagination
+
+For ORMs without cursor support:
+
+```typescript
+let lastId = "";
+while (true) {
+  const batch = await db.articles.findMany({
+    where: { id: { gt: lastId } },
+    orderBy: { id: "asc" },
+    take: 500,
+  });
+  if (batch.length === 0) break;
+
+  await adapter.index({
+    resource: "articles",
+    documents: batch.map((row) => ({
+      id: row.id,
+      fields: { title: row.title, body: row.body },
+    })),
+  });
+  lastId = batch[batch.length - 1].id;
+  console.log("indexed up to", lastId);
+}
+```
+
+## Pattern 3 — parallel workers
+
+For very large datasets, partition the ID space and run workers in parallel:
+
+```typescript
+const ranges = [
+  { lo: "a", hi: "h" },
+  { lo: "h", hi: "p" },
+  { lo: "p", hi: "z" },
+];
+
+await Promise.all(
+  ranges.map((range) => backfillRange(range.lo, range.hi))
+);
+```
+
+Two things to remember:
+
+- **Don't exceed your DB's max connections.** Each worker holds an open cursor.
+- **Don't exceed the adapter's `maxBatchSize`.** Default 10_000.
+
+## Resume on crash
+
+Track the last ID committed so a restart picks up where it left off:
+
+```typescript
+let lastId = await loadCheckpoint();
+// ... loop ...
+await saveCheckpoint(lastId);
+```
+
+For a multi-day backfill on a billion-row table, this is essential.
+
+## Mongo
+
+```typescript
+const cursor = collection.find({}).batchSize(500);
+
+let buffer: any[] = [];
+for await (const doc of cursor) {
+  buffer.push(doc);
+  if (buffer.length >= 500) {
+    await flushBatch(buffer);
+    buffer = [];
+  }
+}
+if (buffer.length > 0) await flushBatch(buffer);
+
+async function flushBatch(docs: any[]) {
+  await adapter.index({
+    resource: "items",
+    documents: docs.map((d) => ({
+      id: d._id.toString(),
+      fields: { title: d.title, body: d.body },
+    })),
+  });
+}
+```
+
+## Validating
+
+After backfill, sample-check:
+
+```typescript
+const dbCount = await db.articles.count();
+const adapterInfo = adapter.adapterInfo();
+console.log("backfill complete; db rows:", dbCount);
+// For Postgres adapter you can SELECT count(*) from _searchfn_index;
+```
+
+## Throttling production load
+
+If you're backfilling against a production database, throttle:
+
+```typescript
+import pLimit from "p-limit";
+
+const limit = pLimit(2); // max 2 concurrent batches
+
+await Promise.all(
+  batches.map((batch) => limit(() => indexBatch(batch)))
+);
+```
+
+## See also
+
+- [Reindex with no downtime](/docs/recipes/reindex-no-downtime)
+- [Partial reindex](/docs/recipes/partial-reindex)
+- [Performance: indexing throughput](/docs/documentation/performance/indexing-throughput)

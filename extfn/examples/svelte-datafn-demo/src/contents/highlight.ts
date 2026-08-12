@@ -1,4 +1,4 @@
-import { mountSvelteContent } from "@superfunctions/extfn-svelte";
+import { mountSvelteContent } from "@extfn/svelte";
 import HighlightCard from "./HighlightCard.svelte";
 
 const host = document.createElement("div");

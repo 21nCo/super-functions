@@ -1,0 +1,5 @@
+{
+  "title": "Advanced",
+  "description": "Adapter authoring and migration guides",
+  "pages": ["writing-an-adapter", "adapter-migration"]
+}

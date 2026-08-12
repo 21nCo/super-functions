@@ -1,0 +1,48 @@
+---
+title: Quickstart
+sidebarTitle: Overview
+description: Get SearchFn indexing and serving queries in 5–10 minutes for your stack.
+---
+
+Pick your runtime. Each guide installs the right packages, picks a sensible default adapter for that environment, mounts the server, and runs a first search.
+
+| Runtime | Default adapter | Guide |
+| --- | --- | --- |
+| Hono | Memory (dev) / Postgres (prod) | [Hono](/docs/quickstart/hono) |
+| Express | Memory / Postgres | [Express](/docs/quickstart/express) |
+| Fastify | Memory / Postgres | [Fastify](/docs/quickstart/fastify) |
+| Bun | Memory / Postgres | [Bun](/docs/quickstart/bun) |
+| SvelteKit | IndexedDB (browser) + Postgres (server) | [SvelteKit](/docs/quickstart/sveltekit) |
+| Next.js | IndexedDB (browser) + Postgres (server) | [Next.js](/docs/quickstart/nextjs) |
+| FastAPI | Postgres | [FastAPI](/docs/quickstart/fastapi) |
+| Starlette | Postgres | [Starlette](/docs/quickstart/starlette) |
+| Flask | Postgres | [Flask](/docs/quickstart/flask) |
+| Swift | Memory / SQLite | [Swift](/docs/quickstart/swift) |
+
+## What gets installed
+
+A SearchFn deployment is three layers:
+
+1. **An adapter** — picks where the index lives.
+2. **A server** — `createSearchFnServer({ adapter, basePath, ... })` mounted onto your HTTP framework.
+3. **A client** — either the SearchFn client SDK (`@searchfn/client`) or the DataFn search provider (`@searchfn/datafn-provider`) if you're using DataFn.
+
+The Quickstart pages stitch all three for your framework, but each layer is independently swappable. You can change adapters without changing client code, and you can switch from direct client use to the DataFn provider without changing the server.
+
+## Decisions you'll make
+
+When the guide asks you to pick an adapter, this is the short version:
+
+- **In dev or for a CLI:** `@searchfn/adapter-memory`. Zero infra.
+- **In a browser app:** `@searchfn/adapter-indexeddb` on the client + your choice of server adapter.
+- **Already on Postgres:** `@searchfn/adapter-postgres`. Reuse your DB.
+- **Need a dedicated search service:** `@searchfn/adapter-meilisearch`. Best dev ergonomics.
+- **Big production scale:** `@searchfn/adapter-elasticsearch` or `@searchfn/adapter-opensearch`.
+
+See the [Adapter comparison](/docs/reference/adapters) for the full breakdown.
+
+## See also
+
+- [Architecture](/docs/architecture) — how the pieces fit together
+- [Comparison](/docs/comparison) — vs Algolia / Typesense / FlexSearch / etc.
+- [DataFn integration](/docs/integrations/datafn) — connect SearchFn to DataFn

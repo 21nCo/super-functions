@@ -1,0 +1,139 @@
+---
+title: "Retry and Backoff"
+description: "How the DataFn client retries failed sync operations, and how to tune it."
+audience: reference
+applies_to: client
+---
+
+DataFn's sync engine retries failed operations automatically. Different failure modes get different policies. Here's the full picture.
+
+## Failure classes
+
+| Class | Examples | Policy |
+| --- | --- | --- |
+| Transport | network down, DNS, connection refused, 5xx | Exponential backoff with jitter, indefinite |
+| Rate limit | HTTP 429 | Honor `Retry-After`, then exponential backoff |
+| Validation | `DFQL_INVALID`, `DFQL_UNKNOWN_*` | No retry — surface error and stop |
+| Authorization | `FORBIDDEN` | No retry — surface error and stop |
+| Conflict | `CONFLICT` | No automatic retry — application decides |
+| Limit | `LIMIT_EXCEEDED` | No retry — application decides |
+| Server | `INTERNAL` | Retry (transient) with exponential backoff |
+
+The split is: retry transient failures forever (with backoff), surface terminal failures immediately to the application.
+
+## Push retry
+
+A queued mutation that fails with a transient error stays in the queue and retries:
+
+```
+attempt 1: 0ms
+attempt 2: 1s ± 250ms jitter
+attempt 3: 2s ± 250ms
+attempt 4: 4s ± 250ms
+attempt 5: 8s ± 250ms
+attempt 6+: capped at 30s ± 250ms
+```
+
+The queue is durable (lives in IndexedDB), so even page reloads don't lose pending mutations.
+
+A mutation that fails with a terminal error (validation, authz) is removed from the queue and surfaced via `onSyncEvent`:
+
+```typescript
+const client = createDatafnClient({
+  ...,
+  onSyncEvent: (event) => {
+    if (event.type === "push:error" && !event.retriable) {
+      // The mutation is gone from the queue; show the user the error.
+    }
+  },
+});
+```
+
+## Pull retry
+
+Pulls fail less often (they're idempotent reads). On a transient failure, the same backoff curve applies. The pull resumes from the last successful cursor.
+
+## WebSocket reconnection
+
+When the WebSocket disconnects:
+
+```
+attempt 1: 0ms
+attempt 2: 500ms ± 100ms
+attempt 3: 1s ± 100ms
+attempt 4: 2s ± 100ms
+attempt 5: 5s ± 250ms
+attempt 6+: 10s ± 500ms
+```
+
+On reconnect, the client immediately performs a pull to catch up on anything missed during the outage.
+
+## Tuning
+
+```typescript
+const client = createDatafnClient({
+  schema, clientId, storage,
+  sync: {
+    remote: "/datafn",
+    retry: {
+      initialDelayMs: 1000,
+      maxDelayMs: 30_000,
+      jitterMs: 250,
+      // factor: 2,  // exponential factor
+    },
+  },
+});
+```
+
+The defaults are usually fine. Lower `maxDelayMs` if your UX is jarring at 30-second retries; raise it if you're consuming server resources hammering during outages.
+
+## Honoring Retry-After
+
+When the server returns `429 Too Many Requests`, the response includes a `Retry-After` header (typically in seconds). The client honors it:
+
+```
+Retry-After: 47
+→ wait 47s before next attempt, regardless of the backoff curve.
+```
+
+This is automatic; no tuning needed.
+
+## Idempotency
+
+Retries use the original `clientId + mutationId`. The server's idempotency cache returns the cached envelope on replay — no duplicate side effects, no duplicate inserts.
+
+This works because the client generates `mutationId` once and persists it with the queued mutation. Even after a page reload, the same `mutationId` retries.
+
+## Giving up
+
+The sync engine never gives up on transient errors. If your app needs a "this mutation has been pending for too long, prompt the user" UX, observe the queue:
+
+```typescript
+const queueLength = await client.sync.pendingMutations();
+const oldestPending = await client.sync.oldestPendingTimestamp();
+
+if (oldestPending && Date.now() - oldestPending > 60_000) {
+  showWarning("Some changes haven't been saved yet. Check your connection.");
+}
+```
+
+`client.sync.pendingMutations()` and `oldestPendingTimestamp()` are introspection helpers.
+
+## What happens during a long offline window
+
+User goes offline, makes 50 mutations, comes back 12 hours later:
+
+1. Mutations are in the queue (persisted to IndexedDB).
+2. On reconnect, the WebSocket comes up first.
+3. The pull catches up on changes from the server.
+4. The pending push fires with all 50 mutations.
+5. Server applies them in order; some may fail with `CONFLICT` (because the server state has moved).
+6. Failed mutations are surfaced via `onSyncEvent` for application decisions.
+
+If the offline window is long enough that the server has pruned older retention data, the client's pull from the old cursor may receive a "cursor too old" indicator — the client then falls back to a fresh `/datafn/clone` instead of `/datafn/pull`.
+
+## See also
+
+- [Sync overview](/docs/documentation/sync/overview)
+- [Conflict resolution](/docs/documentation/sync/conflict-resolution)
+- [Offline conflicts recipe](/docs/recipes/offline-conflicts)

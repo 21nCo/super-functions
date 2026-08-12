@@ -1,0 +1,168 @@
+---
+title: "Recipe: Sharing Flows"
+description: "Invite-by-email, link-share, share-with-role — all on top of the shareable capability."
+audience: guide
+applies_to: both
+---
+
+The `shareable` capability gives you per-record ACLs without writing a separate "membership" table. This recipe walks through the three flows almost every product needs.
+
+## Schema
+
+```typescript
+import { defineSchema } from "@datafn/core";
+
+export const schema = defineSchema({
+  capabilities: ["timestamps", "audit"],
+  resources: [
+    {
+      name: "documents",
+      version: 1,
+      idPrefix: "doc",
+      capabilities: [
+        {
+          name: "shareable",
+          config: {
+            defaultVisibility: "private", // owner-only by default
+            roles: ["viewer", "editor", "owner"],
+            crossNsShareable: true,      // share across orgs (off by default)
+          },
+        },
+      ],
+      fields: [
+        { name: "title", type: "string", required: true },
+        { name: "body", type: "string", required: false },
+      ],
+    },
+  ],
+});
+```
+
+The capability injects a managed `shares` field that maps `principalId → role` plus a `visibility` field with values `"private" | "link" | "public"`. You don't read or write these fields directly — you use `share` and `unshare` operations.
+
+## Invite-by-email
+
+Inviting a user by email assumes the email maps to a principal in your auth system. With AuthFn, the principal id is typically `user:<id>`; with custom auth, you pick the convention.
+
+```typescript
+async function inviteByEmail(docId: string, email: string, role: "viewer" | "editor") {
+  const userId = await lookupUserIdByEmail(email); // your auth lookup
+  if (!userId) {
+    // optional: store a pending invite and send a sign-up link
+    return inviteUnregisteredUser(docId, email, role);
+  }
+
+  await client.table("documents").mutate({
+    operation: "share",
+    id: docId,
+    shareWith: {
+      principalId: `user:${userId}`,
+      role,
+    },
+  });
+}
+```
+
+The server validates that the actor has at least `editor` (or `owner`, depending on your config) role on the document.
+
+## Revoking
+
+```typescript
+async function revoke(docId: string, userId: string) {
+  await client.table("documents").mutate({
+    operation: "unshare",
+    id: docId,
+    shareWith: { principalId: `user:${userId}` },
+  });
+}
+```
+
+## Link share (visibility-based)
+
+Sometimes you want anyone with a link to view, without sharing per-user. Bump `visibility`:
+
+```typescript
+async function makeLinkShared(docId: string, mode: "view" | "edit") {
+  await client.table("documents").mutate({
+    operation: "share",
+    id: docId,
+    shareWith: { scope: "resource", role: mode === "edit" ? "editor" : "viewer" },
+    visibility: "link",
+  });
+}
+```
+
+`visibility: "link"` means "anyone who knows the id can access". You generate a non-guessable URL from `idPrefix:slug` and send it.
+
+To revoke link sharing:
+
+```typescript
+await client.table("documents").mutate({
+  operation: "merge",
+  id: docId,
+  record: { visibility: "private" }, // resets to private; principal shares persist
+});
+```
+
+## Share with role (org-internal)
+
+A common SaaS pattern: every member of an organization has implicit read access to a workspace's documents, with elevated roles for explicit invitees.
+
+In your `authorize` callback:
+
+```typescript
+authorize: async (ctx, action, payload) => {
+  if (payload.resource !== "documents") return defaultAuthz(ctx, action, payload);
+  const doc = await server.getRecord("documents", payload.id);
+  if (!doc) return false;
+
+  // Anyone in the same org can view if the doc is workspace-shared
+  if (doc.workspaceShared && ctx.session.orgId === doc.namespace) {
+    return action === "query"; // read-only for org members
+  }
+
+  // Otherwise fall through to capability-based authz (shares + visibility)
+  return capabilityAuthz(ctx, action, payload);
+};
+```
+
+(`workspaceShared` is a custom boolean you add to the schema; capability shares cover the rest.)
+
+## Cross-namespace sharing
+
+When `crossNsShareable: true`, principals from a different namespace can be added:
+
+```typescript
+await client.table("documents").mutate({
+  operation: "share",
+  id: docId,
+  shareWith: { principalId: "user:external_42", role: "viewer" },
+});
+```
+
+The shared user sees the document in their namespace's view. To prevent this, set `crossNsShareable: false`; attempts to cross-share throw `DFQL_CROSS_NS_SHARE_FORBIDDEN`.
+
+## Listing a user's shared items
+
+A user wants to see everything shared with them across all owners.
+
+```typescript
+const shared = await client.table("documents").query({
+  filters: { "shares.principals": { $contains: `user:${currentUserId}` } },
+  sort: ["updatedAt:desc"],
+});
+```
+
+The exact filter shape for `shares` depends on the capability's serialization — see [Sharing](/docs/documentation/sharing) for the canonical form.
+
+## UI hints
+
+- Show a "Share" button when `authorize(ctx, "share", { resource: "documents", id })` returns true — but don't gate on that callback at render time. Just call the mutation and handle `FORBIDDEN` from the response.
+- Surface the current shares list via `client.table("documents").query({ filters: { id: { $eq: docId } }, select: ["shares"] })`.
+- For "link share is enabled, copy this URL" — read the `visibility` field of the document.
+
+## See also
+
+- [Sharing](/docs/documentation/sharing) — the capability contract.
+- [Use cases → Sharing patterns](/docs/documentation/use-cases/sharing-patterns) — alternative shapes.
+- [Comparison](/docs/comparison) — how DataFn's sharing compares to InstantDB, Convex, etc.

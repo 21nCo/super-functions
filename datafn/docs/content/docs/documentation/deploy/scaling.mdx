@@ -1,0 +1,133 @@
+---
+title: "Scaling"
+description: "Sequence store, WebSocket broadcasting, multi-region, and the bottleneck pattern."
+audience: guide
+applies_to: server
+---
+
+DataFn scales linearly on the HTTP layer. The bottlenecks are downstream — sequence store atomicity, WebSocket fan-out, and database connections. This page walks through the order in which you'll hit them.
+
+## The four bottlenecks (in order)
+
+| | At what scale | Fix |
+| --- | --- | --- |
+| 1. Single-instance state | Anything > 1 instance | Add Redis. |
+| 2. WebSocket fan-out | ~1k concurrent WS | Redis pub/sub. |
+| 3. Database connections | ~500 concurrent requests | PgBouncer / connection pooler. |
+| 4. Single-primary writes | ~5k writes/sec sustained | Sharding by namespace. |
+
+## Bottleneck 1: single-instance state
+
+By default, DataFn's sequence number (`serverSeq`) is held in-process. With two instances, each generates its own sequence, and the resulting interleaving breaks sync.
+
+Fix: configure Redis. DataFn auto-uses Redis for sequence numbers when present:
+
+```typescript
+import IORedis from "ioredis";
+const datafn = await createDatafnServer({
+  schema, db,
+  redis: new IORedis(process.env.REDIS_URL!),
+});
+```
+
+The same Redis instance also powers the cross-instance rate limiter and the WebSocket fan-out.
+
+## Bottleneck 2: WebSocket fan-out
+
+A single instance can only notify the WebSocket clients connected to it. When a push happens on instance A, clients connected to instance B need to know too. DataFn handles this automatically when Redis is configured — instance A publishes the cursor notification to a Redis channel, instance B subscribes and forwards to its clients.
+
+Cap your per-instance WS connections to a sane number (`ws.maxConnections: 5000`). At 5k connections × N instances, the math goes:
+
+- Each notification is ~80 bytes.
+- A push notification fans out to all subscribers in the namespace.
+- For a single namespace with 1000 subscribers, that's ~80 KB per push.
+
+If you're seeing 10k+ pushes/sec to a single namespace, the WS fan-out becomes the bottleneck. At that scale you're probably building a chat/presence product and should consider a dedicated presence service.
+
+## Bottleneck 3: database connections
+
+The classic Postgres scaling story applies. DataFn opens one connection per concurrent request. With 100 instances × 50-connection pools, that's 5000 connections — well past PostgreSQL's default 100.
+
+Two fixes:
+
+### PgBouncer (transaction pooling mode)
+
+In front of Postgres:
+
+```
+Client → PgBouncer (transaction mode) → Postgres
+```
+
+DataFn's queries are all short-lived transactions, so transaction-pooled connections work. Configure PgBouncer to allow ~20 connections per instance and serve the rest from a smaller backend pool (e.g. 200 actual Postgres connections).
+
+### Per-instance connection caps
+
+In your DataFn deployment:
+
+```typescript
+import pg from "pg";
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 2_000,
+});
+```
+
+Cap pool size aggressively. Many instances × small pools is better than few instances × large pools.
+
+## Bottleneck 4: single-primary writes
+
+At 5k+ writes/sec sustained, even a beefy primary Postgres struggles. The DataFn answer is to **shard by namespace**.
+
+The pattern: separate DataFn instances (and Postgres clusters) per shard. A small router (or your auth layer) maps namespaces to shards:
+
+```typescript
+function shardFor(namespace: string) {
+  const hash = murmurhash(namespace);
+  return hash % NUM_SHARDS;
+}
+
+// Then your edge routes /datafn/* to the right shard.
+```
+
+DataFn doesn't ship sharding glue — you bring it as part of your routing layer. For most apps, sharding is overkill; the single-primary path serves to ~5k writes/sec, which covers most products at typical scale.
+
+## Multi-region
+
+Three patterns:
+
+### Single-primary, regional reads
+
+The simplest. Primary database in one region; read replicas in others. Writes route to the primary; reads route to the closest replica. The DataFn server runs in every region but writes always cross to the primary.
+
+Tradeoff: write latency from non-primary regions is whatever your network gives you (often 100–200ms cross-continent).
+
+### Sharded primaries
+
+One primary per region, sharded by namespace. A user's data lives in one region's primary. Other regions can replicate the read-only view.
+
+Tradeoff: complex routing; doesn't help if users travel.
+
+### Active-active
+
+Both regions accept writes. DataFn doesn't support this directly — you'd need a CRDT layer to merge concurrent writes across regions. This is rarely worth it.
+
+For most apps, **single-primary + regional reads** is correct.
+
+## Apple runtime + iCloud
+
+A separate scaling axis: clients sync directly through CloudKit, no DataFn server in the path. CloudKit scales to Apple's limits, not yours. See [Apple → CloudKit](/docs/documentation/apple/cloudkit).
+
+## Capacity planning rules of thumb
+
+- **CPU**: DataFn validates DFQL on every request. Budget ~1 ms of CPU per simple query. Complex queries with many aggregations: 5–10 ms.
+- **Memory**: ~200 MB resident plus ~5 KB per open WebSocket. Doesn't grow with the schema.
+- **Database**: ~1 row read per query (cursor-paginated). Writes: 1 row + 1 changelog row + sometimes 1 idempotency row.
+- **Network**: A typical pull payload is 10–100 KB. A clone of a 10k-row dataset is 1–10 MB.
+
+## See also
+
+- [Sequence store](/docs/documentation/sync/sequence-store)
+- [Observability](/docs/documentation/server/observability)
+- [Production Checklist](/docs/documentation/security/production-checklist)

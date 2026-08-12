@@ -1,11 +1,32 @@
 ---
 title: DataFn
-description: A full-stack data management framework with offline-first sync, reactive signals, and type-safe queries.
+sidebarTitle: Introduction
+description: Self-hosted data management platform with offline-first storage, reactive signals, and a declarative query language.
 audience: landing
 applies_to: both
 ---
+DataFn is a full-stack data framework for building modern software applications. It provides a unified approach to defining schemas, querying data, managing mutations, and synchronizing state between client and server. 
 
-DataFn is a full-stack data management framework for building data-driven applications. It provides a unified approach to defining schemas, querying data, managing mutations, and synchronizing state between client and server.
+You define a schema. You get back a server, a client, a sync engine, optimistic UI primitives, multi-tenancy, sharing, search hooks, and a native Apple runtime — all with the same DFQL query shape across every layer. It replaces your ORM, query client, sync layer, and realtime stack with one type-safe, offline-first data platform you actually own.
+
+
+Pick the entry point that matches what you're doing:
+
+- **New to DataFn?** Start with the [Quickstart for your framework](/docs/quickstart).
+- **Evaluating?** Read the [Comparison](/docs/comparison) and the [Architecture](/docs/documentation).
+- **Building something specific?** Browse the [Recipes](/docs/recipes).
+- **Looking up a config or error?** Jump to the [Reference](/docs/reference/routes).
+
+## Batteries included
+
+- Typed query language — DFQL
+- Offline-first sync engine
+- Reactive signals
+- Multi-tenancy with namespace isolation
+- Field-level authz
+- Per-record sharing
+- Auto REST API
+- Native Apple runtime (CoreData + CloudKit)
 
 ## System Architecture
 
@@ -13,24 +34,35 @@ DataFn connects your client application to your server through DFQL, a structure
 
 ```mermaid
 graph TD
-    subgraph Client ["Client (Browser / Mobile)"]
+    subgraph Web ["Web Client (Browser)"]
         DC[DatafnClient]
         SIG[Signals]
         STR["Storage — IndexedDB / Memory"]
-        FA["Framework Adapters — Svelte / React / Vue"]
+        SV[Svelte Adapter]
+    end
+
+    subgraph Apple ["Native Client (iOS / macOS)"]
+        AR[DatafnAppleRuntime]
+        SUI[SwiftUI Bindings]
+        CDS[CoreData Store]
+        CK[CloudKit Sync]
     end
 
     subgraph Protocol ["DFQL Protocol"]
         Q[Queries]
         M[Mutations]
         T[Transactions]
+        LIVE["Live — WebSocket Cursors"]
     end
 
     subgraph Server ["Server (Node.js / Python)"]
         DS[DatafnServer]
-        RT[Routes]
-        AUTH[Authorization]
+        RT["Routes — DFQL / REST"]
+        AUTH["Authorization — Namespaces, Sharing, Capabilities"]
         SE[Sync Engine]
+        SEQ["Sequence Store — Redis / KV / DB"]
+        WSB[WebSocket Broadcaster]
+        PL[Plugins & Search Providers]
     end
 
     subgraph DB ["Database"]
@@ -39,15 +71,26 @@ graph TD
     end
 
     DC --> SIG
-    SIG --> FA
+    SIG --> SV
     DC --> STR
     DC <-->|"clone / pull / push"| SE
     DC <-->|"query / mutate / transact"| RT
+    DC <-.->|live| WSB
+
+    AR --> SUI
+    AR --> CDS
+    AR <--> CK
+    AR <-->|"clone / pull / push"| SE
+    AR <-->|"query / mutate / transact"| RT
+    AR <-.->|live| WSB
+
     RT --> AUTH
     RT --> DS
+    RT --> PL
     DS --> AD
-    AD --> PG
+    SE --> SEQ
     SE --> AD
+    AD --> PG
 ```
 
 Select a section from the sidebar to get started.

@@ -1,0 +1,44 @@
+---
+title: "Quickstart"
+sidebarTitle: "Overview"
+description: "Pick your stack and ship a working DataFn integration in 10 minutes."
+audience: landing
+applies_to: both
+---
+
+Every quickstart below ends with a working server + client, a single resource, and a reactive query. They're sized for a 10-minute first impression, not for production. For the production-shaped configuration see [Server Setup](/docs/documentation/server/setup) and [Production / Deploy](/docs/documentation/deploy).
+
+## TypeScript backends
+
+| Framework | Quickstart |
+| --- | --- |
+| Hono | [Quickstart: Hono](/docs/quickstart/hono) |
+| Express | [Quickstart: Express](/docs/quickstart/express) |
+| Bun (`Bun.serve`) | [Quickstart: Bun](/docs/quickstart/bun) |
+
+## Full-stack TypeScript
+
+| Framework | Quickstart |
+| --- | --- |
+| Next.js (App Router) | [Quickstart: Next.js](/docs/quickstart/nextjs) |
+| SvelteKit | [Quickstart: SvelteKit](/docs/quickstart/sveltekit) |
+
+## Python
+
+| Framework | Quickstart |
+| --- | --- |
+| FastAPI | [Quickstart: FastAPI](/docs/quickstart/fastapi) |
+| Starlette | [Quickstart: Starlette](/docs/quickstart/starlette) |
+| Flask | [Quickstart: Flask](/docs/quickstart/flask) |
+
+## Apple
+
+| Platform | Quickstart |
+| --- | --- |
+| iOS / macOS via SwiftUI | [Quickstart: Swift](/docs/quickstart/swift) |
+
+## Don't see your stack?
+
+If your backend can speak HTTP, DataFn works. The TypeScript routes are just async functions returning a JSON envelope; you can wire them into any router (Fastify, Koa, h3, AWS Lambda, Vercel, Cloudflare Workers). See [Routes](/docs/reference/routes) for the raw contract.
+
+For client frameworks (React, Vue, Solid), wrap a `createDatafnClient(...)` in your usual state library — `client.table("tasks").signal(...)` returns a subscribable value that fits any reactive system.

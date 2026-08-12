@@ -13,6 +13,11 @@ import type {
   Logger,
 } from './types.js';
 import {  NamespaceManager } from '../utils/namespace.js';
+import {
+  transformRecordForRuntime,
+  transformRecordForStorage,
+  transformWhereForStorage,
+} from './schema-codecs.js';
 
 /**
  * Create an adapter factory that wraps adapter implementations with
@@ -106,7 +111,7 @@ function buildAdapterContext(
         transformed.id = config.customIdGenerator();
       }
 
-      return transformed;
+      return transformRecordForStorage(schema, _model, transformed);
     },
 
     transformOutput: async (data, _model) => {
@@ -124,7 +129,7 @@ function buildAdapterContext(
         }
       }
 
-      return transformed;
+      return transformRecordForRuntime(schema, _model, transformed);
     },
 
     log: logger,
@@ -158,26 +163,39 @@ function wrapAdapter(
 
     async findOne(params) {
       context.log.debug('findOne', params);
-      const result = await implementation.findOne(params);
+      const result = await implementation.findOne({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+      });
       return result ? context.transformOutput(result, params.model) : null;
     },
 
     async findMany(params) {
       context.log.debug('findMany', params);
-      const results = await implementation.findMany(params);
+      const results = await implementation.findMany({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+      });
       return Promise.all(results.map((r) => context.transformOutput(r, params.model)));
     },
 
     async update(params) {
       context.log.debug('update', params);
       const transformed = await context.transformInput(params.data, params.model, 'update');
-      const result = await implementation.update({ ...params, data: transformed });
+      const result = await implementation.update({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+        data: transformed,
+      });
       return context.transformOutput(result, params.model);
     },
 
     async delete(params) {
       context.log.debug('delete', params);
-      return implementation.delete(params);
+      return implementation.delete({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+      });
     },
 
     // Batch operations
@@ -193,12 +211,19 @@ function wrapAdapter(
     async updateMany(params) {
       context.log.debug('updateMany', params);
       const transformed = await context.transformInput(params.data, params.model, 'update');
-      return implementation.updateMany({ ...params, data: transformed });
+      return implementation.updateMany({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+        data: transformed,
+      });
     },
 
     async deleteMany(params) {
       context.log.debug('deleteMany', params);
-      return implementation.deleteMany(params);
+      return implementation.deleteMany({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+      });
     },
 
     // Advanced operations
@@ -216,6 +241,7 @@ function wrapAdapter(
       );
       const result = await implementation.upsert({
         ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
         create: transformedCreate,
         update: transformedUpdate,
       });
@@ -224,7 +250,10 @@ function wrapAdapter(
 
     async count(params) {
       context.log.debug('count', params);
-      return implementation.count(params);
+      return implementation.count({
+        ...params,
+        where: transformWhereForStorage(context.schema, params.model, params.where) ?? params.where,
+      });
     },
 
     // Transaction support

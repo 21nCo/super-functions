@@ -1,6 +1,6 @@
 {
   "name": "@datafn/client",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "description": "DataFn client with event bus and mutation support",
   "main": "./dist/index.cjs",
@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@datafn/core": "*",
+    "@datafn/core": "0.0.3",
     "minisearch": "^7.1.0"
   },
   "devDependencies": {

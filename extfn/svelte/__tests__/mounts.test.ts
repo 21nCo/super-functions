@@ -39,7 +39,7 @@ vi.mock('svelte', () => ({
 
 import { mountSvelteContent, mountSveltePage } from '../src/index.js';
 
-describe('@superfunctions/extfn-svelte mounts', () => {
+describe('@extfn/svelte mounts', () => {
   beforeEach(() => {
     mountMock.mockClear();
     unmountMock.mockClear();

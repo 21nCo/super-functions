@@ -1,9 +1,9 @@
 import path from 'node:path';
 
-import type { BrowserTarget } from '@superfunctions/extfn';
-import { createExtfnError } from '@superfunctions/extfn';
-import { getTargetOutputDir } from '@superfunctions/extfn-vite';
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+import type { BrowserTarget } from '@extfn/core';
+import { createExtfnError } from '@extfn/core';
+import { getTargetOutputDir } from '@extfn/vite';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

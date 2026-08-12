@@ -80,6 +80,15 @@ describe('@authfn/client password flows', () => {
     }
     expect(currentSession.data.session?.methods).toEqual(['password']);
 
+    const accountDetails = await client.getAccountDetails();
+    if (!accountDetails.ok) {
+      throw new Error(`account details should have succeeded: ${JSON.stringify(accountDetails)}`);
+    }
+    expect(accountDetails.data.user.primaryEmail).toBe('ada@example.com');
+    expect(accountDetails.data.hasPassword).toBe(true);
+    expect(accountDetails.data.methods.password).toBe(true);
+    expect(accountDetails.data.oauthAccounts).toEqual([]);
+
     const signOut = await client.signOut();
     if (!signOut.ok) {
       throw new Error('sign-out should have succeeded');

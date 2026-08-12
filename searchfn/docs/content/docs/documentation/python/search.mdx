@@ -1,0 +1,127 @@
+---
+title: Search
+description: How search_index ranks records and what to expect from the Python scoring model.
+---
+
+`search_index` queries the inverted index and returns ranked records.
+
+## Signature
+
+```python
+async def search_index(
+    schema,
+    db,
+    query: str,
+    model: Optional[str] = None,
+    limit: int = 20,
+    table_prefix: str = "_searchfn_"
+) -> list[dict]
+```
+
+Returns:
+
+```python
+[
+    {
+        "id": "...",
+        "model": "articles",
+        "score": 3,
+        "matches": ["bm25", "ranking", "term"]
+    },
+    ...
+]
+```
+
+## Scoring
+
+The Python flavor uses a much simpler scoring model than the TypeScript engine: **term-count scoring**.
+
+```python
+scores[(model, recordId)] += 1  # per unique-term row matched
+```
+
+That's it. No BM25, no field weighting, no length normalization. Records with more distinct matched terms rank higher.
+
+Tradeoffs:
+
+- Predictable, easy to reason about.
+- Fast for moderate corpora.
+- Less relevance precision than BM25.
+
+For production-grade relevance, switch to the TypeScript engine + Postgres adapter, or use Postgres `tsvector` directly.
+
+## Tokenization
+
+Same as the indexer — see [Indexing](/docs/documentation/python/indexing). Queries are tokenized identically, ensuring index/query agreement.
+
+```python
+tokens = list(dict.fromkeys(tokenize(query)))
+# "BM25 Ranking BM25" → ["bm25", "ranking"]
+```
+
+Duplicate tokens are de-duplicated before lookup.
+
+## Per-token lookup
+
+For each unique token, one `find_many` runs against `_searchfn_index`:
+
+```python
+WHERE term = 'bm25' [AND model = '...']
+```
+
+Then matches are merged in memory and counted.
+
+This is fast for short queries. For very long queries (10+ unique tokens), the round-trip count grows linearly — consider batching in a future patch.
+
+## Model filtering
+
+```python
+results = await search_index(schema, db, "ranking", model="articles")
+```
+
+Without a model, all models are searched and the results carry their `model` field.
+
+## Limits
+
+```python
+results = await search_index(schema, db, "ranking", limit=50)
+```
+
+Defaults to 20. The HTTP handler caps at 10,000. Beyond that, paginate via your own filter logic — SearchFn returns the top-N by score.
+
+## Ordering
+
+Results are sorted by:
+
+1. Score (descending)
+2. Model name (ascending)
+3. Record ID (ascending — string-coerced)
+
+Deterministic for ties.
+
+## Empty queries
+
+```python
+await search_index(schema, db, "")        # → []
+await search_index(schema, db, "!!!?")    # → [] (no surviving tokens)
+```
+
+The handler returns `400 Missing query` for empty strings; the function returns an empty list.
+
+## Joining back to the records
+
+`search_index` returns IDs, not records. To hydrate:
+
+```python
+hits = await search_index(schema, db, "ranking", model="articles")
+ids = [h["id"] for h in hits]
+records = await db.find_many("articles", [{"field": "id", "operator": "in", "value": ids}])
+```
+
+Or in one round-trip via your DataFn query API.
+
+## See also
+
+- [Indexing](/docs/documentation/python/indexing)
+- [HTTP mount](/docs/documentation/python/http-mount)
+- [Python reference](/docs/reference/python)

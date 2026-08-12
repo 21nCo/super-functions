@@ -2,10 +2,15 @@ import { Hono } from 'hono';
 import { initTRPC } from '@trpc/server';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { z } from 'zod';
+import { eq, and } from 'drizzle-orm';
+import { issues, discordThreads } from './schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as schema from './schema';
 
 // Environment interface
 export interface PersistenceEnv {
-  DB: D1Database;
+  DATABASE_URL: string;
 }
 
 // Zod schemas
@@ -80,8 +85,30 @@ function generateThreadUrl(guildId: string, channelId: string): string {
   return `https://discord.com/channels/${guildId}/${channelId}`;
 }
 
+type PersistenceDb = ReturnType<typeof drizzle<typeof schema>>;
+
+const dbByUrl = new Map<string, PersistenceDb>();
+
+function getDatabase(databaseUrl: string): PersistenceDb {
+  let db = dbByUrl.get(databaseUrl);
+  if (!db) {
+    const client = postgres(databaseUrl);
+    db = drizzle(client, { schema });
+    dbByUrl.set(databaseUrl, db);
+  }
+
+  return db;
+}
+
 // Create tRPC context
-const createContext = (env: PersistenceEnv) => ({ db: env.DB });
+const createContext = (env: PersistenceEnv) => {
+  if (!env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required for BotFn persistence');
+  }
+
+  return { db: getDatabase(env.DATABASE_URL) };
+};
+
 type Context = ReturnType<typeof createContext>;
 
 // Initialize tRPC
@@ -98,30 +125,26 @@ const appRouter = t.router({
       const threadUrl = generateThreadUrl(input.guildId, input.channelId);
       const now = Math.floor(Date.now() / 1000);
 
-      // Insert issue
-      await ctx.db
-        .prepare(
-          `INSERT INTO issues (id, github_issue_id, linear_issue_id, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .bind(
-          issueId,
-          input.githubIssueId || null,
-          input.linearIssueId || null,
-          input.status,
-          now,
-          now
-        )
-        .run();
+      await ctx.db.transaction(async (tx) => {
+        await tx.insert(issues).values({
+          id: issueId,
+          githubIssueId: input.githubIssueId,
+          linearIssueId: input.linearIssueId,
+          status: input.status,
+          createdAt: now,
+          updatedAt: now,
+          isLiveStatusNotifiedOnDiscord: false
+        });
 
-      // Insert discord thread
-      await ctx.db
-        .prepare(
-          `INSERT INTO discord_threads (id, issue_id, guild_id, channel_id, thread_url, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .bind(threadId, issueId, input.guildId, input.channelId, threadUrl, now)
-        .run();
+        await tx.insert(discordThreads).values({
+          id: threadId,
+          issueId: issueId,
+          guildId: input.guildId,
+          channelId: input.channelId,
+          threadUrl: threadUrl,
+          createdAt: now
+        });
+      });
 
       return {
         id: issueId,
@@ -148,67 +171,47 @@ const appRouter = t.router({
   updateIssue: t.procedure
     .input(UpdateIssueSchema)
     .mutation(async ({ input, ctx }) => {
-      const updates: string[] = [];
-      const bindings: any[] = [];
+      const updates: any = {};
 
-      if (input.githubIssueId !== undefined) {
-        updates.push('github_issue_id = ?');
-        bindings.push(input.githubIssueId);
-      }
-      if (input.linearIssueId !== undefined) {
-        updates.push('linear_issue_id = ?');
-        bindings.push(input.linearIssueId);
-      }
-      if (input.status !== undefined) {
-        updates.push('status = ?');
-        bindings.push(input.status);
-      }
-      if (input.isLiveStatusNotifiedOnDiscord !== undefined) {
-        updates.push('is_live_status_notified_on_discord = ?');
-        bindings.push(input.isLiveStatusNotifiedOnDiscord ? 1 : 0);
-      }
+      if (input.githubIssueId !== undefined) updates.githubIssueId = input.githubIssueId;
+      if (input.linearIssueId !== undefined) updates.linearIssueId = input.linearIssueId;
+      if (input.status !== undefined) updates.status = input.status;
+      if (input.isLiveStatusNotifiedOnDiscord !== undefined) updates.isLiveStatusNotifiedOnDiscord = input.isLiveStatusNotifiedOnDiscord;
 
-      if (updates.length === 0) {
+      if (Object.keys(updates).length === 0) {
         throw new Error('No fields to update');
       }
 
-      bindings.push(input.id);
+      updates.updatedAt = Math.floor(Date.now() / 1000);
 
-      await ctx.db
-        .prepare(`UPDATE issues SET ${updates.join(', ')} WHERE id = ?`)
-        .bind(...bindings)
-        .run();
+      await ctx.db.update(issues)
+        .set(updates)
+        .where(eq(issues.id, input.id));
 
       // Fetch and return updated issue with threads
-      const issue = await ctx.db
-        .prepare('SELECT * FROM issues WHERE id = ?')
-        .bind(input.id)
-        .first<any>();
+      const issue = await ctx.db.select().from(issues).where(eq(issues.id, input.id)).limit(1).then(r => r[0]);
 
       if (!issue) {
         throw new Error('Issue not found');
       }
 
-      const threads = await ctx.db
-        .prepare('SELECT * FROM discord_threads WHERE issue_id = ?')
-        .bind(input.id)
-        .all<any>();
+      const threads = await ctx.db.select().from(discordThreads).where(eq(discordThreads.issueId, input.id));
 
       return {
         id: issue.id,
-        githubIssueId: issue.github_issue_id,
-        linearIssueId: issue.linear_issue_id,
+        githubIssueId: issue.githubIssueId,
+        linearIssueId: issue.linearIssueId,
         status: issue.status as IssueStatus,
-        isLiveStatusNotifiedOnDiscord: Boolean(issue.is_live_status_notified_on_discord),
-        createdAt: issue.created_at,
-        updatedAt: issue.updated_at,
-        discordThreads: threads.results.map((t) => ({
+        isLiveStatusNotifiedOnDiscord: Boolean(issue.isLiveStatusNotifiedOnDiscord),
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        discordThreads: threads.map((t) => ({
           id: t.id,
-          issueId: t.issue_id,
-          guildId: t.guild_id,
-          channelId: t.channel_id,
-          threadUrl: t.thread_url,
-          createdAt: t.created_at,
+          issueId: t.issueId,
+          guildId: t.guildId,
+          channelId: t.channelId,
+          threadUrl: t.threadUrl,
+          createdAt: t.createdAt,
         })),
       };
     }),
@@ -221,40 +224,37 @@ const appRouter = t.router({
       const threadUrl = generateThreadUrl(input.guildId, input.channelId);
       const now = Math.floor(Date.now() / 1000);
 
-      // Check if thread already exists
-      const existing = await ctx.db
-        .prepare(
-          'SELECT * FROM discord_threads WHERE issue_id = ? AND guild_id = ? AND channel_id = ?'
-        )
-        .bind(input.issueId, input.guildId, input.channelId)
-        .first<any>();
-
-      if (existing) {
-        return {
-          id: existing.id,
-          issueId: existing.issue_id,
-          guildId: existing.guild_id,
-          channelId: existing.channel_id,
-          threadUrl: existing.thread_url,
-          createdAt: existing.created_at,
-        };
-      }
-
-      await ctx.db
-        .prepare(
-          `INSERT INTO discord_threads (id, issue_id, guild_id, channel_id, thread_url, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .bind(threadId, input.issueId, input.guildId, input.channelId, threadUrl, now)
-        .run();
-
-      return {
+      await ctx.db.insert(discordThreads).values({
         id: threadId,
         issueId: input.issueId,
         guildId: input.guildId,
         channelId: input.channelId,
-        threadUrl,
-        createdAt: now,
+        threadUrl: threadUrl,
+        createdAt: now
+      }).onConflictDoNothing({
+        target: [discordThreads.issueId, discordThreads.guildId, discordThreads.channelId],
+      });
+
+      const thread = await ctx.db.select().from(discordThreads)
+        .where(and(
+          eq(discordThreads.issueId, input.issueId),
+          eq(discordThreads.guildId, input.guildId),
+          eq(discordThreads.channelId, input.channelId)
+        ))
+        .limit(1)
+        .then(r => r[0]);
+
+      if (!thread) {
+        throw new Error('Failed to create discord thread');
+      }
+
+      return {
+        id: thread.id,
+        issueId: thread.issueId,
+        guildId: thread.guildId,
+        channelId: thread.channelId,
+        threadUrl: thread.threadUrl,
+        createdAt: thread.createdAt,
       };
     }),
 
@@ -262,35 +262,29 @@ const appRouter = t.router({
   getIssue: t.procedure
     .input(GetIssueSchema)
     .query(async ({ input, ctx }) => {
-      const issue = await ctx.db
-        .prepare('SELECT * FROM issues WHERE id = ?')
-        .bind(input.id)
-        .first<any>();
+      const issue = await ctx.db.select().from(issues).where(eq(issues.id, input.id)).limit(1).then(r => r[0]);
 
       if (!issue) {
         return null;
       }
 
-      const threads = await ctx.db
-        .prepare('SELECT * FROM discord_threads WHERE issue_id = ?')
-        .bind(input.id)
-        .all<any>();
+      const threads = await ctx.db.select().from(discordThreads).where(eq(discordThreads.issueId, input.id));
 
       return {
         id: issue.id,
-        githubIssueId: issue.github_issue_id,
-        linearIssueId: issue.linear_issue_id,
+        githubIssueId: issue.githubIssueId,
+        linearIssueId: issue.linearIssueId,
         status: issue.status as IssueStatus,
-        isLiveStatusNotifiedOnDiscord: Boolean(issue.is_live_status_notified_on_discord),
-        createdAt: issue.created_at,
-        updatedAt: issue.updated_at,
-        discordThreads: threads.results.map((t) => ({
+        isLiveStatusNotifiedOnDiscord: Boolean(issue.isLiveStatusNotifiedOnDiscord),
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        discordThreads: threads.map((t) => ({
           id: t.id,
-          issueId: t.issue_id,
-          guildId: t.guild_id,
-          channelId: t.channel_id,
-          threadUrl: t.thread_url,
-          createdAt: t.created_at,
+          issueId: t.issueId,
+          guildId: t.guildId,
+          channelId: t.channelId,
+          threadUrl: t.threadUrl,
+          createdAt: t.createdAt,
         })),
       };
     }),
@@ -299,35 +293,29 @@ const appRouter = t.router({
   getIssueByGithubId: t.procedure
     .input(GetIssueByGithubIdSchema)
     .query(async ({ input, ctx }) => {
-      const issue = await ctx.db
-        .prepare('SELECT * FROM issues WHERE github_issue_id = ?')
-        .bind(input.githubIssueId)
-        .first<any>();
+      const issue = await ctx.db.select().from(issues).where(eq(issues.githubIssueId, input.githubIssueId)).limit(1).then(r => r[0]);
 
       if (!issue) {
         return null;
       }
 
-      const threads = await ctx.db
-        .prepare('SELECT * FROM discord_threads WHERE issue_id = ?')
-        .bind(issue.id)
-        .all<any>();
+      const threads = await ctx.db.select().from(discordThreads).where(eq(discordThreads.issueId, issue.id));
 
       return {
         id: issue.id,
-        githubIssueId: issue.github_issue_id,
-        linearIssueId: issue.linear_issue_id,
+        githubIssueId: issue.githubIssueId,
+        linearIssueId: issue.linearIssueId,
         status: issue.status as IssueStatus,
-        isLiveStatusNotifiedOnDiscord: Boolean(issue.is_live_status_notified_on_discord),
-        createdAt: issue.created_at,
-        updatedAt: issue.updated_at,
-        discordThreads: threads.results.map((t) => ({
+        isLiveStatusNotifiedOnDiscord: Boolean(issue.isLiveStatusNotifiedOnDiscord),
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        discordThreads: threads.map((t) => ({
           id: t.id,
-          issueId: t.issue_id,
-          guildId: t.guild_id,
-          channelId: t.channel_id,
-          threadUrl: t.thread_url,
-          createdAt: t.created_at,
+          issueId: t.issueId,
+          guildId: t.guildId,
+          channelId: t.channelId,
+          threadUrl: t.threadUrl,
+          createdAt: t.createdAt,
         })),
       };
     }),
@@ -336,35 +324,29 @@ const appRouter = t.router({
   getIssueByLinearId: t.procedure
     .input(GetIssueByLinearIdSchema)
     .query(async ({ input, ctx }) => {
-      const issue = await ctx.db
-        .prepare('SELECT * FROM issues WHERE linear_issue_id = ?')
-        .bind(input.linearIssueId)
-        .first<any>();
+      const issue = await ctx.db.select().from(issues).where(eq(issues.linearIssueId, input.linearIssueId)).limit(1).then(r => r[0]);
 
       if (!issue) {
         return null;
       }
 
-      const threads = await ctx.db
-        .prepare('SELECT * FROM discord_threads WHERE issue_id = ?')
-        .bind(issue.id)
-        .all<any>();
+      const threads = await ctx.db.select().from(discordThreads).where(eq(discordThreads.issueId, issue.id));
 
       return {
         id: issue.id,
-        githubIssueId: issue.github_issue_id,
-        linearIssueId: issue.linear_issue_id,
+        githubIssueId: issue.githubIssueId,
+        linearIssueId: issue.linearIssueId,
         status: issue.status as IssueStatus,
-        isLiveStatusNotifiedOnDiscord: Boolean(issue.is_live_status_notified_on_discord),
-        createdAt: issue.created_at,
-        updatedAt: issue.updated_at,
-        discordThreads: threads.results.map((t) => ({
+        isLiveStatusNotifiedOnDiscord: Boolean(issue.isLiveStatusNotifiedOnDiscord),
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        discordThreads: threads.map((t) => ({
           id: t.id,
-          issueId: t.issue_id,
-          guildId: t.guild_id,
-          channelId: t.channel_id,
-          threadUrl: t.thread_url,
-          createdAt: t.created_at,
+          issueId: t.issueId,
+          guildId: t.guildId,
+          channelId: t.channelId,
+          threadUrl: t.threadUrl,
+          createdAt: t.createdAt,
         })),
       };
     }),
@@ -372,35 +354,31 @@ const appRouter = t.router({
   // Get all issues with status "Live" that haven't been notified
   getUnnotifiedLiveIssues: t.procedure
     .query(async ({ ctx }) => {
-      const issues = await ctx.db
-        .prepare(
-          'SELECT * FROM issues WHERE status = ? AND is_live_status_notified_on_discord = 0'
-        )
-        .bind('Live')
-        .all<any>();
+      const results = await ctx.db.select().from(issues)
+        .where(and(
+          eq(issues.status, 'Live'),
+          eq(issues.isLiveStatusNotifiedOnDiscord, false)
+        ));
 
       return await Promise.all(
-        issues.results.map(async (issue) => {
-          const threads = await ctx.db
-            .prepare('SELECT * FROM discord_threads WHERE issue_id = ?')
-            .bind(issue.id)
-            .all<any>();
+        results.map(async (issue) => {
+          const threads = await ctx.db.select().from(discordThreads).where(eq(discordThreads.issueId, issue.id));
 
           return {
             id: issue.id,
-            githubIssueId: issue.github_issue_id,
-            linearIssueId: issue.linear_issue_id,
+            githubIssueId: issue.githubIssueId,
+            linearIssueId: issue.linearIssueId,
             status: issue.status as IssueStatus,
-            isLiveStatusNotifiedOnDiscord: Boolean(issue.is_live_status_notified_on_discord),
-            createdAt: issue.created_at,
-            updatedAt: issue.updated_at,
-            discordThreads: threads.results.map((t) => ({
+            isLiveStatusNotifiedOnDiscord: Boolean(issue.isLiveStatusNotifiedOnDiscord),
+            createdAt: issue.createdAt,
+            updatedAt: issue.updatedAt,
+            discordThreads: threads.map((t) => ({
               id: t.id,
-              issueId: t.issue_id,
-              guildId: t.guild_id,
-              channelId: t.channel_id,
-              threadUrl: t.thread_url,
-              createdAt: t.created_at,
+              issueId: t.issueId,
+              guildId: t.guildId,
+              channelId: t.channelId,
+              threadUrl: t.threadUrl,
+              createdAt: t.createdAt,
             })),
           };
         })

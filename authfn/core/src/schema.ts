@@ -90,7 +90,9 @@ export function normalizeTableSchema(table: TableSchema): TableSchema {
   return {
     ...table,
     fields: Object.fromEntries(
-      Object.entries(table.fields).sort(([left], [right]) => left.localeCompare(right))
+      Object.entries(table.fields)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([fieldName, field]) => [fieldName, normalizeFieldSchema(field)])
     ),
     indexes: table.indexes
       ? [...table.indexes].sort((left, right) => left.name.localeCompare(right.name))
@@ -98,6 +100,18 @@ export function normalizeTableSchema(table: TableSchema): TableSchema {
     constraints: table.constraints
       ? [...table.constraints].sort((left, right) => left.name.localeCompare(right.name))
       : undefined
+  };
+}
+
+function normalizeFieldSchema(field: TableSchema['fields'][string]): TableSchema['fields'][string] {
+  if (field.type !== 'date' && field.type !== 'datetime') {
+    return field;
+  }
+
+  return {
+    ...field,
+    dateValueType: field.dateValueType ?? 'date',
+    dateStorageType: field.dateStorageType ?? 'timestamptz'
   };
 }
 

@@ -1,4 +1,4 @@
-import type { RuntimeAddress } from "@superfunctions/extfn";
+import type { RuntimeAddress } from "@extfn/core";
 
 export interface RuntimeRequestEnvelope {
   v: 1;

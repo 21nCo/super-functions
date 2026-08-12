@@ -30,7 +30,11 @@ export default async function Page(props: {
   const data = page.data as typeof page.data & LoadedDocsPageData;
   const { body: MDX, description, full, title } = data;
   const toc = Array.isArray(data.toc) ? data.toc : [];
-  const rawMarkdownUrl = `/api/docs/raw/${page.path}`;
+  const rawMarkdownBase =
+    process.env.CLOUDFLARE_DOCS_DEPLOY === "1"
+      ? "/docs/api/docs/raw"
+      : "/api/docs/raw";
+  const rawMarkdownUrl = `${rawMarkdownBase}/${page.path}`;
 
   return (
     <DocsPage
@@ -57,4 +61,8 @@ export default async function Page(props: {
       </DocsBody>
     </DocsPage>
   );
+}
+
+export function generateStaticParams() {
+  return source.generateParams();
 }

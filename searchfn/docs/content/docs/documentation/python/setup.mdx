@@ -1,0 +1,121 @@
+---
+title: Setup
+description: Install searchfn (Python) and wire it to your DataFn schema.
+---
+
+## Install
+
+```bash
+pip install searchfn
+```
+
+You'll also need DataFn Python installed and configured (DataFn is the source of truth for the schema and the database connection).
+
+## Minimum schema requirements
+
+`searchfn` only indexes string fields. Every model you want to search needs:
+
+- An `id` field that's stringifiable.
+- One or more fields of `type: "string"`.
+
+Example schema fragment:
+
+```python
+schema = {
+    "models": {
+        "articles": {
+            "fields": {
+                "id":       {"type": "uuid"},
+                "title":    {"type": "string"},
+                "body":     {"type": "string"},
+                "author_id":{"type": "string"},  # not indexed (would be, but you can filter post-search)
+            }
+        }
+    }
+}
+```
+
+The indexer walks `fields` and picks anything with `"type": "string"`. To exclude a field, change its type or move it to a sub-table.
+
+## Storage
+
+SearchFn creates a single table at first index:
+
+```sql
+CREATE TABLE _searchfn_index (
+    id        SERIAL PRIMARY KEY,
+    term      VARCHAR,
+    model     VARCHAR,
+    recordId  VARCHAR,
+    field     VARCHAR,
+    UNIQUE (term, model, recordId, field)
+);
+```
+
+(Exact DDL depends on your DataFn adapter; the indexer uses `db.create`, so the table is created via DataFn's migration story.)
+
+The `table_prefix` is configurable:
+
+```python
+search_plugin = create_searchfn_server({
+    "schema": schema,
+    "db": db,
+    "table_prefix": "fts_",  # → fts_index
+})
+```
+
+## Initialization
+
+```python
+from searchfn import create_searchfn_server
+
+search_plugin = create_searchfn_server({
+    "schema": schema,
+    "db": db,
+})
+```
+
+The plugin returns a dict:
+
+```python
+{
+    "routes": {
+        "POST /searchfn/index":  index_handler,
+        "POST /searchfn/search": search_handler,
+    }
+}
+```
+
+Mount the routes on your HTTP framework — see [HTTP mount](/docs/documentation/python/http-mount).
+
+## Trigger first index
+
+After mounting the server:
+
+```bash
+curl -X POST http://localhost:8000/searchfn/index
+# → { "ok": true, "result": { "totalIndexed": 1234, "totalTerms": 50000 } }
+```
+
+Or programmatically in a startup hook:
+
+```python
+from searchfn import index_data
+
+@app.on_event("startup")
+async def initial_index():
+    await index_data(schema, db)
+```
+
+## Configuration summary
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `schema` | required | DataFn schema dict |
+| `db` | required | DataFn-compatible adapter instance |
+| `table_prefix` | `"_searchfn_"` | Prefix for SearchFn-owned tables |
+
+## See also
+
+- [Indexing](/docs/documentation/python/indexing)
+- [HTTP mount](/docs/documentation/python/http-mount)

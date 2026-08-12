@@ -1,0 +1,36 @@
+{
+  "name": "@botfn/bot-slack",
+  "version": "0.0.1",
+  "description": "Slack bot integration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts",
+    "deploy:cloudflare": "wrangler deploy src/index.ts",
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@botfn/slack-core": "^0.0.1",
+    "@botfn/shared-types": "^0.0.1",
+    "@superfunctions/db": "^0.1.3",
+    "@superfunctions/http": "^0.1.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "@cloudflare/workers-types": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "botfn/bot-slack"
+  }
+}

@@ -12,7 +12,7 @@ export default defineConfig({
         __dirname,
         '../../packages/cli/src/index.ts'
       ),
-      '@superfunctions/extfn': path.resolve(
+      'extfn': path.resolve(
         __dirname,
         '../core/src/index.ts'
       ),

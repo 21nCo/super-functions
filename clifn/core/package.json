@@ -1,5 +1,5 @@
 {
-  "name": "clifn",
+  "name": "@clifn/core",
   "version": "0.1.0",
   "description": "Reusable CLI primitives runtime for the Superfunctions ecosystem",
   "type": "module",

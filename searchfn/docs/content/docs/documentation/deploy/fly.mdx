@@ -1,0 +1,139 @@
+---
+title: "Deploy: Fly.io"
+description: SearchFn on Fly with Postgres, Meilisearch, or a self-hosted Elasticsearch sidecar.
+---
+
+Fly's mental model — small Node processes near users, with Fly Postgres or external backends — is a clean fit for SearchFn.
+
+## Architecture
+
+```mermaid
+graph LR
+  User --> FlyEdge[Fly proxy]
+  FlyEdge --> App[Node app: SearchFn server]
+  App --> PG[(Fly Postgres)]
+```
+
+The app is stateless. Postgres holds the index. Multiple Fly machines run the same app.
+
+## App Dockerfile
+
+```dockerfile
+FROM node:20-slim
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+EXPOSE 8080
+CMD ["node", "dist/server.js"]
+```
+
+## `fly.toml`
+
+```toml
+app = "my-searchfn"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  path = "/searchfn/status"
+  timeout = "5s"
+```
+
+The `status` endpoint doubles as the health check.
+
+## Postgres
+
+```bash
+fly postgres create --name my-searchfn-db --region iad
+fly postgres attach my-searchfn-db --app my-searchfn
+```
+
+Fly injects `DATABASE_URL` into the app. Use it as `SEARCH_DB_URL` (or migrate the migrations to the same database as DataFn if co-located).
+
+```typescript
+import { createSearchFnServer } from "@searchfn/server";
+import { PostgresAdapter, getPostgresMigrationSQL } from "@searchfn/adapter-postgres";
+
+const adapter = new PostgresAdapter({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+const sf = await createSearchFnServer({ adapter, basePath: "/searchfn" });
+await sf.adapter.initialize?.({ resources: [...] });
+
+const server = createHttpServer(sf);
+server.listen(parseInt(process.env.PORT ?? "8080"));
+```
+
+## Meilisearch sidecar
+
+```bash
+fly apps create my-meili
+fly volumes create meili_data --region iad --size 10
+```
+
+`fly.toml` for the Meili app:
+
+```toml
+app = "my-meili"
+primary_region = "iad"
+
+[build]
+  image = "getmeili/meilisearch:v1.6"
+
+[env]
+  MEILI_NO_ANALYTICS = "true"
+
+[mounts]
+  source = "meili_data"
+  destination = "/meili_data"
+
+[http_service]
+  internal_port = 7700
+  force_https = false
+  auto_stop_machines = false
+  min_machines_running = 1
+```
+
+Internal-only via Fly's private network: from the SearchFn app, connect to `http://my-meili.internal:7700` with the Meili master key.
+
+## Multi-region
+
+Fly machines deploy in multiple regions; SearchFn's stateless servers run wherever. The hard part is the backend:
+
+- **Postgres**: Fly Postgres has read replicas per region. SearchFn writes go to the primary; reads can use replicas with a read-only `PostgresAdapter` setup.
+- **Meilisearch**: deploy one Meili per region with cross-region replication via your own backfill — Meili doesn't have built-in multi-region.
+
+For most apps, a single-region backend with a multi-region search server is good enough — latency to the backend is the bottleneck, not server CPU.
+
+## Secrets
+
+```bash
+fly secrets set DATABASE_URL=postgres://...
+fly secrets set MEILI_API_KEY=...
+```
+
+## See also
+
+- [Hono quickstart](/docs/quickstart/hono) — fits Fly Node containers
+- [Postgres adapter](/docs/reference/adapters/postgres)
+- [Scaling](/docs/documentation/deploy/scaling)

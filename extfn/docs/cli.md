@@ -59,7 +59,7 @@ Behavior:
 
 - Builds all configured targets by default.
 - `--target` accepts one target or a comma-separated target list.
-- Uses `@superfunctions/extfn-vite` as the only build engine.
+- Uses `@extfn/vite` as the only build engine.
 - Writes unpacked production outputs under `dist/<target>`.
 
 Examples:

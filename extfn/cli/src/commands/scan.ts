@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { BrowserTarget } from '@superfunctions/extfn';
-import type { RunnerActionResult, RunnerContext } from 'clifn/runner';
+import type { BrowserTarget } from '@extfn/core';
+import type { RunnerActionResult, RunnerContext } from '@clifn/core/runner';
 import {
   createMetricsEmitter,
   createNamespacedEmitter,

@@ -1,0 +1,118 @@
+---
+title: "WebSocket Security"
+description: "How DataFn protects WebSocket connections: auth at upgrade, namespace lock, connection caps, and heartbeats."
+audience: guide
+applies_to: server
+---
+
+DataFn's `/datafn/ws` endpoint delivers cursor notifications and (optionally) custom presence channels. It's a long-lived connection in client memory — and that makes it a different threat surface from the request/response routes.
+
+## Authentication at upgrade
+
+Every WebSocket connection must be authenticated **before** `addClient()` is called. Unauthenticated connections are closed with code `4401` (custom: "Unauthorized"). The pattern:
+
+```typescript
+// Hono / Bun
+app.get("/datafn/ws", (c) => {
+  const session = c.get("session"); // your auth middleware
+  if (!session?.userId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return upgrade(c.req.raw, {
+    onOpen: (ws) => {
+      datafn.websocketHandler.addClient(ws, {
+        userId: session.userId,
+        namespace: ns(session.orgId),
+      });
+    },
+    onMessage: (ws, data) => datafn.websocketHandler.handleMessage(ws, data),
+    onClose: (ws) => datafn.websocketHandler.removeClient(ws),
+  });
+});
+```
+
+If your framework upgrades the WS before middleware runs (rare; the default isn't this way), enforce the check inside `onOpen` and close with code 4401 if the session is missing.
+
+## Namespace lock at upgrade
+
+The namespace is **locked at connection time** from the server-derived auth context. Subsequent messages cannot change it. Even if a client sends `{ "type": "hello", "namespace": "other-org" }`, the WS handler ignores the field — it uses the namespace passed to `addClient()`.
+
+This prevents the most obvious cross-tenant attack: connect, then claim a different namespace.
+
+## Connection caps
+
+```typescript
+ws: {
+  maxConnections: 10_000,            // global cap
+  maxConnectionsPerNamespace: 100,  // per-tenant cap
+},
+```
+
+Connections exceeding either cap are closed with code `4503` (custom: "Capacity exceeded"). Choose values based on your hosting:
+
+- Single-process Node typically handles 5–15k concurrent WS without tuning.
+- Per-tenant cap protects against a single tenant exhausting capacity.
+- Bun's WS scales further but still has process-level limits.
+
+## Heartbeats
+
+Native `ping`/`pong` heartbeat detects dead connections:
+
+```typescript
+ws: {
+  heartbeatIntervalMs: 30_000,  // server pings every 30s
+  heartbeatTimeoutMs: 10_000,   // close if no pong within 10s
+},
+```
+
+Dead connections (TCP half-closes, browser sleep, lossy networks) are reaped automatically. Without heartbeats, a closed-but-not-FIN'd connection persists until OS-level keepalive — minutes to hours.
+
+## Custom message types
+
+The DataFn WS protocol uses a minimal message envelope:
+
+```typescript
+type WsMessage = { type: string; [key: string]: unknown };
+```
+
+If you implement custom message types (presence, typing indicators), apply the same rules:
+
+```typescript
+// Inside your onMessage handler:
+function handlePresence(ws, msg, authContext) {
+  if (msg.namespace && msg.namespace !== authContext.namespace) {
+    return; // discard cross-namespace presence message
+  }
+  broadcastToNamespace(authContext.namespace, msg);
+}
+```
+
+Never trust `msg` fields that determine routing or authorization.
+
+## Subscriptions and authorization
+
+When a client subscribes to a resource via the WS, the subscription is gated by the same `authorize` callback you configured for the REST routes — with `action: "query"`. If the actor can't query the resource, they can't subscribe to it.
+
+For per-row authz (e.g. "only deliver document updates the user has access to"), the WS broadcaster intersects with the resource's `permissions.read` policy and the row's capability fields (sharing, namespace).
+
+## Close codes
+
+| Code | Meaning |
+| --- | --- |
+| `1000` | Normal closure. |
+| `1001` | Going Away — sent during graceful shutdown. |
+| `4401` | Unauthorized at upgrade. |
+| `4429` | Custom: rate limited (rare; per-message rate limits aren't default). |
+| `4503` | Capacity exceeded (connection caps). |
+
+Clients should reconnect on `1001`, `1006`, and 5xxx codes (with exponential backoff). They should **not** reconnect on `4401` — that indicates an auth problem the user must fix.
+
+## Browser extensions
+
+For DataFn running inside a browser extension, the WS hop is typically: content script → background → DataFn server. The background script holds the authoritative session and forwards messages. Untrusted contexts (content scripts, sidepanels) cannot send WS messages directly — see [Extension transport](/docs/documentation/client/setup#browser-extensions) for the trust boundary model.
+
+## See also
+
+- [Layered model](/docs/documentation/security/layered-model)
+- [Server WebSockets](/docs/documentation/server/websockets)
+- [Namespace isolation](/docs/documentation/security/namespace-isolation)

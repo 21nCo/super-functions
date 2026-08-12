@@ -1,0 +1,55 @@
+---
+title: Flask
+description: Mount SearchFn into a Flask app.
+---
+
+## 1. Install
+
+```bash
+pip install flask searchfn datafn
+```
+
+## 2. App
+
+```python
+from flask import Flask, request, jsonify
+import asyncio
+import os
+
+from searchfn import create_searchfn_server
+from datafn.db import PostgresAdapter
+from schema import schema
+
+db = PostgresAdapter(connection_string=os.environ["SEARCH_DB_URL"])
+
+search_plugin = create_searchfn_server({
+    "schema": schema,
+    "db": db,
+})
+
+app = Flask(__name__)
+
+for path, handler in search_plugin["routes"].items():
+    def make_view(_handler):
+        def view():
+            return jsonify(asyncio.run(_handler(request.get_json())))
+        return view
+    app.add_url_rule(path, endpoint=f"sf{path}", view_func=make_view(handler), methods=["POST"])
+
+if __name__ == "__main__":
+    app.run(port=8000)
+```
+
+Flask is synchronous; the wrapper bridges Python's async SearchFn into Flask's sync request lifecycle via `asyncio.run`. For higher throughput consider Starlette or FastAPI.
+
+## 3. Smoke test
+
+```bash
+curl -X POST http://localhost:8000/searchfn/index -H 'content-type: application/json' -d '{"model":"products"}'
+curl -X POST http://localhost:8000/searchfn/search -H 'content-type: application/json' -d '{"query":"laptop"}'
+```
+
+## Next steps
+
+- [Python reference](/docs/reference/python)
+- [Production scaling](/docs/documentation/deploy/scaling)

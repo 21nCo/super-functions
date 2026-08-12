@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@superfunctions/db": "*"
+    "@superfunctions/db": "0.1.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

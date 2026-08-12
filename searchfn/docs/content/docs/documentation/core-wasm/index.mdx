@@ -1,0 +1,73 @@
+---
+title: WASM Core
+sidebarTitle: Overview
+description: Rust+WebAssembly build of the SearchFn engine — experimental, for workloads where the JS engine isn't fast enough.
+---
+
+`@searchfn/core-wasm` is an experimental Rust port of the BM25 engine, compiled to WebAssembly, with a thin TypeScript wrapper. It's a drop-in alternative to `@searchfn/core` for high-throughput indexing workloads.
+
+## Status
+
+Experimental. The package is built and tested, but:
+
+- It's not the default — `@searchfn/core` (pure TypeScript) is.
+- The API surface is narrower than the TS engine.
+- Performance characteristics are platform-dependent (V8 vs JavaScriptCore vs SpiderMonkey).
+
+For most apps, the TypeScript engine is fast enough and avoids the WASM toolchain.
+
+## How it ships
+
+```
+@searchfn/core-wasm/
+  dist/                 ← TypeScript wrapper
+  .wasm/                ← Built WASM artifact (searchfn_core_wasm.wasm)
+  rust/                 ← Rust source
+    Cargo.toml
+    src/lib.rs
+```
+
+The build pipeline runs `cargo build --target wasm32-unknown-unknown --release`, then copies the artifact into the package's `.wasm` directory, then bundles the TS wrapper with `tsup`.
+
+End-users install `@searchfn/core-wasm` — the build artifacts are included in the npm tarball.
+
+## Architecture
+
+```mermaid
+graph LR
+  Client[SearchFnClient] --> Wrapper[TS wrapper]
+  Wrapper -->|JSON over WASM ABI| Engine[Rust engine]
+  Engine --> Index[(in-memory index)]
+```
+
+The wrapper marshals JSON across the WASM boundary. Rust does the heavy lifting (tokenizing, scoring, sorting). JS sees the same `IndexedDbAdapter`-shaped API.
+
+## Build dependencies
+
+- Rust toolchain (1.75+)
+- `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
+- Node 20+ to drive `tsup`
+
+The build is wrapped: `npm run build` from the package directory does everything.
+
+## Performance vs TS engine
+
+Rough benchmarks on a typical M-series Mac (single thread):
+
+| Op | TS engine | WASM engine | Speedup |
+| --- | --- | --- | --- |
+| Index 10k docs | ~250 ms | ~80 ms | ~3x |
+| Search exact, 100k vocab | ~1 ms | ~0.3 ms | ~3x |
+| Search fuzzy edit=2 | ~50 ms | ~10 ms | ~5x |
+
+The fuzzy speedup is the largest because Wagner-Fischer is well-suited to WASM's tight loops.
+
+## Sub-pages
+
+- [Setup](/docs/documentation/core-wasm/setup) — install and use.
+- [When to use](/docs/documentation/core-wasm/when-to-use) — picking between TS and WASM cores.
+
+## See also
+
+- [Core engine overview](/docs/documentation/core/index)
+- [Performance overview](/docs/documentation/performance/index)

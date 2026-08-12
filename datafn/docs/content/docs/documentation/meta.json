@@ -3,15 +3,21 @@
   "root": true,
   "pages": [
     "index",
-    "concepts",
+    "capabilities",
+    "namespaces",
+    "sharing",
     "client",
     "server",
     "sync",
+    "security",
+    "deploy",
+    "apple",
     "migrations",
     "use-cases",
     "storage",
     "plugins",
     "database",
-    "advanced"
+    "advanced",
+    "troubleshooting"
   ]
 }

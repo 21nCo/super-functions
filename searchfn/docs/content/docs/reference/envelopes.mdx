@@ -1,0 +1,102 @@
+---
+title: Envelopes
+description: Canonical SearchFn request and response envelopes.
+---
+
+The SearchFn HTTP server wraps every response in a discriminated union envelope. Clients (TypeScript, Python, Swift, or your own) parse the envelope first, then descend into `result` or `error`.
+
+## Response envelope
+
+```typescript
+type Envelope<T> =
+  | { ok: true; result: T }
+  | { ok: false; error: ErrorBody };
+
+type ErrorBody = {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+};
+```
+
+### Success
+
+```json
+{ "ok": true, "result": { "ids": ["t-1", "t-3"] } }
+```
+
+The shape of `result` depends on the operation:
+
+| Operation | `result` shape |
+| --- | --- |
+| `status` | `{ adapter: string, capabilities: SearchAdapterCapabilities, uptimeMs: number }` |
+| `index` | `{ indexed: number }` |
+| `search` | `{ ids: Array<string \| number> }` |
+| `searchAll` | `{ results: Array<{ resource, id, score }> }` |
+| `remove` | `{ removed: number }` |
+| `clear` | `{ cleared: string }` |
+
+### Failure
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "LIMIT_EXCEEDED",
+    "message": "documents exceeds maxIndexBatch (10000)",
+    "details": { "path": "documents", "actual": 12000, "max": 10000 }
+  }
+}
+```
+
+`details.path` always points to the offending field (`query`, `resource`, `documents`, etc.) where applicable.
+
+## Request envelopes
+
+Requests are plain JSON — there's no wrapping object. Each operation has its own shape; see the per-endpoint pages in [Server reference](/docs/reference/server).
+
+Example:
+
+```json
+{
+  "resource": "articles",
+  "query": "search ranking",
+  "limit": 10,
+  "fuzzy": true,
+  "fields": ["title", "body"],
+  "fieldBoosts": { "title": 2.0 }
+}
+```
+
+## Content type
+
+All requests must set `Content-Type: application/json`. Responses are always `application/json`. The server returns `Content-Type: application/json; charset=utf-8`.
+
+## HTTP status codes
+
+| Status | Meaning |
+| --- | --- |
+| 200 | Successful operation |
+| 400 | Validation failure (`DFQL_INVALID`, `LIMIT_EXCEEDED`, `DFQL_UNSUPPORTED`) |
+| 403 | Authorization denied (`FORBIDDEN`) |
+| 499 | Client aborted (`DFQL_ABORTED`) |
+| 500 | Backend or runtime failure (`INTERNAL`, `SEARCH_ADAPTER_DISPOSED`) |
+| 504 | Operation timed out (`SEARCH_TIMEOUT`) |
+
+`499` follows nginx's convention for "client closed request" — useful for log filtering.
+
+## Idempotency
+
+Index and remove operations are idempotent on `(resource, id)` — re-sending the same document is safe. Indexing the same ID twice updates the row; removing an already-removed ID returns `removed: 0` and `ok: true`.
+
+`clear` is destructive but idempotent — calling it twice on an empty resource is a no-op.
+
+## Versioning
+
+The envelope shape is part of the public API contract. Breaking changes go through a major version bump with both shapes accepted for one minor's deprecation window.
+
+## See also
+
+- [Server reference](/docs/reference/server)
+- [Errors](/docs/reference/errors)
+- [Configuration](/docs/reference/configuration)

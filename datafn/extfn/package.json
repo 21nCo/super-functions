@@ -31,9 +31,9 @@
   "author": "21n",
   "license": "MIT",
   "dependencies": {
-    "@datafn/client": "*",
-    "@datafn/core": "*",
-    "@superfunctions/extfn": "*"
+    "@datafn/client": "0.0.3",
+    "@datafn/core": "0.0.3",
+    "@extfn/core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

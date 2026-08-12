@@ -1,0 +1,133 @@
+---
+title: "Environment Profiles"
+description: "Manage dev, staging, and production configuration with the CLI."
+audience: guide
+applies_to: typescript
+---
+
+The CLI honors environment profiles for any command that connects to a running DataFn server. Profiles are TOML/JSON files in `.datafn/profiles/` that specify the server URL, auth, namespace, and schema hash to use.
+
+This lets you run `datafn schema-migrate apply` against staging vs production without retyping connection details.
+
+## Profile file format
+
+`.datafn/profiles/staging.json`:
+
+```json
+{
+  "name": "staging",
+  "server": {
+    "baseUrl": "https://staging.example.com/datafn",
+    "websocketUrl": "wss://staging.example.com/datafn/ws"
+  },
+  "auth": {
+    "kind": "bearer",
+    "tokenEnvVar": "DATAFN_STAGING_TOKEN"
+  },
+  "namespace": "team:staging",
+  "schemaHash": "auto"
+}
+```
+
+`.datafn/profiles/production.json`:
+
+```json
+{
+  "name": "production",
+  "server": {
+    "baseUrl": "https://api.example.com/datafn",
+    "websocketUrl": "wss://api.example.com/datafn/ws"
+  },
+  "auth": {
+    "kind": "bearer",
+    "tokenEnvVar": "DATAFN_PRODUCTION_TOKEN"
+  },
+  "namespace": "team:production",
+  "schemaHash": "manual"
+}
+```
+
+## Selecting a profile
+
+```bash
+# Via flag
+datafn schema-migrate apply --profile staging --plan migrations/2026-05-21.ts
+
+# Via env var
+DATAFN_PROFILE=production datafn schema-migrate apply --plan migrations/2026-05-21.ts
+```
+
+If neither is set, the CLI looks for `.datafn/profiles/default.json`.
+
+## Schema-hash modes
+
+The `schemaHash` field controls how the CLI handles the schema hash:
+
+- `"auto"` (default): The CLI reads the hash from the server's `/datafn/meta` endpoint and uses it. Safe for dev/staging.
+- `"manual"`: The CLI requires `--schema-hash <value>` on the command line. Safest for production — prevents accidentally running a migration against the wrong schema version.
+- `"<explicit hash>"`: The CLI verifies the server's hash matches this string before proceeding.
+
+## Auth options
+
+```json
+{ "auth": { "kind": "bearer", "tokenEnvVar": "DATAFN_TOKEN" } }
+{ "auth": { "kind": "bearer", "token": "literal-token" } }    // Discouraged
+{ "auth": { "kind": "oauth", "clientId": "...", "audience": "..." } }
+{ "auth": { "kind": "command", "command": "aws sso login --output json" } }
+```
+
+The `command` kind shells out and reads `Authorization` from stdout — useful for short-lived AWS / Vault / Doppler credentials.
+
+## Listing profiles
+
+```bash
+datafn profiles list
+```
+
+```
+NAME         BASE URL                                NAMESPACE        SCHEMA HASH
+default      http://localhost:3000/datafn            local            auto
+staging      https://staging.example.com/datafn      team:staging     auto
+production   https://api.example.com/datafn          team:production  manual
+```
+
+## Adding a profile interactively
+
+```bash
+datafn profiles add my-profile
+```
+
+Prompts for base URL, namespace, auth, and writes the file. Non-interactive form:
+
+```bash
+datafn profiles add my-profile \
+  --base-url https://api.example.com/datafn \
+  --namespace team:production \
+  --auth-bearer-env DATAFN_TOKEN \
+  --schema-hash-mode manual
+```
+
+## Secrets policy
+
+- The CLI **never** writes tokens to disk. Always reference an env var.
+- `tokenEnvVar` is resolved from the shell environment at execution time.
+- For machine-to-machine in CI, use OIDC where possible (`auth.kind = "oauth"` with a token exchange).
+
+## Profile composition
+
+For settings shared across profiles, use `extends`:
+
+```json
+{
+  "name": "production-eu",
+  "extends": "production",
+  "server": { "baseUrl": "https://eu.example.com/datafn" }
+}
+```
+
+The CLI merges parent → child, with child winning.
+
+## See also
+
+- [Multi-environment workflows](/docs/cli/multi-env)
+- [CI integration](/docs/cli/ci-integration)

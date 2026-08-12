@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createServer } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveExtensionConfig } from '@superfunctions/extfn';
+import { resolveExtensionConfig } from '@extfn/core';
 
 import {
   assertSafeReloadDecision,

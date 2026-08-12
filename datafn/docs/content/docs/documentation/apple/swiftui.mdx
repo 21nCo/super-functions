@@ -1,0 +1,179 @@
+---
+title: "SwiftUI Integration"
+description: "Drop DataFn observed queries into SwiftUI views, bind to forms, and handle navigation."
+audience: guide
+applies_to: client
+---
+
+`DatafnObservedQuery` is `@Observable @MainActor`. Put it on `@State` (or `@Environment`, for app-wide queries) and SwiftUI handles the rest.
+
+## Pass the runtime through the view tree
+
+```swift
+@main
+struct MyApp: App {
+    @State private var runtime: DatafnAppleRuntime?
+
+    var body: some Scene {
+        WindowGroup {
+            if let runtime {
+                ContentView()
+                    .environment(\.datafnRuntime, runtime)
+                    .environment(\.datafnSource, runtime.observationSource)
+            } else {
+                ProgressView().task { await bootstrap() }
+            }
+        }
+    }
+}
+
+private struct DatafnRuntimeKey: EnvironmentKey {
+    static let defaultValue: DatafnAppleRuntime? = nil
+}
+
+extension EnvironmentValues {
+    var datafnRuntime: DatafnAppleRuntime? {
+        get { self[DatafnRuntimeKey.self] }
+        set { self[DatafnRuntimeKey.self] = newValue }
+    }
+}
+```
+
+(The runtime ships matching keys in the next minor; until then a simple custom key works.)
+
+## Read in a view
+
+```swift
+struct TaskListView: View {
+    @Environment(\.datafnSource) private var source
+
+    @State private var tasks = DatafnObservedQuery<[DatafnJSONObject]>(
+        resource: "tasks",
+        filters: ["completed": .equal(false)],
+        sort: [.descending("createdAt")]
+    )
+
+    var body: some View {
+        List(tasks.value, id: \.self) { task in
+            NavigationLink(value: task["id"] as? String ?? "") {
+                Text(String(describing: task["title"] ?? ""))
+            }
+        }
+        .task { tasks.attach(source) }
+    }
+}
+```
+
+`attach(source)` binds the observed query to its data source. The first emission is synchronous from the local CoreData store; subsequent emissions are reactive.
+
+## Detail view
+
+```swift
+struct TaskDetailView: View {
+    let taskID: String
+    @Environment(\.datafnSource) private var source
+    @State private var task: DatafnObservedQuery<DatafnJSONObject?>?
+
+    var body: some View {
+        Group {
+            if let task = task?.value {
+                VStack {
+                    Text(String(describing: task["title"] ?? ""))
+                    Toggle("Completed", isOn: .constant(task["completed"] as? Bool ?? false))
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            task = DatafnObservedQuery(resource: "tasks", id: taskID, source: source)
+        }
+    }
+}
+```
+
+A query bound to a single `id` returns `Optional<DatafnJSONObject>` — `nil` when the row doesn't exist, populated when it does.
+
+## Mutations
+
+Today, mutations on Apple run through the WebView bridge (for hybrid apps) or via `runtime.bridgeHost.dispatch(...)`. Native APIs are forthcoming. The shape will be:
+
+```swift
+// Future API:
+try await runtime.table("tasks").mutate(
+    operation: .insert,
+    record: ["title": "Hello", "completed": false]
+)
+```
+
+For hybrid apps, see [WebView bridge](/docs/documentation/apple/webview-bridge).
+
+## Forms
+
+Binding to fields requires extracting into typed structs since `DatafnJSONObject` is `[String: AnyHashable]`. The pattern:
+
+```swift
+struct Task: Codable, Identifiable {
+    let id: String
+    var title: String
+    var completed: Bool
+}
+
+func decode(_ row: DatafnJSONObject) throws -> Task {
+    let data = try JSONSerialization.data(withJSONObject: row)
+    return try JSONDecoder().decode(Task.self, from: data)
+}
+```
+
+Then your form binds to `Task` directly; a Save button dispatches a mutation.
+
+## Navigation
+
+`NavigationStack` works as usual:
+
+```swift
+NavigationStack {
+    TaskListView()
+        .navigationDestination(for: String.self) { id in
+            TaskDetailView(taskID: id)
+        }
+}
+```
+
+Use the task `id` as the navigation value. The detail view's `DatafnObservedQuery` keeps the row live as it changes server-side.
+
+## Search
+
+```swift
+struct SearchView: View {
+    @Environment(\.datafnSource) private var source
+    @State private var query = ""
+    @State private var results: [DatafnSearchHit] = []
+
+    var body: some View {
+        VStack {
+            TextField("Search", text: $query)
+                .onSubmit {
+                    Task {
+                        results = try await source.search(text: query, resources: ["tasks", "projects"])
+                    }
+                }
+            List(results, id: \.id) { hit in
+                Text(hit.snippet ?? hit.id)
+            }
+        }
+    }
+}
+```
+
+(The native search API mirrors [`SearchProvider`](/docs/reference/core/search-provider).)
+
+## Theming and accessibility
+
+SwiftUI handles these — DataFn doesn't touch the view layer. The recommendation is to keep DataFn in your data layer and let your view layer use the standard SwiftUI affordances (`@DynamicTypeSize`, `accessibilityLabel`, etc.).
+
+## See also
+
+- [Observation](/docs/documentation/apple/observation)
+- [WebView bridge](/docs/documentation/apple/webview-bridge)
+- [Apple WebView Host example](/docs/examples/apple-webview-host)

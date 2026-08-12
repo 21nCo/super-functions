@@ -1,0 +1,488 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AuthFn API",
+    "version": "0.1.1",
+    "description": "Generated from @authfn/core with every bundled plugin enabled. The shape of your deployment's OpenAPI document depends on the plugins you actually mount."
+  },
+  "paths": {
+    "/auth/2fa/challenge": {
+      "post": {
+        "operationId": "completeTwoFactorChallenge",
+        "summary": "Complete a pending two-factor sign-in challenge",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/2fa/confirm": {
+      "post": {
+        "operationId": "confirmTwoFactor",
+        "summary": "Confirm a 2FA enrollment with a valid TOTP code",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/2fa/disable": {
+      "post": {
+        "operationId": "disableTwoFactor",
+        "summary": "Disable 2FA with a valid TOTP or recovery code",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/2fa/enroll": {
+      "post": {
+        "operationId": "enrollTwoFactor",
+        "summary": "Create a 2FA enrollment and recovery codes",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/account": {
+      "get": {
+        "operationId": "getAccountDetails",
+        "summary": "Get current user account details",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAccount",
+        "summary": "Delete the current user account",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/api-keys": {
+      "get": {
+        "operationId": "listApiKeys",
+        "summary": "List API keys for the current user",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createApiKey",
+        "summary": "Create a new API key for the current user",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/api-keys/{keyId}": {
+      "delete": {
+        "operationId": "revokeApiKey",
+        "summary": "Revoke an API key for the current user",
+        "tags": [
+          "authfn"
+        ],
+        "parameters": [
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/handoff/native/exchange": {
+      "post": {
+        "operationId": "exchangeNativeHandoff",
+        "summary": "Exchange a native handoff code for a bearer session",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/handoff/native/start": {
+      "post": {
+        "operationId": "startNativeHandoff",
+        "summary": "Create a one-time native handoff code",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/handoff/web/consume": {
+      "get": {
+        "operationId": "consumeWebHandoff",
+        "summary": "Consume a WebView handoff code and set session cookies",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/handoff/web/start": {
+      "post": {
+        "operationId": "startWebHandoff",
+        "summary": "Create a one-time WebView handoff code",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/otp/send": {
+      "post": {
+        "operationId": "sendOtp",
+        "summary": "Send an email OTP challenge",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/otp/verify": {
+      "post": {
+        "operationId": "verifyOtp",
+        "summary": "Verify an email OTP challenge",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/password/reset/complete": {
+      "post": {
+        "operationId": "completePasswordReset",
+        "summary": "Complete a password reset with a valid OTP challenge",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/password/reset/start": {
+      "post": {
+        "operationId": "startPasswordReset",
+        "summary": "Start an OTP-backed password reset flow",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/regions/lookup": {
+      "post": {
+        "operationId": "lookupRegion",
+        "summary": "Lookup region routing guidance for an identifier",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/runtime": {
+      "get": {
+        "operationId": "getRuntime",
+        "summary": "Get resolved runtime and cookie/provider overrides",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Get the current session",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List active sessions for the current user",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/sessions/{sessionId}/revoke": {
+      "post": {
+        "operationId": "revokeSession",
+        "summary": "Revoke a specific session",
+        "tags": [
+          "authfn"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/sign-in/password": {
+      "post": {
+        "operationId": "signInWithPassword",
+        "summary": "Sign in and issue a session using email/password",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/sign-out": {
+      "post": {
+        "operationId": "signOut",
+        "summary": "Revoke the current session",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/sign-up/password": {
+      "post": {
+        "operationId": "signUpWithPassword",
+        "summary": "Create a user and session using email/password",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/social/callback/{provider}": {
+      "get": {
+        "operationId": "completeSocialSignIn",
+        "summary": "Complete social OAuth sign-in",
+        "tags": [
+          "authfn"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "operationId": "completeSocialSignInFormPost",
+        "summary": "Complete social OAuth sign-in via form_post",
+        "tags": [
+          "authfn"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/social/disconnect/{provider}": {
+      "post": {
+        "operationId": "disconnectSocialAccount",
+        "summary": "Disconnect a linked social OAuth account",
+        "tags": [
+          "authfn"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/social/native/apple/complete": {
+      "post": {
+        "operationId": "completeNativeAppleSignIn",
+        "summary": "Complete native Apple sign-in",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/social/native/apple/start": {
+      "post": {
+        "operationId": "startNativeAppleSignIn",
+        "summary": "Start native Apple sign-in",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/social/start": {
+      "post": {
+        "operationId": "startSocialSignIn",
+        "summary": "Start social OAuth sign-in",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}

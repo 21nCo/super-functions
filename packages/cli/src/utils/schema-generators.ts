@@ -3,10 +3,67 @@
  */
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
+import { resolvePhysicalTableName } from './schema-diff.js';
 
 interface AbstractSchema {
   version: number;
   schemas: TableSchema[];
+}
+
+export class CliSchemaGenerationError extends Error {
+  readonly code: "CLI_SCHEMA_GENERATION_ERROR";
+  readonly details?: Record<string, unknown>;
+
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "CliSchemaGenerationError";
+    this.code = "CLI_SCHEMA_GENERATION_ERROR";
+    this.details = details;
+  }
+}
+
+export async function generateLibraryAbstractSchema(
+  libraryPackage: { getSchema?: (config: unknown) => AbstractSchema | Promise<AbstractSchema> },
+  config: unknown
+): Promise<AbstractSchema> {
+  if (typeof libraryPackage.getSchema !== "function") {
+    throw new CliSchemaGenerationError("library does not export getSchema", {
+      reason: "missing-get-schema"
+    });
+  }
+
+  const generated = await Promise.resolve(libraryPackage.getSchema(config));
+  return normalizeAbstractSchema(generated);
+}
+
+export function normalizeAbstractSchema(abstractSchema: AbstractSchema): AbstractSchema {
+  return {
+    version: abstractSchema.version,
+    schemas: abstractSchema.schemas.map((schema) => ({
+      modelName: schema.modelName,
+      fields: Object.fromEntries(
+        Object.entries(schema.fields)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([fieldName, field]) => [fieldName, normalizeFieldSchema(field)])
+      ),
+      indexes: schema.indexes
+        ? [...schema.indexes]
+            .map((index) => ({
+              ...index,
+              fields: [...index.fields]
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name))
+        : undefined,
+      constraints: schema.constraints
+        ? [...schema.constraints]
+            .map((constraint) => ({
+              ...constraint,
+              fields: [...constraint.fields]
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name))
+        : undefined
+    }))
+  };
 }
 
 // ============================================================================
@@ -19,7 +76,9 @@ export function generateDrizzleSchemaFile(
   namespace: string,
   dialect: 'postgres' | 'mysql' | 'sqlite' = 'postgres'
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   const imports = new Set<string>();
+  const drizzleImports = new Set<string>();
   const tables: string[] = [];
 
   // Map dialect to Drizzle table builder and core module
@@ -30,11 +89,11 @@ export function generateDrizzleSchemaFile(
   };
 
   const { builder: tableBuilder, core: coreModule } = dialectMap[dialect];
-  imports.add(`import { ${tableBuilder}, text, integer, boolean, timestamp, json, bigint } from '${coreModule}';`);
+  drizzleImports.add(tableBuilder);
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const tableName = table.modelName;
-    const tableNameSnakeCase = toSnakeCase(namespace + '_' + tableName);
+    const tableNameSnakeCase = resolvePhysicalTableName(namespace, tableName);
 
     const fields: string[] = [];
 
@@ -42,17 +101,10 @@ export function generateDrizzleSchemaFile(
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      const drizzleType = mapTypeToDrizzle(field.type);
+      const drizzleField = mapFieldToDrizzle(field, dialect);
+      drizzleImports.add(drizzleField.type);
 
-      // For timestamp fields, add mode: 'string' to handle ISO string dates
-      // For bigint fields, add mode: 'bigint' for full precision
-      let typeConfig = '';
-      if (field.type === 'date') {
-        typeConfig = "{ mode: 'string' }";
-      } else if (field.type === 'bigint') {
-        typeConfig = "{ mode: 'bigint' }";
-      }
-      let fieldDef = `  ${fieldKey}: ${drizzleType}('${fieldName}'${typeConfig ? `, ${typeConfig}` : ''})`;
+      let fieldDef = `  ${fieldKey}: ${drizzleField.type}('${fieldName}'${drizzleField.config ? `, ${drizzleField.config}` : ''})`;
 
       // Add constraints
       if (fieldKey === 'id') {
@@ -78,14 +130,33 @@ export function generateDrizzleSchemaFile(
       fields.push(fieldDef);
     }
 
+    const indexes = renderDrizzleIndexes(table);
+    if (indexes.length > 0) {
+      drizzleImports.add('index');
+      drizzleImports.add('uniqueIndex');
+    }
+
     // Generate table
-    const tableCode = `
+    const tableCode = indexes.length > 0
+      ? `
+export const ${tableName} = ${tableBuilder}(
+  '${tableNameSnakeCase}',
+  {
+${fields.join('\n')}
+  },
+  (table) => ({
+${indexes.join(',\n')}
+  })
+);`
+      : `
 export const ${tableName} = ${tableBuilder}('${tableNameSnakeCase}', {
 ${fields.join('\n')}
 });`;
 
     tables.push(tableCode);
   }
+
+  imports.add(`import { ${Array.from(drizzleImports).sort().join(', ')} } from '${coreModule}';`);
 
   // Generate file content
   const header = `/**
@@ -101,22 +172,75 @@ ${fields.join('\n')}
   return header + '\n' + Array.from(imports).join('\n') + '\n' + tables.join('\n\n');
 }
 
-function mapTypeToDrizzle(type: string): string {
-  switch (type) {
+function renderDrizzleIndexes(table: TableSchema): string[] {
+  const usedKeys = new Set<string>();
+  return (table.indexes ?? []).map((schemaIndex) => {
+    const key = uniqueObjectKey(toCamelCase(schemaIndex.name), usedKeys);
+    const builder = schemaIndex.unique ? 'uniqueIndex' : 'index';
+    const columns = schemaIndex.fields.map((field) => `table.${field}`).join(', ');
+    return `    ${key}: ${builder}('${schemaIndex.name}').on(${columns})`;
+  });
+}
+
+function uniqueObjectKey(base: string, usedKeys: Set<string>): string {
+  const root = base || 'idx';
+  let candidate = root;
+  let counter = 2;
+  while (usedKeys.has(candidate)) {
+    candidate = `${root}${counter}`;
+    counter += 1;
+  }
+  usedKeys.add(candidate);
+  return candidate;
+}
+
+function toCamelCase(value: string): string {
+  return value
+    .replace(/^[^a-zA-Z_$]+/, '')
+    .replace(/[^a-zA-Z0-9_$]+([a-zA-Z0-9_$])/g, (_, char: string) => char.toUpperCase())
+    .replace(/[^a-zA-Z0-9_$]/g, '');
+}
+
+function mapFieldToDrizzle(
+  field: FieldSchema,
+  dialect: 'postgres' | 'mysql' | 'sqlite'
+): { type: string; config?: string } {
+  if (isDateField(field)) {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+        return dialect === 'sqlite'
+          ? { type: 'integer', config: "{ mode: 'timestamp_ms' }" }
+          : { type: 'timestamp' };
+      case 'timestamptz':
+        return dialect === 'sqlite'
+          ? { type: 'integer', config: "{ mode: 'timestamp_ms' }" }
+          : dialect === 'postgres'
+            ? { type: 'timestamp', config: '{ withTimezone: true }' }
+            : { type: 'timestamp' };
+      case 'iso-text':
+        return { type: 'text' };
+      case 'epoch-ms-integer':
+        return { type: 'integer' };
+      case 'epoch-ms-bigint':
+        return dialect === 'sqlite'
+          ? { type: 'integer' }
+          : { type: 'bigint', config: "{ mode: 'number' }" };
+    }
+  }
+
+  switch (field.type) {
     case 'string':
-      return 'text';
+      return { type: 'text' };
     case 'number':
-      return 'integer';
+      return { type: 'integer' };
     case 'bigint':
-      return 'bigint';
+      return { type: 'bigint', config: "{ mode: 'bigint' }" };
     case 'boolean':
-      return 'boolean';
-    case 'date':
-      return 'timestamp';
+      return { type: 'boolean' };
     case 'json':
-      return 'json';
+      return { type: 'json' };
     default:
-      return 'text';
+      return { type: 'text' };
   }
 }
 
@@ -129,16 +253,17 @@ export function generatePrismaSchemaFile(
   libraryName: string,
   namespace: string
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   const models: string[] = [];
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const modelName = capitalize(table.modelName);
     const fields: string[] = [];
 
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
       const fieldName = field.fieldName || fieldKey;
-      const prismaType = mapTypeToPrisma(field.type);
+      const prismaType = mapFieldToPrisma(field);
       const optionalMarker = field.required ? '' : '?';
 
       let fieldDef = `  ${fieldName} ${prismaType}${optionalMarker}`;
@@ -167,7 +292,7 @@ export function generatePrismaSchemaFile(
 model ${modelName} {
 ${fields.join('\n')}
   
-  @@map("${namespace}_${toSnakeCase(table.modelName)}")
+  @@map("${resolvePhysicalTableName(namespace, table.modelName)}")
 }`;
 
     models.push(modelCode);
@@ -193,8 +318,22 @@ datasource db {
   return header + '\n' + models.join('\n\n');
 }
 
-function mapTypeToPrisma(type: string): string {
-  switch (type) {
+function mapFieldToPrisma(field: FieldSchema): string {
+  if (isDateField(field)) {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+      case 'timestamptz':
+        return 'DateTime';
+      case 'iso-text':
+        return 'String';
+      case 'epoch-ms-integer':
+        return 'Int';
+      case 'epoch-ms-bigint':
+        return 'BigInt';
+    }
+  }
+
+  switch (field.type) {
     case 'string':
       return 'String';
     case 'number':
@@ -203,8 +342,6 @@ function mapTypeToPrisma(type: string): string {
       return 'BigInt';
     case 'boolean':
       return 'Boolean';
-    case 'date':
-      return 'DateTime';
     case 'json':
       return 'Json';
     default:
@@ -221,16 +358,17 @@ export function generateKyselySchemaFile(
   libraryName: string,
   _namespace: string
 ): string {
+  const normalizedSchema = normalizeAbstractSchema(abstractSchema);
   // Kysely uses TypeScript interfaces for schema
   const interfaces: string[] = [];
 
-  for (const table of abstractSchema.schemas) {
+  for (const table of normalizedSchema.schemas) {
     const interfaceName = capitalize(table.modelName) + 'Table';
     const fields: string[] = [];
 
     for (const [fieldKey, fieldValue] of Object.entries(table.fields)) {
       const field = fieldValue as FieldSchema;
-      const tsType = mapTypeToTypeScript(field.type);
+      const tsType = mapFieldToTypeScript(field);
       const optional = field.required ? '' : '?';
       fields.push(`  ${fieldKey}${optional}: ${tsType};`);
     }
@@ -244,7 +382,7 @@ ${fields.join('\n')}
   }
 
   // Generate Database interface
-  const tableNames = abstractSchema.schemas.map(t => t.modelName);
+  const tableNames = normalizedSchema.schemas.map(t => t.modelName);
   const dbInterface = `
 export interface Database {
 ${tableNames.map(name => `  ${name}: ${capitalize(name)}Table;`).join('\n')}
@@ -263,8 +401,19 @@ ${tableNames.map(name => `  ${name}: ${capitalize(name)}Table;`).join('\n')}
   return header + '\n' + interfaces.join('\n\n') + '\n' + dbInterface;
 }
 
-function mapTypeToTypeScript(type: string): string {
-  switch (type) {
+function mapFieldToTypeScript(field: FieldSchema): string {
+  if (isDateField(field)) {
+    switch (resolveDateValueType(field)) {
+      case 'date':
+        return 'Date';
+      case 'iso-string':
+        return 'string';
+      case 'epoch-ms':
+        return 'number';
+    }
+  }
+
+  switch (field.type) {
     case 'string':
       return 'string';
     case 'number':
@@ -273,8 +422,6 @@ function mapTypeToTypeScript(type: string): string {
       return 'bigint';
     case 'boolean':
       return 'boolean';
-    case 'date':
-      return 'Date';
     case 'json':
       return 'unknown';
     default:
@@ -282,16 +429,39 @@ function mapTypeToTypeScript(type: string): string {
   }
 }
 
+function isDateField(field: FieldSchema): boolean {
+  return field.type === 'date' || field.type === 'datetime';
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
+  }
+}
+
+function normalizeFieldSchema(field: FieldSchema): FieldSchema {
+  return {
+    ...field,
+    references: field.references ? { ...field.references } : undefined
+  };
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function toSnakeCase(str: string): string {
-  return str
-    .replace(/([A-Z])/g, '_$1')
-    .toLowerCase()
-    .replace(/^_/, '');
-}
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);

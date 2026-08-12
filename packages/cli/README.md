@@ -468,6 +468,39 @@ export default defineConfig({
 
 Generated migrations work with `drizzle-kit push`.
 
+#### Conduct schema fallback for composite unique + CHECK constraints
+
+When a downstream app needs schema details not yet represented in generated output, use a direct Drizzle schema module and import it next to your generated schema.
+
+This fallback is the supported path for Conduct's required constraints:
+
+- Composite unique key on `spec_id` + `phase_number`
+- CHECK constraint on `status` (`pending | in_progress | complete | failed | blocked`)
+
+```typescript
+import { sql } from 'drizzle-orm';
+import { check, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+
+export const conductSpecs = pgTable(
+  'conduct_specs',
+  {
+    id: text('id').notNull(),
+    specId: text('spec_id').notNull(),
+    phaseNumber: integer('phase_number').notNull(),
+    status: text('status').notNull(),
+  },
+  (table) => ({
+    specPhaseUnique: uniqueIndex('conduct_specs_spec_phase_unique').on(table.specId, table.phaseNumber),
+    statusCheck: check(
+      'conduct_specs_status_check',
+      sql`${table.status} in ('pending','in_progress','complete','failed','blocked')`
+    ),
+  })
+);
+```
+
+The repository includes a local harness proving this path in `packages/cli/src/__tests__/conduct-schema-fallback.test.ts`.
+
 ### Prisma
 
 ```javascript

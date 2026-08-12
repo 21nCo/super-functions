@@ -1,0 +1,184 @@
+---
+title: SwiftUI
+description: Bind SearchFn results into a SwiftUI view.
+---
+
+The SearchFn client is async; SwiftUI is observation-based. The bridge is one of two patterns: a `@MainActor` view model, or `@Observable` state that runs queries directly.
+
+## Pattern 1 — view model
+
+```swift
+import SwiftUI
+import SearchFnConvenience
+
+@MainActor
+final class SearchViewModel: ObservableObject {
+    @Published var query: String = ""
+    @Published var ids: [String] = []
+    @Published var isSearching = false
+
+    private let client: SearchFnClient
+    private var currentTask: Task<Void, Never>?
+
+    init(client: SearchFnClient) {
+        self.client = client
+    }
+
+    func search() {
+        currentTask?.cancel()
+        let q = query
+        currentTask = Task {
+            isSearching = true
+            defer { isSearching = false }
+            do {
+                let results = try await client.search(
+                    SearchFnSearchParams(resource: "tasks", query: q)
+                )
+                if !Task.isCancelled {
+                    ids = results.map(String.init(describing:))
+                }
+            } catch is CancellationError {
+                // expected
+            } catch {
+                print("search error:", error)
+            }
+        }
+    }
+}
+
+struct SearchView: View {
+    @StateObject var vm: SearchViewModel
+
+    var body: some View {
+        VStack {
+            TextField("Search", text: $vm.query)
+                .onChange(of: vm.query) { _, _ in vm.search() }
+            if vm.isSearching {
+                ProgressView()
+            }
+            List(vm.ids, id: \.self) { id in
+                Text(id)
+            }
+        }
+    }
+}
+```
+
+`currentTask?.cancel()` ensures stale queries don't overwrite fresh results.
+
+## Pattern 2 — @Observable (iOS 17+)
+
+```swift
+import SwiftUI
+import SearchFnConvenience
+
+@Observable
+final class SearchState {
+    var query: String = ""
+    var ids: [String] = []
+    var isSearching = false
+}
+
+struct SearchView: View {
+    @State private var state = SearchState()
+    let client: SearchFnClient
+
+    var body: some View {
+        VStack {
+            TextField("Search", text: $state.query)
+                .onChange(of: state.query) { _, q in
+                    Task { await runSearch(q) }
+                }
+            if state.isSearching { ProgressView() }
+            List(state.ids, id: \.self) { Text($0) }
+        }
+    }
+
+    func runSearch(_ q: String) async {
+        state.isSearching = true
+        defer { state.isSearching = false }
+        do {
+            let results = try await client.search(
+                SearchFnSearchParams(resource: "tasks", query: q)
+            )
+            state.ids = results.map(String.init(describing:))
+        } catch {
+            print(error)
+        }
+    }
+}
+```
+
+`@Observable` removes the need for `@Published` and `ObservableObject`. SwiftUI tracks reads of `state.query`, `state.ids`, etc.
+
+## Debouncing
+
+For search-as-you-type:
+
+```swift
+@MainActor
+final class SearchViewModel: ObservableObject {
+    @Published var query: String = ""
+    @Published var ids: [String] = []
+
+    private var debounceTask: Task<Void, Never>?
+    private let client: SearchFnClient
+
+    init(client: SearchFnClient) { self.client = client }
+
+    func queryChanged() {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 80_000_000) // 80ms
+            if Task.isCancelled { return }
+            do {
+                let results = try await client.search(
+                    SearchFnSearchParams(resource: "tasks", query: query)
+                )
+                if !Task.isCancelled {
+                    ids = results.map(String.init(describing:))
+                }
+            } catch {
+                print(error)
+            }
+        }
+    }
+}
+```
+
+80 ms feels instant on a real device; tune for the tradeoff between feel and request volume.
+
+## Wiring the client into the app
+
+```swift
+@main
+struct MyApp: App {
+    @State private var search: SearchFnSwift?
+
+    var body: some Scene {
+        WindowGroup {
+            if let search {
+                ContentView(client: search.client())
+            } else {
+                ProgressView()
+                    .task {
+                        let s = try? SearchFn(sqlite: SearchFnSQLiteAdapterConfiguration(
+                            rootURL: appSupportURL,
+                            indexKey: "main"
+                        ))
+                        try? await s?.client().initialize(/* ... */)
+                        search = s
+                    }
+            }
+        }
+    }
+}
+```
+
+Construct once on app boot; pass the client through the view tree.
+
+## See also
+
+- [Swift quickstart](/docs/quickstart/swift)
+- [SQLite adapter](/docs/documentation/apple/sqlite-adapter)
+- [Swift reference](/docs/reference/swift)

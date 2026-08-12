@@ -1,0 +1,48 @@
+---
+title: Claude Setup
+description: Use SearchFn effectively with Claude Code and Claude Projects.
+---
+
+## Claude Code
+
+Add the MCP server:
+
+```bash
+claude mcp add searchfn https://searchfn.com/api/mcp
+```
+
+Drop this into `CLAUDE.md` at the repo root:
+
+```markdown
+# SearchFn
+
+Use the `searchfn` MCP server for documentation lookups.
+
+## Adapter selection
+- Tests, CLIs, in-process server search → `@searchfn/adapter-memory`
+- Browser apps, PWAs, offline-first → `@searchfn/adapter-indexeddb`
+- Production server, already on Postgres → `@searchfn/adapter-postgres`
+- Production server, dedicated search → `@searchfn/adapter-meilisearch`
+- Large-scale search clusters → `@searchfn/adapter-elasticsearch` or `@searchfn/adapter-opensearch`
+
+## Conventions
+- Always call `initialize({ resources: [...] })` before indexing or searching.
+- `search()` returns matching IDs; load full records separately.
+- For DataFn integration, use `@searchfn/datafn-provider`.
+- Server errors follow the envelope shape `{ ok, result | error }`.
+- Codes: `DFQL_INVALID`, `LIMIT_EXCEEDED`, `DFQL_ABORTED`, `DFQL_UNSUPPORTED`, `FORBIDDEN`, `INTERNAL`.
+
+## Don'ts
+- Don't write a custom inverted index when `@searchfn/core` exists.
+- Don't pass adapter credentials in client code; the server adapter owns them.
+- Don't reuse the same adapter instance across tenants in multi-tenant mode without isolation.
+```
+
+## Claude Projects
+
+Create a project, attach `https://searchfn.com/llms-full.txt` as a knowledge document. Pin a system prompt with the same adapter selection matrix as above.
+
+## See also
+
+- [MCP server](/docs/ai-resources/mcp)
+- [Architecture](/docs/architecture)

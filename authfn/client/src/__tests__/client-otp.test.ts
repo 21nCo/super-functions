@@ -227,6 +227,29 @@ describe('@authfn/client otp flows', () => {
       }
     });
 
+    const signUpSent = await client.sendOtp({
+      purpose: 'sign-up',
+      email: 'otp-new@example.com'
+    });
+    expect(signUpSent.ok).toBe(true);
+
+    const otpSignUp = await client.verifyOtp({
+      purpose: 'sign-up',
+      email: 'otp-new@example.com',
+      code: codes.get('sign-up:otp-new@example.com')!,
+      profile: {
+        name: 'OTP New'
+      },
+      sessionMode: 'hybrid'
+    });
+    expect(otpSignUp.ok).toBe(true);
+    if (!otpSignUp.ok || !('session' in otpSignUp.data)) {
+      throw new Error('otp sign-up should yield a session envelope');
+    }
+    expect(otpSignUp.data.session?.methods).toEqual(['email-otp']);
+    expect(otpSignUp.data.token).toEqual(expect.any(String));
+    await client.signOut();
+
     await client.signUpWithPassword({
       email: 'ada@example.com',
       password: 'Sup3rSecurePassphrase!'

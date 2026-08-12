@@ -1,9 +1,12 @@
 import type { AuthProvider, AuthSession } from '@superfunctions/auth';
-import type { Adapter, TableSchema } from '@superfunctions/db';
+import type { Adapter, KVStoreAdapter, TableSchema } from '@superfunctions/db';
 import type { Route, Router } from '@superfunctions/http';
 import type { OAuthClientSecretResolver, OAuthFetchLike, OAuthTokenHttpClient } from '@superfunctions/oauth-http';
 import type { AuthFnErrorCode } from './core/errors.js';
 export {
+  AuthFnAdminAmbiguousUserError,
+  AuthFnAdminConfigError,
+  AuthFnAdminUnauthorizedError,
   AuthFnApiKeyRevokedError,
   AuthFnConfigError,
   AuthFnConflictError,
@@ -50,7 +53,7 @@ export type AuthFnAuthMethod =
   | 'api-key'
   | 'two-factor';
 
-export type AuthFnOtpPurpose = 'verify-email' | 'sign-in' | 'reset-password';
+export type AuthFnOtpPurpose = 'verify-email' | 'sign-in' | 'sign-up' | 'reset-password';
 export type AuthFnSocialProviderId = 'google' | 'apple' | 'github';
 
 export interface AuthFnSession extends AuthSession {
@@ -157,6 +160,19 @@ export interface AuthFnRegionProfileRecord {
   updatedAt: Date;
 }
 
+export interface AuthFnNativeHandoffCodeRecord {
+  id: string;
+  codeHash: string;
+  sourceSessionId: string;
+  target: string;
+  regionId: string;
+  userId: string;
+  expiresAt: Date;
+  consumedAt?: Date | null;
+  createdAt: Date;
+  metadata?: Record<string, unknown>;
+}
+
 export interface AuthFnOtpChallengeRecord {
   id: string;
   purpose: AuthFnOtpPurpose;
@@ -168,6 +184,13 @@ export interface AuthFnOtpChallengeRecord {
   consumedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AuthFnAccountDeletionResult {
+  deleted: true;
+  userId: string;
+  primaryEmail?: string;
+  counts: Record<string, number>;
 }
 
 export interface AuthFnOtpChallengeLifecycleEvent {
@@ -182,17 +205,29 @@ export interface AuthFnOtpChallengeLifecycleEvent {
 
 export type AuthFnEventType =
   | 'authfn.user.created'
+  | 'authfn.account_linked'
+  | 'authfn.account_linking.conflict'
+  | 'authfn.account.deleted'
+  | 'authfn.password.signup.rollback_failed'
   | 'authfn.session.issued'
   | 'authfn.session.revoked'
   | 'authfn.otp.sent'
   | 'authfn.otp.verified'
+  | 'authfn.otp.signup.rollback_failed'
   | 'authfn.oauth.started'
   | 'authfn.oauth.completed'
+  | 'authfn.oauth.failed'
   | 'authfn.api_key.created'
   | 'authfn.api_key.revoked'
   | 'authfn.2fa.enabled'
   | 'authfn.2fa.challenged'
   | 'authfn.region.lookup'
+  | 'authfn.region.lookup.conflict'
+  | 'authfn.handoff.started'
+  | 'authfn.handoff.exchanged'
+  | 'authfn.handoff.failed'
+  | 'authfn.rate_limited'
+  | 'authfn.request.failed'
   | 'authfn.plugin.failed';
 
 export interface AuthFnEvent {
@@ -285,6 +320,7 @@ export interface AuthFnSocialProviderRuntimeConfig {
   allowlistedRedirectUris?: string[];
   allowlistedReturnTo?: string[];
   scopes?: string[];
+  nativeClientIds?: string[];
 }
 
 export interface AuthFnSocialProviderConfig extends Partial<AuthFnSocialProviderRuntimeConfig> {
@@ -293,6 +329,31 @@ export interface AuthFnSocialProviderConfig extends Partial<AuthFnSocialProvider
 }
 
 export type AuthFnSocialHandoffMode = 'none' | 'session-token';
+
+export interface AuthFnAccountLinkingConfig {
+  /**
+   * Link an OAuth identity to an existing AuthFn user when both sides prove the
+   * same verified email address. Provider-level linkByVerifiedEmail overrides
+   * this global policy.
+   */
+  oauthByVerifiedEmail?: boolean | {
+    providers?: AuthFnSocialProviderId[];
+    requireExistingEmailVerified?: boolean;
+    requireProviderEmailVerified?: boolean;
+  };
+  /**
+   * Treat OTP sign-up for an already registered email as sign-in/linking.
+   * The OTP itself proves control of the email address.
+   */
+  otpSignUpExistingUser?: boolean;
+  /**
+   * Allow an already authenticated user to add a password credential for their
+   * own email through the password sign-up endpoint when no password exists.
+   */
+  passwordForAuthenticatedUser?: boolean | {
+    requireExistingEmailVerified?: boolean;
+  };
+}
 
 export interface AuthFnSuccessEnvelope<TData = Record<string, unknown>> {
   ok: true;
@@ -392,7 +453,17 @@ export interface AuthFnHooks {
     ctx: AuthFnHookContext,
     result: Record<string, unknown>
   ): Promise<void> | void;
+  beforeAccountDelete(
+    ctx: AuthFnHookContext,
+    input: Record<string, unknown>
+  ): Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+  afterAccountDelete(
+    ctx: AuthFnHookContext,
+    result: AuthFnAccountDeletionResult
+  ): Promise<void> | void;
 }
+
+export type AuthFnHookFailurePolicy = 'observe' | 'fail';
 
 export interface AuthFnPluginRuntimeContext {
   config: AuthFnConfig;
@@ -407,6 +478,7 @@ export interface AuthFnPlugin {
   schema?: (config: AuthFnConfig) => AuthFnSchemaDefinition['schemas'];
   routes?: (ctx: AuthFnPluginRuntimeContext) => Route[];
   hooks?: Partial<AuthFnHooks>;
+  hookFailurePolicy?: Partial<Record<keyof AuthFnHooks, AuthFnHookFailurePolicy>>;
   validateConfig?: (config: AuthFnConfig) => void;
 }
 
@@ -419,9 +491,11 @@ export type AuthFnSchemaPluginInput = AuthFnPlugin | AuthFnBundledPluginDescript
 
 export interface AuthFnConfig {
   database: Adapter;
+  cacheStore?: KVStoreAdapter;
   namespace?: string;
   basePath?: string;
   cookie?: AuthFnCookieConfig;
+  accountLinking?: AuthFnAccountLinkingConfig;
   runtime?: AuthFnRuntimeResolver;
   hooks?: Partial<AuthFnHooks>;
   plugins: AuthFnPlugin[];

@@ -10,4 +10,14 @@ export const source = loader({
   source: {
     files,
   },
+  pageTree: {
+    attachFile(node, file) {
+      const sidebarTitle = (file?.data as { sidebarTitle?: string } | undefined)
+        ?.sidebarTitle;
+      if (sidebarTitle) {
+        node.name = sidebarTitle;
+      }
+      return node;
+    },
+  },
 });

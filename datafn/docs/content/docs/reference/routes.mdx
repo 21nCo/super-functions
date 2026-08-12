@@ -1,0 +1,226 @@
+---
+title: "HTTP Routes Reference"
+description: "Canonical reference for every route exposed by the DataFn server: method, path, request shape, response shape, and error codes."
+audience: reference
+applies_to: server
+---
+
+Every DataFn server, regardless of host framework, exposes the same set of HTTP routes under the `/datafn/*` prefix. They share a single response envelope:
+
+```typescript
+// Success
+{ "ok": true,  "result": <route-specific> }
+// Error
+{ "ok": false, "error": { "code": "<DatafnErrorCode>", "message": "...", "details": { "path": "..." } } }
+```
+
+POST endpoints accept `application/json`. The Python server returns the same envelope.
+
+For narrative documentation and a per-framework walkthrough, see [Server Routes](/docs/documentation/server/routes).
+
+## GET /datafn/status
+
+Health check and server metadata. TypeScript server only (Python parity is on the roadmap).
+
+| | |
+| --- | --- |
+| **Method / Path** | `GET /datafn/status` |
+| **Auth** | optional — checked via `authorize(ctx, "status", payload)` |
+| **Errors** | `INTERNAL` on database failure |
+
+```json
+{
+  "ok": true,
+  "result": {
+    "schemaHash": "sha256:abc123...",
+    "capabilities": ["dfql.query", "dfql.mutation", "dfql.transact", "dfql.sync", "dfql.seed"],
+    "limits": { "maxLimit": 100, "maxTransactSteps": 100, "maxPayloadBytes": 5242880 },
+    "serverTimeMs": 1709251200000
+  }
+}
+```
+
+`serverTimeMs` is rounded to the nearest minute to prevent fingerprinting.
+
+## POST /datafn/query
+
+Execute one or many DFQL queries.
+
+| | |
+| --- | --- |
+| **Body (single)** | `DfqlQuery` |
+| **Body (batch)** | `DfqlQuery[]` (max `limits.maxBatchSize`) |
+| **Auth** | `authorize(ctx, "query", payload)` |
+| **Errors** | `DFQL_INVALID`, `DFQL_UNKNOWN_RESOURCE`, `DFQL_UNKNOWN_FIELD`, `DFQL_UNSUPPORTED`, `LIMIT_EXCEEDED`, `FORBIDDEN` |
+
+Single response: `{ data: <Record[]>, hasMore: boolean, cursor?: string }`
+Batch response: `Array<{ data: <Record[]>, hasMore: boolean }>` aligned to the request order.
+
+Implicit filtering:
+
+- `trash` capability: `metadata.includeTrashed === false` (default) excludes trashed rows.
+- `archivable` capability: `metadata.includeArchived === false` (default) excludes archived rows.
+- `shareable` capability with `defaultVisibility: "private"`: only owned + explicitly-shared rows are returned.
+
+## POST /datafn/mutation
+
+Execute one or many DFQL mutations.
+
+| | |
+| --- | --- |
+| **Body (single)** | `DfqlMutation` |
+| **Body (batch)** | `DfqlMutation[]` (max `limits.maxBatchSize`) |
+| **Auth** | `authorize(ctx, "mutation", payload)` |
+| **Errors** | `DFQL_INVALID`, `DFQL_UNKNOWN_RESOURCE`, `DFQL_UNKNOWN_FIELD`, `DFQL_UNSUPPORTED`, `NOT_FOUND`, `CONFLICT`, `FORBIDDEN`, `LIMIT_EXCEEDED` |
+
+Valid `operation` values:
+
+- Core: `insert`, `merge`, `replace`, `delete`
+- Capability: `trash`, `restore`, `archive`, `unarchive`, `share`, `unshare`
+- Relation: `relate`, `modifyRelation`, `unrelate`
+
+Single response: `{ id: string, serverSeq: number }`.
+
+Replay safety: `clientId` + `mutationId` enables idempotency. A replay returns the cached result without re-executing.
+
+## POST /datafn/transact
+
+Execute multiple steps atomically.
+
+| | |
+| --- | --- |
+| **Body** | `{ steps: Array<{ type?: "query" \| "mutation"; query?: DfqlQuery; mutation?: DfqlMutation }> }` |
+| **Auth** | `authorize(ctx, "transact", payload)` |
+| **Errors** | Every error from `/datafn/query` and `/datafn/mutation`; on failure of any step, prior mutations roll back and the response includes `TRANSACTION_ROLLED_BACK` |
+
+Response: `{ results: Array<{ id?: string; serverSeq?: number; data?: Record[] }> }` aligned to step order.
+
+Bounded by `limits.maxTransactSteps` (default 100).
+
+## POST /datafn/seed
+
+Initialize a dataset for a client. Idempotent.
+
+| | |
+| --- | --- |
+| **Body** | `{ clientId: string }` |
+| **Auth** | `authorize(ctx, "seed", payload)` |
+| **Errors** | `INTERNAL` |
+| **Response** | `{ ok: true }` |
+
+## POST /datafn/clone
+
+Initial sync. Returns every visible record plus per-resource cursors.
+
+| | |
+| --- | --- |
+| **Body** | `{ clientId: string; tables?: string[]; includeJoins?: boolean }` |
+| **Auth** | `authorize(ctx, "clone", payload)` |
+| **Errors** | `FORBIDDEN`, `INTERNAL` |
+
+Response:
+
+```json
+{
+  "ok": true,
+  "data": { "<resource>": [<Record>...] },
+  "cursors": { "<resource>": "42" },
+  "joins": { },
+  "next": { "<resource>": null }
+}
+```
+
+`next` is non-null when results are paginated; pass it back to continue cloning.
+
+## POST /datafn/pull
+
+Incremental sync since a cursor.
+
+| | |
+| --- | --- |
+| **Body** | `{ clientId: string; cursors: Record<string,string>; includeJoins?: boolean; limit?: number }` |
+| **Auth** | `authorize(ctx, "pull", payload)` |
+| **Errors** | `FORBIDDEN`, `INTERNAL`, `LIMIT_EXCEEDED` (limit above `limits.maxPullLimit`) |
+
+Response:
+
+```json
+{
+  "ok": true,
+  "records": { "<resource>": [<Record>...] },
+  "merged":  { "<resource>": [<Record>...] },
+  "deleted": { "<resource>": [<id>...] },
+  "joins":   { "<from>.<rel>.<to>": { "upsert": [], "delete": [] } },
+  "cursors": { "<resource>": "47" },
+  "hasMore": false
+}
+```
+
+When `hasMore` is true the client should pull again with the returned cursors.
+
+## POST /datafn/push
+
+Push offline mutations.
+
+| | |
+| --- | --- |
+| **Body** | `{ clientId: string; mutations: DfqlMutation[] }` |
+| **Auth** | `authorize(ctx, "push", payload)` |
+| **Errors** | Same as `/datafn/mutation`; bulk results in `errors` array |
+
+Response:
+
+```json
+{
+  "ok": true,
+  "applied": ["mut_001", "mut_002"],
+  "errors":  [{ "mutationId": "mut_003", "code": "CONFLICT", "message": "..." }],
+  "cursor":  "47",
+  "cursorBefore": "44",
+  "cursors": { "<resource>": "47" }
+}
+```
+
+After a successful push, connected WebSocket clients in the same namespace receive a cursor notification.
+
+## POST /datafn/reconcile
+
+Resolve client/server state after long offline windows. TypeScript server only.
+
+| | |
+| --- | --- |
+| **Body** | `{ clientId: string; resources?: string[]; includeJoins?: boolean }` |
+| **Auth** | `authorize(ctx, "reconcile", payload)` |
+| **Response** | `{ counts: { <resource>: number }, joinCounts: {}, latestCursor: string }` |
+
+## POST /datafn/search
+
+Cross-resource search via the configured `SearchProvider`.
+
+| | |
+| --- | --- |
+| **Body** | `{ query: string; resources?: string[]; limit?: number }` |
+| **Auth** | `authorize(ctx, "search", payload)` |
+| **Errors** | `DFQL_UNSUPPORTED` if no provider is configured, `INTERNAL` |
+| **Response** | `{ results: Array<{ resource: string; id: string; score: number; snippet?: string }> }` |
+
+## POST /datafn/rest/&lt;resource&gt;/&lt;id?&gt;
+
+Auto-generated REST surface for each resource. Enabled via `rest: true` in `createDatafnServer`.
+
+| | |
+| --- | --- |
+| **GET /datafn/rest/`<resource>`** | List records |
+| **GET /datafn/rest/`<resource>`/`<id>`** | Read by id |
+| **POST /datafn/rest/`<resource>`** | Create |
+| **PATCH /datafn/rest/`<resource>`/`<id>`** | Merge |
+| **PUT /datafn/rest/`<resource>`/`<id>`** | Replace |
+| **DELETE /datafn/rest/`<resource>`/`<id>`** | Delete |
+
+REST translates to DFQL internally, so the same error codes and capability semantics apply.
+
+## WS /datafn/ws
+
+WebSocket endpoint for live cursor notifications. After a successful push, namespaced clients receive `{ type: "cursor", cursors: { <resource>: string } }` so they can issue a follow-up `/datafn/pull` and update their local store.
+
+See [WebSockets](/docs/documentation/server/websockets) for the full protocol.

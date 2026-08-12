@@ -6,6 +6,10 @@
 export { memoryAdapter } from './memory/index.js';
 export type { MemoryAdapterConfig } from './memory/index.js';
 
+// Cloudflare KV adapter
+export { cloudflareKVStore, createCloudflareKVStore } from './cloudflare-kv/index.js';
+export type { CloudflareKVNamespace, CloudflareKVStoreOptions } from './cloudflare-kv/index.js';
+
 // Drizzle adapter
 export { drizzleAdapter } from './drizzle/index.js';
 export type { DrizzleAdapterConfig, DrizzleDialect } from './drizzle/index.js';

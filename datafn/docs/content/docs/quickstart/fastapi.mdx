@@ -1,0 +1,104 @@
+---
+title: "Quickstart: FastAPI"
+description: "Mount DataFn on FastAPI with SQLAlchemy in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+DataFn's Python package returns a dictionary of route handlers keyed by `"METHOD /path"`. You mount them on FastAPI by forwarding the request body to each handler.
+
+## 1. Scaffold
+
+```bash
+mkdir fastapi-datafn && cd fastapi-datafn
+python -m venv .venv
+source .venv/bin/activate
+pip install fastapi uvicorn datafn sqlalchemy psycopg2-binary
+```
+
+## 2. Schema
+
+`schema.py`:
+
+```python
+schema = {
+    "capabilities": ["timestamps", "audit"],
+    "resources": [
+        {
+            "name": "tasks",
+            "version": 1,
+            "idPrefix": "tsk",
+            "fields": [
+                {"name": "title", "type": "string", "required": True},
+                {"name": "completed", "type": "boolean", "required": True, "default": False},
+            ],
+            "indices": {"base": ["title", "completed"]},
+        }
+    ],
+}
+```
+
+## 3. Server
+
+`app.py`:
+
+```python
+from fastapi import FastAPI, Request
+from datafn import create_datafn_server
+from datafn.adapters.sqlalchemy import sqlalchemy_adapter
+from sqlalchemy import create_engine
+from schema import schema
+
+engine = create_engine("postgresql://localhost/datafn_dev")
+db = sqlalchemy_adapter(engine, dialect="postgres")
+
+datafn = create_datafn_server({
+    "schema": schema,
+    "db": db,
+    "authorize": lambda ctx, action, payload: True,
+})
+
+app = FastAPI()
+
+ROUTES = [
+    "POST /datafn/query",
+    "POST /datafn/mutation",
+    "POST /datafn/transact",
+    "POST /datafn/seed",
+    "POST /datafn/clone",
+    "POST /datafn/pull",
+    "POST /datafn/push",
+]
+
+def bind_route(method_path: str):
+    method, path = method_path.split(" ", 1)
+    handler = datafn["routes"][method_path]
+
+    async def endpoint(request: Request):
+        payload = await request.json()
+        ctx = {"user": getattr(request.state, "user", None)}
+        return await handler(ctx, payload)
+
+    app.add_api_route(path, endpoint, methods=[method])
+
+for route in ROUTES:
+    bind_route(route)
+```
+
+## 4. Run
+
+```bash
+uvicorn app:app --reload --port 3000
+```
+
+```bash
+curl -X POST http://localhost:3000/datafn/mutation \
+  -H 'content-type: application/json' \
+  -d '{"resource":"tasks","version":1,"operation":"insert","clientId":"c1","mutationId":"m1","record":{"title":"Hello","completed":false}}'
+```
+
+## Where to next
+
+- Pair DataFn with FastAPI's dependency injection for the `ctx`: pass auth state via `Depends(...)`.
+- Add a TypeScript client pointing at this server: [Setup the Web Client](/docs/documentation/client/setup)
+- Lock the server down: [Authorization](/docs/documentation/server/authorization)

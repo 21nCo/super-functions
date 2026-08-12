@@ -1,0 +1,100 @@
+---
+title: WASM Core Setup
+description: Install and use the WASM engine.
+---
+
+## Install
+
+```bash
+npm install @searchfn/core-wasm @searchfn/client @searchfn/server
+```
+
+The package ships with prebuilt WASM artifacts in `dist/`. You don't need Rust installed to use it — only to rebuild from source.
+
+## Use as an adapter
+
+```typescript
+import { createSearchFnServer } from "@searchfn/server";
+import { WasmCoreAdapter } from "@searchfn/core-wasm";
+
+const sf = await createSearchFnServer({
+  adapter: new WasmCoreAdapter({
+    // mirror IndexedDbAdapter options: bm25, normalization, cache, etc.
+  }),
+  basePath: "/searchfn",
+});
+```
+
+The WASM adapter implements the same `SearchFnAdapter` interface as the TS core — your routes, clients, and tests don't change.
+
+## Bootstrap timing
+
+WASM modules are async-instantiated. The first call to any method triggers the load:
+
+```typescript
+const adapter = new WasmCoreAdapter({});
+
+// On first call, the WASM module instantiates (~5–20 ms cold)
+await adapter.initialize({ resources: [...] });
+```
+
+For low-latency cold starts, warm it up at boot:
+
+```typescript
+await adapter.initialize({ resources: [] }); // forces WASM load
+```
+
+## Environments
+
+| Environment | Supported |
+| --- | --- |
+| Node 18+ | yes — uses `node:fs` to load the `.wasm` file |
+| Bun | yes |
+| Deno | yes — uses fetch |
+| Modern browsers | yes — bundlers (Vite, Webpack 5+) handle `.wasm` |
+| Cloudflare Workers | yes — supports WASM directly |
+| Vercel Edge | yes — supports WASM |
+
+For browser bundles, your bundler needs to support `.wasm` imports. Vite and Webpack 5 do out of the box.
+
+## Building from source
+
+If you're patching the Rust engine:
+
+```bash
+cd searchfn/core-wasm
+rustup target add wasm32-unknown-unknown
+npm run build
+```
+
+The build:
+
+1. `cargo build --target wasm32-unknown-unknown --release` — compiles Rust → WASM.
+2. Copies the `.wasm` artifact into `.wasm/`.
+3. Runs `tsup` to bundle the TS wrapper, embedding the WASM bytes.
+
+To skip cargo and just rebuild the TS wrapper:
+
+```bash
+npm run build:watch
+```
+
+(Re-uses the `.wasm` artifact from a prior cargo build.)
+
+## Tests
+
+```bash
+cd searchfn/core-wasm
+npm test
+```
+
+Tests run with `fake-indexeddb` so they exercise both the WASM module and the JS wrapper's IndexedDB-shaped fallback paths.
+
+## Limits
+
+The WASM adapter is in-process. State is lost on process exit. For persistence, pair it with the IndexedDB adapter (browser) or your own snapshot mechanism (see [index snapshot/restore](/docs/recipes/index-snapshot-restore)).
+
+## See also
+
+- [When to use](/docs/documentation/core-wasm/when-to-use)
+- [Core engine overview](/docs/documentation/core/index)

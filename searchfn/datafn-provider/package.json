@@ -52,7 +52,7 @@
     "@searchfn/adapter-contracts": "^0.3.0"
   },
   "peerDependencies": {
-    "@datafn/core": "*"
+    "@datafn/core": "0.0.3"
   },
   "devDependencies": {
     "@datafn/core": "*",

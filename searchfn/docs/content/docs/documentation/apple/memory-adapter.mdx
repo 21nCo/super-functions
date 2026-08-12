@@ -1,0 +1,131 @@
+---
+title: Memory Adapter
+description: SearchFnMemoryAdapter — in-process, ephemeral, fastest.
+---
+
+The Memory adapter holds the inverted index in RAM. State is lost when the process exits. Use for tests, CLI tools, and short-lived processing.
+
+## Bootstrap
+
+```swift
+import SearchFnConvenience
+import SearchFnAdapterContracts
+
+let search = InMemorySearchFn(
+    defaults: SearchFnDefaults(
+        limit: 20,
+        limitPerResource: 10,
+        fuzzy: .enabled,
+        prefix: true
+    )
+)
+
+let client = search.client()
+```
+
+`InMemorySearchFn` constructs the adapter, the client, and wires defaults in one step.
+
+## Initialize resources
+
+```swift
+try await client.initialize(
+    SearchFnInitializeParams(
+        resources: [
+            SearchFnInitializeResourceConfig(name: "tasks", searchFields: ["title", "body"])
+        ]
+    )
+)
+```
+
+Resource initialization is optional but recommended. Without it, indexing falls back to all fields as searchable.
+
+## Index
+
+```swift
+try await client.index(
+    SearchFnIndexParams(
+        resource: "tasks",
+        documents: [
+            SearchFnDocument(id: "t-1", fields: ["title": "Hybrid search", "body": "Swift local index"]),
+            SearchFnDocument(id: "t-2", fields: ["title": "Groceries", "body": "Milk and bread"]),
+        ]
+    )
+)
+```
+
+Documents have `id: String` and `fields: [String: SearchFnFieldValue]`. The field value type covers string, integer, double, boolean, and string array.
+
+## Search
+
+```swift
+let ids = try await client.search(
+    SearchFnSearchParams(resource: "tasks", query: "hybrid")
+)
+```
+
+Returns `[String]` (or `[Int64]` for integer IDs — depends on how you indexed).
+
+## searchAll
+
+```swift
+let results = try await client.searchAll(
+    SearchFnSearchAllParams(query: "milk", resources: ["tasks", "notes"])
+)
+
+for hit in results {
+    print(hit.resource, hit.id, hit.score)
+}
+```
+
+## remove / clear
+
+```swift
+try await client.remove(resource: "tasks", ids: ["t-2"])
+try await client.clear(resource: "tasks")
+```
+
+## Dispose
+
+```swift
+try await client.dispose()
+```
+
+After disposal, calling any method throws `SEARCH_ADAPTER_DISPOSED`. Re-initialize to use again.
+
+## Threading
+
+Methods are `async` and safe to call from any actor. Internally the adapter serializes mutations via an actor; concurrent reads are allowed.
+
+For SwiftUI:
+
+```swift
+@MainActor
+class SearchVM: ObservableObject {
+    @Published var ids: [String] = []
+    let client: SearchFnClient
+
+    func search(_ q: String) async {
+        do {
+            ids = try await client.search(SearchFnSearchParams(resource: "tasks", query: q))
+                .map(String.init(describing:))
+        } catch {
+            print(error)
+        }
+    }
+}
+```
+
+## When to switch to SQLite
+
+Memory is fine for:
+
+- Single-session use (process restarts re-build the index from scratch).
+- Datasets that comfortably fit in RAM (a few hundred MB max).
+- Tests where determinism is more important than persistence.
+
+For everything else, use [SQLiteAdapter](/docs/documentation/apple/sqlite-adapter).
+
+## See also
+
+- [SQLite adapter](/docs/documentation/apple/sqlite-adapter)
+- [Swift reference](/docs/reference/swift)

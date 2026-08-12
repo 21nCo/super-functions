@@ -1,0 +1,37 @@
+---
+title: Recipes
+sidebarTitle: Overview
+description: Copy-pasteable patterns for the things you actually want to do with SearchFn.
+---
+
+The reference tells you what every method does. The recipes tell you when and why.
+
+## App patterns
+
+- [Autocomplete](/docs/recipes/autocomplete) — instant, prefix-friendly search-as-you-type
+- [Snippet highlighting](/docs/recipes/snippet-highlighting) — return matched fragments with `<mark>` tags
+- [Multi-language search](/docs/recipes/multi-language) — per-language stop words and stemmers
+- [Multi-tenant search](/docs/recipes/multi-tenant) — keep tenants isolated
+- [Hybrid local + remote search](/docs/recipes/hybrid-local-remote) — IndexedDB for hot, server for everything else
+- [Cross-resource ranking](/docs/recipes/cross-resource-ranking) — fair scoring across products, articles, users
+
+## Architecture patterns
+
+- [Backfill from an existing DB](/docs/recipes/backfill-from-db) — initial population from Postgres / Mongo / etc.
+- [Reindex with no downtime](/docs/recipes/reindex-no-downtime) — blue-green index migration
+- [Partial reindex](/docs/recipes/partial-reindex) — only touch records that changed
+- [Index snapshot and restore](/docs/recipes/index-snapshot-restore) — capture state for backup or seeding
+
+## Quality
+
+- [Relevance testing](/docs/recipes/relevance-testing) — verify changes don't regress search quality
+
+## Integration
+
+- [DataFn integration](/docs/recipes/datafn-integration) — deeper than the reference page
+- [AuthFn integration](/docs/recipes/authfn-integration) — wire `authorize` to your session model
+- [FileFn integration](/docs/recipes/filefn-integration) — index file metadata and extracted text
+
+## How to pick
+
+If you're building a new feature, start from the closest recipe and adjust. The recipes are concrete enough to copy and short enough to read in one sitting.

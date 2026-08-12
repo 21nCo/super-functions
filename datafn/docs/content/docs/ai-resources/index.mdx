@@ -1,0 +1,40 @@
+---
+title: "AI Resources"
+sidebarTitle: "Overview"
+description: "LLM-ready artifacts and agent affordances for working with DataFn through Claude, Cursor, ChatGPT, and other assistants."
+audience: landing
+applies_to: both
+---
+
+This documentation site is built to be consumed by AI assistants as well as people. Every page exposes raw markdown and one-click handoff to popular chat UIs so an agent can pick up where you left off.
+
+## What's available
+
+- **`llms.txt`** — short table of contents with deep links, suitable for grounding a prompt or a retrieval index.
+- **`llms-full.txt`** — the full content of every documentation page, optimized for direct ingestion by language models.
+- **Per-page "Open in" buttons** — every page ships with a Popover that hands the current URL to ChatGPT, Claude, Cursor, or Scira.
+- **Raw markdown endpoint** — `GET /api/docs/raw/<path>` serves the unrendered MDX behind any page.
+- **MCP server (experimental)** — expose `search_docs`, `fetch_page`, `get_route`, and `get_error` to MCP-compatible clients.
+- **Editor skills** — drop-in instruction files for Cursor, Claude Code, and Codex.
+
+## When to use which artifact
+
+| You want to... | Use |
+| --- | --- |
+| Ground a model on the public surface of DataFn in 20K tokens | [`llms.txt`](/docs/ai-resources/llms-txt) |
+| Train or fine-tune on the entire corpus | [`llms-full.txt`](/docs/ai-resources/llms-txt) |
+| Let your IDE answer "how do I use this" without copying anything | [Cursor rules](/docs/ai-resources/cursor) / [Claude skills](/docs/ai-resources/claude) / [Codex instructions](/docs/ai-resources/codex) |
+| Wire DataFn into an agentic tool with structured search | [MCP server](/docs/ai-resources/mcp) |
+| Hand off the current page to ChatGPT/Claude/Cursor | Use the **Open** button at the top of any page |
+
+## Quick sanity check
+
+You can verify the artifacts are live from the command line:
+
+```bash
+curl https://datafn.21n.co/llms.txt | head -50
+curl https://datafn.21n.co/llms-full.txt | wc -c
+curl https://datafn.21n.co/api/docs/raw/dfql/queries.mdx | head -30
+```
+
+If you're self-hosting these docs the same URLs work against your own deployment.

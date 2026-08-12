@@ -1,0 +1,95 @@
+---
+title: Cross-Resource Ranking
+description: Search across products, articles, and users — and rank them fairly.
+---
+
+`searchAll` returns hits from multiple resources merged by score. By default the merge sorts by `score DESC`, but raw BM25 scores aren't comparable across resources with different corpus shapes. Here's how to fix that.
+
+## The default merge
+
+```typescript
+const results = await client.searchAll({
+  query: "laptop",
+  resources: ["products", "articles", "users"],
+  limitPerResource: 5,
+});
+// [
+//   { resource: "products", id: "p-1", score: 4.8 },
+//   { resource: "articles", id: "a-7", score: 3.1 },
+//   { resource: "products", id: "p-2", score: 2.4 },
+//   ...
+// ]
+```
+
+This is fine when corpora are similar in size and shape. It's broken when one resource is huge (lots of low-frequency terms) and another is small.
+
+## Normalize per resource
+
+```typescript
+function normalize(results: SearchAllResult[]) {
+  const maxByResource = new Map<string, number>();
+  for (const r of results) {
+    maxByResource.set(r.resource, Math.max(maxByResource.get(r.resource) ?? 0, r.score));
+  }
+  return results
+    .map((r) => ({ ...r, normalizedScore: r.score / (maxByResource.get(r.resource) || 1) }))
+    .sort((a, b) => b.normalizedScore - a.normalizedScore);
+}
+```
+
+Now scores are in `[0, 1]` per resource — comparable across resources.
+
+## Enforce diversity with limitPerResource
+
+```typescript
+await client.searchAll({
+  query: "laptop",
+  resources: ["products", "articles", "users"],
+  limitPerResource: 3, // never more than 3 per resource
+  limit: 9,
+});
+```
+
+This forces the final result to be evenly distributed across resources, even if one resource has 20 strong hits.
+
+## Boost per resource
+
+If certain resources should always rank higher (products outrank user profiles), apply a global multiplier post-merge:
+
+```typescript
+const resourceBoosts = { products: 1.5, articles: 1.0, users: 0.5 };
+
+const ranked = results
+  .map((r) => ({ ...r, boostedScore: r.score * (resourceBoosts[r.resource] ?? 1) }))
+  .sort((a, b) => b.boostedScore - a.boostedScore);
+```
+
+## Interleave by section
+
+For UI that shows results in sections rather than a flat list, group by resource and render each section ranked internally:
+
+```typescript
+function groupByResource(results: SearchAllResult[]) {
+  const groups = new Map<string, SearchAllResult[]>();
+  for (const r of results) {
+    if (!groups.has(r.resource)) groups.set(r.resource, []);
+    groups.get(r.resource)!.push(r);
+  }
+  return groups;
+}
+
+const groups = groupByResource(results);
+// Render each section: <Section title="Products" items={groups.get("products")} />
+```
+
+This sidesteps cross-resource ranking entirely — each section is internally ranked, no merge required.
+
+## When adapters don't support searchAll natively
+
+The client merges per-resource searches concurrently (up to 10 at a time) and ranks by raw score. The same caveats apply — normalize before showing if your corpora differ.
+
+## See also
+
+- [BM25 scoring](/docs/documentation/core/bm25)
+- [Capabilities](/docs/reference/capabilities)
+- [Client API](/docs/reference/client)

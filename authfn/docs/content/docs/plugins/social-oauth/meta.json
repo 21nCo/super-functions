@@ -1,0 +1,5 @@
+{
+  "title": "Social OAuth",
+  "root": true,
+  "pages": ["index", "google", "apple", "github", "custom-providers"]
+}

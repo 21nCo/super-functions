@@ -10,6 +10,7 @@ build/
 *.tsbuildinfo
 **/*.js
 **/*.d.ts
+!apifn/docsfn/src/svelte/ApifnApiReference.svelte.d.ts
 **/*.d.ts.map
 **/*.js.map
 
@@ -52,6 +53,11 @@ lerna-debug.log*
 coverage/
 .nyc_output
 test-results/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+.venv*/
 
 # Editors
 .vscode/
@@ -96,6 +102,8 @@ venv
 .svelte-kit/
 .docsfn/
 docsfn/.tmp/
+.tmp/browsefn-*/
+.tmp/jscpd/langfn/
 
 # Apple / Xcode user artifacts
 DerivedData/

@@ -1,4 +1,4 @@
-import { defineExtension } from '@superfunctions/extfn';
+import { defineExtension } from '@extfn/core';
 
 export default defineExtension({
   name: 'Vanilla Messaging Demo',

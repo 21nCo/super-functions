@@ -68,6 +68,7 @@ function createService(overrides?: { now?: () => Date; stateTtlMs?: number }) {
         authorizationUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         defaultScopes: ["openid", "email", "profile"],
+        responseType: "code id_token",
         supportsPkce: true,
         supportsRefreshToken: true,
         scopeSeparator: " "
@@ -123,6 +124,20 @@ describe("oauth-core service", () => {
       connectionId: "conn_1"
     });
     expect(stored?.codeVerifier).toBeTruthy();
+  });
+
+  it("honors provider-specific response_type values", async () => {
+    const { service } = createService();
+    const result = await service.createAuthorizationRequest({
+      providerId: "microsoft",
+      tenantId: "t1",
+      userId: "u1",
+      connectionId: "conn_1",
+      redirectUri: "https://app/callback"
+    });
+
+    const authorizationUrl = new URL(result.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("response_type")).toBe("code id_token");
   });
 
   it("generates unique high-entropy state values across requests", async () => {

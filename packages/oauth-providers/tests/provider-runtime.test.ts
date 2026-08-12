@@ -28,6 +28,7 @@ describe("oauth-providers auth runtime coverage", () => {
       tokenUrl: "https://appleid.apple.com/auth/token",
       revocationUrl: "https://appleid.apple.com/auth/revoke",
       defaultScopes: ["name", "email"],
+      responseType: "code",
       tokenAuthMethod: "client_secret_post"
     });
 

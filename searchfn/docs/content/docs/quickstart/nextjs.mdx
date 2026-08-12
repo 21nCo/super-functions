@@ -1,0 +1,105 @@
+---
+title: Next.js
+description: SearchFn in Next.js (App Router) — server route for search + IndexedDB on the client.
+---
+
+## 1. Install
+
+```bash
+npm install @searchfn/server @searchfn/adapter-postgres @searchfn/client @searchfn/adapter-indexeddb
+```
+
+## 2. Server route
+
+`app/searchfn/[...path]/route.ts`:
+
+```typescript
+import { createSearchFnServer } from "@searchfn/server";
+import { PostgresAdapter } from "@searchfn/adapter-postgres";
+
+const sf = await createSearchFnServer({
+  adapter: new PostgresAdapter({ connectionString: process.env.SEARCH_DB_URL! }),
+  basePath: "/searchfn",
+});
+
+await sf.adapter.initialize?.({
+  resources: [{ name: "tasks", searchFields: ["title", "description"] }],
+});
+
+const handler = (request: Request) =>
+  sf.router.handle({
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body: request.body,
+  });
+
+export const GET = handler;
+export const POST = handler;
+```
+
+Run the [Postgres migration](/docs/reference/adapters/postgres) once.
+
+## 3. Client side
+
+`lib/search.ts`:
+
+```typescript
+"use client";
+import { createIndexedDbSearchClient } from "@searchfn/client";
+
+export const search = createIndexedDbSearchClient({
+  adapterConfig: { dbName: "app-search" },
+  defaults: { limit: 20, fuzzy: true },
+});
+```
+
+## 4. Use in a component
+
+```tsx
+"use client";
+import { useState } from "react";
+import { search } from "@/lib/search";
+
+export function SearchBox() {
+  const [q, setQ] = useState("");
+  const [ids, setIds] = useState<string[]>([]);
+
+  return (
+    <>
+      <input
+        value={q}
+        onChange={async (e) => {
+          setQ(e.target.value);
+          setIds(await search.search({ resource: "tasks", query: e.target.value }));
+        }}
+      />
+      <ul>{ids.map((id) => <li key={id}>{id}</li>)}</ul>
+    </>
+  );
+}
+```
+
+## 5. Server actions for indexing
+
+```typescript
+"use server";
+export async function indexTask(t: { id: string; title: string; description: string }) {
+  await fetch("/searchfn/index", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resource: "tasks", documents: [{ id: t.id, fields: { title: t.title, description: t.description } }] }),
+  });
+}
+```
+
+For a tighter loop, call the server adapter directly from a server action instead of going over HTTP.
+
+## Edge runtime
+
+The MemoryAdapter and PostgresAdapter both work on Node.js. For Edge runtimes (Vercel Edge, Cloudflare Workers), use Meilisearch or Elasticsearch via HTTP — direct DB drivers don't run on Edge. See [Deploy: Cloudflare Workers](/docs/documentation/deploy/cloudflare-workers).
+
+## Next steps
+
+- [Cross-resource ranking recipe](/docs/recipes/cross-resource-ranking)
+- [Server reference](/docs/reference/server)

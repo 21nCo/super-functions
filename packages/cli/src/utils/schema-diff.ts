@@ -4,25 +4,68 @@ import type { DatabaseTable } from './introspection.js';
 /**
  * Convert string to snake_case
  */
-function toSnakeCase(str: string): string {
+export function toSnakeCase(str: string): string {
   return str
     .replace(/([A-Z])/g, '_$1')
     .toLowerCase()
     .replace(/^_/, '');
 }
 
+export function resolvePhysicalTableName(namespace: string, modelName: string): string {
+  const normalizedNamespace = toSnakeCase(namespace);
+  const normalizedModelName = toSnakeCase(modelName);
+
+  if (!normalizedNamespace || normalizedModelName.startsWith(`${normalizedNamespace}_`)) {
+    return normalizedModelName;
+  }
+
+  return `${normalizedNamespace}_${normalizedModelName}`;
+}
+
 /**
  * Map FieldSchema type to generic SQL type for comparison
  */
-function mapFieldTypeToSQLType(type: FieldSchema['type']): string {
-  switch (type) {
+function mapFieldTypeToSQLType(field: FieldSchema): string {
+  if (field.type === 'date' || field.type === 'datetime') {
+    switch (resolveDateStorageType(field)) {
+      case 'timestamp':
+      case 'timestamptz':
+        return 'timestamp';
+      case 'iso-text':
+        return 'text';
+      case 'epoch-ms-integer':
+        return 'integer';
+      case 'epoch-ms-bigint':
+        return 'bigint';
+    }
+  }
+
+  switch (field.type) {
     case 'string': return 'text';
     case 'number': return 'integer';
     case 'bigint': return 'bigint';
     case 'boolean': return 'boolean';
-    case 'date': return 'timestamp';
     case 'json': return 'json';
     default: return 'text';
+  }
+}
+
+function resolveDateValueType(field: FieldSchema): NonNullable<FieldSchema['dateValueType']> {
+  return field.dateValueType ?? 'date';
+}
+
+function resolveDateStorageType(field: FieldSchema): NonNullable<FieldSchema['dateStorageType']> {
+  if (field.dateStorageType) {
+    return field.dateStorageType;
+  }
+
+  switch (resolveDateValueType(field)) {
+    case 'date':
+      return 'timestamp';
+    case 'iso-string':
+      return 'iso-text';
+    case 'epoch-ms':
+      return 'epoch-ms-bigint';
   }
 }
 
@@ -110,7 +153,7 @@ export function diffTables(
   // Map required tables to their actual DB names (namespace_snake_case)
   const requiredMap = new Map(
     required.map((t) => {
-      const dbName = `${namespace}_${toSnakeCase(t.modelName)}`;
+      const dbName = resolvePhysicalTableName(namespace, t.modelName);
       return [dbName, t];
     })
   );
@@ -159,7 +202,7 @@ export function diffTables(
 
         // Check for type changes
         // Map FieldSchema types to SQL types for comparison
-        const expectedType = mapFieldTypeToSQLType(fieldSchema.type);
+        const expectedType = mapFieldTypeToSQLType(fieldSchema);
         const actualType = normalizeColumnType(curCol.dataType);
 
         if (expectedType !== actualType) {
@@ -194,7 +237,7 @@ export function diffTables(
 
     if (missingColumns.length > 0 || extraColumns.length > 0 || columnChanges.length > 0) {
       diffs.push({
-        tableName: `${namespace}_${toSnakeCase(reqTable.modelName)}`,
+        tableName: dbName,
         action: 'alter',
         missingColumns,
         extraColumns,

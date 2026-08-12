@@ -4,6 +4,12 @@
   "root": true,
   "pages": [
     "index",
+    "routes",
+    "errors",
+    "events",
+    "envelopes",
+    "configuration",
+    "changelog",
     "core",
     "client",
     "server"

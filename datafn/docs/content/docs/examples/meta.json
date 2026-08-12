@@ -1,0 +1,6 @@
+{
+  "title": "Examples",
+  "description": "Reference apps that ship with DataFn",
+  "root": true,
+  "pages": ["index", "todo-app", "sharing-app", "apple-webview-host"]
+}

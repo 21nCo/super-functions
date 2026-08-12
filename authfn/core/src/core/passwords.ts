@@ -7,6 +7,7 @@ import type {
   AuthFnPasswordCompromiseChecker,
   AuthFnPasswordCredentialRecord,
   AuthFnRuntimeResolution,
+  AuthFnSession,
   AuthFnUserRecord
 } from '../types.js';
 import {
@@ -20,6 +21,15 @@ import {
   AuthFnValidationError
 } from './errors.js';
 import { createUser, findUserByPrimaryEmail } from './users.js';
+import {
+  allowsPasswordForAuthenticatedUser,
+  emitAccountLinkingConflictEvent
+} from './account-linking.js';
+import { emitAuthEvent, eventRequestId } from './observability.js';
+import {
+  getMultiRegionPluginConfig,
+  unregisterRegionLookupForIdentifier
+} from './regions.js';
 
 const PASSWORD_HASH_ALGO = 'scrypt';
 const PASSWORD_HASH_N = 16384;
@@ -42,6 +52,7 @@ export interface PasswordSignInInput {
 export interface PasswordSignUpResult {
   user: AuthFnUserRecord;
   credential: AuthFnPasswordCredentialRecord;
+  linkedExistingUser?: boolean;
 }
 
 export interface PasswordSignInResult {
@@ -71,6 +82,7 @@ export async function signUpWithPassword(
   context: {
     request?: Request;
     runtime?: AuthFnRuntimeResolution;
+    authenticatedSession?: AuthFnSession | null;
     policy?: PasswordPolicyOptions;
   } = {}
 ): Promise<PasswordSignUpResult> {
@@ -97,8 +109,12 @@ export async function signUpWithPassword(
 
   const existingUser = await findUserByPrimaryEmail(config, resolvedEmail);
   if (existingUser) {
-    throw new AuthFnConflictError('A user with this email already exists', {
-      primaryEmail: resolvedEmail
+    return linkPasswordCredentialForExistingUser(config, input.password, {
+      existingUser,
+      authenticatedSession: context.authenticatedSession,
+      request: context.request,
+      runtime: context.runtime,
+      policy: context.policy
     });
   }
 
@@ -109,14 +125,13 @@ export async function signUpWithPassword(
       primaryEmail: resolvedEmail,
       metadata: resolvedMetadata
     });
-    let credentialCreated = false;
+    let credential: AuthFnPasswordCredentialRecord | undefined;
 
     try {
-      const credential = await createPasswordCredential(config, {
+      credential = await createPasswordCredential(config, {
         userId: user.id,
         passwordHash
       });
-      credentialCreated = true;
       try {
         await hooks.afterUserCreate?.({
           config,
@@ -128,21 +143,97 @@ export async function signUpWithPassword(
           primaryEmail: user.primaryEmail,
           metadata: user.metadata ?? {}
         });
-      } catch {
-        // Fail-open by public hook contract.
+      } catch (afterHookError) {
+        // Fail-open by public hook contract unless the composed plugin runner
+        // promoted a critical after hook failure into an AuthFnError.
+        if (afterHookError instanceof AuthFnError) {
+          throw afterHookError;
+        }
       }
       return { user, credential };
     } catch (error) {
-      if (!credentialCreated) {
-        await config.database.delete({
-          model: 'users',
-          where: [{ field: 'id', operator: 'eq', value: user.id }],
-          namespace: namespace(config)
-        });
-      }
+      await rollbackPasswordSignUp(config, user.id, user.primaryEmail, credential?.id);
       throw error;
     }
   });
+}
+
+async function linkPasswordCredentialForExistingUser(
+  config: AuthFnConfig,
+  password: string,
+  context: {
+    existingUser: AuthFnUserRecord;
+    authenticatedSession?: AuthFnSession | null;
+    request?: Request;
+    runtime?: AuthFnRuntimeResolution;
+    policy?: PasswordPolicyOptions;
+  }
+): Promise<PasswordSignUpResult> {
+  const linkingPolicy = allowsPasswordForAuthenticatedUser(config);
+  const authenticatedUserId = context.authenticatedSession?.actorId;
+
+  if (!linkingPolicy.allowed || authenticatedUserId !== context.existingUser.id) {
+    await emitAccountLinkingConflictEvent(config, {
+      request: context.request,
+      user: context.existingUser,
+      regionId: context.runtime?.regionId,
+      method: 'password',
+      reason: authenticatedUserId ? 'authenticated_user_mismatch' : 'authentication_required',
+      metadata: {
+        authenticatedUserId
+      }
+    });
+    throw new AuthFnConflictError('A user with this email already exists', {
+      primaryEmail: context.existingUser.primaryEmail,
+      linking: {
+        method: 'password',
+        required: 'authenticated-session'
+      }
+    });
+  }
+
+  if (linkingPolicy.requireExistingEmailVerified && !context.existingUser.emailVerifiedAt) {
+    await emitAccountLinkingConflictEvent(config, {
+      request: context.request,
+      user: context.existingUser,
+      regionId: context.runtime?.regionId,
+      method: 'password',
+      reason: 'existing_email_unverified'
+    });
+    throw new AuthFnEmailNotVerifiedError('Email address must be verified before adding a password', {
+      userId: context.existingUser.id,
+      primaryEmail: context.existingUser.primaryEmail
+    });
+  }
+
+  const existingCredential = await getPasswordCredentialByUserId(config, context.existingUser.id);
+  if (existingCredential) {
+    await emitAccountLinkingConflictEvent(config, {
+      request: context.request,
+      user: context.existingUser,
+      regionId: context.runtime?.regionId,
+      method: 'password',
+      reason: 'password_already_exists'
+    });
+    throw new AuthFnConflictError('Password sign-in is already configured for this user', {
+      primaryEmail: context.existingUser.primaryEmail,
+      linking: {
+        method: 'password',
+        reason: 'password_already_exists'
+      }
+    });
+  }
+
+  const credential = await createPasswordCredential(config, {
+    userId: context.existingUser.id,
+    passwordHash: await hashPassword(password)
+  });
+
+  return {
+    user: context.existingUser,
+    credential,
+    linkedExistingUser: true
+  };
 }
 
 export async function signInWithPassword(
@@ -420,6 +511,64 @@ async function runUserCredentialTransaction<T>(
   } catch (error) {
     throw wrapPasswordError(error);
   }
+}
+
+async function rollbackPasswordSignUp(
+  config: Pick<AuthFnConfig, 'cacheStore' | 'database' | 'namespace' | 'observability' | 'plugins'>,
+  userId: string,
+  primaryEmail?: string | null,
+  credentialId?: string
+): Promise<void> {
+  const failures: string[] = [];
+  const multiRegion = getMultiRegionPluginConfig(config);
+  if (primaryEmail && multiRegion) {
+    await unregisterRegionLookupForIdentifier(config, multiRegion, primaryEmail)
+      .catch((error) => failures.push(readRollbackFailure('region_lookup.delete', error)));
+  }
+
+  if (credentialId) {
+    await config.database.delete({
+      model: 'password_credentials',
+      where: [{ field: 'id', operator: 'eq', value: credentialId }],
+      namespace: namespace(config)
+    }).catch((error) => failures.push(readRollbackFailure('password_credentials.delete', error)));
+  }
+
+  await config.database.deleteMany({
+    model: 'password_credentials',
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
+    namespace: namespace(config)
+  }).catch((error) => failures.push(readRollbackFailure('password_credentials.deleteMany', error)));
+
+  await config.database.deleteMany({
+    model: 'region_profiles',
+    where: [{ field: 'userId', operator: 'eq', value: userId }],
+    namespace: namespace(config)
+  }).catch((error) => failures.push(readRollbackFailure('region_profiles.deleteMany', error)));
+
+  await config.database.delete({
+    model: 'users',
+    where: [{ field: 'id', operator: 'eq', value: userId }],
+    namespace: namespace(config)
+  }).catch((error) => failures.push(readRollbackFailure('users.delete', error)));
+
+  if (failures.length > 0) {
+    await emitAuthEvent(config, {
+      type: 'authfn.password.signup.rollback_failed',
+      requestId: eventRequestId(),
+      actorId: userId,
+      userId,
+      outcome: 'error',
+      metadata: {
+        failures
+      }
+    });
+  }
+}
+
+function readRollbackFailure(operation: string, error: unknown): string {
+  const reason = error instanceof Error ? error.name : 'UnknownError';
+  return `${operation}: ${reason}`;
 }
 
 async function runBeforeUserCreateHook(

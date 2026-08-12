@@ -1,0 +1,114 @@
+---
+title: "Namespace Isolation"
+description: "Row-level multi-tenancy that's automatic, transparent, and impossible to bypass through DFQL."
+audience: guide
+applies_to: server
+---
+
+When `namespaceProvider` is configured, DataFn appends a per-row `__ns` discriminator to every record and filters every query by it. There is no DFQL syntax that lets a client read or write outside its namespace.
+
+## Enabling
+
+```typescript
+import { ns } from "@datafn/core";
+
+const datafn = await createDatafnServer({
+  schema,
+  db,
+  namespaceProvider: {
+    getNamespace: (ctx) => ns(ctx.session.orgId),
+    getActorId:  (ctx) => ctx.session.userId,
+  },
+});
+```
+
+That's it. Every insert sets `__ns` to the value returned by `getNamespace`. Every query filters by the same value. The application code is unaware — there's no `orgId` field in queries, no namespace argument to `mutate`.
+
+## What gets isolated
+
+| Operation | Behaviour |
+| --- | --- |
+| `INSERT` | `__ns` is set automatically. Clients cannot override it. |
+| `SELECT` (query) | The where clause includes `__ns = '<namespace>'`. |
+| `UPDATE` (merge/replace) | Targets only rows in this namespace. |
+| `DELETE` | Same. |
+| `clone` / `pull` / `push` | Restricted to the namespace. |
+| `search` | Search results are intersected with namespace visibility. |
+| WebSocket cursor broadcasts | Only delivered to subscribers in the same namespace. |
+
+## Composing namespaces
+
+`ns(...)` concatenates with a stable separator. Compose namespaces for finer isolation:
+
+```typescript
+ns("org_42")                     // "org:42"
+ns("org_42", "user_7")           // "org:42:user:7"
+ns("org_42", "production")       // "org:42:production"
+ns("staging", "org_42")          // "staging:org:42"
+```
+
+If you want per-environment sandboxing inside an org, derive the env from the request context:
+
+```typescript
+getNamespace: (ctx) => ns(ctx.session.orgId, ctx.env);
+```
+
+## Database-level enforcement
+
+When `db` is configured and `rowLevelNamespace` is on (the default when `namespaceProvider` is present), the adapter wraps every SQL statement. For Drizzle on Postgres:
+
+```sql
+-- An incoming query for tasks in namespace "org:42":
+SELECT * FROM tasks WHERE __ns = 'org:42' AND ...
+```
+
+There is no DFQL path that produces SQL without the namespace predicate. Even custom plugins go through the same layer.
+
+## Cross-namespace operations
+
+For admin queries that need to span tenants:
+
+- **Mount a second DataFn instance** with `rowLevelNamespace: false` on an admin-only path.
+- **Bypass via a sentinel namespace** in `getNamespace`:
+
+```typescript
+getNamespace: (ctx) => {
+  if (ctx.session?.role === "platform-admin") return ns("__platform__");
+  return ns(ctx.session.orgId);
+},
+```
+
+Both options are explicit. Choose the second only if your platform-admins genuinely need to see all data; consider auditing every platform-admin request to a SIEM.
+
+## WebSocket isolation
+
+The namespace is **locked at WebSocket upgrade time** from the server-derived auth context. Client `hello` messages cannot change it. This prevents cross-tenant data leakage via WS broadcast:
+
+```typescript
+addClient(client, { namespace: derivedFromAuth(req) }); // server-derived
+// Even if the client sends { type: "hello", namespace: "other-org" }, it's ignored.
+```
+
+If you implement custom WebSocket message types, derive the namespace the same way — don't trust the client.
+
+## Migrating to namespaces later
+
+If you start without namespaces and want to add them later:
+
+1. Add `__ns` column to every table via a migration. Set a default for existing rows (e.g. `"legacy"`).
+2. Configure `namespaceProvider`.
+3. Re-pull from every client to refresh their local stores with the namespaced rows.
+
+There's no harm in shipping namespaces from day one even for single-tenant apps. The `__ns` overhead is negligible, and migrating away from a single namespace later is a no-op.
+
+## Tradeoffs
+
+- **One namespace per request**: a request belongs to exactly one tenant. You can't query across two namespaces in one DFQL call.
+- **Schema is shared**: every namespace uses the same schema. Per-tenant schemas require multiple DataFn instances, one per schema.
+- **Sequence numbers are global**: `serverSeq` increments across all namespaces. This is by design for sync ordering and isn't a leak — but it means rate-limiting based on `serverSeq` isn't tenant-isolated.
+
+## See also
+
+- [Namespaces](/docs/documentation/namespaces)
+- [Multi-tenant SaaS recipe](/docs/recipes/multi-tenant-saas)
+- [Layered model](/docs/documentation/security/layered-model)

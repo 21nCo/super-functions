@@ -1,6 +1,9 @@
 export type AuthFnErrorCode =
   | 'AUTHFN_2FA_INVALID_CODE'
   | 'AUTHFN_2FA_REQUIRED'
+  | 'AUTHFN_ADMIN_AMBIGUOUS_USER'
+  | 'AUTHFN_ADMIN_CONFIG_INVALID'
+  | 'AUTHFN_ADMIN_UNAUTHORIZED'
   | 'AUTHFN_API_KEY_REVOKED'
   | 'AUTHFN_CONFLICT'
   | 'AUTHFN_CONFIG_INVALID'
@@ -90,6 +93,36 @@ export class AuthFnApiKeyRevokedError extends AuthFnError {
       details
     });
     this.name = 'AuthFnApiKeyRevokedError';
+  }
+}
+
+export class AuthFnAdminConfigError extends AuthFnError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super('AUTHFN_ADMIN_CONFIG_INVALID', message, {
+      status: 400,
+      details
+    });
+    this.name = 'AuthFnAdminConfigError';
+  }
+}
+
+export class AuthFnAdminUnauthorizedError extends AuthFnError {
+  constructor(message: string = 'Admin authorization required', details?: Record<string, unknown>) {
+    super('AUTHFN_ADMIN_UNAUTHORIZED', message, {
+      status: 401,
+      details
+    });
+    this.name = 'AuthFnAdminUnauthorizedError';
+  }
+}
+
+export class AuthFnAdminAmbiguousUserError extends AuthFnError {
+  constructor(message: string = 'Multiple users matched this identifier', details?: Record<string, unknown>) {
+    super('AUTHFN_ADMIN_AMBIGUOUS_USER', message, {
+      status: 409,
+      details
+    });
+    this.name = 'AuthFnAdminAmbiguousUserError';
   }
 }
 
@@ -346,8 +379,7 @@ export function toAuthFnError(error: unknown): AuthFnError {
     return maybeOAuthError;
   }
 
-  const message = error instanceof Error ? error.message : 'Internal authfn error';
-  return new AuthFnInternalError(message);
+  return new AuthFnInternalError();
 }
 
 function mapOAuthError(error: unknown): AuthFnError | null {
@@ -360,12 +392,14 @@ function mapOAuthError(error: unknown): AuthFnError | null {
     message?: unknown;
     details?: Record<string, unknown>;
     retryable?: unknown;
+    status?: unknown;
   };
   const code = typeof raw.code === 'string' ? raw.code : undefined;
   const message = typeof raw.message === 'string' && raw.message.length > 0
     ? raw.message
     : 'OAuth request failed';
   const details = sanitizeOAuthDetails(raw.details);
+  const status = typeof raw.status === 'number' ? raw.status : undefined;
 
   switch (code) {
     case 'OAUTH_PROVIDER_UNSUPPORTED':
@@ -380,6 +414,10 @@ function mapOAuthError(error: unknown): AuthFnError | null {
     case 'OAUTH_STATE_REPLAYED':
       return new AuthFnOAuthStateReplayedError(message, details);
     case 'OAUTH_TOKEN_EXCHANGE_FAILED':
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        return new AuthFnOAuthCallbackInvalidError(message, details);
+      }
+      return new AuthFnInternalError(resolveOAuthInternalMessage(code, message), details);
     case 'OAUTH_RUNTIME_CONFIG_INVALID':
     case 'OAUTH_SECRET_RESOLUTION_FAILED':
       return new AuthFnInternalError(resolveOAuthInternalMessage(code, message), details);
@@ -408,6 +446,10 @@ function sanitizeOAuthDetails(
 }
 
 function sanitizeOAuthValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return shouldRedactOAuthDetail(value) ? '[REDACTED]' : value;
+  }
+
   if (Array.isArray(value)) {
     return value.map((entry) => sanitizeOAuthValue(entry));
   }

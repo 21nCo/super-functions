@@ -46,8 +46,13 @@ export function parseLibraryInitializations(
             // Extract config object
             const config = extractConfigObject(configArg, sourceFile);
             
-            const packageName = registry[functionName];
-            const libraryName = packageName.split('/').pop()!.replace('@superfunctions/', '');
+            const registryEntry = registry[functionName];
+            const packageName =
+              typeof registryEntry === 'string' ? registryEntry : registryEntry.packageName;
+            const libraryName =
+              typeof registryEntry === 'string'
+                ? packageName.split('/').pop()!.replace('@superfunctions/', '')
+                : registryEntry.libraryName;
             
             const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
             
@@ -73,6 +78,10 @@ export function parseLibraryInitializations(
 }
 
 function extractConfigObject(node: ts.Node, sourceFile: ts.SourceFile): any {
+  if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isTypeAssertionExpression(node)) {
+    return extractConfigObject(node.expression, sourceFile);
+  }
+
   // Handle direct object literals
   if (ts.isObjectLiteralExpression(node)) {
     return parseObjectLiteral(node, sourceFile);
@@ -194,7 +203,10 @@ function evaluateExpression(node: ts.Node, sourceFile: ts.SourceFile): any {
   if (ts.isCallExpression(node)) {
     // Return placeholder object indicating it's a function call
     const fnName = node.expression.getText(sourceFile);
-    return { __functionCall: fnName };
+    return {
+      __functionCall: fnName,
+      __args: node.arguments.map((arg) => evaluateExpression(arg, sourceFile))
+    };
   }
   
   // Arrow functions

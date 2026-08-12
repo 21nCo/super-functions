@@ -1,0 +1,171 @@
+---
+title: Customization
+description: Replace any pipeline stage — tokenizer, normalizer, stop words, stemmer.
+---
+
+Every stage of the pipeline is replaceable. The defaults are good for English text in titles and bodies; for other languages or domains, swap the stages you need.
+
+## The pipeline interface
+
+```typescript
+interface Pipeline {
+  tokenize?: (text: string, opts?: { language?: string }) => string[];
+  normalize?: (token: string, opts?: { language?: string }) => string;
+  stopWords?: Set<string> | Record<string, Set<string>>;
+  stem?: (token: string, opts?: { language?: string }) => string;
+  edgeNgrams?: { min: number; max: number };
+  indexStages?: PipelineStage[];
+  queryStages?: PipelineStage[];
+}
+```
+
+All fields are optional. Stages you don't override use the defaults.
+
+## Replacing the tokenizer
+
+```typescript
+import { MemoryAdapter } from "@searchfn/adapter-memory";
+
+const adapter = new MemoryAdapter({
+  pipeline: {
+    tokenize: (text) => {
+      return text
+        .split(/[\s\-_./]+/)
+        .filter((t) => t.length >= 2);
+    },
+  },
+});
+```
+
+Use case: filenames where `-`, `_`, `.`, and `/` are token boundaries.
+
+## ASCII folding
+
+```typescript
+const adapter = new MemoryAdapter({
+  pipeline: {
+    normalize: (token) =>
+      token.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+  },
+});
+```
+
+`café` becomes `cafe`. A query for `cafe` matches both.
+
+## Custom stop words
+
+```typescript
+const adapter = new MemoryAdapter({
+  pipeline: {
+    stopWords: new Set(["the", "a", "an", "of", "and", "or", "but", "is", "are"]),
+  },
+});
+```
+
+Or per-language:
+
+```typescript
+const adapter = new MemoryAdapter({
+  pipeline: {
+    stopWords: {
+      en: englishStopWords,
+      es: spanishStopWords,
+      fr: frenchStopWords,
+      de: germanStopWords,
+    },
+  },
+});
+```
+
+When stop words are per-language, the active language is set per-resource at `initialize()` or per-query in `search({ language: "es" })`.
+
+## Custom stemmer
+
+```typescript
+import snowball from "snowball-stemmer";
+
+const adapter = new MemoryAdapter({
+  pipeline: {
+    stem: (token, { language = "english" } = {}) =>
+      snowball(language, token),
+  },
+});
+```
+
+For domain-specific stemming (medical terms, legal jargon), write a small map-based stemmer:
+
+```typescript
+const medicalSynonyms: Record<string, string> = {
+  "myocardial": "cardiac",
+  "myocardium": "cardiac",
+  "infarction": "infarct",
+};
+
+const adapter = new MemoryAdapter({
+  pipeline: {
+    stem: (token) => medicalSynonyms[token] ?? token,
+  },
+});
+```
+
+Note: stemming runs on every indexed token. Keep your function fast.
+
+## Hot-swap considerations
+
+Pipelines are part of the adapter's identity. Two adapters with different pipelines that share an IndexedDB database will produce incompatible postings. The recommendation:
+
+- Bump your `dbName` (IndexedDB) or `tablePrefix` (Postgres) when changing the pipeline.
+- Or call `clear()` for every resource and re-index after changing the pipeline.
+
+## Disabling stages
+
+Pass `null` to skip a stage:
+
+```typescript
+new MemoryAdapter({
+  pipeline: {
+    stopWords: null,  // no stop word filtering
+    stem: null,       // no stemming
+  },
+});
+```
+
+This is appropriate for short, structured text (tags, SKUs) where stop words would erase the signal.
+
+## Index/query asymmetry
+
+By default, the same stages run for both index and query. To diverge:
+
+```typescript
+new MemoryAdapter({
+  pipeline: {
+    indexStages: ["tokenize", "normalize", "stopWords", "stem", "edgeNgrams"],
+    queryStages: ["tokenize", "normalize", "stopWords", "stem"],
+  },
+});
+```
+
+Common case: edge n-grams at index time, but not at query time (so queries match the prefix tokens stored at index time, not the other way around).
+
+## Diagnostics
+
+Pass a sink to inspect what the pipeline is doing:
+
+```typescript
+new MemoryAdapter({
+  diagnostics: {
+    onPipelineDebug: (event) => {
+      // event.stage, event.input, event.output
+      console.log(event);
+    },
+  },
+});
+```
+
+Use during development; turn off in production (it's verbose).
+
+## See also
+
+- [Multi-language recipe](/docs/recipes/multi-language)
+- [Pipeline overview](/docs/documentation/core/pipeline)
+- [Inverted index](/docs/documentation/core/inverted-index)

@@ -1,0 +1,178 @@
+---
+title: "Recipe: Testing Patterns"
+description: "Deterministic sync, fixture seeding, and mock clients for unit and integration tests."
+audience: guide
+applies_to: both
+---
+
+DataFn tests well if you commit to two patterns: a **memory-backed test server** for fast suites, and **deterministic sync** for tests that exercise the full client/server path.
+
+## In-memory test server
+
+For unit tests that touch DataFn but don't need a real database, use the memory store:
+
+```typescript
+import { createDatafnServer } from "@datafn/server";
+import { memoryAdapter } from "@superfunctions/db/adapters";
+import { schema } from "../shared/schema";
+
+export async function makeTestServer() {
+  return createDatafnServer({
+    schema,
+    db: memoryAdapter(),
+    authorize: async () => true,
+  });
+}
+```
+
+A fresh memory adapter gives you a clean slate. Spin one up per test:
+
+```typescript
+import { describe, it, beforeEach, expect } from "vitest";
+
+describe("tasks", () => {
+  let server: Awaited<ReturnType<typeof makeTestServer>>;
+  beforeEach(async () => {
+    server = await makeTestServer();
+  });
+
+  it("inserts and reads", async () => {
+    const insertEnv = await server.router.fetch(
+      new Request("http://t/datafn/mutation", {
+        method: "POST",
+        body: JSON.stringify({
+          resource: "tasks",
+          version: 1,
+          operation: "insert",
+          clientId: "test",
+          mutationId: "m1",
+          record: { title: "Hello", completed: false },
+        }),
+      }),
+    );
+    const insert = await insertEnv.json();
+    expect(insert.ok).toBe(true);
+
+    const queryEnv = await server.router.fetch(
+      new Request("http://t/datafn/query", {
+        method: "POST",
+        body: JSON.stringify({ resource: "tasks", version: 1 }),
+      }),
+    );
+    const query = await queryEnv.json();
+    expect(query.result.data).toHaveLength(1);
+  });
+});
+```
+
+## In-memory client
+
+For client-side tests, swap IndexedDB for `MemoryStorageAdapter`:
+
+```typescript
+import { createDatafnClient, MemoryStorageAdapter } from "@datafn/client";
+
+export function makeTestClient(server: Awaited<ReturnType<typeof makeTestServer>>) {
+  const client = createDatafnClient({
+    schema,
+    clientId: "test-client",
+    storage: new MemoryStorageAdapter(),
+    sync: {
+      remote: server.router.fetch as any, // direct dispatch — no HTTP
+      offlinability: false,
+      ws: false,
+    },
+  });
+  return client;
+}
+```
+
+This bypasses HTTP entirely; mutations dispatch directly into the server's router. Tests run in milliseconds.
+
+## Fixture seeding
+
+Avoid `for (const fixture of ...) await client.mutate(...)` — it's slow and tangled with sync timing. Seed directly through the server's internal API:
+
+```typescript
+import { seedFixtures } from "./fixtures";
+
+export async function seed(server: Awaited<ReturnType<typeof makeTestServer>>) {
+  for (const [resource, rows] of Object.entries(seedFixtures)) {
+    for (const row of rows) {
+      await server.execute({
+        resource,
+        version: 1,
+        operation: "insert",
+        record: row,
+        clientId: "seed",
+        mutationId: `seed:${resource}:${row.id}`,
+      });
+    }
+  }
+}
+```
+
+`server.execute(...)` is the unwired version of `/datafn/mutation` — no envelope wrapping, just direct execution. Use it only in tests.
+
+## Deterministic sync
+
+When you test sync directly, the engine's backoff and timer logic can make tests flaky. Two tricks:
+
+1. **Inject a fake clock**. `createDatafnServer({ getServerTime: () => fakeNow })` lets you control timestamps from the test.
+2. **Drive sync by hand**. Disable `ws` and `pullIntervalMs`, and call `client.sync.pull()`, `client.sync.push()` explicitly between assertions.
+
+```typescript
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage: new MemoryStorageAdapter(),
+  sync: { remote: server.router.fetch, offlinability: false, ws: false, pullIntervalMs: 0 },
+});
+
+await client.table("tasks").mutate({ operation: "insert", record: { title: "a" } });
+await client.sync.push();
+await client.sync.pull();
+
+const env = await client.table("tasks").query({});
+expect(env.ok && env.result.data).toHaveLength(1);
+```
+
+## Mocking the network
+
+For high-level UI tests where you don't want a real client at all, mock the `client.table(...)` surface:
+
+```typescript
+import { vi } from "vitest";
+
+export const mockTable = {
+  query: vi.fn().mockResolvedValue({ ok: true, result: { data: [], hasMore: false } }),
+  mutate: vi.fn().mockResolvedValue({ ok: true, result: { id: "tsk:test" } }),
+  signal: vi.fn().mockReturnValue({ subscribe: vi.fn(() => () => {}) }),
+};
+
+vi.mock("../lib/client", () => ({
+  client: { table: () => mockTable },
+}));
+```
+
+This is the right shape for a Storybook-style component test. For integration tests that exercise the sync engine, use the real client over the memory server.
+
+## CI-friendly schema validation
+
+Add a pre-commit hook that runs `npx @datafn/cli validate`. Schema bugs are cheap to catch at lint time and expensive at deploy time.
+
+```bash
+# package.json
+"scripts": {
+  "validate:schema": "datafn validate --schema shared/schema.ts"
+}
+
+# .husky/pre-commit
+npm run validate:schema
+```
+
+## See also
+
+- [CLI: validate](/docs/cli/validate)
+- [Memory storage](/docs/documentation/storage/memory)
+- [Sync engine](/docs/documentation/sync/overview)

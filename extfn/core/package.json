@@ -1,5 +1,5 @@
 {
-  "name": "@superfunctions/extfn",
+  "name": "@extfn/core",
   "version": "0.1.0",
   "description": "Code-first browser extension config and runtime contracts for Superfunctions",
   "type": "module",

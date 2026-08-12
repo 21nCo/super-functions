@@ -44,6 +44,7 @@ export const metadata: Metadata = {
 };
 
 type DocsRootLayoutProps = Parameters<typeof DocsRootLayout>[0];
+
 export default function Layout({ children }: { children: DocsRootLayoutProps["children"] }) {
   return (
     <DocsRootLayout>

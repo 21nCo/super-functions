@@ -1,0 +1,105 @@
+---
+title: "Quickstart: Starlette"
+description: "Mount DataFn on Starlette in 5 minutes."
+audience: guide
+applies_to: server
+---
+
+Starlette is the minimal substrate FastAPI is built on. The DataFn integration is the same shape as FastAPI but with explicit `Route` declarations.
+
+## 1. Scaffold
+
+```bash
+mkdir starlette-datafn && cd starlette-datafn
+python -m venv .venv
+source .venv/bin/activate
+pip install starlette uvicorn datafn sqlalchemy psycopg2-binary
+```
+
+## 2. Schema
+
+`schema.py`:
+
+```python
+schema = {
+    "capabilities": ["timestamps", "audit"],
+    "resources": [
+        {
+            "name": "tasks",
+            "version": 1,
+            "idPrefix": "tsk",
+            "fields": [
+                {"name": "title", "type": "string", "required": True},
+                {"name": "completed", "type": "boolean", "required": True, "default": False},
+            ],
+            "indices": {"base": ["title", "completed"]},
+        }
+    ],
+}
+```
+
+## 3. Server
+
+`app.py`:
+
+```python
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from datafn import create_datafn_server
+from datafn.adapters.sqlalchemy import sqlalchemy_adapter
+from sqlalchemy import create_engine
+from schema import schema
+
+engine = create_engine("postgresql://localhost/datafn_dev")
+db = sqlalchemy_adapter(engine, dialect="postgres")
+
+datafn = create_datafn_server({
+    "schema": schema,
+    "db": db,
+    "authorize": lambda ctx, action, payload: True,
+})
+
+def make_handler(method_path: str):
+    handler = datafn["routes"][method_path]
+
+    async def endpoint(request: Request):
+        payload = await request.json()
+        ctx = {"user": getattr(request.state, "user", None)}
+        return JSONResponse(await handler(ctx, payload))
+
+    return endpoint
+
+ROUTES = [
+    ("POST", "/datafn/query"),
+    ("POST", "/datafn/mutation"),
+    ("POST", "/datafn/transact"),
+    ("POST", "/datafn/seed"),
+    ("POST", "/datafn/clone"),
+    ("POST", "/datafn/pull"),
+    ("POST", "/datafn/push"),
+]
+
+app = Starlette(routes=[
+    Route(path, make_handler(f"{method} {path}"), methods=[method])
+    for method, path in ROUTES
+])
+```
+
+## 4. Run
+
+```bash
+uvicorn app:app --reload --port 3000
+```
+
+```bash
+curl -X POST http://localhost:3000/datafn/query \
+  -H 'content-type: application/json' \
+  -d '{"resource":"tasks","version":1,"limit":10}'
+```
+
+## Where to next
+
+- Add `Middleware(...)` to inject `request.state.user` before DataFn sees the request.
+- See [Routes](/docs/reference/routes) for every route's request/response shape.

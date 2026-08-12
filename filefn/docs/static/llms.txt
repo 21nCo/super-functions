@@ -1,0 +1,108 @@
+# filefn
+
+> Self-hosted file uploads, storage, and processing for any stack. Multipart uploads, signed URLs, share links, OPFS offline, image/audio/video processing, and a typed SDK on every runtime.
+
+## Docs
+
+- [Welcome to filefn](https://filefn.superfunctions.dev/docs): Self-hosted, framework-agnostic file uploads, storage, and processing for TypeScript, Python, and Swift. Resumable uploads, signed URLs, share links, OPFS offline, and a built-in processing pipeline — opt in to what you need.
+- [Adapters](https://filefn.superfunctions.dev/docs/adapters): filefn talks to the outside world through three adapter interfaces — storage, db, and processors. Each one is a small, well-defined contract you can swap.
+- [DB adapters](https://filefn.superfunctions.dev/docs/adapters/db): The Adapter contract — what every database backend must implement, and which schemas filefn touches.
+- [Drizzle DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-drizzle): createDrizzleAdapter — the Drizzle-ORM-backed adapter for Postgres, SQLite, and MySQL.
+- [Memory DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-memory): createMemoryAdapter — an in-process, in-RAM adapter for tests, CI, and ephemeral demos.
+- [Postgres DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-postgres): createPostgresAdapter — direct pg-backed adapter for production filefn deployments.
+- [SQLite DB adapter](https://filefn.superfunctions.dev/docs/adapters/db-sqlite): createSQLiteAdapter — better-sqlite3 / bun:sqlite for single-instance filefn deployments.
+- [Processors](https://filefn.superfunctions.dev/docs/adapters/processors): The bundled processor catalog from @filefn/processing — thumbnails, PDF previews, OCR, image transforms, video, audio, compression.
+- [Storage adapters](https://filefn.superfunctions.dev/docs/adapters/storage): The StorageAdapter contract — what every backend must implement, and how the kernel uses it.
+- [Azure Blob adapter](https://filefn.superfunctions.dev/docs/adapters/storage-azure): createAzureStorage — production-grade storage on Azure Blob with SAS URLs and block blob multipart.
+- [GCS adapter](https://filefn.superfunctions.dev/docs/adapters/storage-gcs): createGCSStorage — production-grade storage on Google Cloud Storage with signed URLs, multipart upload via XML API, and ADC support.
+- [Local FS adapter](https://filefn.superfunctions.dev/docs/adapters/storage-local): createLocalStorage — disk-backed storage for development, demos, and single-instance deployments.
+- [MinIO adapter](https://filefn.superfunctions.dev/docs/adapters/storage-minio): createS3Storage configured for self-hosted MinIO — S3-compatible storage on your own hardware.
+- [Cloudflare R2 adapter](https://filefn.superfunctions.dev/docs/adapters/storage-r2): createS3Storage configured for Cloudflare R2 — egress-free production storage with full S3 multipart compatibility.
+- [S3 adapter](https://filefn.superfunctions.dev/docs/adapters/storage-s3): createS3Storage — production-grade storage on AWS S3 with signed-URL multipart, optional CDN fronting, and SSE.
+- [AI Resources](https://filefn.superfunctions.dev/docs/ai-resources): Use filefn from your AI coding assistant — llms.txt, MCP server, Skills, and editor configurations.
+- [Claude](https://filefn.superfunctions.dev/docs/ai-resources/claude): Wire filefn into Claude Desktop and Claude Code — MCP server, CLAUDE.md, and recommended hints.
+- [Codex](https://filefn.superfunctions.dev/docs/ai-resources/codex): Wire filefn into OpenAI Codex / GPT-based agents — system prompt bundle, JSON schema, and tool wrappers.
+- [Cursor](https://filefn.superfunctions.dev/docs/ai-resources/cursor): Wire filefn into Cursor — MCP server, project rules, and recommended .cursorrules.
+- [llms.txt](https://filefn.superfunctions.dev/docs/ai-resources/llms-txt): The static AI surfaces — llms.txt, llms-full.txt, llms-rich.json — generated on every docs build.
+- [MCP server](https://filefn.superfunctions.dev/docs/ai-resources/mcp): Connect AI assistants to live filefn docs via the Model Context Protocol — search, fetch, and reference.
+- [Skills](https://filefn.superfunctions.dev/docs/ai-resources/skills): Pre-baked filefn workflows your AI assistant can run on your behalf — install, configure, debug, extend.
+- [API Reference](https://filefn.superfunctions.dev/docs/api): HTTP endpoints exposed by filefn — annotated OpenAPI spec covering uploads, downloads, share links, grants, processing, and capabilities.
+- [Core Concepts](https://filefn.superfunctions.dev/docs/core-concepts): How filefn is wired — upload sessions, multipart, policies, render intents, the canonical envelope/error model, share links, grants, dedup, offline, events, and security.
+- [Architecture](https://filefn.superfunctions.dev/docs/core-concepts/architecture): How filefn separates upload sessions, files, share links, grants, processing, and adapters into composable subsystems.
+- [Artifacts](https://filefn.superfunctions.dev/docs/core-concepts/artifacts): How filefn models processing output — thumbnails, PDF previews, OCR text, transcoded video, audio waveforms — as first-class file rows.
+- [Deduplication](https://filefn.superfunctions.dev/docs/core-concepts/dedup): Optional content-addressable storage with policy- and tenant-scoped checksums.
+- [Errors](https://filefn.superfunctions.dev/docs/core-concepts/errors): filefn's canonical error envelope and the full error code catalog.
+- [Events](https://filefn.superfunctions.dev/docs/core-concepts/events): The canonical filefn event catalog — upload.started, part.recorded, file:uploaded, processing.*, file:deleted — with redaction rules.
+- [Grants](https://filefn.superfunctions.dev/docs/core-concepts/grants): Per-user / per-tenant permission grants with the four canonical capabilities — read, write, delete, share — and TTLs.
+- [Idempotency](https://filefn.superfunctions.dev/docs/core-concepts/idempotency): How filefn deduplicates upload-init calls and prevents accidental duplicate sessions.
+- [Multipart](https://filefn.superfunctions.dev/docs/core-concepts/multipart): How filefn negotiates chunk size, total parts, and the two upload modes (signed-URL vs. proxy).
+- [Observability](https://filefn.superfunctions.dev/docs/core-concepts/observability): How filefn handles request IDs, structured logging, metrics, and secret redaction.
+- [Offline](https://filefn.superfunctions.dev/docs/core-concepts/offline): How @filefn/client stages uploads in OPFS, replays on reconnect, and serves pending-local previews.
+- [Policies](https://filefn.superfunctions.dev/docs/core-concepts/policies): Named upload policies that gate content type, size, visibility, storage target, and storage path layout.
+- [Rate limiting](https://filefn.superfunctions.dev/docs/core-concepts/rate-limiting): Per-route rate limits using @superfunctions/middleware on top of filefn's upload, download, share-download, and artifact-download endpoints.
+- [Render intents](https://filefn.superfunctions.dev/docs/core-concepts/render-intents): How filefn returns the right artifact for a given UI surface — thumbnail, preview, full, or download — with placeholder fallback.
+- [Security](https://filefn.superfunctions.dev/docs/core-concepts/security): filefn's threat model — what it protects, what it doesn't, and how to harden a deployment.
+- [Share links](https://filefn.superfunctions.dev/docs/core-concepts/share-links): Tokenised, optionally auth-required, optionally download-capped public links to files.
+- [Storage targets](https://filefn.superfunctions.dev/docs/core-concepts/storage-targets): Logical storage tiers (durable, temporary) and how to route originals and artifacts to different backends.
+- [Upload sessions](https://filefn.superfunctions.dev/docs/core-concepts/upload-sessions): The lifecycle of a single filefn upload — from init to complete, with every state transition and recovery hook.
+- [Visibility](https://filefn.superfunctions.dev/docs/core-concepts/visibility): How filefn enforces public, private, and shared file access.
+- [Examples](https://filefn.superfunctions.dev/docs/examples): End-to-end runnable filefn examples — full-stack demo and a production-shaped reference setup.
+- [Full demo](https://filefn.superfunctions.dev/docs/examples/full-demo): Browser uploads, thumbnails, download / delete, smoke tests — Hono + SvelteKit + memory adapter + local FS storage.
+- [Production setup](https://filefn.superfunctions.dev/docs/examples/production): Multi-policy filefn server with auth, processing, S3 storage, and Postgres rows — production-shaped reference.
+- [Features](https://filefn.superfunctions.dev/docs/features): Every bundled filefn feature, documented end to end — uploads, downloads, share links, grants, processing, dedup, quotas, offline, HEIC, policies, rate limiting.
+- [Dedup](https://filefn.superfunctions.dev/docs/features/dedup): Optional content-addressable storage with policy- and tenant-scoped checksums.
+- [Downloads](https://filefn.superfunctions.dev/docs/features/downloads): How filefn returns signed download URLs, proxies download bytes, and handles version-targeted downloads.
+- [Grants](https://filefn.superfunctions.dev/docs/features/grants): Per-user / per-tenant permission grants — read, write, delete, share — with TTLs.
+- [HEIC preprocessing](https://filefn.superfunctions.dev/docs/features/heic): Automatic HEIC → JPEG conversion in @filefn/client and FileFnSwift.
+- [Offline](https://filefn.superfunctions.dev/docs/features/offline): OPFS-staged offline uploads, automatic resume on reconnect, and pending-local previews.
+- [Policies](https://filefn.superfunctions.dev/docs/features/policies): Named upload contracts that gate content type, size, visibility, storage target, and storage path layout.
+- [Processing](https://filefn.superfunctions.dev/docs/features/processing): The filefn processing pipeline — thumbnails, PDF previews, OCR, image transforms, audio waveforms, video posters — with composable processors and stable artifacts.
+- [Quota](https://filefn.superfunctions.dev/docs/features/quota): Pluggable storage quotas — per-user, per-tenant, or any custom dimension.
+- [Rate limiting](https://filefn.superfunctions.dev/docs/features/rate-limiting): Per-route rate limiting on upload-init, sign, complete, download, share-download, and artifact-download.
+- [Share links](https://filefn.superfunctions.dev/docs/features/share-links): Opt-in tokenised, optionally auth-required, optionally download-capped public links to files.
+- [Uploads](https://filefn.superfunctions.dev/docs/features/uploads): Multipart upload sessions with signed-URL or proxy modes, idempotency, anonymous tokens, and automatic recovery.
+- [Versions](https://filefn.superfunctions.dev/docs/features/versions): Every successful filefn upload becomes a new fileVersions row — list, target, download, and roll back.
+- [Frameworks](https://filefn.superfunctions.dev/docs/frameworks): Production wiring for filefn behind every major web framework — Hono, Express, Bun, SvelteKit, Next.js, FastAPI, Flask.
+- [Bun](https://filefn.superfunctions.dev/docs/frameworks/bun): Native Bun.serve integration — fastest start-up, native multipart streaming, and zero-cold-start production deployments.
+- [Express](https://filefn.superfunctions.dev/docs/frameworks/express): Production-grade Express integration for filefn — Web Request bridging, body streaming for proxy uploads, CSRF, and rate limiting.
+- [FastAPI](https://filefn.superfunctions.dev/docs/frameworks/fastapi): Production-grade FastAPI integration — Starlette request bridging, async session resolvers, and reverse-proxy guidance.
+- [Flask](https://filefn.superfunctions.dev/docs/frameworks/flask): Production-grade Flask integration — WSGI request bridging, async filefn calls via run_async, and reverse-proxy guidance.
+- [Hono](https://filefn.superfunctions.dev/docs/frameworks/hono): Production-grade Hono integration for filefn — CORS, CSRF for proxy uploads, rate limiting, observability, and graceful 404 fallthrough.
+- [Next.js](https://filefn.superfunctions.dev/docs/frameworks/nextjs): Production-grade Next.js integration — App Router catch-all route, edge-vs-Node runtime tradeoffs, server actions for upload init.
+- [SvelteKit](https://filefn.superfunctions.dev/docs/frameworks/sveltekit): Production-grade SvelteKit integration — server-side filefn, client-side @filefn/client, hooks-based session forwarding, and RPC-style file APIs.
+- [Getting Started](https://filefn.superfunctions.dev/docs/getting-started): Install filefn, mount it on Hono, configure a storage policy, and upload your first file end to end in 15 minutes.
+- [Quickstart](https://filefn.superfunctions.dev/docs/quickstart): Per-framework setup walkthroughs for filefn — Node + Hono, Express, Bun, SvelteKit, Next.js App Router, Python + FastAPI, Python + Flask, and Swift on iOS.
+- [Bun Quickstart](https://filefn.superfunctions.dev/docs/quickstart/bun): Run @filefn/server on Bun.serve with native Fetch Request / Response.
+- [Express Quickstart](https://filefn.superfunctions.dev/docs/quickstart/express): Mount @filefn/server on Express by adapting Node's IncomingMessage to a Fetch Request.
+- [FastAPI Quickstart](https://filefn.superfunctions.dev/docs/quickstart/fastapi): Mount filefn (Python kernel) on a FastAPI app with a single sub-app route.
+- [Flask Quickstart](https://filefn.superfunctions.dev/docs/quickstart/flask): Mount filefn (Python kernel) as a Flask Blueprint.
+- [Hono Quickstart](https://filefn.superfunctions.dev/docs/quickstart/hono): Mount @filefn/server on a Hono app on Node, Bun, or Cloudflare Workers in a few lines.
+- [Next.js Quickstart](https://filefn.superfunctions.dev/docs/quickstart/nextjs): Mount filefn on Next.js App Router with a route.ts catch-all under app/filefn/[...path].
+- [SvelteKit Quickstart](https://filefn.superfunctions.dev/docs/quickstart/sveltekit): Mount filefn on SvelteKit with a +server.ts catch-all under /filefn.
+- [Swift Quickstart](https://filefn.superfunctions.dev/docs/quickstart/swift): Use FileFnClient on iOS and macOS via Swift Package Manager — foreground and background uploads, HEIC preprocessing, and SwiftUI helpers.
+- [Recipes](https://filefn.superfunctions.dev/docs/recipes): Production-tested filefn patterns — opinionated, end-to-end, copy-and-adjust.
+- [CDN integration](https://filefn.superfunctions.dev/docs/recipes/cdn-integration): Serve filefn-managed bytes through CloudFront, Cloud CDN, or Cloudflare without breaking signed URLs or auth.
+- [Custom processor](https://filefn.superfunctions.dev/docs/recipes/custom-processor): Author a processor end-to-end — image watermarking, sentiment scoring, transcoding to a custom format — and ship it as an artifact.
+- [Document uploads](https://filefn.superfunctions.dev/docs/recipes/document-uploads): PDF / DOCX / plain text uploads with first-page previews, OCR text extraction, and download URLs.
+- [HEIC conversion](https://filefn.superfunctions.dev/docs/recipes/heic-conversion): Handle iPhone HEIC photos correctly in browsers, native iOS, and on the server — without any of them seeing HEIC.
+- [Image uploads](https://filefn.superfunctions.dev/docs/recipes/image-uploads): Production-grade image upload pipeline with HEIC handling, EXIF stripping, thumbnails, and previews.
+- [OPFS offline](https://filefn.superfunctions.dev/docs/recipes/opfs-offline): Reliable uploads when the network is bad — OPFS-staged content with automatic resume on reconnect.
+- [Signed share links](https://filefn.superfunctions.dev/docs/recipes/signed-share-links): Common share-link patterns — one-time, time-bound, password-protected, IP-restricted.
+- [Tenant isolation](https://filefn.superfunctions.dev/docs/recipes/tenant-isolation): Per-tenant storage paths, quotas, grants, and authorization — the production isolation pattern.
+- [Video uploads](https://filefn.superfunctions.dev/docs/recipes/video-uploads): Large-file video uploads with multi-resolution transcoding, poster frames, and queued processing.
+- [Virus scanning](https://filefn.superfunctions.dev/docs/recipes/virus-scanning): Plug ClamAV (or any AV provider) into the filefn processing pipeline as a custom processor.
+- [Reference](https://filefn.superfunctions.dev/docs/reference): The canonical reference for filefn — every route, every error, every event, every schema, every config knob, the changelog.
+- [Changelog](https://filefn.superfunctions.dev/docs/reference/changelog): Notable filefn releases and migration notes.
+- [Configuration](https://filefn.superfunctions.dev/docs/reference/configuration): Every option in FileFnConfig — types, defaults, and effects.
+- [Envelopes](https://filefn.superfunctions.dev/docs/reference/envelopes): The success and error wrapper every filefn route returns.
+- [Errors](https://filefn.superfunctions.dev/docs/reference/errors): Every filefn error code with its HTTP status, message, common causes, and fixes.
+- [Events](https://filefn.superfunctions.dev/docs/reference/events): Every filefn event with its payload, when it fires, and what's redacted.
+- [Routes](https://filefn.superfunctions.dev/docs/reference/routes): Every HTTP route filefn exposes — methods, paths, request shapes, response shapes, error codes.
+- [Schema](https://filefn.superfunctions.dev/docs/reference/schema): Every filefn DB table — columns, types, indexes — and how to migrate them.
+- [SDKs](https://filefn.superfunctions.dev/docs/sdk): TypeScript server, browser client, Python kernel, native Swift package, viewer resolver, and WKWebView bridge — every filefn SDK speaks the same routes and envelopes.
+- [@filefn/client](https://filefn.superfunctions.dev/docs/sdk/client): The browser / Node / Bun / Deno client SDK — uploadFile, resumeUpload, resolveRenderable, OPFS offline, HEIC preprocessing.
+- [filefn (Python)](https://filefn.superfunctions.dev/docs/sdk/python): The Python kernel — create_file_fn, FileFnConfig, processors, providers.
+- [@filefn/server](https://filefn.superfunctions.dev/docs/sdk/server): The Node / Bun / Workers server kernel — createFileFn, FileProvider, Authorizer, QuotaProvider, and processor authoring.
+- [Swift](https://filefn.superfunctions.dev/docs/sdk/swift): The native Swift Package Manager target — FileFnClient, foreground / background uploaders, SwiftUI helpers, secret-store-backed token recovery.
+- [Swift bridge](https://filefn.superfunctions.dev/docs/sdk/swift-bridge): Native-backed WKWebView bridge — FileFnWebViewBridgeHost on the Swift side, @filefn/swift-bridge on the JS side, with asset-handle uploads and bridge-scheme previews.
+- [@filefn/viewer](https://filefn.superfunctions.dev/docs/sdk/viewer): Framework-agnostic render-intent resolver utilities for filefn clients.
