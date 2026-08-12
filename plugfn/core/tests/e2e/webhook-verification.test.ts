@@ -199,6 +199,40 @@ describe('PlugFn webhook verification e2e', () => {
     expect(payload.error.code).toBe('WEBHOOK_IDEMPOTENCY_CONFLICT');
     expect(handler).toHaveBeenCalledTimes(1);
   });
+
+  it('dispatches concurrent duplicate deliveries only once', async () => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues.opened', handler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+    const createRequest = () =>
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-delivery': 'delivery_concurrent',
+          'x-hub-signature-256': signRawBody(rawBody, 'whsec_github'),
+        },
+        body: rawBody,
+      });
+
+    const responses = await Promise.all([
+      router.handle(createRequest()),
+      router.handle(createRequest()),
+    ]);
+    const payloads = await Promise.all(responses.map((response) => response.json())) as Array<{
+      data: { duplicate?: boolean };
+    }>;
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(payloads.filter((payload) => payload.data.duplicate === true)).toHaveLength(1);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createPlug() {

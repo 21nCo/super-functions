@@ -1,8 +1,10 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
 import { TriggerType } from 'plugfn';
 import type { ActionContext } from 'plugfn';
+import type { WebhookVerificationContext } from 'plugfn';
 
 /**
  * Slack provider
@@ -198,6 +200,8 @@ export const slackProvider: Provider = {
       webhookConfig: {
         path: '/webhooks/slack/events',
         method: 'POST',
+        verifySignature: async (_payload, signature, secret, context) =>
+          verifySlackSignature(signature, secret, context),
       },
 
       schema: z.object({
@@ -226,3 +230,31 @@ export const slackProvider: Provider = {
   },
 };
 
+function verifySlackSignature(
+  signature: string,
+  secret: string,
+  context: WebhookVerificationContext
+): boolean {
+  const rawBody = context.rawBody;
+  const timestamp = context.headers['x-slack-request-timestamp'];
+  if (!signature || !secret || !rawBody || !timestamp) {
+    return false;
+  }
+
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) {
+    return false;
+  }
+
+  const expected = `v0=${createHmac('sha256', secret)
+    .update(`v0:${timestamp}:`)
+    .update(Buffer.from(rawBody))
+    .digest('hex')}`;
+  return secureEqual(signature, expected);
+}
+
+function secureEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}

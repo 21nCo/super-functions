@@ -292,6 +292,33 @@ describe('ConnectionManager OAuth shared integration', () => {
     expect(selected?.id).toBe('conn_a');
   });
 
+  it('rejects an explicit connection belonging to another provider', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+    const now = new Date('2026-03-11T00:00:00.000Z');
+    await adapter.createConnection({
+      id: 'conn_google',
+      userId: 'user-1',
+      provider: 'google',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: 'encrypted', algorithm: 'aes-256-gcm' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.resolveConnectionForAction({
+        userId: 'user-1',
+        provider: 'github',
+        connectionId: 'conn_google',
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'connection provider mismatch',
+    });
+  });
+
   it('passes OAuth prompt and loginHint into authorization URLs', async () => {
     const adapter = new MemoryAdapter();
     const tokenClient = createTokenHttpClient();

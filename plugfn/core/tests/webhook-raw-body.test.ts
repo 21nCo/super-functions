@@ -40,6 +40,65 @@ describe('raw-body webhook verification', () => {
     expect(decodeBytes(handleWebhook.mock.calls[0]?.[5]?.rawBody)).toBe(rawBody);
   });
 
+  it('falls back to a registered GitHub family trigger for unknown actions', async () => {
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_family', verified: true }));
+    const router = createPlugFnRouter(createRouterPlugMock(handleWebhook), {
+      webhookSecret: { github: 'router-secret' },
+    });
+    const rawBody = '{"action":"transferred","issue":{"id":1}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github', {
+        method: 'POST',
+        headers: {
+          'x-github-event': 'issues',
+          'x-hub-signature-256': signRawBody(rawBody, 'router-secret'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledWith(
+      'github',
+      'issues',
+      undefined,
+      expect.any(Object),
+      'router-secret',
+      expect.any(Object)
+    );
+  });
+
+  it('does not dispatch when another request already claimed the delivery key', async () => {
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_duplicate', verified: true }));
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.runtime.webhooks.createReceipt = vi.fn(async () => ({
+      id: 'receipt_existing',
+      metadata: { receiptClaimToken: 'claim_from_other_request' },
+    }));
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'router-secret' },
+    });
+    const rawBody = '{"action":"opened","issue":{"id":1}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues', {
+        method: 'POST',
+        headers: {
+          'x-github-delivery': 'delivery_1',
+          'x-hub-signature-256': signRawBody(rawBody, 'router-secret'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { duplicate: true, receiptId: 'receipt_existing' },
+    });
+    expect(handleWebhook).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       provider: 'github',
@@ -142,6 +201,25 @@ describe('raw-body webhook verification', () => {
       });
     }
   );
+
+  it('rejects signed payloads that do not satisfy the trigger schema', async () => {
+    const webhookHandler = createWebhookHandler();
+    const rawBody = '{"action":"opened","issue":{"id":1}}';
+
+    await expect(
+      webhookHandler.handleWebhook(
+        'github',
+        'issues.opened',
+        undefined,
+        { 'x-hub-signature-256': signRawBody(rawBody, 'github-secret') },
+        'github-secret',
+        { rawBody: encoder.encode(rawBody) }
+      )
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'webhook payload validation failed',
+    });
+  });
 });
 
 function createWebhookHandler(): WebhookHandler {
@@ -206,7 +284,7 @@ function createRouterPlugMock(handleWebhook: ReturnType<typeof vi.fn>) {
     },
     providers: {
       list: vi.fn(() => []),
-      get: vi.fn(() => undefined),
+      get: vi.fn((provider: string) => (provider === 'github' ? githubProvider : undefined)),
       register: vi.fn(),
     },
     batch: vi.fn(async () => []),

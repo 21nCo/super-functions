@@ -252,6 +252,7 @@ class WebhooksAPI:
             handler: Async function to handle the event
         """
         if handler is None:
+
             def decorator(callback: Callable[..., Any]) -> Callable[..., Any]:
                 self._handler.register_handler(provider, event, callback)
                 return callback

@@ -5,6 +5,7 @@ import { createDbSink } from '../src/storage/db-sink.js';
 import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { AuthType, type Provider } from '../src/types/provider.js';
 import { ConnectionStatus } from '../src/types/connection.js';
+import { encrypt } from '../src/utils/crypto.js';
 
 describe('PlugFn sync runtime', () => {
   it('runs a provider sync resource, persists through a DB sink, and advances checkpoint', async () => {
@@ -266,6 +267,76 @@ describe('PlugFn sync runtime', () => {
     expect(job.status).toBe('completed');
     expect(job.fetchedCount).toBe(2);
     expect(checkpointSeenDuringSecondFetch).toEqual([{ page: 1 }]);
+  });
+
+  it('passes the connection tenant to fallback sync actions', async () => {
+    const database = new MemoryAdapter();
+    const encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'user_1', tenantId: 'tenant_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey,
+      integrations: {},
+    });
+    let receivedTenantId: string | undefined;
+    plug.use({
+      ...testSyncProvider,
+      name: 'fallback-sync',
+      sync: undefined,
+      actions: {
+        'mail.sync': {
+          name: 'mail.sync',
+          displayName: 'Mail sync',
+          description: 'Fallback mail sync',
+          parameters: z.object({
+            tenantId: z.string(),
+            mode: z.enum(['full', 'incremental']),
+            checkpoint: z.unknown().optional(),
+            cursor: z.string().optional(),
+          }),
+          returns: z.object({
+            fetched: z.number(),
+            upserted: z.number(),
+            skipped: z.number(),
+          }),
+          execute: async (params) => {
+            receivedTenantId = params.tenantId;
+            return { fetched: 0, upserted: 0, skipped: 0 };
+          },
+        },
+      },
+    });
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_fallback',
+      userId: 'user_1',
+      provider: 'fallback-sync',
+      tenantId: 'tenant_1',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: {
+        encrypted: encrypt(JSON.stringify({ type: 'api-key', apiKey: 'test' }), encryptionKey),
+        algorithm: 'aes-256-gcm',
+      },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await plug.sync.backfill({
+      provider: 'fallback-sync',
+      connectionId: 'conn_fallback',
+      resource: 'messages',
+      actor: { userId: 'user_1', tenantId: 'tenant_1' },
+    });
+
+    expect(receivedTenantId).toBe('tenant_1');
   });
 
   it('retries persisted webhook deliveries and dead-letters after max attempts', async () => {

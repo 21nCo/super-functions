@@ -13,6 +13,38 @@ function sign(rawBody: string, secret: string): string {
 }
 
 describe('linear webhook verification', () => {
+  it('emits issue.created only for signed payloads', async () => {
+    const logger = new NoopLogger();
+    const registry = new ProviderRegistry(logger);
+    registry.register(linearProvider);
+    const webhookHandler = new WebhookHandler(registry, logger);
+    const handler = vi.fn();
+    webhookHandler.on('linear', 'issue.created', handler);
+    const payload = {
+      action: 'create',
+      data: {
+        id: 'issue_1',
+        title: 'Created issue',
+        identifier: 'ENG-1234',
+        url: 'https://linear.app/issue/ENG-1234',
+      },
+    };
+    const secret = 'linear-secret';
+    const rawBody = JSON.stringify(payload);
+
+    await expect(
+      webhookHandler.handleWebhook(
+        'linear',
+        'issue.created',
+        undefined,
+        { 'x-signature': sign(rawBody, secret) },
+        secret,
+        { rawBody: encoder.encode(rawBody) }
+      )
+    ).resolves.toMatchObject({ verified: true });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it('emits issue.updated only for signed payloads', async () => {
     const logger = new NoopLogger();
     const registry = new ProviderRegistry(logger);

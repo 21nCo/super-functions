@@ -129,6 +129,43 @@ describe('workflow durability semantics', () => {
       failedStepId: 'delay-1',
     });
   });
+
+  it('rejects duplicate step IDs across top-level and nested branches', async () => {
+    const { engine } = createHarness();
+
+    await expect(
+      engine.create({
+        userId: 'user-1',
+        name: 'workflow-duplicate-step-ids',
+        status: WorkflowStatus.Enabled,
+        definition: {
+          trigger: { provider: 'github', event: 'issues.opened' },
+          steps: [
+            {
+              id: 'duplicate',
+              type: 'action',
+              action: async () => ({}),
+            },
+            {
+              id: 'branch',
+              type: 'branch',
+              condition: () => true,
+              then: [
+                {
+                  id: 'duplicate',
+                  type: 'action',
+                  action: async () => ({}),
+                },
+              ],
+            },
+          ],
+        },
+      })
+    ).rejects.toMatchObject({
+      code: 'WORKFLOW_DEFINITION_INVALID',
+      details: { duplicateStepIds: ['duplicate'] },
+    });
+  });
 });
 
 function createHarness() {

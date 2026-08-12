@@ -685,9 +685,14 @@ function connectionMatchesAuthContext(
   }
 
   if (connection.ownerKind === 'organization') {
+    const belongsToActorOrganization =
+      Boolean(connection.organizationId) &&
+      Boolean(authContext.organizationId) &&
+      connection.organizationId === authContext.organizationId;
     return (
       connection.installedByUserId === authContext.userId ||
-      (tenantMatches(connection.tenantId, authContext.tenantId) &&
+      (belongsToActorOrganization &&
+        tenantMatches(connection.tenantId, authContext.tenantId) &&
         hasAny(authContext.roles, ['admin', 'owner', 'org:admin']))
     );
   }
@@ -770,7 +775,12 @@ async function handleWebhookRoute(
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
     headers = normalizeHeaders(req.headers);
     if (!event) {
-      resolvedEvent = inferWebhookEvent(provider, headers, rawBody);
+      resolvedEvent = inferWebhookEvent(
+        provider,
+        headers,
+        rawBody,
+        ctx.plugFn.providers.get(provider)?.triggers
+      );
     }
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
     const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
@@ -814,6 +824,9 @@ async function handleWebhookRoute(
       rawBody,
     });
 
+    const receiptClaimToken = idempotencyKey
+      ? `claim_${randomBytes(12).toString('hex')}`
+      : undefined;
     const receipt = await ctx.plugFn.runtime.webhooks.createReceipt({
       provider,
       event: resolvedEvent,
@@ -824,8 +837,20 @@ async function handleWebhookRoute(
       metadata: {
         contentType: headers['content-type'],
         userAgent: headers['user-agent'],
+        ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
+    if (receiptClaimToken && receipt.metadata?.receiptClaimToken !== receiptClaimToken) {
+      return successResponse({
+        duplicate: true,
+        receiptId: receipt.id,
+        event: {
+          provider,
+          event: resolvedEvent,
+          verified: true,
+        },
+      });
+    }
     receiptId = receipt.id;
     if (receipt.verificationStatus !== (secret ? 'verified' : 'not-required')) {
       await ctx.plugFn.runtime.webhooks.updateReceipt(receipt.id, {
@@ -926,12 +951,14 @@ async function createFailedWebhookReceipt(
 function inferWebhookEvent(
   provider: string,
   headers: Record<string, string>,
-  rawBody?: Uint8Array
+  rawBody?: Uint8Array,
+  triggers: Record<string, unknown> = {}
 ): string {
   if (provider === 'github') {
     const family = headers['x-github-event'] || 'event';
     const action = readWebhookAction(rawBody);
-    return action ? `${family}.${action}` : family;
+    const actionEvent = action ? `${family}.${action}` : undefined;
+    return actionEvent && actionEvent in triggers ? actionEvent : family;
   }
   if (provider === 'linear') {
     return headers['linear-event'] || headers['x-linear-event'] || 'event';

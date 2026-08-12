@@ -617,6 +617,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         resource: job.resource,
         mode: job.mode,
         userId: connection.userId,
+        tenantId: connection.tenantId ?? workerOptions.actor?.tenantId,
         sinkId: workerOptions.sinkId,
         cursor: job.cursor,
         checkpoint: job.checkpoint,
@@ -843,6 +844,7 @@ async function executeSyncResource(input: {
   resource: string;
   mode: PlugFnSyncJob['mode'];
   userId: string;
+  tenantId?: string;
   sinkId?: string;
   cursor?: string;
   checkpoint?: unknown;
@@ -893,6 +895,7 @@ async function executeSyncResource(input: {
     userId: input.userId,
     connectionId: input.connectionId,
     params: {
+      tenantId: input.tenantId,
       mode: input.mode,
       checkpoint: input.checkpoint,
       cursor: input.cursor,

@@ -422,6 +422,9 @@ export const linearProvider: Provider = {
       webhookConfig: {
         path: '/webhooks/linear/issue',
         method: 'POST',
+        verifySignature: async (payload, signature, secret, context) => {
+          return verifyLinearSignature(payload, signature, secret, context);
+        },
       },
 
       schema: z.object({

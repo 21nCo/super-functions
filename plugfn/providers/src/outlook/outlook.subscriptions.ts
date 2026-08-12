@@ -119,7 +119,7 @@ export async function ensureOutlookSubscription(
     window: 60000,
   };
 
-  let policyVersion = 'unknown';
+  let policyVersion: string;
   try {
     const decision = policyRegistry.assertOperationAllowed({
       providerId: 'microsoft',

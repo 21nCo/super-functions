@@ -329,6 +329,13 @@ export class ConnectionManager {
           status: 403,
         };
       }
+      if (connection.provider !== options.provider) {
+        throw {
+          code: 'VALIDATION_ERROR',
+          message: 'connection provider mismatch',
+          status: 400,
+        };
+      }
       return connection;
     }
 

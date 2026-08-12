@@ -98,7 +98,7 @@ export async function ensureGmailWatch(
 ): Promise<EnsureGmailWatchResult> {
   const now = dependencies.now ?? (() => new Date());
   const policyRegistry = dependencies.policyRegistry ?? createDefaultProviderPolicyRegistry();
-  let policyVersion = 'unknown';
+  let policyVersion: string;
 
   try {
     const decision = policyRegistry.assertOperationAllowed({

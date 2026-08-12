@@ -183,7 +183,11 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
         },
         indexes: [
           { name: 'idx_plugfn_webhook_receipts_provider_event', fields: ['provider', 'event'] },
-          { name: 'idx_plugfn_webhook_receipts_idempotency', fields: ['provider', 'idempotencyKey'] }
+          {
+            name: 'idx_plugfn_webhook_receipts_idempotency',
+            fields: ['provider', 'idempotencyKey'],
+            unique: true
+          }
         ]
       },
       {

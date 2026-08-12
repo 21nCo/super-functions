@@ -99,24 +99,19 @@ export class SendGovernor {
       requests: 1,
       window: 60000,
     };
-    await this.rateLimiter.acquireMany(
-      [
-        `provider:${job.providerId}`,
-        `provider:${job.providerId}:tenant:${job.tenantId}`,
-      ],
-      providerLimitConfig
-    );
-
-    const currentJob = this.queue.get(input.jobId, input.scope);
-    if (!currentJob || currentJob.status !== 'queued') {
-      const status = currentJob?.status ?? 'missing';
-      throw new SendGovernanceError(
-        'VALIDATION_ERROR',
-        `send job is not queued: ${input.jobId} (${status})`
+    this.queue.updateStatus(job.jobId, input.scope, 'processing');
+    try {
+      await this.rateLimiter.acquireMany(
+        [
+          `provider:${job.providerId}`,
+          `provider:${job.providerId}:tenant:${job.tenantId}`,
+        ],
+        providerLimitConfig
       );
+    } catch (error) {
+      this.queue.updateStatus(job.jobId, input.scope, 'queued');
+      throw error;
     }
-
-    this.queue.updateStatus(currentJob.jobId, input.scope, 'processing');
 
     try {
       const result = await this.retryMiddleware.execute(

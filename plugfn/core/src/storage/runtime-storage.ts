@@ -73,6 +73,7 @@ export interface UpdateSyncJobProgressInput {
 
 export class AdapterRuntimeStorage {
   private readonly adapter: PlugFnDatabaseStorageAdapter;
+  private readonly webhookReceiptClaimLocks = new Map<string, Promise<void>>();
 
   constructor(adapter: DbAdapter | PlugFnDatabaseStorageAdapter) {
     this.adapter = ensurePlugFnDatabaseAdapter(adapter);
@@ -139,19 +140,37 @@ export class AdapterRuntimeStorage {
   }
 
   async createWebhookReceipt(input: CreateWebhookReceiptInput): Promise<PlugFnWebhookReceipt> {
-    if (input.idempotencyKey) {
-      const existing = await this.adapter.findWebhookReceiptByIdempotencyKey(
-        input.provider,
-        input.idempotencyKey
-      );
-      if (existing) {
-        if (existing.payloadHash !== input.payloadHash) {
-          throw new Error('webhook idempotency key was reused with a different payload');
-        }
-        return existing;
-      }
+    if (!input.idempotencyKey) {
+      return this.persistWebhookReceipt(input);
     }
 
+    const claimKey = `${input.provider}:${input.idempotencyKey}`;
+    return this.withWebhookReceiptClaimLock(claimKey, async () => {
+      const existing = await this.adapter.findWebhookReceiptByIdempotencyKey(
+        input.provider,
+        input.idempotencyKey!
+      );
+      if (existing) {
+        return assertMatchingWebhookReceipt(existing, input.payloadHash);
+      }
+
+      try {
+        return await this.persistWebhookReceipt(input);
+      } catch (error) {
+        // A unique provider/idempotency index arbitrates claims across runtime instances.
+        const concurrentlyCreated = await this.adapter.findWebhookReceiptByIdempotencyKey(
+          input.provider,
+          input.idempotencyKey!
+        );
+        if (concurrentlyCreated) {
+          return assertMatchingWebhookReceipt(concurrentlyCreated, input.payloadHash);
+        }
+        throw error;
+      }
+    });
+  }
+
+  private persistWebhookReceipt(input: CreateWebhookReceiptInput): Promise<PlugFnWebhookReceipt> {
     const now = new Date();
     return this.adapter.createWebhookReceipt({
       id: generateId('whrec'),
@@ -167,6 +186,26 @@ export class AdapterRuntimeStorage {
       createdAt: now,
       metadata: input.metadata,
     });
+  }
+
+  private async withWebhookReceiptClaimLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.webhookReceiptClaimLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.catch(() => {}).then(() => current);
+    this.webhookReceiptClaimLocks.set(key, tail);
+
+    await previous.catch(() => {});
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.webhookReceiptClaimLocks.get(key) === tail) {
+        this.webhookReceiptClaimLocks.delete(key);
+      }
+    }
   }
 
   getWebhookReceipt(id: string): Promise<PlugFnWebhookReceipt | null> {
@@ -348,6 +387,16 @@ export class AdapterRuntimeStorage {
   listSecretRefs(filters: Record<string, unknown> = {}): Promise<PlugFnSecretRef[]> {
     return this.adapter.listSecretRefs(filters);
   }
+}
+
+function assertMatchingWebhookReceipt(
+  receipt: PlugFnWebhookReceipt,
+  payloadHash: string
+): PlugFnWebhookReceipt {
+  if (receipt.payloadHash !== payloadHash) {
+    throw new Error('webhook idempotency key was reused with a different payload');
+  }
+  return receipt;
 }
 
 export function ownerFields(owner: PlugFnConnectionOwner | undefined): {

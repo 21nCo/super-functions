@@ -186,4 +186,49 @@ describe('send governance governor', () => {
     });
     expect(sendCalls).toBe(1);
   });
+
+  it('reserves a queued job before awaiting the rate limiter', async () => {
+    let releaseLimiter!: () => void;
+    const limiter = new RateLimiter({
+      setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
+      clearIntervalFn: () => {},
+    });
+    let limiterCalls = 0;
+    limiter.acquireMany = async () => {
+      limiterCalls += 1;
+      await new Promise<void>((resolve) => {
+        releaseLimiter = resolve;
+      });
+      return {
+        allowed: true,
+        remaining: 0,
+        resetAt: new Date().toISOString(),
+        remainingByKey: new Map(),
+        resetAtByKey: new Map(),
+      };
+    };
+    const governor = new SendGovernor({ rateLimiter: limiter });
+    const queued = await governor.scheduleSend({
+      providerId: 'gmail',
+      tenantId: 't1',
+      userId: 'u1',
+      recipientCount: 1,
+      idempotencyKey: 'ik_concurrent',
+    });
+    const input = {
+      jobId: queued.jobId,
+      scope: { tenantId: 't1', userId: 'u1' },
+      transport: { send: async () => ({ providerMessageId: 'pm-concurrent' }) },
+    };
+
+    const first = governor.processQueuedSend(input);
+    await Promise.resolve();
+    await expect(governor.processQueuedSend(input)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(limiterCalls).toBe(1);
+    releaseLimiter();
+    await expect(first).resolves.toMatchObject({ sent: true });
+    limiter.destroy();
+  });
 });

@@ -220,6 +220,37 @@ describe('HTTP router auth boundaries', () => {
     expect(response.status).toBe(403);
     expect(createJob).not.toHaveBeenCalled();
   });
+
+  it('rejects org admins from a different organization in the same tenant', async () => {
+    const plug = createMockPlugFn({
+      authenticate: vi.fn(async () => ({
+        userId: 'org-admin',
+        tenantId: 'tenant_1',
+        organizationId: 'org_1',
+        roles: ['org:admin'],
+      })),
+      getConnection: vi.fn(async () => ({
+        id: 'conn_org_2',
+        userId: 'installer_2',
+        provider: 'gmail',
+        ownerKind: 'organization',
+        organizationId: 'org_2',
+        installedByUserId: 'installer_2',
+        tenantId: 'tenant_1',
+        status: 'active',
+      })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/connections/conn_org_2', { method: 'GET' })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'TENANT_ACCESS_DENIED' },
+    });
+  });
 });
 
 function createMockPlugFn(overrides: {

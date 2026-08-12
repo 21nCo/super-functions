@@ -31,13 +31,17 @@ interface WorkflowTriggerBinding {
 export class WorkflowEngineError extends Error {
   readonly code:
     | 'WORKFLOW_TRIGGER_UNREGISTER_FAILED'
-    | 'WORKFLOW_DURABILITY_UNSUPPORTED';
+    | 'WORKFLOW_DURABILITY_UNSUPPORTED'
+    | 'WORKFLOW_DEFINITION_INVALID';
   readonly status: number;
   readonly retryable = false;
   readonly details: Record<string, unknown>;
 
   constructor(
-    code: 'WORKFLOW_TRIGGER_UNREGISTER_FAILED' | 'WORKFLOW_DURABILITY_UNSUPPORTED',
+    code:
+      | 'WORKFLOW_TRIGGER_UNREGISTER_FAILED'
+      | 'WORKFLOW_DURABILITY_UNSUPPORTED'
+      | 'WORKFLOW_DEFINITION_INVALID',
     message: string,
     details: Record<string, unknown> = {}
   ) {
@@ -60,6 +64,7 @@ export class WorkflowEngine {
   ) {}
 
   async create(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow> {
+    assertUniqueWorkflowStepIds(workflow.definition.steps);
     const created = await this.workflowStorage.create(workflow);
 
     if (workflow.status === WorkflowStatus.Enabled) {
@@ -142,6 +147,7 @@ export class WorkflowEngine {
     if (workflow.status !== WorkflowStatus.Enabled) {
       throw new Error(`Workflow ${workflowId} is not enabled`);
     }
+    assertUniqueWorkflowStepIds(workflow.definition.steps);
 
     const idempotencyKey = this.resolveIdempotencyKey(triggerPayload);
     const lockKey = idempotencyKey ? `${workflowId}:${idempotencyKey}` : undefined;
@@ -580,6 +586,38 @@ export class WorkflowEngine {
     }
 
     return execution;
+  }
+}
+
+function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  const visit = (step: WorkflowStep): void => {
+    if (seen.has(step.id)) {
+      duplicates.add(step.id);
+    } else {
+      seen.add(step.id);
+    }
+
+    if (step.type === 'branch') {
+      for (const nested of [...step.then, ...(step.else ?? [])]) {
+        visit(nested);
+      }
+    }
+  };
+
+  for (const step of steps) {
+    visit(step);
+  }
+
+  if (duplicates.size > 0) {
+    const duplicateStepIds = [...duplicates].sort();
+    throw new WorkflowEngineError(
+      'WORKFLOW_DEFINITION_INVALID',
+      `workflow step IDs must be unique: ${duplicateStepIds.join(', ')}`,
+      { duplicateStepIds }
+    );
   }
 }
 

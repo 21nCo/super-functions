@@ -4,7 +4,7 @@ from typing import Any, Dict, cast
 
 
 def require_object_response(value: Any) -> Dict[str, Any]:
-    """Return an HTTP response object or reject an unexpected response shape."""
+    """Validate custom action-context HTTP clients as well as the built-in client."""
     if not isinstance(value, dict):
         raise TypeError("Provider API response must be a JSON object")
     return cast(Dict[str, Any], value)
