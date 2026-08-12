@@ -228,7 +228,7 @@ export const plugfn_webhook_receipts = pgTable(
   verificationStatus: text('verification_status').notNull(),
   },
   (table) => ({
-    idx_plugfn_webhook_receipts_idempotency: index('idx_plugfn_webhook_receipts_idempotency').on(table.provider, table.idempotencyKey),
+    idx_plugfn_webhook_receipts_idempotency: uniqueIndex('idx_plugfn_webhook_receipts_idempotency').on(table.provider, table.idempotencyKey),
     idx_plugfn_webhook_receipts_provider_event: index('idx_plugfn_webhook_receipts_provider_event').on(table.provider, table.event)
   })
 );

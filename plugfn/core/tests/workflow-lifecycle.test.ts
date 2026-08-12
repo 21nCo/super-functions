@@ -48,6 +48,36 @@ describe('workflow lifecycle trigger handling', () => {
       code: 'WORKFLOW_TRIGGER_UNREGISTER_FAILED',
     } satisfies Partial<WorkflowEngineError>);
   });
+
+  it('rejects invalid persisted definitions before enablement or rehydration', async () => {
+    const { engine, storage, webhookHandler } = createHarness();
+    const workflow = await engine.create(createWorkflowDefinition(WorkflowStatus.Draft));
+    const invalidDefinition = {
+      ...workflow.definition,
+      steps: [
+        ...workflow.definition.steps,
+        {
+          id: 'step-1',
+          type: 'action' as const,
+          action: async () => ({ duplicate: true }),
+        },
+      ],
+    };
+    await storage.update(workflow.id, { definition: invalidDefinition });
+
+    await expect(engine.enable(workflow.id)).rejects.toMatchObject({
+      code: 'WORKFLOW_DEFINITION_INVALID',
+    });
+    expect((await storage.get(workflow.id))?.status).toBe(WorkflowStatus.Draft);
+
+    await storage.update(workflow.id, { status: WorkflowStatus.Enabled });
+    const rehydrated = new WorkflowEngine(storage, webhookHandler, new NoopLogger());
+    await expect(rehydrated.rehydrateEnabledTriggers()).resolves.toEqual({
+      registered: 0,
+      failed: 1,
+    });
+    expect(webhookHandler.getHandlerCount('github', 'issues.opened')).toBe(0);
+  });
 });
 
 function createHarness() {

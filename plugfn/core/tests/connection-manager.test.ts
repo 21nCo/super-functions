@@ -374,6 +374,40 @@ describe('ConnectionManager OAuth shared integration', () => {
     await expect(env.manager.get(connection.id)).rejects.toThrow();
     expect(await readTokenRecord(adapter, connection.id)).toBeNull();
   });
+
+  it('lists organization-owned connections independently of the installer user', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-org-1',
+      userId: 'installer-user',
+      provider: 'google',
+      ownerKind: 'organization',
+      ownerId: 'org-1',
+      organizationId: 'org-1',
+      installedByUserId: 'installer-user',
+      tenantId: 'tenant-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const connections = await env.manager.list({
+      userId: 'different-admin',
+      provider: 'google',
+      owner: {
+        kind: 'organization',
+        organizationId: 'org-1',
+        installedByUserId: 'different-admin',
+        tenantId: 'tenant-1',
+      },
+    });
+
+    expect(connections.map((connection) => connection.id)).toEqual(['conn-org-1']);
+  });
 });
 
 function createManagerEnvironment(adapter: MemoryAdapter, tokenClient: OAuthTokenHttpClient) {

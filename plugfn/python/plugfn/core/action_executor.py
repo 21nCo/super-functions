@@ -85,6 +85,8 @@ class ActionExecutor:
             connection = await self.connection_manager.get_connection(connection_id)
             if connection.user_id != user_id:
                 raise ValueError("Connection does not belong to user")
+            if connection.provider != provider:
+                raise ValueError("Connection provider does not match requested provider")
         else:
             # Find active connection for this provider and user
             connections = await self.connection_manager.list_connections(

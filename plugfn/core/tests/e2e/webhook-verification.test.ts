@@ -147,6 +147,40 @@ describe('PlugFn webhook verification e2e', () => {
     expect(receipt?.verificationStatus).toBe('failed');
   });
 
+  it('retries a previously failed delivery with the same idempotency key', async () => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues.opened', handler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+    const createRequest = (signature: string) =>
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-delivery': 'delivery_retry_failed',
+          'x-hub-signature-256': signature,
+        },
+        body: rawBody,
+      });
+
+    const failed = await router.handle(createRequest('sha256=invalid'));
+    const retried = await router.handle(
+      createRequest(signRawBody(rawBody, 'whsec_github'))
+    );
+
+    expect(failed.status).toBe(400);
+    expect(retried.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+    await expect(retried.json()).resolves.toMatchObject({
+      data: { event: { verified: true } },
+    });
+  });
+
   it('rejects idempotency key reuse when the payload hash changes', async () => {
     const plug = createPlug();
     const handler = vi.fn();

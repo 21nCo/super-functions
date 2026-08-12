@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from ..auth.oauth_flow import OAuthFlowHandler
-from ..auth.token_store import MemoryTokenStore
+from ..auth.token_store import MemoryTokenStore, TokenStore
 from ..storage.connection_storage import ConnectionStorage
 from ..storage.token_storage import SecureTokenStorage
 from ..types import AuthType, Connection, ConnectionStatus
@@ -23,6 +23,7 @@ class ConnectionManager:
         base_url: str,
         encryption_key: str,
         logger: Any,
+        oauth_state_store: Optional[TokenStore] = None,
     ):
         """Initialize connection manager.
 
@@ -41,7 +42,7 @@ class ConnectionManager:
         self.logger = logger
 
         self.token_storage = SecureTokenStorage(encryption_key)
-        self.oauth_handler = OAuthFlowHandler(MemoryTokenStore())
+        self.oauth_handler = OAuthFlowHandler(oauth_state_store or MemoryTokenStore())
         self._json_encoder = json.JSONEncoder()
 
     async def get_auth_url(
@@ -335,8 +336,11 @@ class ConnectionManager:
             refresh_token=refresh_token,
         )
 
-        # Update credentials
-        encrypted_creds = self.token_storage.encrypt(self._encode_json(new_tokens))
+        # Providers commonly omit refresh_token when it has not rotated.
+        merged_tokens = {**creds, **new_tokens}
+        if not new_tokens.get("refresh_token"):
+            merged_tokens["refresh_token"] = refresh_token
+        encrypted_creds = self.token_storage.encrypt(self._encode_json(merged_tokens))
 
         now = datetime.now()
         expires_at = None

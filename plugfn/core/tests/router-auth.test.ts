@@ -251,6 +251,83 @@ describe('HTTP router auth boundaries', () => {
       error: { code: 'TENANT_ACCESS_DENIED' },
     });
   });
+
+  it('requires authenticated organization context for organization-owned starts', async () => {
+    const plug = createMockPlugFn({
+      authenticate: vi.fn(async () => ({ userId: 'installer', tenantId: 'tenant_1' })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/connections/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'gmail',
+          redirectUri: 'https://app.example.com/callback',
+          owner: {
+            kind: 'organization',
+            organizationId: 'org_arbitrary',
+            installedByUserId: 'installer',
+            tenantId: 'tenant_1',
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'TENANT_ACCESS_DENIED' },
+    });
+    expect(plug.connections.start).not.toHaveBeenCalled();
+  });
+
+  it('includes authorized organization-owned connections in admin listings', async () => {
+    const personal = { id: 'conn_personal', userId: 'admin', provider: 'gmail' };
+    const organization = {
+      id: 'conn_org',
+      userId: 'installer',
+      provider: 'gmail',
+      ownerKind: 'organization',
+      ownerId: 'org_1',
+      organizationId: 'org_1',
+      installedByUserId: 'installer',
+      tenantId: 'tenant_1',
+    };
+    const listConnections = vi.fn(async (options) =>
+      options.owner ? [organization] : [personal]
+    );
+    const plug = createMockPlugFn({
+      listConnections,
+      authenticate: vi.fn(async () => ({
+        userId: 'admin',
+        tenantId: 'tenant_1',
+        organizationId: 'org_1',
+        roles: ['org:admin'],
+      })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/connections?provider=gmail', { method: 'GET' })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { connections: [personal, organization] },
+    });
+    expect(listConnections).toHaveBeenCalledTimes(2);
+    expect(listConnections).toHaveBeenLastCalledWith({
+      userId: 'admin',
+      provider: 'gmail',
+      owner: {
+        kind: 'organization',
+        organizationId: 'org_1',
+        installedByUserId: 'admin',
+        tenantId: 'tenant_1',
+      },
+    });
+  });
 });
 
 function createMockPlugFn(overrides: {

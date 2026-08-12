@@ -525,6 +525,13 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         status: 403,
       };
     }
+    if (options.actor && !connectionTenantMatchesActor(connection, options.actor.tenantId)) {
+      throw {
+        code: 'TENANT_ACCESS_DENIED',
+        message: 'connection tenant mismatch',
+        status: 403,
+      };
+    }
 
     return runtimeStorage.createSyncJob({
       provider: options.provider,
@@ -599,6 +606,17 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       throw {
         code: 'TENANT_ACCESS_DENIED',
         message: 'connection owner mismatch',
+        status: 403,
+      };
+    }
+    if (
+      workerOptions.actor &&
+      !connectionTenantMatchesActor(connection, workerOptions.actor.tenantId)
+    ) {
+      await runtimeStorage.failSyncJob(job.id, 'connection tenant mismatch');
+      throw {
+        code: 'TENANT_ACCESS_DENIED',
+        message: 'connection tenant mismatch',
         status: 403,
       };
     }
@@ -1057,6 +1075,13 @@ function connectionMatchesActor(connection: Connection, actorUserId: string): bo
     connection.installedByUserId === actorUserId ||
     connection.delegatedToUserId === actorUserId
   );
+}
+
+function connectionTenantMatchesActor(
+  connection: Connection,
+  actorTenantId: string | undefined
+): boolean {
+  return !connection.tenantId || !actorTenantId || connection.tenantId === actorTenantId;
 }
 
 function readSyncJobWorkerMetadata(job: PlugFnSyncJob): {

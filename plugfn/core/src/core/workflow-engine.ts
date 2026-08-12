@@ -109,6 +109,7 @@ export class WorkflowEngine {
     if (!workflow) {
       throw new Error(`Workflow ${id} not found`);
     }
+    assertUniqueWorkflowStepIds(workflow.definition.steps);
 
     const updated = await this.workflowStorage.update(id, { status: WorkflowStatus.Enabled });
     await this.registerTrigger(updated);
@@ -358,7 +359,28 @@ export class WorkflowEngine {
       }
 
       case 'parallel': {
-        await Promise.all(step.actions.map((action: any) => action(context)));
+        const pendingActions = step.actions
+          .map((action, index) => ({
+            action,
+            checkpointId: parallelActionCheckpointId(step.id, index),
+          }))
+          .filter(({ checkpointId }) => !completedStepIds.includes(checkpointId));
+        const results = await Promise.allSettled(
+          pendingActions.map(({ action }) => action(context))
+        );
+
+        for (const [index, result] of results.entries()) {
+          if (result.status === 'fulfilled') {
+            await checkpointStep(pendingActions[index].checkpointId);
+          }
+        }
+
+        const failure = results.find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected'
+        );
+        if (failure) {
+          throw failure.reason;
+        }
         break;
       }
 
@@ -433,6 +455,7 @@ export class WorkflowEngine {
   }
 
   private async registerTrigger(workflow: Workflow): Promise<void> {
+    assertUniqueWorkflowStepIds(workflow.definition.steps);
     if (this.triggerBindings.has(workflow.id)) {
       await this.unregisterTrigger(workflow, { allowMissing: true });
     }
@@ -589,6 +612,10 @@ export class WorkflowEngine {
   }
 }
 
+function parallelActionCheckpointId(stepId: string, actionIndex: number): string {
+  return `__parallel__:${stepId}:${actionIndex}`;
+}
+
 function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -612,7 +639,7 @@ function assertUniqueWorkflowStepIds(steps: WorkflowStep[]): void {
   }
 
   if (duplicates.size > 0) {
-    const duplicateStepIds = [...duplicates].sort();
+    const duplicateStepIds = [...duplicates].sort((left, right) => left.localeCompare(right));
     throw new WorkflowEngineError(
       'WORKFLOW_DEFINITION_INVALID',
       `workflow step IDs must be unique: ${duplicateStepIds.join(', ')}`,

@@ -12,6 +12,7 @@ from ..types import (
 )
 
 if TYPE_CHECKING:
+    from ..auth.token_store import TokenStore
     from ..webhooks.webhook_handler import WebhookHandler
     from .action_executor import ActionExecutor
     from .connection_manager import ConnectionManager
@@ -34,6 +35,7 @@ class PlugFnConfig:
         rate_limit: Optional[Dict[str, Any]] = None,
         cache: Optional[Dict[str, Any]] = None,
         webhooks: Optional[Dict[str, Any]] = None,
+        oauth_state_store: Optional["TokenStore"] = None,
     ) -> None:
         """Initialize PlugFn configuration.
 
@@ -59,6 +61,7 @@ class PlugFnConfig:
         self.rate_limit = rate_limit or {"enabled": True}
         self.cache = cache or {"enabled": True}
         self.webhooks = webhooks or {}
+        self.oauth_state_store = oauth_state_store
 
 
 class ConnectionsAPI:
@@ -419,6 +422,7 @@ class PlugFn:
             base_url=base_url,
             encryption_key=encryption_key,
             logger=self._logger,
+            oauth_state_store=self.config.oauth_state_store,
         )
 
         self._action_executor = ActionExecutor(

@@ -89,6 +89,17 @@ export class ConnectionSelectionError extends Error {
   }
 }
 
+class ConnectionResolutionError extends Error {
+  constructor(
+    readonly code: 'TENANT_ACCESS_DENIED' | 'VALIDATION_ERROR',
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'ConnectionResolutionError';
+  }
+}
+
 export function createConnectionManagerOAuthDependencies(
   input: CreateConnectionManagerOAuthDependenciesInput
 ): ConnectionManagerOAuthDependencies {
@@ -292,15 +303,17 @@ export class ConnectionManager {
   }
 
   async list(options: ListConnectionsOptions): Promise<Connection[]> {
-    const connections = await this.connectionStorage.list(options.userId, options.provider, options.status);
     if (!options.owner) {
-      return connections;
+      return this.connectionStorage.list(options.userId, options.provider, options.status);
     }
 
     const expected = ownerFields(options.owner);
-    return connections.filter((connection) => {
-      return connection.ownerKind === expected.ownerKind && connection.ownerId === expected.ownerId;
-    });
+    return this.connectionStorage.listByOwner(
+      expected.ownerKind!,
+      expected.ownerId!,
+      options.provider,
+      options.status
+    );
   }
 
   async get(id: string): Promise<Connection> {
@@ -323,18 +336,18 @@ export class ConnectionManager {
     if (options.connectionId) {
       const connection = await this.get(options.connectionId);
       if (!connectionBelongsToUser(connection, options.userId)) {
-        throw {
-          code: 'TENANT_ACCESS_DENIED',
-          message: 'connection owner mismatch',
-          status: 403,
-        };
+        throw new ConnectionResolutionError(
+          'TENANT_ACCESS_DENIED',
+          'connection owner mismatch',
+          403
+        );
       }
       if (connection.provider !== options.provider) {
-        throw {
-          code: 'VALIDATION_ERROR',
-          message: 'connection provider mismatch',
-          status: 400,
-        };
+        throw new ConnectionResolutionError(
+          'VALIDATION_ERROR',
+          'connection provider mismatch',
+          400
+        );
       }
       return connection;
     }

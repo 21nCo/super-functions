@@ -1,4 +1,5 @@
 import type { Connection, ConnectionStatus } from '../types/connection.js';
+import type { PlugFnOwnerKind } from '../types/runtime.js';
 import type { Adapter as DbAdapter } from '@superfunctions/db';
 import {
   ensurePlugFnDatabaseAdapter,
@@ -13,6 +14,12 @@ export interface ConnectionStorage {
   get(id: string): Promise<Connection | null>;
   getByUserAndProvider(userId: string, provider: string): Promise<Connection | null>;
   list(userId: string, provider?: string, status?: ConnectionStatus): Promise<Connection[]>;
+  listByOwner(
+    ownerKind: PlugFnOwnerKind,
+    ownerId: string,
+    provider?: string,
+    status?: ConnectionStatus
+  ): Promise<Connection[]>;
   update(id: string, updates: Partial<Connection>): Promise<Connection>;
   delete(id: string): Promise<void>;
   updateLastUsed(id: string): Promise<void>;
@@ -59,6 +66,30 @@ export class AdapterConnectionStorage implements ConnectionStorage {
     }
     
     return connections;
+  }
+
+  async listByOwner(
+    ownerKind: PlugFnOwnerKind,
+    ownerId: string,
+    provider?: string,
+    status?: ConnectionStatus
+  ): Promise<Connection[]> {
+    const where = [
+      { field: 'ownerKind', operator: 'eq' as const, value: ownerKind },
+      { field: 'ownerId', operator: 'eq' as const, value: ownerId },
+      ...(provider
+        ? [{ field: 'provider', operator: 'eq' as const, value: provider }]
+        : []),
+      ...(status
+        ? [{ field: 'status', operator: 'eq' as const, value: status }]
+        : []),
+    ];
+
+    return this.adapter.database.findMany<Connection>({
+      model: this.adapter.models.connections,
+      where,
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    });
   }
 
   async update(id: string, updates: Partial<Connection>): Promise<Connection> {

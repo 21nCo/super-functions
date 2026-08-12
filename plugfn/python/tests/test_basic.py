@@ -1,11 +1,14 @@
 """Basic tests for PlugFn Python SDK."""
 
+import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from plugfn import AuthProvider, DatabaseAdapter, PlugFn
+from plugfn.auth import MemoryTokenStore
 from plugfn.providers import github_provider, slack_provider
 
 
@@ -188,6 +191,106 @@ async def test_list_connections(plug):
     """Test listing connections."""
     connections = await plug.connections.list(user_id="test-user")
     assert isinstance(connections, list)
+
+
+@pytest.mark.asyncio
+async def test_explicit_connection_must_match_requested_provider(plug):
+    now = datetime.now()
+    await plug.config.database.createConnection(
+        {
+            "id": "conn-slack",
+            "user_id": "test-user",
+            "provider": "slack",
+            "status": "active",
+            "credentials": "encrypted",
+            "connected_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    with pytest.raises(ValueError, match="provider does not match"):
+        await plug.github.issues.create(
+            user_id="test-user",
+            params={"owner": "org", "repo": "repo", "title": "Bug"},
+            connection_id="conn-slack",
+        )
+
+
+@pytest.mark.asyncio
+async def test_refresh_preserves_an_unrotated_refresh_token(plug):
+    now = datetime.now()
+    await plug.config.database.createConnection(
+        {
+            "id": "conn-github-refresh",
+            "user_id": "test-user",
+            "provider": "github",
+            "status": "active",
+            "credentials": "encrypted",
+            "connected_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    plug._connection_manager.token_storage.decrypt = lambda _value: json.dumps(
+        {"access_token": "old", "refresh_token": "keep-me"}
+    )
+    plug._connection_manager.token_storage.encrypt = lambda value: value
+
+    async def refresh_token(**_kwargs):
+        return {"access_token": "new", "expires_in": 3600}
+
+    plug._connection_manager.oauth_handler.refresh_token = refresh_token
+
+    refreshed = await plug.connections.refresh("conn-github-refresh")
+    credentials = json.loads(refreshed.credentials)
+    assert credentials["access_token"] == "new"
+    assert credentials["refresh_token"] == "keep-me"
+
+
+@pytest.mark.asyncio
+async def test_oauth_state_store_can_be_shared_across_instances():
+    database = MockAdapter()
+    auth = MockAuthProvider()
+    state_store = MemoryTokenStore()
+    kwargs = {
+        "database": database,
+        "auth": auth,
+        "base_url": "https://test.com",
+        "encryption_key": "test-key-12345678901234567890!!",
+        "integrations": {
+            "github": {
+                "client_id": "test-client-id",
+                "client_secret": "test-client-secret",
+            }
+        },
+        "oauth_state_store": state_store,
+    }
+    first = PlugFn(**kwargs)
+    second = PlugFn(**kwargs)
+    first.providers.register(github_provider)
+    second.providers.register(github_provider)
+    url = await first.connections.get_auth_url(
+        provider="github",
+        user_id="test-user",
+        redirect_uri="https://test.com/callback",
+    )
+    state = parse_qs(urlparse(url).query)["state"][0]
+
+    async def exchange_code_for_token(**_kwargs):
+        return {"access_token": "token", "token_type": "bearer"}
+
+    second._connection_manager.oauth_handler.exchange_code_for_token = (
+        exchange_code_for_token
+    )
+    second._connection_manager.token_storage.encrypt = lambda value: f"encrypted:{value}"
+
+    connection = await second.connections.handle_callback(
+        provider=None,
+        code="oauth-code",
+        state=state,
+    )
+    assert connection.provider == "github"
 
 
 @pytest.mark.asyncio

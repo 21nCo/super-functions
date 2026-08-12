@@ -17,6 +17,7 @@ class WebhookHandlerError(Exception):
 
 
 SIGNED_PROVIDERS = {"github", "linear", "slack"}
+INVALID_WEBHOOK_SIGNATURE = "Invalid webhook signature"
 
 
 class WebhookHandler:
@@ -98,63 +99,62 @@ class WebhookHandler:
         self, provider: str, raw_body: bytes, headers: Dict[str, str], secret: str
     ) -> None:
         if provider == "github":
-            signature_header = headers.get("x-hub-signature-256", "")
-            if not signature_header:
-                raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
+            _verify_github_signature(raw_body, headers, secret)
+        elif provider == "slack":
+            _verify_slack_signature(raw_body, headers, secret)
+        elif provider == "linear":
+            _verify_linear_signature(raw_body, headers, secret)
 
-            expected_signature = "sha256=" + hmac.new(
-                secret.encode("utf-8"), raw_body, hashlib.sha256
-            ).hexdigest()
 
-            if not hmac.compare_digest(signature_header, expected_signature):
-                raise WebhookHandlerError(
-                    "WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature"
-                )
-            return
+def _verify_github_signature(
+    raw_body: bytes, headers: Dict[str, str], secret: str
+) -> None:
+    signature_header = headers.get("x-hub-signature-256", "")
+    if not signature_header:
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
 
-        if provider == "slack":
-            signature_header = headers.get("x-slack-signature", "")
-            timestamp = headers.get("x-slack-request-timestamp", "")
-            if not signature_header or not timestamp:
-                raise WebhookHandlerError(
-                    "WEBHOOK_SIGNATURE_INVALID",
-                    "Missing signature headers",
-                )
+    expected_signature = "sha256=" + hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature_header, expected_signature):
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", INVALID_WEBHOOK_SIGNATURE)
 
-            if abs(time.time() - int(timestamp)) > 60 * 5:
-                raise WebhookHandlerError(
-                    "WEBHOOK_SIGNATURE_INVALID",
-                    "Request timestamp too old",
-                )
 
-            signature_payload = f"v0:{timestamp}:".encode("utf-8") + raw_body
-            expected_signature = "v0=" + hmac.new(
-                secret.encode("utf-8"),
-                signature_payload,
-                hashlib.sha256,
-            ).hexdigest()
+def _verify_slack_signature(
+    raw_body: bytes, headers: Dict[str, str], secret: str
+) -> None:
+    signature_header = headers.get("x-slack-signature", "")
+    timestamp = headers.get("x-slack-request-timestamp", "")
+    if not signature_header or not timestamp:
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature headers")
+    if abs(time.time() - int(timestamp)) > 60 * 5:
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Request timestamp too old")
 
-            if not hmac.compare_digest(signature_header, expected_signature):
-                raise WebhookHandlerError(
-                    "WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature"
-                )
-            return
+    signature_payload = f"v0:{timestamp}:".encode("utf-8") + raw_body
+    expected_signature = "v0=" + hmac.new(
+        secret.encode("utf-8"), signature_payload, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature_header, expected_signature):
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", INVALID_WEBHOOK_SIGNATURE)
 
-        if provider == "linear":
-            signature_header = headers.get("linear-signature", "") or headers.get(
-                "x-linear-signature", ""
-            )
-            if not signature_header:
-                raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
 
-            expected_signature = hmac.new(
-                secret.encode("utf-8"), raw_body, hashlib.sha256
-            ).hexdigest()
-            normalized_signature = signature_header.removeprefix("sha256=")
-            if not hmac.compare_digest(normalized_signature, expected_signature):
-                raise WebhookHandlerError(
-                    "WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature"
-                )
+def _verify_linear_signature(
+    raw_body: bytes, headers: Dict[str, str], secret: str
+) -> None:
+    signature_header = (
+        headers.get("linear-signature", "")
+        or headers.get("x-linear-signature", "")
+        or headers.get("x-signature", "")
+    )
+    if not signature_header:
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
+
+    expected_signature = hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    normalized_signature = signature_header.removeprefix("sha256=")
+    if not hmac.compare_digest(normalized_signature, expected_signature):
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", INVALID_WEBHOOK_SIGNATURE)
 
 
 def _normalize_headers(headers: Dict[str, str]) -> Dict[str, str]:

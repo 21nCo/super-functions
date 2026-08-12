@@ -131,9 +131,8 @@ export class WebhookHandler {
     const transformedPayload = trigger.webhookConfig?.transformPayload
       ? trigger.webhookConfig.transformPayload(parsedPayload)
       : parsedPayload;
-    let validatedPayload: unknown;
     try {
-      validatedPayload = trigger.schema.parse(transformedPayload);
+      trigger.schema.parse(transformedPayload);
     } catch {
       throw new WebhookHandlerError('VALIDATION_ERROR', 'webhook payload validation failed');
     }
@@ -141,7 +140,7 @@ export class WebhookHandler {
     return {
       triggerKey,
       trigger,
-      transformedPayload: validatedPayload,
+      transformedPayload,
       normalizedHeaders,
       signature,
       verified,

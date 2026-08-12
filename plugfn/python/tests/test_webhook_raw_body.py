@@ -87,7 +87,7 @@ async def test_linear_webhook_verifies_raw_bytes():
         provider="linear",
         event="issue.created",
         payload=None,
-        headers={"linear-signature": sign_linear(raw_body, secret)},
+        headers={"x-signature": sign_linear(raw_body, secret)},
         secret=secret,
         raw_body=raw_body,
     )

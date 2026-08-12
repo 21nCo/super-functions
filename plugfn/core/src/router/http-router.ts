@@ -216,10 +216,28 @@ export function createPlugFnRouter(
         const provider = ctx.query.get('provider');
         const authContext = requireAuthContext(ctx);
 
-          const connections = await ctx.plugFn.connections.list({
+        const ownConnections = await ctx.plugFn.connections.list({
+          userId: authContext.userId,
+          provider: provider || undefined,
+        });
+        let connections = ownConnections;
+        if (
+          authContext.organizationId &&
+          hasAny(authContext.roles, ['admin', 'owner', 'org:admin'])
+        ) {
+          const organizationConnections = await ctx.plugFn.connections.list({
             userId: authContext.userId,
             provider: provider || undefined,
+            owner: {
+              kind: 'organization',
+              organizationId: authContext.organizationId,
+              installedByUserId: authContext.userId,
+              tenantId: authContext.tenantId,
+            },
           });
+          connections = deduplicateConnections([...ownConnections, ...organizationConnections])
+            .filter((connection) => connectionMatchesAuthContext(connection, authContext));
+        }
 
         return successResponse({
           connections,
@@ -712,6 +730,10 @@ function tenantMatches(connectionTenantId: string | undefined, actorTenantId: st
   return !connectionTenantId || !actorTenantId || connectionTenantId === actorTenantId;
 }
 
+function deduplicateConnections(connections: Connection[]): Connection[] {
+  return [...new Map(connections.map((connection) => [connection.id, connection])).values()];
+}
+
 function hasAny(values: string[] | undefined, candidates: string[]): boolean {
   if (!values || values.length === 0) {
     return false;
@@ -840,7 +862,11 @@ async function handleWebhookRoute(
         ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
-    if (receiptClaimToken && receipt.metadata?.receiptClaimToken !== receiptClaimToken) {
+    if (
+      receiptClaimToken &&
+      receipt.metadata?.receiptClaimToken !== receiptClaimToken &&
+      receipt.verificationStatus !== 'failed'
+    ) {
       return successResponse({
         duplicate: true,
         receiptId: receipt.id,
@@ -1153,6 +1179,17 @@ function assertOwnerMatchesAuthContext(
   }
 
   if (
+    owner.kind === 'organization' &&
+    (!authContext.organizationId || owner.organizationId !== authContext.organizationId)
+  ) {
+    throw {
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'identity mismatch',
+      status: 403,
+    };
+  }
+
+  if (
     owner.kind === 'delegated' &&
     owner.installedByUserId !== authContext.userId &&
     owner.delegatedToUserId !== authContext.userId
@@ -1209,7 +1246,9 @@ function normalizeAuthContext(principal: PlugFnPrincipal | AuthSession | null): 
   return {
     userId: principal.userId,
     tenantId: principal.tenantId,
-    organizationId: asOptionalString(principal.metadata?.organizationId),
+    organizationId:
+      asOptionalString(principal.organizationId) ??
+      asOptionalString(principal.metadata?.organizationId),
     roles: principal.roles,
     grants: principal.grants,
   };

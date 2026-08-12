@@ -99,7 +99,9 @@ export class SendGovernor {
       requests: 1,
       window: 60000,
     };
-    this.queue.updateStatus(job.jobId, input.scope, 'processing');
+    this.queue.updateStatus(job.jobId, input.scope, 'processing', undefined, {
+      incrementAttempts: false,
+    });
     try {
       await this.rateLimiter.acquireMany(
         [
@@ -109,7 +111,9 @@ export class SendGovernor {
         providerLimitConfig
       );
     } catch (error) {
-      this.queue.updateStatus(job.jobId, input.scope, 'queued');
+      this.queue.updateStatus(job.jobId, input.scope, 'queued', undefined, {
+        incrementAttempts: false,
+      });
       throw error;
     }
 

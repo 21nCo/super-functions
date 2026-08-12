@@ -1,10 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import type { Provider } from 'plugfn';
-import { AuthType } from 'plugfn';
-import { TriggerType } from 'plugfn';
-import type { ActionContext } from 'plugfn';
-import type { WebhookVerificationContext } from 'plugfn';
+import {
+  AuthType,
+  TriggerType,
+  type ActionContext,
+  type Provider,
+  type WebhookVerificationContext,
+} from 'plugfn';
 
 /**
  * Slack provider

@@ -184,6 +184,66 @@ describe('PlugFn sync runtime', () => {
     expect(result.jobs[0]?.fetchedCount).toBe(2);
   });
 
+  it('rejects tenant mismatches during enqueue and worker execution', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'user_1', tenantId: 'tenant_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    plug.use(testSyncProvider);
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_tenant',
+      userId: 'user_1',
+      provider: 'test-sync',
+      tenantId: 'tenant_2',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      plug.sync.enqueue({
+        mode: 'full',
+        provider: 'test-sync',
+        connectionId: 'conn_sync_tenant',
+        resource: 'records',
+        actor: { userId: 'user_1', tenantId: 'tenant_1' },
+      })
+    ).rejects.toMatchObject({
+      code: 'TENANT_ACCESS_DENIED',
+      message: 'connection tenant mismatch',
+    });
+
+    await database.updateConnection('conn_sync_tenant', { tenantId: 'tenant_1' });
+    const queued = await plug.sync.enqueue({
+      mode: 'full',
+      provider: 'test-sync',
+      connectionId: 'conn_sync_tenant',
+      resource: 'records',
+      actor: { userId: 'user_1', tenantId: 'tenant_1' },
+    });
+    await database.updateConnection('conn_sync_tenant', { tenantId: 'tenant_2' });
+
+    const result = await plug.sync.processQueued();
+    expect(result).toMatchObject({ processed: 1, completed: 0, failed: 1 });
+    expect(await plug.runtime.sync.getJob(queued.id)).toMatchObject({
+      status: 'failed',
+      error: 'connection tenant mismatch',
+    });
+  });
+
   it('persists sync checkpoints after each fetched page', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({

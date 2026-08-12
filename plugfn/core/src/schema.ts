@@ -5,7 +5,7 @@ import {
 } from '@superfunctions/oauth-storage';
 import { DEFAULT_PLUGFN_STORAGE_MODELS, resolvePlugFnStorageModels, type PlugFnStorageModelMapping } from './storage/adapters/database.js';
 
-export const PLUGFN_SCHEMA_VERSION = 3;
+export const PLUGFN_SCHEMA_VERSION = 4;
 
 export interface PlugFnSchemaOptions {
   namespace?: string;

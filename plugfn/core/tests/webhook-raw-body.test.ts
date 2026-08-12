@@ -220,6 +220,34 @@ describe('raw-body webhook verification', () => {
       message: 'webhook payload validation failed',
     });
   });
+
+  it('retains provider payload fields not named by the validation schema', async () => {
+    const webhookHandler = createWebhookHandler();
+    const rawBody = JSON.stringify({
+      action: 'opened',
+      issue: {
+        id: 1,
+        number: 10,
+        title: 'Bug',
+        body: null,
+        html_url: 'https://example.test/issues/10',
+        user: { login: 'octo' },
+      },
+      repository: { name: 'repo', owner: { login: 'octo' } },
+      sender: { login: 'webhook-sender' },
+    });
+
+    const event = await webhookHandler.handleWebhook(
+      'github',
+      'issues.opened',
+      undefined,
+      { 'x-hub-signature-256': signRawBody(rawBody, 'github-secret') },
+      'github-secret',
+      { rawBody: encoder.encode(rawBody) }
+    );
+
+    expect(event.payload.sender).toEqual({ login: 'webhook-sender' });
+  });
 });
 
 function createWebhookHandler(): WebhookHandler {

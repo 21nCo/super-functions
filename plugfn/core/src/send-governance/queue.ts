@@ -103,7 +103,13 @@ export class SendQueue {
       .map(([, value]) => value);
   }
 
-  updateStatus(jobId: string, scope: SendScope, status: SendJobStatus, error?: SendJobError): SendJob {
+  updateStatus(
+    jobId: string,
+    scope: SendScope,
+    status: SendJobStatus,
+    error?: SendJobError,
+    options: { incrementAttempts?: boolean } = {}
+  ): SendJob {
     const job = this.get(jobId, scope);
     if (!job) {
       throw new SendGovernanceError('VALIDATION_ERROR', `send job not found: ${jobId}`);
@@ -112,7 +118,7 @@ export class SendQueue {
     const updated: SendJob = {
       ...job,
       status,
-      attempts: job.attempts + 1,
+      attempts: job.attempts + (options.incrementAttempts === false ? 0 : 1),
       updatedAt: this.now(),
       lastError: error,
     };

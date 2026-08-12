@@ -213,6 +213,64 @@ describe('workflow idempotency and crash recovery', () => {
     ]);
     expect(sideEffects).toEqual(['nested-1', 'nested-2']);
   });
+
+  it('checkpoints successful parallel actions before retrying failed siblings', async () => {
+    const storage = new InMemoryWorkflowStorage();
+    const logger = new NoopLogger();
+    const engine = new WorkflowEngine(
+      storage,
+      new WebhookHandler(new ProviderRegistry(logger), logger),
+      logger
+    );
+    const calls = [0, 0];
+    let failSecondOnce = true;
+    const workflow = await engine.create({
+      userId: 'user-1',
+      name: 'workflow-parallel-checkpoints',
+      status: WorkflowStatus.Enabled,
+      definition: {
+        trigger: { provider: 'test', event: 'incoming.event' },
+        steps: [
+          {
+            id: 'parallel-1',
+            type: 'parallel',
+            actions: [
+              async () => {
+                calls[0] += 1;
+                return { first: true };
+              },
+              async () => {
+                calls[1] += 1;
+                if (failSecondOnce) {
+                  failSecondOnce = false;
+                  throw new Error('parallel action failed');
+                }
+                return { second: true };
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await expect(
+      engine.execute(workflow.id, { idempotencyKey: 'ik-parallel' })
+    ).rejects.toThrow('parallel action failed');
+    const failed = await storage.findExecutionByIdempotencyKey(workflow.id, 'ik-parallel');
+    expect(failed?.output.__workflow.completedStepIds).toEqual([
+      '__parallel__:parallel-1:0',
+    ]);
+
+    const resumed = await engine.execute(workflow.id, { idempotencyKey: 'ik-parallel' });
+
+    expect(resumed.status).toBe(WorkflowExecutionStatus.Completed);
+    expect(resumed.output.__workflow.completedStepIds).toEqual([
+      '__parallel__:parallel-1:0',
+      '__parallel__:parallel-1:1',
+      'parallel-1',
+    ]);
+    expect(calls).toEqual([1, 2]);
+  });
 });
 
 class InMemoryWorkflowStorage implements WorkflowStorage {

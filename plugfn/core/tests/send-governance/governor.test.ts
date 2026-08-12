@@ -231,4 +231,34 @@ describe('send governance governor', () => {
     await expect(first).resolves.toMatchObject({ sent: true });
     limiter.destroy();
   });
+
+  it('does not count rate-limiter reservation failures as send attempts', async () => {
+    const limiter = new RateLimiter({
+      setIntervalFn: () => 0 as unknown as NodeJS.Timeout,
+      clearIntervalFn: () => {},
+    });
+    limiter.acquireMany = async () => {
+      throw new Error('limiter unavailable');
+    };
+    const governor = new SendGovernor({ rateLimiter: limiter });
+    const queued = await governor.scheduleSend({
+      providerId: 'gmail',
+      tenantId: 't1',
+      userId: 'u1',
+      recipientCount: 1,
+      idempotencyKey: 'ik_limiter_failure',
+    });
+
+    await expect(
+      governor.processQueuedSend({
+        jobId: queued.jobId,
+        scope: { tenantId: 't1', userId: 'u1' },
+        transport: { send: async () => ({ providerMessageId: 'never' }) },
+      })
+    ).rejects.toThrow('limiter unavailable');
+
+    expect(governor.getQueuedSend(queued.jobId, { tenantId: 't1', userId: 'u1' }))
+      .toMatchObject({ status: 'queued', attempts: 0 });
+    limiter.destroy();
+  });
 });

@@ -12,6 +12,7 @@ export type Adapter = PlugFnDatabaseAdapter;
 export interface PlugFnPrincipal {
   userId: string;
   tenantId?: string;
+  organizationId?: string;
   roles?: string[];
   grants?: string[];
   metadata?: Record<string, unknown>;
