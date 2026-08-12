@@ -117,6 +117,23 @@ describe('Webhook verification and mapping', () => {
       code: 'VALIDATION_ERROR',
     });
   });
+
+  it('propagates downstream handler failures so provider delivery can retry', async () => {
+    const { webhookHandler } = createWebhookHarness();
+    webhookHandler.on('gmail', 'mail.update', async () => {
+      throw new Error('database unavailable');
+    });
+
+    await expect(
+      webhookHandler.handleWebhook(
+        'gmail',
+        'mail.update',
+        { id: 'evt_failed_handler' },
+        { 'x-signature': 'sig:secret' },
+        'secret'
+      )
+    ).rejects.toThrow('database unavailable');
+  });
 });
 
 function createWebhookHarness() {

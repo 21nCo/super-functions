@@ -15,8 +15,8 @@ export class ApiKeyAuthHandler {
       return headers;
     }
 
-    const value = this.config.prefix 
-      ? `${this.config.prefix} ${credentials.apiKey}`
+    const value = this.config.prefix
+      ? this.config.prefix + (/[^=\s]$/.test(this.config.prefix) ? ' ' : '') + credentials.apiKey
       : credentials.apiKey;
 
     return {
@@ -46,4 +46,3 @@ export class ApiKeyAuthHandler {
     return typeof apiKey === 'string' && apiKey.length > 0;
   }
 }
-

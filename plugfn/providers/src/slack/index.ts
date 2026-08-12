@@ -24,7 +24,14 @@ export const slackProvider: Provider = {
     config: {
       authorizationUrl: 'https://slack.com/oauth/v2/authorize',
       tokenUrl: 'https://slack.com/api/oauth.v2.access',
-      scopes: ['chat:write', 'channels:read', 'users:read'],
+      scopes: [
+        'chat:write',
+        'channels:read',
+        'channels:history',
+        'groups:read',
+        'groups:history',
+        'users:read',
+      ],
       scopeSeparator: ',',
     },
   },

@@ -7,6 +7,17 @@ import { stripeProvider } from '../src/stripe/index.js';
 const encoder = new TextEncoder();
 
 describe('Slack and Stripe webhook verification', () => {
+  it('requests the read scopes required by public and private conversation actions', () => {
+    expect(slackProvider.auth.config.scopes).toEqual(
+      expect.arrayContaining([
+        'channels:read',
+        'channels:history',
+        'groups:read',
+        'groups:history',
+      ])
+    );
+  });
+
   it('verifies Slack signatures over the timestamped raw body', async () => {
     const handler = createHandler(slackProvider);
     const listener = vi.fn();

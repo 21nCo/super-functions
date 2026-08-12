@@ -45,6 +45,87 @@ function createContext(responseFactory: (url: string, method: string, data?: any
 }
 
 describe('github provider actions', () => {
+  it('registers the expanded repository surface and webhook triggers', () => {
+    expect(Object.keys(githubProvider.actions)).toEqual(
+      expect.arrayContaining([
+        'repos.list',
+        'issues.comments.list',
+        'pulls.list',
+        'releases.list',
+        'releases.create',
+        'hooks.list',
+        'hooks.create',
+        'hooks.delete',
+        'commits.list',
+      ])
+    );
+    expect(githubProvider.auth.config.scopes).toContain('admin:repo_hook');
+    expect(Object.keys(githubProvider.triggers ?? {})).toEqual(
+      expect.arrayContaining(['pull_request', 'issue_comment', 'push'])
+    );
+  });
+
+  it('repos.list paginates and forwards repository filters', async () => {
+    let request = 0;
+    const context = createContext((url, method) => {
+      expect(method).toBe('get');
+      expect(url).toBe('https://api.github.com/user/repos');
+      request += 1;
+      return request === 1
+        ? Array.from({ length: 100 }, (_, index) => ({ id: index }))
+        : [{ id: 100 }];
+    });
+
+    const result = await githubProvider.actions['repos.list'].execute(
+      {
+        visibility: 'private',
+        affiliation: ['owner', 'collaborator'],
+        sort: 'pushed',
+        direction: 'asc',
+        maxPages: 3,
+      },
+      context
+    );
+
+    expect(result).toHaveLength(101);
+    expect(context.http.get).toHaveBeenCalledTimes(2);
+    expect(context.http.get).toHaveBeenNthCalledWith(1, 'https://api.github.com/user/repos', {
+      params: {
+        visibility: 'private',
+        affiliation: 'owner,collaborator',
+        sort: 'pushed',
+        direction: 'asc',
+        per_page: 100,
+        page: 1,
+      },
+    });
+    expect(context.http.get).toHaveBeenNthCalledWith(2, 'https://api.github.com/user/repos', {
+      params: expect.objectContaining({ page: 2 }),
+    });
+  });
+
+  it.each([
+    ['issues.comments.list', '/issues/comments'],
+    ['pulls.list', '/pulls'],
+    ['releases.list', '/releases'],
+    ['hooks.list', '/hooks'],
+    ['commits.list', '/commits'],
+  ])('%s calls its repository collection endpoint', async (actionName, suffix) => {
+    const context = createContext((url, method) => {
+      expect(method).toBe('get');
+      expect(url).toBe(`https://api.github.com/repos/21nCo/super-functions${suffix}`);
+      return [{ id: 1 }];
+    });
+
+    const result = await githubProvider.actions[actionName].execute(
+      { owner: '21nCo', repo: 'super-functions', maxPages: 1 },
+      context
+    );
+
+    expect(result).toEqual([{ id: 1 }]);
+    expect(context.http.get).toHaveBeenCalledTimes(1);
+  });
+
   it('issues.get fetches a single issue', async () => {
     const context = createContext((url) => {
       expect(url).toContain('/repos/21nCo/super-functions/issues/42');
@@ -137,5 +218,82 @@ describe('github provider actions', () => {
       context
     );
     expect(review.state).toBe('COMMENTED');
+  });
+
+  it('creates and deletes repository webhooks with signed JSON configuration', async () => {
+    const context = createContext((url, method, data) => {
+      expect(method).toBe('post');
+      expect(url).toBe('https://api.github.com/repos/21nCo/super-functions/hooks');
+      expect(data).toEqual({
+        name: 'web',
+        active: true,
+        events: ['issues', 'push'],
+        config: {
+          url: 'https://example.com/webhooks/github',
+          content_type: 'json',
+          secret: 'webhook-secret',
+          insecure_ssl: '0',
+        },
+      });
+      return {
+        id: 99,
+        active: true,
+        events: data.events,
+        config: data.config,
+      };
+    });
+
+    const created = await githubProvider.actions['hooks.create'].execute(
+      {
+        owner: '21nCo',
+        repo: 'super-functions',
+        url: 'https://example.com/webhooks/github',
+        secret: 'webhook-secret',
+        events: ['issues', 'push'],
+      },
+      context
+    );
+    expect(created.id).toBe(99);
+
+    await expect(
+      githubProvider.actions['hooks.delete'].execute(
+        { owner: '21nCo', repo: 'super-functions', hookId: 99 },
+        context
+      )
+    ).resolves.toEqual({ deleted: true });
+    expect(context.http.delete).toHaveBeenCalledWith(
+      'https://api.github.com/repos/21nCo/super-functions/hooks/99'
+    );
+  });
+
+  it('creates releases with GitHub field names', async () => {
+    const context = createContext((url, method, data) => {
+      expect(method).toBe('post');
+      expect(url).toBe('https://api.github.com/repos/21nCo/super-functions/releases');
+      expect(data).toEqual({
+        tag_name: 'v1.2.3',
+        name: 'Version 1.2.3',
+        body: 'Release notes',
+        target_commitish: 'next',
+        draft: false,
+        prerelease: true,
+      });
+      return { id: 7, tag_name: data.tag_name, prerelease: data.prerelease };
+    });
+
+    const result = await githubProvider.actions['releases.create'].execute(
+      {
+        owner: '21nCo',
+        repo: 'super-functions',
+        tagName: 'v1.2.3',
+        name: 'Version 1.2.3',
+        body: 'Release notes',
+        targetCommitish: 'next',
+        prerelease: true,
+      },
+      context
+    );
+
+    expect(result).toEqual({ id: 7, tag_name: 'v1.2.3', prerelease: true });
   });
 });

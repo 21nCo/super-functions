@@ -217,17 +217,22 @@ export class WebhookHandler {
       return;
     }
 
-    const promises: Promise<void>[] = [];
+    const results = await Promise.allSettled(
+      [...handlers].map((handler) => Promise.resolve().then(() => handler(webhookEvent)))
+    );
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
 
-    for (const handler of handlers) {
-      promises.push(
-        Promise.resolve(handler(webhookEvent)).catch((error) => {
-          this.logger.error(`Handler error for ${provider}.${event}`, { error });
-        })
-      );
+    for (const failure of failures) {
+      this.logger.error(`Handler error for ${provider}.${event}`, { error: failure.reason });
     }
 
-    await Promise.all(promises);
+    if (failures[0]) {
+      throw failures[0].reason instanceof Error
+        ? failures[0].reason
+        : new Error('webhook handler failed');
+    }
   }
 
   private resolveTrigger(
