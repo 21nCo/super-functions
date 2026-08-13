@@ -58,7 +58,7 @@ import { AdapterWorkflowStorage } from '../storage/workflow-storage.js';
 import { ConsoleLogger } from '../utils/logger.js';
 import { validateEncryptionKey } from '../utils/crypto.js';
 import { getSchema } from '../schema.js';
-import { tenantMatches } from '../security/tenancy.js';
+import { hasAny, tenantMatches } from '../security/tenancy.js';
 
 /**
  * Main PlugFn SDK interface
@@ -71,6 +71,7 @@ export interface PlugFn {
     baseUrl: string;
     integrations: Record<string, PlugFnConfig['integrations'][string]>;
     authorization?: PlugFnConfig['authorization'];
+    webhooks?: PlugFnConfig['webhooks'];
   };
 
   // Connection management
@@ -324,10 +325,14 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       cacheStore: config.cache?.store ?? config.cacheStore,
       cacheTtl: config.cache?.ttl ?? config.cache?.defaultTTL,
       cacheKeyPrefix: config.cache?.keyPrefix,
+      respectProviderLimits: config.rateLimit?.respectProviderLimits,
+      globalRateLimit: config.rateLimit?.global,
     }
   );
 
-  const webhookHandler = new WebhookHandler(providerRegistry, logger);
+  const webhookHandler = new WebhookHandler(providerRegistry, logger, {
+    verifySignatures: config.webhooks?.verifySignatures,
+  });
 
   const workflowEngine = new WorkflowEngine(workflowStorage, webhookHandler, logger);
   void workflowEngine.rehydrateEnabledTriggers().catch((error) => {
@@ -346,6 +351,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       baseUrl: config.baseUrl,
       integrations: config.integrations,
       authorization: config.authorization,
+      webhooks: config.webhooks,
     },
 
     // Connection management
@@ -1182,14 +1188,6 @@ function connectionMatchesActor(connection: Connection, actor: PlugFnActor): boo
   }
 
   return false;
-}
-
-function hasAny(values: string[] | undefined, candidates: string[]): boolean {
-  if (!values || values.length === 0) {
-    return false;
-  }
-  const valueSet = new Set(values);
-  return candidates.some((candidate) => valueSet.has(candidate));
 }
 
 function connectionTenantMatchesActor(

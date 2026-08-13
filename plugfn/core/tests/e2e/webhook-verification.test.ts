@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPlugFnRouter } from '../../src/router/http-router.js';
 import { plugFn } from '../../src/core/plug-fn.js';
 import { githubProvider } from '../../../providers/src/github/index.js';
+import { linearProvider } from '../../../providers/src/linear/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
 describe('PlugFn webhook verification e2e', () => {
@@ -267,9 +268,122 @@ describe('PlugFn webhook verification e2e', () => {
     expect(payloads.filter((payload) => payload.data.duplicate === true)).toHaveLength(1);
     expect(handler).toHaveBeenCalledTimes(1);
   });
+
+  it('returns a retryable 503 and retries a failed webhook delivery', async () => {
+    const plug = createPlug();
+    const handler = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary downstream failure'))
+      .mockResolvedValue(undefined);
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues.opened', handler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+    const createRequest = () =>
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: {
+          'x-github-delivery': 'delivery_handler_retry',
+          'x-hub-signature-256': signRawBody(rawBody, 'whsec_github'),
+        },
+        body: rawBody,
+      });
+
+    const failed = await router.handle(createRequest());
+    const retried = await router.handle(createRequest());
+
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: 'WEBHOOK_HANDLER_FAILED', retryable: true },
+    });
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.not.toMatchObject({ data: { duplicate: true } });
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['Issue', 'update', 'issue.updated', { id: 'issue_1', title: 'Updated' }],
+    ['Comment', 'create', 'issue_comment.created', { id: 'comment_1', body: 'Hello' }],
+  ])('uses Linear event family and action for %s.%s', async (family, action, expectedEvent, data) => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(linearProvider);
+    plug.webhooks.on('linear', expectedEvent, handler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { linear: 'whsec_linear' },
+    });
+    const rawBody = JSON.stringify({ action, data });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/linear', {
+        method: 'POST',
+        headers: {
+          'linear-event': family,
+          'linear-delivery': `delivery_${expectedEvent}`,
+          'linear-signature': signLinearRawBody(rawBody, 'whsec_linear'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { event: { event: expectedEvent } },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors configured payload limits and webhook source allowlists', async () => {
+    const plug = createPlug({ maxPayloadSize: 32, allowedIPs: ['203.0.113.10'] });
+    plug.providers.register(githubProvider);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+
+    const denied = await router.handle(
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.11' },
+        body: '{}',
+      })
+    );
+    const oversized = await router.handle(
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.10' },
+        body: JSON.stringify({ payload: 'x'.repeat(64) }),
+      })
+    );
+
+    expect(denied.status).toBe(403);
+    expect(oversized.status).toBe(413);
+  });
+
+  it('honors verifySignatures=false without requiring a webhook secret', async () => {
+    const plug = createPlug({ verifySignatures: false });
+    const handler = vi.fn();
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues.opened', handler);
+    const router = createPlugFnRouter(plug);
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });
 
-function createPlug() {
+function createPlug(webhooks?: { verifySignatures?: boolean; allowedIPs?: string[]; maxPayloadSize?: number }) {
   return plugFn({
     database: new MemoryAdapter(),
     auth: {
@@ -290,10 +404,15 @@ function createPlug() {
         webhookSecret: 'whsec_github',
       },
     },
+    webhooks,
   });
 }
 
 function signRawBody(rawBody: string, secret: string): string {
   const digest = createHmac('sha256', secret).update(rawBody).digest('hex');
   return `sha256=${digest}`;
+}
+
+function signLinearRawBody(rawBody: string, secret: string): string {
+  return createHmac('sha256', secret).update(rawBody).digest('hex');
 }

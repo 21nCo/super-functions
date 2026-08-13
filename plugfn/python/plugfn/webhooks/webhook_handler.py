@@ -83,6 +83,7 @@ class WebhookHandler:
             return []
 
         results: List[Any] = []
+        failures: List[Exception] = []
         for handler in handlers:
             try:
                 results.append(await handler(parsed_payload))
@@ -91,7 +92,12 @@ class WebhookHandler:
                     f"Error in webhook handler for {provider}.{event}: {str(error)}",
                     {"error": str(error)},
                 )
-                results.append({"error": str(error)})
+                failures.append(error)
+
+        if failures:
+            raise WebhookHandlerError(
+                "WEBHOOK_HANDLER_FAILED", "Webhook handler failed", 503
+            ) from failures[0]
 
         return results
 

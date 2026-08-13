@@ -6,6 +6,7 @@ import type {
   BatchResult,
 } from '../types/action.js';
 import type { Provider } from '../types/provider.js';
+import type { RateLimitConfig } from '../types/provider.js';
 import { AuthType } from '../types/provider.js';
 import type { Logger } from '../types/action.js';
 import type { Credentials } from '../types/connection.js';
@@ -38,6 +39,8 @@ export class ActionExecutor {
   private readonly enableCache: boolean;
   private readonly enableLogging: boolean;
   private readonly enableMetrics: boolean;
+  private readonly respectProviderLimits: boolean;
+  private readonly globalRateLimit?: RateLimitConfig;
 
   constructor(
     private connectionManager: ConnectionManager,
@@ -54,6 +57,8 @@ export class ActionExecutor {
       cacheStore?: KVStoreAdapter;
       cacheTtl?: number;
       cacheKeyPrefix?: string;
+      respectProviderLimits?: boolean;
+      globalRateLimit?: RateLimitConfig;
     } = {}
   ) {
     this.httpClient = new FetchHttpClient();
@@ -71,6 +76,8 @@ export class ActionExecutor {
     this.enableCache = _options.enableCache !== false;
     this.enableLogging = _options.enableLogging !== false;
     this.enableMetrics = _options.enableMetrics !== false;
+    this.respectProviderLimits = _options.respectProviderLimits !== false;
+    this.globalRateLimit = _options.globalRateLimit;
   }
 
   /**
@@ -151,12 +158,9 @@ export class ActionExecutor {
       const credentials = await this.connectionManager.getCredentials(connection.id);
 
       // Apply rate limiting
-      if (this.enableRateLimit && providerObj.rateLimit) {
-        await this.rateLimiter.acquireMany(
-          [`provider:${provider}`, `provider:${provider}:tenant:${options.userId}`],
-          providerObj.rateLimit
-        );
-      }
+      const acquireRateLimit = () =>
+        this.acquireRateLimits(providerObj, provider, options.userId);
+      await acquireRateLimit();
 
       // Build action context
       const context: ActionContext = {
@@ -172,6 +176,7 @@ export class ActionExecutor {
         },
         http: this.createAuthenticatedHttpClient(providerObj, credentials, options.timeout),
         logger: this.logger,
+        acquireRateLimit,
       };
 
       // Execute action with retry
@@ -388,6 +393,26 @@ export class ActionExecutor {
           headers: { ...baseHeaders, ...config?.headers },
         }),
     };
+  }
+
+  private async acquireRateLimits(
+    providerObj: Provider,
+    provider: string,
+    userId: string
+  ): Promise<void> {
+    if (!this.enableRateLimit) {
+      return;
+    }
+
+    if (this.globalRateLimit) {
+      await this.rateLimiter.acquire('global', this.globalRateLimit);
+    }
+    if (this.respectProviderLimits && providerObj.rateLimit) {
+      await this.rateLimiter.acquireMany(
+        [`provider:${provider}`, `provider:${provider}:tenant:${userId}`],
+        providerObj.rateLimit
+      );
+    }
   }
 
   private async executeWithSyncConcurrencyGuard<T>(

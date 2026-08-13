@@ -91,6 +91,10 @@ describe('linear provider actions', () => {
   ])('%s reads and returns its connection', async (actionName, field) => {
     const context = createContext((body: any) => {
       expect(body.query).toContain(`${field}(`);
+      if (actionName === 'issueRelations.list') {
+        expect(body.query).not.toContain('includeArchived');
+        expect(body.variables).toEqual({ first: 25, after: null });
+      }
       return {
         [field]: {
           nodes: [{ id: `${field}_1` }],
@@ -140,6 +144,50 @@ describe('linear provider actions', () => {
       nodes: [{ id: `${field}_1` }],
       pageInfo: { hasNextPage: false, endCursor: null },
     });
+  });
+
+  it('customers.list requests and validates the needs connection shape', async () => {
+    const context = createContext((body: any) => {
+      expect(body.query).toContain('needs{nodes{');
+      return {
+        customers: {
+          nodes: [
+            {
+              id: 'customer_1',
+              name: 'Acme',
+              domains: ['acme.test'],
+              url: 'https://linear.app/customer/acme',
+              needs: { nodes: [{ id: 'need_1', body: 'SSO' }] },
+            },
+          ],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      };
+    });
+
+    const result = await linearProvider.actions['customers.list'].execute(
+      { first: 25, maxPages: 1 },
+      context
+    );
+
+    expect(() => linearProvider.actions['customers.list'].returns.parse(result)).not.toThrow();
+  });
+
+  it('charges each additional shared-paginator request against the action limiter', async () => {
+    const context = createContext((body: any) => ({
+      initiatives: body.variables.after
+        ? { nodes: [{ id: 'initiative_2' }], pageInfo: { hasNextPage: false, endCursor: null } }
+        : { nodes: [{ id: 'initiative_1' }], pageInfo: { hasNextPage: true, endCursor: 'next' } },
+    }));
+    context.acquireRateLimit = vi.fn(async () => undefined);
+
+    await linearProvider.actions['initiatives.list'].execute(
+      { first: 25, maxPages: 2 },
+      context
+    );
+
+    expect(context.http.post).toHaveBeenCalledTimes(2);
+    expect(context.acquireRateLimit).toHaveBeenCalledTimes(1);
   });
 
   it('issues.get executes query and returns issue payload', async () => {

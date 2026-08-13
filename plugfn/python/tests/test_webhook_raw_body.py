@@ -170,6 +170,38 @@ async def test_signed_provider_fails_closed_when_raw_body_is_missing():
     assert getattr(error.value, "code", None) == "WEBHOOK_RAW_BODY_REQUIRED"
 
 
+@pytest.mark.asyncio
+async def test_handler_failures_fan_out_then_raise_retryable_error():
+    handler = create_handler()
+    raw_body = b'{"action":"opened","issue":{"id":1}}'
+    secret = "github-secret"
+    received = []
+
+    async def failing_handler(_payload):
+        raise RuntimeError("temporary downstream failure")
+
+    async def successful_handler(payload):
+        received.append(payload)
+        return {"handled": True}
+
+    handler.register_handler("github", "issues.opened", failing_handler)
+    handler.register_handler("github", "issues.opened", successful_handler)
+
+    with pytest.raises(WebhookHandlerError) as error:
+        await handler.handle_webhook(
+            provider="github",
+            event="issues.opened",
+            payload=None,
+            headers={"x-hub-signature-256": sign_github(raw_body, secret)},
+            secret=secret,
+            raw_body=raw_body,
+        )
+
+    assert error.value.code == "WEBHOOK_HANDLER_FAILED"
+    assert error.value.status == 503
+    assert received == [{"action": "opened", "issue": {"id": 1}}]
+
+
 def sign_github(raw_body: bytes, secret: str) -> str:
     digest = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     return f"sha256={digest}"

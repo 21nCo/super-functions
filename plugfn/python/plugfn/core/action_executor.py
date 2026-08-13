@@ -1,10 +1,12 @@
 """Action executor for executing provider actions with middleware."""
 
 import asyncio
+import copy
+import json
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import datetime
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 
 class RateLimitExceededError(RuntimeError):
@@ -14,21 +16,30 @@ class RateLimitExceededError(RuntimeError):
 class InMemoryRateLimiter:
     """Atomic sliding-window limiter shared by an action executor instance."""
 
-    def __init__(self) -> None:
+    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
         self._buckets: Dict[str, Deque[float]] = {}
+        self._windows: Dict[str, float] = {}
         self._lock = asyncio.Lock()
+        self._now = now
 
     async def acquire(self, keys: List[str], requests: int, window_ms: int) -> None:
         if requests <= 0 or window_ms <= 0:
             raise ValueError("rate limit requests and window must be positive")
 
-        now = time.monotonic()
-        cutoff = now - (window_ms / 1000)
+        now = self._now()
+        window_seconds = window_ms / 1000
         async with self._lock:
-            buckets = [self._buckets.setdefault(key, deque()) for key in keys]
-            for bucket in buckets:
+            for key, bucket in list(self._buckets.items()):
+                cutoff = now - self._windows.get(key, window_seconds)
                 while bucket and bucket[0] <= cutoff:
                     bucket.popleft()
+                if not bucket:
+                    self._buckets.pop(key, None)
+                    self._windows.pop(key, None)
+
+            buckets = [self._buckets.setdefault(key, deque()) for key in keys]
+            for key in keys:
+                self._windows[key] = window_seconds
             if any(len(bucket) >= requests for bucket in buckets):
                 raise RateLimitExceededError("provider action rate limit exceeded")
             for bucket in buckets:
@@ -46,6 +57,7 @@ class ActionExecutor:
         enable_retry: bool = True,
         enable_rate_limit: bool = True,
         enable_cache: bool = True,
+        retry_options: Optional[Dict[str, Any]] = None,
     ):
         """Initialize action executor.
 
@@ -63,7 +75,11 @@ class ActionExecutor:
         self.enable_retry = enable_retry
         self.enable_rate_limit = enable_rate_limit
         self.enable_cache = enable_cache
+        self.retry_options = retry_options or {}
         self._rate_limiter = InMemoryRateLimiter()
+        self._cache: "OrderedDict[str, Any]" = OrderedDict()
+        self._cache_lock = asyncio.Lock()
+        self._max_cache_entries = 1000
 
         # Store action logs for metrics
         self._action_logs: List[Dict[str, Any]] = []
@@ -132,6 +148,28 @@ class ActionExecutor:
 
             connection = active_connections[0]
 
+        cache_key = None
+        if self.enable_cache and cache is True:
+            cache_key = self._cache_key(
+                provider, action, user_id, connection.id, params
+            )
+            cache_hit, cached_data = await self._cache_get(cache_key)
+            if cache_hit:
+                duration = int((time.time() - start_time) * 1000)
+                result = {
+                    "success": True,
+                    "data": cached_data,
+                    "error": None,
+                    "provider": provider,
+                    "action": action,
+                    "cached": True,
+                    "duration": duration,
+                    "retries": 0,
+                    "timestamp": datetime.now(),
+                }
+                self._log_action(result, user_id, connection.id)
+                return result
+
         # Update last used
         await self.connection_manager.update_last_used(connection.id)
 
@@ -147,9 +185,10 @@ class ActionExecutor:
                 )
 
             # Execute action (with retry if enabled)
+            retry_config = {**self.retry_options, **(retry or {})}
             max_attempts = 1
-            if self.enable_retry and retry:
-                max_attempts = retry.get("max_attempts", 3)
+            if self.enable_retry:
+                max_attempts = max(1, int(retry_config.get("max_attempts", 3)))
 
             last_error = None
             for attempt in range(max_attempts):
@@ -194,6 +233,9 @@ class ActionExecutor:
                         "timestamp": datetime.now(),
                     }
 
+                    if cache_key:
+                        await self._cache_set(cache_key, result_data)
+
                     # Log action
                     self._log_action(result, user_id, connection.id)
 
@@ -205,8 +247,8 @@ class ActionExecutor:
 
                     if attempt < max_attempts - 1:
                         # Wait before retry
-                        delay = retry.get("delay", 1000) if retry else 1000
-                        backoff = retry.get("backoff", "exponential") if retry else "exponential"
+                        delay = retry_config.get("delay", 1000)
+                        backoff = retry_config.get("backoff", "exponential")
 
                         if backoff == "exponential":
                             wait_time = (delay / 1000) * (2 ** attempt)
@@ -264,6 +306,34 @@ class ActionExecutor:
             self._log_action(result, user_id, connection.id)
 
             return result
+
+    @staticmethod
+    def _cache_key(
+        provider: str,
+        action: str,
+        user_id: str,
+        connection_id: str,
+        params: Dict[str, Any],
+    ) -> str:
+        encoded_params = json.dumps(
+            params, sort_keys=True, separators=(",", ":"), default=str
+        )
+        return f"{provider}:{action}:{user_id}:{connection_id}:{encoded_params}"
+
+    async def _cache_get(self, key: str) -> Tuple[bool, Any]:
+        async with self._cache_lock:
+            if key not in self._cache:
+                return False, None
+            value = self._cache.pop(key)
+            self._cache[key] = value
+            return True, copy.deepcopy(value)
+
+    async def _cache_set(self, key: str, value: Any) -> None:
+        async with self._cache_lock:
+            self._cache.pop(key, None)
+            self._cache[key] = copy.deepcopy(value)
+            while len(self._cache) > self._max_cache_entries:
+                self._cache.popitem(last=False)
 
     async def batch(self, actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Execute multiple actions in batch.

@@ -184,6 +184,7 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
+          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, {
             query,
             variables: {
@@ -211,7 +212,6 @@ export const linearProvider: Provider = {
       parameters: z.object({
         first: z.number().int().min(1).max(250).optional().default(250).describe('Relations per page'),
         maxPages: z.number().int().min(1).max(100).optional().default(100).describe('Maximum pages to fetch'),
-        includeArchived: z.boolean().optional().default(true).describe('Include archived relations'),
       }),
 
       returns: z.object({
@@ -228,8 +228,8 @@ export const linearProvider: Provider = {
 
       execute: async (params: any, context: ActionContext) => {
         const query = `
-          query IssueRelations($first: Int!, $after: String, $includeArchived: Boolean!) {
-            issueRelations(first: $first, after: $after, includeArchived: $includeArchived) {
+          query IssueRelations($first: Int!, $after: String) {
+            issueRelations(first: $first, after: $after) {
               nodes {
                 id
                 type
@@ -246,12 +246,12 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
+          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, {
             query,
             variables: {
               first: params.first ?? 250,
               after,
-              includeArchived: params.includeArchived ?? true,
             },
           });
           const connection = response.data.data?.issueRelations;
@@ -469,6 +469,7 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
+          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
           if (Array.isArray(response.data.errors) && response.data.errors.length) throw new Error(response.data.errors[0]?.message ?? 'Comments could not be read');
           const connection = response.data.data?.comments;
@@ -557,8 +558,8 @@ export const linearProvider: Provider = {
     'customers.list': {
       name: 'customers.list', displayName: 'List Customers', description: 'List workspace customers and their product needs',
       parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
-      returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), domains: z.array(z.string()), revenue: z.number().nullable().optional(), logoUrl: z.string().nullable().optional(), url: z.string(), tier: z.object({ id: z.string(), name: z.string().optional() }).nullable().optional(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), needs: z.array(z.object({ id: z.string(), body: z.string().nullable().optional(), content: z.string().nullable().optional(), url: z.string().nullable().optional(), priority: z.number().optional(), issue: z.object({ id: z.string() }).nullable().optional(), project: z.object({ id: z.string() }).nullable().optional() }).passthrough()).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
-      execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'customers', `query Customers($first:Int!,$after:String,$includeArchived:Boolean!){customers(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name domains revenue logoUrl url tier{id name} owner{id email} needs{id body content url priority issue{id} project{id}}} pageInfo{hasNextPage endCursor}}}`, params),
+      returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), domains: z.array(z.string()), revenue: z.number().nullable().optional(), logoUrl: z.string().nullable().optional(), url: z.string(), tier: z.object({ id: z.string(), name: z.string().optional() }).nullable().optional(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), needs: z.object({ nodes: z.array(z.object({ id: z.string(), body: z.string().nullable().optional(), content: z.string().nullable().optional(), url: z.string().nullable().optional(), priority: z.number().optional(), issue: z.object({ id: z.string() }).nullable().optional(), project: z.object({ id: z.string() }).nullable().optional() }).passthrough()) }).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
+      execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'customers', `query Customers($first:Int!,$after:String,$includeArchived:Boolean!){customers(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name domains revenue logoUrl url tier{id name} owner{id email} needs{nodes{id body content url priority issue{id} project{id}}}} pageInfo{hasNextPage endCursor}}}`, params),
     },
 
     'attachments.list': {
@@ -736,6 +737,9 @@ async function paginateLinearConnection(context: ActionContext, field: string, q
   let after: string | null = null;
   let pageInfo = { hasNextPage: false, endCursor: null as string | null };
   for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
+    if (page > 0) {
+      await context.acquireRateLimit?.();
+    }
     const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
     if (Array.isArray(response.data.errors) && response.data.errors.length) throw new Error(response.data.errors[0]?.message ?? `${field} could not be read`);
     const connection = response.data.data?.[field];

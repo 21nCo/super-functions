@@ -7,18 +7,30 @@ export class WebhookHandlerError extends Error {
   readonly code:
     | 'WEBHOOK_SECRET_NOT_FOUND'
     | 'WEBHOOK_SIGNATURE_INVALID'
+    | 'WEBHOOK_SIGNATURE_REQUIRED'
+    | 'WEBHOOK_HANDLER_FAILED'
     | 'VALIDATION_ERROR';
   readonly status: number;
+  readonly retryable: boolean;
+  readonly details: Record<string, unknown>;
 
   constructor(
-    code: 'WEBHOOK_SECRET_NOT_FOUND' | 'WEBHOOK_SIGNATURE_INVALID' | 'VALIDATION_ERROR',
+    code:
+      | 'WEBHOOK_SECRET_NOT_FOUND'
+      | 'WEBHOOK_SIGNATURE_INVALID'
+      | 'WEBHOOK_SIGNATURE_REQUIRED'
+      | 'WEBHOOK_HANDLER_FAILED'
+      | 'VALIDATION_ERROR',
     message: string,
-    status = 400
+    status = 400,
+    details: Record<string, unknown> = {}
   ) {
     super(message);
     this.name = 'WebhookHandlerError';
     this.code = code;
     this.status = status;
+    this.retryable = status >= 500;
+    this.details = details;
   }
 }
 
@@ -29,7 +41,8 @@ export class WebhookHandler {
 
   constructor(
     private providerRegistry: ProviderRegistry,
-    private logger: Logger
+    private logger: Logger,
+    private options: { verifySignatures?: boolean } = {}
   ) {}
 
   async handleWebhook(
@@ -104,14 +117,23 @@ export class WebhookHandler {
       headers: normalizedHeaders,
     };
 
-    let verified = true;
-    if (trigger.webhookConfig?.verifySignature) {
+    const verifier = trigger.webhookConfig?.verifySignature;
+    if (this.options.verifySignatures === true && !verifier) {
+      throw new WebhookHandlerError(
+        'WEBHOOK_SIGNATURE_REQUIRED',
+        `signature verifier not configured for ${provider}.${triggerKey}`,
+        500
+      );
+    }
+
+    let verified = this.options.verifySignatures !== false;
+    if (this.options.verifySignatures !== false && verifier) {
       if (!secret) {
         throw new WebhookHandlerError('WEBHOOK_SECRET_NOT_FOUND', `secret not configured for ${provider}`);
       }
 
       try {
-        verified = await trigger.webhookConfig.verifySignature(
+        verified = await verifier(
           payload,
           signature,
           secret,
@@ -228,10 +250,18 @@ export class WebhookHandler {
       this.logger.error(`Handler error for ${provider}.${event}`, { error: failure.reason });
     }
 
-    if (failures[0]) {
-      throw failures[0].reason instanceof Error
-        ? failures[0].reason
-        : new Error('webhook handler failed');
+    if (failures.length > 0) {
+      const reasons = failures.map((failure) =>
+        failure.reason instanceof Error ? failure.reason.message : String(failure.reason)
+      );
+      throw new WebhookHandlerError(
+        'WEBHOOK_HANDLER_FAILED',
+        `webhook handler failed: ${reasons[0] ?? 'unknown failure'}`,
+        503,
+        {
+          failures: reasons,
+        }
+      );
     }
   }
 

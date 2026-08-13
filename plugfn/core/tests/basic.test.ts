@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { plugFn } from '../src/index.js';
 import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { mockProvider, mockResponse, mockConnection } from '../src/testing/index.js';
+import { RateLimiter } from '../src/middleware/rate-limiter.js';
 
 describe('PlugFn SDK', () => {
   let plug: any;
@@ -78,6 +79,37 @@ describe('PlugFn SDK', () => {
   });
 
   describe('Action Execution', () => {
+    it('applies global quotas and can disable provider quotas independently', async () => {
+      const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
+      const acquireMany = vi
+        .spyOn(RateLimiter.prototype, 'acquireMany')
+        .mockResolvedValue(undefined);
+      const configuredAdapter = new MemoryAdapter();
+      const configuredPlug = plugFn({
+        database: configuredAdapter,
+        auth: { async authenticate() { return { userId: 'test-user' }; } },
+        baseUrl: 'https://test.com',
+        encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        integrations: { test: { type: 'api-key', apiKey: 'key' } },
+        rateLimit: {
+          enabled: true,
+          respectProviderLimits: false,
+          global: { requests: 25, window: 1000 },
+        },
+      });
+      const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
+      provider.rateLimit = { requests: 1, window: 60_000 };
+      configuredPlug.providers.register(provider);
+      await configuredAdapter.createConnection(mockConnection('test-user', 'test'));
+
+      await configuredPlug.test.getData({ userId: 'test-user', params: {} });
+
+      expect(acquire).toHaveBeenCalledWith('global', { requests: 25, window: 1000 });
+      expect(acquireMany).not.toHaveBeenCalled();
+      acquire.mockRestore();
+      acquireMany.mockRestore();
+    });
+
     it('should execute an action successfully', async () => {
       const provider = mockProvider('test', {
         'getData': mockResponse({ data: 'test-data' }),

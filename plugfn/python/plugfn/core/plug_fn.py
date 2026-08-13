@@ -432,6 +432,7 @@ class PlugFn:
             enable_retry=self.config.retry.get("enabled", True),
             enable_rate_limit=self.config.rate_limit.get("enabled", True),
             enable_cache=self.config.cache.get("enabled", True),
+            retry_options=self.config.retry,
         )
 
         self._webhook_handler = WebhookHandler(

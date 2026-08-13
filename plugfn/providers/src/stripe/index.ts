@@ -49,13 +49,17 @@ export const stripeProvider: Provider = {
       }),
 
       execute: async (params: any, context: ActionContext) => {
+        const formData = new URLSearchParams({
+          email: params.email,
+          ...(params.name && { name: params.name }),
+          ...(params.description && { description: params.description }),
+        });
+        for (const [key, value] of Object.entries(params.metadata ?? {})) {
+          formData.append(`metadata[${key}]`, String(value));
+        }
         const response = await context.http.post(
           `${context.provider.baseUrl}/customers`,
-          new URLSearchParams({
-            email: params.email,
-            ...(params.name && { name: params.name }),
-            ...(params.description && { description: params.description }),
-          }).toString(),
+          formData.toString(),
           {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

@@ -5,7 +5,11 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from plugfn.core.action_executor import ActionExecutor, RateLimitExceededError
+from plugfn.core.action_executor import (
+    ActionExecutor,
+    InMemoryRateLimiter,
+    RateLimitExceededError,
+)
 from plugfn.types import AuthType
 
 
@@ -29,11 +33,14 @@ class MockConnectionManager:
 class RecordingAction:
     """Record invocations and expose the HTTP timeout to assertions."""
 
-    def __init__(self) -> None:
+    def __init__(self, failures: int = 0) -> None:
         self.calls = 0
+        self.failures = failures
 
     async def execute(self, _params: Dict[str, Any], context: Any) -> Dict[str, Any]:
         self.calls += 1
+        if self.calls <= self.failures:
+            raise RuntimeError("temporary failure")
         return {"timeout": context.http.timeout}
 
 
@@ -49,6 +56,8 @@ def create_executor(
     *,
     rate_limit: Optional[Dict[str, int]] = None,
     enable_rate_limit: bool = True,
+    enable_retry: bool = False,
+    retry_options: Optional[Dict[str, Any]] = None,
 ) -> ActionExecutor:
     provider = SimpleNamespace(
         name="test-provider",
@@ -62,8 +71,9 @@ def create_executor(
         MockConnectionManager(),
         registry,
         MockLogger(),
-        enable_retry=False,
+        enable_retry=enable_retry,
         enable_rate_limit=enable_rate_limit,
+        retry_options=retry_options,
     )
 
 
@@ -109,3 +119,64 @@ async def test_enabled_provider_rate_limit_rejects_excess_actions() -> None:
     assert second["success"] is False
     assert isinstance(second["error"], RateLimitExceededError)
     assert action.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_cache_reuses_successful_action_result() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    first = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 1},
+        connection_id="connection-1",
+        cache=True,
+    )
+    second = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 1},
+        connection_id="connection-1",
+        cache=True,
+    )
+
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert action.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_enabled_retry_uses_default_attempts_without_per_call_options() -> None:
+    action = RecordingAction(failures=2)
+    executor = create_executor(
+        action,
+        enable_rate_limit=False,
+        enable_retry=True,
+        retry_options={"delay": 0},
+    )
+
+    result = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+    )
+
+    assert result["success"] is True
+    assert action.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_prunes_expired_bucket_keys() -> None:
+    times = iter([0.0, 2.0])
+    limiter = InMemoryRateLimiter(now=lambda: next(times))
+
+    await limiter.acquire(["old-user"], requests=1, window_ms=1000)
+    await limiter.acquire(["current-user"], requests=1, window_ms=1000)
+
+    assert "old-user" not in limiter._buckets
+    assert "old-user" not in limiter._windows

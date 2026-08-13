@@ -292,7 +292,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
   async createWorkflow(workflow: Workflow): Promise<Workflow> {
     return this.database.create<Workflow>({
       model: this.models.workflows,
-      data: cloneRecord(workflow),
+      data: cloneWorkflowRecord(workflow),
     });
   }
 
@@ -323,7 +323,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
     return this.database.update<Workflow>({
       model: this.models.workflows,
       where: [{ field: 'id', operator: 'eq', value: id }],
-      data: cloneRecord(updates),
+      data: cloneWorkflowRecord(updates),
     });
   }
 
@@ -736,6 +736,30 @@ function cloneRecord<T>(value: T): T {
   }
 
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function cloneWorkflowRecord<T>(value: T): T {
+  if (typeof value === 'function' || value === undefined || value === null) {
+    return value;
+  }
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneWorkflowRecord(entry)) as T;
+  }
+  if (typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return cloneRecord(value);
+    }
+    const clone: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      clone[key] = cloneWorkflowRecord(entry);
+    }
+    return clone as T;
+  }
+  return value;
 }
 
 function toWhereClauses(filters: Record<string, unknown>): WhereClause[] {

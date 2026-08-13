@@ -17,6 +17,8 @@ export interface ActionContext<TCredentials = any> {
   };
   http: HttpClient;
   logger: Logger;
+  /** Consume configured global/provider quota for an additional HTTP request. */
+  acquireRateLimit?: () => Promise<void>;
 }
 
 /**

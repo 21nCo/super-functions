@@ -107,6 +107,8 @@ describe('raw-body webhook verification', () => {
     plug.runtime.webhooks.createReceipt = vi.fn(async () => ({
       id: 'receipt_existing',
       metadata: { receiptClaimToken: 'claim_from_other_request' },
+      verificationStatus: 'verified',
+      createdAt: new Date(),
     }));
     const router = createPlugFnRouter(plug, {
       webhookSecret: { github: 'router-secret' },
@@ -129,6 +131,35 @@ describe('raw-body webhook verification', () => {
       data: { duplicate: true, receiptId: 'receipt_existing' },
     });
     expect(handleWebhook).not.toHaveBeenCalled();
+  });
+
+  it('retries an abandoned verified receipt after its delivery lease expires', async () => {
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_retry', verified: true }));
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.runtime.webhooks.createReceipt = vi.fn(async () => ({
+      id: 'receipt_abandoned',
+      metadata: { receiptClaimToken: 'claim_from_crashed_request' },
+      verificationStatus: 'verified',
+      createdAt: new Date(Date.now() - 10 * 60 * 1000),
+    }));
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'router-secret' },
+    });
+    const rawBody = '{"action":"opened","issue":{"id":1}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues', {
+        method: 'POST',
+        headers: {
+          'x-github-delivery': 'delivery_abandoned',
+          'x-hub-signature-256': signRawBody(rawBody, 'router-secret'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledTimes(1);
   });
 
   it.each([

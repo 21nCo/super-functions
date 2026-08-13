@@ -350,9 +350,10 @@ describe('HTTP router auth boundaries', () => {
     const listSyncJobs = vi.fn(async (filters) =>
       filters.ownerKind === 'organization' ? [organizationJob] : [personalJob]
     );
+    const getSyncJob = vi.fn(async () => organizationJob);
     const plug = createMockPlugFn({
       listSyncJobs,
-      getSyncJob: vi.fn(async () => organizationJob),
+      getSyncJob,
       getConnection: vi.fn(async () => ({
         id: 'conn_org',
         userId: 'installer',
@@ -390,6 +391,37 @@ describe('HTTP router auth boundaries', () => {
       ownerKind: 'organization',
       ownerId: 'org_1',
     });
+    expect(getSyncJob).not.toHaveBeenCalled();
+  });
+
+  it('propagates unexpected sync authorization failures instead of returning a partial list', async () => {
+    const organizationJob = {
+      id: 'job_org',
+      connectionId: 'conn_org',
+      ownerKind: 'organization',
+      ownerId: 'org_1',
+    };
+    const plug = createMockPlugFn({
+      listSyncJobs: vi.fn(async (filters) =>
+        filters.ownerKind === 'organization' ? [organizationJob] : []
+      ),
+      getConnection: vi.fn(async () => ({ id: 'conn_org' })),
+      authorizeConnection: vi.fn(async () => {
+        throw new Error('authorization backend unavailable');
+      }),
+      authenticate: vi.fn(async () => ({
+        userId: 'admin',
+        organizationId: 'org_1',
+        roles: ['org:admin'],
+      })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/sync/jobs', { method: 'GET' })
+    );
+
+    expect(response.status).toBe(500);
   });
 });
 
@@ -402,6 +434,7 @@ function createMockPlugFn(overrides: {
   createJob?: ReturnType<typeof vi.fn>;
   listSyncJobs?: ReturnType<typeof vi.fn>;
   getSyncJob?: ReturnType<typeof vi.fn>;
+  authorizeConnection?: ReturnType<typeof vi.fn>;
 } = {}) {
   const listConnections = overrides.listConnections ?? vi.fn(async () => []);
   const getConnection = overrides.getConnection ?? vi.fn(async () => ({ id: 'conn_1', userId: 'u1' }));
@@ -417,7 +450,9 @@ function createMockPlugFn(overrides: {
       },
       baseUrl: 'https://app.example.com',
       integrations: {},
-      authorization: undefined,
+      authorization: overrides.authorizeConnection
+        ? { authorizeConnection: overrides.authorizeConnection }
+        : undefined,
     },
     connections: {
       start: vi.fn(async () => ({ authUrl: 'https://example.com/auth' })),
