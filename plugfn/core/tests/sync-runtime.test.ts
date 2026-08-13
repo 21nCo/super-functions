@@ -390,6 +390,77 @@ describe('PlugFn sync runtime', () => {
     expect(checkpointSeenDuringSecondFetch).toEqual([{ page: 1 }]);
   });
 
+  it('preserves cancellation when the final sync page finishes concurrently', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'user_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    let releaseFetch!: () => void;
+    const fetchReleased = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    plug.use({
+      ...testSyncProvider,
+      name: 'test-sync-cancel-race',
+      sync: {
+        records: {
+          resource: 'records',
+          fetch: async () => {
+            markFetchStarted();
+            await fetchReleased;
+            return { items: [], done: true };
+          },
+        },
+      },
+    });
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_cancel_race',
+      userId: 'user_1',
+      provider: 'test-sync-cancel-race',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const running = plug.sync.backfill({
+      provider: 'test-sync-cancel-race',
+      connectionId: 'conn_sync_cancel_race',
+      resource: 'records',
+      actor: { userId: 'user_1' },
+    });
+    await fetchStarted;
+    const [job] = await plug.runtime.sync.listJobs({
+      connectionId: 'conn_sync_cancel_race',
+    });
+    expect(job?.status).toBe('running');
+
+    await plug.runtime.sync.updateJob(job!.id, { status: 'cancelled' });
+    releaseFetch();
+
+    await expect(running).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(plug.runtime.sync.getJob(job!.id)).resolves.toMatchObject({
+      status: 'cancelled',
+    });
+  });
+
   it('passes the connection tenant to fallback sync actions', async () => {
     const database = new MemoryAdapter();
     const encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

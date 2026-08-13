@@ -324,10 +324,24 @@ export class AdapterRuntimeStorage {
     id: string,
     updates: Omit<UpdateSyncJobProgressInput, 'status' | 'error'> = {}
   ): Promise<PlugFnSyncJob> {
-    return this.updateSyncJob(id, {
-      ...updates,
-      status: 'completed',
+    await this.adapter.database.updateMany({
+      model: this.adapter.models.syncJobs,
+      where: [
+        { field: 'id', operator: 'eq', value: id },
+        { field: 'status', operator: 'eq', value: 'running' },
+      ],
+      data: {
+        ...updates,
+        status: 'completed',
+        updatedAt: new Date(),
+      },
     });
+
+    const job = await this.adapter.getSyncJob(id);
+    if (!job) {
+      throw new Error(`Sync job ${id} not found after completion`);
+    }
+    return job;
   }
 
   async failSyncJob(id: string, error: string): Promise<PlugFnSyncJob> {

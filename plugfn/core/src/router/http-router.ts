@@ -227,10 +227,12 @@ export function createPlugFnRouter(
         const provider = ctx.query.get('provider');
         const authContext = requireAuthContext(ctx);
 
-        const ownConnections = await ctx.plugFn.connections.list({
-          userId: authContext.userId,
-          provider: provider || undefined,
-        });
+        const ownConnections = (
+          await ctx.plugFn.connections.list({
+            userId: authContext.userId,
+            provider: provider || undefined,
+          })
+        ).filter((connection) => connectionMatchesAuthContext(connection, authContext));
         let connections = ownConnections;
         if (
           authContext.organizationId &&
@@ -380,6 +382,16 @@ export function createPlugFnRouter(
             });
           }
 
+          if (!connectionId && authContext.tenantId) {
+            return errorResponse({
+              code: 'VALIDATION_ERROR',
+              message: 'connectionId is required for tenant-scoped disconnects',
+              status: 400,
+              retryable: false,
+              details: {},
+            });
+          }
+
           if (connectionId) {
             await requireAuthorizedConnection(ctx, connectionId, authContext, 'disconnect');
           }
@@ -494,11 +506,15 @@ export function createPlugFnRouter(
           filters.status = status;
         }
 
-        const ownJobs = await ctx.plugFn.runtime.sync.listJobs({
-          ...filters,
-          ownerKind: 'user',
-          ownerId: authContext.userId,
-        });
+        const ownJobs = await filterAuthorizedSyncJobs(
+          ctx,
+          await ctx.plugFn.runtime.sync.listJobs({
+            ...filters,
+            ownerKind: 'user',
+            ownerId: authContext.userId,
+          }),
+          authContext
+        );
         let jobs = ownJobs;
         if (authContext.organizationId) {
           const organizationJobs = await ctx.plugFn.runtime.sync.listJobs({
@@ -717,26 +733,14 @@ async function authorizeSyncJob(
   authContext: RouteAuthContext,
   connectionCache?: Map<string, Promise<Connection>>
 ) {
-  if (job.ownerKind === 'user' && job.ownerId === authContext.userId) {
-    return job;
+  let connectionPromise = connectionCache?.get(job.connectionId);
+  if (!connectionPromise) {
+    connectionPromise = context.plugFn.connections.get(job.connectionId);
+    connectionCache?.set(job.connectionId, connectionPromise);
   }
-
-  if (job.connectionId) {
-    let connectionPromise = connectionCache?.get(job.connectionId);
-    if (!connectionPromise) {
-      connectionPromise = context.plugFn.connections.get(job.connectionId);
-      connectionCache?.set(job.connectionId, connectionPromise);
-    }
-    const connection = await connectionPromise;
-    await authorizeConnection(context, connection, authContext, 'sync');
-    return job;
-  }
-
-  throw {
-    code: 'TENANT_ACCESS_DENIED',
-    message: 'sync job owner mismatch',
-    status: 403,
-  };
+  const connection = await connectionPromise;
+  await authorizeConnection(context, connection, authContext, 'sync');
+  return job;
 }
 
 async function filterAuthorizedSyncJobs(
@@ -765,12 +769,16 @@ function connectionMatchesAuthContext(
   connection: Connection,
   authContext: RouteAuthContext
 ): boolean {
+  if (!tenantMatches(connection.tenantId, authContext.tenantId)) {
+    return false;
+  }
+
   if (connection.userId === authContext.userId) {
-    return tenantMatches(connection.tenantId, authContext.tenantId);
+    return true;
   }
 
   if (connection.ownerKind === 'user' && connection.ownerId === authContext.userId) {
-    return tenantMatches(connection.tenantId, authContext.tenantId);
+    return true;
   }
 
   if (connection.ownerKind === 'organization') {
@@ -781,7 +789,6 @@ function connectionMatchesAuthContext(
     return (
       connection.installedByUserId === authContext.userId ||
       (belongsToActorOrganization &&
-        tenantMatches(connection.tenantId, authContext.tenantId) &&
         hasAny(authContext.roles, ['admin', 'owner', 'org:admin']))
     );
   }
