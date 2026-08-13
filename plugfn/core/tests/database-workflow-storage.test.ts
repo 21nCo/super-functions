@@ -57,6 +57,26 @@ describe('database workflow storage', () => {
     expect(created.metadata).not.toBe(cyclic);
     expect(created.metadata?.self).toBe(created.metadata);
   });
+
+  it.each([
+    ['Map', new Map([['key', 'value']])],
+    ['Set', new Set(['value'])],
+  ])('rejects %s workflow metadata before persistent JSON storage', async (type, metadata) => {
+    const create = vi.fn();
+    const adapter = createPlugFnDatabaseAdapter({
+      database: { id: 'postgres', create } as any,
+    });
+    const workflow = createWorkflow();
+    workflow.definition.steps = [
+      { id: 'step_1', type: 'action', action: 'github.issues.get' },
+    ];
+    workflow.metadata = { value: metadata };
+
+    await expect(adapter.createWorkflow(workflow)).rejects.toThrow(
+      `cannot serialize ${type} at workflow.metadata.value`
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 
 function createWorkflow(): Workflow {

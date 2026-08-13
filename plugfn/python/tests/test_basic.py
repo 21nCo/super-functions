@@ -1,7 +1,8 @@
 """Basic tests for PlugFn Python SDK."""
 
+import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, cast
 from urllib.parse import parse_qs, urlparse
 
@@ -251,6 +252,48 @@ async def test_refresh_preserves_an_unrotated_refresh_token(plug):
     assert credentials["access_token"] == "new"
     assert credentials["refresh_token"] == "keep-me"
     assert "stale_provider_field" not in credentials
+
+
+@pytest.mark.asyncio
+async def test_expired_oauth_credentials_refresh_once_for_concurrent_actions(plug):
+    now = datetime.now()
+    encrypted_credentials = json.dumps(
+        {"access_token": "old", "refresh_token": "refresh-me"}
+    )
+    await plug.config.database.createConnection(
+        {
+            "id": "conn-github-expired",
+            "user_id": "test-user",
+            "provider": "github",
+            "status": "active",
+            "credentials": encrypted_credentials,
+            "expires_at": now - timedelta(seconds=1),
+            "connected_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    plug._connection_manager.token_storage.decrypt = lambda value: value
+    plug._connection_manager.token_storage.encrypt = lambda value: value
+    refresh_calls = 0
+
+    async def refresh_token(**_kwargs):
+        nonlocal refresh_calls
+        refresh_calls += 1
+        await asyncio.sleep(0)
+        return {"access_token": "new", "expires_in": 3600}
+
+    plug._connection_manager.oauth_handler.refresh_token = refresh_token
+
+    credentials = await asyncio.gather(
+        *[
+            plug._connection_manager.get_credentials("conn-github-expired")
+            for _ in range(3)
+        ]
+    )
+
+    assert refresh_calls == 1
+    assert [item["access_token"] for item in credentials] == ["new", "new", "new"]
 
 
 @pytest.mark.asyncio

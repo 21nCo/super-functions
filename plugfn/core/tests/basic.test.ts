@@ -152,6 +152,47 @@ describe('PlugFn SDK', () => {
       expect(acquireMany).toHaveBeenCalledTimes(2);
     });
 
+    it('rechecks the global quota after waiting for provider capacity', async () => {
+      const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
+      const acquireMany = vi
+        .spyOn(RateLimiter.prototype, 'acquireMany')
+        .mockResolvedValue(true);
+      const get = vi.spyOn(FetchHttpClient.prototype, 'get').mockResolvedValue({
+        data: { ok: true },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+      });
+      const configuredAdapter = new MemoryAdapter();
+      const configuredPlug = plugFn({
+        database: configuredAdapter,
+        auth: { async authenticate() { return { userId: 'test-user' }; } },
+        baseUrl: 'https://test.com',
+        encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        integrations: { test: { type: 'api-key', apiKey: 'key' } },
+        rateLimit: {
+          enabled: true,
+          global: { requests: 25, window: 1000 },
+        },
+      });
+      const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
+      provider.rateLimit = { requests: 1, window: 60_000 };
+      provider.actions.getData.execute = async (_params, context) => {
+        await context.http.get('/quota-test');
+        return { ok: true };
+      };
+      configuredPlug.providers.register(provider);
+      await configuredAdapter.createConnection(mockConnection('test-user', 'test'));
+
+      await configuredPlug.test.getData({ userId: 'test-user', params: {} });
+
+      expect(acquireMany).toHaveBeenCalledTimes(1);
+      expect(acquire).toHaveBeenCalledTimes(2);
+      expect(acquire).toHaveBeenNthCalledWith(1, 'global', { requests: 25, window: 1000 });
+      expect(acquire).toHaveBeenNthCalledWith(2, 'global', { requests: 25, window: 1000 });
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
     it('should execute an action successfully', async () => {
       const provider = mockProvider('test', {
         'getData': mockResponse({ data: 'test-data' }),

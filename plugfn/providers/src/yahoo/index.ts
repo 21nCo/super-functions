@@ -138,10 +138,11 @@ export const yahooProvider: Provider = {
           host: params.host,
           username: params.username,
           password: params.password,
+          oauth2: true,
           tls: true,
         });
 
-        const imapConnection = imap.connect();
+        const imapConnection = await imap.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -170,9 +171,10 @@ export const yahooProvider: Provider = {
           host: params.host,
           username: params.username,
           password: params.password,
+          oauth2: true,
           tls: true,
         });
-        imap.connect();
+        await imap.connect();
 
         const messages = params.rawMessages.map((rawMessage: string, index: number) =>
           imap.normalize({

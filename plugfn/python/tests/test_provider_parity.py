@@ -1,5 +1,9 @@
 """Core provider parity tests for PlugFn Python."""
 
+from types import SimpleNamespace
+
+import pytest
+
 from plugfn.providers import (
     ADJACENT_EXPERIMENTAL_PROVIDER_EXPORTS,
     ALL_PROVIDER_EXPORTS,
@@ -47,3 +51,36 @@ def test_core_providers_expose_basic_action_and_trigger_contracts():
         assert trigger_name in provider.triggers
         assert provider.actions[action_name].name == action_name
         assert provider.triggers[trigger_name]["name"] == trigger_name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action_name", "params"),
+    [
+        ("issues.get", {"issue_id": "issue-1"}),
+        ("issues.search", {"team_id": "team-1"}),
+    ],
+)
+async def test_linear_actions_raise_graphql_errors(action_name, params):
+    class ErrorHttp:
+        async def post(self, *_args, **_kwargs):
+            return {"errors": [{"message": "not authorized"}], "data": None}
+
+    context = SimpleNamespace(http=ErrorHttp())
+
+    with pytest.raises(RuntimeError, match="Linear GraphQL request failed"):
+        await linear_provider.actions[action_name].execute(params, context)
+
+
+@pytest.mark.asyncio
+async def test_linear_get_rejects_missing_issue_data():
+    class MissingDataHttp:
+        async def post(self, *_args, **_kwargs):
+            return {"data": {"issue": None}}
+
+    context = SimpleNamespace(http=MissingDataHttp())
+
+    with pytest.raises(RuntimeError, match=r"missing data\.issue"):
+        await linear_provider.actions["issues.get"].execute(
+            {"issue_id": "missing"}, context
+        )

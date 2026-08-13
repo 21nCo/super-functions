@@ -201,6 +201,16 @@ async def test_dictionary_cache_options_honor_zero_ttl() -> None:
     action = RecordingAction()
     executor = create_executor(action, enable_rate_limit=False)
 
+    primed = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+        cache=True,
+    )
+    assert primed["cached"] is False
+
     for _ in range(2):
         result = await executor.execute(
             "test-provider",
@@ -212,7 +222,7 @@ async def test_dictionary_cache_options_honor_zero_ttl() -> None:
         )
         assert result["cached"] is False
 
-    assert action.calls == 2
+    assert action.calls == 3
 
 
 @pytest.mark.asyncio

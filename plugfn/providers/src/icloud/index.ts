@@ -56,9 +56,9 @@ export const icloudProvider: Provider = {
     'mail.connect': {
       name: 'mail.connect',
       displayName: 'Connect',
-      description: 'Connect to iCloud mail for inbound IMAP access',
+      description: 'Connect to iCloud mail for inbound IMAP access; imap-smtp is a legacy alias',
       parameters: z.object({
-        mode: z.enum(['imap-smtp', 'pop']).default('imap-smtp'),
+        mode: z.enum(['imap', 'imap-smtp', 'pop']).default('imap'),
         username: z.string().min(1),
         appSpecificPassword: z.string().min(1),
         imapHost: z.string().default('imap.mail.me.com'),
@@ -78,7 +78,7 @@ export const icloudProvider: Provider = {
           tls: true,
         });
 
-        const imapConnection = imap.connect();
+        const imapConnection = await imap.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -89,9 +89,9 @@ export const icloudProvider: Provider = {
     'mail.sync': {
       name: 'mail.sync',
       displayName: 'Sync',
-      description: 'Normalize iCloud IMAP messages into canonical model',
+      description: 'Normalize iCloud IMAP messages; imap-smtp is a legacy alias',
       parameters: z.object({
-        mode: z.enum(['imap-smtp', 'pop']).default('imap-smtp'),
+        mode: z.enum(['imap', 'imap-smtp', 'pop']).default('imap'),
         username: z.string().min(1),
         appSpecificPassword: z.string().min(1),
         mailbox: z.string().default('inbox'),
@@ -112,7 +112,7 @@ export const icloudProvider: Provider = {
           password: params.appSpecificPassword,
           tls: true,
         });
-        imap.connect();
+        await imap.connect();
 
         const messages = params.rawMessages.map((rawMessage: string, index: number) =>
           imap.normalize({

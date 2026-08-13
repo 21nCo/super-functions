@@ -60,10 +60,11 @@ export class RateLimiter {
     }
   }
 
-  async acquireMany(keys: string[], config: RateLimitConfig): Promise<void> {
+  async acquireMany(keys: string[], config: RateLimitConfig): Promise<boolean> {
     const uniqueKeys = [...new Set(keys)];
     const limiter = this.getSharedLimiter(config);
     const start = this.now();
+    let waited = false;
 
     while (true) {
       if (this.destroyed) {
@@ -83,9 +84,10 @@ export class RateLimiter {
       const resetAt = Date.parse(result.resetAt);
 
       if (result.allowed) {
-        return;
+        return waited;
       }
 
+      waited = true;
       const waitMs = Math.max(1, resetAt - this.now());
       if (this.now() - start + waitMs > config.window * 2) {
         throw new Error('Rate limit timeout');

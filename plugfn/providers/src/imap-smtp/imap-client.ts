@@ -1,3 +1,4 @@
+import { ImapFlow } from 'imapflow';
 import { validateNormalizedMailMessage, type NormalizedMailMessage } from 'plugfn';
 
 export interface ImapCapabilityMatrix {
@@ -12,6 +13,7 @@ export interface ImapClientConfig {
   port?: number;
   username: string;
   password: string;
+  oauth2?: boolean;
   tls?: boolean;
   explicitInsecureOverride?: boolean;
   capabilities?: Partial<ImapCapabilityMatrix>;
@@ -56,14 +58,38 @@ export class ImapClient {
     this.config = resolveImapConfig(config);
   }
 
-  connect(): ImapConnectionResult {
+  async connect(): Promise<ImapConnectionResult> {
     enforceSecureTransport(this.config.tls, this.config.explicitInsecureOverride);
-    return {
-      imapConnected: true,
-      tls: this.config.tls,
+    const client = new ImapFlow({
       host: this.config.host,
       port: this.config.port,
-    };
+      secure: this.config.tls,
+      auth: {
+        user: this.config.username,
+        ...(this.config.oauth2
+          ? { accessToken: this.config.password }
+          : { pass: this.config.password }),
+      },
+      logger: false,
+      verifyOnly: true,
+    });
+
+    try {
+      await client.connect();
+      return {
+        imapConnected: true,
+        tls: this.config.tls,
+        host: this.config.host,
+        port: this.config.port,
+      };
+    } catch {
+      throw new ImapClientError(
+        'VALIDATION_ERROR',
+        'imap connection or authentication failed'
+      );
+    } finally {
+      client.close();
+    }
   }
 
   parse(rawMessage: string): ParsedRfc822Message {
@@ -149,6 +175,7 @@ function resolveImapConfig(config: ImapClientConfig): Required<ImapClientConfig>
     port: config.port ?? 993,
     username,
     password,
+    oauth2: config.oauth2 ?? false,
     tls: config.tls ?? true,
     explicitInsecureOverride: config.explicitInsecureOverride ?? false,
     capabilities: {

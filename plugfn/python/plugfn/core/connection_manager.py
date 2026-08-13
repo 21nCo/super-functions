@@ -1,5 +1,6 @@
 """Connection manager for handling user connections to providers."""
 
+import asyncio
 import json
 import secrets
 from datetime import datetime, timedelta
@@ -44,6 +45,7 @@ class ConnectionManager:
         self.token_storage = SecureTokenStorage(encryption_key)
         self.oauth_handler = OAuthFlowHandler(oauth_state_store or MemoryTokenStore())
         self._json_encoder = json.JSONEncoder()
+        self._credential_refresh_locks: Dict[str, asyncio.Lock] = {}
 
     async def get_auth_url(
         self,
@@ -376,6 +378,17 @@ class ConnectionManager:
         """
         connection = await self.get_connection(connection_id)
 
+        if self._connection_is_expired(connection):
+            refresh_lock = self._credential_refresh_locks.setdefault(
+                connection_id, asyncio.Lock()
+            )
+            async with refresh_lock:
+                # Another caller may have completed the refresh while this
+                # request was waiting for the per-connection lock.
+                connection = await self.get_connection(connection_id)
+                if self._connection_is_expired(connection):
+                    connection = await self.refresh_connection(connection_id)
+
         # Decrypt credentials
         creds_str = self.token_storage.decrypt(connection.credentials)
         return self._decode_json_object(creds_str)
@@ -408,6 +421,14 @@ class ConnectionManager:
         if not isinstance(decoded, dict):
             raise ValueError("Stored JSON payload must be an object")
         return decoded
+
+    @staticmethod
+    def _connection_is_expired(connection: Connection) -> bool:
+        expires_at = connection.expires_at
+        if expires_at is None:
+            return False
+        now = datetime.now(tz=expires_at.tzinfo) if expires_at.tzinfo else datetime.now()
+        return expires_at <= now
 
     @staticmethod
     def _required_config_string(

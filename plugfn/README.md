@@ -6,7 +6,7 @@ PlugFn is the shared, self-hosted integration runtime for Superfunctions apps. I
 
 - PlugFn does not make blanket production-ready claims across every provider or vertical module.
 - Production claims are provider-specific and only valid on commits where `npm run gate:plugfn-release` passes and the provider is marked `production` in [docs/provider-readiness-matrix.md](./docs/provider-readiness-matrix.md).
-- Mail-specific or app-specific modules remain optional vertical surfaces, not the default product contract.
+- Inbound email account connections and ingestion are part of the PlugFn runtime contract. Email products, outbound delivery, and app-specific interpretation remain outside PlugFn or optional vertical surfaces.
 
 ## Package contract
 
@@ -64,7 +64,7 @@ Python examples exist, but the Python runtime is still experimental and does not
 ## Readiness model
 
 - Core provider set tracked by the release gate: `github`, `linear`, `clickup`, `gmail`, `notion`
-- Additional providers may exist in source but remain `beta`, `experimental`, `vertical-only`, or `unsupported`
+- Additional providers, including inbound email connectors outside the gated core set, may remain `beta`, `experimental`, `vertical-only`, or `unsupported`; inclusion in runtime scope does not imply production readiness
 - Unlisted providers are unsupported by default
 
 See:

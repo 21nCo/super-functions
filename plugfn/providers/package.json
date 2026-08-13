@@ -46,9 +46,10 @@
     "access": "public"
   },
   "dependencies": {
-    "plugfn": "0.1.0",
     "@superfunctions/oauth-providers": "0.0.1",
+    "imapflow": "^1.7.0",
     "jose": "^5.10.0",
+    "plugfn": "0.1.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

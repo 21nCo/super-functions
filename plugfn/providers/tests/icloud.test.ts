@@ -8,7 +8,7 @@ describe('icloud provider', () => {
   it('connects inbound IMAP with app-specific password credentials', async () => {
     const result = await icloudProvider.actions['mail.connect'].execute(
       {
-        mode: 'imap-smtp',
+        mode: 'imap',
         username: 'user@icloud.com',
         appSpecificPassword: 'valid-app-password',
         imapHost: 'imap.mail.me.com',
@@ -43,7 +43,7 @@ describe('icloud provider', () => {
     await expect(
       icloudProvider.actions['mail.connect'].execute(
         {
-          mode: 'imap-smtp',
+          mode: 'imap',
           username: 'user@icloud.com',
           appSpecificPassword: 'invalid',
           imapHost: 'imap.mail.me.com',
@@ -59,7 +59,7 @@ describe('icloud provider', () => {
   it('supports inbound sync', async () => {
     const syncResult = await icloudProvider.actions['mail.sync'].execute(
       {
-        mode: 'imap-smtp',
+        mode: 'imap',
         username: 'user@icloud.com',
         appSpecificPassword: 'valid-app-password',
         mailbox: 'inbox',

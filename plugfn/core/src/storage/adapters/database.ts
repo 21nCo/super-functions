@@ -796,6 +796,15 @@ function assertWorkflowRecordPersistable(database: DbAdapter, value: unknown): v
     if (entry === null || typeof entry !== 'object' || entry instanceof Date) {
       return;
     }
+    if (!Array.isArray(entry)) {
+      const prototype = Object.getPrototypeOf(entry);
+      if (prototype !== Object.prototype && prototype !== null) {
+        const typeName = entry.constructor?.name ?? 'object';
+        throw new TypeError(
+          `Persistent PlugFn workflow storage cannot serialize ${typeName} at ${path}; use plain JSON-compatible objects`
+        );
+      }
+    }
     if (ancestors.has(entry)) {
       throw new TypeError(`Persistent PlugFn workflow storage cannot serialize cyclic value at ${path}`);
     }

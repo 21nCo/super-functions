@@ -165,6 +165,12 @@ class ActionExecutor:
         cache_requested = cache is True or (
             isinstance(cache, dict) and cache.get("enabled", True) is not False
         )
+        configured_ttl = cache_options.get("ttl")
+        bypass_cache = (
+            isinstance(configured_ttl, (int, float))
+            and not isinstance(configured_ttl, bool)
+            and configured_ttl <= 0
+        )
         if self.enable_cache and cache_requested:
             configured_key = cache_options.get("key")
             cache_key = (
@@ -172,8 +178,11 @@ class ActionExecutor:
                 if isinstance(configured_key, str) and configured_key
                 else self._cache_key(provider, action, user_id, connection.id, params)
             )
-            cache_hit, cached_data = await self._cache_get(cache_key)
-            if cache_hit:
+            if bypass_cache:
+                await self._cache_delete(cache_key)
+            else:
+                cache_hit, cached_data = await self._cache_get(cache_key)
+            if not bypass_cache and cache_hit:
                 duration = int((time.time() - start_time) * 1000)
                 result = {
                     "success": True,
@@ -255,8 +264,8 @@ class ActionExecutor:
                         "timestamp": datetime.now(),
                     }
 
-                    if cache_key:
-                        await self._cache_set(cache_key, result_data, cache_options.get("ttl"))
+                    if cache_key and not bypass_cache:
+                        await self._cache_set(cache_key, result_data, configured_ttl)
 
                     # Log action
                     self._log_action(result, user_id, connection.id)
@@ -381,6 +390,10 @@ class ActionExecutor:
             self._cache[key] = (expires_at, copied)
             while len(self._cache) > self._max_cache_entries:
                 self._cache.popitem(last=False)
+
+    async def _cache_delete(self, key: str) -> None:
+        async with self._cache_lock:
+            self._cache.pop(key, None)
 
     async def batch(self, actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Execute multiple actions in batch.

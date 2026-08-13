@@ -892,6 +892,19 @@ async function handleWebhookRoute(
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
     const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
     payloadHash = currentPayloadHash;
+    const verification = await ctx.plugFn.webhooks.verify(
+      provider,
+      resolvedEvent,
+      undefined,
+      headers,
+      secret,
+      { rawBody }
+    );
+    verificationStatus = verification.verified === false ? 'not-required' : 'verified';
+
+    // Only verified payloads may claim a durable idempotency key. In
+    // particular, Stripe event ids come from the body and are untrusted until
+    // signature verification succeeds.
     idempotencyKey = readWebhookIdempotencyKey(provider, headers, rawBody);
     if (idempotencyKey) {
       const existing = await ctx.plugFn.runtime.webhooks.findReceiptByIdempotencyKey(
@@ -931,16 +944,6 @@ async function handleWebhookRoute(
         }
       }
     }
-
-    const verification = await ctx.plugFn.webhooks.verify(
-      provider,
-      resolvedEvent,
-      undefined,
-      headers,
-      secret,
-      { rawBody }
-    );
-    verificationStatus = verification.verified === false ? 'not-required' : 'verified';
 
     const receiptClaimToken = idempotencyKey
       ? `claim_${randomBytes(12).toString('hex')}`

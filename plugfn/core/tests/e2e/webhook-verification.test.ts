@@ -4,6 +4,7 @@ import { createPlugFnRouter } from '../../src/router/http-router.js';
 import { plugFn } from '../../src/core/plug-fn.js';
 import { githubProvider } from '../../../providers/src/github/index.js';
 import { linearProvider } from '../../../providers/src/linear/index.js';
+import { stripeProvider } from '../../../providers/src/stripe/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
 describe('PlugFn webhook verification e2e', () => {
@@ -141,11 +142,55 @@ describe('PlugFn webhook verification e2e', () => {
     expect(payload.ok).toBe(false);
     expect(payload.error.code).toBe('WEBHOOK_SIGNATURE_INVALID');
 
-    const receipt = await plug.runtime.webhooks.findReceiptByIdempotencyKey(
-      'github',
-      'delivery_bad'
+    await expect(
+      plug.runtime.webhooks.findReceiptByIdempotencyKey('github', 'delivery_bad')
+    ).resolves.toBeNull();
+  });
+
+  it('does not let an unverified Stripe body reserve a signed event id', async () => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(stripeProvider);
+    plug.webhooks.on('stripe', 'customer.created', handler);
+    const secret = 'whsec_stripe';
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { stripe: secret },
+    });
+    const attackerBody = JSON.stringify({
+      id: 'evt_shared',
+      type: 'customer.created',
+      data: { object: { id: 'cus_attacker', email: 'attacker@example.com', name: null, created: 1 } },
+    });
+    const legitimateBody = JSON.stringify({
+      id: 'evt_shared',
+      type: 'customer.created',
+      data: { object: { id: 'cus_real', email: 'real@example.com', name: null, created: 2 } },
+    });
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+
+    const rejected = await router.handle(
+      new Request('http://localhost/webhooks/stripe/customer.created', {
+        method: 'POST',
+        headers: { 'stripe-signature': `t=${timestamp},v1=invalid` },
+        body: attackerBody,
+      })
     );
-    expect(receipt?.verificationStatus).toBe('failed');
+    const accepted = await router.handle(
+      new Request('http://localhost/webhooks/stripe/customer.created', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': signStripeRawBody(legitimateBody, secret, timestamp),
+        },
+        body: legitimateBody,
+      })
+    );
+
+    expect(rejected.status).toBe(400);
+    expect(accepted.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+    await expect(
+      plug.runtime.webhooks.findReceiptByIdempotencyKey('stripe', 'evt_shared')
+    ).resolves.toMatchObject({ verificationStatus: 'verified' });
   });
 
   it('retries a previously failed delivery with the same idempotency key', async () => {
@@ -419,4 +464,11 @@ function signRawBody(rawBody: string, secret: string): string {
 
 function signLinearRawBody(rawBody: string, secret: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('hex');
+}
+
+function signStripeRawBody(rawBody: string, secret: string, timestamp: string): string {
+  const digest = createHmac('sha256', secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex');
+  return `t=${timestamp},v1=${digest}`;
 }

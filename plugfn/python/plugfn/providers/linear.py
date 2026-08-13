@@ -64,12 +64,7 @@ class LinearIssuesGetAction(LinearAction):
                 json={"query": query, "variables": {"id": validated.issue_id}},
             )
         )
-        data = response.get("data")
-        if isinstance(data, dict):
-            issue = data.get("issue")
-            if isinstance(issue, dict):
-                return require_object_response(issue)
-        return response
+        return _require_linear_data_object(response, "issue")
 
 
 class LinearIssuesSearchAction(LinearAction):
@@ -113,12 +108,20 @@ class LinearIssuesSearchAction(LinearAction):
                 },
             )
         )
-        data = response.get("data")
-        if isinstance(data, dict):
-            issues = data.get("issues")
-            if isinstance(issues, dict):
-                return require_object_response(issues)
-        return response
+        return _require_linear_data_object(response, "issues")
+
+
+def _require_linear_data_object(
+    response: Dict[str, Any], field: str
+) -> Dict[str, Any]:
+    errors = response.get("errors")
+    if isinstance(errors, list) and errors:
+        raise RuntimeError("Linear GraphQL request failed")
+
+    data = response.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get(field), dict):
+        raise RuntimeError(f"Linear GraphQL response missing data.{field}")
+    return require_object_response(data[field])
 
 
 linear_provider = Provider(

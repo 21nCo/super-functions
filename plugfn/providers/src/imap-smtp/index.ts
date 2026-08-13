@@ -133,7 +133,7 @@ export const imapSmtpProvider: Provider = {
           },
         });
 
-        const imapConnection = imap.connect();
+        const imapConnection = await imap.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -186,7 +186,7 @@ export const imapSmtpProvider: Provider = {
             idle: config.capabilities.idle,
           },
         });
-        imap.connect();
+        await imap.connect();
 
         const messages = (params.rawMessages as string[]).map((rawMessage, index) =>
           imap.normalize({
