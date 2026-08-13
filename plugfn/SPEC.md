@@ -29,17 +29,20 @@ The default PlugFn product story is a general shared integration runtime for rep
 - webhook route exposure and verification
 - workflow execution and lifecycle management
 - shared persistence through `@superfunctions/db`
+- inbound email account connectors for Gmail, Outlook, Yahoo, iCloud, and generic IMAP
+- provider-native polling, watches, subscriptions, checkpoints, and normalization into the shared mail model
 
-## Vertical and experimental scope
+## Email ownership boundary
 
-PlugFn may contain additional modules that are useful for specific products or mail-heavy workflows. Those surfaces are allowed to exist, but they are not part of the default adoption contract unless they independently meet the same release gate and matrix requirements.
+PlugFn owns connections to external email providers and inbound message ingestion. It does not own an email product, outbound delivery, or the business meaning extracted from a message.
 
-Examples of vertical or non-core scope include:
+The following surfaces belong outside PlugFn:
 
-- managed-mail flows
-- forwarding adapters
-- app-specific mail policy layers
-- product-specific financial extraction or send governance workflows
+- programmable and managed inboxes, forwarding ingress, mailbox retention, and mailbox security policy: MailFn
+- outbound email transports, queues, retries, idempotency, suppression, and send governance: SendFn
+- finance-specific parsing, transaction extraction, and reconciliation: the finance product that consumes normalized mail
+
+Provider-specific forwarding configuration may be implemented in PlugFn when it is an operation on a connected external provider account. Hosting a forwarding address or monitoring a platform-owned forwarding ingress remains MailFn scope.
 
 ## Core provider set tracked by release gating
 

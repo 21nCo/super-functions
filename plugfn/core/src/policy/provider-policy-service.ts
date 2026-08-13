@@ -75,10 +75,10 @@ const DEFAULT_PROVIDER_POLICIES: ProviderPolicyDefinition[] = [
     policyVersion: DEFAULT_POLICY_VERSION,
     metadata: {
       inbound: true,
-      outbound: true,
+      outbound: false,
       managed: false,
     },
-    allowedOperations: ['mail.sync', 'mail.watch.create', 'mail.send'],
+    allowedOperations: ['mail.sync', 'mail.watch.create'],
     blockedOperations: {
       'mail.read.fullbody': 'operation not allowed by policy',
     },
@@ -88,30 +88,30 @@ const DEFAULT_PROVIDER_POLICIES: ProviderPolicyDefinition[] = [
     policyVersion: DEFAULT_POLICY_VERSION,
     metadata: {
       inbound: true,
-      outbound: true,
+      outbound: false,
       managed: false,
     },
-    allowedOperations: ['mail.sync', 'mail.subscription.ensure', 'mail.send'],
+    allowedOperations: ['mail.sync', 'mail.subscription.ensure'],
   },
   {
     providerId: 'yahoo',
     policyVersion: DEFAULT_POLICY_VERSION,
     metadata: {
       inbound: true,
-      outbound: true,
+      outbound: false,
       managed: false,
     },
-    allowedOperations: ['mail.connect', 'mail.sync', 'mail.send'],
+    allowedOperations: ['mail.connect', 'mail.sync'],
   },
   {
     providerId: 'icloud',
     policyVersion: DEFAULT_POLICY_VERSION,
     metadata: {
       inbound: true,
-      outbound: true,
+      outbound: false,
       managed: false,
     },
-    allowedOperations: ['mail.connect', 'mail.sync', 'mail.send'],
+    allowedOperations: ['mail.connect', 'mail.sync'],
     blockedOperations: {
       'mail.connect.pop': 'icloud does not support POP',
     },
@@ -121,38 +121,12 @@ const DEFAULT_PROVIDER_POLICIES: ProviderPolicyDefinition[] = [
     policyVersion: DEFAULT_POLICY_VERSION,
     metadata: {
       inbound: true,
-      outbound: true,
-      managed: false,
-    },
-    allowedOperations: ['mail.connect', 'mail.sync', 'mail.send'],
-    blockedOperations: {
-      'mail.connect.insecure': 'insecure transport disabled',
-    },
-  },
-  {
-    providerId: 'forwarding',
-    policyVersion: DEFAULT_POLICY_VERSION,
-    metadata: {
-      inbound: true,
       outbound: false,
       managed: false,
     },
-    allowedOperations: ['mail.forwarding.enable', 'mail.forwarding.health'],
+    allowedOperations: ['mail.connect', 'mail.sync'],
     blockedOperations: {
-      'mail.forwarding.enable.mandatory': 'forwarding cannot be mandatory',
-    },
-  },
-  {
-    providerId: 'managed-mail',
-    policyVersion: DEFAULT_POLICY_VERSION,
-    metadata: {
-      inbound: true,
-      outbound: true,
-      managed: true,
-    },
-    allowedOperations: ['mail.managed.enable', 'mail.managed.incident'],
-    blockedOperations: {
-      'mail.managed.enable.finance-unsafe': 'backup channel and risk acknowledgment required',
+      'mail.connect.insecure': 'insecure transport disabled',
     },
   },
 ];

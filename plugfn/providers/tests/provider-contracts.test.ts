@@ -24,11 +24,9 @@ import {
 describe('provider contracts', () => {
   it('lists all required mail adapter ids', () => {
     expect(listRequiredMailProviderIds()).toEqual([
-      'forwarding',
       'gmail',
       'icloud',
       'imap-smtp',
-      'managed-mail',
       'outlook',
       'yahoo',
     ]);
@@ -48,25 +46,25 @@ describe('provider contracts', () => {
     expect(outlookProvider.triggers?.['mail.update']).toBeDefined();
   });
 
-  it('registers yahoo provider descriptor and IMAP/SMTP contracts', () => {
+  it('registers yahoo provider descriptor and inbound IMAP contracts', () => {
     expect(yahooProvider.name).toBe('yahoo');
     expect(yahooProvider.actions['mail.connect']).toBeDefined();
     expect(yahooProvider.actions['mail.sync']).toBeDefined();
-    expect(yahooProvider.actions['mail.send']).toBeDefined();
+    expect(yahooProvider.actions['mail.send']).toBeUndefined();
   });
 
-  it('registers icloud provider descriptor and IMAP/SMTP contracts', () => {
+  it('registers icloud provider descriptor and inbound IMAP contracts', () => {
     expect(icloudProvider.name).toBe('icloud');
     expect(icloudProvider.actions['mail.connect']).toBeDefined();
     expect(icloudProvider.actions['mail.sync']).toBeDefined();
-    expect(icloudProvider.actions['mail.send']).toBeDefined();
+    expect(icloudProvider.actions['mail.send']).toBeUndefined();
   });
 
   it('registers imap-smtp provider descriptor and capability-gated contracts', () => {
     expect(imapSmtpProvider.name).toBe('imap-smtp');
     expect(imapSmtpProvider.actions['mail.connect']).toBeDefined();
     expect(imapSmtpProvider.actions['mail.sync']).toBeDefined();
-    expect(imapSmtpProvider.actions['mail.send']).toBeDefined();
+    expect(imapSmtpProvider.actions['mail.send']).toBeUndefined();
   });
 
   it('normalizes gmail and outlook payloads into equivalent canonical fields', () => {

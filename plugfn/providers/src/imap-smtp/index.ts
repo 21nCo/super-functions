@@ -2,11 +2,9 @@ import { z } from 'zod';
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
 import { ImapClient, ImapClientError } from './imap-client.js';
-import { SmtpClient, SmtpClientError } from './smtp-client.js';
 
 export interface ImapSmtpCapabilityConfig {
   read?: boolean;
-  send?: boolean;
   search?: boolean;
   move?: boolean;
   idle?: boolean;
@@ -17,8 +15,6 @@ export interface ImapSmtpProviderConfig {
   username: string;
   password: string;
   port?: number;
-  smtpHost?: string;
-  smtpPort?: number;
   tls?: boolean;
   explicitInsecureOverride?: boolean;
   capabilities?: ImapSmtpCapabilityConfig;
@@ -37,18 +33,14 @@ const IMAP_SMTP_POLICY_VERSION = '2026-03-11';
 const policyDecisionLog: ImapSmtpPolicyDecision[] = [];
 
 export class ImapSmtpProviderError extends Error {
-  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR';
+  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR';
   readonly status: number;
 
-  constructor(
-    code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR',
-    message: string
-  ) {
+  constructor(code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR', message: string) {
     super(message);
     this.name = 'ImapSmtpProviderError';
     this.code = code;
-    this.status =
-      code === 'PROVIDER_POLICY_BLOCKED' ? 403 : code === 'PROVIDER_DELIVERY_FAILED' ? 502 : 400;
+    this.status = code === 'PROVIDER_POLICY_BLOCKED' ? 403 : 400;
   }
 }
 
@@ -71,13 +63,10 @@ export function assertImapSmtpProviderConfig(config: unknown): Required<ImapSmtp
     username,
     password,
     port: asPositiveInteger(value.port) ?? 993,
-    smtpHost: asNonEmptyString(value.smtpHost) ?? host,
-    smtpPort: asPositiveInteger(value.smtpPort) ?? 465,
     tls: asBoolean(value.tls) ?? true,
     explicitInsecureOverride: asBoolean(value.explicitInsecureOverride) ?? false,
     capabilities: {
       read: readCapability(value.capabilities, 'read', true),
-      send: readCapability(value.capabilities, 'send', true),
       search: readCapability(value.capabilities, 'search', true),
       move: readCapability(value.capabilities, 'move', true),
       idle: readCapability(value.capabilities, 'idle', true),
@@ -91,9 +80,9 @@ export function getImapSmtpPolicyDecisionLog(): ImapSmtpPolicyDecision[] {
 
 export const imapSmtpProvider: Provider = {
   name: 'imap-smtp',
-  displayName: 'IMAP/SMTP',
+  displayName: 'Generic IMAP',
   version: '1.0.0',
-  description: 'Generic standards-based IMAP/SMTP adapter with secure transport defaults',
+  description: 'Generic standards-based inbound IMAP adapter with secure transport defaults',
   baseUrl: 'imap://generic',
   auth: {
     type: AuthType.Basic,
@@ -103,20 +92,17 @@ export const imapSmtpProvider: Provider = {
     'mail.connect': {
       name: 'mail.connect',
       displayName: 'Connect',
-      description: 'Validate IMAP/SMTP connectivity with policy controls',
+      description: 'Validate inbound IMAP connectivity with policy controls',
       parameters: z.object({
         host: z.string().min(1),
         username: z.string().min(1),
         password: z.string().min(1),
         port: z.number().int().positive().optional(),
-        smtpHost: z.string().min(1).optional(),
-        smtpPort: z.number().int().positive().optional(),
         tls: z.boolean().optional(),
         explicitInsecureOverride: z.boolean().optional(),
         capabilities: z
           .object({
             read: z.boolean().optional(),
-            send: z.boolean().optional(),
             search: z.boolean().optional(),
             move: z.boolean().optional(),
             idle: z.boolean().optional(),
@@ -125,7 +111,6 @@ export const imapSmtpProvider: Provider = {
       }),
       returns: z.object({
         imapConnected: z.boolean(),
-        smtpConnected: z.boolean(),
         tls: z.boolean(),
         policyVersion: z.string(),
       }),
@@ -147,21 +132,11 @@ export const imapSmtpProvider: Provider = {
             idle: config.capabilities.idle,
           },
         });
-        const smtp = new SmtpClient({
-          host: config.smtpHost,
-          port: config.smtpPort,
-          username: config.username,
-          password: config.password,
-          tls: config.tls,
-          explicitInsecureOverride: config.explicitInsecureOverride,
-        });
 
         const imapConnection = imap.connect();
-        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
-          smtpConnected: smtpConnection.smtpConnected,
           tls: config.tls,
           policyVersion: IMAP_SMTP_POLICY_VERSION,
         };
@@ -182,7 +157,6 @@ export const imapSmtpProvider: Provider = {
         capabilities: z
           .object({
             read: z.boolean().optional(),
-            send: z.boolean().optional(),
             search: z.boolean().optional(),
             move: z.boolean().optional(),
             idle: z.boolean().optional(),
@@ -226,71 +200,6 @@ export const imapSmtpProvider: Provider = {
         return {
           count: messages.length,
           messages,
-        };
-      },
-    },
-    'mail.send': {
-      name: 'mail.send',
-      displayName: 'Send',
-      description: 'Queue/send SMTP messages with policy and capability checks',
-      parameters: z.object({
-        host: z.string().min(1),
-        username: z.string().min(1),
-        password: z.string().min(1),
-        smtpHost: z.string().min(1).optional(),
-        smtpPort: z.number().int().positive().optional(),
-        tls: z.boolean().optional(),
-        explicitInsecureOverride: z.boolean().optional(),
-        from: z.string().min(1),
-        to: z.array(z.string().min(1)).min(1),
-        cc: z.array(z.string().min(1)).optional(),
-        bcc: z.array(z.string().min(1)).optional(),
-        subject: z.string().min(1),
-        bodyText: z.string().optional(),
-        bodyHtml: z.string().optional(),
-        capabilities: z
-          .object({
-            read: z.boolean().optional(),
-            send: z.boolean().optional(),
-            search: z.boolean().optional(),
-            move: z.boolean().optional(),
-            idle: z.boolean().optional(),
-          })
-          .optional(),
-      }),
-      returns: z.object({
-        queued: z.boolean(),
-        messageId: z.string(),
-        tls: z.boolean(),
-      }),
-      execute: async (params: any) => {
-        const config = assertImapSmtpProviderConfig(params);
-        assertSecureTransportPolicy('mail.send', config.tls, config.explicitInsecureOverride);
-        assertCapabilityEnabled('mail.send', config.capabilities.send === true, 'send');
-
-        const smtp = new SmtpClient({
-          host: config.smtpHost,
-          port: config.smtpPort,
-          username: config.username,
-          password: config.password,
-          tls: config.tls,
-          explicitInsecureOverride: config.explicitInsecureOverride,
-        });
-        await smtp.connect();
-        const result = await smtp.send({
-          from: params.from,
-          to: params.to,
-          cc: params.cc,
-          bcc: params.bcc,
-          subject: params.subject,
-          bodyText: params.bodyText,
-          bodyHtml: params.bodyHtml,
-        });
-
-        return {
-          queued: result.queued,
-          messageId: result.messageId,
-          tls: result.tls,
         };
       },
     },
@@ -376,7 +285,7 @@ export function normalizeImapProviderError(error: unknown): never {
   if (error instanceof ImapSmtpProviderError) {
     throw error;
   }
-  if (error instanceof ImapClientError || error instanceof SmtpClientError) {
+  if (error instanceof ImapClientError) {
     throw new ImapSmtpProviderError(error.code, error.message);
   }
   throw error;

@@ -68,7 +68,9 @@ Providers left outside the default production-ready claim include:
 
 - `slack` as adjacent experimental scope
 - TypeScript-only adjacent providers such as `discord` and `stripe`
-- vertical mail-focused providers such as `outlook`, `yahoo`, `icloud`, `imap-smtp`, `forwarding`, and `managed-mail`
+- TypeScript-only inbound mail connectors such as `outlook`, `yahoo`, `icloud`, and `imap-smtp`
+
+Programmable inboxes and forwarding ingress belong to MailFn. Outbound email delivery belongs to SendFn.
 
 ## Development
 

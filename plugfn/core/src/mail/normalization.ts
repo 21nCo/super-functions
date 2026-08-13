@@ -16,12 +16,6 @@ export const NormalizedMailMessageSchema = z.object({
   receivedAt: z.string().datetime({ offset: true }),
   labels: z.array(z.string().min(1)).optional(),
   hasAttachments: z.boolean(),
-  classification: z
-    .object({
-      kind: z.enum(['financial', 'security', 'personal', 'marketing', 'unknown']),
-      confidence: z.number().min(0).max(1),
-    })
-    .optional(),
 });
 
 export type NormalizedMailMessage = z.infer<typeof NormalizedMailMessageSchema>;

@@ -6,10 +6,9 @@ import {
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
 import { ImapClient } from '../imap-smtp/imap-client.js';
-import { SmtpClient } from '../imap-smtp/smtp-client.js';
 
 const policyRegistry = createDefaultProviderPolicyRegistry();
-const supportedYahooFeatures = new Set(['mail.read.metadata', 'mail.send', 'profile.basic']);
+const supportedYahooFeatures = new Set(['mail.read.metadata', 'profile.basic']);
 
 export interface YahooProviderConfig {
   clientId: string;
@@ -58,7 +57,7 @@ export function assertYahooProviderConfig(config: unknown): YahooProviderConfig 
 }
 
 export function resolveYahooScopes(
-  features: string[] = ['mail.read.metadata', 'mail.send', 'profile.basic']
+  features: string[] = ['mail.read.metadata', 'profile.basic']
 ): string[] {
   const policy = policyRegistry.getPolicy('yahoo');
   const scopes = new Set<string>();
@@ -91,7 +90,7 @@ export const yahooProvider: Provider = {
   name: 'yahoo',
   displayName: 'Yahoo Mail',
   version: '1.0.0',
-  description: 'Yahoo OAuth IMAP/SMTP adapter with policy gating',
+  description: 'Yahoo OAuth inbound IMAP adapter with policy gating',
   baseUrl: 'https://api.login.yahoo.com',
   auth: {
     type: AuthType.OAuth2,
@@ -106,7 +105,7 @@ export const yahooProvider: Provider = {
     'mail.connect': {
       name: 'mail.connect',
       displayName: 'Connect',
-      description: 'Validate Yahoo OAuth IMAP/SMTP connect permissions',
+      description: 'Validate Yahoo OAuth inbound IMAP connect permissions',
       parameters: z.object({
         tenantId: z.string().min(1),
         policy: z
@@ -116,18 +115,15 @@ export const yahooProvider: Provider = {
           .optional(),
         credentials: z.string().optional(),
         host: z.string().default('imap.mail.yahoo.com'),
-        smtpHost: z.string().default('smtp.mail.yahoo.com'),
         username: z.string().default('user@yahoo.com'),
         password: z.string().default('oauth-token'),
       }),
       returns: z.object({
         imapConnected: z.boolean(),
-        smtpConnected: z.boolean(),
         policyVersion: z.string(),
       }),
       execute: async (params: any) => {
         assertYahooOperationAllowed('mail.read.metadata');
-        assertYahooOperationAllowed('mail.send');
         if (params.policy?.imapOauthAllowed === false) {
           throw new YahooProviderError(
             'PROVIDER_POLICY_BLOCKED',
@@ -144,19 +140,11 @@ export const yahooProvider: Provider = {
           password: params.password,
           tls: true,
         });
-        const smtp = new SmtpClient({
-          host: params.smtpHost,
-          username: params.username,
-          password: params.password,
-          tls: true,
-        });
 
         const imapConnection = imap.connect();
-        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
-          smtpConnected: smtpConnection.smtpConnected,
           policyVersion: policyRegistry.getPolicy('yahoo').policyVersion,
         };
       },
@@ -201,43 +189,6 @@ export const yahooProvider: Provider = {
         };
       },
     },
-    'mail.send': {
-      name: 'mail.send',
-      displayName: 'Send',
-      description: 'Send Yahoo mail through SMTP path',
-      parameters: z.object({
-        host: z.string().default('smtp.mail.yahoo.com'),
-        username: z.string().default('user@yahoo.com'),
-        password: z.string().default('oauth-token'),
-        from: z.string().min(1),
-        to: z.array(z.string().min(1)).min(1),
-        subject: z.string().min(1),
-        bodyText: z.string().optional(),
-        bodyHtml: z.string().optional(),
-      }),
-      returns: z.object({
-        queued: z.boolean(),
-        messageId: z.string(),
-        tls: z.boolean(),
-      }),
-      execute: async (params: any) => {
-        assertYahooOperationAllowed('mail.send');
-        const smtp = new SmtpClient({
-          host: params.host,
-          username: params.username,
-          password: params.password,
-          tls: true,
-        });
-        await smtp.connect();
-        return await smtp.send({
-          from: params.from,
-          to: params.to,
-          subject: params.subject,
-          bodyText: params.bodyText,
-          bodyHtml: params.bodyHtml,
-        });
-      },
-    },
   },
   rateLimit: {
     requests: 500,
@@ -245,12 +196,12 @@ export const yahooProvider: Provider = {
   },
 };
 
-function assertYahooOperationAllowed(operation: 'mail.read.metadata' | 'mail.send'): void {
+function assertYahooOperationAllowed(operation: 'mail.read.metadata'): void {
   try {
     policyRegistry.assertOperationAllowed({
       providerId: 'yahoo',
       operation,
-      featureMode: operation === 'mail.send' ? 'snippet' : 'metadata-only',
+      featureMode: 'metadata-only',
     });
   } catch (error) {
     if (error instanceof ProviderPolicyError) {

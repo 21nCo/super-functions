@@ -18,7 +18,6 @@ describe('imap-smtp provider', () => {
 
     expect(result).toMatchObject({
       imapConnected: true,
-      smtpConnected: true,
       tls: true,
       policyVersion: '2026-03-11',
     });
@@ -63,29 +62,6 @@ describe('imap-smtp provider', () => {
       operation: 'mail.connect',
       allowed: true,
       policyVersion: '2026-03-11',
-    });
-  });
-
-  it('enforces capability matrix for unsupported actions', async () => {
-    await expect(
-      imapSmtpProvider.actions['mail.send'].execute(
-        {
-          host: 'mail.example.com',
-          username: 'user@example.com',
-          password: 'password',
-          from: 'user@example.com',
-          to: ['recipient@example.com'],
-          subject: 'capability check',
-          bodyText: 'blocked send',
-          capabilities: {
-            send: false,
-          },
-        },
-        createActionContext()
-      )
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'imap-smtp capability send is disabled',
     });
   });
 

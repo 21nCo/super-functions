@@ -5,21 +5,19 @@ import {
 } from '../src/icloud/index.js';
 
 describe('icloud provider', () => {
-  it('connects IMAP/SMTP with app-specific password credentials', async () => {
+  it('connects inbound IMAP with app-specific password credentials', async () => {
     const result = await icloudProvider.actions['mail.connect'].execute(
       {
         mode: 'imap-smtp',
         username: 'user@icloud.com',
         appSpecificPassword: 'valid-app-password',
         imapHost: 'imap.mail.me.com',
-        smtpHost: 'smtp.mail.me.com',
       },
       createActionContext()
     );
 
     expect(result).toMatchObject({
       imapConnected: true,
-      smtpConnected: true,
       policyVersion: '2026-03-11',
     });
   });
@@ -32,7 +30,6 @@ describe('icloud provider', () => {
           username: 'user@icloud.com',
           appSpecificPassword: 'valid-app-password',
           imapHost: 'imap.mail.me.com',
-          smtpHost: 'smtp.mail.me.com',
         },
         createActionContext()
       )
@@ -50,7 +47,6 @@ describe('icloud provider', () => {
           username: 'user@icloud.com',
           appSpecificPassword: 'invalid',
           imapHost: 'imap.mail.me.com',
-          smtpHost: 'smtp.mail.me.com',
         },
         createActionContext()
       )
@@ -60,7 +56,7 @@ describe('icloud provider', () => {
     });
   });
 
-  it('supports inbound sync and outbound send paths', async () => {
+  it('supports inbound sync', async () => {
     const syncResult = await icloudProvider.actions['mail.sync'].execute(
       {
         mode: 'imap-smtp',
@@ -76,24 +72,6 @@ describe('icloud provider', () => {
     expect(syncResult.count).toBe(1);
     expect(syncResult.messages[0].providerMessageId).toBe('icloud_1');
     expect(syncResult.messages[0].mailbox).toBe('inbox');
-
-    const sendResult = await icloudProvider.actions['mail.send'].execute(
-      {
-        mode: 'imap-smtp',
-        username: 'user@icloud.com',
-        appSpecificPassword: 'valid-app-password',
-        smtpHost: 'smtp.mail.me.com',
-        from: 'user@icloud.com',
-        to: ['recipient@example.com'],
-        subject: 'Hello from iCloud',
-        bodyText: 'Body text',
-      },
-      createActionContext()
-    );
-
-    expect(sendResult.queued).toBe(true);
-    expect(sendResult.messageId).toMatch(/^msg_/);
-    expect(sendResult.tls).toBe(true);
   });
 
   it('returns deterministic validation error for missing provider config', () => {

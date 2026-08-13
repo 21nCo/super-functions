@@ -39,12 +39,10 @@ The minimum provider set that the release gate tracks is:
 | slack | adjacent | experimental | experimental | experimental | Present in both trees, but not part of the declared core release set. |
 | discord | adjacent | experimental | experimental | unsupported | TypeScript-only today. |
 | stripe | adjacent | experimental | experimental | unsupported | TypeScript-only today. |
-| outlook | vertical | vertical-only | vertical-only | unsupported | Mail-focused vertical surface, not default shared-runtime scope. |
-| yahoo | vertical | vertical-only | vertical-only | unsupported | Mail-focused vertical surface, not default shared-runtime scope. |
-| icloud | vertical | vertical-only | vertical-only | unsupported | Mail-focused vertical surface, not default shared-runtime scope. |
-| imap-smtp | vertical | vertical-only | vertical-only | unsupported | Mail-focused vertical surface, not default shared-runtime scope. |
-| forwarding | vertical | vertical-only | vertical-only | unsupported | Mail-focused fallback surface, not default shared-runtime scope. |
-| managed-mail | vertical | vertical-only | vertical-only | unsupported | Product-specific mail surface with additional policy concerns. |
+| outlook | vertical | vertical-only | vertical-only | unsupported | Inbound Microsoft Graph mail connector; outbound delivery is SendFn scope. |
+| yahoo | vertical | vertical-only | vertical-only | unsupported | Inbound OAuth IMAP connector; outbound delivery is SendFn scope. |
+| icloud | vertical | vertical-only | vertical-only | unsupported | Inbound app-password IMAP connector; outbound delivery is SendFn scope. |
+| imap-smtp | vertical | vertical-only | vertical-only | unsupported | Compatibility provider ID for the generic inbound IMAP connector; SMTP delivery is SendFn scope. |
 
 ## Interpretation rules
 

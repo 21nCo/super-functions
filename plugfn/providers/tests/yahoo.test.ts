@@ -6,7 +6,7 @@ import {
 } from '../src/yahoo/index.js';
 
 describe('yahoo provider', () => {
-  it('connects when policy allows OAuth IMAP/SMTP mode', async () => {
+  it('connects when policy allows OAuth IMAP mode', async () => {
     const result = await yahooProvider.actions['mail.connect'].execute(
       {
         tenantId: 'tenant-1',
@@ -15,7 +15,6 @@ describe('yahoo provider', () => {
         },
         credentials: 'valid',
         host: 'imap.mail.yahoo.com',
-        smtpHost: 'smtp.mail.yahoo.com',
         username: 'user@yahoo.com',
         password: 'oauth-token',
       },
@@ -24,7 +23,6 @@ describe('yahoo provider', () => {
 
     expect(result).toMatchObject({
       imapConnected: true,
-      smtpConnected: true,
       policyVersion: '2026-03-11',
     });
   });
@@ -39,7 +37,6 @@ describe('yahoo provider', () => {
           },
           credentials: 'valid',
           host: 'imap.mail.yahoo.com',
-          smtpHost: 'smtp.mail.yahoo.com',
           username: 'user@yahoo.com',
           password: 'oauth-token',
         },
@@ -51,7 +48,7 @@ describe('yahoo provider', () => {
     });
   });
 
-  it('supports inbound sync and outbound send conformance paths', async () => {
+  it('supports inbound sync conformance', async () => {
     const syncResult = await yahooProvider.actions['mail.sync'].execute(
       {
         host: 'imap.mail.yahoo.com',
@@ -65,22 +62,6 @@ describe('yahoo provider', () => {
     expect(syncResult.count).toBe(1);
     expect(syncResult.messages[0].providerMessageId).toBe('yahoo_1');
     expect(syncResult.messages[0].mailbox).toBe('inbox');
-
-    const sendResult = await yahooProvider.actions['mail.send'].execute(
-      {
-        from: 'user@yahoo.com',
-        to: ['recipient@example.com'],
-        subject: 'Hello',
-        bodyText: 'Body',
-        host: 'smtp.mail.yahoo.com',
-        username: 'user@yahoo.com',
-        password: 'oauth-token',
-      },
-      createActionContext()
-    );
-    expect(sendResult.queued).toBe(true);
-    expect(sendResult.messageId).toMatch(/^msg_/);
-    expect(sendResult.tls).toBe(true);
   });
 
   it('returns deterministic validation error for missing provider config', () => {

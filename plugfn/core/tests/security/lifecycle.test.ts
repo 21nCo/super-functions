@@ -10,10 +10,6 @@ import {
   deleteUserScopedData,
   exportAndDeleteUserScopedData,
 } from '../../src/security/export-delete.js';
-import {
-  ManagedMailboxSecurityError,
-  ManagedMailboxSecurityService,
-} from '../../src/security/e2ee-mode.js';
 
 describe('security lifecycle controls', () => {
   it('deletes expired artifacts by policy while respecting legal holds', async () => {
@@ -117,75 +113,6 @@ describe('security lifecycle controls', () => {
       code: 'INTERNAL_ERROR',
       message: 'deletion incomplete: token_vault_records',
     });
-  });
-
-  it('persists explicit non-recoverable mode metadata and blocks escrow recovery in that mode', () => {
-    const service = new ManagedMailboxSecurityService(() => '2026-03-12T00:00:00.000Z');
-
-    const metadata = service.setMode({
-      managedMailboxId: 'mb-1',
-      tenantId: 't1',
-      userId: 'u1',
-      mode: 'non-recoverable',
-      actor: 'user-u1',
-      reason: 'security-first',
-    });
-
-    expect(metadata.securityMode).toBe('non-recoverable');
-    expect(metadata.serverSideRecoveryAllowed).toBe(false);
-    expect(metadata.serverSideAiParsingAllowed).toBe(false);
-
-    expect(() =>
-      service.recordEscrowRecovery({
-        managedMailboxId: 'mb-1',
-        actor: 'oncall-1',
-        reason: 'user requested reset',
-      })
-    ).toThrowError(ManagedMailboxSecurityError);
-  });
-
-  it('audits escrow-recoverable operations with actor and reason', () => {
-    const service = new ManagedMailboxSecurityService(() => '2026-03-12T00:00:00.000Z');
-
-    const metadata = service.setMode({
-      managedMailboxId: 'mb-2',
-      tenantId: 't1',
-      userId: 'u1',
-      mode: 'escrow-recoverable',
-      actor: 'user-u1',
-      reason: 'accept managed recovery',
-    });
-
-    expect(metadata.serverSideRecoveryAllowed).toBe(true);
-
-    const event = service.recordEscrowRecovery({
-      managedMailboxId: 'mb-2',
-      actor: 'oncall-1',
-      reason: 'identity verified and recovery approved',
-    });
-
-    expect(event).toMatchObject({
-      event: 'managed-mailbox-escrow-recovery',
-      managedMailboxId: 'mb-2',
-      actor: 'oncall-1',
-      reason: 'identity verified and recovery approved',
-      securityMode: 'escrow-recoverable',
-    });
-  });
-
-  it('rejects missing E2EE mode metadata', () => {
-    const service = new ManagedMailboxSecurityService();
-
-    expect(() =>
-      service.setMode({
-        managedMailboxId: 'mb-3',
-        tenantId: 't1',
-        userId: 'u1',
-        mode: null,
-        actor: 'user-u1',
-        reason: 'none',
-      })
-    ).toThrowError('managed mailbox security mode is required');
   });
 
   it('maps residual deletion failures to lifecycle security error type', async () => {

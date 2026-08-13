@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
 import { ImapClient } from '../imap-smtp/imap-client.js';
-import { SmtpClient } from '../imap-smtp/smtp-client.js';
 
 const ICLOUD_POLICY_VERSION = '2026-03-11';
 
@@ -10,7 +9,6 @@ export interface IcloudProviderConfig {
   username: string;
   appSpecificPassword: string;
   imapHost?: string;
-  smtpHost?: string;
 }
 
 export class IcloudProviderError extends Error {
@@ -41,7 +39,6 @@ export function assertIcloudProviderConfig(config: unknown): Required<IcloudProv
     username,
     appSpecificPassword,
     imapHost: asString(asRecord.imapHost) ?? 'imap.mail.me.com',
-    smtpHost: asString(asRecord.smtpHost) ?? 'smtp.mail.me.com',
   };
 }
 
@@ -49,7 +46,7 @@ export const icloudProvider: Provider = {
   name: 'icloud',
   displayName: 'iCloud Mail',
   version: '1.0.0',
-  description: 'iCloud IMAP/SMTP adapter with app-specific password requirements',
+  description: 'iCloud inbound IMAP adapter with app-specific password requirements',
   baseUrl: 'https://icloud.com',
   auth: {
     type: AuthType.Basic,
@@ -59,17 +56,15 @@ export const icloudProvider: Provider = {
     'mail.connect': {
       name: 'mail.connect',
       displayName: 'Connect',
-      description: 'Connect to iCloud mail via IMAP/SMTP',
+      description: 'Connect to iCloud mail for inbound IMAP access',
       parameters: z.object({
         mode: z.enum(['imap-smtp', 'pop']).default('imap-smtp'),
         username: z.string().min(1),
         appSpecificPassword: z.string().min(1),
         imapHost: z.string().default('imap.mail.me.com'),
-        smtpHost: z.string().default('smtp.mail.me.com'),
       }),
       returns: z.object({
         imapConnected: z.boolean(),
-        smtpConnected: z.boolean(),
         policyVersion: z.string(),
       }),
       execute: async (params: any) => {
@@ -82,19 +77,11 @@ export const icloudProvider: Provider = {
           password: params.appSpecificPassword,
           tls: true,
         });
-        const smtp = new SmtpClient({
-          host: params.smtpHost,
-          username: params.username,
-          password: params.appSpecificPassword,
-          tls: true,
-        });
 
         const imapConnection = imap.connect();
-        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
-          smtpConnected: smtpConnection.smtpConnected,
           policyVersion: ICLOUD_POLICY_VERSION,
         };
       },
@@ -140,47 +127,6 @@ export const icloudProvider: Provider = {
           count: messages.length,
           messages,
         };
-      },
-    },
-    'mail.send': {
-      name: 'mail.send',
-      displayName: 'Send',
-      description: 'Send email through iCloud SMTP',
-      parameters: z.object({
-        mode: z.enum(['imap-smtp', 'pop']).default('imap-smtp'),
-        username: z.string().min(1),
-        appSpecificPassword: z.string().min(1),
-        smtpHost: z.string().default('smtp.mail.me.com'),
-        from: z.string().min(1),
-        to: z.array(z.string().min(1)).min(1),
-        subject: z.string().min(1),
-        bodyText: z.string().optional(),
-        bodyHtml: z.string().optional(),
-      }),
-      returns: z.object({
-        queued: z.boolean(),
-        messageId: z.string(),
-        tls: z.boolean(),
-      }),
-      execute: async (params: any) => {
-        ensureIcloudMode(params.mode);
-        ensureAppSpecificPassword(params.appSpecificPassword);
-
-        const smtp = new SmtpClient({
-          host: params.smtpHost,
-          username: params.username,
-          password: params.appSpecificPassword,
-          tls: true,
-        });
-        await smtp.connect();
-
-        return await smtp.send({
-          from: params.from,
-          to: params.to,
-          subject: params.subject,
-          bodyText: params.bodyText,
-          bodyHtml: params.bodyHtml,
-        });
       },
     },
   },
