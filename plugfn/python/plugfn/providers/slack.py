@@ -8,6 +8,16 @@ from ..types import AuthType, Provider
 from ._shared import require_object_response
 
 
+def require_slack_response(value: Any) -> Dict[str, Any]:
+    """Validate Slack's HTTP-200 success envelope."""
+    payload = require_object_response(value)
+    if payload.get("ok") is not True:
+        error = payload.get("error")
+        detail = error if isinstance(error, str) and error else "unknown_error"
+        raise ValueError(f"Slack API request failed: {detail}")
+    return payload
+
+
 class SlackMessageParams(BaseModel):
     """Parameters for posting a Slack message."""
 
@@ -72,7 +82,7 @@ class SlackChatPostMessageAction(SlackAction):
 
         response = await context.http.post("/chat.postMessage", json=payload)
 
-        return require_object_response(response)
+        return require_slack_response(response)
 
 
 class SlackConversationsCreateAction(SlackAction):
@@ -97,7 +107,7 @@ class SlackConversationsCreateAction(SlackAction):
             },
         )
 
-        return require_object_response(response)
+        return require_slack_response(response)
 
 
 class SlackUsersInfoAction(SlackAction):
@@ -116,11 +126,9 @@ class SlackUsersInfoAction(SlackAction):
         """Get user information."""
         validated = SlackUserParams(**params)
 
-        response = await context.http.get(
-            "/users.info", params={"user": validated.user}
-        )
+        response = await context.http.get("/users.info", params={"user": validated.user})
 
-        return require_object_response(response)
+        return require_slack_response(response)
 
 
 # Slack provider definition

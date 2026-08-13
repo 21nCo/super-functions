@@ -211,6 +211,7 @@ export const slackProvider: Provider = {
         method: 'POST',
         verifySignature: async (_payload, signature, secret, context) =>
           verifySlackSignature(signature, secret, context),
+        shouldDispatch: (payload) => payload?.type !== 'url_verification',
       },
 
       schema: z.discriminatedUnion('type', [

@@ -615,6 +615,10 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     job: PlugFnSyncJob,
     options: { claimed: boolean }
   ): Promise<PlugFnSyncJob> {
+    if (!options.claimed) {
+      await runtimeStorage.updateSyncJob(job.id, { status: 'running' });
+    }
+
     const connection = await connectionManager.get(job.connectionId);
     if (connection.provider !== job.provider) {
       await runtimeStorage.failSyncJob(job.id, 'connection provider mismatch');
@@ -644,10 +648,6 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         'connection tenant mismatch',
         403
       );
-    }
-
-    if (!options.claimed) {
-      await runtimeStorage.updateSyncJob(job.id, { status: 'running' });
     }
 
     try {
@@ -711,7 +711,13 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           error: undefined,
         });
       }
-      await runtimeStorage.failSyncJob(job.id, error instanceof Error ? error.message : 'sync failed');
+      const failedJob = await runtimeStorage.failSyncJob(
+        job.id,
+        error instanceof Error ? error.message : 'sync failed'
+      );
+      if (failedJob.status === 'cancelled') {
+        return failedJob;
+      }
       throw error;
     }
   }

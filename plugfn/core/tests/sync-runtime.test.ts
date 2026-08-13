@@ -399,7 +399,10 @@ describe('PlugFn sync runtime', () => {
     expect(checkpointSeenDuringSecondFetch).toEqual([{ page: 1 }]);
   });
 
-  it('preserves cancellation when the final sync page finishes concurrently', async () => {
+  it.each([
+    { outcome: 'successful completion', shouldFail: false },
+    { outcome: 'execution failure', shouldFail: true },
+  ])('preserves cancellation across concurrent $outcome', async ({ shouldFail }) => {
     const database = new MemoryAdapter();
     const plug = plugFn({
       database,
@@ -430,6 +433,9 @@ describe('PlugFn sync runtime', () => {
           fetch: async () => {
             markFetchStarted();
             await fetchReleased;
+            if (shouldFail) {
+              throw new Error('sync failed after cancellation');
+            }
             return { items: [], done: true };
           },
         },

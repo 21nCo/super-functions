@@ -26,6 +26,7 @@ export interface WebhookConfig {
     context: WebhookVerificationContext
   ) => Promise<boolean> | boolean;
   transformPayload?: (payload: any) => any;
+  shouldDispatch?: (payload: any) => boolean;
 }
 
 /**

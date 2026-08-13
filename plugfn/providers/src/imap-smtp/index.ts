@@ -53,6 +53,7 @@ export function assertImapSmtpProviderConfig(config: unknown): Required<ImapSmtp
   const host = asNonEmptyString(value.host);
   const username = asNonEmptyString(value.username);
   const password = asNonEmptyString(value.password);
+  const tls = asBoolean(value.tls) ?? true;
 
   if (!host || !username || !password) {
     throw new ImapSmtpProviderError('VALIDATION_ERROR', 'imap-smtp provider config is invalid');
@@ -62,8 +63,8 @@ export function assertImapSmtpProviderConfig(config: unknown): Required<ImapSmtp
     host,
     username,
     password,
-    port: asPositiveInteger(value.port) ?? 993,
-    tls: asBoolean(value.tls) ?? true,
+    port: asPositiveInteger(value.port) ?? (tls ? 993 : 143),
+    tls,
     explicitInsecureOverride: asBoolean(value.explicitInsecureOverride) ?? false,
     capabilities: {
       read: readCapability(value.capabilities, 'read', true),

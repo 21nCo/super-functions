@@ -195,7 +195,7 @@ export class ActionExecutor {
         return this.retryMiddleware.execute(
           executeAction,
           `${provider}.${action}`,
-          options.retry ?? {}
+          options.retry ?? (actionObj.idempotent === true ? {} : { maxAttempts: 1 })
         );
       });
 
@@ -419,15 +419,15 @@ export class ActionExecutor {
       return;
     }
 
-    const globalRateLimit = this.globalRateLimit;
-    if (globalRateLimit) {
-      await this.rateLimiter.acquire('global', globalRateLimit);
-    }
     if (this.respectProviderLimits && providerObj.rateLimit) {
       await this.rateLimiter.acquireMany(
         [`provider:${provider}`, `provider:${provider}:tenant:${userId}`],
         providerObj.rateLimit
       );
+    }
+    const globalRateLimit = this.globalRateLimit;
+    if (globalRateLimit) {
+      await this.rateLimiter.acquire('global', globalRateLimit);
     }
   }
 

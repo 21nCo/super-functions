@@ -152,7 +152,7 @@ describe('PlugFn SDK', () => {
       expect(acquireMany).toHaveBeenCalledTimes(2);
     });
 
-    it('charges the global quota once when provider capacity waits', async () => {
+    it('charges the global quota once after provider capacity admits the request', async () => {
       const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
       const acquireMany = vi
         .spyOn(RateLimiter.prototype, 'acquireMany')
@@ -189,6 +189,9 @@ describe('PlugFn SDK', () => {
       expect(acquireMany).toHaveBeenCalledTimes(1);
       expect(acquire).toHaveBeenCalledTimes(1);
       expect(acquire).toHaveBeenCalledWith('global', { requests: 25, window: 1000 });
+      expect(acquireMany.mock.invocationCallOrder[0]).toBeLessThan(
+        acquire.mock.invocationCallOrder[0]
+      );
       expect(get).toHaveBeenCalledTimes(1);
     });
 
@@ -429,6 +432,28 @@ describe('PlugFn SDK', () => {
           userId: 'test-user',
           params: {},
           retry: { maxAttempts: 1 },
+        })
+      ).rejects.toThrow('temporary failure');
+      expect(attempts).toBe(1);
+    });
+
+    it('does not automatically retry actions without an idempotency opt-in', async () => {
+      let attempts = 0;
+      const provider = mockProvider('test', {
+        'mutatingAction': mockResponse({ ok: true }),
+      });
+      provider.actions.mutatingAction.execute = async () => {
+        attempts += 1;
+        throw Object.assign(new Error('temporary failure'), { status: 500 });
+      };
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      await expect(
+        plug.test.mutatingAction({
+          userId: 'test-user',
+          params: {},
         })
       ).rejects.toThrow('temporary failure');
       expect(attempts).toBe(1);

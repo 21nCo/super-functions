@@ -42,6 +42,7 @@ import {
   DEFAULT_TOKEN_KEY_REF,
 } from '../storage/oauth-token-vault.js';
 import { ownerFields } from '../storage/runtime-storage.js';
+import { hasAny, tenantMatches } from '../security/tenancy.js';
 
 interface OAuthClientConfig {
   clientId: string;
@@ -401,11 +402,34 @@ export class ConnectionManager {
       };
     }
 
+    if (targetConnection.provider !== options.provider) {
+      throw new ConnectionResolutionError(
+        'VALIDATION_ERROR',
+        'connection provider mismatch',
+        400
+      );
+    }
+
+    const actor = options.actor ?? { userId: options.userId };
+    if (
+      actor.userId !== options.userId ||
+      !tenantMatches(targetConnection.tenantId, actor.tenantId) ||
+      !connectionMatchesActor(targetConnection, actor)
+    ) {
+      throw new ConnectionResolutionError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
+        403
+      );
+    }
+
     if (options.owner) {
       const expected = ownerFields(options.owner);
       if (
         targetConnection.ownerKind &&
-        (targetConnection.ownerKind !== expected.ownerKind || targetConnection.ownerId !== expected.ownerId)
+        (targetConnection.ownerKind !== expected.ownerKind ||
+          targetConnection.ownerId !== expected.ownerId ||
+          !tenantMatches(targetConnection.tenantId, expected.tenantId))
       ) {
         throw {
           code: 'TENANT_ACCESS_DENIED',
@@ -711,6 +735,38 @@ function connectionBelongsToUser(connection: Connection, userId: string): boolea
 
   if (connection.ownerKind === 'delegated' && connection.delegatedToUserId === userId) {
     return true;
+  }
+
+  return false;
+}
+
+function connectionMatchesActor(
+  connection: Connection,
+  actor: NonNullable<DisconnectOptions['actor']>
+): boolean {
+  if (
+    connection.userId === actor.userId ||
+    (connection.ownerKind === 'user' && connection.ownerId === actor.userId)
+  ) {
+    return true;
+  }
+
+  if (connection.ownerKind === 'organization') {
+    return (
+      connection.installedByUserId === actor.userId ||
+      (Boolean(connection.organizationId) &&
+        Boolean(actor.organizationId) &&
+        connection.organizationId === actor.organizationId &&
+        hasAny(actor.roles, ['admin', 'owner', 'org:admin']))
+    );
+  }
+
+  if (connection.ownerKind === 'delegated') {
+    return (
+      connection.delegatedToUserId === actor.userId ||
+      connection.installedByUserId === actor.userId ||
+      hasAny(actor.grants, connection.grants ?? [])
+    );
   }
 
   return false;

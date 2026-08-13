@@ -1,3 +1,4 @@
+import { ImapFlow } from 'imapflow';
 import { describe, expect, it } from 'vitest';
 import {
   assertImapSmtpProviderConfig,
@@ -63,6 +64,12 @@ describe('imap-smtp provider', () => {
       allowed: true,
       policyVersion: '2026-03-11',
     });
+    expect(ImapFlow).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        port: 143,
+        secure: false,
+      })
+    );
   });
 
   it('parses RFC MIME variants and attachment presence during sync', async () => {

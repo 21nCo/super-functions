@@ -375,6 +375,62 @@ describe('ConnectionManager OAuth shared integration', () => {
     expect(await readTokenRecord(adapter, connection.id)).toBeNull();
   });
 
+  it.each([
+    [
+      'another user',
+      {
+        userId: 'attacker',
+        provider: 'google',
+        actor: { userId: 'attacker', tenantId: 'tenant-1' },
+      },
+      'TENANT_ACCESS_DENIED',
+    ],
+    [
+      'another provider',
+      {
+        userId: 'owner',
+        provider: 'slack',
+        actor: { userId: 'owner', tenantId: 'tenant-1' },
+      },
+      'VALIDATION_ERROR',
+    ],
+    [
+      'another tenant',
+      {
+        userId: 'owner',
+        provider: 'google',
+        actor: { userId: 'owner', tenantId: 'tenant-2' },
+      },
+      'TENANT_ACCESS_DENIED',
+    ],
+  ])('rejects disconnecting a connection belonging to %s', async (_label, options, code) => {
+    const adapter = new MemoryAdapter();
+    const tokenClient = createTokenHttpClient();
+    const env = createManagerEnvironment(adapter, tokenClient);
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-protected',
+      userId: 'owner',
+      provider: 'google',
+      tenantId: 'tenant-1',
+      ownerKind: 'user',
+      ownerId: 'owner',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.disconnect({ ...options, connectionId: 'conn-protected' })
+    ).rejects.toMatchObject({ code });
+    await expect(env.manager.get('conn-protected')).resolves.toMatchObject({
+      id: 'conn-protected',
+    });
+    expect(tokenClient.revokeToken).not.toHaveBeenCalled();
+  });
+
   it('lists organization-owned connections independently of the installer user', async () => {
     const adapter = new MemoryAdapter();
     const env = createManagerEnvironment(adapter, createTokenHttpClient());

@@ -69,6 +69,11 @@ export class WebhookHandler {
       headers: normalizedHeaders,
     };
 
+    if (trigger.webhookConfig?.shouldDispatch?.(transformedPayload) === false) {
+      this.logger.info(`Webhook dispatch skipped: ${provider}.${triggerKey}`);
+      return webhookEvent;
+    }
+
     const eventId = getEventId(transformedPayload, normalizedHeaders);
     const idempotencyKey = eventId ? `${provider}:${eventId}` : null;
     if (idempotencyKey && this.processedEventIds.has(idempotencyKey)) {

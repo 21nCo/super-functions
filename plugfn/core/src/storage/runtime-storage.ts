@@ -382,10 +382,27 @@ export class AdapterRuntimeStorage {
   }
 
   async failSyncJob(id: string, error: string): Promise<PlugFnSyncJob> {
-    return this.updateSyncJob(id, {
-      status: 'failed',
-      error,
+    const updated = await this.adapter.database.updateMany({
+      model: this.adapter.models.syncJobs,
+      where: [
+        { field: 'id', operator: 'eq', value: id },
+        { field: 'status', operator: 'eq', value: 'running' },
+      ],
+      data: {
+        status: 'failed',
+        error,
+        updatedAt: new Date(),
+      },
     });
+
+    const job = await this.adapter.getSyncJob(id);
+    if (!job) {
+      throw new Error(`Sync job ${id} not found after failure`);
+    }
+    if (updated === 0 && !['completed', 'cancelled', 'failed'].includes(job.status)) {
+      throw new Error(`Sync job ${id} could not transition to failed from ${job.status}`);
+    }
+    return job;
   }
 
   upsertSyncCheckpoint(input: {

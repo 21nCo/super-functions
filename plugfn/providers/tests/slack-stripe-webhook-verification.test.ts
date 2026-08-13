@@ -54,6 +54,39 @@ describe('Slack and Stripe webhook verification', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('does not dispatch Slack URL verification challenges to event listeners', async () => {
+    const handler = createHandler(slackProvider);
+    const listener = vi.fn();
+    handler.on('slack', 'message.channels', listener);
+    const secret = 'slack-secret';
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const rawBody = JSON.stringify({
+      type: 'url_verification',
+      challenge: 'challenge-value',
+    });
+    const signature = `v0=${createHmac('sha256', secret)
+      .update(`v0:${timestamp}:${rawBody}`)
+      .digest('hex')}`;
+
+    await expect(
+      handler.handleWebhook(
+        'slack',
+        'message.channels',
+        undefined,
+        {
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': signature,
+        },
+        secret,
+        { rawBody: encoder.encode(rawBody) }
+      )
+    ).resolves.toMatchObject({
+      verified: true,
+      payload: { type: 'url_verification', challenge: 'challenge-value' },
+    });
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it.each(['payment_intent.succeeded', 'customer.created'])(
     'verifies Stripe timestamped signatures for %s',
     async (event) => {

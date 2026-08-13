@@ -68,6 +68,11 @@ export interface Action<TParams = any, TReturn = any> {
    * Mutating actions should leave this unset or set it to false.
    */
   cacheable?: boolean;
+  /**
+   * Opt in to automatic retries when callers do not provide retry options.
+   * Mutating actions should leave this unset or set it to false.
+   */
+  idempotent?: boolean;
   parameters: z.ZodSchema<TParams>;
   returns: z.ZodSchema<TReturn>;
   execute: (params: TParams, context: ActionContext) => Promise<TReturn>;
