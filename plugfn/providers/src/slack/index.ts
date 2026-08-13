@@ -213,18 +213,30 @@ export const slackProvider: Provider = {
           verifySlackSignature(signature, secret, context),
       },
 
-      schema: z.object({
-        type: z.literal('event_callback'),
-        event: z.object({
-          type: z.literal('message'),
-          channel: z.string(),
-          user: z.string(),
-          text: z.string(),
-          ts: z.string(),
+      schema: z.discriminatedUnion('type', [
+        z.object({
+          type: z.literal('url_verification'),
+          challenge: z.string(),
         }),
-      }),
+        z.object({
+          type: z.literal('event_callback'),
+          event: z.object({
+            type: z.literal('message'),
+            channel: z.string(),
+            user: z.string(),
+            text: z.string(),
+            ts: z.string(),
+          }),
+        }),
+      ]),
 
       handler: async (payload) => {
+        if (payload.type === 'url_verification') {
+          return {
+            event: 'url_verification',
+            data: { challenge: payload.challenge },
+          };
+        }
         return {
           event: 'message.channels',
           data: payload.event,

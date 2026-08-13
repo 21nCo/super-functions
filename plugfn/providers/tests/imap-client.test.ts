@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ImapClient } from "../src/imap-smtp/imap-client.js";
 
 describe("ImapClient", () => {
-  it("opens and authenticates a real IMAP transport before reporting success", async () => {
+  it("passes secure auth config through the mocked IMAP lifecycle", async () => {
     const client = new ImapClient({
       host: "mail.example.com",
       username: "user@example.com",
@@ -30,6 +30,28 @@ describe("ImapClient", () => {
     const transport = vi.mocked(ImapFlow).mock.results.at(-1)?.value;
     expect(transport?.connect).toHaveBeenCalledTimes(1);
     expect(transport?.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults insecure IMAP connections to port 143", async () => {
+    const client = new ImapClient({
+      host: "mail.example.com",
+      username: "user@example.com",
+      password: "secret",
+      tls: false,
+      explicitInsecureOverride: true,
+    });
+
+    await expect(client.connect()).resolves.toMatchObject({
+      port: 143,
+      tls: false,
+    });
+
+    expect(ImapFlow).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        port: 143,
+        secure: false,
+      }),
+    );
   });
 
   it("does not report success when IMAP authentication fails", async () => {

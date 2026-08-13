@@ -172,6 +172,16 @@ export function createConnectionManagerOAuthDependencies(
   };
 }
 
+export class ConnectionNotFoundError extends Error {
+  readonly code = 'CONNECTION_NOT_FOUND';
+  readonly status = 404;
+
+  constructor(id: string) {
+    super(`Connection ${id} not found`);
+    this.name = 'ConnectionNotFoundError';
+  }
+}
+
 export class ConnectionManager {
   private readonly tokenStorage: SecureTokenStorage;
   private readonly oauthFlowService: OAuthFlowService;
@@ -320,7 +330,7 @@ export class ConnectionManager {
   async get(id: string): Promise<Connection> {
     const connection = await this.connectionStorage.get(id);
     if (!connection) {
-      throw new Error(`Connection ${id} not found`);
+      throw new ConnectionNotFoundError(id);
     }
     return connection;
   }

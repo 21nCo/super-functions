@@ -324,7 +324,7 @@ export class AdapterRuntimeStorage {
     id: string,
     updates: Omit<UpdateSyncJobProgressInput, 'status' | 'error'> = {}
   ): Promise<PlugFnSyncJob> {
-    await this.adapter.database.updateMany({
+    const updated = await this.adapter.database.updateMany({
       model: this.adapter.models.syncJobs,
       where: [
         { field: 'id', operator: 'eq', value: id },
@@ -340,6 +340,43 @@ export class AdapterRuntimeStorage {
     const job = await this.adapter.getSyncJob(id);
     if (!job) {
       throw new Error(`Sync job ${id} not found after completion`);
+    }
+    if (updated === 0 && !['completed', 'cancelled', 'failed'].includes(job.status)) {
+      throw new Error(`Sync job ${id} could not transition to completed from ${job.status}`);
+    }
+    return job;
+  }
+
+  async cancelSyncJob(id: string): Promise<PlugFnSyncJob> {
+    await this.adapter.database.updateMany({
+      model: this.adapter.models.syncJobs,
+      where: [
+        { field: 'id', operator: 'eq', value: id },
+        { field: 'status', operator: 'in', value: ['queued', 'running'] },
+      ],
+      data: {
+        status: 'cancelled',
+        updatedAt: new Date(),
+      },
+    });
+
+    const job = await this.adapter.getSyncJob(id);
+    if (!job) {
+      throw {
+        code: 'NOT_FOUND',
+        message: 'sync job not found',
+        status: 404,
+        retryable: false,
+      };
+    }
+    if (job.status !== 'cancelled') {
+      throw {
+        code: 'SYNC_JOB_TERMINAL',
+        message: `sync job cannot be cancelled from ${job.status}`,
+        status: 409,
+        retryable: false,
+        details: { status: job.status },
+      };
     }
     return job;
   }

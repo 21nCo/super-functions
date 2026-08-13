@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from plugfn import AuthProvider, DatabaseAdapter, PlugFn
+from plugfn import AuthProvider, AuthType, DatabaseAdapter, PlugFn, Provider
 from plugfn.auth import MemoryTokenStore
 from plugfn.providers import github_provider, slack_provider
 
@@ -294,6 +294,90 @@ async def test_expired_oauth_credentials_refresh_once_for_concurrent_actions(plu
 
     assert refresh_calls == 1
     assert [item["access_token"] for item in credentials] == ["new", "new", "new"]
+    assert "conn-github-expired" not in plug._connection_manager._credential_refresh_locks
+
+
+@pytest.mark.asyncio
+async def test_manual_and_automatic_refresh_share_one_lock(plug):
+    now = datetime.now()
+    await plug.config.database.createConnection(
+        {
+            "id": "conn-github-shared-refresh",
+            "user_id": "test-user",
+            "provider": "github",
+            "status": "active",
+            "credentials": json.dumps(
+                {"access_token": "old", "refresh_token": "refresh-me"}
+            ),
+            "expires_at": now - timedelta(seconds=1),
+            "connected_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    plug._connection_manager.token_storage.decrypt = lambda value: value
+    plug._connection_manager.token_storage.encrypt = lambda value: value
+    refresh_started = asyncio.Event()
+    release_refresh = asyncio.Event()
+    refresh_calls = 0
+
+    async def refresh_token(**_kwargs):
+        nonlocal refresh_calls
+        refresh_calls += 1
+        refresh_started.set()
+        await release_refresh.wait()
+        return {"access_token": "new", "expires_in": 3600}
+
+    plug._connection_manager.oauth_handler.refresh_token = refresh_token
+
+    manual = asyncio.create_task(
+        plug.connections.refresh("conn-github-shared-refresh")
+    )
+    await refresh_started.wait()
+    automatic = asyncio.create_task(
+        plug._connection_manager.get_credentials("conn-github-shared-refresh")
+    )
+    await asyncio.sleep(0)
+    release_refresh.set()
+    _, credentials = await asyncio.gather(manual, automatic)
+
+    assert refresh_calls == 1
+    assert credentials["access_token"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_expired_non_oauth_credentials_do_not_attempt_refresh(plug):
+    plug.providers.register(
+        Provider(
+            name="api-key-provider",
+            display_name="API Key Provider",
+            version="1.0.0",
+            description="Test provider",
+            base_url="https://api.example.test",
+            auth_type=AuthType.API_KEY,
+        )
+    )
+    now = datetime.now()
+    await plug.config.database.createConnection(
+        {
+            "id": "conn-api-key-expired",
+            "user_id": "test-user",
+            "provider": "api-key-provider",
+            "status": "active",
+            "credentials": json.dumps({"api_key": "secret"}),
+            "expires_at": now - timedelta(seconds=1),
+            "connected_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    plug._connection_manager.token_storage.decrypt = lambda value: value
+
+    credentials = await plug._connection_manager.get_credentials(
+        "conn-api-key-expired"
+    )
+
+    assert credentials == {"api_key": "secret"}
 
 
 @pytest.mark.asyncio

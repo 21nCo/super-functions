@@ -424,16 +424,10 @@ export class ActionExecutor {
       await this.rateLimiter.acquire('global', globalRateLimit);
     }
     if (this.respectProviderLimits && providerObj.rateLimit) {
-      const providerWaited = await this.rateLimiter.acquireMany(
+      await this.rateLimiter.acquireMany(
         [`provider:${provider}`, `provider:${provider}:tenant:${userId}`],
         providerObj.rateLimit
       );
-      // The first global token may have expired while the provider buckets were
-      // blocked. Reacquire it so the eventual request still owns a current
-      // global token when it leaves the provider wait queue.
-      if (providerWaited && globalRateLimit) {
-        await this.rateLimiter.acquire('global', globalRateLimit);
-      }
     }
   }
 

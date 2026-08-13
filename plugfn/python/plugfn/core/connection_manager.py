@@ -5,6 +5,7 @@ import json
 import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from weakref import WeakValueDictionary
 
 from ..auth.oauth_flow import OAuthFlowHandler
 from ..auth.token_store import MemoryTokenStore, TokenStore
@@ -45,7 +46,9 @@ class ConnectionManager:
         self.token_storage = SecureTokenStorage(encryption_key)
         self.oauth_handler = OAuthFlowHandler(oauth_state_store or MemoryTokenStore())
         self._json_encoder = json.JSONEncoder()
-        self._credential_refresh_locks: Dict[str, asyncio.Lock] = {}
+        self._credential_refresh_locks: WeakValueDictionary[
+            str, asyncio.Lock
+        ] = WeakValueDictionary()
 
     async def get_auth_url(
         self,
@@ -297,7 +300,14 @@ class ConnectionManager:
         Raises:
             ValueError: If connection doesn't support refresh or refresh fails
         """
-        connection = await self.get_connection(connection_id)
+        refresh_lock = self._credential_refresh_lock(connection_id)
+        async with refresh_lock:
+            connection = await self.get_connection(connection_id)
+            return await self._refresh_connection_locked(connection)
+
+    async def _refresh_connection_locked(self, connection: Connection) -> Connection:
+        """Refresh a connection while its per-connection lock is held."""
+        connection_id = connection.id
 
         provider_obj = self.providers.get_provider(connection.provider)
         if not provider_obj:
@@ -378,16 +388,24 @@ class ConnectionManager:
         """
         connection = await self.get_connection(connection_id)
 
-        if self._connection_is_expired(connection):
-            refresh_lock = self._credential_refresh_locks.setdefault(
-                connection_id, asyncio.Lock()
-            )
+        provider_obj = self.providers.get_provider(connection.provider)
+        if (
+            self._connection_is_expired(connection)
+            and provider_obj is not None
+            and provider_obj.auth_type == AuthType.OAUTH2
+        ):
+            refresh_lock = self._credential_refresh_lock(connection_id)
             async with refresh_lock:
                 # Another caller may have completed the refresh while this
                 # request was waiting for the per-connection lock.
                 connection = await self.get_connection(connection_id)
-                if self._connection_is_expired(connection):
-                    connection = await self.refresh_connection(connection_id)
+                provider_obj = self.providers.get_provider(connection.provider)
+                if (
+                    self._connection_is_expired(connection)
+                    and provider_obj is not None
+                    and provider_obj.auth_type == AuthType.OAUTH2
+                ):
+                    connection = await self._refresh_connection_locked(connection)
 
         # Decrypt credentials
         creds_str = self.token_storage.decrypt(connection.credentials)
@@ -411,6 +429,13 @@ class ConnectionManager:
             if isinstance(value, str) and value:
                 return value
         return None
+
+    def _credential_refresh_lock(self, connection_id: str) -> asyncio.Lock:
+        lock = self._credential_refresh_locks.get(connection_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._credential_refresh_locks[connection_id] = lock
+        return lock
 
     def _encode_json(self, value: Dict[str, Any]) -> str:
         return self._json_encoder.encode(value)

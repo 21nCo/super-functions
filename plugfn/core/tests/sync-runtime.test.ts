@@ -81,6 +81,15 @@ describe('PlugFn sync runtime', () => {
       { provider: 'test-sync', externalId: 'r1', value: 'first' },
       { provider: 'test-sync', externalId: 'r2', value: 'second' },
     ]);
+
+    await expect(plug.runtime.sync.cancelJob(job.id)).rejects.toMatchObject({
+      code: 'SYNC_JOB_TERMINAL',
+      status: 409,
+      details: { status: 'completed' },
+    });
+    await expect(plug.runtime.sync.getJob(job.id)).resolves.toMatchObject({
+      status: 'completed',
+    });
   });
 
   it('rejects sync runs when the actor does not own the connection', async () => {
@@ -440,22 +449,30 @@ describe('PlugFn sync runtime', () => {
       updatedAt: now,
     });
 
-    const running = plug.sync.backfill({
+    await plug.sync.enqueue({
+      mode: 'full',
       provider: 'test-sync-cancel-race',
       connectionId: 'conn_sync_cancel_race',
       resource: 'records',
       actor: { userId: 'user_1' },
     });
+    const running = plug.sync.processQueued();
     await fetchStarted;
     const [job] = await plug.runtime.sync.listJobs({
       connectionId: 'conn_sync_cancel_race',
     });
     expect(job?.status).toBe('running');
 
-    await plug.runtime.sync.updateJob(job!.id, { status: 'cancelled' });
+    await plug.runtime.sync.cancelJob(job!.id);
     releaseFetch();
 
-    await expect(running).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(running).resolves.toMatchObject({
+      processed: 1,
+      completed: 0,
+      cancelled: 1,
+      failed: 0,
+      jobs: [{ status: 'cancelled' }],
+    });
     await expect(plug.runtime.sync.getJob(job!.id)).resolves.toMatchObject({
       status: 'cancelled',
     });

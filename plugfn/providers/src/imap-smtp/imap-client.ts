@@ -159,6 +159,7 @@ function resolveImapConfig(config: ImapClientConfig): Required<ImapClientConfig>
   const host = config.host?.trim();
   const username = config.username?.trim();
   const password = config.password?.trim();
+  const tls = config.tls ?? true;
 
   if (!host) {
     throw new ImapClientError('VALIDATION_ERROR', 'imap host is required');
@@ -172,11 +173,11 @@ function resolveImapConfig(config: ImapClientConfig): Required<ImapClientConfig>
 
   return {
     host,
-    port: config.port ?? 993,
+    port: config.port ?? (tls ? 993 : 143),
     username,
     password,
     oauth2: config.oauth2 ?? false,
-    tls: config.tls ?? true,
+    tls,
     explicitInsecureOverride: config.explicitInsecureOverride ?? false,
     capabilities: {
       read: config.capabilities?.read ?? true,

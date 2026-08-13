@@ -114,6 +114,7 @@ export interface PlugFn {
       getJob(id: string): Promise<PlugFnSyncJob | null>;
       listJobs(filters?: Record<string, unknown>, limit?: number): Promise<PlugFnSyncJob[]>;
       updateJob(id: string, updates: UpdateSyncJobProgressInput): Promise<PlugFnSyncJob>;
+      cancelJob(id: string): Promise<PlugFnSyncJob>;
       completeJob(id: string, updates?: Omit<UpdateSyncJobProgressInput, 'status' | 'error'>): Promise<PlugFnSyncJob>;
       failJob(id: string, error: string): Promise<PlugFnSyncJob>;
       processQueued(options?: PlugFnSyncWorkerOptions): Promise<PlugFnSyncWorkerResult>;
@@ -241,6 +242,7 @@ export interface PlugFnSyncWorkerOptions {
 export interface PlugFnSyncWorkerResult {
   processed: number;
   completed: number;
+  cancelled: number;
   failed: number;
   jobs: PlugFnSyncJob[];
 }
@@ -392,6 +394,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         getJob: (id) => runtimeStorage.getSyncJob(id),
         listJobs: (filters, limit) => runtimeStorage.listSyncJobs(filters, limit),
         updateJob: (id, updates) => runtimeStorage.updateSyncJob(id, updates),
+        cancelJob: (id) => runtimeStorage.cancelSyncJob(id),
         completeJob: (id, updates) => runtimeStorage.completeSyncJob(id, updates),
         failJob: (id, error) => runtimeStorage.failSyncJob(id, error),
         processQueued: (options) => processQueuedSyncJobs(options),
@@ -570,13 +573,22 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     const queued = await runtimeStorage.claimQueuedSyncJobs(options.limit ?? 25);
     const jobs: PlugFnSyncJob[] = [];
     let completed = 0;
+    let cancelled = 0;
     let failed = 0;
 
     for (const job of queued) {
       try {
-        const completedJob = await executeSyncJob(job, { claimed: true });
-        jobs.push(completedJob);
-        completed += 1;
+        const processedJob = await executeSyncJob(job, { claimed: true });
+        if (processedJob.status === 'completed') {
+          completed += 1;
+        } else if (processedJob.status === 'cancelled') {
+          cancelled += 1;
+        } else if (processedJob.status === 'failed') {
+          failed += 1;
+        } else {
+          throw new Error(`Sync job ${processedJob.id} ended in ${processedJob.status}`);
+        }
+        jobs.push(processedJob);
       } catch {
         const updated = await runtimeStorage.getSyncJob(job.id);
         if (updated) {
@@ -589,6 +601,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     return {
       processed: queued.length,
       completed,
+      cancelled,
       failed,
       jobs,
     };

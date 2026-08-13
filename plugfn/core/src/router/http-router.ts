@@ -550,9 +550,7 @@ export function createPlugFnRouter(
         try {
           const authContext = requireAuthContext(ctx);
           await requireAuthorizedSyncJob(ctx, ctx.params.jobId, authContext);
-          const job = await ctx.plugFn.runtime.sync.updateJob(ctx.params.jobId, {
-            status: 'cancelled',
-          });
+          const job = await ctx.plugFn.runtime.sync.cancelJob(ctx.params.jobId);
           return successResponse({ job });
         } catch (error) {
           return errorResponse(toDeterministicError(error));
@@ -909,6 +907,14 @@ async function handleWebhookRoute(
     );
     verificationStatus = verification.verified === false ? 'not-required' : 'verified';
 
+    const slackChallenge = readSlackUrlVerificationChallenge(
+      provider,
+      verification.transformedPayload
+    );
+    if (slackChallenge !== undefined) {
+      return Response.json({ challenge: slackChallenge });
+    }
+
     // Only verified payloads may claim a durable idempotency key. In
     // particular, Stripe event ids come from the body and are untrusted until
     // signature verification succeeds.
@@ -1221,6 +1227,19 @@ function readWebhookStringField(
 
 function readWebhookAction(rawBody?: Uint8Array): string | undefined {
   return readWebhookStringField(rawBody, 'action');
+}
+
+function readSlackUrlVerificationChallenge(
+  provider: string,
+  payload: unknown
+): string | undefined {
+  if (provider !== 'slack' || !payload || typeof payload !== 'object') {
+    return undefined;
+  }
+  const value = payload as Record<string, unknown>;
+  return value.type === 'url_verification' && typeof value.challenge === 'string'
+    ? value.challenge
+    : undefined;
 }
 
 function readWebhookIdempotencyKey(

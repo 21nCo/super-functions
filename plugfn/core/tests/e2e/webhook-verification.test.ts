@@ -4,10 +4,41 @@ import { createPlugFnRouter } from '../../src/router/http-router.js';
 import { plugFn } from '../../src/core/plug-fn.js';
 import { githubProvider } from '../../../providers/src/github/index.js';
 import { linearProvider } from '../../../providers/src/linear/index.js';
+import { slackProvider } from '../../../providers/src/slack/index.js';
 import { stripeProvider } from '../../../providers/src/stripe/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
 describe('PlugFn webhook verification e2e', () => {
+  it('verifies and echoes Slack URL verification challenges', async () => {
+    const plug = createPlug();
+    plug.providers.register(slackProvider);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { slack: 'whsec_slack' },
+    });
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const rawBody = JSON.stringify({
+      type: 'url_verification',
+      challenge: 'slack-challenge-value',
+    });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/slack/events', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-slack-request-timestamp': timestamp,
+          'x-slack-signature': signSlackRawBody(rawBody, 'whsec_slack', timestamp),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      challenge: 'slack-challenge-value',
+    });
+  });
+
   it('verifies a signed webhook through the router using raw request bytes', async () => {
     const plug = createPlug();
     const handler = vi.fn();
@@ -452,6 +483,13 @@ function createPlug(webhooks?: { verifySignatures?: boolean; allowedIPs?: string
         redirectUris: ['https://app.example.com/oauth/callback'],
         webhookSecret: 'whsec_github',
       },
+      slack: {
+        type: 'oauth2',
+        clientId: 'slack-client-id',
+        clientSecret: 'slack-client-secret',
+        redirectUris: ['https://app.example.com/oauth/callback'],
+        webhookSecret: 'whsec_slack',
+      },
     },
     webhooks,
   });
@@ -464,6 +502,13 @@ function signRawBody(rawBody: string, secret: string): string {
 
 function signLinearRawBody(rawBody: string, secret: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('hex');
+}
+
+function signSlackRawBody(rawBody: string, secret: string, timestamp: string): string {
+  const digest = createHmac('sha256', secret)
+    .update(`v0:${timestamp}:${rawBody}`)
+    .digest('hex');
+  return `v0=${digest}`;
 }
 
 function signStripeRawBody(rawBody: string, secret: string, timestamp: string): string {

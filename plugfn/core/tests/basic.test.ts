@@ -152,7 +152,7 @@ describe('PlugFn SDK', () => {
       expect(acquireMany).toHaveBeenCalledTimes(2);
     });
 
-    it('rechecks the global quota after waiting for provider capacity', async () => {
+    it('charges the global quota once when provider capacity waits', async () => {
       const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
       const acquireMany = vi
         .spyOn(RateLimiter.prototype, 'acquireMany')
@@ -187,9 +187,8 @@ describe('PlugFn SDK', () => {
       await configuredPlug.test.getData({ userId: 'test-user', params: {} });
 
       expect(acquireMany).toHaveBeenCalledTimes(1);
-      expect(acquire).toHaveBeenCalledTimes(2);
-      expect(acquire).toHaveBeenNthCalledWith(1, 'global', { requests: 25, window: 1000 });
-      expect(acquire).toHaveBeenNthCalledWith(2, 'global', { requests: 25, window: 1000 });
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(acquire).toHaveBeenCalledWith('global', { requests: 25, window: 1000 });
       expect(get).toHaveBeenCalledTimes(1);
     });
 

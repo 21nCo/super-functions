@@ -509,8 +509,37 @@ describe('HTTP router auth boundaries', () => {
     });
   });
 
+  it('omits historical sync jobs whose connection was deleted', async () => {
+    const historicalJob = {
+      id: 'job_deleted_connection',
+      connectionId: 'conn_deleted',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+    };
+    const plug = createMockPlugFn({
+      listSyncJobs: vi.fn(async () => [historicalJob]),
+      getConnection: vi.fn(async () => {
+        throw Object.assign(new Error('Connection conn_deleted not found'), {
+          code: 'CONNECTION_NOT_FOUND',
+          status: 404,
+        });
+      }),
+      authenticate: vi.fn(async () => ({ userId: 'user_1' })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/sync/jobs', { method: 'GET' })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { jobs: [] },
+    });
+  });
+
   it('rejects cancelling a same-owner sync job from another tenant', async () => {
-    const updateSyncJob = vi.fn(async () => ({ id: 'job_other_tenant' }));
+    const cancelSyncJob = vi.fn(async () => ({ id: 'job_other_tenant' }));
     const plug = createMockPlugFn({
       getSyncJob: vi.fn(async () => ({
         id: 'job_other_tenant',
@@ -524,7 +553,7 @@ describe('HTTP router auth boundaries', () => {
         provider: 'gmail',
         tenantId: 'tenant_2',
       })),
-      updateSyncJob,
+      cancelSyncJob,
       authenticate: vi.fn(async () => ({ userId: 'user_1', tenantId: 'tenant_1' })),
     });
     const router = createPlugFnRouter(plug);
@@ -534,7 +563,7 @@ describe('HTTP router auth boundaries', () => {
     );
 
     expect(response.status).toBe(403);
-    expect(updateSyncJob).not.toHaveBeenCalled();
+    expect(cancelSyncJob).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -621,6 +650,7 @@ function createMockPlugFn(overrides: {
   listSyncJobs?: ReturnType<typeof vi.fn>;
   getSyncJob?: ReturnType<typeof vi.fn>;
   updateSyncJob?: ReturnType<typeof vi.fn>;
+  cancelSyncJob?: ReturnType<typeof vi.fn>;
   authorizeConnection?: ReturnType<typeof vi.fn>;
 } = {}) {
   const listConnections = overrides.listConnections ?? vi.fn(async () => []);
@@ -672,6 +702,7 @@ function createMockPlugFn(overrides: {
       listSyncJobs: overrides.listSyncJobs,
       getSyncJob: overrides.getSyncJob,
       updateSyncJob: overrides.updateSyncJob,
+      cancelSyncJob: overrides.cancelSyncJob,
     }),
     providers: {
       list: vi.fn(() => []),
@@ -689,6 +720,7 @@ function createMockRuntime(overrides: {
   listSyncJobs?: ReturnType<typeof vi.fn>;
   getSyncJob?: ReturnType<typeof vi.fn>;
   updateSyncJob?: ReturnType<typeof vi.fn>;
+  cancelSyncJob?: ReturnType<typeof vi.fn>;
 } = {}) {
   return {
     installations: {
@@ -722,9 +754,16 @@ function createMockRuntime(overrides: {
       getJob: overrides.getSyncJob ?? vi.fn(async () => ({ id: 'job_1' })),
       listJobs: overrides.listSyncJobs ?? vi.fn(async () => []),
       updateJob: overrides.updateSyncJob ?? vi.fn(async () => ({ id: 'job_1' })),
+      cancelJob: overrides.cancelSyncJob ?? vi.fn(async () => ({ id: 'job_1' })),
       completeJob: vi.fn(async () => ({ id: 'job_1' })),
       failJob: vi.fn(async () => ({ id: 'job_1' })),
-      processQueued: vi.fn(async () => ({ processed: 0, completed: 0, failed: 0, jobs: [] })),
+      processQueued: vi.fn(async () => ({
+        processed: 0,
+        completed: 0,
+        cancelled: 0,
+        failed: 0,
+        jobs: [],
+      })),
       upsertCheckpoint: vi.fn(async () => ({ id: 'checkpoint_1' })),
       getCheckpoint: vi.fn(async () => null),
     },
