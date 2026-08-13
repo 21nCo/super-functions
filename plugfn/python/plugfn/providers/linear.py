@@ -36,6 +36,8 @@ class LinearAction:
 class LinearIssuesGetAction(LinearAction):
     """Fetch a single Linear issue."""
 
+    idempotent = True
+
     def __init__(self) -> None:
         super().__init__(
             name="issues.get",
@@ -72,6 +74,8 @@ class LinearIssuesGetAction(LinearAction):
 
 class LinearIssuesSearchAction(LinearAction):
     """Search Linear issues."""
+
+    idempotent = True
 
     def __init__(self) -> None:
         super().__init__(

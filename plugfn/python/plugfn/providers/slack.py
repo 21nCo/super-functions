@@ -103,6 +103,8 @@ class SlackConversationsCreateAction(SlackAction):
 class SlackUsersInfoAction(SlackAction):
     """Get Slack user information."""
 
+    idempotent = True
+
     def __init__(self) -> None:
         super().__init__(
             name="users.info",

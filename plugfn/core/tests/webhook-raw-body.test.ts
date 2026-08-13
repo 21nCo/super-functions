@@ -101,6 +101,35 @@ describe('raw-body webhook verification', () => {
     );
   });
 
+  it('uses Stripe payload fields for event routing and retry deduplication', async () => {
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_stripe', verified: true }));
+    const plug = createRouterPlugMock(handleWebhook);
+    const router = createPlugFnRouter(plug);
+    const rawBody = JSON.stringify({ id: 'evt_123', type: 'invoice.paid', data: {} });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/stripe', {
+        method: 'POST',
+        headers: { 'stripe-signature': 't=1,v1=signature' },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledWith(
+      'stripe',
+      'invoice.paid',
+      undefined,
+      expect.any(Object),
+      undefined,
+      expect.any(Object)
+    );
+    expect(plug.runtime.webhooks.findReceiptByIdempotencyKey).toHaveBeenCalledWith(
+      'stripe',
+      'evt_123'
+    );
+  });
+
   it('does not dispatch when another request already claimed the delivery key', async () => {
     const handleWebhook = vi.fn(async () => ({ id: 'evt_duplicate', verified: true }));
     const plug = createRouterPlugMock(handleWebhook);
@@ -363,6 +392,7 @@ function createRouterPlugMock(handleWebhook: ReturnType<typeof vi.fn>) {
       get: vi.fn((provider: string) => {
         if (provider === 'github') return githubProvider;
         if (provider === 'gmail') return gmailProvider;
+        if (provider === 'stripe') return { triggers: { 'invoice.paid': {} } };
         return undefined;
       }),
       register: vi.fn(),

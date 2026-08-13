@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
+import httpx
 import pytest
 
 from plugfn.core.action_executor import (
@@ -33,14 +34,15 @@ class MockConnectionManager:
 class RecordingAction:
     """Record invocations and expose the HTTP timeout to assertions."""
 
-    def __init__(self, failures: int = 0) -> None:
+    def __init__(self, failures: int = 0, *, idempotent: bool = True) -> None:
         self.calls = 0
         self.failures = failures
+        self.idempotent = idempotent
 
     async def execute(self, _params: Dict[str, Any], context: Any) -> Dict[str, Any]:
         self.calls += 1
         if self.calls <= self.failures:
-            raise RuntimeError("temporary failure")
+            raise httpx.ConnectError("temporary failure")
         return {"timeout": context.http.timeout}
 
 
@@ -149,6 +151,71 @@ async def test_explicit_cache_reuses_successful_action_result() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dictionary_cache_options_honor_enabled_and_custom_key() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    first = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 1},
+        connection_id="connection-1",
+        cache={"enabled": True, "key": "records"},
+    )
+    second = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 2},
+        connection_id="connection-1",
+        cache={"enabled": True, "key": "records"},
+    )
+
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert action.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_dictionary_cache_options_honor_disabled() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    for _ in range(2):
+        result = await executor.execute(
+            "test-provider",
+            "records.list",
+            "user-1",
+            {},
+            connection_id="connection-1",
+            cache={"enabled": False},
+        )
+        assert result["cached"] is False
+
+    assert action.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_dictionary_cache_options_honor_zero_ttl() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    for _ in range(2):
+        result = await executor.execute(
+            "test-provider",
+            "records.list",
+            "user-1",
+            {},
+            connection_id="connection-1",
+            cache={"enabled": True, "ttl": 0},
+        )
+        assert result["cached"] is False
+
+    assert action.calls == 2
+
+
+@pytest.mark.asyncio
 async def test_enabled_retry_uses_default_attempts_without_per_call_options() -> None:
     action = RecordingAction(failures=2)
     executor = create_executor(
@@ -171,6 +238,56 @@ async def test_enabled_retry_uses_default_attempts_without_per_call_options() ->
 
 
 @pytest.mark.asyncio
+async def test_retry_skips_non_idempotent_actions_by_default() -> None:
+    action = RecordingAction(failures=1, idempotent=False)
+    executor = create_executor(
+        action,
+        enable_rate_limit=False,
+        enable_retry=True,
+        retry_options={"delay": 0},
+    )
+
+    result = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+    )
+
+    assert result["success"] is False
+    assert action.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_stops_on_non_transient_errors() -> None:
+    action = RecordingAction()
+
+    async def fail_validation(_params: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+        action.calls += 1
+        raise ValueError("invalid input")
+
+    action.execute = fail_validation  # type: ignore[assignment]
+    executor = create_executor(
+        action,
+        enable_rate_limit=False,
+        enable_retry=True,
+        retry_options={"delay": 0},
+    )
+
+    result = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+    )
+
+    assert result["success"] is False
+    assert action.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_rate_limiter_prunes_expired_bucket_keys() -> None:
     times = iter([0.0, 2.0])
     limiter = InMemoryRateLimiter(now=lambda: next(times))
@@ -179,4 +296,41 @@ async def test_rate_limiter_prunes_expired_bucket_keys() -> None:
     await limiter.acquire(["current-user"], requests=1, window_ms=1000)
 
     assert "old-user" not in limiter._buckets
-    assert "old-user" not in limiter._windows
+    assert all(item[2] != "old-user" for item in limiter._expiry_heap)
+
+
+@pytest.mark.asyncio
+async def test_uncopyable_cache_result_does_not_fail_successful_action() -> None:
+    class Uncopyable:
+        def __deepcopy__(self, _memo: Dict[int, Any]) -> Any:
+            raise TypeError("cannot copy")
+
+    action = RecordingAction()
+
+    async def return_uncopyable(_params: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+        action.calls += 1
+        return {"value": Uncopyable()}
+
+    action.execute = return_uncopyable  # type: ignore[assignment]
+    executor = create_executor(action, enable_rate_limit=False)
+
+    first = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+        cache=True,
+    )
+    second = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+        cache=True,
+    )
+
+    assert first["success"] is True
+    assert second["success"] is True
+    assert action.calls == 2

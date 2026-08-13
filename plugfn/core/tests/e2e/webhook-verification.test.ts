@@ -341,19 +341,23 @@ describe('PlugFn webhook verification e2e', () => {
     plug.providers.register(githubProvider);
     const router = createPlugFnRouter(plug, {
       webhookSecret: { github: 'whsec_github' },
+      resolveWebhookClientIp: (request) => request.headers.get('x-peer-ip') ?? undefined,
     });
 
     const denied = await router.handle(
       new Request('http://localhost/webhooks/github/issues.opened', {
         method: 'POST',
-        headers: { 'x-forwarded-for': '203.0.113.11' },
+        headers: {
+          'x-peer-ip': '203.0.113.11',
+          'x-forwarded-for': '203.0.113.10',
+        },
         body: '{}',
       })
     );
     const oversized = await router.handle(
       new Request('http://localhost/webhooks/github/issues.opened', {
         method: 'POST',
-        headers: { 'x-forwarded-for': '203.0.113.10' },
+        headers: { 'x-peer-ip': '203.0.113.10' },
         body: JSON.stringify({ payload: 'x'.repeat(64) }),
       })
     );

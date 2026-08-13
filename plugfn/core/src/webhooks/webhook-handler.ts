@@ -251,16 +251,10 @@ export class WebhookHandler {
     }
 
     if (failures.length > 0) {
-      const reasons = failures.map((failure) =>
-        failure.reason instanceof Error ? failure.reason.message : String(failure.reason)
-      );
       throw new WebhookHandlerError(
         'WEBHOOK_HANDLER_FAILED',
-        `webhook handler failed: ${reasons[0] ?? 'unknown failure'}`,
-        503,
-        {
-          failures: reasons,
-        }
+        'webhook handler failed',
+        503
       );
     }
   }

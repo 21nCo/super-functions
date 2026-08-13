@@ -152,7 +152,7 @@ export const yahooProvider: Provider = {
         });
 
         const imapConnection = imap.connect();
-        const smtpConnection = smtp.connect();
+        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -228,8 +228,8 @@ export const yahooProvider: Provider = {
           password: params.password,
           tls: true,
         });
-        smtp.connect();
-        return smtp.send({
+        await smtp.connect();
+        return await smtp.send({
           from: params.from,
           to: params.to,
           subject: params.subject,

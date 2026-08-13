@@ -90,7 +90,7 @@ export const icloudProvider: Provider = {
         });
 
         const imapConnection = imap.connect();
-        const smtpConnection = smtp.connect();
+        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -172,9 +172,9 @@ export const icloudProvider: Provider = {
           password: params.appSpecificPassword,
           tls: true,
         });
-        smtp.connect();
+        await smtp.connect();
 
-        return smtp.send({
+        return await smtp.send({
           from: params.from,
           to: params.to,
           subject: params.subject,

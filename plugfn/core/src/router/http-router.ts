@@ -29,6 +29,10 @@ export interface PlugFnRouterOptions {
         request: Request,
         headers: Record<string, string>
       ) => Promise<string | undefined> | string | undefined);
+  /** Resolve the direct client IP from trusted adapter/server metadata. */
+  resolveWebhookClientIp?: (
+    request: Request
+  ) => Promise<string | undefined> | string | undefined;
   maxWebhookPayloadBytes?: number;
 }
 
@@ -153,6 +157,7 @@ export function createPlugFnRouter(
         return handleWebhookRoute(req, ctx, provider, undefined, {
           maxWebhookPayloadBytes,
           webhookSecret: options.webhookSecret,
+          resolveWebhookClientIp: options.resolveWebhookClientIp,
         });
       },
     },
@@ -165,6 +170,7 @@ export function createPlugFnRouter(
         return handleWebhookRoute(req, ctx, provider, event, {
           maxWebhookPayloadBytes,
           webhookSecret: options.webhookSecret,
+          resolveWebhookClientIp: options.resolveWebhookClientIp,
         });
       },
     },
@@ -854,7 +860,9 @@ async function handleWebhookRoute(
   ctx: PlugFnContext,
   provider: string,
   event: string | undefined,
-  options: Pick<PlugFnRouterOptions, 'webhookSecret'> & { maxWebhookPayloadBytes: number }
+  options: Pick<PlugFnRouterOptions, 'webhookSecret' | 'resolveWebhookClientIp'> & {
+    maxWebhookPayloadBytes: number;
+  }
 ): Promise<Response> {
   let deliveryId: string | undefined;
   let receiptId: string | undefined;
@@ -863,11 +871,15 @@ async function handleWebhookRoute(
   let payloadHash: string | undefined;
   let idempotencyKey: string | undefined;
   let resolvedEvent = event ?? 'event';
-  let verificationStatus: 'verified' | 'not-required' = 'not-required';
+  let verificationStatus: 'verified' | 'not-required';
 
   try {
     headers = normalizeHeaders(req.headers);
-    assertWebhookSourceAllowed(headers, ctx.plugFn.config.webhooks?.allowedIPs);
+    await assertWebhookSourceAllowed(
+      req,
+      ctx.plugFn.config.webhooks?.allowedIPs,
+      options.resolveWebhookClientIp
+    );
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
     if (!event) {
       resolvedEvent = inferWebhookEvent(
@@ -880,7 +892,7 @@ async function handleWebhookRoute(
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
     const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
     payloadHash = currentPayloadHash;
-    idempotencyKey = readWebhookIdempotencyKey(provider, headers);
+    idempotencyKey = readWebhookIdempotencyKey(provider, headers, rawBody);
     if (idempotencyKey) {
       const existing = await ctx.plugFn.runtime.webhooks.findReceiptByIdempotencyKey(
         provider,
@@ -1065,18 +1077,16 @@ async function webhookReceiptDisposition(
   return 'retry';
 }
 
-function assertWebhookSourceAllowed(
-  headers: Record<string, string>,
-  allowedIPs: string[] | undefined
-): void {
+async function assertWebhookSourceAllowed(
+  request: Request,
+  allowedIPs: string[] | undefined,
+  resolver: PlugFnRouterOptions['resolveWebhookClientIp']
+): Promise<void> {
   if (!allowedIPs || allowedIPs.length === 0) {
     return;
   }
 
-  const clientIp =
-    headers['cf-connecting-ip'] ||
-    headers['x-real-ip'] ||
-    headers['x-forwarded-for']?.split(',', 1)[0]?.trim();
+  const clientIp = await resolver?.(request);
   if (clientIp && allowedIPs.includes(clientIp)) {
     return;
   }
@@ -1148,7 +1158,7 @@ function inferWebhookEvent(
     return candidate && candidate in triggers ? candidate : family;
   }
   if (provider === 'stripe') {
-    return headers['stripe-event-type'] || 'event';
+    return readWebhookStringField(rawBody, 'type') || 'event';
   }
   if (provider === 'gmail' || provider === 'google') {
     const resourceState = headers['x-goog-resource-state'];
@@ -1181,31 +1191,45 @@ function isGmailPubSubEnvelope(rawBody?: Uint8Array): boolean {
   }
 }
 
-function readWebhookAction(rawBody?: Uint8Array): string | undefined {
+function readWebhookStringField(
+  rawBody: Uint8Array | undefined,
+  field: string
+): string | undefined {
   if (!rawBody || rawBody.byteLength === 0) {
     return undefined;
   }
 
   try {
     const payload = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
-    return typeof payload.action === 'string' && payload.action.length > 0
-      ? payload.action
+    return typeof payload[field] === 'string' && payload[field].length > 0
+      ? payload[field]
       : undefined;
   } catch {
     return undefined;
   }
 }
 
+function readWebhookAction(rawBody?: Uint8Array): string | undefined {
+  return readWebhookStringField(rawBody, 'action');
+}
+
 function readWebhookIdempotencyKey(
   provider: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  rawBody?: Uint8Array
 ): string | undefined {
+  if (provider === 'stripe') {
+    const eventId = readWebhookStringField(rawBody, 'id');
+    if (eventId) {
+      return eventId;
+    }
+  }
+
   return (
     headers['x-plugfn-delivery'] ||
     headers['x-github-delivery'] ||
     headers['linear-delivery'] ||
     headers['x-linear-delivery'] ||
-    headers['stripe-signature'] ||
     headers['x-goog-message-number'] ||
     headers[`${provider}-delivery`]
   );

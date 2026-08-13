@@ -132,7 +132,12 @@ describe('Webhook verification and mapping', () => {
         { 'x-signature': 'sig:secret' },
         'secret'
       )
-    ).rejects.toThrow('database unavailable');
+    ).rejects.toMatchObject({
+      code: 'WEBHOOK_HANDLER_FAILED',
+      message: 'webhook handler failed',
+      status: 503,
+      details: {},
+    });
   });
 });
 

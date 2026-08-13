@@ -290,6 +290,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
   }
 
   async createWorkflow(workflow: Workflow): Promise<Workflow> {
+    assertWorkflowRecordPersistable(this.database, workflow);
     return this.database.create<Workflow>({
       model: this.models.workflows,
       data: cloneWorkflowRecord(workflow),
@@ -320,6 +321,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
   }
 
   async updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow> {
+    assertWorkflowRecordPersistable(this.database, updates);
     return this.database.update<Workflow>({
       model: this.models.workflows,
       where: [{ field: 'id', operator: 'eq', value: id }],
@@ -738,7 +740,7 @@ function cloneRecord<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function cloneWorkflowRecord<T>(value: T): T {
+function cloneWorkflowRecord<T>(value: T, seen = new WeakMap<object, unknown>()): T {
   if (typeof value === 'function' || value === undefined || value === null) {
     return value;
   }
@@ -746,20 +748,70 @@ function cloneWorkflowRecord<T>(value: T): T {
     return new Date(value.getTime()) as T;
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => cloneWorkflowRecord(entry)) as T;
+    const existing = seen.get(value);
+    if (existing) {
+      return existing as T;
+    }
+    const clone: unknown[] = [];
+    seen.set(value, clone);
+    for (const entry of value) {
+      clone.push(cloneWorkflowRecord(entry, seen));
+    }
+    return clone as T;
   }
   if (typeof value === 'object') {
+    const existing = seen.get(value);
+    if (existing) {
+      return existing as T;
+    }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
       return cloneRecord(value);
     }
     const clone: Record<string, unknown> = {};
+    seen.set(value, clone);
     for (const [key, entry] of Object.entries(value)) {
-      clone[key] = cloneWorkflowRecord(entry);
+      clone[key] = cloneWorkflowRecord(entry, seen);
     }
     return clone as T;
   }
   return value;
+}
+
+function assertWorkflowRecordPersistable(database: DbAdapter, value: unknown): void {
+  if (database.id === 'memory') {
+    return;
+  }
+
+  const ancestors = new WeakSet<object>();
+  const visit = (entry: unknown, path: string): void => {
+    if (typeof entry === 'function') {
+      throw new TypeError(
+        `Persistent PlugFn workflow storage cannot serialize callback at ${path}; use a memory adapter for executable callback workflows`
+      );
+    }
+    if (typeof entry === 'bigint' || typeof entry === 'symbol') {
+      throw new TypeError(`Persistent PlugFn workflow storage cannot serialize ${typeof entry} at ${path}`);
+    }
+    if (entry === null || typeof entry !== 'object' || entry instanceof Date) {
+      return;
+    }
+    if (ancestors.has(entry)) {
+      throw new TypeError(`Persistent PlugFn workflow storage cannot serialize cyclic value at ${path}`);
+    }
+
+    ancestors.add(entry);
+    if (Array.isArray(entry)) {
+      entry.forEach((item, index) => visit(item, `${path}[${index}]`));
+    } else {
+      for (const [key, item] of Object.entries(entry)) {
+        visit(item, `${path}.${key}`);
+      }
+    }
+    ancestors.delete(entry);
+  };
+
+  visit(value, 'workflow');
 }
 
 function toWhereClauses(filters: Record<string, unknown>): WhereClause[] {

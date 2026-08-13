@@ -37,14 +37,18 @@ const IMAP_SMTP_POLICY_VERSION = '2026-03-11';
 const policyDecisionLog: ImapSmtpPolicyDecision[] = [];
 
 export class ImapSmtpProviderError extends Error {
-  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR';
+  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR';
   readonly status: number;
 
-  constructor(code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR', message: string) {
+  constructor(
+    code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR',
+    message: string
+  ) {
     super(message);
     this.name = 'ImapSmtpProviderError';
     this.code = code;
-    this.status = code === 'PROVIDER_POLICY_BLOCKED' ? 403 : 400;
+    this.status =
+      code === 'PROVIDER_POLICY_BLOCKED' ? 403 : code === 'PROVIDER_DELIVERY_FAILED' ? 502 : 400;
   }
 }
 
@@ -153,7 +157,7 @@ export const imapSmtpProvider: Provider = {
         });
 
         const imapConnection = imap.connect();
-        const smtpConnection = smtp.connect();
+        const smtpConnection = await smtp.connect();
 
         return {
           imapConnected: imapConnection.imapConnected,
@@ -272,8 +276,8 @@ export const imapSmtpProvider: Provider = {
           tls: config.tls,
           explicitInsecureOverride: config.explicitInsecureOverride,
         });
-        smtp.connect();
-        const result = smtp.send({
+        await smtp.connect();
+        const result = await smtp.send({
           from: params.from,
           to: params.to,
           cc: params.cc,

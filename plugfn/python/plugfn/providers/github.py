@@ -101,6 +101,8 @@ class GitHubIssuesCreateAction(GitHubAction):
 class GitHubIssuesGetAction(GitHubAction):
     """Get a GitHub issue."""
 
+    idempotent = True
+
     def __init__(self) -> None:
         super().__init__(
             name="issues.get",
@@ -121,6 +123,8 @@ class GitHubIssuesGetAction(GitHubAction):
 
 class GitHubReposGetAction(GitHubAction):
     """Get a GitHub repository."""
+
+    idempotent = True
 
     def __init__(self) -> None:
         super().__init__(

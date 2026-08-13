@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -258,7 +258,7 @@ async def test_oauth_state_store_can_be_shared_across_instances():
     database = MockAdapter()
     auth = MockAuthProvider()
     state_store = MemoryTokenStore()
-    kwargs = {
+    kwargs: Dict[str, Any] = {
         "database": database,
         "auth": auth,
         "base_url": "https://test.com",
@@ -285,10 +285,10 @@ async def test_oauth_state_store_can_be_shared_across_instances():
     async def exchange_code_for_token(**_kwargs):
         return {"access_token": "token", "token_type": "bearer"}
 
-    second._connection_manager.oauth_handler.exchange_code_for_token = (
-        exchange_code_for_token
-    )
-    second._connection_manager.token_storage.encrypt = lambda value: f"encrypted:{value}"
+    oauth_handler = cast(Any, second._connection_manager.oauth_handler)
+    oauth_handler.exchange_code_for_token = exchange_code_for_token
+    token_storage = cast(Any, second._connection_manager.token_storage)
+    token_storage.encrypt = lambda value: f"encrypted:{value}"
 
     connection = await second.connections.handle_callback(
         provider=None,

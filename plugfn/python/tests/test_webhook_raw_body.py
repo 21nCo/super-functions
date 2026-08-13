@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from plugfn.adapters._shared import error_payload
 from plugfn.core.provider_registry import ProviderRegistry
 from plugfn.providers import github_provider, linear_provider, slack_provider
 from plugfn.utils.logger import ConsoleLogger
@@ -200,6 +201,24 @@ async def test_handler_failures_fan_out_then_raise_retryable_error():
     assert error.value.code == "WEBHOOK_HANDLER_FAILED"
     assert error.value.status == 503
     assert received == [{"action": "opened", "issue": {"id": 1}}]
+
+
+def test_handler_failure_preserves_retry_status_in_public_adapter_envelope():
+    payload, status = error_payload(
+        WebhookHandlerError(
+            "WEBHOOK_HANDLER_FAILED",
+            "temporary downstream database failure",
+            503,
+        )
+    )
+
+    assert status == 503
+    assert payload["error"] == {
+        "code": "WEBHOOK_HANDLER_FAILED",
+        "message": "Webhook handler failed",
+        "status": 503,
+        "details": {},
+    }
 
 
 def sign_github(raw_body: bytes, secret: str) -> str:

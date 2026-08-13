@@ -36,6 +36,8 @@ class GmailAction:
 class GmailMailSyncAction(GmailAction):
     """List Gmail messages for sync/bootstrap flows."""
 
+    idempotent = True
+
     def __init__(self) -> None:
         super().__init__(
             name="mail.sync",
@@ -56,6 +58,8 @@ class GmailMailSyncAction(GmailAction):
 
 class GmailMessageGetAction(GmailAction):
     """Fetch a Gmail message."""
+
+    idempotent = True
 
     def __init__(self) -> None:
         super().__init__(

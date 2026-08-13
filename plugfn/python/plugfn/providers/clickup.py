@@ -36,6 +36,8 @@ class ClickUpAction:
 class ClickUpTasksGetAction(ClickUpAction):
     """Fetch a ClickUp task."""
 
+    idempotent = True
+
     def __init__(self) -> None:
         super().__init__(
             name="tasks.get",
@@ -51,6 +53,8 @@ class ClickUpTasksGetAction(ClickUpAction):
 
 class ClickUpTasksListAction(ClickUpAction):
     """List ClickUp tasks."""
+
+    idempotent = True
 
     def __init__(self) -> None:
         super().__init__(

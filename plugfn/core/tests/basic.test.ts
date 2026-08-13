@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { plugFn } from '../src/index.js';
 import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { mockProvider, mockResponse, mockConnection } from '../src/testing/index.js';
 import { RateLimiter } from '../src/middleware/rate-limiter.js';
+import { FetchHttpClient } from '../src/utils/request.js';
 
 describe('PlugFn SDK', () => {
   let plug: any;
@@ -30,6 +31,10 @@ describe('PlugFn SDK', () => {
         },
       },
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('Provider Management', () => {
@@ -98,6 +103,16 @@ describe('PlugFn SDK', () => {
         },
       });
       const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
+      const get = vi.spyOn(FetchHttpClient.prototype, 'get').mockResolvedValue({
+        data: { ok: true },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+      });
+      provider.actions.getData.execute = async (_params, context) => {
+        await context.http.get('/quota-test');
+        return { ok: true };
+      };
       provider.rateLimit = { requests: 1, window: 60_000 };
       configuredPlug.providers.register(provider);
       await configuredAdapter.createConnection(mockConnection('test-user', 'test'));
@@ -106,8 +121,35 @@ describe('PlugFn SDK', () => {
 
       expect(acquire).toHaveBeenCalledWith('global', { requests: 25, window: 1000 });
       expect(acquireMany).not.toHaveBeenCalled();
-      acquire.mockRestore();
-      acquireMany.mockRestore();
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('charges quota for every outbound request, including retry attempts', async () => {
+      const acquireMany = vi
+        .spyOn(RateLimiter.prototype, 'acquireMany')
+        .mockResolvedValue(undefined);
+      const get = vi
+        .spyOn(FetchHttpClient.prototype, 'get')
+        .mockRejectedValueOnce(Object.assign(new Error('temporary'), { status: 500 }))
+        .mockResolvedValue({ data: { ok: true }, status: 200, statusText: 'OK', headers: {} });
+      const provider = mockProvider('test', { getData: mockResponse({ ok: true }) });
+      provider.rateLimit = { requests: 10, window: 60_000 };
+      provider.actions.getData.execute = async (_params, context) => {
+        await context.http.get('/quota-test');
+        return { ok: true };
+      };
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      const result = await plug.test.getData({
+        userId: 'test-user',
+        params: {},
+        retry: { maxAttempts: 2, delay: 0 },
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(acquireMany).toHaveBeenCalledTimes(2);
     });
 
     it('should execute an action successfully', async () => {

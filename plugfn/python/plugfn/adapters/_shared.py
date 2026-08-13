@@ -22,6 +22,7 @@ PUBLIC_ERROR_MESSAGES = {
     "WEBHOOK_RAW_BODY_REQUIRED": "Raw webhook body is required",
     "WEBHOOK_SECRET_NOT_FOUND": "Webhook secret is not configured",
     "WEBHOOK_SIGNATURE_INVALID": "Webhook signature is invalid",
+    "WEBHOOK_HANDLER_FAILED": "Webhook handler failed",
 }
 
 

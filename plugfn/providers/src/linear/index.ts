@@ -184,7 +184,6 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
-          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, {
             query,
             variables: {
@@ -246,7 +245,6 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
-          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, {
             query,
             variables: {
@@ -469,7 +467,6 @@ export const linearProvider: Provider = {
         let after: string | null = null;
         let pageInfo = { hasNextPage: false, endCursor: null as string | null };
         for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
-          if (page > 0) await context.acquireRateLimit?.();
           const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
           if (Array.isArray(response.data.errors) && response.data.errors.length) throw new Error(response.data.errors[0]?.message ?? 'Comments could not be read');
           const connection = response.data.data?.comments;
@@ -737,9 +734,6 @@ async function paginateLinearConnection(context: ActionContext, field: string, q
   let after: string | null = null;
   let pageInfo = { hasNextPage: false, endCursor: null as string | null };
   for (let page = 0; page < (params.maxPages ?? 100); page += 1) {
-    if (page > 0) {
-      await context.acquireRateLimit?.();
-    }
     const response = await context.http.post(context.provider.baseUrl, { query, variables: { first: params.first ?? 250, after, includeArchived: params.includeArchived ?? true } });
     if (Array.isArray(response.data.errors) && response.data.errors.length) throw new Error(response.data.errors[0]?.message ?? `${field} could not be read`);
     const connection = response.data.data?.[field];

@@ -2,11 +2,14 @@
 
 import asyncio
 import copy
+import heapq
 import json
 import time
-from collections import OrderedDict, deque
+from collections import OrderedDict
 from datetime import datetime
-from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+
+import httpx
 
 
 class RateLimitExceededError(RuntimeError):
@@ -17,8 +20,9 @@ class InMemoryRateLimiter:
     """Atomic sliding-window limiter shared by an action executor instance."""
 
     def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
-        self._buckets: Dict[str, Deque[float]] = {}
-        self._windows: Dict[str, float] = {}
+        self._buckets: Dict[str, Set[int]] = {}
+        self._expiry_heap: List[Tuple[float, int, str]] = []
+        self._sequence = 0
         self._lock = asyncio.Lock()
         self._now = now
 
@@ -29,21 +33,29 @@ class InMemoryRateLimiter:
         now = self._now()
         window_seconds = window_ms / 1000
         async with self._lock:
-            for key, bucket in list(self._buckets.items()):
-                cutoff = now - self._windows.get(key, window_seconds)
-                while bucket and bucket[0] <= cutoff:
-                    bucket.popleft()
-                if not bucket:
-                    self._buckets.pop(key, None)
-                    self._windows.pop(key, None)
+            self._prune_expired(now)
 
-            buckets = [self._buckets.setdefault(key, deque()) for key in keys]
-            for key in keys:
-                self._windows[key] = window_seconds
+            buckets = [self._buckets.setdefault(key, set()) for key in keys]
             if any(len(bucket) >= requests for bucket in buckets):
                 raise RateLimitExceededError("provider action rate limit exceeded")
-            for bucket in buckets:
-                bucket.append(now)
+            # keys and buckets are built from the same sequence above.
+            for key, bucket in zip(keys, buckets):  # noqa: B905
+                self._sequence += 1
+                bucket.add(self._sequence)
+                heapq.heappush(
+                    self._expiry_heap,
+                    (now + window_seconds, self._sequence, key),
+                )
+
+    def _prune_expired(self, now: float) -> None:
+        while self._expiry_heap and self._expiry_heap[0][0] <= now:
+            _expires_at, sequence, key = heapq.heappop(self._expiry_heap)
+            bucket = self._buckets.get(key)
+            if not bucket:
+                continue
+            bucket.discard(sequence)
+            if not bucket:
+                self._buckets.pop(key, None)
 
 
 class ActionExecutor:
@@ -77,7 +89,7 @@ class ActionExecutor:
         self.enable_cache = enable_cache
         self.retry_options = retry_options or {}
         self._rate_limiter = InMemoryRateLimiter()
-        self._cache: "OrderedDict[str, Any]" = OrderedDict()
+        self._cache: "OrderedDict[str, Tuple[Optional[float], Any]]" = OrderedDict()
         self._cache_lock = asyncio.Lock()
         self._max_cache_entries = 1000
 
@@ -93,7 +105,7 @@ class ActionExecutor:
         connection_id: Optional[str] = None,
         retry: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
-        cache: Optional[bool] = None,
+        cache: Optional[Union[bool, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Execute a provider action.
 
@@ -149,9 +161,16 @@ class ActionExecutor:
             connection = active_connections[0]
 
         cache_key = None
-        if self.enable_cache and cache is True:
-            cache_key = self._cache_key(
-                provider, action, user_id, connection.id, params
+        cache_options = cache if isinstance(cache, dict) else {}
+        cache_requested = cache is True or (
+            isinstance(cache, dict) and cache.get("enabled", True) is not False
+        )
+        if self.enable_cache and cache_requested:
+            configured_key = cache_options.get("key")
+            cache_key = (
+                configured_key
+                if isinstance(configured_key, str) and configured_key
+                else self._cache_key(provider, action, user_id, connection.id, params)
             )
             cache_hit, cached_data = await self._cache_get(cache_key)
             if cache_hit:
@@ -187,7 +206,10 @@ class ActionExecutor:
             # Execute action (with retry if enabled)
             retry_config = {**self.retry_options, **(retry or {})}
             max_attempts = 1
-            if self.enable_retry:
+            action_is_idempotent = bool(
+                retry_config.get("idempotent", getattr(action_obj, "idempotent", False))
+            )
+            if self.enable_retry and action_is_idempotent:
                 max_attempts = max(1, int(retry_config.get("max_attempts", 3)))
 
             last_error = None
@@ -234,7 +256,7 @@ class ActionExecutor:
                     }
 
                     if cache_key:
-                        await self._cache_set(cache_key, result_data)
+                        await self._cache_set(cache_key, result_data, cache_options.get("ttl"))
 
                     # Log action
                     self._log_action(result, user_id, connection.id)
@@ -245,7 +267,7 @@ class ActionExecutor:
                     last_error = e
                     retries += 1
 
-                    if attempt < max_attempts - 1:
+                    if attempt < max_attempts - 1 and _is_transient_error(e):
                         # Wait before retry
                         delay = retry_config.get("delay", 1000)
                         backoff = retry_config.get("backoff", "exponential")
@@ -266,6 +288,8 @@ class ActionExecutor:
                         )
 
                         await asyncio.sleep(wait_time)
+                    else:
+                        break
 
             # All retries exhausted
             duration = int((time.time() - start_time) * 1000)
@@ -324,14 +348,37 @@ class ActionExecutor:
         async with self._cache_lock:
             if key not in self._cache:
                 return False, None
-            value = self._cache.pop(key)
-            self._cache[key] = value
-            return True, copy.deepcopy(value)
+            expires_at, value = self._cache.pop(key)
+            if expires_at is not None and expires_at <= time.monotonic():
+                return False, None
+            try:
+                copied = copy.deepcopy(value)
+            except Exception as error:
+                self.logger.warn(
+                    "Discarding uncopyable action cache entry",
+                    {"cache_key": key, "error": str(error)},
+                )
+                return False, None
+            self._cache[key] = (expires_at, value)
+            return True, copied
 
-    async def _cache_set(self, key: str, value: Any) -> None:
+    async def _cache_set(self, key: str, value: Any, ttl_ms: Any = None) -> None:
+        expires_at: Optional[float] = None
+        if isinstance(ttl_ms, (int, float)) and not isinstance(ttl_ms, bool):
+            if ttl_ms <= 0:
+                return
+            expires_at = time.monotonic() + (ttl_ms / 1000)
+        try:
+            copied = copy.deepcopy(value)
+        except Exception as error:
+            self.logger.warn(
+                "Skipping uncopyable action cache result",
+                {"cache_key": key, "error": str(error)},
+            )
+            return
         async with self._cache_lock:
             self._cache.pop(key, None)
-            self._cache[key] = copy.deepcopy(value)
+            self._cache[key] = (expires_at, copied)
             while len(self._cache) > self._max_cache_entries:
                 self._cache.popitem(last=False)
 
@@ -422,6 +469,27 @@ class ActionExecutor:
         # Keep only last 10000 logs in memory
         if len(self._action_logs) > 10000:
             self._action_logs = self._action_logs[-10000:]
+
+
+def _is_transient_error(error: Exception) -> bool:
+    if isinstance(
+        error,
+        (
+            RateLimitExceededError,
+            asyncio.TimeoutError,
+            TimeoutError,
+            ConnectionError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+        ),
+    ):
+        return True
+
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if not isinstance(status, int):
+        status = getattr(error, "status_code", getattr(error, "status", None))
+    return status in {408, 429, 500, 502, 503, 504}
 
 
 class ActionContext:

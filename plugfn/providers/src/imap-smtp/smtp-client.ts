@@ -1,3 +1,5 @@
+import nodemailer, { type Transporter } from 'nodemailer';
+
 export interface SmtpClientConfig {
   host: string;
   port?: number;
@@ -31,26 +33,47 @@ export interface SmtpSendResult {
 }
 
 export class SmtpClientError extends Error {
-  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR';
+  readonly code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR';
   readonly status: number;
 
-  constructor(code: 'PROVIDER_POLICY_BLOCKED' | 'VALIDATION_ERROR', message: string) {
+  constructor(
+    code: 'PROVIDER_POLICY_BLOCKED' | 'PROVIDER_DELIVERY_FAILED' | 'VALIDATION_ERROR',
+    message: string
+  ) {
     super(message);
     this.name = 'SmtpClientError';
     this.code = code;
-    this.status = code === 'PROVIDER_POLICY_BLOCKED' ? 403 : 400;
+    this.status =
+      code === 'PROVIDER_POLICY_BLOCKED' ? 403 : code === 'PROVIDER_DELIVERY_FAILED' ? 502 : 400;
   }
 }
 
 export class SmtpClient {
   private readonly config: Required<SmtpClientConfig>;
+  private readonly transport: Transporter;
 
   constructor(config: SmtpClientConfig) {
     this.config = resolveSmtpConfig(config);
+    this.transport = nodemailer.createTransport({
+      host: this.config.host,
+      port: this.config.port,
+      secure: this.config.tls && this.config.port === 465,
+      requireTLS: this.config.tls && this.config.port !== 465,
+      ignoreTLS: !this.config.tls,
+      auth: {
+        user: this.config.username,
+        pass: this.config.password,
+      },
+    });
   }
 
-  connect(): SmtpConnectionResult {
+  async connect(): Promise<SmtpConnectionResult> {
     enforceSecureTransport(this.config.tls, this.config.explicitInsecureOverride);
+    try {
+      await this.transport.verify();
+    } catch {
+      throw new SmtpClientError('PROVIDER_DELIVERY_FAILED', 'smtp connection failed');
+    }
     return {
       smtpConnected: true,
       tls: this.config.tls,
@@ -59,13 +82,29 @@ export class SmtpClient {
     };
   }
 
-  send(request: SmtpSendRequest): SmtpSendResult {
+  async send(request: SmtpSendRequest): Promise<SmtpSendResult> {
     enforceSecureTransport(this.config.tls, this.config.explicitInsecureOverride);
     validateSendRequest(request);
 
+    let messageId: string;
+    try {
+      const result = await this.transport.sendMail({
+        from: request.from,
+        to: request.to,
+        cc: request.cc,
+        bcc: request.bcc,
+        subject: request.subject,
+        text: request.bodyText,
+        html: request.bodyHtml,
+      });
+      messageId = result.messageId;
+    } catch {
+      throw new SmtpClientError('PROVIDER_DELIVERY_FAILED', 'smtp delivery failed');
+    }
+
     return {
       queued: true,
-      messageId: buildMessageId(this.config.host, request.from, request.subject),
+      messageId,
       tls: this.config.tls,
     };
   }
@@ -118,12 +157,4 @@ function validateSendRequest(request: SmtpSendRequest): void {
   ) {
     throw new SmtpClientError('VALIDATION_ERROR', 'smtp bodyText or bodyHtml is required');
   }
-}
-
-function buildMessageId(host: string, from: string, subject: string): string {
-  const entropy = Math.random().toString(36).slice(2, 10);
-  const normalizedSubject = subject.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12);
-  const normalizedFrom = from.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12);
-  const normalizedHost = host.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 12);
-  return `msg_${normalizedHost}_${normalizedFrom}_${normalizedSubject}_${entropy}`;
 }

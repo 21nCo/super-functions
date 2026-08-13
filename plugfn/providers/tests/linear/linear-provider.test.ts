@@ -173,7 +173,7 @@ describe('linear provider actions', () => {
     expect(() => linearProvider.actions['customers.list'].returns.parse(result)).not.toThrow();
   });
 
-  it('charges each additional shared-paginator request against the action limiter', async () => {
+  it('leaves shared-paginator quota charging to the executor HTTP wrapper', async () => {
     const context = createContext((body: any) => ({
       initiatives: body.variables.after
         ? { nodes: [{ id: 'initiative_2' }], pageInfo: { hasNextPage: false, endCursor: null } }
@@ -187,7 +187,7 @@ describe('linear provider actions', () => {
     );
 
     expect(context.http.post).toHaveBeenCalledTimes(2);
-    expect(context.acquireRateLimit).toHaveBeenCalledTimes(1);
+    expect(context.acquireRateLimit).not.toHaveBeenCalled();
   });
 
   it('issues.get executes query and returns issue payload', async () => {
