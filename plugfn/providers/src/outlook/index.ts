@@ -151,6 +151,7 @@ export const outlookProvider: Provider = {
       name: 'mail.sync',
       displayName: 'Sync Mail',
       description: 'Sync Outlook messages using Graph delta checkpoints',
+      idempotent: true,
       parameters: syncParamsSchema,
       returns: z.object({
         checkpoint: z.string(),

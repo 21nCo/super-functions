@@ -59,6 +59,7 @@ export const clickupProvider: Provider = {
       name: 'tasks.get',
       displayName: 'Get Task',
       description: 'Get a task by ID',
+      idempotent: true,
       parameters: z.object({
         taskId: z.string().describe('ClickUp task ID'),
       }),
@@ -103,6 +104,7 @@ export const clickupProvider: Provider = {
       name: 'tasks.list',
       displayName: 'List Tasks',
       description: 'List tasks in a list',
+      idempotent: true,
       parameters: z.object({
         listId: z.string().describe('ClickUp list ID'),
         page: z.number().optional().describe('Page number'),
@@ -152,6 +154,7 @@ export const clickupProvider: Provider = {
       name: 'spaces.list',
       displayName: 'List Spaces',
       description: 'List spaces in a team',
+      idempotent: true,
       parameters: z.object({
         teamId: z.string().describe('ClickUp team ID'),
       }),

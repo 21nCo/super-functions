@@ -84,6 +84,21 @@ describe('PlugFn SDK', () => {
   });
 
   describe('Action Execution', () => {
+    it('uses configured non-OAuth credentials without a persisted connection', async () => {
+      const provider = mockProvider('test', {
+        getData: mockResponse({ apiKey: 'test-api-key' }),
+      });
+      provider.actions.getData.execute = async (_params, context) => ({
+        apiKey: context.auth.credentials.apiKey,
+      });
+      plug.providers.register(provider);
+
+      await expect(
+        plug.test.getData({ userId: 'test-user', params: {} })
+      ).resolves.toEqual({ apiKey: 'test-api-key' });
+      await expect(adapter.listConnections('test-user', 'test')).resolves.toEqual([]);
+    });
+
     it('applies global quotas and can disable provider quotas independently', async () => {
       const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
       const acquireMany = vi
@@ -458,6 +473,7 @@ describe('PlugFn SDK', () => {
       ).rejects.toThrow('temporary failure');
       expect(attempts).toBe(1);
     });
+
   });
 
   describe('Batch Execution', () => {

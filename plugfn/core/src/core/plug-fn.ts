@@ -58,7 +58,7 @@ import { AdapterWorkflowStorage } from '../storage/workflow-storage.js';
 import { ConsoleLogger } from '../utils/logger.js';
 import { validateEncryptionKey } from '../utils/crypto.js';
 import { getSchema } from '../schema.js';
-import { hasAny, tenantMatches } from '../security/tenancy.js';
+import { connectionMatchesActor, tenantMatches } from '../security/tenancy.js';
 
 /**
  * Main PlugFn SDK interface
@@ -310,7 +310,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     config.baseUrl,
     config.encryptionKey,
     logger,
-    oauthFlowDependencies
+    oauthFlowDependencies,
+    config.authorization?.authorizeConnection
   );
 
   const actionExecutor = new ActionExecutor(
@@ -525,17 +526,17 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       );
     }
 
-    if (options.actor && !connectionMatchesActor(connection, options.actor)) {
-      throw new PlugFnRuntimeError(
-        'TENANT_ACCESS_DENIED',
-        'connection owner mismatch',
-        403
-      );
-    }
-    if (options.actor && !connectionTenantMatchesActor(connection, options.actor.tenantId)) {
+    if (options.actor && !tenantMatches(connection.tenantId, options.actor.tenantId)) {
       throw new PlugFnRuntimeError(
         'TENANT_ACCESS_DENIED',
         'connection tenant mismatch',
+        403
+      );
+    }
+    if (options.actor && !connectionMatchesActor(connection, options.actor, 'sync')) {
+      throw new PlugFnRuntimeError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
         403
       );
     }
@@ -619,38 +620,38 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       await runtimeStorage.updateSyncJob(job.id, { status: 'running' });
     }
 
-    const connection = await connectionManager.get(job.connectionId);
-    if (connection.provider !== job.provider) {
-      await runtimeStorage.failSyncJob(job.id, 'connection provider mismatch');
-      throw {
-        code: 'VALIDATION_ERROR',
-        message: 'connection provider mismatch',
-        status: 400,
-      };
-    }
-
-    const workerOptions = readSyncJobWorkerMetadata(job);
-    if (workerOptions.actor && !connectionMatchesActor(connection, workerOptions.actor)) {
-      await runtimeStorage.failSyncJob(job.id, 'connection owner mismatch');
-      throw new PlugFnRuntimeError(
-        'TENANT_ACCESS_DENIED',
-        'connection owner mismatch',
-        403
-      );
-    }
-    if (
-      workerOptions.actor &&
-      !connectionTenantMatchesActor(connection, workerOptions.actor.tenantId)
-    ) {
-      await runtimeStorage.failSyncJob(job.id, 'connection tenant mismatch');
-      throw new PlugFnRuntimeError(
-        'TENANT_ACCESS_DENIED',
-        'connection tenant mismatch',
-        403
-      );
-    }
-
     try {
+      const connection = await connectionManager.get(job.connectionId);
+      if (connection.provider !== job.provider) {
+        throw new PlugFnRuntimeError(
+          'VALIDATION_ERROR',
+          'connection provider mismatch',
+          400
+        );
+      }
+
+      const workerOptions = readSyncJobWorkerMetadata(job);
+      if (
+        workerOptions.actor &&
+        !tenantMatches(connection.tenantId, workerOptions.actor.tenantId)
+      ) {
+        throw new PlugFnRuntimeError(
+          'TENANT_ACCESS_DENIED',
+          'connection tenant mismatch',
+          403
+        );
+      }
+      if (
+        workerOptions.actor &&
+        !connectionMatchesActor(connection, workerOptions.actor, 'sync')
+      ) {
+        throw new PlugFnRuntimeError(
+          'TENANT_ACCESS_DENIED',
+          'connection owner mismatch',
+          403
+        );
+      }
+
       const result = await executeSyncResource({
         providerRegistry,
         actionExecutor,
@@ -1178,42 +1179,6 @@ function resolveSyncActionName(provider: Provider, resource: string): string | u
   ].filter((candidate): candidate is string => typeof candidate === 'string');
 
   return candidates.find((candidate) => candidate in provider.actions);
-}
-
-function connectionMatchesActor(connection: Connection, actor: PlugFnActor): boolean {
-  if (
-    connection.userId === actor.userId ||
-    (connection.ownerKind === 'user' && connection.ownerId === actor.userId)
-  ) {
-    return true;
-  }
-
-  if (connection.ownerKind === 'organization') {
-    return (
-      connection.installedByUserId === actor.userId ||
-      (Boolean(connection.organizationId) &&
-        Boolean(actor.organizationId) &&
-        connection.organizationId === actor.organizationId &&
-        hasAny(actor.roles, ['admin', 'owner', 'org:admin']))
-    );
-  }
-
-  if (connection.ownerKind === 'delegated') {
-    return (
-      connection.delegatedToUserId === actor.userId ||
-      connection.installedByUserId === actor.userId ||
-      hasAny(actor.grants, connection.grants ?? [])
-    );
-  }
-
-  return false;
-}
-
-function connectionTenantMatchesActor(
-  connection: Connection,
-  actorTenantId: string | undefined
-): boolean {
-  return tenantMatches(connection.tenantId, actorTenantId);
 }
 
 function readSyncJobWorkerMetadata(job: PlugFnSyncJob): {

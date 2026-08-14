@@ -16,7 +16,7 @@ class WebhookHandlerError(Exception):
         self.status = status
 
 
-SIGNED_PROVIDERS = {"github", "linear", "slack"}
+SIGNED_PROVIDERS = {"clickup", "github", "linear", "slack"}
 INVALID_WEBHOOK_SIGNATURE = "Invalid webhook signature"
 
 
@@ -110,6 +110,8 @@ class WebhookHandler:
             _verify_slack_signature(raw_body, headers, secret)
         elif provider == "linear":
             _verify_linear_signature(raw_body, headers, secret)
+        elif provider == "clickup":
+            _verify_clickup_signature(raw_body, headers, secret)
 
 
 def _verify_github_signature(
@@ -164,6 +166,17 @@ def _verify_linear_signature(
     expected_signature = hmac.new(
         secret.encode("utf-8"), raw_body, hashlib.sha256
     ).hexdigest()
+    normalized_signature = signature_header.removeprefix("sha256=")
+    if not hmac.compare_digest(normalized_signature, expected_signature):
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", INVALID_WEBHOOK_SIGNATURE)
+
+
+def _verify_clickup_signature(raw_body: bytes, headers: Dict[str, str], secret: str) -> None:
+    signature_header = headers.get("x-signature", "")
+    if not signature_header:
+        raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
+
+    expected_signature = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     normalized_signature = signature_header.removeprefix("sha256=")
     if not hmac.compare_digest(normalized_signature, expected_signature):
         raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", INVALID_WEBHOOK_SIGNATURE)

@@ -34,6 +34,7 @@ export const githubProvider: Provider = {
       name: "repos.list",
       displayName: "List Repositories",
       description: "List repositories available to the authenticated user",
+      idempotent: true,
 
       parameters: z.object({
         visibility: z
@@ -112,6 +113,7 @@ export const githubProvider: Provider = {
       name: "repos.get",
       displayName: "Get Repository",
       description: "Get a repository by owner and name",
+      idempotent: true,
 
       parameters: z.object({
         owner: z.string().describe("Repository owner"),
@@ -144,6 +146,7 @@ export const githubProvider: Provider = {
       name: "issues.list",
       displayName: "List Issues",
       description: "List issues for a repository",
+      idempotent: true,
 
       parameters: z.object({
         owner: z.string().describe("Repository owner"),
@@ -236,6 +239,7 @@ export const githubProvider: Provider = {
       name: "issues.get",
       displayName: "Get Issue",
       description: "Get a single issue by number",
+      idempotent: true,
 
       parameters: z.object({
         owner: z.string().describe("Repository owner"),
@@ -372,6 +376,7 @@ export const githubProvider: Provider = {
       name: "issues.comments.list",
       displayName: "List Issue Comments",
       description: "List comments across all issues in a repository",
+      idempotent: true,
 
       parameters: z.object({
         owner: z.string().describe("Repository owner"),
@@ -425,6 +430,7 @@ export const githubProvider: Provider = {
       name: "pulls.list",
       displayName: "List Pull Requests",
       description: "List pull requests for a repository",
+      idempotent: true,
 
       parameters: z.object({
         owner: z.string().describe("Repository owner"),
@@ -578,6 +584,7 @@ export const githubProvider: Provider = {
       name: "releases.list",
       displayName: "List Releases",
       description: "List releases for a repository",
+      idempotent: true,
       parameters: z.object({
         owner: z.string(),
         repo: z.string(),
@@ -659,6 +666,7 @@ export const githubProvider: Provider = {
       name: "hooks.list",
       displayName: "List Repository Webhooks",
       description: "List webhooks configured for a repository",
+      idempotent: true,
       parameters: z.object({
         owner: z.string(),
         repo: z.string(),
@@ -761,6 +769,7 @@ export const githubProvider: Provider = {
       name: "commits.list",
       displayName: "List Repository Commits",
       description: "List commits for a repository",
+      idempotent: true,
       parameters: z.object({
         owner: z.string(),
         repo: z.string(),

@@ -8,7 +8,12 @@ import pytest
 
 from plugfn.adapters._shared import error_payload
 from plugfn.core.provider_registry import ProviderRegistry
-from plugfn.providers import github_provider, linear_provider, slack_provider
+from plugfn.providers import (
+    clickup_provider,
+    github_provider,
+    linear_provider,
+    slack_provider,
+)
 from plugfn.utils.logger import ConsoleLogger
 from plugfn.webhooks.webhook_handler import WebhookHandler, WebhookHandlerError
 
@@ -18,6 +23,7 @@ def create_handler() -> WebhookHandler:
     registry.register_provider(github_provider)
     registry.register_provider(linear_provider)
     registry.register_provider(slack_provider)
+    registry.register_provider(clickup_provider)
     return WebhookHandler(registry, ConsoleLogger("[PlugFn]"))
 
 
@@ -115,6 +121,44 @@ async def test_linear_webhook_verifies_raw_bytes():
     )
 
     assert result == [{"issue_id": "issue_1"}]
+
+
+@pytest.mark.asyncio
+async def test_clickup_webhook_verifies_raw_bytes_before_dispatch():
+    handler = create_handler()
+    raw_body = b'{"event":"taskUpdated","task_id":"task_1"}'
+    secret = "clickup-secret"
+    received = []
+
+    async def on_task(payload):
+        received.append(payload)
+        return {"task_id": payload["task_id"]}
+
+    handler.register_handler("clickup", "task.updated", on_task)
+    result = await handler.handle_webhook(
+        provider="clickup",
+        event="task.updated",
+        payload=None,
+        headers={"x-signature": sign_clickup(raw_body, secret)},
+        secret=secret,
+        raw_body=raw_body,
+    )
+
+    assert result == [{"task_id": "task_1"}]
+    assert received == [{"event": "taskUpdated", "task_id": "task_1"}]
+
+    with pytest.raises(WebhookHandlerError) as error:
+        await handler.handle_webhook(
+            provider="clickup",
+            event="task.updated",
+            payload=None,
+            headers={"x-signature": "sha256=invalid"},
+            secret=secret,
+            raw_body=raw_body,
+        )
+
+    assert error.value.code == "WEBHOOK_SIGNATURE_INVALID"
+    assert len(received) == 1
 
 
 @pytest.mark.asyncio
@@ -234,3 +278,8 @@ def sign_slack(raw_body: bytes, secret: str, timestamp: str) -> str:
 
 def sign_linear(raw_body: bytes, secret: str) -> str:
     return hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+
+
+def sign_clickup(raw_body: bytes, secret: str) -> str:
+    digest = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return f"sha256={digest}"

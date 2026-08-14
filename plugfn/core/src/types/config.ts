@@ -18,11 +18,19 @@ export interface PlugFnPrincipal {
   metadata?: Record<string, unknown>;
 }
 
+export type PlugFnConnectionOperation =
+  | 'read'
+  | 'disconnect'
+  | 'revoke'
+  | 'sync'
+  | 'action'
+  | 'checkpoint';
+
 export interface PlugFnAuthorizationOptions {
   authorizeConnection?(input: {
     actor: PlugFnPrincipal;
     connection: Connection;
-    operation: 'read' | 'disconnect' | 'revoke' | 'sync' | 'action' | 'checkpoint';
+    operation: PlugFnConnectionOperation;
   }): Promise<boolean> | boolean;
 }
 

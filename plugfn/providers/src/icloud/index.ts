@@ -57,6 +57,7 @@ export const icloudProvider: Provider = {
       name: 'mail.connect',
       displayName: 'Connect',
       description: 'Connect to iCloud mail for inbound IMAP access; imap-smtp is a legacy alias',
+      idempotent: true,
       parameters: z.object({
         mode: z.enum(['imap', 'imap-smtp', 'pop']).default('imap'),
         username: z.string().min(1),
@@ -90,6 +91,7 @@ export const icloudProvider: Provider = {
       name: 'mail.sync',
       displayName: 'Sync',
       description: 'Normalize iCloud IMAP messages; imap-smtp is a legacy alias',
+      idempotent: true,
       parameters: z.object({
         mode: z.enum(['imap', 'imap-smtp', 'pop']).default('imap'),
         username: z.string().min(1),

@@ -76,6 +76,7 @@ export const stripeProvider: Provider = {
       name: 'customers.list',
       displayName: 'List Customers',
       description: 'List all Stripe customers',
+      idempotent: true,
 
       parameters: z.object({
         limit: z.number().optional().describe('Number of customers to return'),
@@ -214,6 +215,7 @@ export const stripeProvider: Provider = {
       name: 'paymentIntents.retrieve',
       displayName: 'Retrieve Payment Intent',
       description: 'Retrieve a payment intent by ID',
+      idempotent: true,
 
       parameters: z.object({
         id: z.string().describe('Payment intent ID'),

@@ -6,6 +6,13 @@ import {
   yahooProvider,
   icloudProvider,
   imapSmtpProvider,
+  githubProvider,
+  slackProvider,
+  discordProvider,
+  linearProvider,
+  stripeProvider,
+  notionProvider,
+  clickupProvider,
 } from '../src/index.js';
 import { assertGmailProviderConfig } from '../src/gmail/index.js';
 import {
@@ -65,6 +72,29 @@ describe('provider contracts', () => {
     expect(imapSmtpProvider.actions['mail.connect']).toBeDefined();
     expect(imapSmtpProvider.actions['mail.sync']).toBeDefined();
     expect(imapSmtpProvider.actions['mail.send']).toBeUndefined();
+  });
+
+  it('marks bundled read actions as retry-safe', () => {
+    const retrySafeActions = new Map([
+      [githubProvider, ['repos.list', 'repos.get', 'issues.list', 'issues.get', 'issues.comments.list', 'pulls.list', 'releases.list', 'hooks.list', 'commits.list']],
+      [slackProvider, ['conversations.list', 'users.info']],
+      [discordProvider, ['channels.get', 'guilds.channels.list']],
+      [linearProvider, ['issues.list', 'issueRelations.list', 'issues.get', 'comments.list', 'issues.search', 'initiatives.list', 'documents.list', 'customers.list', 'attachments.list', 'teams.list']],
+      [stripeProvider, ['customers.list', 'paymentIntents.retrieve']],
+      [notionProvider, ['users.me', 'search.query', 'pages.get', 'blocks.children.list', 'databases.retrieve', 'databases.query']],
+      [clickupProvider, ['tasks.get', 'tasks.list', 'spaces.list']],
+      [gmailProvider, ['mail.sync']],
+      [outlookProvider, ['mail.sync']],
+      [yahooProvider, ['mail.connect', 'mail.sync']],
+      [icloudProvider, ['mail.connect', 'mail.sync']],
+      [imapSmtpProvider, ['mail.connect', 'mail.sync']],
+    ]);
+
+    for (const [provider, actionNames] of retrySafeActions) {
+      for (const actionName of actionNames) {
+        expect(provider.actions[actionName]?.idempotent, `${provider.name}.${actionName}`).toBe(true);
+      }
+    }
   });
 
   it('normalizes gmail and outlook payloads into equivalent canonical fields', () => {

@@ -41,6 +41,7 @@ export const notionProvider: Provider = {
       name: 'users.me',
       displayName: 'Get Current User',
       description: 'Return the Notion user attached to the current token',
+      idempotent: true,
       parameters: z.object({}),
       returns: z.unknown(),
       execute: async (_params: unknown, context: ActionContext) => {
@@ -53,6 +54,7 @@ export const notionProvider: Provider = {
       name: 'search.query',
       displayName: 'Search',
       description: 'Search pages and databases visible to the integration',
+      idempotent: true,
       parameters: z.object({
         query: z.string().optional(),
         pageSize: z.number().int().positive().max(100).optional(),
@@ -77,6 +79,7 @@ export const notionProvider: Provider = {
       name: 'pages.get',
       displayName: 'Get Page',
       description: 'Retrieve a Notion page by ID',
+      idempotent: true,
       parameters: z.object({
         pageId: z.string().min(1),
       }),
@@ -138,6 +141,7 @@ export const notionProvider: Provider = {
       name: 'blocks.children.list',
       displayName: 'List Block Children',
       description: 'List children for a Notion block or page',
+      idempotent: true,
       parameters: z.object({
         blockId: z.string().min(1),
         pageSize: z.number().int().positive().max(100).optional(),
@@ -186,6 +190,7 @@ export const notionProvider: Provider = {
       name: 'databases.retrieve',
       displayName: 'Retrieve Database',
       description: 'Retrieve a Notion database by ID',
+      idempotent: true,
       parameters: z.object({
         databaseId: z.string().min(1),
       }),
@@ -202,6 +207,7 @@ export const notionProvider: Provider = {
       name: 'databases.query',
       displayName: 'Query Database',
       description: 'Query pages in a Notion database',
+      idempotent: true,
       parameters: z.object({
         databaseId: z.string().min(1),
         filter: z.record(z.string(), z.unknown()).optional(),

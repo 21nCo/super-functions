@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createPlugFnRouter } from '../src/router/http-router.js';
+import { plugFn } from '../src/core/plug-fn.js';
+import { MemoryAdapter } from '../src/storage/adapters/memory.js';
+import { ConnectionStatus } from '../src/types/connection.js';
 
 describe('HTTP router auth boundaries', () => {
   it('exposes the canonical route inventory', () => {
@@ -412,6 +415,60 @@ describe('HTTP router auth boundaries', () => {
       connectionId: undefined,
       actor: { userId: 'legacy_user' },
     });
+  });
+
+  it('preserves an explicit custom authorization allow through disconnect execution', async () => {
+    const database = new MemoryAdapter();
+    const authorizeConnection = vi.fn(
+      async ({ operation }: { operation: string }) => operation === 'disconnect'
+    );
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'custom-admin', tenantId: 'tenant-admin' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+      authorization: { authorizeConnection },
+    });
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn-custom-authorized',
+      userId: 'owner',
+      provider: 'custom-provider',
+      ownerKind: 'user',
+      ownerId: 'owner',
+      tenantId: 'tenant-owner',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/connections/disconnect', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'custom-provider',
+          connectionId: 'conn-custom-authorized',
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(plug.connections.get('conn-custom-authorized')).rejects.toMatchObject({
+      code: 'CONNECTION_NOT_FOUND',
+    });
+    expect(authorizeConnection).toHaveBeenCalledOnce();
+    expect(authorizeConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'disconnect' })
+    );
   });
 
   it('includes authorized organization-owned jobs in sync listings', async () => {

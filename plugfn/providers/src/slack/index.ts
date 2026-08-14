@@ -95,6 +95,7 @@ export const slackProvider: Provider = {
       name: 'conversations.list',
       displayName: 'List Channels',
       description: 'List all channels in a Slack workspace',
+      idempotent: true,
 
       parameters: z.object({
         types: z.string().optional().describe('Channel types (public_channel, private_channel)'),
@@ -135,6 +136,7 @@ export const slackProvider: Provider = {
       name: 'users.info',
       displayName: 'Get User Info',
       description: 'Get information about a user',
+      idempotent: true,
 
       parameters: z.object({
         user: z.string().describe('User ID'),

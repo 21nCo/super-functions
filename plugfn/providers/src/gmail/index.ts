@@ -155,6 +155,7 @@ export const gmailProvider: Provider = {
       name: 'mail.sync',
       displayName: 'Sync Mail',
       description: 'Sync Gmail messages using full baseline or incremental checkpoints',
+      idempotent: true,
       parameters: syncParamsSchema,
       returns: z.object({
         checkpoint: z.string(),

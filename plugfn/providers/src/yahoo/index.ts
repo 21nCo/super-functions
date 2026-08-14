@@ -106,6 +106,7 @@ export const yahooProvider: Provider = {
       name: 'mail.connect',
       displayName: 'Connect',
       description: 'Validate Yahoo OAuth inbound IMAP connect permissions',
+      idempotent: true,
       parameters: z.object({
         tenantId: z.string().min(1),
         policy: z
@@ -154,6 +155,7 @@ export const yahooProvider: Provider = {
       name: 'mail.sync',
       displayName: 'Sync',
       description: 'Normalize Yahoo IMAP RFC messages to canonical model',
+      idempotent: true,
       parameters: z.object({
         rawMessages: z.array(z.string()).default([]),
         mailbox: z.string().default('inbox'),

@@ -94,6 +94,7 @@ export const imapSmtpProvider: Provider = {
       name: 'mail.connect',
       displayName: 'Connect',
       description: 'Validate inbound IMAP connectivity with policy controls',
+      idempotent: true,
       parameters: z.object({
         host: z.string().min(1),
         username: z.string().min(1),
@@ -147,6 +148,7 @@ export const imapSmtpProvider: Provider = {
       name: 'mail.sync',
       displayName: 'Sync',
       description: 'Parse RFC822 messages and normalize into canonical model',
+      idempotent: true,
       parameters: z.object({
         host: z.string().min(1),
         username: z.string().min(1),

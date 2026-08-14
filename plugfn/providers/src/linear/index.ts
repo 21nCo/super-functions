@@ -95,6 +95,7 @@ export const linearProvider: Provider = {
       name: 'issues.list',
       displayName: 'List Issues',
       description: 'List issues for a team',
+      idempotent: true,
 
       parameters: z.object({
         teamId: z.string().describe('Team ID'),
@@ -207,6 +208,7 @@ export const linearProvider: Provider = {
       name: 'issueRelations.list',
       displayName: 'List Issue Relations',
       description: 'List directional relationships between issues',
+      idempotent: true,
 
       parameters: z.object({
         first: z.number().int().min(1).max(250).optional().default(250).describe('Relations per page'),
@@ -322,6 +324,7 @@ export const linearProvider: Provider = {
       name: 'issues.get',
       displayName: 'Get Issue',
       description: 'Get a single issue by ID',
+      idempotent: true,
 
       parameters: z.object({
         issueId: z.string().describe('Issue ID'),
@@ -422,6 +425,7 @@ export const linearProvider: Provider = {
       name: 'comments.list',
       displayName: 'List Comments',
       description: 'List workspace comments with issue and author metadata',
+      idempotent: true,
 
       parameters: z.object({
         first: z.number().int().min(1).max(250).optional().default(250),
@@ -485,6 +489,7 @@ export const linearProvider: Provider = {
       name: 'issues.search',
       displayName: 'Search Issues',
       description: 'Search issues in Linear by query text',
+      idempotent: true,
 
       parameters: z.object({
         teamId: z.string().optional().describe('Optional team ID'),
@@ -540,6 +545,7 @@ export const linearProvider: Provider = {
 
     'initiatives.list': {
       name: 'initiatives.list', displayName: 'List Initiatives', description: 'List workspace initiatives with project relationships',
+      idempotent: true,
       parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), description: z.string().nullable().optional(), content: z.string().nullable().optional(), status: z.string(), health: z.string().nullable().optional(), targetDate: z.string().nullable().optional(), startedAt: z.string().nullable().optional(), completedAt: z.string().nullable().optional(), url: z.string(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), projects: z.object({ nodes: z.array(z.object({ id: z.string() })) }).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'initiatives', `query Initiatives($first:Int!,$after:String,$includeArchived:Boolean!){initiatives(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name description content status health targetDate startedAt completedAt url owner{id email} projects{nodes{id}}} pageInfo{hasNextPage endCursor}}}`, params),
@@ -547,6 +553,7 @@ export const linearProvider: Provider = {
 
     'documents.list': {
       name: 'documents.list', displayName: 'List Documents', description: 'List workspace documents and their parent relationships',
+      idempotent: true,
       parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), title: z.string(), content: z.string().nullable().optional(), url: z.string(), trashed: z.boolean().optional(), project: z.object({ id: z.string() }).nullable().optional(), initiative: z.object({ id: z.string() }).nullable().optional(), creator: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'documents', `query Documents($first:Int!,$after:String,$includeArchived:Boolean!){documents(first:$first,after:$after,includeArchived:$includeArchived){nodes{id title content url trashed project{id} initiative{id} creator{id email}} pageInfo{hasNextPage endCursor}}}`, params),
@@ -554,6 +561,7 @@ export const linearProvider: Provider = {
 
     'customers.list': {
       name: 'customers.list', displayName: 'List Customers', description: 'List workspace customers and their product needs',
+      idempotent: true,
       parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), name: z.string(), domains: z.array(z.string()), revenue: z.number().nullable().optional(), logoUrl: z.string().nullable().optional(), url: z.string(), tier: z.object({ id: z.string(), name: z.string().optional() }).nullable().optional(), owner: z.object({ id: z.string(), email: z.string().optional() }).nullable().optional(), needs: z.object({ nodes: z.array(z.object({ id: z.string(), body: z.string().nullable().optional(), content: z.string().nullable().optional(), url: z.string().nullable().optional(), priority: z.number().optional(), issue: z.object({ id: z.string() }).nullable().optional(), project: z.object({ id: z.string() }).nullable().optional() }).passthrough()) }).optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'customers', `query Customers($first:Int!,$after:String,$includeArchived:Boolean!){customers(first:$first,after:$after,includeArchived:$includeArchived){nodes{id name domains revenue logoUrl url tier{id name} owner{id email} needs{nodes{id body content url priority issue{id} project{id}}}} pageInfo{hasNextPage endCursor}}}`, params),
@@ -561,6 +569,7 @@ export const linearProvider: Provider = {
 
     'attachments.list': {
       name: 'attachments.list', displayName: 'List Attachments', description: 'List external issue attachments with source metadata',
+      idempotent: true,
       parameters: z.object({ first: z.number().int().min(1).max(250).optional().default(250), maxPages: z.number().int().min(1).max(100).optional().default(100), includeArchived: z.boolean().optional().default(true) }),
       returns: z.object({ nodes: z.array(z.object({ id: z.string(), title: z.string(), subtitle: z.string().nullable().optional(), url: z.string(), sourceType: z.string().optional(), metadata: z.unknown().optional(), issue: z.object({ id: z.string() }).nullable().optional() }).passthrough()), pageInfo: z.object({ hasNextPage: z.boolean(), endCursor: z.string().nullable() }) }),
       execute: async (params: any, context: ActionContext) => paginateLinearConnection(context, 'attachments', `query Attachments($first:Int!,$after:String,$includeArchived:Boolean!){attachments(first:$first,after:$after,includeArchived:$includeArchived){nodes{id title subtitle url sourceType metadata issue{id}} pageInfo{hasNextPage endCursor}}}`, params),
@@ -571,6 +580,7 @@ export const linearProvider: Provider = {
       name: 'teams.list',
       displayName: 'List Teams',
       description: 'List all teams in the workspace',
+      idempotent: true,
 
       parameters: z.object({
         first: z.number().optional().describe('Number of teams to return'),

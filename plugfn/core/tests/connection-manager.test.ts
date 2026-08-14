@@ -431,6 +431,76 @@ describe('ConnectionManager OAuth shared integration', () => {
     expect(tokenClient.revokeToken).not.toHaveBeenCalled();
   });
 
+  it('rejects disconnect for a delegate with only a sync grant', async () => {
+    const adapter = new MemoryAdapter();
+    const tokenClient = createTokenHttpClient();
+    const env = createManagerEnvironment(adapter, tokenClient);
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-delegated-sync',
+      userId: 'installer',
+      provider: 'google',
+      ownerKind: 'delegated',
+      ownerId: 'delegate',
+      organizationId: 'org-1',
+      installedByUserId: 'installer',
+      delegatedToUserId: 'delegate',
+      grants: ['sync'],
+      tenantId: 'tenant-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.disconnect({
+        userId: 'delegate',
+        provider: 'google',
+        connectionId: 'conn-delegated-sync',
+        actor: { userId: 'delegate', tenantId: 'tenant-1' },
+      })
+    ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+    await expect(env.manager.get('conn-delegated-sync')).resolves.toBeDefined();
+    expect(tokenClient.revokeToken).not.toHaveBeenCalled();
+  });
+
+  it('resolves a shared connection for an authorized organization action actor', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-org-action',
+      userId: 'installer',
+      provider: 'google',
+      ownerKind: 'organization',
+      ownerId: 'org-1',
+      organizationId: 'org-1',
+      installedByUserId: 'installer',
+      tenantId: 'tenant-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.resolveConnectionForAction({
+        userId: 'admin',
+        provider: 'google',
+        connectionId: 'conn-org-action',
+        actor: {
+          userId: 'admin',
+          tenantId: 'tenant-1',
+          organizationId: 'org-1',
+          roles: ['org:admin'],
+        },
+      })
+    ).resolves.toMatchObject({ id: 'conn-org-action' });
+  });
+
   it('lists organization-owned connections independently of the installer user', async () => {
     const adapter = new MemoryAdapter();
     const env = createManagerEnvironment(adapter, createTokenHttpClient());

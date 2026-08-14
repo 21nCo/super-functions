@@ -8,7 +8,7 @@ import type { PlugFnPrincipal } from '../types/config.js';
 import type { Connection, HandleCallbackResult } from '../types/connection.js';
 import type { PlugFnApiEnvelope, PlugFnResponseMeta } from '../types/protocol.js';
 import type { PlugFnConnectionOwner } from '../types/runtime.js';
-import { hasAny, tenantMatches } from '../security/tenancy.js';
+import { connectionMatchesActor, hasAny } from '../security/tenancy.js';
 
 export interface RouteAuthContext {
   userId: string;
@@ -232,7 +232,7 @@ export function createPlugFnRouter(
             userId: authContext.userId,
             provider: provider || undefined,
           })
-        ).filter((connection) => connectionMatchesAuthContext(connection, authContext));
+        ).filter((connection) => connectionMatchesActor(connection, authContext));
         let connections = ownConnections;
         if (
           authContext.organizationId &&
@@ -249,7 +249,7 @@ export function createPlugFnRouter(
             },
           });
           connections = deduplicateConnections([...ownConnections, ...organizationConnections])
-            .filter((connection) => connectionMatchesAuthContext(connection, authContext));
+            .filter((connection) => connectionMatchesActor(connection, authContext));
         }
 
         return successResponse({
@@ -392,7 +392,7 @@ export function createPlugFnRouter(
             });
           }
 
-          if (connectionId) {
+          if (connectionId && !ctx.plugFn.config.authorization?.authorizeConnection) {
             await requireAuthorizedConnection(ctx, connectionId, authContext, 'disconnect');
           }
 
@@ -698,7 +698,7 @@ async function authorizeConnection(
     if (allowed) {
       return connection;
     }
-  } else if (connectionMatchesAuthContext(connection, authContext)) {
+  } else if (connectionMatchesActor(connection, authContext, operation)) {
     return connection;
   }
 
@@ -761,45 +761,6 @@ async function filterAuthorizedSyncJobs(
     })
   );
   return authorizationResults.filter((job): job is NonNullable<typeof job> => Boolean(job));
-}
-
-function connectionMatchesAuthContext(
-  connection: Connection,
-  authContext: RouteAuthContext
-): boolean {
-  if (!tenantMatches(connection.tenantId, authContext.tenantId)) {
-    return false;
-  }
-
-  if (connection.userId === authContext.userId) {
-    return true;
-  }
-
-  if (connection.ownerKind === 'user' && connection.ownerId === authContext.userId) {
-    return true;
-  }
-
-  if (connection.ownerKind === 'organization') {
-    const belongsToActorOrganization =
-      Boolean(connection.organizationId) &&
-      Boolean(authContext.organizationId) &&
-      connection.organizationId === authContext.organizationId;
-    return (
-      connection.installedByUserId === authContext.userId ||
-      (belongsToActorOrganization &&
-        hasAny(authContext.roles, ['admin', 'owner', 'org:admin']))
-    );
-  }
-
-  if (connection.ownerKind === 'delegated') {
-    return (
-      connection.delegatedToUserId === authContext.userId ||
-      connection.installedByUserId === authContext.userId ||
-      hasAny(authContext.grants, connection.grants ?? [])
-    );
-  }
-
-  return false;
 }
 
 function deduplicateConnections(connections: Connection[]): Connection[] {

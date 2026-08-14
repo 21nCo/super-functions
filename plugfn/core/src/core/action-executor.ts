@@ -117,6 +117,7 @@ export class ActionExecutor {
         userId: options.userId,
         provider,
         connectionId: options.connectionId,
+        actor: options.actor,
       });
 
       if (!connection) {

@@ -86,6 +86,7 @@ export const discordProvider: Provider = {
       name: 'channels.get',
       displayName: 'Get Channel',
       description: 'Get information about a Discord channel',
+      idempotent: true,
 
       parameters: z.object({
         channel_id: z.string().describe('Channel ID'),
@@ -113,6 +114,7 @@ export const discordProvider: Provider = {
       name: 'guilds.channels.list',
       displayName: 'List Guild Channels',
       description: 'List all channels in a Discord guild',
+      idempotent: true,
 
       parameters: z.object({
         guild_id: z.string().describe('Guild ID'),
@@ -212,4 +214,3 @@ export const discordProvider: Provider = {
     window: 1000, // 1 second
   },
 };
-

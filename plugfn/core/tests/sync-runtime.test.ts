@@ -484,6 +484,56 @@ describe('PlugFn sync runtime', () => {
     });
   });
 
+  it('fails a claimed job when its connection was deleted after enqueue', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'user_1' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    plug.use(testSyncProvider);
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_deleted_after_enqueue',
+      userId: 'user_1',
+      provider: 'test-sync',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const queued = await plug.sync.enqueue({
+      mode: 'full',
+      provider: 'test-sync',
+      connectionId: 'conn_deleted_after_enqueue',
+      resource: 'records',
+      actor: { userId: 'user_1' },
+    });
+    await database.deleteConnection('conn_deleted_after_enqueue');
+
+    await expect(plug.sync.processQueued()).resolves.toMatchObject({
+      processed: 1,
+      completed: 0,
+      cancelled: 0,
+      failed: 1,
+      jobs: [{ id: queued.id, status: 'failed' }],
+    });
+    await expect(plug.runtime.sync.getJob(queued.id)).resolves.toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('not found'),
+    });
+  });
+
   it('passes the connection tenant to fallback sync actions', async () => {
     const database = new MemoryAdapter();
     const encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
