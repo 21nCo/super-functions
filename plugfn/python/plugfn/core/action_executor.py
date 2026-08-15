@@ -174,7 +174,13 @@ class ActionExecutor:
         if self.enable_cache and cache_requested:
             configured_key = cache_options.get("key")
             cache_key = (
-                configured_key
+                self._cache_key(
+                    provider,
+                    action,
+                    user_id,
+                    connection.id,
+                    {"plugfn_custom_cache_key": configured_key},
+                )
                 if isinstance(configured_key, str) and configured_key
                 else self._cache_key(provider, action, user_id, connection.id, params)
             )

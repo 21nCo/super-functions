@@ -60,5 +60,11 @@ export function connectionMatchesActor(
     return operationAllowed;
   }
 
-  return operationAllowed && hasAny(actor.grants, operationGrants);
+  return (
+    operationAllowed &&
+    Boolean(connection.organizationId) &&
+    Boolean(actor.organizationId) &&
+    connection.organizationId === actor.organizationId &&
+    hasAny(actor.grants, operationGrants)
+  );
 }

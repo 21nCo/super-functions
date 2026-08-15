@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { plugFn } from '../src/core/plug-fn.js';
 import { createDbSink } from '../src/storage/db-sink.js';
@@ -191,6 +191,64 @@ describe('PlugFn sync runtime', () => {
     expect(result.completed).toBe(1);
     expect(result.jobs[0]?.status).toBe('completed');
     expect(result.jobs[0]?.fetchedCount).toBe(2);
+  });
+
+  it('uses custom connection authorization for enqueue and worker revalidation', async () => {
+    const database = new MemoryAdapter();
+    let allowed = true;
+    const authorizeConnection = vi.fn(async () => allowed);
+    const plug = plugFn({
+      database,
+      auth: {
+        async authenticate() {
+          return { userId: 'custom-admin', tenantId: 'tenant-admin' };
+        },
+      },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+      authorization: { authorizeConnection },
+    });
+    plug.use(testSyncProvider);
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_custom_auth',
+      userId: 'owner',
+      provider: 'test-sync',
+      tenantId: 'tenant-owner',
+      ownerKind: 'user',
+      ownerId: 'owner',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const queued = await plug.sync.enqueue({
+      mode: 'full',
+      provider: 'test-sync',
+      connectionId: 'conn_sync_custom_auth',
+      resource: 'records',
+      actor: { userId: 'custom-admin', tenantId: 'tenant-admin' },
+    });
+    allowed = false;
+
+    await expect(plug.sync.processQueued()).resolves.toMatchObject({
+      processed: 1,
+      completed: 0,
+      failed: 1,
+      jobs: [{ id: queued.id, status: 'failed' }],
+    });
+    expect(authorizeConnection).toHaveBeenCalledTimes(2);
+    expect(authorizeConnection).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ operation: 'sync' })
+    );
+    expect(authorizeConnection).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ operation: 'sync' })
+    );
   });
 
   it('allows an organization admin to enqueue and run organization sync work', async () => {

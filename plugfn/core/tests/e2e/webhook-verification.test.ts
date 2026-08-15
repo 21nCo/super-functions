@@ -6,6 +6,7 @@ import { githubProvider } from '../../../providers/src/github/index.js';
 import { linearProvider } from '../../../providers/src/linear/index.js';
 import { slackProvider } from '../../../providers/src/slack/index.js';
 import { stripeProvider } from '../../../providers/src/stripe/index.js';
+import { outlookProvider } from '../../../providers/src/outlook/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
 describe('PlugFn webhook verification e2e', () => {
@@ -37,6 +38,53 @@ describe('PlugFn webhook verification e2e', () => {
     await expect(response.json()).resolves.toEqual({
       challenge: 'slack-challenge-value',
     });
+  });
+
+  it('parses raw Outlook payloads before clientState verification', async () => {
+    const plug = createPlug();
+    const handler = vi.fn();
+    plug.providers.register(outlookProvider);
+    plug.webhooks.on('outlook', 'mail.update', handler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { outlook: 'expected-client-state' },
+    });
+    const rawBody = JSON.stringify({
+      value: [
+        {
+          subscriptionId: 'sub-1',
+          resource: "/me/mailFolders('Inbox')/messages/m1",
+          clientState: 'expected-client-state',
+        },
+      ],
+    });
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/outlook/mail-update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers Microsoft Graph Outlook validation-token handshakes as plain text', async () => {
+    const plug = createPlug();
+    plug.providers.register(outlookProvider);
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request(
+        'http://localhost/webhooks/outlook/mail-update?validationToken=validation%20token',
+        { method: 'POST' }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    await expect(response.text()).resolves.toBe('validation token');
   });
 
   it('verifies a signed webhook through the router using raw request bytes', async () => {
@@ -369,6 +417,17 @@ describe('PlugFn webhook verification e2e', () => {
       });
 
     const failed = await router.handle(createRequest());
+    const failedReceipt = await plug.runtime.webhooks.findReceiptByIdempotencyKey(
+      'github',
+      'delivery_handler_retry'
+    );
+    const failedDeliveries = await plug.runtime.webhooks.listDeliveries(failedReceipt!.id);
+    expect(failedDeliveries).toHaveLength(1);
+    expect(failedDeliveries[0]).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      nextAttemptAt: expect.any(Date),
+    });
     const retried = await router.handle(createRequest());
 
     expect(failed.status).toBe(503);

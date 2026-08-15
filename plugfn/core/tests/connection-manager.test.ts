@@ -501,6 +501,66 @@ describe('ConnectionManager OAuth shared integration', () => {
     ).resolves.toMatchObject({ id: 'conn-org-action' });
   });
 
+  it('rejects a tenant-mismatched actor for an implicitly selected action connection', async () => {
+    const adapter = new MemoryAdapter();
+    const env = createManagerEnvironment(adapter, createTokenHttpClient());
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-implicit-tenant',
+      userId: 'user-1',
+      provider: 'google',
+      tenantId: 'tenant-1',
+      ownerKind: 'user',
+      ownerId: 'user-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.resolveConnectionForAction({
+        userId: 'user-1',
+        provider: 'google',
+        actor: { userId: 'user-1', tenantId: 'tenant-2' },
+      })
+    ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+  });
+
+  it('applies custom authorization to implicitly selected action connections', async () => {
+    const adapter = new MemoryAdapter();
+    const authorizeConnection = vi.fn(async () => false);
+    const env = createManagerEnvironment(adapter, createTokenHttpClient(), {
+      authorizeConnection,
+    });
+    const now = new Date();
+    await adapter.createConnection({
+      id: 'conn-implicit-custom',
+      userId: 'user-1',
+      provider: 'google',
+      tenantId: 'tenant-1',
+      ownerKind: 'user',
+      ownerId: 'user-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      env.manager.resolveConnectionForAction({
+        userId: 'user-1',
+        provider: 'google',
+        actor: { userId: 'user-1', tenantId: 'tenant-1' },
+      })
+    ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+    expect(authorizeConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'action' })
+    );
+  });
+
   it('lists organization-owned connections independently of the installer user', async () => {
     const adapter = new MemoryAdapter();
     const env = createManagerEnvironment(adapter, createTokenHttpClient());
@@ -551,7 +611,13 @@ describe('ConnectionManager OAuth shared integration', () => {
   });
 });
 
-function createManagerEnvironment(adapter: MemoryAdapter, tokenClient: OAuthTokenHttpClient) {
+function createManagerEnvironment(
+  adapter: MemoryAdapter,
+  tokenClient: OAuthTokenHttpClient,
+  options: {
+    authorizeConnection?: (input: any) => boolean | Promise<boolean>;
+  } = {}
+) {
   const providers = new Map<string, Provider>([['google', createGoogleProvider()]]);
   const integrationConfigs = new Map<string, any>([
     [
@@ -581,7 +647,8 @@ function createManagerEnvironment(adapter: MemoryAdapter, tokenClient: OAuthToke
     BASE_URL,
     ENCRYPTION_KEY,
     new NoopLogger(),
-    oauthDependencies
+    oauthDependencies,
+    options.authorizeConnection
   );
 
   return {

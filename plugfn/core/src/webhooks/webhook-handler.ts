@@ -117,6 +117,7 @@ export class WebhookHandler {
     const { triggerKey, trigger } = this.resolveTrigger(provider, event, providerObj.triggers ?? {});
     const normalizedHeaders = normalizeHeaders(headers);
     const signature = getSignature(provider, normalizedHeaders);
+    const parsedPayload = payload ?? parseWebhookPayload(options.rawBody);
     const verificationContext: WebhookVerificationContext = {
       rawBody: options.rawBody,
       headers: normalizedHeaders,
@@ -139,7 +140,7 @@ export class WebhookHandler {
 
       try {
         verified = await verifier(
-          payload,
+          parsedPayload,
           signature,
           secret,
           verificationContext
@@ -154,7 +155,6 @@ export class WebhookHandler {
       }
     }
 
-    const parsedPayload = payload ?? parseWebhookPayload(options.rawBody);
     const transformedPayload = trigger.webhookConfig?.transformPayload
       ? trigger.webhookConfig.transformPayload(parsedPayload)
       : parsedPayload;

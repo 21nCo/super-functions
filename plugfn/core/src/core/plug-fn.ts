@@ -58,7 +58,7 @@ import { AdapterWorkflowStorage } from '../storage/workflow-storage.js';
 import { ConsoleLogger } from '../utils/logger.js';
 import { validateEncryptionKey } from '../utils/crypto.js';
 import { getSchema } from '../schema.js';
-import { connectionMatchesActor, tenantMatches } from '../security/tenancy.js';
+import { tenantMatches } from '../security/tenancy.js';
 
 /**
  * Main PlugFn SDK interface
@@ -513,6 +513,24 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     return executeQueuedSyncJob(job);
   }
 
+  async function assertSyncConnectionAuthorized(
+    connection: Connection,
+    actor: PlugFnActor
+  ): Promise<void> {
+    if (await connectionManager.canActorAccessConnection(connection, actor, 'sync')) {
+      return;
+    }
+
+    const tenantMismatch =
+      !config.authorization?.authorizeConnection &&
+      !tenantMatches(connection.tenantId, actor.tenantId);
+    throw new PlugFnRuntimeError(
+      'TENANT_ACCESS_DENIED',
+      tenantMismatch ? 'connection tenant mismatch' : 'connection owner mismatch',
+      403
+    );
+  }
+
   async function enqueueSyncJob(
     mode: PlugFnSyncJob['mode'],
     options: PlugFnSyncRunOptions
@@ -526,19 +544,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       );
     }
 
-    if (options.actor && !tenantMatches(connection.tenantId, options.actor.tenantId)) {
-      throw new PlugFnRuntimeError(
-        'TENANT_ACCESS_DENIED',
-        'connection tenant mismatch',
-        403
-      );
-    }
-    if (options.actor && !connectionMatchesActor(connection, options.actor, 'sync')) {
-      throw new PlugFnRuntimeError(
-        'TENANT_ACCESS_DENIED',
-        'connection owner mismatch',
-        403
-      );
+    if (options.actor) {
+      await assertSyncConnectionAuthorized(connection, options.actor);
     }
 
     const persistedCheckpoint =
@@ -631,25 +638,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       }
 
       const workerOptions = readSyncJobWorkerMetadata(job);
-      if (
-        workerOptions.actor &&
-        !tenantMatches(connection.tenantId, workerOptions.actor.tenantId)
-      ) {
-        throw new PlugFnRuntimeError(
-          'TENANT_ACCESS_DENIED',
-          'connection tenant mismatch',
-          403
-        );
-      }
-      if (
-        workerOptions.actor &&
-        !connectionMatchesActor(connection, workerOptions.actor, 'sync')
-      ) {
-        throw new PlugFnRuntimeError(
-          'TENANT_ACCESS_DENIED',
-          'connection owner mismatch',
-          403
-        );
+      if (workerOptions.actor) {
+        await assertSyncConnectionAuthorized(connection, workerOptions.actor);
       }
 
       const result = await executeSyncResource({

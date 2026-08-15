@@ -147,6 +147,17 @@ async def test_clickup_webhook_verifies_raw_bytes_before_dispatch():
     assert result == [{"task_id": "task_1"}]
     assert received == [{"event": "taskUpdated", "task_id": "task_1"}]
 
+    alias_result = await handler.handle_webhook(
+        provider="clickup",
+        event="task.updated",
+        payload=None,
+        headers={"clickup-signature": sign_clickup(raw_body, secret)},
+        secret=secret,
+        raw_body=raw_body,
+    )
+
+    assert alias_result == [{"task_id": "task_1"}]
+
     with pytest.raises(WebhookHandlerError) as error:
         await handler.handle_webhook(
             provider="clickup",
@@ -158,7 +169,7 @@ async def test_clickup_webhook_verifies_raw_bytes_before_dispatch():
         )
 
     assert error.value.code == "WEBHOOK_SIGNATURE_INVALID"
-    assert len(received) == 1
+    assert len(received) == 2
 
 
 @pytest.mark.asyncio

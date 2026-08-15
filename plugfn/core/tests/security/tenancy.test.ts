@@ -54,4 +54,49 @@ describe('tenant matching', () => {
       )
     ).toBe(true);
   });
+
+  it('requires organization equality for indirect delegated grants', () => {
+    const connection = {
+      id: 'conn-delegated-org',
+      userId: 'installer',
+      provider: 'gmail',
+      ownerKind: 'delegated' as const,
+      ownerId: 'delegate',
+      organizationId: 'org-1',
+      installedByUserId: 'installer',
+      delegatedToUserId: 'delegate',
+      grants: ['sync'],
+      tenantId: 'tenant-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    expect(
+      connectionMatchesActor(
+        connection,
+        {
+          userId: 'grantee',
+          tenantId: 'tenant-1',
+          organizationId: 'org-2',
+          grants: ['sync'],
+        },
+        'sync'
+      )
+    ).toBe(false);
+    expect(
+      connectionMatchesActor(
+        connection,
+        {
+          userId: 'grantee',
+          tenantId: 'tenant-1',
+          organizationId: 'org-1',
+          grants: ['sync'],
+        },
+        'sync'
+      )
+    ).toBe(true);
+  });
 });

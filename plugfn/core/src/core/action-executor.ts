@@ -126,7 +126,13 @@ export class ActionExecutor {
 
       const cacheKey = shouldUseCache
         ? typeof options.cache === 'object' && options.cache.key
-          ? options.cache.key
+          ? this.cacheMiddleware.generateKey(
+              provider,
+              action,
+              { plugfnCustomCacheKey: options.cache.key },
+              options.userId,
+              connection.id
+            )
           : this.cacheMiddleware.generateKey(
               provider,
               action,

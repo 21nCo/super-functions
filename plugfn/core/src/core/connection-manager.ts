@@ -199,7 +199,6 @@ export class ConnectionManager {
   private readonly keyRef: string;
   private readonly actionLogAdapter: PlugFnDatabaseStorageAdapter;
   private readonly refreshInFlight = new Map<string, Promise<Connection>>();
-  private readonly configuredConnections = new Map<string, Connection>();
 
   constructor(
     private connectionStorage: ConnectionStorage,
@@ -367,7 +366,7 @@ export class ConnectionManager {
       }
       const actorAllowed = options.actor
         ? options.actor.userId === options.userId &&
-          (await this.actorCanAccessConnection(connection, options.actor, 'action'))
+          (await this.canActorAccessConnection(connection, options.actor, 'action'))
         : connectionBelongsToUser(connection, options.userId);
       if (!actorAllowed) {
         throw new ConnectionResolutionError(
@@ -389,11 +388,40 @@ export class ConnectionManager {
       return this.resolveConfiguredConnection(options);
     }
 
-    if (activeConnections.length === 1) {
-      return activeConnections[0];
+    if (options.actor && options.actor.userId !== options.userId) {
+      throw new ConnectionResolutionError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
+        403
+      );
     }
 
-    const sortedConnections = [...activeConnections].sort(compareConnectionPriority);
+    const eligibleConnections = options.actor
+      ? (
+          await Promise.all(
+            activeConnections.map(async (connection) => ({
+              connection,
+              allowed: await this.canActorAccessConnection(connection, options.actor!, 'action'),
+            }))
+          )
+        )
+          .filter(({ allowed }) => allowed)
+          .map(({ connection }) => connection)
+      : activeConnections;
+
+    if (eligibleConnections.length === 0) {
+      throw new ConnectionResolutionError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
+        403
+      );
+    }
+
+    if (eligibleConnections.length === 1) {
+      return eligibleConnections[0];
+    }
+
+    const sortedConnections = [...eligibleConnections].sort(compareConnectionPriority);
     if (compareConnectionPriority(sortedConnections[0], sortedConnections[1]) === 0) {
       throw new ConnectionSelectionError();
     }
@@ -428,7 +456,7 @@ export class ConnectionManager {
     const actor = options.actor ?? { userId: options.userId };
     if (
       actor.userId !== options.userId ||
-      !(await this.actorCanAccessConnection(targetConnection, actor, 'disconnect'))
+      !(await this.canActorAccessConnection(targetConnection, actor, 'disconnect'))
     ) {
       throw new ConnectionResolutionError(
         'TENANT_ACCESS_DENIED',
@@ -595,11 +623,11 @@ export class ConnectionManager {
   }
 
   async getCredentials(connectionId: string): Promise<Credentials> {
-    const configuredConnection = this.configuredConnections.get(connectionId);
-    if (configuredConnection) {
-      const credentials = this.readConfiguredCredentials(configuredConnection.provider);
+    const configuredProvider = parseConfiguredConnectionId(connectionId);
+    if (configuredProvider) {
+      const credentials = this.readConfiguredCredentials(configuredProvider);
       if (!credentials) {
-        throw new Error(`Configured credentials missing for ${configuredConnection.provider}`);
+        throw new Error(`Configured credentials missing for ${configuredProvider}`);
       }
       return credentials;
     }
@@ -633,9 +661,7 @@ export class ConnectionManager {
   }
 
   async markUsed(connectionId: string): Promise<void> {
-    const configuredConnection = this.configuredConnections.get(connectionId);
-    if (configuredConnection) {
-      configuredConnection.lastUsedAt = new Date();
+    if (parseConfiguredConnectionId(connectionId)) {
       return;
     }
     await this.connectionStorage.updateLastUsed(connectionId);
@@ -744,11 +770,11 @@ export class ConnectionManager {
     return null;
   }
 
-  private resolveConfiguredConnection(options: {
+  private async resolveConfiguredConnection(options: {
     userId: string;
     provider: string;
     actor?: PlugFnActor;
-  }): Connection | null {
+  }): Promise<Connection | null> {
     if (!this.readConfiguredCredentials(options.provider)) {
       return null;
     }
@@ -767,9 +793,6 @@ export class ConnectionManager {
       encodeURIComponent(options.userId),
       encodeURIComponent(tenantId ?? ''),
     ].join(':');
-    const existing = this.configuredConnections.get(id);
-    if (existing) return existing;
-
     const now = new Date();
     const connection: Connection = {
       id,
@@ -784,11 +807,22 @@ export class ConnectionManager {
       createdAt: now,
       updatedAt: now,
     };
-    this.configuredConnections.set(id, connection);
+
+    if (
+      options.actor &&
+      !(await this.canActorAccessConnection(connection, options.actor, 'action'))
+    ) {
+      throw new ConnectionResolutionError(
+        'TENANT_ACCESS_DENIED',
+        'connection owner mismatch',
+        403
+      );
+    }
+
     return connection;
   }
 
-  private async actorCanAccessConnection(
+  async canActorAccessConnection(
     connection: Connection,
     actor: PlugFnActor,
     operation: PlugFnConnectionOperation
@@ -797,6 +831,19 @@ export class ConnectionManager {
       return this.authorizeConnection({ actor, connection, operation });
     }
     return connectionMatchesActor(connection, actor, operation);
+  }
+}
+
+function parseConfiguredConnectionId(connectionId: string): string | null {
+  const parts = connectionId.split(':');
+  if (parts.length !== 4 || parts[0] !== 'configured' || !parts[1]) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(parts[1]);
+  } catch {
+    return null;
   }
 }
 

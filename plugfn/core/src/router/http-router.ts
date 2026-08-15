@@ -55,6 +55,7 @@ interface ParseJsonBodyOptions {
 
 const DEFAULT_WEBHOOK_PAYLOAD_MAX_BYTES = 2 * 1024 * 1024;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
+const WEBHOOK_INITIAL_RETRY_DELAY_MS = 30_000;
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 export function createPlugFnRouter(
@@ -831,6 +832,7 @@ async function handleWebhookRoute(
   }
 ): Promise<Response> {
   let deliveryId: string | undefined;
+  let deliveryAttempts = 0;
   let receiptId: string | undefined;
   let rawBody: Uint8Array | undefined;
   let headers: Record<string, string> | undefined;
@@ -846,6 +848,15 @@ async function handleWebhookRoute(
       ctx.plugFn.config.webhooks?.allowedIPs,
       options.resolveWebhookClientIp
     );
+    if (provider.toLowerCase() === 'outlook') {
+      const validationToken = new URL(req.url).searchParams.get('validationToken');
+      if (validationToken !== null) {
+        return new Response(validationToken, {
+          status: 200,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
+      }
+    }
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
     if (!event) {
       resolvedEvent = inferWebhookEvent(
@@ -969,6 +980,7 @@ async function handleWebhookRoute(
       },
     });
     deliveryId = delivery.id;
+    deliveryAttempts = delivery.attempts;
 
     const webhookEvent = await ctx.plugFn.webhooks.handle(
       provider,
@@ -1017,7 +1029,9 @@ async function handleWebhookRoute(
     if (deliveryId) {
       await ctx.plugFn.runtime.webhooks.updateDelivery(deliveryId, {
         status: 'failed',
+        attempts: deliveryAttempts + 1,
         error: error instanceof Error ? error.message : 'webhook handler failed',
+        nextAttemptAt: new Date(Date.now() + WEBHOOK_INITIAL_RETRY_DELAY_MS),
       });
     }
     return errorResponse(toDeterministicError(error));

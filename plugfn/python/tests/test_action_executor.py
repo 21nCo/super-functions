@@ -178,6 +178,42 @@ async def test_dictionary_cache_options_honor_enabled_and_custom_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_cache_keys_are_scoped_to_the_connection() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    first = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 1},
+        connection_id="connection-1",
+        cache={"enabled": True, "key": "records"},
+    )
+    other_connection = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 2},
+        connection_id="connection-2",
+        cache={"enabled": True, "key": "records"},
+    )
+    cached_first = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"page": 3},
+        connection_id="connection-1",
+        cache={"enabled": True, "key": "records"},
+    )
+
+    assert first["cached"] is False
+    assert other_connection["cached"] is False
+    assert cached_first["cached"] is True
+    assert action.calls == 2
+
+
+@pytest.mark.asyncio
 async def test_dictionary_cache_options_honor_disabled() -> None:
     action = RecordingAction()
     executor = create_executor(action, enable_rate_limit=False)

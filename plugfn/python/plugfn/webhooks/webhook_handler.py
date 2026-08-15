@@ -172,7 +172,9 @@ def _verify_linear_signature(
 
 
 def _verify_clickup_signature(raw_body: bytes, headers: Dict[str, str], secret: str) -> None:
-    signature_header = headers.get("x-signature", "")
+    signature_header = headers.get("x-signature", "") or headers.get(
+        "clickup-signature", ""
+    )
     if not signature_header:
         raise WebhookHandlerError("WEBHOOK_SIGNATURE_INVALID", "Missing signature header")
 

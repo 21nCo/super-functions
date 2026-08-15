@@ -99,6 +99,30 @@ describe('PlugFn SDK', () => {
       await expect(adapter.listConnections('test-user', 'test')).resolves.toEqual([]);
     });
 
+    it('applies custom authorization to configured non-OAuth connections', async () => {
+      const authorizeConnection = vi.fn(async () => false);
+      const configuredPlug = plugFn({
+        database: new MemoryAdapter(),
+        auth: { async authenticate() { return { userId: 'test-user' }; } },
+        baseUrl: 'https://test.com',
+        encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        integrations: { test: { type: 'api-key', apiKey: 'test-api-key' } },
+        authorization: { authorizeConnection },
+      });
+      configuredPlug.providers.register(mockProvider('test', { getData: mockResponse({ ok: true }) }));
+
+      await expect(
+        configuredPlug.test.getData({
+          userId: 'test-user',
+          actor: { userId: 'test-user' },
+          params: {},
+        })
+      ).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED' });
+      expect(authorizeConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'action' })
+      );
+    });
+
     it('applies global quotas and can disable provider quotas independently', async () => {
       const acquire = vi.spyOn(RateLimiter.prototype, 'acquire').mockResolvedValue(undefined);
       const acquireMany = vi
@@ -296,7 +320,7 @@ describe('PlugFn SDK', () => {
       expect(executions).toBe(1);
     });
 
-    it('separates explicit cache entries by resolved connection', async () => {
+    it('scopes custom cache keys by the resolved connection', async () => {
       let executions = 0;
       const provider = mockProvider('test', {
         'getProfile': mockResponse({ connectionId: '' }),
@@ -316,19 +340,19 @@ describe('PlugFn SDK', () => {
         userId: 'test-user',
         connectionId: 'conn-a',
         params: {},
-        cache: true,
+        cache: { key: 'profile' },
       });
       const secondA = await plug.test.getProfile({
         userId: 'test-user',
         connectionId: 'conn-a',
         params: {},
-        cache: true,
+        cache: { key: 'profile' },
       });
       const firstB = await plug.test.getProfile({
         userId: 'test-user',
         connectionId: 'conn-b',
         params: {},
-        cache: true,
+        cache: { key: 'profile' },
       });
 
       expect(firstA).toEqual({ connectionId: 'conn-a' });
