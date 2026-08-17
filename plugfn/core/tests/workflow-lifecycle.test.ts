@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { WorkflowEngine, WorkflowEngineError } from '../src/core/workflow-engine.js';
 import { ProviderRegistry } from '../src/core/provider-registry.js';
 import { WebhookHandler } from '../src/webhooks/webhook-handler.js';
 import type { WorkflowStorage } from '../src/storage/workflow-storage.js';
 import { NoopLogger } from '../src/utils/logger.js';
+import { mockProvider } from '../src/testing/index.js';
+import { TriggerType } from '../src/types/trigger.js';
 import {
   WorkflowExecutionStatus,
   WorkflowStatus,
@@ -100,12 +103,40 @@ describe('workflow lifecycle trigger handling', () => {
       message: 'workflow step IDs must be strings',
     });
   });
+
+  it('propagates workflow execution failures to the webhook delivery boundary', async () => {
+    const { engine, webhookHandler } = createHarness();
+    const definition = createWorkflowDefinition(WorkflowStatus.Enabled);
+    definition.definition.steps[0].action = async () => {
+      throw new Error('workflow downstream failed');
+    };
+    await engine.create(definition);
+
+    await expect(
+      webhookHandler.handleWebhook('github', 'issues.opened', { issue: 1 }, {})
+    ).rejects.toMatchObject({
+      code: 'WEBHOOK_HANDLER_FAILED',
+      retryable: true,
+    });
+  });
 });
 
 function createHarness() {
   const storage = new InMemoryWorkflowStorage();
   const logger = new NoopLogger();
   const providerRegistry = new ProviderRegistry(logger);
+  const provider = mockProvider('github', {});
+  provider.triggers = {
+    'issues.opened': {
+      name: 'issues.opened',
+      displayName: 'Issue opened',
+      description: 'Test trigger',
+      type: TriggerType.Webhook,
+      schema: z.any(),
+      handler: async (payload) => ({ event: 'issues.opened', data: payload }),
+    },
+  };
+  providerRegistry.register(provider);
   const webhookHandler = new WebhookHandler(providerRegistry, logger);
   const engine = new WorkflowEngine(storage, webhookHandler, logger);
 

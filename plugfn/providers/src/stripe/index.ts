@@ -138,6 +138,9 @@ export const stripeProvider: Provider = {
 
         if (params.customer) formData.customer = params.customer;
         if (params.description) formData.description = params.description;
+        for (const [key, value] of Object.entries(params.metadata ?? {})) {
+          formData[`metadata[${key}]`] = String(value);
+        }
 
         const response = await context.http.post(
           `${context.provider.baseUrl}/payment_intents`,

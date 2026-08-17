@@ -1,7 +1,7 @@
 """Workflow engine for managing and executing workflows."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ..storage.workflow_storage import WorkflowStorage
 from ..types import Workflow, WorkflowStatus
@@ -23,6 +23,9 @@ class WorkflowEngine:
         self.storage = storage
         self.webhook_handler = webhook_handler
         self.logger = logger
+        self._trigger_bindings: Dict[
+            str, Tuple[str, str, Callable[[Dict[str, Any]], Awaitable[Any]]]
+        ] = {}
 
     async def list_workflows(
         self, user_id: Optional[str] = None, status: Optional[WorkflowStatus] = None
@@ -112,6 +115,7 @@ class WorkflowEngine:
             workflow_id,
             {"status": WorkflowStatus.ENABLED, "updated_at": datetime.now()},
         )
+        await self._register_trigger(workflow)
 
         self.logger.info(f"Enabled workflow: {workflow_id}")
 
@@ -128,6 +132,7 @@ class WorkflowEngine:
         if not workflow:
             raise ValueError(f"Workflow {workflow_id} not found")
 
+        self._unregister_trigger(workflow)
         await self.storage.update_workflow(
             workflow_id,
             {"status": WorkflowStatus.DISABLED, "updated_at": datetime.now()},
@@ -148,9 +153,37 @@ class WorkflowEngine:
         if not workflow:
             raise ValueError(f"Workflow {workflow_id} not found")
 
+        self._unregister_trigger(workflow)
         await self.storage.delete_workflow(workflow_id)
 
         self.logger.info(f"Deleted workflow: {workflow_id}")
+
+    async def _register_trigger(self, workflow: Workflow) -> None:
+        trigger = workflow.definition.get("trigger")
+        if not isinstance(trigger, dict):
+            raise ValueError(f"Workflow {workflow.id} trigger is invalid")
+
+        provider = trigger.get("provider")
+        event = trigger.get("event")
+        if not isinstance(provider, str) or not provider:
+            raise ValueError(f"Workflow {workflow.id} trigger provider is invalid")
+        if not isinstance(event, str) or not event:
+            raise ValueError(f"Workflow {workflow.id} trigger event is invalid")
+
+        self._unregister_trigger(workflow)
+
+        async def handler(payload: Dict[str, Any]) -> Any:
+            return await self.execute_workflow(workflow.id, payload)
+
+        self.webhook_handler.register_handler(provider, event, handler)
+        self._trigger_bindings[workflow.id] = (provider, event, handler)
+
+    def _unregister_trigger(self, workflow: Workflow) -> None:
+        binding = self._trigger_bindings.pop(workflow.id, None)
+        if binding is None:
+            return
+        provider, event, handler = binding
+        self.webhook_handler.unregister_handler(provider, event, handler)
 
     async def get_workflow_stats(self, workflow_id: str) -> Dict[str, Any]:
         """Get workflow execution statistics.

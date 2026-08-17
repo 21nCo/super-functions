@@ -13,6 +13,8 @@ import type {
 import type { Workflow, WorkflowExecution } from '../../types/workflow.js';
 import type { WebhookRecord } from '../webhook-storage.js';
 
+const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
+
 export interface PlugFnStorageModelMapping {
   connections: string;
   oauthStates: string;
@@ -535,7 +537,18 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
       limit,
     });
 
-    return [...pending, ...failed]
+    const staleBefore = new Date(now.getTime() - WEBHOOK_DELIVERY_LEASE_MS);
+    const staleRunning = await this.database.findMany<PlugFnWebhookDelivery>({
+      model: this.models.webhookDeliveries,
+      where: [
+        { field: 'status', operator: 'eq', value: 'running' },
+        { field: 'updatedAt', operator: 'lte', value: staleBefore },
+      ],
+      orderBy: [{ field: 'updatedAt', direction: 'asc' }],
+      limit,
+    });
+
+    return [...pending, ...failed, ...staleRunning]
       .filter((delivery) => !delivery.nextAttemptAt || toTime(delivery.nextAttemptAt) <= now.getTime())
       .sort((left, right) => {
         const leftTime = toTime(left.nextAttemptAt ?? left.createdAt);
@@ -561,6 +574,13 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
       ];
       if (delivery.nextAttemptAt) {
         where.push({ field: 'nextAttemptAt', operator: 'lte', value: now });
+      }
+      if (delivery.status === 'running') {
+        where.push({
+          field: 'updatedAt',
+          operator: 'lte',
+          value: new Date(now.getTime() - WEBHOOK_DELIVERY_LEASE_MS),
+        });
       }
 
       try {

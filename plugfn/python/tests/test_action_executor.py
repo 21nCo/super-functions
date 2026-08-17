@@ -214,6 +214,33 @@ async def test_custom_cache_keys_are_scoped_to_the_connection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_custom_cache_keys_cannot_collide_with_parameter_cache_keys() -> None:
+    action = RecordingAction()
+    executor = create_executor(action, enable_rate_limit=False)
+
+    parameter_keyed = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {"plugfn_custom_cache_key": "records"},
+        connection_id="connection-1",
+        cache=True,
+    )
+    custom_keyed = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+        cache={"enabled": True, "key": "records"},
+    )
+
+    assert parameter_keyed["cached"] is False
+    assert custom_keyed["cached"] is False
+    assert action.calls == 2
+
+
+@pytest.mark.asyncio
 async def test_dictionary_cache_options_honor_disabled() -> None:
     action = RecordingAction()
     executor = create_executor(action, enable_rate_limit=False)

@@ -174,12 +174,12 @@ class ActionExecutor:
         if self.enable_cache and cache_requested:
             configured_key = cache_options.get("key")
             cache_key = (
-                self._cache_key(
+                self._custom_cache_key(
                     provider,
                     action,
                     user_id,
                     connection.id,
-                    {"plugfn_custom_cache_key": configured_key},
+                    configured_key,
                 )
                 if isinstance(configured_key, str) and configured_key
                 else self._cache_key(provider, action, user_id, connection.id, params)
@@ -358,6 +358,16 @@ class ActionExecutor:
             params, sort_keys=True, separators=(",", ":"), default=str
         )
         return f"{provider}:{action}:{user_id}:{connection_id}:{encoded_params}"
+
+    @staticmethod
+    def _custom_cache_key(
+        provider: str,
+        action: str,
+        user_id: str,
+        connection_id: str,
+        custom_key: str,
+    ) -> str:
+        return f"{provider}:{action}:{user_id}:{connection_id}:custom:{custom_key}"
 
     async def _cache_get(self, key: str) -> Tuple[bool, Any]:
         async with self._cache_lock:

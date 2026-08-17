@@ -65,4 +65,34 @@ describe('Stripe provider actions', () => {
     expect(form.get('metadata[workspace]')).toBe('acme');
     expect(form.get('metadata[source]')).toBe('plugfn');
   });
+
+  it('encodes payment intent metadata using Stripe form field syntax', async () => {
+    const post = vi.fn(async () => ({
+      data: {
+        id: 'pi_1',
+        amount: 1000,
+        currency: 'usd',
+        status: 'requires_payment_method',
+        client_secret: 'secret',
+        created: 1,
+      },
+    }));
+
+    await stripeProvider.actions['paymentIntents.create'].execute(
+      {
+        amount: 1000,
+        currency: 'usd',
+        metadata: { workspace: 'acme', source: 'plugfn' },
+      },
+      {
+        provider: { name: 'stripe', baseUrl: stripeProvider.baseUrl },
+        http: { post },
+      } as any
+    );
+
+    const body = post.mock.calls[0]?.[1] as string;
+    const form = new URLSearchParams(body);
+    expect(form.get('metadata[workspace]')).toBe('acme');
+    expect(form.get('metadata[source]')).toBe('plugfn');
+  });
 });

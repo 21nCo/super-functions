@@ -484,6 +484,7 @@ export class WorkflowEngine {
         await this.execute(workflow.id, event);
       } catch (error) {
         this.logger.error(`Workflow trigger execution failed`, { workflow: workflow.id, error });
+        throw error;
       }
     };
 

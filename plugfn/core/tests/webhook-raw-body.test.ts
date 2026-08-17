@@ -12,6 +12,51 @@ import { NoopLogger } from '../src/utils/logger.js';
 const encoder = new TextEncoder();
 
 describe('raw-body webhook verification', () => {
+  it('waits for workflow trigger rehydration before accepting a webhook', async () => {
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+    const handleWebhook = vi.fn(async () => ({ id: 'evt_ready', verified: true }));
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.ready = ready;
+    const router = createPlugFnRouter(plug);
+
+    const responsePromise = router.handle(
+      new Request('http://localhost/webhooks/stripe/invoice.paid', {
+        method: 'POST',
+        body: JSON.stringify({ id: 'evt_ready', type: 'invoice.paid' }),
+      })
+    );
+    await Promise.resolve();
+    expect(handleWebhook).not.toHaveBeenCalled();
+
+    resolveReady();
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a retryable 503 when workflow trigger rehydration fails', async () => {
+    const handleWebhook = vi.fn();
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.ready = Promise.reject(new Error('storage unavailable'));
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/stripe/invoice.paid', {
+        method: 'POST',
+        body: JSON.stringify({ id: 'evt_not_ready', type: 'invoice.paid' }),
+      })
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'PLUGFN_NOT_READY', retryable: true },
+    });
+    expect(handleWebhook).not.toHaveBeenCalled();
+  });
+
   it('passes raw bytes from the router to webhook handling before verification', async () => {
     const handleWebhook = vi.fn(async () => ({ id: 'evt_1', verified: true }));
     const router = createPlugFnRouter(createRouterPlugMock(handleWebhook), {

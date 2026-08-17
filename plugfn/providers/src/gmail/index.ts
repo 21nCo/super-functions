@@ -361,36 +361,53 @@ function createGmailSyncSource(context: ActionContext): GmailSyncSource {
     },
     listIncremental: async ({ startHistoryId, maxMessages }) => {
       try {
-        const response = await context.http.get<{
-          history?: Array<{
-            messages?: Array<{ id?: string } | GmailApiMessage>;
-            messagesAdded?: Array<{ message?: { id?: string } | GmailApiMessage }>;
-          }>;
-          historyId?: string;
-        }>(`${context.provider.baseUrl}/gmail/v1/users/me/history`, {
-          params: {
-            startHistoryId,
-            maxResults: maxMessages,
-            historyTypes: 'messageAdded',
-          },
-        });
-
         const summaries: Array<{ id?: string } | GmailApiMessage> = [];
-        for (const item of response.data.history ?? []) {
-          for (const message of item.messages ?? []) {
-            summaries.push(message);
-          }
-          for (const added of item.messagesAdded ?? []) {
-            if (added.message) {
-              summaries.push(added.message);
+        const seenPageTokens = new Set<string>();
+        let pageToken: string | undefined;
+        let historyId = startHistoryId;
+
+        do {
+          const response = await context.http.get<{
+            history?: Array<{
+              messages?: Array<{ id?: string } | GmailApiMessage>;
+              messagesAdded?: Array<{ message?: { id?: string } | GmailApiMessage }>;
+            }>;
+            historyId?: string;
+            nextPageToken?: string;
+          }>(`${context.provider.baseUrl}/gmail/v1/users/me/history`, {
+            params: {
+              startHistoryId,
+              maxResults: maxMessages,
+              historyTypes: 'messageAdded',
+              ...(pageToken ? { pageToken } : {}),
+            },
+          });
+
+          for (const item of response.data.history ?? []) {
+            for (const message of item.messages ?? []) {
+              summaries.push(message);
+            }
+            for (const added of item.messagesAdded ?? []) {
+              if (added.message) {
+                summaries.push(added.message);
+              }
             }
           }
-        }
+
+          historyId = response.data.historyId ?? historyId;
+          const nextPageToken = response.data.nextPageToken;
+          if (!nextPageToken || seenPageTokens.has(nextPageToken)) {
+            pageToken = undefined;
+          } else {
+            seenPageTokens.add(nextPageToken);
+            pageToken = nextPageToken;
+          }
+        } while (pageToken);
 
         const messages = await hydrateMessages(context, summaries);
         return {
           messages,
-          historyId: response.data.historyId ?? startHistoryId,
+          historyId,
         };
       } catch (error) {
         const httpError = error as HttpError & { data?: Record<string, unknown> };

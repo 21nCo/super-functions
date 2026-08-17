@@ -891,6 +891,37 @@ describe('PlugFn sync runtime', () => {
     expect(firstRun.succeeded + secondRun.succeeded).toBe(1);
     expect(firstRun.processed + secondRun.processed).toBe(1);
   });
+
+  it('reclaims stale running webhook deliveries after the worker lease expires', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    const receipt = await plug.runtime.webhooks.createReceipt({
+      provider: 'github',
+      event: 'issues',
+      payloadHash: 'hash_stale_running',
+      verificationStatus: 'verified',
+    });
+    const delivery = await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      handlerName: 'github.issues',
+      status: 'running',
+    });
+    await database.updateWebhookDelivery(delivery.id, {
+      updatedAt: new Date(Date.now() - 6 * 60 * 1000),
+    });
+
+    const handler = vi.fn();
+    const result = await plug.runtime.webhooks.processDueDeliveries(handler);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+  });
 });
 
 const testSyncProvider: Provider = {

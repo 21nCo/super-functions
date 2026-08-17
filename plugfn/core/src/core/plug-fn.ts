@@ -64,6 +64,9 @@ import { tenantMatches } from '../security/tenancy.js';
  * Main PlugFn SDK interface
  */
 export interface PlugFn {
+  /** Resolves only after persisted workflow triggers have been rehydrated. */
+  ready: Promise<void>;
+
   config: {
     auth: {
       authenticate(request: Request): Promise<PlugFnPrincipal | null>;
@@ -338,7 +341,12 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   });
 
   const workflowEngine = new WorkflowEngine(workflowStorage, webhookHandler, logger);
-  void workflowEngine.rehydrateEnabledTriggers().catch((error) => {
+  const ready = workflowEngine.rehydrateEnabledTriggers().then((result) => {
+    if (result.failed > 0) {
+      throw new Error(`failed to rehydrate ${result.failed} workflow trigger(s)`);
+    }
+  });
+  void ready.catch((error) => {
     logger.error('PlugFn workflow trigger rehydration failed', { error });
   });
 
@@ -349,6 +357,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
 
   // Create the main API
   const api: PlugFn = {
+    ready,
     config: {
       auth: normalizedAuthProvider,
       baseUrl: config.baseUrl,
@@ -738,6 +747,24 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           error: 'webhook receipt not found',
         });
         deliveries.push(deadLetter);
+        deadLettered += 1;
+        continue;
+      }
+
+      const receiptDeliveries = await runtimeStorage.listWebhookDeliveries(receipt.id);
+      if (
+        receiptDeliveries.some(
+          (receiptDelivery) =>
+            receiptDelivery.id !== delivery.id && receiptDelivery.status === 'success'
+        )
+      ) {
+        const superseded = await runtimeStorage.updateWebhookDelivery(delivery.id, {
+          status: 'dead-lettered',
+          attempts: attempt,
+          error: 'webhook receipt was already delivered successfully',
+          nextAttemptAt: undefined,
+        });
+        deliveries.push(superseded);
         deadLettered += 1;
         continue;
       }

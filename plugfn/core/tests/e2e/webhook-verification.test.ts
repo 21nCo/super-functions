@@ -437,6 +437,19 @@ describe('PlugFn webhook verification e2e', () => {
     expect(retried.status).toBe(200);
     await expect(retried.json()).resolves.not.toMatchObject({ data: { duplicate: true } });
     expect(handler).toHaveBeenCalledTimes(2);
+
+    await plug.runtime.webhooks.updateDelivery(failedDeliveries[0].id, {
+      nextAttemptAt: new Date(0),
+    });
+    const workerHandler = vi.fn();
+    const workerResult = await plug.runtime.webhooks.processDueDeliveries(workerHandler);
+
+    expect(workerHandler).not.toHaveBeenCalled();
+    expect(workerResult).toMatchObject({
+      processed: 1,
+      succeeded: 0,
+      deadLettered: 1,
+    });
   });
 
   it.each([

@@ -361,6 +361,32 @@ describe('PlugFn SDK', () => {
       expect(executions).toBe(2);
     });
 
+    it('keeps custom cache keys separate from action parameter cache keys', async () => {
+      let executions = 0;
+      const provider = mockProvider('test', {
+        getProfile: mockResponse({ execution: 0 }),
+      });
+      provider.actions.getProfile.execute = async () => ({ execution: ++executions });
+
+      plug.providers.register(provider);
+      await adapter.createConnection(mockConnection('test-user', 'test'));
+
+      const parameterKeyed = await plug.test.getProfile({
+        userId: 'test-user',
+        params: { plugfnCustomCacheKey: 'profile' },
+        cache: true,
+      });
+      const customKeyed = await plug.test.getProfile({
+        userId: 'test-user',
+        params: {},
+        cache: { key: 'profile' },
+      });
+
+      expect(parameterKeyed).toEqual({ execution: 1 });
+      expect(customKeyed).toEqual({ execution: 2 });
+      expect(executions).toBe(2);
+    });
+
     it('serializes concurrent mail.sync actions for the same connection', async () => {
       let inFlight = 0;
       let maxInFlight = 0;

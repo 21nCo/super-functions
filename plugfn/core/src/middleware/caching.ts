@@ -160,6 +160,18 @@ export class CacheMiddleware {
     return `${provider}:${action}:${userId || 'anonymous'}:${connectionId || 'default'}:${paramsHash}`;
   }
 
+  /** Generate a key in a namespace that cannot collide with parameter-derived keys. */
+  generateCustomKey(
+    provider: string,
+    action: string,
+    customKey: string,
+    userId?: string,
+    connectionId?: string
+  ): string {
+    const customKeyHash = hash(customKey);
+    return `${provider}:${action}:${userId || 'anonymous'}:${connectionId || 'default'}:custom:${customKeyHash}`;
+  }
+
   /**
    * Execute function with caching
    */

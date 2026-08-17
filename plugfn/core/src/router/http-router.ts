@@ -184,6 +184,19 @@ export function createPlugFnRouter(
       method: 'GET',
       path: '/readyz',
       handler: async (_req, ctx) => {
+        try {
+          await ctx.plugFn.ready;
+        } catch (error) {
+          return errorResponse({
+            code: 'PLUGFN_NOT_READY',
+            message: 'workflow trigger rehydration failed',
+            status: 503,
+            retryable: true,
+            details: {
+              error: error instanceof Error ? error.message : 'unknown initialization failure',
+            },
+          });
+        }
         const configuredProviders = Object.keys(ctx.plugFn.config.integrations ?? {});
         const missingProviders = configuredProviders.filter((provider) => !ctx.plugFn.providers.get(provider));
 
@@ -842,6 +855,19 @@ async function handleWebhookRoute(
   let verificationStatus: 'verified' | 'not-required';
 
   try {
+    try {
+      await ctx.plugFn.ready;
+    } catch (error) {
+      throw {
+        code: 'PLUGFN_NOT_READY',
+        message: 'workflow trigger rehydration failed',
+        status: 503,
+        retryable: true,
+        details: {
+          error: error instanceof Error ? error.message : 'unknown initialization failure',
+        },
+      };
+    }
     headers = normalizeHeaders(req.headers);
     await assertWebhookSourceAllowed(
       req,
