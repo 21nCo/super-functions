@@ -122,9 +122,10 @@ export interface PlugFnDatabaseStorageAdapter {
   updateWebhookReceipt(id: string, updates: Partial<PlugFnWebhookReceipt>): Promise<PlugFnWebhookReceipt>;
   createWebhookDelivery(delivery: PlugFnWebhookDelivery): Promise<PlugFnWebhookDelivery>;
   updateWebhookDelivery(id: string, updates: Partial<PlugFnWebhookDelivery>): Promise<PlugFnWebhookDelivery>;
+  updateClaimedWebhookDelivery(id: string, claimToken: string, updates: Partial<PlugFnWebhookDelivery>): Promise<PlugFnWebhookDelivery | null>;
   listWebhookDeliveries(receiptId: string): Promise<PlugFnWebhookDelivery[]>;
-  listWebhookDeliveriesForRetry(now: Date, limit?: number): Promise<PlugFnWebhookDelivery[]>;
-  claimWebhookDeliveriesForRetry(now: Date, limit: number, workerId: string): Promise<PlugFnWebhookDelivery[]>;
+  listWebhookDeliveriesForRetry(now: Date, limit?: number, leaseMs?: number): Promise<PlugFnWebhookDelivery[]>;
+  claimWebhookDeliveriesForRetry(now: Date, limit: number, workerId: string, leaseMs?: number): Promise<PlugFnWebhookDelivery[]>;
   createSyncJob(job: PlugFnSyncJob): Promise<PlugFnSyncJob>;
   getSyncJob(id: string): Promise<PlugFnSyncJob | null>;
   listSyncJobs(filters?: Record<string, unknown>, limit?: number): Promise<PlugFnSyncJob[]>;
@@ -508,6 +509,26 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
     });
   }
 
+  async updateClaimedWebhookDelivery(
+    id: string,
+    claimToken: string,
+    updates: Partial<PlugFnWebhookDelivery>
+  ): Promise<PlugFnWebhookDelivery | null> {
+    try {
+      return await this.database.update<PlugFnWebhookDelivery>({
+        model: this.models.webhookDeliveries,
+        where: [
+          { field: 'id', operator: 'eq', value: id },
+          { field: 'status', operator: 'eq', value: 'running' },
+          { field: 'claimToken', operator: 'eq', value: claimToken },
+        ],
+        data: cloneRecord(updates),
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async listWebhookDeliveries(receiptId: string): Promise<PlugFnWebhookDelivery[]> {
     return this.database.findMany<PlugFnWebhookDelivery>({
       model: this.models.webhookDeliveries,
@@ -518,7 +539,8 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
 
   async listWebhookDeliveriesForRetry(
     now: Date,
-    limit = 100
+    limit = 100,
+    leaseMs = WEBHOOK_DELIVERY_LEASE_MS
   ): Promise<PlugFnWebhookDelivery[]> {
     const pending = await this.database.findMany<PlugFnWebhookDelivery>({
       model: this.models.webhookDeliveries,
@@ -537,7 +559,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
       limit,
     });
 
-    const staleBefore = new Date(now.getTime() - WEBHOOK_DELIVERY_LEASE_MS);
+    const staleBefore = new Date(now.getTime() - leaseMs);
     const staleRunning = await this.database.findMany<PlugFnWebhookDelivery>({
       model: this.models.webhookDeliveries,
       where: [
@@ -561,9 +583,10 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
   async claimWebhookDeliveriesForRetry(
     now: Date,
     limit: number,
-    workerId: string
+    workerId: string,
+    leaseMs = WEBHOOK_DELIVERY_LEASE_MS
   ): Promise<PlugFnWebhookDelivery[]> {
-    const candidates = await this.listWebhookDeliveriesForRetry(now, limit);
+    const candidates = await this.listWebhookDeliveriesForRetry(now, limit, leaseMs);
     const claimed: PlugFnWebhookDelivery[] = [];
     const claimedAt = new Date();
 
@@ -579,16 +602,18 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
         where.push({
           field: 'updatedAt',
           operator: 'lte',
-          value: new Date(now.getTime() - WEBHOOK_DELIVERY_LEASE_MS),
+          value: new Date(now.getTime() - leaseMs),
         });
       }
 
       try {
+        const claimToken = `${workerId}:${delivery.id}:${claimedAt.getTime()}`;
         const updated = await this.database.update<PlugFnWebhookDelivery>({
           model: this.models.webhookDeliveries,
           where,
           data: cloneRecord({
             status: 'running',
+            claimToken,
             attempts: delivery.attempts + 1,
             metadata: claimMetadata(delivery.metadata, workerId, claimedAt),
             updatedAt: claimedAt,

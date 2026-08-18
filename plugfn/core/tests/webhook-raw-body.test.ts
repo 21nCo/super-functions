@@ -57,6 +57,45 @@ describe('raw-body webhook verification', () => {
     expect(handleWebhook).not.toHaveBeenCalled();
   });
 
+  it('answers Outlook validation handshakes before workflow readiness', async () => {
+    const handleWebhook = vi.fn();
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.ready = new Promise<void>(() => undefined);
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/outlook?validationToken=outlook-token', {
+        method: 'POST',
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('outlook-token');
+    expect(handleWebhook).not.toHaveBeenCalled();
+  });
+
+  it('answers Slack URL verification handshakes before workflow readiness', async () => {
+    const handleWebhook = vi.fn();
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.ready = new Promise<void>(() => undefined);
+    plug.webhooks.verify = vi.fn(async () => ({
+      verified: true,
+      transformedPayload: { type: 'url_verification', challenge: 'slack-token' },
+    }));
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/slack/url_verification', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'url_verification', challenge: 'slack-token' }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ challenge: 'slack-token' });
+    expect(handleWebhook).not.toHaveBeenCalled();
+  });
+
   it('passes raw bytes from the router to webhook handling before verification', async () => {
     const handleWebhook = vi.fn(async () => ({ id: 'evt_1', verified: true }));
     const router = createPlugFnRouter(createRouterPlugMock(handleWebhook), {

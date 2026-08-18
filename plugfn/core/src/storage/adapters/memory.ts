@@ -268,23 +268,33 @@ export class MemoryAdapter implements DbAdapter {
     return this.storage.updateWebhookDelivery(id, updates);
   }
 
+  async updateClaimedWebhookDelivery(
+    id: string,
+    claimToken: string,
+    updates: Partial<PlugFnWebhookDelivery>
+  ): Promise<PlugFnWebhookDelivery | null> {
+    return this.storage.updateClaimedWebhookDelivery(id, claimToken, updates);
+  }
+
   async listWebhookDeliveries(receiptId: string): Promise<PlugFnWebhookDelivery[]> {
     return this.storage.listWebhookDeliveries(receiptId);
   }
 
   async listWebhookDeliveriesForRetry(
     now: Date,
-    limit = 100
+    limit = 100,
+    leaseMs?: number
   ): Promise<PlugFnWebhookDelivery[]> {
-    return this.storage.listWebhookDeliveriesForRetry(now, limit);
+    return this.storage.listWebhookDeliveriesForRetry(now, limit, leaseMs);
   }
 
   async claimWebhookDeliveriesForRetry(
     now: Date,
     limit: number,
-    workerId: string
+    workerId: string,
+    leaseMs?: number
   ): Promise<PlugFnWebhookDelivery[]> {
-    return this.storage.claimWebhookDeliveriesForRetry(now, limit, workerId);
+    return this.storage.claimWebhookDeliveriesForRetry(now, limit, workerId, leaseMs);
   }
 
   async createSyncJob(job: PlugFnSyncJob): Promise<PlugFnSyncJob> {

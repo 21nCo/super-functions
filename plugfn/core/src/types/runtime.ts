@@ -87,6 +87,7 @@ export interface PlugFnWebhookDelivery {
   sinkId?: string;
   handlerName?: string;
   status: 'pending' | 'running' | 'success' | 'failed' | 'dead-lettered';
+  claimToken?: string;
   attempts: number;
   nextAttemptAt?: Date;
   error?: string;

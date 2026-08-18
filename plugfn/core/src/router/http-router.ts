@@ -855,19 +855,6 @@ async function handleWebhookRoute(
   let verificationStatus: 'verified' | 'not-required';
 
   try {
-    try {
-      await ctx.plugFn.ready;
-    } catch (error) {
-      throw {
-        code: 'PLUGFN_NOT_READY',
-        message: 'workflow trigger rehydration failed',
-        status: 503,
-        retryable: true,
-        details: {
-          error: error instanceof Error ? error.message : 'unknown initialization failure',
-        },
-      };
-    }
     headers = normalizeHeaders(req.headers);
     await assertWebhookSourceAllowed(
       req,
@@ -911,6 +898,20 @@ async function handleWebhookRoute(
     );
     if (slackChallenge !== undefined) {
       return Response.json({ challenge: slackChallenge });
+    }
+
+    try {
+      await ctx.plugFn.ready;
+    } catch (error) {
+      throw {
+        code: 'PLUGFN_NOT_READY',
+        message: 'workflow trigger rehydration failed',
+        status: 503,
+        retryable: true,
+        details: {
+          error: error instanceof Error ? error.message : 'unknown initialization failure',
+        },
+      };
     }
 
     // Only verified payloads may claim a durable idempotency key. In

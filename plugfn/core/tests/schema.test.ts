@@ -8,8 +8,8 @@ describe('PlugFn schema metadata', () => {
       (table) => table.modelName === 'plugfn_webhook_receipts'
     );
 
-    expect(PLUGFN_SCHEMA_VERSION).toBe(4);
-    expect(schema.version).toBe(4);
+    expect(PLUGFN_SCHEMA_VERSION).toBe(5);
+    expect(schema.version).toBe(5);
     expect(receipts?.indexes).toContainEqual({
       name: 'idx_plugfn_webhook_receipts_idempotency',
       fields: ['provider', 'idempotencyKey'],

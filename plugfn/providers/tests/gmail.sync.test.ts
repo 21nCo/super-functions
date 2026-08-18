@@ -50,6 +50,43 @@ describe('gmail sync', () => {
     });
   });
 
+  it('exhausts baseline pagination before advancing the checkpoint', async () => {
+    const checkpointStore = new MemoryGmailCheckpointStore();
+    const pageTokens: Array<string | undefined> = [];
+
+    const result = await runGmailSync(
+      {
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        connectionId: 'conn-1',
+        mode: 'full',
+      },
+      {
+        source: {
+          listBaseline: async ({ pageToken }) => {
+            pageTokens.push(pageToken);
+            return pageToken
+              ? {
+                  historyId: 'h-2',
+                  messages: [createGmailMessage('g-2', 'gt-2', 'h-2')],
+                }
+              : {
+                  historyId: 'h-1',
+                  messages: [createGmailMessage('g-1', 'gt-1', 'h-1')],
+                  nextPageToken: 'page-2',
+                };
+          },
+          listIncremental: async () => ({ historyId: 'h-3', messages: [] }),
+        },
+        checkpointStore,
+      }
+    );
+
+    expect(pageTokens).toEqual([undefined, 'page-2']);
+    expect(result).toMatchObject({ checkpoint: 'h-2', fetched: 2, partial: false });
+    await expect(checkpointStore.get('conn-1')).resolves.toMatchObject({ historyId: 'h-2' });
+  });
+
   it('uses checkpoint for incremental sync and dedupes already-upserted messages', async () => {
     const checkpointStore = new MemoryGmailCheckpointStore();
     const messageStore = new MemoryGmailMessageStore();

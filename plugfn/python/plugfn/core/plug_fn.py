@@ -1,6 +1,6 @@
 """Main PlugFn SDK class."""
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
 
 from ..types import (
     AuthProvider,
@@ -238,8 +238,13 @@ class WorkflowsAPI:
 class WebhooksAPI:
     """API for managing webhooks."""
 
-    def __init__(self, handler: "WebhookHandler") -> None:
+    def __init__(
+        self,
+        handler: "WebhookHandler",
+        ensure_ready: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> None:
         self._handler = handler
+        self._ensure_ready = ensure_ready
 
     def on(
         self,
@@ -297,6 +302,8 @@ class WebhooksAPI:
         Returns:
             Handler result
         """
+        if self._ensure_ready is not None:
+            await self._ensure_ready()
         return await self._handler.handle_webhook(
             provider=provider,
             event=event,
@@ -443,12 +450,15 @@ class PlugFn:
             storage=self._workflow_storage,
             webhook_handler=self._webhook_handler,
             logger=self._logger,
+            action_executor=self._action_executor,
         )
 
         # Create public APIs
         self.connections = ConnectionsAPI(self._connection_manager)
         self.workflows = WorkflowsAPI(self._workflow_engine)
-        self.webhooks = WebhooksAPI(self._webhook_handler)
+        self.webhooks = WebhooksAPI(
+            self._webhook_handler, self._workflow_engine.ready
+        )
         self.providers = ProvidersAPI(self._provider_registry)
 
         # Event handlers
@@ -456,6 +466,10 @@ class PlugFn:
 
         # Provider proxies cache
         self._provider_proxies: Dict[str, ProviderProxy] = {}
+
+    async def ready(self) -> None:
+        """Restore persisted enabled workflow triggers before serving traffic."""
+        await self._workflow_engine.ready()
 
     def __getattr__(self, name: str) -> Any:
         """Dynamic provider access via attribute.

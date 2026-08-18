@@ -254,6 +254,7 @@ export interface PlugFnWebhookDeliveryWorkerOptions {
   limit?: number;
   maxAttempts?: number;
   baseDelayMs?: number;
+  leaseMs?: number;
 }
 
 export interface PlugFnWebhookDeliveryWorkerResult {
@@ -341,14 +342,25 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   });
 
   const workflowEngine = new WorkflowEngine(workflowStorage, webhookHandler, logger);
-  const ready = workflowEngine.rehydrateEnabledTriggers().then((result) => {
-    if (result.failed > 0) {
-      throw new Error(`failed to rehydrate ${result.failed} workflow trigger(s)`);
+  let readyAttempt: Promise<void> | undefined;
+  const ensureReady = (): Promise<void> => {
+    if (!readyAttempt) {
+      const attempt = workflowEngine.rehydrateEnabledTriggers().then((result) => {
+        if (result.failed > 0) {
+          throw new Error(`failed to rehydrate ${result.failed} workflow trigger(s)`);
+        }
+      });
+      readyAttempt = attempt;
+      void attempt.catch((error) => {
+        if (readyAttempt === attempt) {
+          readyAttempt = undefined;
+        }
+        logger.error('PlugFn workflow trigger rehydration failed', { error });
+      });
     }
-  });
-  void ready.catch((error) => {
-    logger.error('PlugFn workflow trigger rehydration failed', { error });
-  });
+    return readyAttempt!;
+  };
+  void ensureReady();
 
   // Event handlers
   const eventHandlers = new Map<string, Set<(event: any) => void>>();
@@ -357,7 +369,9 @@ export function plugFn(config: PlugFnConfig): PlugFn {
 
   // Create the main API
   const api: PlugFn = {
-    ready,
+    get ready() {
+      return ensureReady();
+    },
     config: {
       auth: normalizedAuthProvider,
       baseUrl: config.baseUrl,
@@ -728,9 +742,12 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   ): Promise<PlugFnWebhookDeliveryWorkerResult> {
     const maxAttempts = Math.max(1, options.maxAttempts ?? 5);
     const baseDelayMs = Math.max(1000, options.baseDelayMs ?? 30_000);
+    const leaseMs = Math.max(30, options.leaseMs ?? 5 * 60 * 1000);
     const dueDeliveries = await runtimeStorage.claimWebhookDeliveriesForRetry(
       new Date(),
-      options.limit ?? 100
+      options.limit ?? 100,
+      undefined,
+      leaseMs
     );
     const deliveries: PlugFnWebhookDelivery[] = [];
     let succeeded = 0;
@@ -739,15 +756,30 @@ export function plugFn(config: PlugFnConfig): PlugFn {
 
     for (const delivery of dueDeliveries) {
       const attempt = delivery.attempts;
+      const claimToken = delivery.claimToken;
+      if (!claimToken) {
+        failed += 1;
+        continue;
+      }
+
+      const updateClaimed = (updates: Partial<PlugFnWebhookDelivery>) =>
+        runtimeStorage.updateClaimedWebhookDelivery(delivery.id, claimToken, {
+          ...updates,
+          claimToken: undefined,
+        });
       const receipt = await runtimeStorage.getWebhookReceipt(delivery.receiptId);
       if (!receipt) {
-        const deadLetter = await runtimeStorage.updateWebhookDelivery(delivery.id, {
+        const deadLetter = await updateClaimed({
           status: 'dead-lettered',
           attempts: attempt,
           error: 'webhook receipt not found',
         });
-        deliveries.push(deadLetter);
-        deadLettered += 1;
+        if (deadLetter) {
+          deliveries.push(deadLetter);
+          deadLettered += 1;
+        } else {
+          failed += 1;
+        }
         continue;
       }
 
@@ -755,28 +787,63 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       if (
         receiptDeliveries.some(
           (receiptDelivery) =>
-            receiptDelivery.id !== delivery.id && receiptDelivery.status === 'success'
+            receiptDelivery.id !== delivery.id &&
+            receiptDelivery.status === 'success' &&
+            receiptDelivery.sinkId === delivery.sinkId &&
+            receiptDelivery.handlerName === delivery.handlerName
         )
       ) {
-        const superseded = await runtimeStorage.updateWebhookDelivery(delivery.id, {
+        const superseded = await updateClaimed({
           status: 'dead-lettered',
           attempts: attempt,
           error: 'webhook receipt was already delivered successfully',
           nextAttemptAt: undefined,
         });
-        deliveries.push(superseded);
-        deadLettered += 1;
+        if (superseded) {
+          deliveries.push(superseded);
+          deadLettered += 1;
+        } else {
+          failed += 1;
+        }
         continue;
       }
 
+      let leaseLost = false;
+      let heartbeatInFlight: Promise<void> | undefined;
+      const heartbeat = () => {
+        if (heartbeatInFlight) return;
+        heartbeatInFlight = runtimeStorage
+          .updateClaimedWebhookDelivery(delivery.id, claimToken, {})
+          .then((renewed) => {
+            if (!renewed) leaseLost = true;
+          })
+          .catch(() => {
+            leaseLost = true;
+          })
+          .finally(() => {
+            heartbeatInFlight = undefined;
+          });
+      };
+      const heartbeatTimer = setInterval(heartbeat, Math.max(10, Math.floor(leaseMs / 3)));
+      const finishClaim = async (updates: Partial<PlugFnWebhookDelivery>) => {
+        clearInterval(heartbeatTimer);
+        await heartbeatInFlight;
+        if (leaseLost) return null;
+        return updateClaimed(updates);
+      };
+
       try {
         await handler({ delivery, receipt });
-        const updated = await runtimeStorage.updateWebhookDelivery(delivery.id, {
+        const updated = await finishClaim({
           status: 'success',
           attempts: attempt,
         });
-        deliveries.push(updated);
-        succeeded += 1;
+        if (updated) {
+          deliveries.push(updated);
+          succeeded += 1;
+        } else {
+          failed += 1;
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'webhook delivery failed';
         const status = attempt >= maxAttempts ? 'dead-lettered' : 'failed';
@@ -784,15 +851,19 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           status === 'failed'
             ? new Date(Date.now() + baseDelayMs * 2 ** Math.max(0, attempt - 1))
             : undefined;
-        const updated = await runtimeStorage.updateWebhookDelivery(delivery.id, {
+        const updated = await finishClaim({
           status,
           attempts: attempt,
           error: errorMessage,
           nextAttemptAt,
         });
-        deliveries.push(updated);
-        if (status === 'dead-lettered') {
-          deadLettered += 1;
+        if (updated) {
+          deliveries.push(updated);
+          if (status === 'dead-lettered') {
+            deadLettered += 1;
+          } else {
+            failed += 1;
+          }
         } else {
           failed += 1;
         }

@@ -103,14 +103,35 @@ export async function runGmailSync(
   const messageStore = dependencies.messageStore ?? new MemoryGmailMessageStore();
 
   if (request.mode === 'full') {
-    const baseline = await dependencies.source.listBaseline({
-      maxMessages,
-    });
-    const normalizedMessages = normalizeGmailMessages(baseline.messages, {
+    const baselineMessages: GmailApiMessage[] = [];
+    const seenPageTokens = new Set<string>();
+    let pageToken: string | undefined;
+    let baselineHistoryId: string | undefined;
+
+    do {
+      const baseline = await dependencies.source.listBaseline({ maxMessages, pageToken });
+      baselineMessages.push(...baseline.messages);
+      baselineHistoryId = baseline.historyId ?? baselineHistoryId;
+      const nextPageToken = baseline.nextPageToken;
+      if (!nextPageToken) {
+        pageToken = undefined;
+        break;
+      }
+      if (seenPageTokens.has(nextPageToken)) {
+        throw new GmailSyncError(
+          'VALIDATION_ERROR',
+          'gmail baseline pagination repeated a page token'
+        );
+      }
+      seenPageTokens.add(nextPageToken);
+      pageToken = nextPageToken;
+    } while (pageToken);
+
+    const normalizedMessages = normalizeGmailMessages(baselineMessages, {
       mailbox: 'inbox',
     });
     const writeResult = await messageStore.upsert(request.connectionId, normalizedMessages);
-    const checkpoint = baseline.historyId ?? extractHistoryId(baseline.messages) ?? '0';
+    const checkpoint = baselineHistoryId ?? extractHistoryId(baselineMessages) ?? '0';
 
     await dependencies.checkpointStore.set(request.connectionId, {
       historyId: checkpoint,
@@ -122,7 +143,7 @@ export async function runGmailSync(
       fetched: normalizedMessages.length,
       upserted: writeResult.upserted,
       skipped: writeResult.skipped,
-      partial: typeof baseline.nextPageToken === 'string' && baseline.nextPageToken.length > 0,
+      partial: false,
       messages: normalizedMessages,
     };
   }

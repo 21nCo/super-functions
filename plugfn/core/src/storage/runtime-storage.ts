@@ -258,20 +258,32 @@ export class AdapterRuntimeStorage {
     });
   }
 
+  updateClaimedWebhookDelivery(
+    id: string,
+    claimToken: string,
+    updates: Partial<PlugFnWebhookDelivery>
+  ): Promise<PlugFnWebhookDelivery | null> {
+    return this.adapter.updateClaimedWebhookDelivery(id, claimToken, {
+      ...updates,
+      updatedAt: new Date(),
+    });
+  }
+
   listWebhookDeliveries(receiptId: string): Promise<PlugFnWebhookDelivery[]> {
     return this.adapter.listWebhookDeliveries(receiptId);
   }
 
-  listWebhookDeliveriesForRetry(now = new Date(), limit = 100): Promise<PlugFnWebhookDelivery[]> {
-    return this.adapter.listWebhookDeliveriesForRetry(now, limit);
+  listWebhookDeliveriesForRetry(now = new Date(), limit = 100, leaseMs?: number): Promise<PlugFnWebhookDelivery[]> {
+    return this.adapter.listWebhookDeliveriesForRetry(now, limit, leaseMs);
   }
 
   claimWebhookDeliveriesForRetry(
     now = new Date(),
     limit = 100,
-    workerId = generateId('webhook_worker')
+    workerId = generateId('webhook_worker'),
+    leaseMs?: number
   ): Promise<PlugFnWebhookDelivery[]> {
-    return this.adapter.claimWebhookDeliveriesForRetry(now, limit, workerId);
+    return this.adapter.claimWebhookDeliveriesForRetry(now, limit, workerId, leaseMs);
   }
 
   createSyncJob(input: CreateSyncJobInput): Promise<PlugFnSyncJob> {

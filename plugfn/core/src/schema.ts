@@ -5,7 +5,7 @@ import {
 } from '@superfunctions/oauth-storage';
 import { DEFAULT_PLUGFN_STORAGE_MODELS, resolvePlugFnStorageModels, type PlugFnStorageModelMapping } from './storage/adapters/database.js';
 
-export const PLUGFN_SCHEMA_VERSION = 4;
+export const PLUGFN_SCHEMA_VERSION = 5;
 
 export interface PlugFnSchemaOptions {
   namespace?: string;
@@ -198,6 +198,7 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           sinkId: { type: 'string', required: false, fieldName: 'sink_id' },
           handlerName: { type: 'string', required: false, fieldName: 'handler_name' },
           status: { type: 'string', required: true, fieldName: 'status' },
+          claimToken: { type: 'string', required: false, fieldName: 'claim_token' },
           attempts: { type: 'number', required: true, fieldName: 'attempts' },
           nextAttemptAt: { type: 'date', required: false, fieldName: 'next_attempt_at' },
           error: { type: 'string', required: false, fieldName: 'error' },

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { WorkflowEngine, WorkflowEngineError } from '../src/core/workflow-engine.js';
+import { plugFn } from '../src/core/plug-fn.js';
 import { ProviderRegistry } from '../src/core/provider-registry.js';
 import { WebhookHandler } from '../src/webhooks/webhook-handler.js';
 import type { WorkflowStorage } from '../src/storage/workflow-storage.js';
+import { MemoryAdapter } from '../src/storage/adapters/memory.js';
 import { NoopLogger } from '../src/utils/logger.js';
 import { mockProvider } from '../src/testing/index.js';
 import { TriggerType } from '../src/types/trigger.js';
@@ -15,6 +17,25 @@ import {
 } from '../src/types/workflow.js';
 
 describe('workflow lifecycle trigger handling', () => {
+  it('retries startup rehydration after a transient storage failure', async () => {
+    const database = new FlakyWorkflowListAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user-1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+      logger: new NoopLogger(),
+    });
+    const firstAttempt = plug.ready;
+
+    database.failFirstWorkflowList();
+
+    await expect(firstAttempt).rejects.toThrow('storage temporarily unavailable');
+    await expect(plug.ready).resolves.toBeUndefined();
+    expect(database.workflowListAttempts).toBe(2);
+  });
+
   it('enabling and disabling a workflow registers then detaches the live trigger binding', async () => {
     const { engine, storage, webhookHandler } = createHarness();
 
@@ -120,6 +141,30 @@ describe('workflow lifecycle trigger handling', () => {
     });
   });
 });
+
+class FlakyWorkflowListAdapter extends MemoryAdapter {
+  workflowListAttempts = 0;
+  private rejectFirstAttempt: ((error: Error) => void) | undefined;
+  private readonly firstAttempt = new Promise<never>((_resolve, reject) => {
+    this.rejectFirstAttempt = reject;
+  });
+
+  failFirstWorkflowList() {
+    this.rejectFirstAttempt?.(new Error('storage temporarily unavailable'));
+  }
+
+  override async findMany<T = any>(
+    params: Parameters<MemoryAdapter['findMany']>[0]
+  ): Promise<T[]> {
+    if (params.model === 'plugfn_workflows') {
+      this.workflowListAttempts += 1;
+      if (this.workflowListAttempts === 1) {
+        await this.firstAttempt;
+      }
+    }
+    return super.findMany<T>(params);
+  }
+}
 
 function createHarness() {
   const storage = new InMemoryWorkflowStorage();

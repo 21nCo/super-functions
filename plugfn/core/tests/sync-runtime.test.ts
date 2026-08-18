@@ -892,6 +892,87 @@ describe('PlugFn sync runtime', () => {
     expect(firstRun.processed + secondRun.processed).toBe(1);
   });
 
+  it('renews webhook delivery leases while a handler is still running', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    const receipt = await plug.runtime.webhooks.createReceipt({
+      provider: 'github',
+      event: 'issues',
+      payloadHash: 'hash_long_running',
+      verificationStatus: 'verified',
+    });
+    await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      handlerName: 'github.issues',
+      status: 'pending',
+    });
+
+    let releaseHandler!: () => void;
+    let markStarted!: () => void;
+    const handlerStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const handlerRelease = new Promise<void>((resolve) => {
+      releaseHandler = resolve;
+    });
+    const handler = vi.fn(async () => {
+      markStarted();
+      await handlerRelease;
+    });
+
+    const firstRunPromise = plug.runtime.webhooks.processDueDeliveries(handler, { leaseMs: 60 });
+    await handlerStarted;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const secondRun = await plug.runtime.webhooks.processDueDeliveries(handler, { leaseMs: 60 });
+    releaseHandler();
+    const firstRun = await firstRunPromise;
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(firstRun).toMatchObject({ processed: 1, succeeded: 1 });
+    expect(secondRun).toMatchObject({ processed: 0, succeeded: 0 });
+  });
+
+  it('does not suppress a distinct delivery target after a sibling succeeds', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    const receipt = await plug.runtime.webhooks.createReceipt({
+      provider: 'github',
+      event: 'issues',
+      payloadHash: 'hash_distinct_targets',
+      verificationStatus: 'verified',
+    });
+    await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      sinkId: 'sink-a',
+      handlerName: 'handler-a',
+      status: 'success',
+    });
+    await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      sinkId: 'sink-b',
+      handlerName: 'handler-b',
+      status: 'pending',
+    });
+    const handler = vi.fn();
+
+    const result = await plug.runtime.webhooks.processDueDeliveries(handler);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ processed: 1, succeeded: 1, deadLettered: 0 });
+  });
+
   it('reclaims stale running webhook deliveries after the worker lease expires', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({
