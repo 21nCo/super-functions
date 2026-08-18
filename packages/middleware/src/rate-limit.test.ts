@@ -188,7 +188,7 @@ describe('rate-limit', () => {
       expect(multi.resetAtByKey.get('tenant')).toBe('2026-03-12T00:00:01.500Z');
     });
 
-    it('rolls back multi-key quota commits when a later persistence write fails', async () => {
+    it('fails closed without overwriting concurrent quota when a later write fails', async () => {
       const internalStore = new Map<string, string>();
       let failTenantWrite = true;
       const customStore: KVStoreAdapter = {
@@ -198,6 +198,10 @@ describe('rate-limit', () => {
         async set(input: KVSetInput) {
           if (input.key === 'ratelimit:tenant' && failTenantWrite) {
             failTenantWrite = false;
+            internalStore.set(
+              'ratelimit:provider',
+              JSON.stringify({ count: 2, windowStart: 0, expiresAt: 60000 })
+            );
             throw new Error('write failed');
           }
           internalStore.set(input.key, input.value);
@@ -211,17 +215,20 @@ describe('rate-limit', () => {
         maxRequests: 1,
         algorithm: 'fixed-window',
         persistence: customStore,
+        now: () => 0,
       });
 
       await expect(limiter.checkMany({ keys: ['provider', 'tenant'] })).rejects.toThrow(
         'write failed'
       );
 
-      expect(internalStore.has('ratelimit:provider')).toBe(false);
-      expect((await limiter.check({ key: 'provider' })).allowed).toBe(true);
+      expect(JSON.parse(internalStore.get('ratelimit:provider') ?? '{}')).toMatchObject({
+        count: 2,
+      });
+      expect((await limiter.check({ key: 'provider' })).allowed).toBe(false);
     });
 
-    it('restores the original remaining TTL after a partial commit failure', async () => {
+    it('retains prior quota charges after a partial commit failure', async () => {
       const internalStore = new Map<string, string>();
       const ttlByKey = new Map<string, number | undefined>();
       let currentTime = 0;
@@ -256,11 +263,11 @@ describe('rate-limit', () => {
         limiter.checkMany({ keys: ['provider', 'tenant'], windowSeconds: 10 })
       ).rejects.toThrow('write failed');
 
-      expect(ttlByKey.get('ratelimit:provider')).toBe(30);
+      expect(ttlByKey.get('ratelimit:provider')).toBe(10);
       expect(JSON.parse(internalStore.get('ratelimit:provider') ?? '{}')).toMatchObject({
         count: 1,
-        windowStart: 0,
-        expiresAt: 60000,
+        windowStart: 30000,
+        expiresAt: 40000,
       });
     });
 

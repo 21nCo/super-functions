@@ -51,12 +51,16 @@ class WebhookHandlerStub:
     def __init__(self) -> None:
         self.handlers: Dict[tuple[str, str], Any] = {}
         self.fail_next_registration = False
+        self.mutate_then_fail_registration = False
 
     def register_handler(self, provider: str, event: str, handler: Any) -> None:
         if self.fail_next_registration:
             self.fail_next_registration = False
             raise RuntimeError("registration failed")
         self.handlers[(provider, event)] = handler
+        if self.mutate_then_fail_registration:
+            self.mutate_then_fail_registration = False
+            raise RuntimeError("registration failed after mutation")
 
     def unregister_handler(self, provider: str, event: str, handler: Any) -> None:
         if self.handlers.get((provider, event)) is handler:
@@ -212,6 +216,27 @@ async def test_failed_rehydration_restores_the_previous_live_binding() -> None:
 
 
 @pytest.mark.asyncio
+async def test_partial_registration_failure_removes_attempted_handler_before_restore() -> None:
+    workflow = create_workflow(WorkflowStatus.ENABLED)
+    storage = WorkflowStorageStub(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+    await engine.ready()
+    previous_handler = webhooks.handlers[("github", "issues.opened")]
+    webhooks.mutate_then_fail_registration = True
+
+    result = await engine.rehydrate_enabled_triggers()
+
+    assert result == {"registered": 0, "failed": 1}
+    assert webhooks.handlers[("github", "issues.opened")] is previous_handler
+
+
+@pytest.mark.asyncio
 async def test_enable_gates_webhooks_until_enabled_status_is_durable() -> None:
     workflow = create_workflow()
 
@@ -250,6 +275,47 @@ async def test_enable_gates_webhooks_until_enabled_status_is_durable() -> None:
     result = await handler_task
 
     assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_enable_releases_gate_and_removes_new_binding() -> None:
+    workflow = create_workflow()
+
+    class BlockingWorkflowStorage(WorkflowStorageStub):
+        def __init__(self, item: Workflow) -> None:
+            super().__init__(item)
+            self.update_started = asyncio.Event()
+
+        async def update_workflow(
+            self, workflow_id: str, updates: Dict[str, Any]
+        ) -> None:
+            self.update_started.set()
+            await asyncio.Event().wait()
+
+    storage = BlockingWorkflowStorage(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+
+    enable_task = asyncio.create_task(engine.enable_workflow(workflow.id))
+    await storage.update_started.wait()
+    handler_task = asyncio.create_task(
+        webhooks.handlers[("github", "issues.opened")]({"issue": {"id": 1}})
+    )
+    await asyncio.sleep(0)
+
+    enable_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await enable_task
+    with pytest.raises(asyncio.CancelledError):
+        await handler_task
+
+    assert ("github", "issues.opened") not in webhooks.handlers
+    assert storage.workflow.status == WorkflowStatus.DRAFT
 
 
 @pytest.mark.asyncio

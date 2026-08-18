@@ -125,6 +125,29 @@ async def test_enabled_provider_rate_limit_rejects_excess_actions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retry_does_not_spin_on_locally_exhausted_rate_limit() -> None:
+    action = RecordingAction(failures=1)
+    executor = create_executor(
+        action,
+        rate_limit={"requests": 1, "window": 60_000},
+        enable_retry=True,
+        retry_options={"max_attempts": 3, "delay": 0},
+    )
+
+    result = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+    )
+
+    assert result["success"] is False
+    assert isinstance(result["error"], RateLimitExceededError)
+    assert action.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_explicit_cache_reuses_successful_action_result() -> None:
     action = RecordingAction()
     executor = create_executor(action, enable_rate_limit=False)

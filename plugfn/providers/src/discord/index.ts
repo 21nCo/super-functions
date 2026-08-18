@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { Provider } from 'plugfn';
 import { AuthType } from 'plugfn';
-import { TriggerType } from 'plugfn';
 import type { ActionContext } from 'plugfn';
 
 /**
@@ -177,37 +176,9 @@ export const discordProvider: Provider = {
     },
   },
 
-  triggers: {
-    'message.create': {
-      name: 'message.create',
-      displayName: 'Message Created',
-      description: 'Triggered when a message is created',
-      type: TriggerType.Webhook,
-
-      webhookConfig: {
-        path: '/webhooks/discord/message',
-        method: 'POST',
-      },
-
-      schema: z.object({
-        id: z.string(),
-        channel_id: z.string(),
-        content: z.string(),
-        author: z.object({
-          id: z.string(),
-          username: z.string(),
-        }),
-        timestamp: z.string(),
-      }),
-
-      handler: async (payload) => {
-        return {
-          event: 'message.create',
-          data: payload,
-        };
-      },
-    },
-  },
+  // Discord message-create events arrive through the Gateway, not an
+  // authenticated HTTP webhook. Do not expose an origin-unverifiable route.
+  triggers: {},
 
   rateLimit: {
     requests: 50,

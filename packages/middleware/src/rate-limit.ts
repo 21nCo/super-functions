@@ -159,96 +159,6 @@ async function setState(
   });
 }
 
-interface RateLimitStateSnapshot {
-  value: string | null;
-  ttlMs: number;
-}
-
-async function snapshotStates(
-  kv: KVStoreAdapter,
-  keys: string[],
-  options: {
-    algorithm: RateLimitAlgorithm;
-    currentTime: number;
-    windowMs: number;
-    limit: number;
-  }
-): Promise<Map<string, RateLimitStateSnapshot>> {
-  const snapshot = new Map<string, RateLimitStateSnapshot>();
-  for (const key of keys) {
-    const value = await kv.get(key);
-    snapshot.set(key, {
-      value,
-      ttlMs: remainingStateTtl(value, options),
-    });
-  }
-  return snapshot;
-}
-
-async function restoreStates(
-  kv: KVStoreAdapter,
-  snapshot: Map<string, RateLimitStateSnapshot>
-): Promise<void> {
-  for (const [key, { value, ttlMs }] of snapshot.entries()) {
-    if (value === null) {
-      await kv.delete(key);
-      continue;
-    }
-
-    await kv.set({
-      key,
-      value,
-      ttlSeconds: Math.max(1, Math.ceil(ttlMs / 1000)),
-    });
-  }
-}
-
-function remainingStateTtl(
-  value: string | null,
-  options: {
-    algorithm: RateLimitAlgorithm;
-    currentTime: number;
-    windowMs: number;
-    limit: number;
-  }
-): number {
-  if (value === null) {
-    return 1;
-  }
-
-  try {
-    const state = JSON.parse(value) as FixedWindowState | SlidingWindowState | TokenBucketState;
-    if (typeof state.expiresAt === 'number' && Number.isFinite(state.expiresAt)) {
-      return Math.max(1, state.expiresAt - options.currentTime);
-    }
-
-    if (options.algorithm === 'fixed-window' && 'windowStart' in state) {
-      return Math.max(1, state.windowStart + options.windowMs - options.currentTime);
-    }
-
-    if (options.algorithm === 'sliding-window' && 'timestamps' in state) {
-      const oldest = state.timestamps.find(
-        (timestamp) => timestamp > options.currentTime - options.windowMs
-      );
-      return Math.max(1, (oldest ?? options.currentTime) + options.windowMs - options.currentTime);
-    }
-
-    if (options.algorithm === 'token-bucket' && 'tokens' in state) {
-      if (options.limit <= 0) {
-        return Math.max(1, options.windowMs);
-      }
-      const refillRatePerMs = options.limit / options.windowMs;
-      const elapsed = Math.max(0, options.currentTime - state.lastRefill);
-      const tokens = Math.min(options.limit, state.tokens + elapsed * refillRatePerMs);
-      return Math.max(1, Math.ceil((options.limit - tokens) / refillRatePerMs));
-    }
-  } catch {
-    // State is owned by this limiter, but keep rollback bounded if storage was corrupted.
-  }
-
-  return Math.max(1, options.windowMs);
-}
-
 export function createRateLimiter(config: RateLimitConfig): RateLimiter {
   const now = config.now ?? Date.now;
   const {
@@ -487,22 +397,14 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
           };
         }
 
-        const previousStates = await snapshotStates(kv, namespacedKeys, {
-          algorithm,
-          currentTime,
-          windowMs: effectiveWindowMs,
-          limit: effectiveLimit,
-        });
         const committed: RateLimitResult[] = [];
-        try {
-          for (const key of namespacedKeys) {
-            committed.push(
-              await evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
-            );
-          }
-        } catch (error) {
-          await restoreStates(kv, previousStates).catch(() => {});
-          throw error;
+        for (const key of namespacedKeys) {
+          // Shared KV adapters do not expose a compare-and-set primitive. If a
+          // later write fails, retain earlier quota charges (fail closed)
+          // instead of restoring stale snapshots over another process's work.
+          committed.push(
+            await evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
+          );
         }
 
         return {

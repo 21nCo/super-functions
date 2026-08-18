@@ -56,6 +56,7 @@ interface ParseJsonBodyOptions {
 const DEFAULT_WEBHOOK_PAYLOAD_MAX_BYTES = 2 * 1024 * 1024;
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
 const WEBHOOK_INITIAL_RETRY_DELAY_MS = 30_000;
+const WEBHOOK_RETRY_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 export function createPlugFnRouter(
@@ -977,6 +978,7 @@ async function handleWebhookRoute(
         contentType: headers['content-type'],
         userAgent: headers['user-agent'],
         rawBodyBase64: Buffer.from(rawBody).toString('base64'),
+        rawBodyExpiresAt: new Date(Date.now() + WEBHOOK_RETRY_PAYLOAD_TTL_MS).toISOString(),
         ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
@@ -997,6 +999,14 @@ async function handleWebhookRoute(
       });
     }
     receiptId = receipt.id;
+    // A retried idempotency claim returns the existing receipt, so refresh its
+    // bounded replay payload before attempting a new delivery.
+    await ctx.plugFn.runtime.webhooks.updateReceipt(receipt.id, {
+      metadata: {
+        rawBodyBase64: Buffer.from(rawBody).toString('base64'),
+        rawBodyExpiresAt: new Date(Date.now() + WEBHOOK_RETRY_PAYLOAD_TTL_MS).toISOString(),
+      },
+    });
     if (receipt.verificationStatus !== verificationStatus) {
       await ctx.plugFn.runtime.webhooks.updateReceipt(receipt.id, {
         verificationStatus,
@@ -1029,6 +1039,7 @@ async function handleWebhookRoute(
       status: 'success',
       attempts: delivery.attempts + 1,
     });
+    await clearWebhookReplayBody(ctx, receipt.id);
 
     return successResponse({
       event: webhookEvent,
@@ -1044,7 +1055,6 @@ async function handleWebhookRoute(
         headers,
         payloadHash,
         idempotencyKey,
-        rawBody,
         error
       );
     } else if (!deliveryId) {
@@ -1132,7 +1142,6 @@ async function createFailedWebhookReceipt(
   headers: Record<string, string> | undefined,
   payloadHash: string | undefined,
   idempotencyKey: string | undefined,
-  rawBody: Uint8Array | undefined,
   error: unknown
 ): Promise<void> {
   if (!payloadHash) {
@@ -1149,12 +1158,20 @@ async function createFailedWebhookReceipt(
       verificationStatus: 'failed',
       metadata: {
         error: error instanceof Error ? error.message : 'webhook verification failed',
-        ...(rawBody ? { rawBodyBase64: Buffer.from(rawBody).toString('base64') } : {}),
       },
     });
   } catch {
     // A failed receipt is observability best-effort; the original deterministic error is returned.
   }
+}
+
+async function clearWebhookReplayBody(ctx: PlugFnContext, receiptId: string): Promise<void> {
+  await ctx.plugFn.runtime.webhooks.updateReceipt(receiptId, {
+    metadata: {
+      rawBodyBase64: undefined,
+      rawBodyExpiresAt: undefined,
+    },
+  });
 }
 
 function inferWebhookEvent(

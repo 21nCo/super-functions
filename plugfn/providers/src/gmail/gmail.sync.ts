@@ -123,8 +123,9 @@ export async function runGmailSync(
       if (messages.length < pageSize) {
         messages.push(...normalizedPage.slice(0, pageSize - messages.length));
       }
-      baselineHistoryId =
-        baseline.historyId ?? extractHistoryId(baseline.messages) ?? baselineHistoryId;
+      // Gmail baseline pages are newest-first. Keep the checkpoint captured
+      // from the first page instead of regressing it to an older later page.
+      baselineHistoryId ??= baseline.historyId ?? extractHistoryId(baseline.messages);
       const nextPageToken = baseline.nextPageToken;
       if (!nextPageToken) {
         pageToken = undefined;

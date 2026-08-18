@@ -223,14 +223,22 @@ export class AdapterRuntimeStorage {
     id: string,
     updates: Partial<PlugFnWebhookReceipt>
   ): Promise<PlugFnWebhookReceipt> {
-    const current = await this.adapter.getWebhookReceipt(id);
-    return this.adapter.updateWebhookReceipt(id, {
-      ...updates,
-      metadata: {
+    return this.withWebhookReceiptClaimLock(`receipt:${id}`, async () => {
+      const current = await this.adapter.getWebhookReceipt(id);
+      const metadata: Record<string, unknown> = {
         ...(current?.metadata ?? {}),
         ...(updates.metadata ?? {}),
         updatedAt: new Date().toISOString(),
-      },
+      };
+      for (const [key, value] of Object.entries(updates.metadata ?? {})) {
+        if (value === undefined) {
+          delete metadata[key];
+        }
+      }
+      return this.adapter.updateWebhookReceipt(id, {
+        ...updates,
+        metadata,
+      });
     });
   }
 

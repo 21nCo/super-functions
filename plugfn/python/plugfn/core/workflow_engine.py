@@ -144,7 +144,7 @@ class WorkflowEngine:
                 workflow_id,
                 {"status": WorkflowStatus.ENABLED, "updated_at": datetime.now()},
             )
-        except Exception as error:
+        except BaseException as error:
             activation.error = error
             activation.ready.set()
             self._unregister_trigger(workflow, required=False)
@@ -225,6 +225,12 @@ class WorkflowEngine:
         try:
             self.webhook_handler.register_handler(provider, event, handler)
         except Exception:
+            # A handler registry may mutate its internal state before raising.
+            # Best-effort removal prevents the gated replacement from leaking.
+            try:
+                self.webhook_handler.unregister_handler(provider, event, handler)
+            except Exception:
+                pass
             if previous_binding is not None:
                 self._restore_trigger_binding(workflow.id, previous_binding)
             raise

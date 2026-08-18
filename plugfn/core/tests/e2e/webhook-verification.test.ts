@@ -137,6 +137,7 @@ describe('PlugFn webhook verification e2e', () => {
       'delivery_1'
     );
     expect(receipt?.verificationStatus).toBe('verified');
+    expect(receipt?.metadata?.rawBodyBase64).toBeUndefined();
   });
 
   it('resolves canonical GitHub webhook routes to action-specific triggers', async () => {
@@ -253,6 +254,39 @@ describe('PlugFn webhook verification e2e', () => {
     await expect(
       plug.runtime.webhooks.findReceiptByIdempotencyKey('github', 'delivery_bad')
     ).resolves.toBeNull();
+  });
+
+  it('does not retain unverified webhook bodies in failed receipts', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_e2e' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    plug.providers.register(githubProvider);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody = '{"action":"opened","attacker":"payload"}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues.opened', {
+        method: 'POST',
+        headers: { 'x-hub-signature-256': 'sha256=invalid' },
+        body: rawBody,
+      })
+    );
+    const receipts = await database.findMany<any>({
+      model: 'plugfn_webhook_receipts',
+      where: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ verificationStatus: 'failed' });
+    expect(receipts[0].metadata.rawBodyBase64).toBeUndefined();
   });
 
   it('does not let an unverified Stripe body reserve a signed event id', async () => {
@@ -524,6 +558,9 @@ describe('PlugFn webhook verification e2e', () => {
         rawBody: Buffer.from(rawBody),
       })
     );
+    await expect(plug.runtime.webhooks.getReceipt(receipt!.id)).resolves.toMatchObject({
+      metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
+    });
   });
 
   it.each([

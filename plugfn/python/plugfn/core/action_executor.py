@@ -507,7 +507,6 @@ def _is_transient_error(error: Exception) -> bool:
     if isinstance(
         error,
         (
-            RateLimitExceededError,
             asyncio.TimeoutError,
             TimeoutError,
             ConnectionError,

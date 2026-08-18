@@ -112,7 +112,7 @@ app.get("/api/data/:provider", async (c) => {
         params: {
           tenantId: "tenant_abc",
           mode: "full",
-          maxMessages: 5,
+          pageSize: 5,
           featureMode: "snippet",
         },
       });

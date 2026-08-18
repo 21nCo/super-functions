@@ -24,6 +24,7 @@ class MockConnections:
         self.callback_calls = []
         self.webhook_calls = []
         self.ready_calls = 0
+        self.call_order = []
 
     async def list(self, user_id, provider=None):
         self.list_calls.append({"user_id": user_id, "provider": provider})
@@ -71,9 +72,11 @@ def create_app(principal):
     ]
     async def ready():
         connections.ready_calls += 1
+        connections.call_order.append("ready")
 
     async def handle_webhook(**kwargs):
         connections.webhook_calls.append(kwargs)
+        connections.call_order.append("webhook")
         return [{"ok": True}]
 
     plug = SimpleNamespace(
@@ -132,6 +135,7 @@ def test_flask_waits_for_ready_before_webhook_dispatch():
     assert response.status_code == 200
     assert connections.ready_calls == 1
     assert len(connections.webhook_calls) == 1
+    assert connections.call_order == ["ready", "webhook"]
 
 
 def test_flask_canonical_callback_allows_omitted_provider_query():

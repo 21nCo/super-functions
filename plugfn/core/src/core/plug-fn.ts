@@ -837,6 +837,9 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       };
 
       try {
+        if (webhookReplayBodyExpired(receipt)) {
+          throw new Error('webhook retry payload expired');
+        }
         await handler({
           delivery,
           receipt,
@@ -852,12 +855,16 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         if (updated) {
           deliveries.push(updated);
           succeeded += 1;
+          await clearWebhookReplayBodyIfTerminal(receipt.id);
         } else {
           failed += 1;
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'webhook delivery failed';
-        const status = attempt >= maxAttempts ? 'dead-lettered' : 'failed';
+        const status =
+          webhookReplayBodyExpired(receipt) || attempt >= maxAttempts
+            ? 'dead-lettered'
+            : 'failed';
         const nextAttemptAt =
           status === 'failed'
             ? new Date(Date.now() + baseDelayMs * 2 ** Math.max(0, attempt - 1))
@@ -872,6 +879,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           deliveries.push(updated);
           if (status === 'dead-lettered') {
             deadLettered += 1;
+            await clearWebhookReplayBodyIfTerminal(receipt.id);
           } else {
             failed += 1;
           }
@@ -896,6 +904,29 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       return new Uint8Array();
     }
     return Buffer.from(encoded, 'base64');
+  }
+
+  function webhookReplayBodyExpired(receipt: PlugFnWebhookReceipt): boolean {
+    const expiresAt = receipt.metadata?.rawBodyExpiresAt;
+    return typeof expiresAt === 'string' && Date.parse(expiresAt) <= Date.now();
+  }
+
+  async function clearWebhookReplayBodyIfTerminal(receiptId: string): Promise<void> {
+    const receiptDeliveries = await runtimeStorage.listWebhookDeliveries(receiptId);
+    if (
+      receiptDeliveries.length === 0 ||
+      receiptDeliveries.some(
+        (delivery) => delivery.status !== 'success' && delivery.status !== 'dead-lettered'
+      )
+    ) {
+      return;
+    }
+    await runtimeStorage.updateWebhookReceipt(receiptId, {
+      metadata: {
+        rawBodyBase64: undefined,
+        rawBodyExpiresAt: undefined,
+      },
+    });
   }
 
   // Create dynamic provider proxies

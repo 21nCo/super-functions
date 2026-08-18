@@ -50,7 +50,7 @@ describe('gmail sync', () => {
     });
   });
 
-  it('exhausts baseline pagination before advancing the checkpoint', async () => {
+  it('exhausts baseline pagination while preserving the newest checkpoint', async () => {
     const checkpointStore = new MemoryGmailCheckpointStore();
     const pageTokens: Array<string | undefined> = [];
     const pagesWritten: string[][] = [];
@@ -69,12 +69,12 @@ describe('gmail sync', () => {
             pageTokens.push(pageToken);
             return pageToken
               ? {
-                  historyId: 'h-2',
-                  messages: [createGmailMessage('g-2', 'gt-2', 'h-2')],
+                  historyId: '100',
+                  messages: [createGmailMessage('g-2', 'gt-2', '100')],
                 }
               : {
-                  historyId: 'h-1',
-                  messages: [createGmailMessage('g-1', 'gt-1', 'h-1')],
+                  historyId: '200',
+                  messages: [createGmailMessage('g-1', 'gt-1', '200')],
                   nextPageToken: 'page-2',
                 };
           },
@@ -91,10 +91,10 @@ describe('gmail sync', () => {
     );
 
     expect(pageTokens).toEqual([undefined, 'page-2']);
-    expect(result).toMatchObject({ checkpoint: 'h-2', fetched: 2, partial: false });
+    expect(result).toMatchObject({ checkpoint: '200', fetched: 2, partial: false });
     expect(result.messages).toHaveLength(1);
     expect(pagesWritten).toEqual([['g-1'], ['g-2']]);
-    await expect(checkpointStore.get('conn-1')).resolves.toMatchObject({ historyId: 'h-2' });
+    await expect(checkpointStore.get('conn-1')).resolves.toMatchObject({ historyId: '200' });
   });
 
   it('uses checkpoint for incremental sync and dedupes already-upserted messages', async () => {
