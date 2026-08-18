@@ -53,6 +53,7 @@ describe('gmail sync', () => {
   it('exhausts baseline pagination before advancing the checkpoint', async () => {
     const checkpointStore = new MemoryGmailCheckpointStore();
     const pageTokens: Array<string | undefined> = [];
+    const pagesWritten: string[][] = [];
 
     const result = await runGmailSync(
       {
@@ -60,6 +61,7 @@ describe('gmail sync', () => {
         userId: 'user-1',
         connectionId: 'conn-1',
         mode: 'full',
+        pageSize: 1,
       },
       {
         source: {
@@ -79,11 +81,19 @@ describe('gmail sync', () => {
           listIncremental: async () => ({ historyId: 'h-3', messages: [] }),
         },
         checkpointStore,
+        messageStore: {
+          upsert: async (_connectionId, messages) => {
+            pagesWritten.push(messages.map((message) => message.providerMessageId));
+            return { upserted: messages.length, skipped: 0 };
+          },
+        },
       }
     );
 
     expect(pageTokens).toEqual([undefined, 'page-2']);
     expect(result).toMatchObject({ checkpoint: 'h-2', fetched: 2, partial: false });
+    expect(result.messages).toHaveLength(1);
+    expect(pagesWritten).toEqual([['g-1'], ['g-2']]);
     await expect(checkpointStore.get('conn-1')).resolves.toMatchObject({ historyId: 'h-2' });
   });
 

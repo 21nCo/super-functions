@@ -38,7 +38,7 @@ const syncParamsSchema = z.object({
   tenantId: z.string().min(1),
   mode: z.enum(['full', 'incremental']).default('incremental'),
   checkpoint: z.string().min(1).optional(),
-  maxMessages: z.number().int().min(1).max(500).optional(),
+  pageSize: z.number().int().min(1).max(500).optional(),
   featureMode: z.enum(['metadata-only', 'snippet', 'full-body']).optional(),
 });
 
@@ -179,7 +179,7 @@ export const gmailProvider: Provider = {
             connectionId,
             mode: params.mode,
             checkpoint: params.checkpoint,
-            maxMessages: params.maxMessages,
+            pageSize: params.pageSize,
             featureMode: params.featureMode,
           },
           {
@@ -338,14 +338,14 @@ function requireConnectionId(context: ActionContext): string {
 
 function createGmailSyncSource(context: ActionContext): GmailSyncSource {
   return {
-    listBaseline: async ({ maxMessages, pageToken }) => {
+    listBaseline: async ({ pageSize, pageToken }) => {
       const response = await context.http.get<{
         messages?: Array<{ id?: string } | GmailApiMessage>;
         nextPageToken?: string;
         historyId?: string;
       }>(`${context.provider.baseUrl}/gmail/v1/users/me/messages`, {
         params: {
-          maxResults: maxMessages,
+          maxResults: pageSize,
           ...(pageToken ? { pageToken } : {}),
         },
       });
@@ -359,7 +359,7 @@ function createGmailSyncSource(context: ActionContext): GmailSyncSource {
         historyId: response.data.historyId,
       };
     },
-    listIncremental: async ({ startHistoryId, maxMessages }) => {
+    listIncremental: async ({ startHistoryId, pageSize }) => {
       try {
         const summaries: Array<{ id?: string } | GmailApiMessage> = [];
         const seenPageTokens = new Set<string>();
@@ -377,7 +377,7 @@ function createGmailSyncSource(context: ActionContext): GmailSyncSource {
           }>(`${context.provider.baseUrl}/gmail/v1/users/me/history`, {
             params: {
               startHistoryId,
-              maxResults: maxMessages,
+              maxResults: pageSize,
               historyTypes: 'messageAdded',
               ...(pageToken ? { pageToken } : {}),
             },

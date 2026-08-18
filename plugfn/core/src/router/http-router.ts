@@ -871,13 +871,18 @@ async function handleWebhookRoute(
       }
     }
     rawBody = await readRequestBytes(req, { maxBytes: options.maxWebhookPayloadBytes });
-    if (!event) {
-      resolvedEvent = inferWebhookEvent(
+    if (!event || provider.toLowerCase() === 'github') {
+      const inferredEvent = inferWebhookEvent(
         provider,
         headers,
         rawBody,
-        ctx.plugFn.providers.get(provider)?.triggers
+        ctx.plugFn.providers.get(provider)?.triggers,
+        event
       );
+      resolvedEvent =
+        event && inferredEvent !== event && !inferredEvent.startsWith(`${event}.`)
+          ? event
+          : inferredEvent;
     }
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
     const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
@@ -900,6 +905,11 @@ async function handleWebhookRoute(
       return Response.json({ challenge: slackChallenge });
     }
 
+    // Only verified payloads may claim a durable idempotency key. In
+    // particular, Stripe event ids come from the body and are untrusted until
+    // signature verification succeeds.
+    idempotencyKey = readWebhookIdempotencyKey(provider, headers, rawBody);
+
     try {
       await ctx.plugFn.ready;
     } catch (error) {
@@ -914,10 +924,6 @@ async function handleWebhookRoute(
       };
     }
 
-    // Only verified payloads may claim a durable idempotency key. In
-    // particular, Stripe event ids come from the body and are untrusted until
-    // signature verification succeeds.
-    idempotencyKey = readWebhookIdempotencyKey(provider, headers, rawBody);
     if (idempotencyKey) {
       const existing = await ctx.plugFn.runtime.webhooks.findReceiptByIdempotencyKey(
         provider,
@@ -970,6 +976,7 @@ async function handleWebhookRoute(
       metadata: {
         contentType: headers['content-type'],
         userAgent: headers['user-agent'],
+        rawBodyBase64: Buffer.from(rawBody).toString('base64'),
         ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
@@ -1037,6 +1044,7 @@ async function handleWebhookRoute(
         headers,
         payloadHash,
         idempotencyKey,
+        rawBody,
         error
       );
     } else if (!deliveryId) {
@@ -1124,6 +1132,7 @@ async function createFailedWebhookReceipt(
   headers: Record<string, string> | undefined,
   payloadHash: string | undefined,
   idempotencyKey: string | undefined,
+  rawBody: Uint8Array | undefined,
   error: unknown
 ): Promise<void> {
   if (!payloadHash) {
@@ -1140,6 +1149,7 @@ async function createFailedWebhookReceipt(
       verificationStatus: 'failed',
       metadata: {
         error: error instanceof Error ? error.message : 'webhook verification failed',
+        ...(rawBody ? { rawBodyBase64: Buffer.from(rawBody).toString('base64') } : {}),
       },
     });
   } catch {
@@ -1151,10 +1161,11 @@ function inferWebhookEvent(
   provider: string,
   headers: Record<string, string>,
   rawBody?: Uint8Array,
-  triggers: Record<string, unknown> = {}
+  triggers: Record<string, unknown> = {},
+  explicitEvent?: string
 ): string {
   if (provider === 'github') {
-    const family = headers['x-github-event'] || 'event';
+    const family = headers['x-github-event'] || explicitEvent || 'event';
     const action = readWebhookAction(rawBody);
     const actionEvent = action ? `${family}.${action}` : undefined;
     return actionEvent && actionEvent in triggers ? actionEvent : family;
@@ -1409,8 +1420,7 @@ function assertOwnerMatchesAuthContext(
 
   if (
     'organizationId' in owner &&
-    authContext.organizationId &&
-    owner.organizationId !== authContext.organizationId
+    (!authContext.organizationId || owner.organizationId !== authContext.organizationId)
   ) {
     throw identityMismatchError();
   }

@@ -1,4 +1,4 @@
-import type { Adapter as DbAdapter, WhereClause } from '@superfunctions/db';
+import { NotFoundError, type Adapter as DbAdapter, type WhereClause } from '@superfunctions/db';
 import type { Connection } from '../../types/connection.js';
 import type {
   PlugFnConnectionGrant,
@@ -524,8 +524,11 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
         ],
         data: cloneRecord(updates),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return null;
+      }
+      throw error;
     }
   }
 

@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -308,6 +309,31 @@ async def test_enabled_retry_uses_default_attempts_without_per_call_options() ->
 
     assert result["success"] is True
     assert action.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_each_retry_attempt_acquires_rate_limit_capacity() -> None:
+    action = RecordingAction(failures=2)
+    executor = create_executor(
+        action,
+        rate_limit={"requests": 10, "window": 60_000},
+        enable_retry=True,
+        retry_options={"delay": 0},
+    )
+    acquire = AsyncMock()
+    executor._rate_limiter.acquire = acquire  # type: ignore[method-assign]
+
+    result = await executor.execute(
+        "test-provider",
+        "records.list",
+        "user-1",
+        {},
+        connection_id="connection-1",
+    )
+
+    assert result["success"] is True
+    assert action.calls == 3
+    assert acquire.await_count == 3
 
 
 @pytest.mark.asyncio

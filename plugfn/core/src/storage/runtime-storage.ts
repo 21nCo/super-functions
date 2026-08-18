@@ -219,13 +219,15 @@ export class AdapterRuntimeStorage {
     return this.adapter.findWebhookReceiptByIdempotencyKey(provider, idempotencyKey);
   }
 
-  updateWebhookReceipt(
+  async updateWebhookReceipt(
     id: string,
     updates: Partial<PlugFnWebhookReceipt>
   ): Promise<PlugFnWebhookReceipt> {
+    const current = await this.adapter.getWebhookReceipt(id);
     return this.adapter.updateWebhookReceipt(id, {
       ...updates,
       metadata: {
+        ...(current?.metadata ?? {}),
         ...(updates.metadata ?? {}),
         updatedAt: new Date().toISOString(),
       },

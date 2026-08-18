@@ -16,6 +16,14 @@ class WorkflowEngineError(RuntimeError):
         self.code = code
 
 
+class _TriggerActivation:
+    """Gate a newly registered handler until its enabled state is durable."""
+
+    def __init__(self) -> None:
+        self.ready = asyncio.Event()
+        self.error: Optional[BaseException] = None
+
+
 class WorkflowEngine:
     """Engine for managing workflows."""
 
@@ -129,22 +137,21 @@ class WorkflowEngine:
 
         self._trigger_coordinates(workflow)
         previous_binding = self._trigger_bindings.get(workflow.id)
-        try:
-            await self._register_trigger(workflow)
-        except Exception:
-            if previous_binding is not None:
-                self._restore_trigger_binding(workflow.id, previous_binding)
-            raise
+        activation = _TriggerActivation()
+        await self._register_trigger(workflow, activation)
         try:
             await self.storage.update_workflow(
                 workflow_id,
                 {"status": WorkflowStatus.ENABLED, "updated_at": datetime.now()},
             )
-        except Exception:
+        except Exception as error:
+            activation.error = error
+            activation.ready.set()
             self._unregister_trigger(workflow, required=False)
             if previous_binding is not None:
                 self._restore_trigger_binding(workflow.id, previous_binding)
             raise
+        activation.ready.set()
 
         self.logger.info(f"Enabled workflow: {workflow_id}")
 
@@ -201,15 +208,26 @@ class WorkflowEngine:
 
         self.logger.info(f"Deleted workflow: {workflow_id}")
 
-    async def _register_trigger(self, workflow: Workflow) -> None:
+    async def _register_trigger(
+        self, workflow: Workflow, activation: Optional[_TriggerActivation] = None
+    ) -> None:
         provider, event = self._trigger_coordinates(workflow)
 
-        self._unregister_trigger(workflow, required=False)
+        previous_binding = self._unregister_trigger(workflow, required=False)
 
         async def handler(payload: Dict[str, Any]) -> Any:
+            if activation is not None:
+                await activation.ready.wait()
+                if activation.error is not None:
+                    raise activation.error
             return await self.execute_workflow(workflow.id, payload)
 
-        self.webhook_handler.register_handler(provider, event, handler)
+        try:
+            self.webhook_handler.register_handler(provider, event, handler)
+        except Exception:
+            if previous_binding is not None:
+                self._restore_trigger_binding(workflow.id, previous_binding)
+            raise
         self._trigger_bindings[workflow.id] = (provider, event, handler)
 
     @staticmethod
@@ -238,7 +256,7 @@ class WorkflowEngine:
     def _unregister_trigger(
         self, workflow: Workflow, *, required: bool
     ) -> Optional[Tuple[str, str, Callable[[Dict[str, Any]], Awaitable[Any]]]]:
-        binding = self._trigger_bindings.pop(workflow.id, None)
+        binding = self._trigger_bindings.get(workflow.id)
         if binding is None:
             if required:
                 raise WorkflowEngineError(
@@ -248,6 +266,7 @@ class WorkflowEngine:
             return None
         provider, event, handler = binding
         self.webhook_handler.unregister_handler(provider, event, handler)
+        self._trigger_bindings.pop(workflow.id, None)
         return binding
 
     async def rehydrate_enabled_triggers(self) -> Dict[str, int]:

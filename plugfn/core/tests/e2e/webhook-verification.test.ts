@@ -184,6 +184,35 @@ describe('PlugFn webhook verification e2e', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('specializes the explicit GitHub event-family route from the payload action', async () => {
+    const plug = createPlug();
+    const familyHandler = vi.fn();
+    const actionHandler = vi.fn();
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues', familyHandler);
+    plug.webhooks.on('github', 'issues.opened', actionHandler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues', {
+        method: 'POST',
+        headers: {
+          'x-github-delivery': 'delivery_explicit_family',
+          'x-hub-signature-256': signRawBody(rawBody, 'whsec_github'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(actionHandler).toHaveBeenCalledTimes(1);
+    expect(familyHandler).not.toHaveBeenCalled();
+  });
+
   it('rejects a signature when the signed bytes and transmitted bytes differ', async () => {
     const plug = createPlug();
     plug.providers.register(githubProvider);
@@ -450,6 +479,51 @@ describe('PlugFn webhook verification e2e', () => {
       succeeded: 0,
       deadLettered: 1,
     });
+  });
+
+  it('replays the persisted webhook body when the provider does not redeliver', async () => {
+    const plug = createPlug();
+    const providerHandler = vi.fn(async () => {
+      throw new Error('temporary downstream failure');
+    });
+    plug.providers.register(githubProvider);
+    plug.webhooks.on('github', 'issues.opened', providerHandler);
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'whsec_github' },
+    });
+    const rawBody =
+      '{"action":"opened","issue":{"id":1,"number":10,"title":"Bug","body":null,"html_url":"https://example.test/issues/10","user":{"login":"octo"}},"repository":{"name":"repo","owner":{"login":"octo"}}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues', {
+        method: 'POST',
+        headers: {
+          'x-github-delivery': 'delivery_worker_replay',
+          'x-hub-signature-256': signRawBody(rawBody, 'whsec_github'),
+        },
+        body: rawBody,
+      })
+    );
+    expect(response.status).toBe(503);
+    const receipt = await plug.runtime.webhooks.findReceiptByIdempotencyKey(
+      'github',
+      'delivery_worker_replay'
+    );
+    expect(receipt?.metadata?.rawBodyBase64).toBe(Buffer.from(rawBody).toString('base64'));
+    const [delivery] = await plug.runtime.webhooks.listDeliveries(receipt!.id);
+    await plug.runtime.webhooks.updateDelivery(delivery.id, { nextAttemptAt: new Date(0) });
+
+    const workerHandler = vi.fn();
+    const result = await plug.runtime.webhooks.processDueDeliveries(workerHandler);
+
+    expect(result).toMatchObject({ processed: 1, succeeded: 1 });
+    expect(workerHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'github',
+        event: 'issues.opened',
+        rawBody: Buffer.from(rawBody),
+      })
+    );
   });
 
   it.each([

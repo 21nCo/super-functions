@@ -69,7 +69,7 @@ describe('isHydratedGmailApiMessage', () => {
         tenantId: 'gmail-pagination-test',
         mode: 'incremental',
         checkpoint: 'history-1',
-        maxMessages: 1,
+        pageSize: 1,
       },
       {
         userId: 'user-1',

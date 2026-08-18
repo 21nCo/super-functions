@@ -97,6 +97,7 @@ def mount_plugfn(
             raw_body = request.get_data(cache=True, as_text=False)
             headers = normalize_headers(dict(request.headers))
             secret = resolve_webhook_secret(plug, provider)
+            run_async(plug.ready())
             results = run_async(
                 plug._webhook_handler.handle_webhook(
                     provider=provider,

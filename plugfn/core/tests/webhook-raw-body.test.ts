@@ -54,6 +54,9 @@ describe('raw-body webhook verification', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: 'PLUGFN_NOT_READY', retryable: true },
     });
+    expect(plug.runtime.webhooks.createReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: 'evt_not_ready' })
+    );
     expect(handleWebhook).not.toHaveBeenCalled();
   });
 

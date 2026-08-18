@@ -23,6 +23,8 @@ class MockConnections:
         self.auth_url_calls = []
         self.disconnect_calls = []
         self.callback_calls = []
+        self.webhook_calls = []
+        self.ready_calls = 0
 
     async def list(self, user_id, provider=None):
         self.list_calls.append({"user_id": user_id, "provider": provider})
@@ -68,6 +70,13 @@ def create_app(principal):
             version="1.0.0",
         )
     ]
+    async def ready():
+        connections.ready_calls += 1
+
+    async def handle_webhook(**kwargs):
+        connections.webhook_calls.append(kwargs)
+        return [{"ok": True}]
+
     plug = SimpleNamespace(
         config=SimpleNamespace(
             auth=AsyncAuthProvider(principal),
@@ -77,7 +86,8 @@ def create_app(principal):
         connections=connections,
         providers=SimpleNamespace(list=lambda: providers),
         _connection_manager=SimpleNamespace(resolve_webhook_secret=lambda provider: "whsec_github"),
-        _webhook_handler=SimpleNamespace(handle_webhook=None),
+        _webhook_handler=SimpleNamespace(handle_webhook=handle_webhook),
+        ready=ready,
     )
     mount_plugfn(app, plug)
     return app, connections
@@ -113,6 +123,19 @@ def test_fastapi_exposes_canonical_route_inventory():
     assert "POST /api/plugfn/connections/auth" in routes
     assert "POST /api/plugfn/connections/disconnect" in routes
     assert "POST /api/plugfn/webhooks/{provider}/{event}" in routes
+
+
+def test_fastapi_waits_for_ready_before_webhook_dispatch():
+    app, connections = create_app({"userId": "user_from_auth"})
+
+    response = TestClient(app).post(
+        "/api/plugfn/webhooks/github/issues.opened",
+        content=b'{"action":"opened"}',
+    )
+
+    assert response.status_code == 200
+    assert connections.ready_calls == 1
+    assert len(connections.webhook_calls) == 1
 
 
 def test_fastapi_canonical_callback_allows_omitted_provider_query():

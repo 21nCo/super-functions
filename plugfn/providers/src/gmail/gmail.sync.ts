@@ -18,7 +18,7 @@ export interface GmailSyncRequest {
   connectionId: string;
   mode: MailSyncMode;
   checkpoint?: string;
-  maxMessages?: number;
+  pageSize?: number;
   featureMode?: ProviderFeatureMode;
 }
 
@@ -50,7 +50,7 @@ export interface GmailMessageStore {
 
 export interface GmailSyncSource {
   listBaseline(input: {
-    maxMessages: number;
+    pageSize: number;
     pageToken?: string;
   }): Promise<{
     messages: GmailApiMessage[];
@@ -59,7 +59,7 @@ export interface GmailSyncSource {
   }>;
   listIncremental(input: {
     startHistoryId: string;
-    maxMessages: number;
+    pageSize: number;
   }): Promise<{
     messages: GmailApiMessage[];
     historyId: string;
@@ -99,19 +99,32 @@ export async function runGmailSync(
   const now = dependencies.now ?? (() => new Date().toISOString());
   const policyRegistry = dependencies.policyRegistry ?? createDefaultProviderPolicyRegistry();
   assertReadPolicy(policyRegistry, request.featureMode);
-  const maxMessages = clampMaxMessages(request.maxMessages);
+  const pageSize = clampPageSize(request.pageSize);
   const messageStore = dependencies.messageStore ?? new MemoryGmailMessageStore();
 
   if (request.mode === 'full') {
-    const baselineMessages: GmailApiMessage[] = [];
+    const messages: NormalizedMailMessage[] = [];
     const seenPageTokens = new Set<string>();
     let pageToken: string | undefined;
     let baselineHistoryId: string | undefined;
+    let fetched = 0;
+    let upserted = 0;
+    let skipped = 0;
 
     do {
-      const baseline = await dependencies.source.listBaseline({ maxMessages, pageToken });
-      baselineMessages.push(...baseline.messages);
-      baselineHistoryId = baseline.historyId ?? baselineHistoryId;
+      const baseline = await dependencies.source.listBaseline({ pageSize, pageToken });
+      const normalizedPage = normalizeGmailMessages(baseline.messages, {
+        mailbox: 'inbox',
+      });
+      const writeResult = await messageStore.upsert(request.connectionId, normalizedPage);
+      fetched += normalizedPage.length;
+      upserted += writeResult.upserted;
+      skipped += writeResult.skipped;
+      if (messages.length < pageSize) {
+        messages.push(...normalizedPage.slice(0, pageSize - messages.length));
+      }
+      baselineHistoryId =
+        baseline.historyId ?? extractHistoryId(baseline.messages) ?? baselineHistoryId;
       const nextPageToken = baseline.nextPageToken;
       if (!nextPageToken) {
         pageToken = undefined;
@@ -127,11 +140,7 @@ export async function runGmailSync(
       pageToken = nextPageToken;
     } while (pageToken);
 
-    const normalizedMessages = normalizeGmailMessages(baselineMessages, {
-      mailbox: 'inbox',
-    });
-    const writeResult = await messageStore.upsert(request.connectionId, normalizedMessages);
-    const checkpoint = baselineHistoryId ?? extractHistoryId(baselineMessages) ?? '0';
+    const checkpoint = baselineHistoryId ?? '0';
 
     await dependencies.checkpointStore.set(request.connectionId, {
       historyId: checkpoint,
@@ -140,11 +149,11 @@ export async function runGmailSync(
 
     return {
       checkpoint,
-      fetched: normalizedMessages.length,
-      upserted: writeResult.upserted,
-      skipped: writeResult.skipped,
+      fetched,
+      upserted,
+      skipped,
       partial: false,
-      messages: normalizedMessages,
+      messages,
     };
   }
 
@@ -162,7 +171,7 @@ export async function runGmailSync(
   try {
     incremental = await dependencies.source.listIncremental({
       startHistoryId: checkpoint.historyId,
-      maxMessages,
+      pageSize,
     });
   } catch (error) {
     if (isInvalidCheckpointError(error)) {
@@ -261,7 +270,7 @@ function assertReadPolicy(
   }
 }
 
-function clampMaxMessages(value: number | undefined): number {
+function clampPageSize(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) {
     return 100;
   }

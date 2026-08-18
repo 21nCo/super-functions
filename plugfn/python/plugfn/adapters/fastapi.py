@@ -93,6 +93,7 @@ def mount_plugfn(
             raw_body = await request.body()
             headers = normalize_headers(dict(request.headers))
             secret = resolve_webhook_secret(plug, provider)
+            await plug.ready()
             results = await plug._webhook_handler.handle_webhook(
                 provider=provider,
                 event=event,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NotFoundError } from '@superfunctions/db';
 import { createPlugFnDatabaseAdapter } from '../src/storage/adapters/database.js';
 import { WorkflowStatus, type Workflow } from '../src/types/workflow.js';
 
@@ -76,6 +77,32 @@ describe('database workflow storage', () => {
       `cannot serialize ${type} at workflow.metadata.value`
     );
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('returns null only when a claimed webhook delivery no longer exists', async () => {
+    const update = vi.fn(async () => {
+      throw new NotFoundError('plugfn_webhook_deliveries', []);
+    });
+    const adapter = createPlugFnDatabaseAdapter({
+      database: { id: 'postgres', update } as any,
+    });
+
+    await expect(
+      adapter.updateClaimedWebhookDelivery('delivery_1', 'claim_1', { status: 'success' })
+    ).resolves.toBeNull();
+  });
+
+  it('propagates database outages while updating a claimed webhook delivery', async () => {
+    const update = vi.fn(async () => {
+      throw new Error('database unavailable');
+    });
+    const adapter = createPlugFnDatabaseAdapter({
+      database: { id: 'postgres', update } as any,
+    });
+
+    await expect(
+      adapter.updateClaimedWebhookDelivery('delivery_1', 'claim_1', { status: 'success' })
+    ).rejects.toThrow('database unavailable');
   });
 });
 

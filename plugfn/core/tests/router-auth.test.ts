@@ -285,6 +285,35 @@ describe('HTTP router auth boundaries', () => {
     expect(plug.connections.start).not.toHaveBeenCalled();
   });
 
+  it('requires authenticated organization context for delegated organization starts', async () => {
+    const plug = createMockPlugFn({
+      authenticate: vi.fn(async () => ({ userId: 'delegate', tenantId: 'tenant_1' })),
+    });
+    const router = createPlugFnRouter(plug);
+
+    const response = await router.handle(
+      new Request('http://localhost/connections/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'gmail',
+          redirectUri: 'https://app.example.com/callback',
+          owner: {
+            kind: 'delegated',
+            organizationId: 'org_arbitrary',
+            installedByUserId: 'installer',
+            delegatedToUserId: 'delegate',
+            grants: ['read'],
+            tenantId: 'tenant_1',
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(plug.connections.start).not.toHaveBeenCalled();
+  });
+
   it('includes authorized organization-owned connections in admin listings', async () => {
     const personal = {
       id: 'conn_personal',

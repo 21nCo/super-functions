@@ -238,6 +238,7 @@ export const plugfn_webhook_deliveries = pgTable(
   'plugfn_webhook_deliveries',
   {
   attempts: integer('attempts').notNull(),
+  claimToken: text('claim_token'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   error: text('error'),
   handlerName: text('handler_name'),

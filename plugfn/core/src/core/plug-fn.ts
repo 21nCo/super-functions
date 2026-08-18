@@ -268,6 +268,10 @@ export interface PlugFnWebhookDeliveryWorkerResult {
 export type PlugFnWebhookDeliveryHandler = (input: {
   delivery: PlugFnWebhookDelivery;
   receipt: PlugFnWebhookReceipt;
+  provider: string;
+  event: string;
+  headers: Record<string, string>;
+  rawBody: Uint8Array;
 }) => Promise<void> | void;
 
 /**
@@ -833,7 +837,14 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       };
 
       try {
-        await handler({ delivery, receipt });
+        await handler({
+          delivery,
+          receipt,
+          provider: receipt.provider,
+          event: receipt.event,
+          headers: receipt.headersRedacted ?? {},
+          rawBody: decodeWebhookReceiptBody(receipt),
+        });
         const updated = await finishClaim({
           status: 'success',
           attempts: attempt,
@@ -877,6 +888,14 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       deadLettered,
       deliveries,
     };
+  }
+
+  function decodeWebhookReceiptBody(receipt: PlugFnWebhookReceipt): Uint8Array {
+    const encoded = receipt.metadata?.rawBodyBase64;
+    if (typeof encoded !== 'string') {
+      return new Uint8Array();
+    }
+    return Buffer.from(encoded, 'base64');
   }
 
   // Create dynamic provider proxies

@@ -1,5 +1,6 @@
 """Workflow trigger lifecycle tests."""
 
+import asyncio
 from datetime import datetime
 from typing import Any, Dict
 
@@ -49,8 +50,12 @@ class WorkflowStorageStub:
 class WebhookHandlerStub:
     def __init__(self) -> None:
         self.handlers: Dict[tuple[str, str], Any] = {}
+        self.fail_next_registration = False
 
     def register_handler(self, provider: str, event: str, handler: Any) -> None:
+        if self.fail_next_registration:
+            self.fail_next_registration = False
+            raise RuntimeError("registration failed")
         self.handlers[(provider, event)] = handler
 
     def unregister_handler(self, provider: str, event: str, handler: Any) -> None:
@@ -137,8 +142,11 @@ async def test_invalid_trigger_does_not_persist_enabled_status() -> None:
     workflow = create_workflow()
     workflow.definition["trigger"] = {"provider": "github"}
     storage = WorkflowStorageStub(workflow)
-    engine = WorkflowEngine(  # type: ignore[arg-type]
-        storage, WebhookHandlerStub(), LoggerStub(), ActionExecutorStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        WebhookHandlerStub(),
+        LoggerStub(),
+        ActionExecutorStub(),
     )
 
     with pytest.raises(ValueError, match="trigger event is invalid"):
@@ -151,8 +159,11 @@ async def test_invalid_trigger_does_not_persist_enabled_status() -> None:
 async def test_enabled_workflow_disable_fails_closed_without_live_binding() -> None:
     workflow = create_workflow(WorkflowStatus.ENABLED)
     storage = WorkflowStorageStub(workflow)
-    engine = WorkflowEngine(  # type: ignore[arg-type]
-        storage, WebhookHandlerStub(), LoggerStub(), ActionExecutorStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        WebhookHandlerStub(),
+        LoggerStub(),
+        ActionExecutorStub(),
     )
 
     with pytest.raises(WorkflowEngineError) as error:
@@ -167,8 +178,11 @@ async def test_ready_rehydrates_persisted_enabled_workflow_after_restart() -> No
     workflow = create_workflow(WorkflowStatus.ENABLED)
     storage = WorkflowStorageStub(workflow)
     webhooks = WebhookHandlerStub()
-    engine = WorkflowEngine(  # type: ignore[arg-type]
-        storage, webhooks, LoggerStub(), ActionExecutorStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
     )
 
     await engine.ready()
@@ -177,12 +191,74 @@ async def test_ready_rehydrates_persisted_enabled_workflow_after_restart() -> No
 
 
 @pytest.mark.asyncio
+async def test_failed_rehydration_restores_the_previous_live_binding() -> None:
+    workflow = create_workflow(WorkflowStatus.ENABLED)
+    storage = WorkflowStorageStub(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+    await engine.ready()
+    previous_handler = webhooks.handlers[("github", "issues.opened")]
+    webhooks.fail_next_registration = True
+
+    result = await engine.rehydrate_enabled_triggers()
+
+    assert result == {"registered": 0, "failed": 1}
+    assert webhooks.handlers[("github", "issues.opened")] is previous_handler
+
+
+@pytest.mark.asyncio
+async def test_enable_gates_webhooks_until_enabled_status_is_durable() -> None:
+    workflow = create_workflow()
+
+    class BlockingWorkflowStorage(WorkflowStorageStub):
+        def __init__(self, item: Workflow) -> None:
+            super().__init__(item)
+            self.update_started = asyncio.Event()
+            self.release_update = asyncio.Event()
+
+        async def update_workflow(
+            self, workflow_id: str, updates: Dict[str, Any]
+        ) -> None:
+            self.update_started.set()
+            await self.release_update.wait()
+            await super().update_workflow(workflow_id, updates)
+
+    storage = BlockingWorkflowStorage(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+
+    enable_task = asyncio.create_task(engine.enable_workflow(workflow.id))
+    await storage.update_started.wait()
+    handler_task = asyncio.create_task(
+        webhooks.handlers[("github", "issues.opened")]({"issue": {"id": 1}})
+    )
+    await asyncio.sleep(0)
+    assert handler_task.done() is False
+
+    storage.release_update.set()
+    await enable_task
+    result = await handler_task
+
+    assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_action_failure_marks_workflow_execution_failed() -> None:
     workflow = create_workflow()
     storage = WorkflowStorageStub(workflow)
     webhooks = WebhookHandlerStub()
-    engine = WorkflowEngine(  # type: ignore[arg-type]
-        storage,
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
         webhooks,
         LoggerStub(),
         ActionExecutorStub({"success": False, "error": "provider rejected action"}),

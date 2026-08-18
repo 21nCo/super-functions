@@ -211,13 +211,6 @@ class ActionExecutor:
         credentials = await self.connection_manager.get_credentials(connection.id)
 
         try:
-            if self.enable_rate_limit and provider_obj.rate_limit:
-                await self._rate_limiter.acquire(
-                    [f"provider:{provider}", f"provider:{provider}:user:{user_id}"],
-                    provider_obj.rate_limit["requests"],
-                    provider_obj.rate_limit["window"],
-                )
-
             # Execute action (with retry if enabled)
             retry_config = {**self.retry_options, **(retry or {})}
             max_attempts = 1
@@ -230,6 +223,16 @@ class ActionExecutor:
             last_error = None
             for attempt in range(max_attempts):
                 try:
+                    if self.enable_rate_limit and provider_obj.rate_limit:
+                        await self._rate_limiter.acquire(
+                            [
+                                f"provider:{provider}",
+                                f"provider:{provider}:user:{user_id}",
+                            ],
+                            provider_obj.rate_limit["requests"],
+                            provider_obj.rate_limit["window"],
+                        )
+
                     # Create action context
                     from ..http.http_client import HttpClient
 
