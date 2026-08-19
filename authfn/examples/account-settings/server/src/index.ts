@@ -1,7 +1,6 @@
 import type { RequestHandler, Request as ExpressRequest, Response as ExpressResponse } from 'express';
-import {
-  AuthFnUnauthenticatedError, AuthFnServer } from 'authfn';
-import type { jsonError, jsonSuccess } from 'authfn/http/envelopes';
+import { AuthFnUnauthenticatedError, type AuthFnServer } from 'authfn';
+import { jsonError, jsonSuccess } from 'authfn/http/envelopes';
 import {
   ExampleEventBuffer,
   createEventEmitter,

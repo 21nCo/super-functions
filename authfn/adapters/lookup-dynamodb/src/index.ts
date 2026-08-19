@@ -5,14 +5,10 @@ import {
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand
+  GetCommand,
+  PutCommand
 } from '@aws-sdk/lib-dynamodb';
-import type {
-  AuthFnRegionLookupRecord,
-  AuthFnRegionLookupStore
-} from '@authfn/multi-region';
+import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
 
 const LOOKUP_RECORD_SORT_KEY = 'LOOKUP';
 
@@ -21,6 +17,9 @@ export interface DynamoDbRegionLookupStoreOptions extends DynamoDBClientConfig {
   documentClient?: DynamoDBDocumentClient;
   documentClientConfig?: Parameters<typeof DynamoDBDocumentClient.from>[1];
   consistentRead?: boolean;
+  /** DynamoDB TTL attribute. Set to false when table TTL is intentionally disabled. */
+  ttlAttributeName?: string | false;
+  now?: () => Date;
 }
 
 export class AuthFnDynamoDbLookupStoreError extends Error {
@@ -28,9 +27,7 @@ export class AuthFnDynamoDbLookupStoreError extends Error {
   readonly retryable: boolean;
 
   constructor(operation: string, cause: unknown) {
-    super(`AuthFn DynamoDB lookup store failed during ${operation}`, {
-      cause
-    });
+    super(`AuthFn DynamoDB lookup store failed during ${operation}`, { cause });
     this.name = 'AuthFnDynamoDbLookupStoreError';
     this.operation = operation;
     this.retryable = isRetryableDynamoError(cause);
@@ -39,165 +36,138 @@ export class AuthFnDynamoDbLookupStoreError extends Error {
 
 export function createDynamoDbRegionLookupStore(
   options: DynamoDbRegionLookupStoreOptions
-): AuthFnRegionLookupStore {
+): ConditionalKVStoreAdapter {
   const client = options.documentClient
     ?? DynamoDBDocumentClient.from(new DynamoDBClient(options), options.documentClientConfig);
+  const ttlAttributeName = options.ttlAttributeName === undefined ? 'expiresAt' : options.ttlAttributeName;
+  const now = options.now ?? (() => new Date());
+
+  const get: ConditionalKVStoreAdapter['get'] = async (key) => {
+    try {
+      const result = await client.send(new GetCommand({
+        TableName: options.tableName,
+        Key: itemKey(key),
+        ConsistentRead: options.consistentRead
+      }));
+      return readValue(result.Item);
+    } catch (error) {
+      throw new AuthFnDynamoDbLookupStoreError('get', error);
+    }
+  };
+
+  const setIfAbsent: ConditionalKVStoreAdapter['setIfAbsent'] = async (input) => {
+    try {
+      await client.send(new PutCommand({
+        TableName: options.tableName,
+        Item: toItem(input, ttlAttributeName, now),
+        ConditionExpression: 'attribute_not_exists(PK)'
+      }));
+      return { inserted: true };
+    } catch (error) {
+      if (isConditionalCheckFailed(error)) {
+        const existing = await get(input.key);
+        return {
+          inserted: false,
+          existing: existing ?? undefined
+        };
+      }
+      throw new AuthFnDynamoDbLookupStoreError('setIfAbsent', error);
+    }
+  };
 
   return {
-    async getByIdentifier(identifier) {
-      try {
-        const result = await client.send(new QueryCommand({
-          TableName: options.tableName,
-          KeyConditionExpression: '#pk = :identifier',
-          ExpressionAttributeNames: {
-            '#pk': 'PK'
-          },
-          ExpressionAttributeValues: {
-            ':identifier': identifier
-          },
-          ConsistentRead: options.consistentRead,
-          Limit: 1
-        }));
+    get,
 
-        const item = result.Items?.[0];
-        return item ? fromItem(item) : null;
-      } catch (error) {
-        throw new AuthFnDynamoDbLookupStoreError('getByIdentifier', error);
-      }
-    },
-
-    async putIfAbsent(record) {
-      const item = toItem(record);
+    async set(input) {
       try {
         await client.send(new PutCommand({
           TableName: options.tableName,
-          Item: item,
-          ConditionExpression: 'attribute_not_exists(PK)'
+          Item: toItem(input, ttlAttributeName, now)
         }));
+      } catch (error) {
+        throw new AuthFnDynamoDbLookupStoreError('set', error);
+      }
+    },
+
+    setIfAbsent,
+
+    async compareAndSet(input) {
+      if (input.expected === null) {
+        const result = await setIfAbsent(input);
         return {
-          inserted: true
+          updated: result.inserted,
+          existing: result.existing
         };
+      }
+
+      try {
+        await client.send(new PutCommand({
+          TableName: options.tableName,
+          Item: toItem(input, ttlAttributeName, now),
+          ConditionExpression: '#value = :expected',
+          ExpressionAttributeNames: {
+            '#value': 'value'
+          },
+          ExpressionAttributeValues: {
+            ':expected': input.expected
+          }
+        }));
+        return { updated: true };
       } catch (error) {
         if (isConditionalCheckFailed(error)) {
-          const existing = await this.getByIdentifier(record.identifier);
+          const existing = await get(input.key);
           return {
-            inserted: false,
+            updated: false,
             existing: existing ?? undefined
           };
         }
-
-        throw new AuthFnDynamoDbLookupStoreError('putIfAbsent', error);
+        throw new AuthFnDynamoDbLookupStoreError('compareAndSet', error);
       }
     },
 
-    async update(record) {
-      try {
-        const result = await client.send(new UpdateCommand({
-          TableName: options.tableName,
-          Key: {
-            PK: record.identifier,
-            SK: LOOKUP_RECORD_SORT_KEY
-          },
-          UpdateExpression: [
-            'SET #identifier = :identifier',
-            '#userId = :userId',
-            '#regionId = :regionId',
-            '#authority = :authority',
-            '#domain = :domain',
-            '#createdAt = if_not_exists(#createdAt, :createdAt)',
-            '#updatedAt = :updatedAt'
-          ].join(', '),
-          ExpressionAttributeNames: {
-            '#identifier': 'identifier',
-            '#userId': 'userId',
-            '#regionId': 'regionId',
-            '#authority': 'authority',
-            '#domain': 'domain',
-            '#createdAt': 'createdAt',
-            '#updatedAt': 'updatedAt'
-          },
-          ExpressionAttributeValues: {
-            ':identifier': record.identifier,
-            ':userId': record.userId ?? null,
-            ':regionId': record.regionId,
-            ':authority': record.authority,
-            ':domain': record.domain ?? null,
-            ':createdAt': serializeDate(record.createdAt),
-            ':updatedAt': serializeDate(record.updatedAt)
-          },
-          ReturnValues: 'ALL_NEW'
-        }));
-
-        if (!result.Attributes) {
-          throw new Error('DynamoDB update returned no attributes');
-        }
-
-        return fromItem(result.Attributes);
-      } catch (error) {
-        throw new AuthFnDynamoDbLookupStoreError('update', error);
-      }
-    },
-
-    async deleteByIdentifier(identifier) {
-      const existing = await this.getByIdentifier(identifier);
-      if (!existing) {
-        return;
-      }
-
+    async delete(key) {
       try {
         await client.send(new DeleteCommand({
           TableName: options.tableName,
-          Key: {
-            PK: existing.identifier,
-            SK: LOOKUP_RECORD_SORT_KEY
-          }
+          Key: itemKey(key)
         }));
       } catch (error) {
-        throw new AuthFnDynamoDbLookupStoreError('deleteByIdentifier', error);
+        throw new AuthFnDynamoDbLookupStoreError('delete', error);
       }
     }
   };
 }
 
-function toItem(record: AuthFnRegionLookupRecord): Record<string, unknown> {
+function itemKey(key: string): Record<string, string> {
   return {
-    PK: record.identifier,
-    SK: LOOKUP_RECORD_SORT_KEY,
-    identifier: record.identifier,
-    userId: record.userId ?? null,
-    regionId: record.regionId,
-    authority: record.authority,
-    domain: record.domain ?? null,
-    createdAt: serializeDate(record.createdAt),
-    updatedAt: serializeDate(record.updatedAt)
+    PK: key,
+    SK: LOOKUP_RECORD_SORT_KEY
   };
 }
 
-function fromItem(item: Record<string, unknown>): AuthFnRegionLookupRecord {
-  return {
-    identifier: readString(item.identifier ?? item.PK, 'identifier'),
-    userId: readOptionalString(item.userId),
-    regionId: readString(item.regionId, 'regionId'),
-    authority: readString(item.authority, 'authority'),
-    domain: readOptionalString(item.domain),
-    createdAt: readString(item.createdAt, 'createdAt'),
-    updatedAt: readString(item.updatedAt, 'updatedAt')
+function toItem(
+  input: { key: string; value: string; ttlSeconds?: number },
+  ttlAttributeName: string | false,
+  now: () => Date
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    ...itemKey(input.key),
+    value: input.value
   };
-}
-
-function serializeDate(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function readString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`DynamoDB lookup record is missing ${field}`);
+  if (ttlAttributeName && input.ttlSeconds !== undefined) {
+    item[ttlAttributeName] = Math.floor(now().getTime() / 1000) + input.ttlSeconds;
   }
-  return value;
+  return item;
 }
 
-function readOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+function readValue(item: Record<string, unknown> | undefined): string | null {
+  if (!item) {
+    return null;
+  }
+  if (typeof item.value !== 'string') {
+    throw new Error('DynamoDB lookup record is missing value');
+  }
+  return item.value;
 }
 
 function isConditionalCheckFailed(error: unknown): boolean {

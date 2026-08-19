@@ -61,7 +61,7 @@ export function createOtpRecoveryAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     },
     pluginRuntime: createOtpRecoveryRuntimeConfig(options.otpInbox)
   });

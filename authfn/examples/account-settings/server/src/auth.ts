@@ -43,7 +43,7 @@ export function createAccountSettingsAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     },
     pluginRuntime: {
       twoFactor: {

@@ -32,7 +32,7 @@ export function createMultiRegionRoutingAuth(options: {
     database: options.database,
     environment: authFnMultiRegionEnvironment(multiRegion),
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     }
   });
 }

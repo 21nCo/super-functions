@@ -37,7 +37,7 @@ export function createPasswordSessionsAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     }
   });
 }

@@ -52,7 +52,7 @@ export function createSocialOAuthAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     },
     pluginRuntime: {
       socialOAuth: createSocialOAuthRuntimeConfig({
