@@ -299,6 +299,14 @@ function resolveRemoteResultForMutation(
     return { ok: false, errors: [matchedError] };
   }
 
+  if (
+    value.ok === false &&
+    typeof value.mutationId === "string" &&
+    (!mutationId || value.mutationId === mutationId)
+  ) {
+    return value;
+  }
+
   const applied = Array.isArray(value.applied) ? value.applied : [];
   if (mutationId && applied.includes(mutationId)) {
     return { ok: true, mutationId };

@@ -326,7 +326,7 @@ describe("native-backed mode", () => {
     });
     expect(hydratingResult).toMatchObject({
       source: "native-remote-adapter",
-      data: [],
+      data: [{ id: "task:1", title: "A", completed: false }],
     });
 
     const batchResult = await client.query([

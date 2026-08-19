@@ -87,12 +87,13 @@ describe("Export/Import - TV-EXP-001, TV-EXP-001N, TV-EXP-002, TV-EXP-002N", () 
       // Verify structure
       expect(exported.version).toBe(1);
       expect(exported.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO 8601 timestamp
-      // Note: kv is also included as it's a built-in resource
+      // Note: kv and datafnTimezoneChange are built-in resources.
       expect(exported.schema).toEqual([
         { name: "task", version: 1 },
         { name: "user", version: 1 },
         { name: "tag", version: 1 },
         { name: "kv", version: 1 },
+        { name: "datafnTimezoneChange", version: 1 },
       ]);
 
       // Verify records
@@ -243,7 +244,7 @@ describe("Export/Import - TV-EXP-001, TV-EXP-001N, TV-EXP-002, TV-EXP-002N", () 
         resources: [],
       }) as DatafnExportPayload;
 
-      expect(exported.schema).toHaveLength(4); // All resources including built-in kv
+      expect(exported.schema).toHaveLength(5); // All resources including built-ins
       expect(exported.resources.task).toHaveLength(1);
     });
 
