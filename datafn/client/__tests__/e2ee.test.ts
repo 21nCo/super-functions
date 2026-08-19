@@ -9,6 +9,7 @@ import {
   assertRemoteSearchAllowedForE2ee,
   decryptCloneResultForE2ee,
   encryptMutationPayloadForE2ee,
+  prepareTransactPayloadForE2ee,
   type DatafnE2eeProvider,
 } from "../src/e2ee.js";
 
@@ -129,5 +130,46 @@ describe("DataFn E2EE client transforms", () => {
     expect(() =>
       assertRemoteQueryAllowedForE2ee(e2ee, { resource: KV_RESOURCE_NAME }),
     ).not.toThrow();
+  });
+
+  it("encrypts transaction mutation steps before remote transport", async () => {
+    const prepared = await prepareTransactPayloadForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      {
+        transactionId: "tx:e2ee",
+        atomic: true,
+        steps: [
+          {
+            mutation: {
+              operation: "insert",
+              resource: "task",
+              id: "task:1",
+              record: {
+                id: "task:1",
+                title: "Encrypted in transit",
+                projectId: "project:1",
+              },
+            },
+          },
+        ],
+      },
+    ) as { steps: Array<{ mutation: { record: Record<string, unknown> } }> };
+
+    expect(isDatafnE2eeEnvelope(prepared.steps[0]!.mutation.record.title)).toBe(true);
+    expect(prepared.steps[0]!.mutation.record.projectId).toBe("project:1");
+  });
+
+  it("rejects transaction queries against encrypted resources", async () => {
+    await expect(prepareTransactPayloadForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      {
+        steps: [{ query: { resource: "task", select: ["id", "title"] } }],
+      },
+    )).rejects.toMatchObject({
+      code: "DFQL_UNSUPPORTED",
+      details: { path: "query" },
+    });
   });
 });

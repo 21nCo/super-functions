@@ -150,15 +150,31 @@ export function redisIndexedDirectoryStore(
       await command(client, ['DEL', recordKey(prefix, key)]);
     },
     async query(input) {
-      const keys = await command(client, ['SMEMBERS', indexKey(prefix, input.index, input.value)]);
+      const queriedIndexKey = indexKey(prefix, input.index, input.value);
+      const keys = await command(client, ['SMEMBERS', queriedIndexKey]);
       const allKeys = Array.isArray(keys) ? keys.map(String) : [];
+      const entries = await Promise.all(
+        allKeys.map(async (key) => ({ key, record: await this.get(key) })),
+      );
+      const staleKeys: string[] = [];
+      const liveRecords: IndexedDirectoryRecord[] = [];
+      for (const { key, record } of entries) {
+        if (
+          record
+          && normalizeIndexValues(record.indexes?.[input.index]).includes(input.value)
+        ) {
+          liveRecords.push(record);
+        } else {
+          staleKeys.push(key);
+        }
+      }
+      if (staleKeys.length > 0) {
+        await command(client, ['SREM', queriedIndexKey, ...staleKeys]);
+      }
       const start = input.cursor ? Number(input.cursor) : 0;
-      const limit = input.limit ?? allKeys.length;
-      const pageKeys = allKeys.slice(start, start + limit);
-      const records = (
-        await Promise.all(pageKeys.map((key) => this.get(key)))
-      ).filter((record): record is IndexedDirectoryRecord => Boolean(record));
-      const cursor = start + limit < allKeys.length ? String(start + limit) : undefined;
+      const limit = input.limit ?? liveRecords.length;
+      const records = liveRecords.slice(start, start + limit);
+      const cursor = start + limit < liveRecords.length ? String(start + limit) : undefined;
       return { records, ...(cursor ? { cursor } : {}) };
     },
   };

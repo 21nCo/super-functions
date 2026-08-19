@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { redisAtomicKVStore, type RedisCommandClient } from './index.js';
+import {
+  redisAtomicKVStore,
+  redisIndexedDirectoryStore,
+  type RedisCommandClient,
+} from './index.js';
 
 describe('redisAtomicKVStore', () => {
   it('keeps a literal legacy sentinel value distinct from the null CAS state', async () => {
@@ -43,6 +47,55 @@ describe('redisAtomicKVStore', () => {
       '',
       'claimed',
       '30',
+    ]);
+  });
+});
+
+describe('redisIndexedDirectoryStore', () => {
+  it('removes stale memberships before applying query pagination', async () => {
+    const records = new Map<string, string>([
+      ['p:dir:record:live-1', JSON.stringify({
+        key: 'live-1',
+        value: 'one',
+        indexes: { email: 'ada@example.com' },
+      })],
+      ['p:dir:record:moved', JSON.stringify({
+        key: 'moved',
+        value: 'other',
+        indexes: { email: 'grace@example.com' },
+      })],
+      ['p:dir:record:live-2', JSON.stringify({
+        key: 'live-2',
+        value: 'two',
+        indexes: { email: 'ada@example.com' },
+      })],
+    ]);
+    const sendCommand = vi.fn(async (args: string[]) => {
+      if (args[0] === 'SMEMBERS') return ['expired', 'live-1', 'moved', 'live-2'];
+      if (args[0] === 'GET') return records.get(args[1]!) ?? null;
+      if (args[0] === 'SREM') return args.length - 2;
+      return null;
+    });
+    const store = redisIndexedDirectoryStore(
+      { sendCommand } satisfies RedisCommandClient,
+      { prefix: 'p:' },
+    );
+
+    await expect(store.query({
+      index: 'email',
+      value: 'ada@example.com',
+      limit: 2,
+    })).resolves.toEqual({
+      records: [
+        { key: 'live-1', value: 'one', indexes: { email: 'ada@example.com' } },
+        { key: 'live-2', value: 'two', indexes: { email: 'ada@example.com' } },
+      ],
+    });
+    expect(sendCommand).toHaveBeenCalledWith([
+      'SREM',
+      'p:dir:index:email:ada@example.com',
+      'expired',
+      'moved',
     ]);
   });
 });

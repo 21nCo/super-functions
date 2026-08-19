@@ -76,6 +76,7 @@ import {
 } from "./public-links.js";
 import {
   assertRemoteSearchAllowedForE2ee,
+  prepareTransactPayloadForE2ee,
   type DatafnE2eeConfig,
 } from "./e2ee.js";
 
@@ -1543,7 +1544,11 @@ function _buildRawClient<S extends DatafnSchema>(
      */
     async transact(payload: unknown) {
       guardDestroyed();
-      return executeTransact(remote, payload, awaitNativeBridgeReady);
+      await awaitNativeBridgeReady();
+      return executeTransact(
+        remote,
+        await prepareTransactPayloadForE2ee(schema, config.e2ee, payload),
+      );
     },
 
     /**

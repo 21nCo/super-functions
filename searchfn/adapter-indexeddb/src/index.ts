@@ -243,6 +243,9 @@ export class IndexedDbAdapter implements SearchAdapter {
     if (!engine.openPromise) {
       engine.openPromise = (async () => {
         await engine.storage.open();
+        await engine.storage.migrateLegacyDatabase(
+          `${this.options.dbName ?? "searchfn-adapter"}-${this.findResourceName(engine)}`,
+        );
         await this.loadStats(engine);
         await this.loadDocTerms(engine);
         await this.loadFieldNames(engine);

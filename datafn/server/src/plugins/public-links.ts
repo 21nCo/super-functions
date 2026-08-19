@@ -495,22 +495,6 @@ function publicLinkDirectoryRecord(record: DatafnPublicLinkRecord): IndexedDirec
   };
 }
 
-function parsePublicLinkDirectoryRecord(record: IndexedDirectoryRecord): DatafnPublicLinkRecord | null {
-  try {
-    const parsed = JSON.parse(record.value) as Partial<DatafnPublicLinkRecord>;
-    return typeof parsed.id === "string" &&
-      typeof parsed.principalId === "string" &&
-      typeof parsed.resource === "string" &&
-      typeof parsed.scope === "string" &&
-      typeof parsed.level === "string" &&
-      typeof parsed.tokenHash === "string"
-      ? parsed as DatafnPublicLinkRecord
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function publicLinkDirectoryKey(id: string): string {
   return `datafn:publicLink:${id}`;
 }
@@ -543,15 +527,12 @@ export async function resolveDatafnPublicLink(
 ): Promise<DatafnPublicLinkPrincipal | null> {
   const parsed = parsePublicLinkToken(token);
   if (!parsed) return null;
-  const directoryRecord = options.directory
-    ? await options.directory.get(publicLinkDirectoryKey(parsed.id))
-    : null;
-  const record = directoryRecord
-    ? parsePublicLinkDirectoryRecord(directoryRecord)
-    : await database.findOne<DatafnPublicLinkRecord>({
-        model: options.modelName ?? "publicLink",
-        where: [{ field: "id", operator: "eq", value: parsed.id }]
-      });
+  // The database is authoritative for authorization state. A directory entry
+  // can remain stale when invalidation fails after a successful revocation.
+  const record = await database.findOne<DatafnPublicLinkRecord>({
+    model: options.modelName ?? "publicLink",
+    where: [{ field: "id", operator: "eq", value: parsed.id }]
+  });
   if (!record || record.revokedAt || isExpired(record.expiresAt)) return null;
   if (record.tokenHash !== await hashPublicLinkToken(parsed.token)) return null;
   if (typeof record.__ns !== "string" || record.__ns.length === 0) return null;

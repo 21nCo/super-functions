@@ -6,16 +6,19 @@ import {
   type TermIdentifier,
 } from "@searchfn/core";
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const RESOURCE_INDEX = "resource";
 const RESOURCE_TERM_INDEX = "resourceFieldTerm";
+const LEGACY_MIGRATION_KEY = "per-resource-v1";
 
 const STORE_NAMES = {
   terms: "terms",
   cacheState: "cacheState",
+  migrationState: "migrationState",
 } as const;
 
 type StoreName = (typeof STORE_NAMES)[keyof typeof STORE_NAMES];
+type ResourceStoreName = typeof STORE_NAMES.terms | typeof STORE_NAMES.cacheState;
 
 interface TermChunkDbRecord {
   resource: string;
@@ -37,6 +40,15 @@ interface CacheStateDbRecord {
   updatedAt: number;
 }
 
+interface MigrationStateDbRecord {
+  resource: string;
+  key: string;
+  completedAt: number;
+}
+
+type LegacyTermChunkDbRecord = Omit<TermChunkDbRecord, "resource">;
+type LegacyCacheStateDbRecord = Omit<CacheStateDbRecord, "resource">;
+
 class IndexedDbStorageError extends Error {
   readonly cause?: unknown;
 
@@ -50,11 +62,12 @@ class IndexedDbStorageError extends Error {
 /** Provides a resource-scoped view over the shared IndexedDB database. */
 export interface IndexedDbResourceStorage extends QueryStorage {
   open(): Promise<void>;
+  migrateLegacyDatabase(dbName: string): Promise<void>;
   getCacheState(key: string): Promise<ArrayBuffer | undefined>;
   putCacheState(key: string, payload: ArrayBuffer): Promise<void>;
   putTermChunksBatch(chunks: StoredPostingChunk[]): Promise<void>;
   deleteTermChunksForTerm(field: string, term: string): Promise<void>;
-  clearStore(storeName: StoreName): Promise<void>;
+  clearStore(storeName: ResourceStoreName): Promise<void>;
 }
 
 /** Owns one physical IndexedDB database and creates resource-scoped storage views. */
@@ -71,6 +84,8 @@ export class IndexedDbManager {
   forResource(resource: string): IndexedDbResourceStorage {
     return {
       open: () => this.open(),
+      migrateLegacyDatabase: (dbName) =>
+        this.migrateLegacyDatabase(resource, dbName),
       getCacheState: (key) => this.getCacheState(resource, key),
       putCacheState: (key, payload) =>
         this.putCacheState(resource, key, payload),
@@ -122,20 +137,68 @@ export class IndexedDbManager {
     });
   }
 
+  private async migrateLegacyDatabase(
+    resource: string,
+    legacyDbName: string,
+  ): Promise<void> {
+    await this.open();
+    if (await this.hasMigrationMarker(resource)) return;
+
+    // A version-1 shared database may already contain newer data. Never let
+    // an older per-resource database overwrite it during the upgrade.
+    if (await this.resourceHasData(resource)) {
+      await this.markMigrationComplete(resource);
+      return;
+    }
+
+    const legacy = await this.readLegacyDatabase(legacyDbName);
+    await this.withTransaction(
+      [STORE_NAMES.terms, STORE_NAMES.cacheState, STORE_NAMES.migrationState],
+      "readwrite",
+      async (transaction) => {
+        const terms = transaction.objectStore(STORE_NAMES.terms);
+        const cacheState = transaction.objectStore(STORE_NAMES.cacheState);
+        const writes: Array<Promise<unknown>> = [
+          transaction.objectStore(STORE_NAMES.migrationState).put({
+            resource,
+            key: LEGACY_MIGRATION_KEY,
+            completedAt: Date.now(),
+          } satisfies MigrationStateDbRecord),
+        ].map((request) => this.requestToPromise(request));
+        writes.push(...(legacy?.terms ?? []).map((record) =>
+          this.requestToPromise(terms.put({ resource, ...record }))
+        ));
+        writes.push(...(legacy?.cacheState ?? []).map((record) =>
+          this.requestToPromise(cacheState.put({ resource, ...record }))
+        ));
+        await Promise.all(writes);
+      },
+    );
+  }
+
   private openDatabase(): Promise<IDBDatabase> {
     const factory = getIndexedDbFactory();
     const request = factory.open(this.dbName, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
-      const terms = database.createObjectStore(STORE_NAMES.terms, {
-        keyPath: ["resource", "field", "term", "chunk"],
-      });
-      terms.createIndex(RESOURCE_INDEX, "resource");
-      terms.createIndex(RESOURCE_TERM_INDEX, ["resource", "field", "term"]);
-      const cacheState = database.createObjectStore(STORE_NAMES.cacheState, {
-        keyPath: ["resource", "key"],
-      });
-      cacheState.createIndex(RESOURCE_INDEX, "resource");
+      if (!database.objectStoreNames.contains(STORE_NAMES.terms)) {
+        const terms = database.createObjectStore(STORE_NAMES.terms, {
+          keyPath: ["resource", "field", "term", "chunk"],
+        });
+        terms.createIndex(RESOURCE_INDEX, "resource");
+        terms.createIndex(RESOURCE_TERM_INDEX, ["resource", "field", "term"]);
+      }
+      if (!database.objectStoreNames.contains(STORE_NAMES.cacheState)) {
+        const cacheState = database.createObjectStore(STORE_NAMES.cacheState, {
+          keyPath: ["resource", "key"],
+        });
+        cacheState.createIndex(RESOURCE_INDEX, "resource");
+      }
+      if (!database.objectStoreNames.contains(STORE_NAMES.migrationState)) {
+        database.createObjectStore(STORE_NAMES.migrationState, {
+          keyPath: ["resource", "key"],
+        });
+      }
     };
     return new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => {
@@ -151,6 +214,125 @@ export class IndexedDbManager {
           ),
         );
     });
+  }
+
+  private async hasMigrationMarker(resource: string): Promise<boolean> {
+    return this.withTransaction(
+      [STORE_NAMES.migrationState],
+      "readonly",
+      async (transaction) => Boolean(await this.requestToPromise(
+        transaction.objectStore(STORE_NAMES.migrationState).get([
+          resource,
+          LEGACY_MIGRATION_KEY,
+        ]),
+      )),
+    );
+  }
+
+  private async markMigrationComplete(resource: string): Promise<void> {
+    await this.withTransaction(
+      [STORE_NAMES.migrationState],
+      "readwrite",
+      async (transaction) => {
+        await this.requestToPromise(
+          transaction.objectStore(STORE_NAMES.migrationState).put({
+            resource,
+            key: LEGACY_MIGRATION_KEY,
+            completedAt: Date.now(),
+          } satisfies MigrationStateDbRecord),
+        );
+      },
+    );
+  }
+
+  private async resourceHasData(resource: string): Promise<boolean> {
+    return this.withTransaction(
+      [STORE_NAMES.terms, STORE_NAMES.cacheState],
+      "readonly",
+      async (transaction) => {
+        const [termCount, cacheCount] = await Promise.all([
+          this.requestToPromise<number>(
+            transaction.objectStore(STORE_NAMES.terms).index(RESOURCE_INDEX).count(resource),
+          ),
+          this.requestToPromise<number>(
+            transaction.objectStore(STORE_NAMES.cacheState).index(RESOURCE_INDEX).count(resource),
+          ),
+        ]);
+        return termCount > 0 || cacheCount > 0;
+      },
+    );
+  }
+
+  private async readLegacyDatabase(legacyDbName: string): Promise<{
+    terms: LegacyTermChunkDbRecord[];
+    cacheState: LegacyCacheStateDbRecord[];
+  } | null> {
+    const factory = getIndexedDbFactory();
+    const factoryWithListing = factory as IDBFactory & {
+      databases?: () => Promise<Array<{ name?: string }>>;
+    };
+    if (factoryWithListing.databases) {
+      const databases = await factoryWithListing.databases();
+      if (!databases.some((database) => database.name === legacyDbName)) {
+        return null;
+      }
+    }
+
+    let created = false;
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open(legacyDbName);
+      request.onupgradeneeded = () => {
+        created = true;
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new IndexedDbStorageError(
+        "Failed to open legacy IndexedDB database",
+        request.error,
+      ));
+    });
+
+    if (created) {
+      database.close();
+      await new Promise<void>((resolve) => {
+        const deletion = factory.deleteDatabase(legacyDbName);
+        deletion.onsuccess = () => resolve();
+        deletion.onerror = () => resolve();
+        deletion.onblocked = () => resolve();
+      });
+      return null;
+    }
+
+    const stores = [STORE_NAMES.terms, STORE_NAMES.cacheState].filter((store) =>
+      database.objectStoreNames.contains(store)
+    );
+    if (stores.length === 0) {
+      database.close();
+      return null;
+    }
+
+    try {
+      const transaction = database.transaction(stores, "readonly");
+      const completion = new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error);
+        transaction.onerror = () => reject(transaction.error);
+      });
+      const termsPromise = database.objectStoreNames.contains(STORE_NAMES.terms)
+        ? this.requestToPromise<LegacyTermChunkDbRecord[]>(
+            transaction.objectStore(STORE_NAMES.terms).getAll(),
+          )
+        : Promise.resolve([]);
+      const cacheStatePromise = database.objectStoreNames.contains(STORE_NAMES.cacheState)
+        ? this.requestToPromise<LegacyCacheStateDbRecord[]>(
+            transaction.objectStore(STORE_NAMES.cacheState).getAll(),
+          )
+        : Promise.resolve([]);
+      const [terms, cacheState] = await Promise.all([termsPromise, cacheStatePromise]);
+      await completion;
+      return { terms, cacheState };
+    } finally {
+      database.close();
+    }
   }
 
   private assertDb(): IDBDatabase {
@@ -314,7 +496,7 @@ export class IndexedDbManager {
 
   private async clearStore(
     resource: string,
-    storeName: StoreName,
+    storeName: ResourceStoreName,
   ): Promise<void> {
     await this.withTransaction(
       [storeName],

@@ -289,19 +289,27 @@ export class SuperfunctionsStoresDurableObject {
     limit?: number,
     cursor?: string,
   ): Promise<{ records: IndexedDirectoryRecord[]; cursor?: string }> {
-    const keys = await this.state.storage.get<string[]>(indexKey(index, value)) ?? [];
+    const queriedIndexKey = indexKey(index, value);
+    const keys = await this.state.storage.get<string[]>(queriedIndexKey) ?? [];
+    const candidates: Array<{ key: string; record: IndexedDirectoryRecord | null }> = [];
+    for (const key of keys) {
+      candidates.push({ key, record: await this.readDirectoryRecord(key) });
+    }
+    const liveRecords: IndexedDirectoryRecord[] = [];
+    const liveKeys: string[] = [];
+    for (const { key, record } of candidates) {
+      if (record && normalizeIndexValues(record.indexes?.[index]).includes(value)) {
+        liveKeys.push(key);
+        liveRecords.push(record);
+      }
+    }
+    if (liveKeys.length !== keys.length) {
+      await this.state.storage.put(queriedIndexKey, liveKeys);
+    }
     const start = cursor ? Number(cursor) : 0;
-    const count = limit ?? keys.length;
-    const page = keys.slice(start, start + count);
-    const records = (
-      await Promise.all(page.map((key) => this.readDirectoryRecord(key)))
-    ).filter((record): record is IndexedDirectoryRecord =>
-      Boolean(
-        record
-        && normalizeIndexValues(record.indexes?.[index]).includes(value),
-      )
-    );
-    const next = start + count < keys.length ? String(start + count) : undefined;
+    const count = limit ?? liveRecords.length;
+    const records = liveRecords.slice(start, start + count);
+    const next = start + count < liveRecords.length ? String(start + count) : undefined;
     return { records, ...(next ? { cursor: next } : {}) };
   }
 

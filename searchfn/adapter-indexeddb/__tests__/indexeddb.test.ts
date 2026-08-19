@@ -13,6 +13,68 @@ function freshDbName(): string {
   return `test-idb-${++testCounter}`;
 }
 
+async function copySharedResourceToLegacyDatabase(
+  sourceDbName: string,
+  legacyDbName: string,
+  resource: string,
+): Promise<void> {
+  const source = await openDatabase(sourceDbName);
+  const sourceTransaction = source.transaction(["terms", "cacheState"], "readonly");
+  const termsPromise = requestResult<Array<Record<string, unknown>>>(
+    sourceTransaction.objectStore("terms").getAll(),
+  );
+  const cacheStatePromise = requestResult<Array<Record<string, unknown>>>(
+    sourceTransaction.objectStore("cacheState").getAll(),
+  );
+  const [terms, cacheState] = await Promise.all([termsPromise, cacheStatePromise]);
+  await transactionComplete(sourceTransaction);
+  source.close();
+
+  const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(legacyDbName, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("terms", {
+        keyPath: ["field", "term", "chunk"],
+      });
+      request.result.createObjectStore("cacheState", { keyPath: "key" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const legacyTransaction = legacy.transaction(["terms", "cacheState"], "readwrite");
+  for (const { resource: recordResource, ...record } of terms) {
+    if (recordResource === resource) legacyTransaction.objectStore("terms").put(record);
+  }
+  for (const { resource: recordResource, ...record } of cacheState) {
+    if (recordResource === resource) legacyTransaction.objectStore("cacheState").put(record);
+  }
+  await transactionComplete(legacyTransaction);
+  legacy.close();
+}
+
+function openDatabase(name: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(name);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function requestResult<T>(request: IDBRequest): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result as T);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionComplete(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error);
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 function createDelegatingWasmModule(options?: {
   abiVersion?: number;
   selfTest?: () => Promise<void>;
@@ -193,6 +255,30 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
         query: "Task",
       });
       expect(noteResult).toEqual([]);
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("migrates persisted per-resource databases into the shared database", async () => {
+    const dbName = freshDbName();
+    const seedDbName = `${dbName}-seed`;
+    const legacyDbName = `${dbName}-tasks`;
+    const seed = new IndexedDbAdapter({ dbName: seedDbName });
+    await seed.index({
+      resource: "tasks",
+      documents: [{ id: "task:legacy", fields: { title: "Legacy groceries" } }],
+    });
+    await seed.dispose();
+    await copySharedResourceToLegacyDatabase(seedDbName, legacyDbName, "tasks");
+
+    const adapter = new IndexedDbAdapter({ dbName });
+    try {
+      await expect(adapter.search({
+        resource: "tasks",
+        query: "groceries",
+        fields: ["title"],
+      })).resolves.toEqual(["task:legacy"]);
     } finally {
       await adapter.dispose();
     }

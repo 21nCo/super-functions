@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { memoryAdapter } from "@superfunctions/db/adapters";
+import {
+  createMemoryIndexedDirectoryStore,
+  memoryAdapter,
+} from "@superfunctions/db/adapters";
 import type { DatafnSchema } from "@datafn/core";
 import {
   createDatafnPublicLinksPlugin,
@@ -260,6 +263,7 @@ describe("DataFn public-links plugin", () => {
 });
 
 function createTestPublicLinks() {
+  const directory = createMemoryIndexedDirectoryStore();
   return createDatafnPublicLinksPlugin<{ actorId: string }>({
     authenticateOwner: (request) => {
       const actorId = request.headers.get("x-owner-actor");
@@ -267,6 +271,12 @@ function createTestPublicLinks() {
     },
     getOwnerActorId: (session) => session.actorId,
     getOwnerNamespace: (actorId) => `user:${actorId}`,
+    directory: {
+      ...directory,
+      // Simulate an interrupted cache invalidation. The revoked database row
+      // must still be authoritative over this deliberately stale entry.
+      async delete() {},
+    },
   });
 }
 

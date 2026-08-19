@@ -251,6 +251,31 @@ export async function encryptPushPayloadForE2ee(
   };
 }
 
+export async function prepareTransactPayloadForE2ee(
+  schema: DatafnSchema,
+  e2ee: DatafnE2eeConfig | undefined,
+  payload: unknown,
+): Promise<unknown> {
+  if (!isE2eeEnabled(e2ee) || !isRecordObject(payload) || !Array.isArray(payload.steps)) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    steps: await Promise.all(payload.steps.map(async (step) => {
+      if (!isRecordObject(step)) return step;
+      if ("query" in step) {
+        assertRemoteQueryAllowedForE2ee(e2ee, step.query);
+      }
+      if (!("mutation" in step)) return step;
+      return {
+        ...step,
+        mutation: await encryptMutationForE2ee(schema, e2ee, step.mutation),
+      };
+    })),
+  };
+}
+
 export async function decryptCloneResultForE2ee(
   schema: DatafnSchema,
   e2ee: DatafnE2eeConfig | undefined,

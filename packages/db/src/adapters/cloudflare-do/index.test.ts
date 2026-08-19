@@ -108,6 +108,38 @@ describe('SuperfunctionsStoresDurableObject directory TTL', () => {
       value: 'old@example.com',
     })).toMatchObject({ ok: true, data: { records: [] } });
   });
+
+  it('cleans stale memberships before applying the page limit', async () => {
+    const values = new Map<string, unknown>([
+      ['directory:index:email:ada@example.com', ['expired', 'live-1', 'moved', 'live-2']],
+      ['directory:record:live-1', {
+        record: { key: 'live-1', value: 'one', indexes: { email: 'ada@example.com' } },
+      }],
+      ['directory:record:moved', {
+        record: { key: 'moved', value: 'other', indexes: { email: 'grace@example.com' } },
+      }],
+      ['directory:record:live-2', {
+        record: { key: 'live-2', value: 'two', indexes: { email: 'ada@example.com' } },
+      }],
+    ]);
+    const object = new SuperfunctionsStoresDurableObject(createState(values));
+
+    expect(await post(object, {
+      operation: 'directory.query',
+      index: 'email',
+      value: 'ada@example.com',
+      limit: 2,
+    })).toEqual({
+      ok: true,
+      data: {
+        records: [
+          { key: 'live-1', value: 'one', indexes: { email: 'ada@example.com' } },
+          { key: 'live-2', value: 'two', indexes: { email: 'ada@example.com' } },
+        ],
+      },
+    });
+    expect(values.get('directory:index:email:ada@example.com')).toEqual(['live-1', 'live-2']);
+  });
 });
 
 function createState(values = new Map<string, unknown>()): DurableObjectStateLike {
