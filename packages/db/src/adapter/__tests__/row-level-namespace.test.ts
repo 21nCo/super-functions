@@ -172,6 +172,31 @@ describe('wrapWithRowLevelNamespace', () => {
     });
   });
 
+  describe('singular write guards', () => {
+    it('rejects empty update and delete filters before namespace injection', async () => {
+      await db.create({
+        model: 'task',
+        data: { id: 't1', title: 'Original' },
+        namespace: 'user:A',
+      });
+
+      await expect(db.update({
+        model: 'task',
+        where: [],
+        data: { title: 'Changed' },
+        namespace: 'user:A',
+      })).rejects.toThrow('update requires a non-empty where clause');
+      await expect(db.delete({
+        model: 'task',
+        where: [],
+        namespace: 'user:A',
+      })).rejects.toThrow('delete requires a non-empty where clause');
+
+      expect(await db.findMany({ model: 'task', where: [], namespace: 'user:A' }))
+        .toEqual([{ id: 't1', title: 'Original' }]);
+    });
+  });
+
   // -----------------------------------------------------------------------
   // TV-RLN-006 & TV-RLN-007: missing/empty namespace throws
   // -----------------------------------------------------------------------

@@ -32,9 +32,9 @@ export function assertValidSignedUrlExpiry(
   expiresInSeconds: number,
   maxSeconds: number = MAX_SIGNED_URL_EXPIRY_SECONDS
 ): void {
-  if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+  if (!Number.isInteger(expiresInSeconds) || expiresInSeconds <= 0) {
     throw createStorageError(
-      'Signed URL expiry must be a positive number of seconds',
+      'Signed URL expiry must be a positive integer number of seconds',
       'STORAGE_SIGNED_URL_EXPIRY_INVALID'
     );
   }

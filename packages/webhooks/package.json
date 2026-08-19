@@ -37,6 +37,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "undici": "^5.29.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { isIP, type LookupFunction } from 'node:net';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 export type SignatureEncoding = 'hex' | 'base64';
 
@@ -185,10 +186,14 @@ function failedDelivery(error: string): WebhookDeliveryResult {
 async function validateWebhookTarget(
   url: URL,
   resolveHostname: (hostname: string) => Promise<readonly string[]>
-): Promise<string | null> {
-  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+): Promise<{ error: string | null; hostname: string; addresses: readonly string[] }> {
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
-    return `Webhook target hostname is not public: ${hostname}`;
+    return {
+      error: `Webhook target hostname is not public: ${hostname}`,
+      hostname,
+      addresses: [],
+    };
   }
 
   const literalVersion = isIP(hostname);
@@ -199,19 +204,66 @@ async function validateWebhookTarget(
     try {
       addresses = await resolveHostname(hostname);
     } catch {
-      return `Webhook target hostname could not be resolved: ${hostname}`;
+      return {
+        error: `Webhook target hostname could not be resolved: ${hostname}`,
+        hostname,
+        addresses: [],
+      };
     }
     if (addresses.length === 0) {
-      return `Webhook target hostname could not be resolved: ${hostname}`;
+      return {
+        error: `Webhook target hostname could not be resolved: ${hostname}`,
+        hostname,
+        addresses: [],
+      };
     }
   }
 
   for (const address of addresses) {
     if (isNonPublicAddress(address)) {
-      return `Webhook target resolves to a non-public address: ${address}`;
+      return {
+        error: `Webhook target resolves to a non-public address: ${address}`,
+        hostname,
+        addresses,
+      };
     }
   }
-  return null;
+  return { error: null, hostname, addresses };
+}
+
+function createPinnedDispatcher(hostname: string, addresses: readonly string[]): Agent {
+  let nextAddress = 0;
+  const lookupPinnedAddress = ((requestedHostname, options, callback) => {
+    const normalizedHostname = requestedHostname
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.+$/, '')
+      .toLowerCase();
+    if (normalizedHostname !== hostname) {
+      callback(new Error(`WEBHOOK_UNVALIDATED_HOSTNAME: ${normalizedHostname}`), '', 0);
+      return;
+    }
+
+    const family = typeof options === 'object' ? options.family : 0;
+    const candidates = addresses.filter((address) => family === 0 || isIP(address) === family);
+    if (candidates.length === 0) {
+      callback(new Error(`WEBHOOK_VALIDATED_ADDRESS_FAMILY_UNAVAILABLE: ${hostname}`), '', 0);
+      return;
+    }
+
+    if (typeof options === 'object' && options.all) {
+      callback(
+        null,
+        candidates.map((address) => ({ address, family: isIP(address) }))
+      );
+      return;
+    }
+
+    const address = candidates[nextAddress % candidates.length]!;
+    nextAddress += 1;
+    callback(null, address, isIP(address));
+  }) as LookupFunction;
+
+  return new Agent({ connect: { lookup: lookupPinnedAddress } });
 }
 
 function isNonPublicAddress(address: string): boolean {
@@ -226,11 +278,24 @@ function isNonPublicAddress(address: string): boolean {
       return true;
     }
 
-    // IPv4-mapped IPv6 (::ffff:0:0/96) must inherit the IPv4 restrictions.
+    // Embedded-IPv4 forms must inherit the IPv4 restrictions. Cover both
+    // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible (::/96) addresses.
+    const first10Zero = bytes.slice(0, 10).every((byte) => byte === 0);
     if (
-      bytes.slice(0, 10).every((byte) => byte === 0) &&
-      bytes[10] === 0xff &&
-      bytes[11] === 0xff
+      first10Zero &&
+      ((bytes[10] === 0xff && bytes[11] === 0xff) ||
+        (bytes[10] === 0 && bytes[11] === 0))
+    ) {
+      return isNonPublicIpv4(bytes.slice(12).join('.'));
+    }
+
+    // NAT64's well-known 64:ff9b::/96 prefix also embeds an IPv4 destination.
+    if (
+      bytes[0] === 0x00 &&
+      bytes[1] === 0x64 &&
+      bytes[2] === 0xff &&
+      bytes[3] === 0x9b &&
+      bytes.slice(4, 12).every((byte) => byte === 0)
     ) {
       return isNonPublicIpv4(bytes.slice(12).join('.'));
     }
@@ -311,7 +376,7 @@ export async function deliverWebhook(
   input: WebhookDeliveryInput,
   options: WebhookDeliveryOptions = {}
 ): Promise<WebhookDeliveryResult> {
-  const fetchFn = options.fetch ?? globalThis.fetch;
+  const fetchFn = options.fetch ?? (undiciFetch as unknown as typeof globalThis.fetch);
   const maxRetries = normalizeRetryCount(options.maxRetries);
   const initialDelayMs = normalizeNonNegativeDuration(
     options.initialDelayMs,
@@ -399,94 +464,110 @@ export async function deliverWebhook(
     );
   }
 
-  const targetError = await validateWebhookTarget(
+  const validatedTarget = await validateWebhookTarget(
     parsedUrl,
     options.resolveHostname ?? defaultResolveHostname
   );
-  if (targetError) {
-    return failedDelivery(targetError);
+  if (validatedTarget.error) {
+    return failedDelivery(validatedTarget.error);
   }
+
+  // Keep the TLS/HTTP hostname unchanged, but force the connection lookup to
+  // use only addresses that passed the public-address checks. This closes the
+  // DNS-rebinding gap between validation and the actual socket connection.
+  const pinnedDispatcher = createPinnedDispatcher(
+    validatedTarget.hostname,
+    validatedTarget.addresses
+  );
 
   const attempts: WebhookDeliveryAttempt[] = [];
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const controller = typeof AbortController === 'function' ? new AbortController() : undefined;
-    if (controller && perAttemptTimeoutMs > 0) {
-      timeoutId = setTimeout(() => controller.abort(), perAttemptTimeoutMs);
-    }
-    try {
-      const response = await fetchFn(input.url, {
-        method: input.method ?? 'POST',
-        headers,
-        body: payloadString,
-        signal: controller?.signal,
-        // Do not let an allowed public target redirect the request to an
-        // unchecked internal address.
-        redirect: 'manual',
-      });
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+  try {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const controller = typeof AbortController === 'function' ? new AbortController() : undefined;
+      if (controller && perAttemptTimeoutMs > 0) {
+        timeoutId = setTimeout(() => controller.abort(), perAttemptTimeoutMs);
       }
+      try {
+        const response = await fetchFn(input.url, {
+          method: input.method ?? 'POST',
+          headers,
+          body: payloadString,
+          signal: controller?.signal,
+          // Do not let an allowed public target redirect the request to an
+          // unchecked internal address.
+          redirect: 'manual',
+          dispatcher: pinnedDispatcher,
+        } as RequestInit & { dispatcher: Agent });
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        if (response.body) {
+          await response.body.cancel().catch(() => undefined);
+        }
 
-      if (response.ok) {
+        if (response.ok) {
+          attempts.push({
+            attempt,
+            ok: true,
+            status: response.status,
+          });
+
+          return {
+            ok: true,
+            attempts,
+            responseStatus: response.status,
+          };
+        }
+
         attempts.push({
           attempt,
-          ok: true,
+          ok: false,
           status: response.status,
+          error: `HTTP ${response.status}`,
         });
 
-        return {
-          ok: true,
-          attempts,
-          responseStatus: response.status,
-        };
-      }
-
-      attempts.push({
-        attempt,
-        ok: false,
-        status: response.status,
-        error: `HTTP ${response.status}`,
-      });
-
-      if (attempt >= maxRetries || !shouldRetryWebhookStatus(response.status)) {
-        return {
+        if (attempt >= maxRetries || !shouldRetryWebhookStatus(response.status)) {
+          return {
+            ok: false,
+            attempts,
+            responseStatus: response.status,
+          };
+        }
+      } catch (error) {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        attempts.push({
+          attempt,
           ok: false,
-          attempts,
-          responseStatus: response.status,
-        };
-      }
-    } catch (error) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      attempts.push({
-        attempt,
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+          error: error instanceof Error ? error.message : String(error),
+        });
 
-      if (attempt >= maxRetries || !shouldRetryWebhookError(error)) {
-        return {
-          ok: false,
-          attempts,
-          responseStatus: attempts[attempts.length - 1]?.status,
-        };
+        if (attempt >= maxRetries || !shouldRetryWebhookError(error)) {
+          return {
+            ok: false,
+            attempts,
+            responseStatus: attempts[attempts.length - 1]?.status,
+          };
+        }
+      }
+
+      if (attempt < maxRetries) {
+        const delay = Math.min(maxDelayMs, initialDelayMs * 2 ** (attempt - 1));
+        await sleep(delay);
       }
     }
 
-    if (attempt < maxRetries) {
-      const delay = Math.min(maxDelayMs, initialDelayMs * 2 ** (attempt - 1));
-      await sleep(delay);
-    }
+    return {
+      ok: false,
+      attempts,
+      responseStatus: attempts[attempts.length - 1]?.status,
+    };
+  } finally {
+    await pinnedDispatcher.close().catch(() => undefined);
   }
-
-  return {
-    ok: false,
-    attempts,
-    responseStatus: attempts[attempts.length - 1]?.status,
-  };
 }
 
 function normalizeRetryCount(value: number | undefined): number {

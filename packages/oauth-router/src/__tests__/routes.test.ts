@@ -298,6 +298,48 @@ describe("oauth-router route factories", () => {
     expect(redirectResponse.headers.get("location")).toBe("http://localhost/");
   });
 
+  it("falls back to the request origin for non-HTTP returnTo schemes", async () => {
+    const browser = createFlowServiceMocks();
+    browser.handleCallback.mockResolvedValue({
+      providerId: "google",
+      subject: {
+        kind: "browser-auth",
+        intentId: "intent_01",
+        returnTo: "javascript:alert('xss')"
+      },
+      tokenSet: { accessToken: "access_01" }
+    });
+    const browserRoutes = createOAuthBrowserRoutes({
+      basePath: "/auth/social",
+      flowService: browser.service,
+      resolveStartInput: async (request) => (await request.json()) as never,
+      callbackMode: "redirect"
+    });
+
+    const response = await createRouter({ routes: browserRoutes }).handle(
+      new Request("http://localhost/auth/social/callback/google?code=code_02&state=st_01")
+    );
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+  });
+
+  it("ignores invalid allowedRedirectOrigins while honoring valid entries", async () => {
+    const browser = createFlowServiceMocks();
+    const browserRoutes = createOAuthBrowserRoutes({
+      basePath: "/auth/social",
+      flowService: browser.service,
+      resolveStartInput: async (request) => (await request.json()) as never,
+      callbackMode: "redirect",
+      allowedRedirectOrigins: ["not a URL", "https://app.example"]
+    });
+
+    const response = await createRouter({ routes: browserRoutes }).handle(
+      new Request("http://localhost/auth/social/callback/google?code=code_02&state=st_01")
+    );
+
+    expect(response.headers.get("location")).toBe("https://app.example/post-auth");
+  });
+
   it("preserves resolver-provided requestId when the start header is absent", async () => {
     const { service, start } = createFlowServiceMocks();
     const routes = createOAuthConnectionRoutes({
