@@ -202,6 +202,30 @@ describe('webhooks package exports', () => {
     });
   });
 
+  it('bounds hostname validation with the configured per-attempt timeout', async () => {
+    const resolver = vi.fn(() => new Promise<readonly string[]>(() => undefined));
+
+    const result = await deliverWebhook(
+      {
+        url: 'https://stalled.example.com/hook',
+        payload: { hello: 'world' },
+      },
+      {
+        resolveHostname: resolver,
+        maxRetries: 1,
+        perAttemptTimeoutMs: 5,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]).toMatchObject({
+      attempt: 1,
+      ok: false,
+      error: 'Webhook target validation timed out after 5ms',
+    });
+    expect(undiciFetchMock).not.toHaveBeenCalled();
+  });
+
   it('canonicalizes content-type and signature headers before delivery', async () => {
     const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {

@@ -476,10 +476,16 @@ export async function deliverWebhook(
     );
   }
 
-  const validatedTarget = await validateWebhookTarget(
-    parsedUrl,
-    options.resolveHostname ?? defaultResolveHostname
-  );
+  let validatedTarget: Awaited<ReturnType<typeof validateWebhookTarget>>;
+  try {
+    validatedTarget = await withTimeout(
+      validateWebhookTarget(parsedUrl, options.resolveHostname ?? defaultResolveHostname),
+      perAttemptTimeoutMs,
+      `Webhook target validation timed out after ${perAttemptTimeoutMs}ms`
+    );
+  } catch (error) {
+    return failedDelivery(error instanceof Error ? error.message : String(error));
+  }
   if (validatedTarget.error) {
     return failedDelivery(validatedTarget.error);
   }
@@ -621,6 +627,24 @@ function decodeSignature(value: string, encoding: SignatureEncoding): Buffer | n
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  if (timeoutMs <= 0) {
+    return operation;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function shouldRetryWebhookStatus(status: number): boolean {
