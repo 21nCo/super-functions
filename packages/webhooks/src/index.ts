@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
+import { Resolver } from 'node:dns/promises';
 import { isIP, type LookupFunction } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
 
@@ -129,7 +129,7 @@ export type WebhookDeliveryResult = {
 };
 
 export type WebhookDeliveryOptions = {
-  resolveHostname?: (hostname: string) => Promise<readonly string[]>;
+  resolveHostname?: (hostname: string, signal: AbortSignal) => Promise<readonly string[]>;
   maxRetries?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
@@ -170,9 +170,38 @@ function normalizeNonNegativeDuration(
   return Math.max(0, value);
 }
 
-async function defaultResolveHostname(hostname: string): Promise<readonly string[]> {
-  const addresses = await lookup(hostname, { all: true, verbatim: true });
-  return addresses.map(({ address }) => address);
+async function defaultResolveHostname(
+  hostname: string,
+  signal: AbortSignal
+): Promise<readonly string[]> {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+
+  // Resolver.cancel() actively releases outstanding c-ares requests when the
+  // delivery deadline fires; a Promise.race alone would leave DNS work alive.
+  const resolver = new Resolver();
+  const cancel = () => resolver.cancel();
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const results = await Promise.allSettled([
+      resolver.resolve4(hostname),
+      resolver.resolve6(hostname),
+    ]);
+    if (signal.aborted) {
+      throw signal.reason;
+    }
+    const addresses = results.flatMap((result) =>
+      result.status === 'fulfilled' ? result.value : []
+    );
+    if (addresses.length === 0) {
+      const failure = results.find((result) => result.status === 'rejected');
+      throw failure?.reason ?? new Error(`DNS lookup returned no addresses for ${hostname}`);
+    }
+    return addresses;
+  } finally {
+    signal.removeEventListener('abort', cancel);
+  }
 }
 
 function failedDelivery(error: string): WebhookDeliveryResult {
@@ -184,7 +213,8 @@ function failedDelivery(error: string): WebhookDeliveryResult {
 
 async function validateWebhookTarget(
   url: URL,
-  resolveHostname: (hostname: string) => Promise<readonly string[]>
+  resolveHostname: (hostname: string, signal: AbortSignal) => Promise<readonly string[]>,
+  signal: AbortSignal
 ): Promise<{ error: string | null; hostname: string; addresses: readonly string[] }> {
   const hostname = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
@@ -201,7 +231,7 @@ async function validateWebhookTarget(
     addresses = [hostname];
   } else {
     try {
-      addresses = await resolveHostname(hostname);
+      addresses = await resolveHostname(hostname, signal);
     } catch {
       return {
         error: `Webhook target hostname could not be resolved: ${hostname}`,
@@ -477,11 +507,17 @@ export async function deliverWebhook(
   }
 
   let validatedTarget: Awaited<ReturnType<typeof validateWebhookTarget>>;
+  const validationController = new AbortController();
   try {
     validatedTarget = await withTimeout(
-      validateWebhookTarget(parsedUrl, options.resolveHostname ?? defaultResolveHostname),
+      validateWebhookTarget(
+        parsedUrl,
+        options.resolveHostname ?? defaultResolveHostname,
+        validationController.signal
+      ),
       perAttemptTimeoutMs,
-      `Webhook target validation timed out after ${perAttemptTimeoutMs}ms`
+      `Webhook target validation timed out after ${perAttemptTimeoutMs}ms`,
+      () => validationController.abort()
     );
   } catch (error) {
     return failedDelivery(error instanceof Error ? error.message : String(error));
@@ -629,14 +665,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void
+): Promise<T> {
   if (timeoutMs <= 0) {
     return operation;
   }
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    timeoutId = setTimeout(() => {
+      reject(new Error(message));
+      onTimeout?.();
+    }, timeoutMs);
   });
   try {
     return await Promise.race([operation, timeout]);

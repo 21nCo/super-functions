@@ -203,7 +203,11 @@ describe('webhooks package exports', () => {
   });
 
   it('bounds hostname validation with the configured per-attempt timeout', async () => {
-    const resolver = vi.fn(() => new Promise<readonly string[]>(() => undefined));
+    const resolver = vi.fn((_hostname: string, signal: AbortSignal) =>
+      new Promise<readonly string[]>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      })
+    );
 
     const result = await deliverWebhook(
       {
@@ -224,6 +228,7 @@ describe('webhooks package exports', () => {
       error: 'Webhook target validation timed out after 5ms',
     });
     expect(undiciFetchMock).not.toHaveBeenCalled();
+    expect(resolver.mock.calls[0]?.[1].aborted).toBe(true);
   });
 
   it('canonicalizes content-type and signature headers before delivery', async () => {
@@ -502,7 +507,8 @@ describe('webhooks package exports', () => {
 
     expect(result.ok).toBe(false);
     expect(result.attempts[0]?.error).toContain('10.0.0.5');
-    expect(resolver).toHaveBeenCalledWith('hooks.example.com');
+    expect(resolver).toHaveBeenCalledWith('hooks.example.com', expect.anything());
+    expect(resolver.mock.calls[0]?.[1].aborted).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
