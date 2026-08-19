@@ -113,9 +113,10 @@ export async function runGmailSync(
 
     do {
       const baseline = await dependencies.source.listBaseline({ pageSize, pageToken });
-      const normalizedPage = normalizeGmailMessages(baseline.messages, {
-        mailbox: 'inbox',
-      });
+      const normalizedPage = applyFeatureMode(
+        normalizeGmailMessages(baseline.messages, { mailbox: 'inbox' }),
+        request.featureMode
+      );
       const writeResult = await messageStore.upsert(request.connectionId, normalizedPage);
       fetched += normalizedPage.length;
       upserted += writeResult.upserted;
@@ -184,9 +185,10 @@ export async function runGmailSync(
     throw error;
   }
 
-  const normalizedMessages = normalizeGmailMessages(incremental.messages, {
-    mailbox: 'inbox',
-  });
+  const normalizedMessages = applyFeatureMode(
+    normalizeGmailMessages(incremental.messages, { mailbox: 'inbox' }),
+    request.featureMode
+  );
   const writeResult = await messageStore.upsert(request.connectionId, normalizedMessages);
 
   await dependencies.checkpointStore.set(request.connectionId, {
@@ -202,6 +204,18 @@ export async function runGmailSync(
     partial: incremental.partial === true,
     messages: normalizedMessages,
   };
+}
+
+function applyFeatureMode(
+  messages: NormalizedMailMessage[],
+  featureMode: ProviderFeatureMode = 'metadata-only'
+): NormalizedMailMessage[] {
+  if (featureMode === 'full-body') {
+    return messages;
+  }
+  return messages.map(({ bodyText: _bodyText, bodyHtml: _bodyHtml, snippet, ...metadata }) =>
+    featureMode === 'snippet' && snippet !== undefined ? { ...metadata, snippet } : metadata
+  );
 }
 
 export class MemoryGmailCheckpointStore implements GmailCheckpointStore {

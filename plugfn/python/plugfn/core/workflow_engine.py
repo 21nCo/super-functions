@@ -145,11 +145,22 @@ class WorkflowEngine:
                 {"status": WorkflowStatus.ENABLED, "updated_at": datetime.now()},
             )
         except BaseException as error:
-            activation.error = error
-            activation.ready.set()
-            self._unregister_trigger(workflow, required=False)
-            if previous_binding is not None:
-                self._restore_trigger_binding(workflow.id, previous_binding)
+            # Cancellation can be delivered after storage has committed but
+            # before its awaitable returns. Reconcile durable state before
+            # rolling back the live binding.
+            persisted: Optional[Workflow] = None
+            try:
+                persisted = await asyncio.shield(self.get_workflow(workflow_id))
+            except BaseException:
+                pass
+            if persisted is not None and persisted.status == WorkflowStatus.ENABLED:
+                activation.ready.set()
+            else:
+                activation.error = error
+                activation.ready.set()
+                self._unregister_trigger(workflow, required=False)
+                if previous_binding is not None:
+                    self._restore_trigger_binding(workflow.id, previous_binding)
             raise
         activation.ready.set()
 

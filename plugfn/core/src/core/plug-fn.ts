@@ -777,6 +777,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           status: 'dead-lettered',
           attempts: attempt,
           error: 'webhook receipt not found',
+          metadata: withoutWebhookReplayBody(delivery.metadata),
         });
         if (deadLetter) {
           deliveries.push(deadLetter);
@@ -802,6 +803,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           attempts: attempt,
           error: 'webhook receipt was already delivered successfully',
           nextAttemptAt: undefined,
+          metadata: withoutWebhookReplayBody(delivery.metadata),
         });
         if (superseded) {
           deliveries.push(superseded);
@@ -837,7 +839,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       };
 
       try {
-        if (webhookReplayBodyExpired(receipt)) {
+        if (webhookReplayBodyExpired(delivery)) {
           throw new Error('webhook retry payload expired');
         }
         await handler({
@@ -846,23 +848,23 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           provider: receipt.provider,
           event: receipt.event,
           headers: receipt.headersRedacted ?? {},
-          rawBody: decodeWebhookReceiptBody(receipt),
+          rawBody: decodeWebhookDeliveryBody(delivery),
         });
         const updated = await finishClaim({
           status: 'success',
           attempts: attempt,
+          metadata: withoutWebhookReplayBody(delivery.metadata),
         });
         if (updated) {
           deliveries.push(updated);
           succeeded += 1;
-          await clearWebhookReplayBodyIfTerminal(receipt.id);
         } else {
           failed += 1;
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'webhook delivery failed';
         const status =
-          webhookReplayBodyExpired(receipt) || attempt >= maxAttempts
+          webhookReplayBodyExpired(delivery) || attempt >= maxAttempts
             ? 'dead-lettered'
             : 'failed';
         const nextAttemptAt =
@@ -874,12 +876,14 @@ export function plugFn(config: PlugFnConfig): PlugFn {
           attempts: attempt,
           error: errorMessage,
           nextAttemptAt,
+          ...(status === 'dead-lettered'
+            ? { metadata: withoutWebhookReplayBody(delivery.metadata) }
+            : {}),
         });
         if (updated) {
           deliveries.push(updated);
           if (status === 'dead-lettered') {
             deadLettered += 1;
-            await clearWebhookReplayBodyIfTerminal(receipt.id);
           } else {
             failed += 1;
           }
@@ -898,35 +902,28 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     };
   }
 
-  function decodeWebhookReceiptBody(receipt: PlugFnWebhookReceipt): Uint8Array {
-    const encoded = receipt.metadata?.rawBodyBase64;
+  function decodeWebhookDeliveryBody(delivery: PlugFnWebhookDelivery): Uint8Array {
+    const encoded = delivery.metadata?.rawBodyBase64;
     if (typeof encoded !== 'string') {
       return new Uint8Array();
     }
     return Buffer.from(encoded, 'base64');
   }
 
-  function webhookReplayBodyExpired(receipt: PlugFnWebhookReceipt): boolean {
-    const expiresAt = receipt.metadata?.rawBodyExpiresAt;
+  function webhookReplayBodyExpired(delivery: PlugFnWebhookDelivery): boolean {
+    const expiresAt = delivery.metadata?.rawBodyExpiresAt;
     return typeof expiresAt === 'string' && Date.parse(expiresAt) <= Date.now();
   }
 
-  async function clearWebhookReplayBodyIfTerminal(receiptId: string): Promise<void> {
-    const receiptDeliveries = await runtimeStorage.listWebhookDeliveries(receiptId);
-    if (
-      receiptDeliveries.length === 0 ||
-      receiptDeliveries.some(
-        (delivery) => delivery.status !== 'success' && delivery.status !== 'dead-lettered'
+  function withoutWebhookReplayBody(
+    metadata: Record<string, unknown> | undefined
+  ): Record<string, unknown> | undefined {
+    if (!metadata) return undefined;
+    return Object.fromEntries(
+      Object.entries(metadata).filter(
+        ([key]) => key !== 'rawBodyBase64' && key !== 'rawBodyExpiresAt'
       )
-    ) {
-      return;
-    }
-    await runtimeStorage.updateWebhookReceipt(receiptId, {
-      metadata: {
-        rawBodyBase64: undefined,
-        rawBodyExpiresAt: undefined,
-      },
-    });
+    );
   }
 
   // Create dynamic provider proxies

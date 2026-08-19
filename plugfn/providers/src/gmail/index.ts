@@ -170,7 +170,7 @@ export const gmailProvider: Provider = {
         context: ActionContext
       ) => {
         const connectionId = requireConnectionId(context);
-        const source = createGmailSyncSource(context);
+        const source = createGmailSyncSource(context, params.featureMode);
 
         const result = await runGmailSync(
           {
@@ -336,7 +336,10 @@ function requireConnectionId(context: ActionContext): string {
   );
 }
 
-function createGmailSyncSource(context: ActionContext): GmailSyncSource {
+function createGmailSyncSource(
+  context: ActionContext,
+  featureMode: 'metadata-only' | 'snippet' | 'full-body' = 'metadata-only'
+): GmailSyncSource {
   return {
     listBaseline: async ({ pageSize, pageToken }) => {
       const response = await context.http.get<{
@@ -351,7 +354,7 @@ function createGmailSyncSource(context: ActionContext): GmailSyncSource {
       });
 
       const summaries = response.data.messages ?? [];
-      const messages = await hydrateMessages(context, summaries);
+      const messages = await hydrateMessages(context, summaries, featureMode);
 
       return {
         messages,
@@ -404,7 +407,7 @@ function createGmailSyncSource(context: ActionContext): GmailSyncSource {
           }
         } while (pageToken);
 
-        const messages = await hydrateMessages(context, summaries);
+        const messages = await hydrateMessages(context, summaries, featureMode);
         return {
           messages,
           historyId,
@@ -445,7 +448,8 @@ function createGmailWatchClient(context: ActionContext): GmailWatchClient {
 
 async function hydrateMessages(
   context: ActionContext,
-  entries: Array<{ id?: string } | GmailApiMessage>
+  entries: Array<{ id?: string } | GmailApiMessage>,
+  featureMode: 'metadata-only' | 'snippet' | 'full-body' = 'metadata-only'
 ): Promise<GmailApiMessage[]> {
   const messages: GmailApiMessage[] = [];
 
@@ -463,7 +467,7 @@ async function hydrateMessages(
       `${context.provider.baseUrl}/gmail/v1/users/me/messages/${entry.id}`,
       {
         params: {
-          format: 'full',
+          format: featureMode === 'full-body' ? 'full' : 'metadata',
         },
       }
     );

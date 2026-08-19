@@ -263,6 +263,41 @@ describe('gmail sync', () => {
       message: 'operation not allowed by policy',
     });
   });
+
+  it.each([
+    [undefined, false, false],
+    ['metadata-only', false, false],
+    ['snippet', true, false],
+    ['full-body', true, true],
+  ] as const)(
+    'enforces %s feature mode on normalized message content',
+    async (featureMode, expectSnippet, expectBody) => {
+      const result = await runGmailSync(
+        {
+          tenantId: 'tenant-feature-mode',
+          userId: 'user-feature-mode',
+          connectionId: `conn-${featureMode ?? 'default'}`,
+          mode: 'full',
+          featureMode,
+        },
+        {
+          source: {
+            listBaseline: async () => ({
+              historyId: 'history-feature-mode',
+              messages: [createGmailMessage('g-feature', 'gt-feature', 'history-feature-mode')],
+            }),
+            listIncremental: async () => ({ historyId: 'unused', messages: [] }),
+          },
+          checkpointStore: new MemoryGmailCheckpointStore(),
+          messageStore: new MemoryGmailMessageStore(),
+        }
+      );
+
+      expect(result.messages[0].snippet !== undefined).toBe(expectSnippet);
+      expect(result.messages[0].bodyText !== undefined).toBe(expectBody);
+      expect(result.messages[0].bodyHtml).toBeUndefined();
+    }
+  );
 });
 
 function createGmailMessage(id: string, threadId: string, historyId: string) {

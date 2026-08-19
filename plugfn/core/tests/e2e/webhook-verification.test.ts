@@ -7,6 +7,7 @@ import { linearProvider } from '../../../providers/src/linear/index.js';
 import { slackProvider } from '../../../providers/src/slack/index.js';
 import { stripeProvider } from '../../../providers/src/stripe/index.js';
 import { outlookProvider } from '../../../providers/src/outlook/index.js';
+import { gmailProvider } from '../../../providers/src/gmail/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
 describe('PlugFn webhook verification e2e', () => {
@@ -543,8 +544,8 @@ describe('PlugFn webhook verification e2e', () => {
       'github',
       'delivery_worker_replay'
     );
-    expect(receipt?.metadata?.rawBodyBase64).toBe(Buffer.from(rawBody).toString('base64'));
     const [delivery] = await plug.runtime.webhooks.listDeliveries(receipt!.id);
+    expect(delivery.metadata?.rawBodyBase64).toBe(Buffer.from(rawBody).toString('base64'));
     await plug.runtime.webhooks.updateDelivery(delivery.id, { nextAttemptAt: new Date(0) });
 
     const workerHandler = vi.fn();
@@ -558,9 +559,51 @@ describe('PlugFn webhook verification e2e', () => {
         rawBody: Buffer.from(rawBody),
       })
     );
-    await expect(plug.runtime.webhooks.getReceipt(receipt!.id)).resolves.toMatchObject({
-      metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
+    await expect(plug.runtime.webhooks.listDeliveries(receipt!.id)).resolves.toEqual([
+      expect.objectContaining({
+        status: 'success',
+        metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
+      }),
+    ]);
+  });
+
+  it('deduplicates Slack and Gmail retries using envelope delivery ids', async () => {
+    const plug = createPlug({ verifySignatures: false });
+    const slackHandler = vi.fn();
+    const gmailHandler = vi.fn();
+    plug.providers.register(slackProvider);
+    plug.providers.register(gmailProvider);
+    plug.webhooks.on('slack', 'message.channels', slackHandler);
+    plug.webhooks.on('gmail', 'mail.update', gmailHandler);
+    const router = createPlugFnRouter(plug);
+    const slackBody = JSON.stringify({
+      type: 'event_callback',
+      event_id: 'slack-event-1',
+      event: { type: 'message', channel: 'C1', user: 'U1', text: 'hi', ts: '1.0' },
     });
+    const gmailBody = JSON.stringify({
+      message: {
+        messageId: 'gmail-message-1',
+        data: Buffer.from(
+          JSON.stringify({ historyId: '123', emailAddress: 'user@example.com' })
+        ).toString('base64'),
+      },
+    });
+
+    const postTwice = async (url: string, body: string) => {
+      const first = await router.handle(new Request(url, { method: 'POST', body }));
+      const second = await router.handle(new Request(url, { method: 'POST', body }));
+      return { first, second };
+    };
+    const slack = await postTwice('http://localhost/webhooks/slack/events', slackBody);
+    const gmail = await postTwice('http://localhost/webhooks/gmail/mail-update', gmailBody);
+
+    expect(slack.first.status).toBe(200);
+    expect(gmail.first.status).toBe(200);
+    await expect(slack.second.json()).resolves.toMatchObject({ data: { duplicate: true } });
+    await expect(gmail.second.json()).resolves.toMatchObject({ data: { duplicate: true } });
+    expect(slackHandler).toHaveBeenCalledTimes(1);
+    expect(gmailHandler).toHaveBeenCalledTimes(1);
   });
 
   it.each([

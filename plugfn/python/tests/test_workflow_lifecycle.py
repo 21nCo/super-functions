@@ -246,9 +246,7 @@ async def test_enable_gates_webhooks_until_enabled_status_is_durable() -> None:
             self.update_started = asyncio.Event()
             self.release_update = asyncio.Event()
 
-        async def update_workflow(
-            self, workflow_id: str, updates: Dict[str, Any]
-        ) -> None:
+        async def update_workflow(self, workflow_id: str, updates: Dict[str, Any]) -> None:
             self.update_started.set()
             await self.release_update.wait()
             await super().update_workflow(workflow_id, updates)
@@ -286,9 +284,7 @@ async def test_cancelled_enable_releases_gate_and_removes_new_binding() -> None:
             super().__init__(item)
             self.update_started = asyncio.Event()
 
-        async def update_workflow(
-            self, workflow_id: str, updates: Dict[str, Any]
-        ) -> None:
+        async def update_workflow(self, workflow_id: str, updates: Dict[str, Any]) -> None:
             self.update_started.set()
             await asyncio.Event().wait()
 
@@ -316,6 +312,42 @@ async def test_cancelled_enable_releases_gate_and_removes_new_binding() -> None:
 
     assert ("github", "issues.opened") not in webhooks.handlers
     assert storage.workflow.status == WorkflowStatus.DRAFT
+
+
+@pytest.mark.asyncio
+async def test_cancelled_enable_keeps_binding_when_status_already_committed() -> None:
+    workflow = create_workflow()
+
+    class CommitThenBlockWorkflowStorage(WorkflowStorageStub):
+        def __init__(self, item: Workflow) -> None:
+            super().__init__(item)
+            self.committed = asyncio.Event()
+
+        async def update_workflow(self, workflow_id: str, updates: Dict[str, Any]) -> None:
+            await super().update_workflow(workflow_id, updates)
+            self.committed.set()
+            await asyncio.Event().wait()
+
+    storage = CommitThenBlockWorkflowStorage(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+
+    enable_task = asyncio.create_task(engine.enable_workflow(workflow.id))
+    await storage.committed.wait()
+    enable_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await enable_task
+
+    handler = webhooks.handlers[("github", "issues.opened")]
+    result = await handler({"issue": {"id": 1}})
+
+    assert storage.workflow.status == WorkflowStatus.ENABLED
+    assert result["status"] == "completed"
 
 
 @pytest.mark.asyncio

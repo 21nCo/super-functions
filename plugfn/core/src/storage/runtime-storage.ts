@@ -223,23 +223,21 @@ export class AdapterRuntimeStorage {
     id: string,
     updates: Partial<PlugFnWebhookReceipt>
   ): Promise<PlugFnWebhookReceipt> {
-    return this.withWebhookReceiptClaimLock(`receipt:${id}`, async () => {
-      const current = await this.adapter.getWebhookReceipt(id);
-      const metadata: Record<string, unknown> = {
-        ...(current?.metadata ?? {}),
-        ...(updates.metadata ?? {}),
-        updatedAt: new Date().toISOString(),
-      };
+    const normalizedUpdates = { ...updates };
+    if (updates.metadata !== undefined) {
+      const metadata: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(updates.metadata ?? {})) {
         if (value === undefined) {
-          delete metadata[key];
+          continue;
         }
+        metadata[key] = value;
       }
-      return this.adapter.updateWebhookReceipt(id, {
-        ...updates,
-        metadata,
-      });
-    });
+      // Receipt metadata uses replacement semantics. Avoid a cross-instance
+      // read/merge/write race and always preserve the runtime-owned timestamp.
+      metadata.updatedAt = new Date().toISOString();
+      normalizedUpdates.metadata = metadata;
+    }
+    return this.adapter.updateWebhookReceipt(id, normalizedUpdates);
   }
 
   createWebhookDelivery(input: CreateWebhookDeliveryInput): Promise<PlugFnWebhookDelivery> {

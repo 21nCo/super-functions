@@ -849,7 +849,7 @@ describe('PlugFn sync runtime', () => {
     expect(secondRun.deliveries[0]?.status).toBe('dead-lettered');
   });
 
-  it('serializes concurrent webhook receipt metadata merges', async () => {
+  it('replaces receipt metadata without a cross-instance read/merge/write race', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({
       database,
@@ -865,13 +865,12 @@ describe('PlugFn sync runtime', () => {
       verificationStatus: 'verified',
     });
 
-    await Promise.all([
-      plug.runtime.webhooks.updateReceipt(receipt.id, { metadata: { first: true } }),
-      plug.runtime.webhooks.updateReceipt(receipt.id, { metadata: { second: true } }),
-    ]);
+    await plug.runtime.webhooks.updateReceipt(receipt.id, {
+      metadata: { first: true, updatedAt: undefined },
+    });
 
     await expect(plug.runtime.webhooks.getReceipt(receipt.id)).resolves.toMatchObject({
-      metadata: { first: true, second: true },
+      metadata: { first: true, updatedAt: expect.any(String) },
     });
   });
 
@@ -889,15 +888,15 @@ describe('PlugFn sync runtime', () => {
       event: 'issues',
       payloadHash: 'hash_expired_payload',
       verificationStatus: 'verified',
+    });
+    const delivery = await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      handlerName: 'github.issues',
+      status: 'pending',
       metadata: {
         rawBodyBase64: Buffer.from('{"action":"opened"}').toString('base64'),
         rawBodyExpiresAt: new Date(0).toISOString(),
       },
-    });
-    await plug.runtime.webhooks.createDelivery({
-      receiptId: receipt.id,
-      handlerName: 'github.issues',
-      status: 'pending',
     });
     const handler = vi.fn();
 
@@ -905,9 +904,13 @@ describe('PlugFn sync runtime', () => {
 
     expect(handler).not.toHaveBeenCalled();
     expect(result).toMatchObject({ processed: 1, deadLettered: 1 });
-    await expect(plug.runtime.webhooks.getReceipt(receipt.id)).resolves.toMatchObject({
-      metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
-    });
+    await expect(plug.runtime.webhooks.listDeliveries(receipt.id)).resolves.toEqual([
+      expect.objectContaining({
+        id: delivery.id,
+        status: 'dead-lettered',
+        metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
+      }),
+    ]);
   });
 
   it('claims webhook deliveries so concurrent workers do not run the same delivery', async () => {
@@ -1032,6 +1035,52 @@ describe('PlugFn sync runtime', () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ processed: 1, succeeded: 1, deadLettered: 0 });
+  });
+
+  it('clears replay payloads when a delivery is superseded by a successful sibling', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    const receipt = await plug.runtime.webhooks.createReceipt({
+      provider: 'github',
+      event: 'issues',
+      payloadHash: 'hash_superseded_target',
+      verificationStatus: 'verified',
+    });
+    await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      sinkId: 'sink-a',
+      handlerName: 'handler-a',
+      status: 'success',
+    });
+    const pending = await plug.runtime.webhooks.createDelivery({
+      receiptId: receipt.id,
+      sinkId: 'sink-a',
+      handlerName: 'handler-a',
+      status: 'pending',
+      metadata: {
+        rawBodyBase64: Buffer.from('{"action":"opened"}').toString('base64'),
+        rawBodyExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+    });
+    const handler = vi.fn();
+
+    const result = await plug.runtime.webhooks.processDueDeliveries(handler);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ processed: 1, succeeded: 0, deadLettered: 1 });
+    await expect(plug.runtime.webhooks.listDeliveries(receipt.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        id: pending.id,
+        status: 'dead-lettered',
+        metadata: expect.not.objectContaining({ rawBodyBase64: expect.anything() }),
+      })
+    );
   });
 
   it('reclaims stale running webhook deliveries after the worker lease expires', async () => {

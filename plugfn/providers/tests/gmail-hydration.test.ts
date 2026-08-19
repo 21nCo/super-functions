@@ -84,5 +84,43 @@ describe('isHydratedGmailApiMessage', () => {
       expect.stringMatching(/\/history$/),
       expect.objectContaining({ params: expect.objectContaining({ pageToken: 'page-2' }) })
     );
+    expect(get).toHaveBeenCalledWith(
+      expect.stringMatching(/\/messages\/msg-1$/),
+      expect.objectContaining({ params: { format: 'metadata' } })
+    );
+  });
+
+  it('requests full Gmail payloads only for full-body mode', async () => {
+    const get = vi.fn(async (url: string) =>
+      url.endsWith('/messages')
+        ? { data: { messages: [{ id: 'msg-1' }], historyId: 'history-1' } }
+        : {
+            data: {
+              id: 'msg-1',
+              internalDate: `${Date.parse('2026-08-15T00:00:00.000Z')}`,
+              payload: { headers: [] },
+            },
+          }
+    );
+
+    await gmailProvider.actions['mail.sync'].execute(
+      {
+        tenantId: 'gmail-full-body-test',
+        mode: 'full',
+        pageSize: 1,
+        featureMode: 'full-body',
+      },
+      {
+        userId: 'user-1',
+        connectionId: 'gmail-full-body-connection',
+        provider: { name: 'gmail', baseUrl: gmailProvider.baseUrl },
+        http: { get },
+      } as any
+    );
+
+    expect(get).toHaveBeenCalledWith(
+      expect.stringMatching(/\/messages\/msg-1$/),
+      expect.objectContaining({ params: { format: 'full' } })
+    );
   });
 });

@@ -977,8 +977,6 @@ async function handleWebhookRoute(
       metadata: {
         contentType: headers['content-type'],
         userAgent: headers['user-agent'],
-        rawBodyBase64: Buffer.from(rawBody).toString('base64'),
-        rawBodyExpiresAt: new Date(Date.now() + WEBHOOK_RETRY_PAYLOAD_TTL_MS).toISOString(),
         ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
@@ -999,14 +997,6 @@ async function handleWebhookRoute(
       });
     }
     receiptId = receipt.id;
-    // A retried idempotency claim returns the existing receipt, so refresh its
-    // bounded replay payload before attempting a new delivery.
-    await ctx.plugFn.runtime.webhooks.updateReceipt(receipt.id, {
-      metadata: {
-        rawBodyBase64: Buffer.from(rawBody).toString('base64'),
-        rawBodyExpiresAt: new Date(Date.now() + WEBHOOK_RETRY_PAYLOAD_TTL_MS).toISOString(),
-      },
-    });
     if (receipt.verificationStatus !== verificationStatus) {
       await ctx.plugFn.runtime.webhooks.updateReceipt(receipt.id, {
         verificationStatus,
@@ -1021,6 +1011,8 @@ async function handleWebhookRoute(
         event: resolvedEvent,
         payloadHash: currentPayloadHash,
         idempotencyKey,
+        rawBodyBase64: Buffer.from(rawBody).toString('base64'),
+        rawBodyExpiresAt: new Date(Date.now() + WEBHOOK_RETRY_PAYLOAD_TTL_MS).toISOString(),
       },
     });
     deliveryId = delivery.id;
@@ -1038,8 +1030,8 @@ async function handleWebhookRoute(
     await ctx.plugFn.runtime.webhooks.updateDelivery(delivery.id, {
       status: 'success',
       attempts: delivery.attempts + 1,
+      metadata: withoutWebhookReplayBody(delivery.metadata),
     });
-    await clearWebhookReplayBody(ctx, receipt.id);
 
     return successResponse({
       event: webhookEvent,
@@ -1060,12 +1052,6 @@ async function handleWebhookRoute(
     } else if (!deliveryId) {
       await ctx.plugFn.runtime.webhooks.updateReceipt(receiptId, {
         verificationStatus: 'failed',
-        metadata: {
-          error: error instanceof Error ? error.message : 'webhook handler failed',
-        },
-      });
-    } else {
-      await ctx.plugFn.runtime.webhooks.updateReceipt(receiptId, {
         metadata: {
           error: error instanceof Error ? error.message : 'webhook handler failed',
         },
@@ -1163,15 +1149,6 @@ async function createFailedWebhookReceipt(
   } catch {
     // A failed receipt is observability best-effort; the original deterministic error is returned.
   }
-}
-
-async function clearWebhookReplayBody(ctx: PlugFnContext, receiptId: string): Promise<void> {
-  await ctx.plugFn.runtime.webhooks.updateReceipt(receiptId, {
-    metadata: {
-      rawBodyBase64: undefined,
-      rawBodyExpiresAt: undefined,
-    },
-  });
 }
 
 function inferWebhookEvent(
@@ -1284,6 +1261,20 @@ function readWebhookIdempotencyKey(
     }
   }
 
+  if (provider === 'slack') {
+    const eventId = readWebhookStringField(rawBody, 'event_id');
+    if (eventId) {
+      return eventId;
+    }
+  }
+
+  if (provider === 'gmail') {
+    const messageId = readWebhookNestedStringField(rawBody, ['message', 'messageId']);
+    if (messageId) {
+      return messageId;
+    }
+  }
+
   return (
     headers['x-plugfn-delivery'] ||
     headers['x-github-delivery'] ||
@@ -1291,6 +1282,34 @@ function readWebhookIdempotencyKey(
     headers['x-linear-delivery'] ||
     headers['x-goog-message-number'] ||
     headers[`${provider}-delivery`]
+  );
+}
+
+function readWebhookNestedStringField(
+  rawBody: Uint8Array | undefined,
+  path: string[]
+): string | undefined {
+  if (!rawBody) return undefined;
+  try {
+    let value: unknown = JSON.parse(Buffer.from(rawBody).toString('utf8'));
+    for (const key of path) {
+      if (!value || typeof value !== 'object') return undefined;
+      value = (value as Record<string, unknown>)[key];
+    }
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function withoutWebhookReplayBody(
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  return Object.fromEntries(
+    Object.entries(metadata).filter(
+      ([key]) => key !== 'rawBodyBase64' && key !== 'rawBodyExpiresAt'
+    )
   );
 }
 
