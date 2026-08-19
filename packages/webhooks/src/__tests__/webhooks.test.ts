@@ -7,6 +7,8 @@ import {
   verifyWebhookSignature
 } from '../index.js';
 
+const resolvePublicHostname = async () => ['93.184.216.34'] as const;
+
 describe('webhooks package exports', () => {
   it('signs and verifies webhook payload using timing-safe verification path', () => {
     const payload = JSON.stringify({ event: 'bot.joined', id: 'evt_1' });
@@ -109,6 +111,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
         maxDelayMs: 2,
@@ -150,6 +153,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
       }
@@ -176,6 +180,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 1,
         perAttemptTimeoutMs: 5,
       }
@@ -213,6 +218,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -247,6 +253,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -273,6 +280,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -373,6 +381,49 @@ describe('webhooks package exports', () => {
     );
 
     expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://127.0.0.1/hook',
+    'http://10.0.0.1/hook',
+    'http://169.254.169.254/latest/meta-data',
+    'http://[::1]/hook',
+    'http://[fd00::1]/hook',
+    'http://[fe80::1]/hook',
+  ])('refuses to deliver to a non-public literal address: %s', async (url) => {
+    const fetchMock = vi.fn();
+    const resolver = vi.fn(resolvePublicHostname);
+
+    const result = await deliverWebhook(
+      { url, payload: { hello: 'world' } },
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        resolveHostname: resolver,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('non-public address');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('resolves hostnames and refuses delivery when any address is non-public', async () => {
+    const fetchMock = vi.fn();
+    const resolver = vi.fn(async () => ['93.184.216.34', '10.0.0.5']);
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        resolveHostname: resolver,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('10.0.0.5');
+    expect(resolver).toHaveBeenCalledWith('hooks.example.com');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

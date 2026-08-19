@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 export type SignatureEncoding = 'hex' | 'base64';
 
@@ -127,6 +129,7 @@ export type WebhookDeliveryResult = {
 
 export type WebhookDeliveryOptions = {
   fetch?: typeof globalThis.fetch;
+  resolveHostname?: (hostname: string) => Promise<readonly string[]>;
   maxRetries?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
@@ -165,6 +168,143 @@ function normalizeNonNegativeDuration(
     throw new Error(errorCode);
   }
   return Math.max(0, value);
+}
+
+async function defaultResolveHostname(hostname: string): Promise<readonly string[]> {
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  return addresses.map(({ address }) => address);
+}
+
+function failedDelivery(error: string): WebhookDeliveryResult {
+  return {
+    ok: false,
+    attempts: [{ attempt: 1, ok: false, error }],
+  };
+}
+
+async function validateWebhookTarget(
+  url: URL,
+  resolveHostname: (hostname: string) => Promise<readonly string[]>
+): Promise<string | null> {
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    return `Webhook target hostname is not public: ${hostname}`;
+  }
+
+  const literalVersion = isIP(hostname);
+  let addresses: readonly string[];
+  if (literalVersion !== 0) {
+    addresses = [hostname];
+  } else {
+    try {
+      addresses = await resolveHostname(hostname);
+    } catch {
+      return `Webhook target hostname could not be resolved: ${hostname}`;
+    }
+    if (addresses.length === 0) {
+      return `Webhook target hostname could not be resolved: ${hostname}`;
+    }
+  }
+
+  for (const address of addresses) {
+    if (isNonPublicAddress(address)) {
+      return `Webhook target resolves to a non-public address: ${address}`;
+    }
+  }
+  return null;
+}
+
+function isNonPublicAddress(address: string): boolean {
+  const normalized = address.replace(/^\[|\]$/g, '').split('%', 1)[0] ?? '';
+  const version = isIP(normalized);
+  if (version === 4) {
+    return isNonPublicIpv4(normalized);
+  }
+  if (version === 6) {
+    const bytes = parseIpv6(normalized);
+    if (!bytes) {
+      return true;
+    }
+
+    // IPv4-mapped IPv6 (::ffff:0:0/96) must inherit the IPv4 restrictions.
+    if (
+      bytes.slice(0, 10).every((byte) => byte === 0) &&
+      bytes[10] === 0xff &&
+      bytes[11] === 0xff
+    ) {
+      return isNonPublicIpv4(bytes.slice(12).join('.'));
+    }
+
+    const unspecified = bytes.every((byte) => byte === 0);
+    const loopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
+    const uniqueLocal = (bytes[0]! & 0xfe) === 0xfc; // fc00::/7
+    const linkLocal = bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0x80; // fe80::/10
+    const siteLocal = bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0xc0; // fec0::/10
+    const multicast = bytes[0] === 0xff; // ff00::/8
+    return unspecified || loopback || uniqueLocal || linkLocal || siteLocal || multicast;
+  }
+  return true;
+}
+
+function isNonPublicIpv4(address: string): boolean {
+  const octets = address.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) {
+    return true;
+  }
+  const [a, b, c] = octets as [number, number, number, number];
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
+  );
+}
+
+function parseIpv6(address: string): number[] | null {
+  let input = address.toLowerCase();
+  if (input.includes('.')) {
+    const separator = input.lastIndexOf(':');
+    const ipv4 = input.slice(separator + 1).split('.').map(Number);
+    if (
+      separator < 0 ||
+      ipv4.length !== 4 ||
+      ipv4.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+    ) {
+      return null;
+    }
+    input = `${input.slice(0, separator)}:${((ipv4[0]! << 8) | ipv4[1]!).toString(16)}:${(
+      (ipv4[2]! << 8) |
+      ipv4[3]!
+    ).toString(16)}`;
+  }
+
+  if ((input.match(/::/g) ?? []).length > 1) {
+    return null;
+  }
+  const [leftText, rightText] = input.split('::');
+  const left = leftText ? leftText.split(':') : [];
+  const right = rightText ? rightText.split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if ((input.includes('::') && missing < 1) || (!input.includes('::') && missing !== 0)) {
+    return null;
+  }
+  const parts = [...left, ...Array.from({ length: missing }, () => '0'), ...right];
+  const bytes: number[] = [];
+  for (const part of parts) {
+    if (!/^[0-9a-f]{1,4}$/.test(part)) {
+      return null;
+    }
+    const value = Number.parseInt(part, 16);
+    bytes.push(value >> 8, value & 0xff);
+  }
+  return bytes.length === 16 ? bytes : null;
 }
 
 export async function deliverWebhook(
@@ -259,6 +399,14 @@ export async function deliverWebhook(
     );
   }
 
+  const targetError = await validateWebhookTarget(
+    parsedUrl,
+    options.resolveHostname ?? defaultResolveHostname
+  );
+  if (targetError) {
+    return failedDelivery(targetError);
+  }
+
   const attempts: WebhookDeliveryAttempt[] = [];
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -273,6 +421,9 @@ export async function deliverWebhook(
         headers,
         body: payloadString,
         signal: controller?.signal,
+        // Do not let an allowed public target redirect the request to an
+        // unchecked internal address.
+        redirect: 'manual',
       });
       if (timeoutId) {
         clearTimeout(timeoutId);

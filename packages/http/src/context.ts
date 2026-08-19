@@ -12,7 +12,10 @@ import { PayloadTooLargeError } from './errors.js';
  * streams the body and aborts as soon as the accumulated size exceeds the
  * limit — so an attacker cannot exhaust memory by omitting Content-Length.
  */
-async function readBodyWithLimit(request: Request, maxBodyBytes: number): Promise<string> {
+async function readBodyBufferWithLimit(
+  request: Request,
+  maxBodyBytes: number
+): Promise<Uint8Array> {
   const contentLength = request.headers.get('content-length');
   if (contentLength !== null) {
     const declared = Number(contentLength);
@@ -25,17 +28,17 @@ async function readBodyWithLimit(request: Request, maxBodyBytes: number): Promis
   }
 
   const body = request.body;
-  // No stream available (e.g. already-buffered mock): fall back to text() but
-  // still enforce the limit on the resulting length.
+  // No stream available (e.g. an already-buffered mock): fall back to
+  // arrayBuffer() so multipart and other binary payloads are not corrupted.
   if (!body) {
-    const text = await request.text();
-    if (byteLength(text) > maxBodyBytes) {
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.byteLength > maxBodyBytes) {
       throw new PayloadTooLargeError(
         `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
         'PAYLOAD_TOO_LARGE'
       );
     }
-    return text;
+    return bytes;
   }
 
   const reader = body.getReader();
@@ -48,6 +51,14 @@ async function readBodyWithLimit(request: Request, maxBodyBytes: number): Promis
       if (value) {
         total += value.byteLength;
         if (total > maxBodyBytes) {
+          // Stop the producer immediately. Releasing the lock alone leaves the
+          // source free to continue buffering an attacker-controlled body.
+          try {
+            await reader.cancel('PAYLOAD_TOO_LARGE');
+          } catch {
+            // Preserve the stable payload-limit error even if cancellation
+            // itself fails in a custom stream implementation.
+          }
           throw new PayloadTooLargeError(
             `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
             'PAYLOAD_TOO_LARGE'
@@ -60,11 +71,7 @@ async function readBodyWithLimit(request: Request, maxBodyBytes: number): Promis
     reader.releaseLock();
   }
 
-  return new TextDecoder().decode(concatChunks(chunks, total));
-}
-
-function byteLength(text: string): number {
-  return new TextEncoder().encode(text).byteLength;
+  return concatChunks(chunks, total);
 }
 
 function concatChunks(chunks: Uint8Array[], total: number): Uint8Array {
@@ -93,14 +100,24 @@ export function createRouteContext(
   let jsonCache: Promise<any> | null = null;
   let textCache: Promise<string> | null = null;
   let formDataCache: Promise<FormData> | null = null;
+  let bodyBufferCache: Promise<Uint8Array> | null = null;
 
   // When a limit is configured, buffer the body once (with enforcement) and
   // derive json/text/formData from that single read. Otherwise defer to the
   // native Request parsers.
+  const readBuffer = (): Promise<Uint8Array> => {
+    if (!bodyBufferCache) {
+      bodyBufferCache = readBodyBufferWithLimit(request, maxBodyBytes!);
+    }
+    return bodyBufferCache;
+  };
+
   const readText = (): Promise<string> => {
     if (!textCache) {
       textCache =
-        maxBodyBytes !== undefined ? readBodyWithLimit(request, maxBodyBytes) : request.text();
+        maxBodyBytes !== undefined
+          ? readBuffer().then((bytes) => new TextDecoder().decode(bytes))
+          : request.text();
     }
     return textCache;
   };
@@ -127,21 +144,16 @@ export function createRouteContext(
     formData: async (): Promise<FormData> => {
       if (!formDataCache) {
         if (maxBodyBytes !== undefined) {
-          const contentLength = request.headers.get('content-length');
-          if (contentLength !== null) {
-            const declared = Number(contentLength);
-            if (Number.isFinite(declared) && declared > maxBodyBytes) {
-              formDataCache = Promise.reject(
-                new PayloadTooLargeError(
-                  `Request body exceeds the maximum allowed size of ${maxBodyBytes} bytes`,
-                  'PAYLOAD_TOO_LARGE'
-                )
-              );
-              return formDataCache;
-            }
-          }
+          formDataCache = readBuffer().then((bytes) => {
+            // Parse from the same bounded binary buffer used by json() and
+            // text(). Response.formData() preserves multipart file bytes.
+            const body = new Uint8Array(bytes.byteLength);
+            body.set(bytes);
+            return new Response(body.buffer, { headers: request.headers }).formData();
+          });
+        } else {
+          formDataCache = request.formData();
         }
-        formDataCache = request.formData();
       }
       return formDataCache;
     },

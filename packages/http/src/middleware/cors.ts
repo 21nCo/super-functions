@@ -19,11 +19,12 @@ export function corsMiddleware<TContext = any>(
     maxAge = 86400, // 24 hours
   } = options;
 
-  // `Access-Control-Allow-Origin: *` together with credentials is rejected by
-  // browsers, so credentialed responses must reflect a concrete origin. When
-  // credentials are enabled with the wildcard default, reflect the request
-  // origin (and set Vary: Origin) instead of emitting the invalid combination.
-  const reflectForCredentials = credentials && origin === '*';
+  // Reflecting an arbitrary request Origin here would turn the wildcard into
+  // an allow-all credentialed policy. Require callers to name trusted origins
+  // explicitly (or supply a predicate) instead.
+  if (credentials && origin === '*') {
+    throw new Error('CORS_CREDENTIALS_WILDCARD_ORIGIN');
+  }
 
   return async (request, _context, next) => {
     const requestOrigin = request.headers.get('Origin') || '';
@@ -34,12 +35,7 @@ export function corsMiddleware<TContext = any>(
     let allowedOrigin: string | null = null;
     let varyOnOrigin = false;
     if (typeof origin === 'string') {
-      if (reflectForCredentials) {
-        allowedOrigin = requestOrigin || null;
-        varyOnOrigin = true;
-      } else {
-        allowedOrigin = origin;
-      }
+      allowedOrigin = origin;
     } else if (Array.isArray(origin)) {
       varyOnOrigin = true;
       if (origin.includes(requestOrigin)) {

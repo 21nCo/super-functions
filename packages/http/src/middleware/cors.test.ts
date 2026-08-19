@@ -28,18 +28,13 @@ describe('corsMiddleware', () => {
     expect(response.headers.get('Vary')).toBe('Origin');
   });
 
-  it('does not emit wildcard origin together with credentials', async () => {
-    const mw = corsMiddleware({ origin: '*', credentials: true });
-    const response = await mw(
-      new Request('http://localhost/api', { headers: { Origin: 'https://app.example' } }),
-      {},
-      okHandler
+  it('rejects wildcard origin together with credentials', () => {
+    expect(() => corsMiddleware({ origin: '*', credentials: true })).toThrow(
+      'CORS_CREDENTIALS_WILDCARD_ORIGIN'
     );
-
-    // Must reflect a concrete origin, never `*`, when credentials are enabled.
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example');
-    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
-    expect(response.headers.get('Vary')).toBe('Origin');
+    expect(() => corsMiddleware({ credentials: true })).toThrow(
+      'CORS_CREDENTIALS_WILDCARD_ORIGIN'
+    );
   });
 
   it('uses a static wildcard origin without Vary when credentials are disabled', async () => {
