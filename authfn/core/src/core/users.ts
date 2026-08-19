@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Adapter } from '@superfunctions/db';
-import type { AuthFnConfig, AuthFnUserRecord } from '../types.js';
+import type { AuthFnRuntimeConfig, AuthFnUserRecord } from '../types.js';
 import { AuthFnConflictError } from './errors.js';
 
 export interface CreateUserInput {
@@ -11,7 +11,7 @@ export interface CreateUserInput {
 }
 
 export async function createUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   input: CreateUserInput
 ): Promise<AuthFnUserRecord> {
   const now = new Date();
@@ -44,7 +44,7 @@ export async function createUser(
 }
 
 export async function findUserById(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnUserRecord | null> {
   return config.database.findOne<AuthFnUserRecord>({
@@ -55,7 +55,7 @@ export async function findUserById(
 }
 
 export async function findUserByPrimaryEmail(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   primaryEmail: string
 ): Promise<AuthFnUserRecord | null> {
   const email = normalizeEmail(primaryEmail);
@@ -71,7 +71,7 @@ export async function findUserByPrimaryEmail(
 }
 
 export async function markUserEmailVerified(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   verifiedAt: Date = new Date()
 ): Promise<AuthFnUserRecord> {
@@ -99,7 +99,7 @@ async function createRecord<TRecord extends Record<string, unknown>>(
   });
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

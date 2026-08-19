@@ -1,7 +1,6 @@
 import {
   PipelineEngine,
   DocumentStatsManager,
-  IndexedDbManager,
   LruCache,
   fuzzyExpand,
   analyzePipelineCompatibility,
@@ -14,6 +13,7 @@ import type {
   TermCacheValue,
   VectorCacheValue,
   QueryToken,
+  QueryStorage,
   TermPosting,
 } from "@searchfn/core";
 import type {
@@ -27,7 +27,14 @@ import type {
   SearchAllResult,
   InitializeParams,
 } from "@searchfn/adapter-contracts";
-import { SearchAdapterError, SEARCH_ADAPTER_DISPOSED } from "@searchfn/adapter-contracts";
+import {
+  SearchAdapterError,
+  SEARCH_ADAPTER_DISPOSED,
+} from "@searchfn/adapter-contracts";
+import {
+  IndexedDbManager,
+  type IndexedDbResourceStorage,
+} from "./indexeddb-manager";
 
 const SEARCHFN_WASM_ABI_VERSION = 1;
 
@@ -49,7 +56,7 @@ export type EngineSelectionReasonCode =
   | "wasm_self_test_failed";
 
 export interface SearchCoreEngineFactoryOptions {
-  storage: IndexedDbManager;
+  storage: QueryStorage;
   termCache: LruCache<TermCacheValue>;
   vectorCache: LruCache<VectorCacheValue>;
   stats: DocumentStatsManager;
@@ -58,7 +65,9 @@ export interface SearchCoreEngineFactoryOptions {
 
 export interface SearchFnWasmModule {
   abiVersion: number;
-  createSearchCoreEngine: (options: SearchCoreEngineFactoryOptions) => Promise<SearchCoreEngine>;
+  createSearchCoreEngine: (
+    options: SearchCoreEngineFactoryOptions,
+  ) => Promise<SearchCoreEngine>;
 }
 
 export interface IndexedDbAdapterOptions {
@@ -94,7 +103,7 @@ interface DocTermEntry {
 }
 
 interface ResourceEngine {
-  storage: IndexedDbManager;
+  storage: IndexedDbResourceStorage;
   pipeline: PipelineEngine;
   statsManager: DocumentStatsManager;
   termCache: LruCache<TermCacheValue>;
@@ -115,6 +124,7 @@ interface ResourceEngine {
 
 const DEFAULT_TERM_CACHE_SIZE = 2048;
 const DEFAULT_VECTOR_CACHE_SIZE = 512;
+const MIN_PREFIX_EXPANSION_TERM_LENGTH = 2;
 
 type DocId = string | number;
 
@@ -131,6 +141,7 @@ export class IndexedDbAdapter implements SearchAdapter {
 
   private readonly options: IndexedDbAdapterOptions;
   private readonly defaults: SearchDefaults;
+  private readonly storage: IndexedDbManager;
   private readonly engines = new Map<string, ResourceEngine>();
   private wasmModulePromise: Promise<SearchFnWasmModule> | null = null;
   private disposed = false;
@@ -138,13 +149,14 @@ export class IndexedDbAdapter implements SearchAdapter {
   constructor(options?: IndexedDbAdapterOptions) {
     this.options = options ?? {};
     this.defaults = options?.defaults ?? {};
+    this.storage = new IndexedDbManager(options?.dbName ?? "searchfn-adapter");
   }
 
   private assertNotDisposed(): void {
     if (this.disposed) {
       throw new SearchAdapterError(
         SEARCH_ADAPTER_DISPOSED,
-        "Search adapter is disposed. Call initialize() before use."
+        "Search adapter is disposed. Call initialize() before use.",
       );
     }
   }
@@ -152,8 +164,7 @@ export class IndexedDbAdapter implements SearchAdapter {
   private getOrCreateEngine(resource: string): ResourceEngine {
     let engine = this.engines.get(resource);
     if (!engine) {
-      const dbName = `${this.options.dbName ?? "searchfn-adapter"}-${resource}`;
-      const storage = new IndexedDbManager({ dbName, version: 1 });
+      const storage = this.storage.forResource(resource);
       const pipeline = new PipelineEngine(this.options.pipeline);
       const termCache = new LruCache<TermCacheValue>({
         maxEntries: this.options.cache?.terms ?? DEFAULT_TERM_CACHE_SIZE,
@@ -199,7 +210,10 @@ export class IndexedDbAdapter implements SearchAdapter {
     return undefined;
   }
 
-  private assertNotAborted(signal?: AbortSignal, operation = "Operation"): void {
+  private assertNotAborted(
+    signal?: AbortSignal,
+    operation = "Operation",
+  ): void {
     if (signal?.aborted) {
       throw new SearchAdapterError("DFQL_ABORTED", `${operation} aborted`);
     }
@@ -229,6 +243,9 @@ export class IndexedDbAdapter implements SearchAdapter {
     if (!engine.openPromise) {
       engine.openPromise = (async () => {
         await engine.storage.open();
+        await engine.storage.migrateLegacyDatabase(
+          `${this.options.dbName ?? "searchfn-adapter"}-${this.findResourceName(engine)}`,
+        );
         await this.loadStats(engine);
         await this.loadDocTerms(engine);
         await this.loadFieldNames(engine);
@@ -240,7 +257,10 @@ export class IndexedDbAdapter implements SearchAdapter {
   }
 
   private createTsCoreEngine(
-    engine: Pick<ResourceEngine, "storage" | "termCache" | "vectorCache" | "statsManager" | "pipeline">,
+    engine: Pick<
+      ResourceEngine,
+      "storage" | "termCache" | "vectorCache" | "statsManager" | "pipeline"
+    >,
   ): SearchCoreEngine {
     return new TsSearchCoreEngine({
       storage: engine.storage,
@@ -251,7 +271,9 @@ export class IndexedDbAdapter implements SearchAdapter {
     });
   }
 
-  private async ensureCoreEngineSelected(engine: ResourceEngine): Promise<void> {
+  private async ensureCoreEngineSelected(
+    engine: ResourceEngine,
+  ): Promise<void> {
     if (engine.selectedEngineKind !== null) {
       return;
     }
@@ -277,7 +299,9 @@ export class IndexedDbAdapter implements SearchAdapter {
 
     const compatibility = analyzePipelineCompatibility(this.options.pipeline);
     if (!compatibility.portable) {
-      const message = compatibility.issues.map((issue) => issue.reason).join(" ");
+      const message = compatibility.issues
+        .map((issue) => issue.reason)
+        .join(" ");
       if (configuredMode === "wasm") {
         throw this.createEngineSelectionError(
           "wasm_pipeline_not_portable",
@@ -311,13 +335,15 @@ export class IndexedDbAdapter implements SearchAdapter {
       engine.selectedEngineKind = "ts";
       this.options.onWasmFallback?.({
         code: "auto_loader_missing",
-        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        reason:
+          "No wasmLoader was configured; falling back to the TypeScript engine.",
         resource,
       });
       this.options.onEngineSelected?.({
         engine: "ts",
         code: "auto_loader_missing",
-        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
+        reason:
+          "No wasmLoader was configured; falling back to the TypeScript engine.",
         resource,
       });
       return;
@@ -351,7 +377,9 @@ export class IndexedDbAdapter implements SearchAdapter {
           await wasmEngine.selfTest();
         } catch (error) {
           throw this.createEngineSelectionError(
-            configuredMode === "wasm" ? "wasm_self_test_failed" : "auto_self_test_failed",
+            configuredMode === "wasm"
+              ? "wasm_self_test_failed"
+              : "auto_self_test_failed",
             "WASM search engine self-test failed.",
             error,
           );
@@ -374,7 +402,10 @@ export class IndexedDbAdapter implements SearchAdapter {
         throw normalizeEngineSelectionError(error, "wasm_init_failed");
       }
 
-      const selectionError = normalizeEngineSelectionError(error, "auto_init_failed");
+      const selectionError = normalizeEngineSelectionError(
+        error,
+        "auto_init_failed",
+      );
       engine.selectedEngineKind = "ts";
       this.options.onWasmFallback?.({
         code: selectionError.code as EngineSelectionReasonCode,
@@ -405,7 +436,10 @@ export class IndexedDbAdapter implements SearchAdapter {
     message: string,
     cause?: unknown,
   ): SearchAdapterError {
-    const error = new SearchAdapterError(code, message) as SearchAdapterError & { cause?: unknown };
+    const error = new SearchAdapterError(
+      code,
+      message,
+    ) as SearchAdapterError & { cause?: unknown };
     error.cause = cause;
     return error;
   }
@@ -432,7 +466,10 @@ export class IndexedDbAdapter implements SearchAdapter {
     const buffer = await engine.storage.getCacheState("document-stats");
     if (buffer) {
       const json = new TextDecoder().decode(buffer);
-      const stats = JSON.parse(json) as Array<{ docId: string; length: number }>;
+      const stats = JSON.parse(json) as Array<{
+        docId: string;
+        length: number;
+      }>;
       engine.statsManager.load(stats);
     }
   }
@@ -474,7 +511,9 @@ export class IndexedDbAdapter implements SearchAdapter {
   }
 
   private async persistStats(engine: ResourceEngine): Promise<void> {
-    const encoded = new TextEncoder().encode(JSON.stringify(engine.statsManager.snapshot()));
+    const encoded = new TextEncoder().encode(
+      JSON.stringify(engine.statsManager.snapshot()),
+    );
     await engine.storage.putCacheState("document-stats", encoded.buffer);
   }
 
@@ -488,13 +527,17 @@ export class IndexedDbAdapter implements SearchAdapter {
   }
 
   private async persistFieldNames(engine: ResourceEngine): Promise<void> {
-    const encoded = new TextEncoder().encode(JSON.stringify(Array.from(engine.fieldNames)));
+    const encoded = new TextEncoder().encode(
+      JSON.stringify(Array.from(engine.fieldNames)),
+    );
     await engine.storage.putCacheState("field-names", encoded.buffer);
   }
 
   private async persistVocabulary(engine: ResourceEngine): Promise<void> {
     this.refreshVocabulary(engine);
-    const encoded = new TextEncoder().encode(JSON.stringify(Array.from(engine.vocabulary)));
+    const encoded = new TextEncoder().encode(
+      JSON.stringify(Array.from(engine.vocabulary)),
+    );
     await engine.storage.putCacheState("vocabulary", encoded.buffer);
   }
 
@@ -509,7 +552,10 @@ export class IndexedDbAdapter implements SearchAdapter {
         }
         // Legacy snapshots omitted `isPrefix`; only keep terms that were
         // already known as searchable vocabulary before this refresh.
-        if (entry.isPrefix === undefined && previousVocabulary.has(entry.term)) {
+        if (
+          entry.isPrefix === undefined &&
+          previousVocabulary.has(entry.term)
+        ) {
           nextVocabulary.add(entry.term);
         }
       }
@@ -546,7 +592,7 @@ export class IndexedDbAdapter implements SearchAdapter {
   private async loadTermFromDb(
     engine: ResourceEngine,
     field: string,
-    term: string
+    term: string,
   ): Promise<void> {
     let fieldMap = engine.postings.get(field);
     if (!fieldMap) {
@@ -561,14 +607,20 @@ export class IndexedDbAdapter implements SearchAdapter {
       for (const raw of postings) {
         const entry = parseRawPosting(raw);
         if (entry) {
-          termMap.set(entry.docId, { frequency: entry.termFrequency, metadata: entry.metadata });
+          termMap.set(entry.docId, {
+            frequency: entry.termFrequency,
+            metadata: entry.metadata,
+          });
         }
       }
     }
     fieldMap.set(term, termMap);
   }
 
-  private async removeDocById(engine: ResourceEngine, docId: string): Promise<void> {
+  private async removeDocById(
+    engine: ResourceEngine,
+    docId: string,
+  ): Promise<void> {
     const terms = engine.docTerms.get(docId);
     if (!terms) return;
     for (const { field, term } of terms) {
@@ -594,7 +646,7 @@ export class IndexedDbAdapter implements SearchAdapter {
     term: string,
     docId: string,
     frequency: number,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): void {
     let fieldMap = engine.postings.get(field);
     if (!fieldMap) {
@@ -626,11 +678,13 @@ export class IndexedDbAdapter implements SearchAdapter {
           engine.termCache.delete(cacheKey);
           continue;
         }
-        const postingsArray: TermPosting[] = Array.from(termMap.entries()).map(([did, info]) => ({
-          docId: did,
-          termFrequency: info.frequency,
-          metadata: info.metadata,
-        }));
+        const postingsArray: TermPosting[] = Array.from(termMap.entries()).map(
+          ([did, info]) => ({
+            docId: did,
+            termFrequency: info.frequency,
+            metadata: info.metadata,
+          }),
+        );
         engine.termCache.set(cacheKey, {
           field,
           term,
@@ -657,11 +711,13 @@ export class IndexedDbAdapter implements SearchAdapter {
           fieldMap.delete(term);
           continue;
         }
-        const postingsArray: TermPosting[] = Array.from(termMap.entries()).map(([did, info]) => ({
-          docId: did,
-          termFrequency: info.frequency,
-          metadata: info.metadata,
-        }));
+        const postingsArray: TermPosting[] = Array.from(termMap.entries()).map(
+          ([did, info]) => ({
+            docId: did,
+            termFrequency: info.frequency,
+            metadata: info.metadata,
+          }),
+        );
         const { payload, encoding, docFrequency, inverseDocumentFrequency } =
           engine.coreEngine.encodePostings({ postings: postingsArray });
         chunksToWrite.push({
@@ -676,7 +732,9 @@ export class IndexedDbAdapter implements SearchAdapter {
 
     if (deletions.length > 0) {
       await Promise.all(
-        deletions.map(({ field, term }) => engine.storage.deleteTermChunksForTerm(field, term))
+        deletions.map(({ field, term }) =>
+          engine.storage.deleteTermChunksForTerm(field, term),
+        ),
       );
     }
     if (chunksToWrite.length > 0) {
@@ -708,19 +766,36 @@ export class IndexedDbAdapter implements SearchAdapter {
       const rawTokens = engine.pipeline.run(field, query);
       // Always filter out isPrefix-flagged pipeline tokens (edge-ngram artefacts at index time)
       const filtered = rawTokens.filter(
-        (t: { metadata?: Record<string, unknown>; value: string }) => !t.metadata?.isPrefix,
+        (t: { metadata?: Record<string, unknown>; value: string }) =>
+          !t.metadata?.isPrefix,
       );
       const fieldBoost = fieldBoosts?.[field] ?? 1.0;
       for (const token of filtered) {
         if (prefix) {
-          // Prefix mode: vocabulary scan — find all indexed terms that start with this token value
-          for (const vocabTerm of engine.vocabulary) {
-            if (vocabTerm.startsWith(token.value)) {
-              const key = `${field}:${vocabTerm}`;
-              if (!tokenMap.has(key)) {
-                const termBoost = vocabTerm === token.value ? 1.0 : 0.9;
-                tokenMap.set(key, { field, term: vocabTerm, boost: termBoost * fieldBoost });
+          const shouldExpandPrefix =
+            token.value.length >= MIN_PREFIX_EXPANSION_TERM_LENGTH;
+          if (shouldExpandPrefix) {
+            for (const vocabTerm of engine.vocabulary) {
+              if (vocabTerm.startsWith(token.value)) {
+                const key = `${field}:${vocabTerm}`;
+                if (!tokenMap.has(key)) {
+                  const termBoost = vocabTerm === token.value ? 1.0 : 0.9;
+                  tokenMap.set(key, {
+                    field,
+                    term: vocabTerm,
+                    boost: termBoost * fieldBoost,
+                  });
+                }
               }
+            }
+          } else {
+            const key = `${field}:${token.value}`;
+            if (!tokenMap.has(key)) {
+              tokenMap.set(key, {
+                field,
+                term: token.value,
+                boost: fieldBoost,
+              });
             }
           }
         } else {
@@ -764,19 +839,33 @@ export class IndexedDbAdapter implements SearchAdapter {
             await this.removeDocById(engine, docId);
           }
 
-          const ingest = engine.coreEngine.ingest({ docId, fields: doc.fields });
+          const ingest = engine.coreEngine.ingest({
+            docId,
+            fields: doc.fields,
+          });
           if (ingest.totalLength === 0) continue;
 
           engine.statsManager.addDocument(docId, ingest.totalLength);
 
           const docTermEntries: DocTermEntry[] = [];
-          for (const [field, termFrequencies] of ingest.fieldFrequencies.entries()) {
+          for (const [
+            field,
+            termFrequencies,
+          ] of ingest.fieldFrequencies.entries()) {
             engine.fieldNames.add(field);
             const metadata =
-              ingest.fieldMetadata.get(field) ?? new Map<string, Record<string, unknown>>();
+              ingest.fieldMetadata.get(field) ??
+              new Map<string, Record<string, unknown>>();
             for (const [term, frequency] of termFrequencies.entries()) {
               const termMetadata = metadata.get(term);
-              this.upsertPosting(engine, field, term, docId, frequency, termMetadata);
+              this.upsertPosting(
+                engine,
+                field,
+                term,
+                docId,
+                frequency,
+                termMetadata,
+              );
               const isPrefix =
                 termMetadata !== undefined && termMetadata["isPrefix"] === true;
               if (!isPrefix) {
@@ -802,12 +891,14 @@ export class IndexedDbAdapter implements SearchAdapter {
     const engine = this.getOrCreateEngine(params.resource);
     await this.ensureOpen(engine);
 
-    const fields = params.fields ?? engine.searchFields ?? Array.from(engine.fieldNames);
+    const fields =
+      params.fields ?? engine.searchFields ?? Array.from(engine.fieldNames);
     if (fields.length === 0) return [];
 
     const effectivePrefix = params.prefix ?? this.defaults.prefix;
     const effectiveFuzzy = params.fuzzy ?? this.defaults.fuzzy;
-    const effectiveFieldBoosts = params.fieldBoosts ?? this.defaults.fieldBoosts;
+    const effectiveFieldBoosts =
+      params.fieldBoosts ?? this.defaults.fieldBoosts;
     const fuzzyDistance = this.getFuzzyDistance(effectiveFuzzy);
     const tokens = this.buildQueryTokens(
       engine,
@@ -873,16 +964,20 @@ export class IndexedDbAdapter implements SearchAdapter {
 
     for (const resourceName of resourceNames) {
       this.assertNotAborted(params.signal, "SearchAll operation");
-      const engine = params.resources ? this.getOrCreateEngine(resourceName) : this.engines.get(resourceName);
+      const engine = params.resources
+        ? this.getOrCreateEngine(resourceName)
+        : this.engines.get(resourceName);
       if (!engine) continue;
       await this.ensureOpen(engine);
 
-      const fields = params.fields ?? engine.searchFields ?? Array.from(engine.fieldNames);
+      const fields =
+        params.fields ?? engine.searchFields ?? Array.from(engine.fieldNames);
       if (fields.length === 0) continue;
 
       const effectivePrefix = params.prefix ?? this.defaults.prefix;
       const effectiveFuzzy = params.fuzzy ?? this.defaults.fuzzy;
-      const effectiveFieldBoosts = params.fieldBoosts ?? this.defaults.fieldBoosts;
+      const effectiveFieldBoosts =
+        params.fieldBoosts ?? this.defaults.fieldBoosts;
       const fuzzyDistance = this.getFuzzyDistance(effectiveFuzzy);
       const tokens = this.buildQueryTokens(
         engine,
@@ -894,9 +989,16 @@ export class IndexedDbAdapter implements SearchAdapter {
       );
       if (tokens.length === 0) continue;
 
-      const result = await engine.coreEngine.executeQuery({ tokens, limit: limitPerResource });
+      const result = await engine.coreEngine.executeQuery({
+        tokens,
+        limit: limitPerResource,
+      });
       for (const doc of result.documents) {
-        allResults.push({ resource: resourceName, id: doc.docId, score: doc.score });
+        allResults.push({
+          resource: resourceName,
+          id: doc.docId,
+          score: doc.score,
+        });
       }
     }
 
@@ -921,7 +1023,6 @@ export class IndexedDbAdapter implements SearchAdapter {
         continue;
       }
       await engine.mutationQueue.catch(() => undefined);
-      await engine.storage.close();
       this.engines.delete(name);
     }
     const engines = resources.map(({ name }) => this.getOrCreateEngine(name));
@@ -935,13 +1036,18 @@ export class IndexedDbAdapter implements SearchAdapter {
   }
 
   async dispose(): Promise<void> {
-    for (const engine of this.engines.values()) {
-      await engine.storage.close();
-    }
+    await Promise.all(
+      Array.from(this.engines.values()).map((engine) =>
+        engine.mutationQueue.catch(() => undefined),
+      ),
+    );
+    await this.storage.close();
     this.engines.clear();
     this.disposed = true;
   }
 }
+
+export { IndexedDbManager } from "./indexeddb-manager";
 
 function normalizeEngineSelectionError(
   error: unknown,
@@ -953,7 +1059,9 @@ function normalizeEngineSelectionError(
 
   const normalized = new SearchAdapterError(
     defaultCode,
-    error instanceof Error ? error.message : "Unknown search engine initialization error.",
+    error instanceof Error
+      ? error.message
+      : "Unknown search engine initialization error.",
   ) as SearchAdapterError & { cause?: unknown };
   normalized.cause = error;
   return normalized;
@@ -963,9 +1071,11 @@ function getErrorCause(error: SearchAdapterError): unknown {
   return (error as SearchAdapterError & { cause?: unknown }).cause;
 }
 
-function parseRawPosting(
-  raw: unknown
-): { docId: string; termFrequency: number; metadata?: Record<string, unknown> } | null {
+function parseRawPosting(raw: unknown): {
+  docId: string;
+  termFrequency: number;
+  metadata?: Record<string, unknown>;
+} | null {
   if (typeof raw === "string") {
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;

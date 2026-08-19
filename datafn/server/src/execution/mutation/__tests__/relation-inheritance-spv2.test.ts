@@ -81,7 +81,7 @@ describe("relation inheritance SPV2", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => NAMESPACE,
         getActorId: () => actorId as any,

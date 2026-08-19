@@ -71,6 +71,12 @@ In-memory persistence is fine for development and single-instance deployments. F
 
 `@superfunctions/middleware` ships persistence implementations or accepts your own.
 
+For a strict limit shared by multiple processes, configure `atomicStore` with
+an `AtomicKVStoreAdapter` that implements `compareAndSet`. The limiter rejects
+an `atomicStore` without CAS support instead of silently falling back to
+process-local serialization. Plain `persistence` remains suitable for
+single-process use or deployments that accept best-effort cross-replica limits.
+
 ## What clients see
 
 When a request is throttled:

@@ -6,6 +6,8 @@
 
 import type {
   DatafnSchema,
+  DatafnResourceSchema,
+  DatafnSchemaLiteral,
   DatafnSignal,
   DfqlQueryFragment,
   DfqlMutationFragment,
@@ -16,6 +18,7 @@ import { createClientError } from "../errors.js";
 import type { EventHandler } from "../events/bus.js";
 import type { EventFilter } from "../events/filter.js";
 import type { SignalRegistry } from "../signals/querySignal.js";
+import type { DatafnSignalOptions } from "../signals/options.js";
 import {
   buildTableOperationMutation,
   buildShareMutation,
@@ -34,7 +37,164 @@ import {
 type QueryMetadata = {
   includeTrashed?: boolean;
   includeArchived?: boolean;
+  includeAncestorInactive?: boolean;
 };
+
+type SelectOptions = {
+  select?: readonly string[];
+  metadata?: QueryMetadata;
+  signal?: AbortSignal;
+};
+
+type DatafnEnumValue<Field> = Field extends { readonly enum: readonly (infer Value)[] }
+  ? Extract<Value, string | number | boolean>
+  : never;
+
+type DatafnFieldValue<Type, Field = unknown> =
+  [DatafnEnumValue<Field>] extends [never] ? (
+  Type extends "string" | "file" ? string :
+  Type extends "number" ? number :
+  Type extends "boolean" ? boolean :
+  Type extends "date" ? string | Date :
+  Type extends "array" ? any[] :
+  Type extends "object" | "json" ? any :
+  unknown
+  ) : DatafnEnumValue<Field>;
+
+type FieldName<Field> = Field extends { readonly name: infer Name extends string }
+  ? Name
+  : never;
+
+type IsAny<T> = 0 extends (1 & T) ? true : false;
+type RequiredFields<Fields> = Extract<Fields, { readonly required: true }>;
+type OptionalFields<Fields> = Exclude<Fields, { readonly required: true }>;
+
+type DatafnSchemaResources<S extends DatafnSchema> =
+  IsAny<S> extends true
+    ? DatafnResourceSchema
+    : DatafnSchema extends S
+      ? DatafnResourceSchema
+      : DatafnSchemaLiteral<S> extends { readonly resources: readonly (infer Resource)[] }
+        ? Resource
+        : S extends { readonly resources: readonly (infer Resource)[] }
+          ? Resource
+          : never;
+
+type ResourceByName<S extends DatafnSchema, Name extends string> = Extract<
+  DatafnSchemaResources<S>,
+  { readonly name: Name }
+>;
+
+export type DatafnResourceName<S extends DatafnSchema> =
+  DatafnSchemaResources<S> extends { readonly name: infer Name extends string }
+    ? Name
+    : never;
+
+type DatafnCapabilityRecord = {
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  trashedAt?: string | Date | null;
+  trashedBy?: string | null;
+  isArchived?: boolean;
+  visibility?: string;
+};
+
+export type DatafnResourceRecord<
+  S extends DatafnSchema,
+  Name extends string,
+> =
+  ResourceByName<S, Name> extends { readonly fields: readonly (infer Field)[] }
+    ? {
+        [F in RequiredFields<Field> as FieldName<F>]: F extends {
+          readonly type: infer Type;
+        }
+          ? DatafnFieldValue<Type, F>
+          : unknown;
+      } & {
+        [F in OptionalFields<Field> as FieldName<F>]?: F extends {
+          readonly type: infer Type;
+          readonly nullable: false;
+        }
+          ? DatafnFieldValue<Type, F>
+          : F extends { readonly type: infer Type }
+            ? DatafnFieldValue<Type, F> | null
+            : unknown;
+      }
+      & DatafnCapabilityRecord
+    : Record<string, unknown> & DatafnCapabilityRecord;
+
+export type DatafnFilter<TRecord = Record<string, unknown>> =
+  Partial<Record<keyof TRecord & string, unknown>> & Record<string, unknown>;
+
+export type DatafnTableQueryFragment<TRecord = Record<string, unknown>> =
+  Omit<DfqlQueryFragment, "select" | "omit" | "filters" | "sort" | "groupBy"> & {
+    select?: readonly string[];
+    omit?: readonly string[];
+    filters?: DatafnFilter<TRecord>;
+    sort?: readonly string[];
+    groupBy?: readonly string[];
+    metadata?: QueryMetadata;
+  };
+
+export type DatafnRelationQueryFragment =
+  Omit<
+    DfqlQueryFragment,
+    | "relation"
+    | "id"
+    | "filters"
+    | "search"
+    | "groupBy"
+    | "aggregations"
+    | "having"
+    | "temporal"
+    | "cursor"
+    | "select"
+    | "omit"
+    | "sort"
+  > & {
+    select?: readonly string[];
+    omit?: readonly string[];
+    sort?: readonly string[];
+    metadata?: QueryMetadata;
+  };
+
+type SelectToken<Q> = Q extends { readonly select: readonly (infer Token)[] }
+  ? Token
+  : never;
+
+type StringSelectToken<Q> = Extract<SelectToken<Q>, string>;
+type SelectedFieldName<Q> = Exclude<StringSelectToken<Q>, "*" | `${string}.${string}`>;
+type HasWildcardSelect<Q> = Extract<StringSelectToken<Q>, "*"> extends never
+  ? false
+  : true;
+type HasSelect<Q> = Q extends { readonly select: readonly unknown[] }
+  ? true
+  : false;
+
+type SelectedRecord<TRecord, Q> =
+  HasSelect<Q> extends false
+    ? TRecord
+    : HasWildcardSelect<Q> extends true
+      ? TRecord & Record<string, unknown>
+      : [SelectedFieldName<Q>] extends [never]
+        ? Partial<TRecord> & Record<string, unknown>
+        : Pick<TRecord, Extract<keyof TRecord, SelectedFieldName<Q>>> &
+            Partial<TRecord> &
+            Record<Exclude<SelectedFieldName<Q>, keyof TRecord>, unknown>;
+
+export type DatafnQueryResult<TRecord, Q> =
+  Q extends { readonly aggregations: Record<string, unknown> }
+    ? { data: Array<Record<string, unknown>>; count?: number; nextCursor?: string | null }
+    : { data: Array<SelectedRecord<TRecord, Q>>; count?: number; nextCursor?: string | null };
+
+export type DatafnSignalValue<TRecord, Q> =
+  Q extends { readonly count: true }
+    ? { count?: number; data?: Array<SelectedRecord<TRecord, Q>> } | Array<SelectedRecord<TRecord, Q>>
+    : Q extends { readonly aggregations: Record<string, unknown> }
+      ? Array<Record<string, unknown>>
+      : Array<SelectedRecord<TRecord, Q>>;
 
 const DFQL_PRINCIPAL_INVALID_CODE = "DFQL_PRINCIPAL_INVALID" as any;
 const DFQL_SHARE_SCOPE_INVALID_CODE = "DFQL_SHARE_SCOPE_INVALID" as any;
@@ -43,13 +203,19 @@ const LEGACY_SHARE_WARNING =
 
 export interface DatafnTable<
   S extends DatafnSchema = DatafnSchema,
-  Name extends string = string,
-  TRecord = unknown,
+  Name extends string = DatafnResourceName<S>,
+  TRecord = DatafnResourceRecord<S, Name>,
 > {
   name: Name;
   version: number;
 
-  query(q: DfqlQueryFragment & { metadata?: QueryMetadata }): Promise<unknown>;
+  query<const Q extends DatafnTableQueryFragment<TRecord>>(
+    q: Q,
+  ): Promise<DatafnQueryResult<TRecord, Q>>;
+  select<const O extends SelectOptions | undefined = undefined>(
+    id: string,
+    options?: O,
+  ): Promise<SelectedRecord<TRecord, O> | undefined>;
   mutate(m: DfqlMutationFragment | DfqlMutationFragment[]): Promise<unknown>;
   delete(id: string): Promise<unknown>;
   trash?: (id: string) => Promise<unknown>;
@@ -66,7 +232,21 @@ export interface DatafnTable<
   };
   getPermissions?: (id: string) => Promise<PermissionEntry[]>;
   transact(payload: DfqlTransact): Promise<unknown>;
-  signal(q: DfqlQueryFragment, options?: { disableOptimistic?: boolean }): DatafnSignal<unknown>;
+  signal<const Q extends DatafnTableQueryFragment<TRecord>>(
+    q: Q,
+    options?: DatafnSignalOptions,
+  ): DatafnSignal<DatafnSignalValue<TRecord, Q>>;
+  relation(relationName: string): {
+    query<const Q extends DatafnRelationQueryFragment>(
+      id: string,
+      q?: Q,
+    ): Promise<DatafnQueryResult<Record<string, unknown>, Q>>;
+    signal<const Q extends DatafnRelationQueryFragment>(
+      id: string,
+      q?: Q,
+      options?: DatafnSignalOptions,
+    ): DatafnSignal<DatafnSignalValue<Record<string, unknown>, Q>>;
+  };
   subscribe(handler: EventHandler, filter?: EventFilter): () => void;
 }
 
@@ -110,9 +290,9 @@ export function createTable<S extends DatafnSchema>(
     /**
      * Execute a query with resource/version merged (CLIENT-QUERY-001)
      */
-    async query(
-      q: DfqlQueryFragment & { metadata?: QueryMetadata },
-    ): Promise<unknown> {
+    async query<const Q extends DatafnTableQueryFragment<DatafnResourceRecord<S, string>>>(
+      q: Q,
+    ): Promise<DatafnQueryResult<DatafnResourceRecord<S, string>, Q>> {
       // Merge query fragment with table resource/version
       const fragment = (typeof q === "object" && q !== null ? q : {}) as Record<
         string,
@@ -130,7 +310,25 @@ export function createTable<S extends DatafnSchema>(
       };
 
       // Delegate to client.query and return single result
-      return client.query(fullQuery);
+      return client.query(fullQuery) as Promise<
+        DatafnQueryResult<DatafnResourceRecord<S, string>, Q>
+      >;
+    },
+
+    async select<const O extends SelectOptions | undefined = undefined>(
+      id: string,
+      options?: O,
+    ): Promise<SelectedRecord<DatafnResourceRecord<S, string>, O> | undefined> {
+      const result = (await table.query({
+        select: options?.select,
+        filters: { id },
+        limit: 1,
+        metadata: options?.metadata,
+        signal: options?.signal,
+      } as any)) as { data?: unknown[] };
+      return result.data?.[0] as
+        | SelectedRecord<DatafnResourceRecord<S, string>, O>
+        | undefined;
     },
 
     /**
@@ -206,7 +404,10 @@ export function createTable<S extends DatafnSchema>(
     /**
      * Create reactive query signal (CLIENT-SIGNAL-001, SIG-003)
      */
-    signal(q: DfqlQueryFragment, options?: { disableOptimistic?: boolean }): DatafnSignal<unknown> {
+    signal<const Q extends DatafnTableQueryFragment>(
+      q: Q,
+      options?: DatafnSignalOptions,
+    ): DatafnSignal<DatafnSignalValue<DatafnResourceRecord<S, string>, Q>> {
       // Merge query fragment with table resource/version
       const fragment = (typeof q === "object" && q !== null ? q : {}) as Record<
         string,
@@ -224,7 +425,66 @@ export function createTable<S extends DatafnSchema>(
       };
 
       // Get or create signal from registry (ensures caching by dfqlKey)
-      return signalRegistry.getSignal(fullQuery, options);
+      return signalRegistry.getSignal<
+        DatafnSignalValue<DatafnResourceRecord<S, string>, Q>
+      >(fullQuery, options);
+    },
+
+    relation(relationName: string) {
+      return {
+        async query<const Q extends DatafnRelationQueryFragment>(
+          id: string,
+          q?: Q,
+        ): Promise<DatafnQueryResult<Record<string, unknown>, Q>> {
+          const fragment = (typeof q === "object" && q !== null ? q : {}) as Record<
+            string,
+            unknown
+          >;
+          const {
+            resource: _r,
+            version: _v,
+            relation: _relation,
+            id: _id,
+            ...rest
+          } = fragment;
+          return client.query({
+            resource: name,
+            version,
+            relation: relationName,
+            id,
+            ...rest,
+          }) as Promise<DatafnQueryResult<Record<string, unknown>, Q>>;
+        },
+        signal<const Q extends DatafnRelationQueryFragment>(
+          id: string,
+          q?: Q,
+          options?: DatafnSignalOptions,
+        ): DatafnSignal<DatafnSignalValue<Record<string, unknown>, Q>> {
+          const fragment = (typeof q === "object" && q !== null ? q : {}) as Record<
+            string,
+            unknown
+          >;
+          const {
+            resource: _r,
+            version: _v,
+            relation: _relation,
+            id: _id,
+            ...rest
+          } = fragment;
+          return signalRegistry.getSignal<
+            DatafnSignalValue<Record<string, unknown>, Q>
+          >(
+            {
+              resource: name,
+              version,
+              relation: relationName,
+              id,
+              ...rest,
+            },
+            options,
+          );
+        },
+      };
     },
 
     /**

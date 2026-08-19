@@ -1,12 +1,6 @@
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-  getSchema,
-  type AuthFnEvent,
-  type AuthFnInstance,
-  type AuthFnPlugin
-} from '@authfn/core';
+import { authFnPlugins, authfn, type AuthFnEvent, type AuthFnServer } from 'authfn';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnPasswordPlugin } from '@authfn/password';
 import type { ExampleOtpInbox } from '@authfn/examples-shared';
 import { createOtpInboxDeliveryProvider } from '@authfn/examples-shared';
 import type { Adapter } from '@superfunctions/db';
@@ -16,45 +10,43 @@ export const OTP_RECOVERY_COOKIE_PREFIX = 'authfn-otp-recovery';
 
 const DEMO_OTP_CODE = '731942';
 
-export function createOtpRecoverySchemaPlugins(): AuthFnPlugin[] {
-  return [
-    authFnPasswordPlugin({
-      otp: {}
-    }),
+export function createOtpRecoveryPlugins() {
+  return authFnPlugins(
+    authFnPasswordPlugin(),
     authFnEmailOtpPlugin()
-  ];
+  );
 }
 
-export function createOtpRecoveryPlugins(otpInbox: ExampleOtpInbox): AuthFnPlugin[] {
+function createOtpRecoveryRuntimeConfig(otpInbox: ExampleOtpInbox) {
   const otpDelivery = createOtpInboxDeliveryProvider(otpInbox);
   const otpConfig = {
     delivery: otpDelivery,
     codeGenerator: () => DEMO_OTP_CODE
   };
 
-  return [
-    authFnPasswordPlugin({
+  return {
+    password: {
       otp: otpConfig
-    }),
-    authFnEmailOtpPlugin(otpConfig)
-  ];
+    },
+    emailOtp: otpConfig
+  };
 }
 
-export const otpRecoverySchema = getSchema({
-  database: {} as Adapter,
+export const otpRecoveryAuthApp = authfn({
   namespace: OTP_RECOVERY_NAMESPACE,
-  plugins: createOtpRecoverySchemaPlugins()
+  plugins: createOtpRecoveryPlugins()
 });
+
+export const otpRecoverySchema = otpRecoveryAuthApp.getSchema();
 
 export function createOtpRecoveryAuth(options: {
   database: Adapter;
   otpInbox: ExampleOtpInbox;
   onEvent?(event: AuthFnEvent): Promise<void> | void;
-}): AuthFnInstance {
-  return createAuthFn({
+}): AuthFnServer {
+  return otpRecoveryAuthApp.createServer({
     database: options.database,
-    namespace: OTP_RECOVERY_NAMESPACE,
-    runtime: {
+    environment: {
       resolve(request) {
         const url = new URL(request.url);
         return {
@@ -69,9 +61,9 @@ export function createOtpRecoveryAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     },
-    plugins: createOtpRecoveryPlugins(options.otpInbox)
+    pluginRuntime: createOtpRecoveryRuntimeConfig(options.otpInbox)
   });
 }
 

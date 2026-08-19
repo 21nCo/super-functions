@@ -37,6 +37,24 @@ export interface IdempotencyStore {
   withDb?(db: import("@superfunctions/db").Adapter): IdempotencyStore;
 }
 
+export function isRetryableMutationResult(
+  result: MutationResult | null | undefined,
+): boolean {
+  return Boolean(
+    result &&
+      !result.ok &&
+      result.errors.some(
+        (error) =>
+          error.retryable ||
+          error.code === "INTERNAL" ||
+          error.code === "MUTATION_FAILED" ||
+          error.code === "FORBIDDEN" ||
+          error.code === "NOT_FOUND" ||
+          (error.code === "CONFLICT" && error.path === "id"),
+      ),
+  );
+}
+
 interface StoredEntry {
   result: MutationResult;
   createdAt: number;
@@ -96,7 +114,8 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
     const key = this.getKey(clientId, mutationId);
 
     // EXE-006: Prevent overwriting an existing result (race condition guard)
-    if (this.store.has(key)) return;
+    const existing = this.store.get(key);
+    if (existing && !isRetryableMutationResult(existing.result)) return;
 
     // LRU eviction: if at capacity, remove oldest entry (first Map entry)
     if (this.store.size >= this.maxEntries && !this.store.has(key)) {

@@ -1,10 +1,6 @@
 import type { RequestHandler, Request as ExpressRequest, Response as ExpressResponse } from 'express';
-import {
-  AuthFnUnauthenticatedError,
-  type AuthFnInstance,
-  jsonError,
-  jsonSuccess
-} from '@authfn/core';
+import { AuthFnUnauthenticatedError, type AuthFnServer } from 'authfn';
+import { jsonError, jsonSuccess } from 'authfn/http/envelopes';
 import {
   ExampleEventBuffer,
   createEventEmitter,
@@ -111,7 +107,7 @@ function createCorsMiddleware(allowedOrigin: string): RequestHandler {
   };
 }
 
-function createApiKeyProtectedMiddleware(auth: AuthFnInstance, serverBaseUrl: string): RequestHandler {
+function createApiKeyProtectedMiddleware(auth: AuthFnServer, serverBaseUrl: string): RequestHandler {
   return async (request, response, next) => {
     if (request.method !== 'GET' || request.path !== '/demo/api-key/protected') {
       next();

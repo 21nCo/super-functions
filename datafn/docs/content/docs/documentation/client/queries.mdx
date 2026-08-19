@@ -137,8 +137,37 @@ The client uses intelligent routing to decide where a query executes:
 
 1. **No storage configured** -- All queries go to the remote server.
 2. **Storage configured, table hydration is `ready`** -- Queries execute locally against the storage adapter. This enables offline access and eliminates network latency.
-3. **Storage configured, table is `hydrating`** -- Queries fall back to the remote server while clone is in progress.
+3. **Storage configured, table is `hydrating`** -- The query runs on the remote server, then the local result is overlaid as hydration progresses.
 4. **Remote-only tables** (`isRemoteOnly: true` in schema) -- Always execute on the server, regardless of hydration state.
-5. **Batch queries** -- Always execute on the remote server.
+5. **Batch queries** -- Execute locally when **every** resource in the batch is `ready` (and none is remote-only); otherwise they execute on the remote server.
 
 This routing is transparent. You write the same query code regardless of whether data is local or remote.
+
+## Capability Auto-Filters
+
+When a query runs locally against a resource with `trash` or `archivable` capabilities, DataFn automatically excludes trashed/archived records — matching server behavior:
+
+- `trashedAt` must be null (unless `metadata.includeTrashed` is `true`),
+- `isArchived` must not be `true` (unless `metadata.includeArchived` is `true`).
+
+Opt out per query with `metadata`:
+
+```typescript
+await client.table("todos").query({
+  metadata: { includeTrashed: true, includeArchived: true },
+});
+```
+
+See [Capabilities](/docs/documentation/capabilities#query-auto-filters).
+
+## Temporal Filtering
+
+Queries accept a [`temporal`](/docs/dfql/temporal) clause for timezone-aware date filtering and grouping. When a local query includes a temporal clause, the client resolves it (including `timezone: "user"`) against the configured [`temporal`](/docs/reference/client/config#temporal) config and the timezone-change registry before executing.
+
+```typescript
+import { time } from "@datafn/core";
+
+await client.table("sessions").query({
+  temporal: time.month("startedAt", undefined, { timezone: "user" }),
+});
+```

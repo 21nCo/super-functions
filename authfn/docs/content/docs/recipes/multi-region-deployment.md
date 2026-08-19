@@ -31,28 +31,35 @@ Run authfn in multiple regions with data residency: EU users' data in EU, US use
 
 ## Lookup store
 
-Implement `AuthFnRegionLookupStore` against a globally-consistent table. AWS DynamoDB Global Tables, Cloudflare D1 with replicas, or Postgres logical replication all work. The contract:
+Use a globally consistent `ConditionalKVStoreAdapter`. AuthFn stores a JSON
+lookup record under `authfn:region:<normalized-identifier>` and relies on the
+conditional write to settle cross-region registration races. The contract:
 
 ```ts
 {
-  getByIdentifier(id) { ... },
-  putIfAbsent(record) { ... },        // INSERT ... ON CONFLICT DO NOTHING ... RETURNING
-  update(record) { ... },
-  deleteByIdentifier(id) { ... },
+  get(key) { ... },
+  set({ key, value, ttlSeconds }) { ... },
+  setIfAbsent({ key, value, ttlSeconds }) { ... }, // atomic conditional insert
+  delete(key) { ... },
 }
 ```
+
+For managed adapters, use `createDynamoDbRegionLookupStore` from
+`@authfn/lookup-dynamodb` or `createCloudflareRegionLookupStore` from
+`@authfn/lookup-cloudflare-do`.
 
 ## Server config (per region)
 
 ```ts
-authFnMultiRegionPlugin({
+plugins: authFnPlugins(authFnMultiRegionPlugin()),
+environment: authFnMultiRegionEnvironment({
   defaultRegionId: process.env.REGION_ID,           // 'us-east-1' or 'eu-west-1'
   regions: [
     { regionId: 'us-east-1', authority: 'https://api.us.example.com', cookie: { domain: '.us.example.com' } },
     { regionId: 'eu-west-1', authority: 'https://api.eu.example.com', cookie: { domain: '.eu.example.com' } },
   ],
   lookupStore: createGlobalLookupStore(),
-});
+}),
 ```
 
 ## Client config

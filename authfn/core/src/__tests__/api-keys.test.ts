@@ -1,23 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnApiKeyPlugin,
-  createAuthFn,
-  createUser,
-  issueSession,
-  issueSessionCookies,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import type { AuthFnRuntimeConfig } from '../index.js';
+import { issueSessionCookies } from '../core/cookies.js';
+import { issueSession } from '../core/sessions.js';
+import { createUser } from '../core/users.js';
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
-      authFnApiKeyPlugin({
+      authFnApiKeyPlugin()
+    ],
+    pluginRuntime: {
+      apiKey: {
         now: () => new Date('2026-03-22T00:00:00.000Z')
-      })
-    ]
+      }
+    }
   };
 }
 
@@ -27,10 +28,10 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
     .join('; ');
 }
 
-describe('@authfn/core api key plugin', () => {
+describe('authfn api key plugin', () => {
   it('creates, lists, authenticates, and revokes api keys with hashed secrets at rest', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -129,7 +130,7 @@ describe('@authfn/core api key plugin', () => {
 
   it('rejects api key names that exceed the canonical UTF-8 byte limit', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -163,7 +164,7 @@ describe('@authfn/core api key plugin', () => {
 
   it('preserves authoritative metadata fields and rejects invalid expiry timestamps', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });

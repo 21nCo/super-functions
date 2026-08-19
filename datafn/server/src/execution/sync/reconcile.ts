@@ -6,12 +6,42 @@
  */
 
 import type { DatafnErrorCode, DatafnSchema } from "../../core-types.js";
-import { getJoinStoreKey, getJoinTableName } from "@datafn/core";
+import { getJoinStoreKey, getRelationJoinTableName } from "@datafn/core";
 import type { Adapter } from "@superfunctions/db";
 import { ChangeTrackingService } from "./change-tracking.js";
 import type { SequenceStore } from "./sequence-store.js";
 import type { DatafnLogger } from "../../logger.js";
 import { isPrivateShareableResource, resolveAccessLevel } from "../../validation/authz.js";
+
+function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
+  const resource = schema.resources.find((item) => item.name === resourceName);
+  const prefix = resource?.idPrefix ?? resourceName;
+  return id === prefix || id.startsWith(`${prefix}:`);
+}
+
+function shouldIncludeJoinRowForStore(
+  row: Record<string, unknown>,
+  relation: NonNullable<DatafnSchema["relations"]>[number],
+  schema: DatafnSchema,
+  from: string,
+  to: string,
+): boolean {
+  const froms = Array.isArray(relation.from) ? relation.from : [relation.from];
+  const tos = Array.isArray(relation.to) ? relation.to : [relation.to];
+  if (typeof row.fromResource === "string" && row.fromResource !== from) {
+    return false;
+  }
+  if (typeof row.toResource === "string" && row.toResource !== to) {
+    return false;
+  }
+  const fromValue = typeof row.from === "string" ? row.from : undefined;
+  const toValue = typeof row.to === "string" ? row.to : undefined;
+  const fromMatches =
+    froms.length === 1 || !fromValue || resourceIdMatches(schema, from, fromValue);
+  const toMatches =
+    tos.length === 1 || !toValue || resourceIdMatches(schema, to, toValue);
+  return fromMatches && toMatches;
+}
 
 export interface ReconcileRequest {
   clientId: string;
@@ -177,40 +207,43 @@ export async function executeReconcile(
 
       if (!involvesRequestedResource) continue;
 
-      // Logical key used by the client for its join store (matches change tracking and pull)
-      const fromResource = fromResources[0];
-      const toResource = toResources[0];
-      const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
-      // Actual DB table name (matches what relations.ts writes and what codegen generates)
-      const joinTableName = getJoinTableName(fromResource, relation.relation!, relation.joinTable);
-      const relationTouchesPrivateResource =
-        isPrivateShareableResource(schema, fromResource) ||
-        isPrivateShareableResource(schema, toResource);
+      const fromCol = relation.joinColumns?.from || "from";
+      const toCol = relation.joinColumns?.to || "to";
 
-      try {
-        if (relationTouchesPrivateResource && !actorId) {
-          joinCounts[joinStoreKey] = 0;
-          continue;
-        }
-        // SCA-001: Use db.count() for join rows too
-        if (typeof db.count === "function") {
-          joinCounts[joinStoreKey] = await db.count({
+      for (const fromResource of fromResources) {
+        const joinTableName = getRelationJoinTableName(relation, fromResource);
+        let joinRecords: Record<string, unknown>[] = [];
+        try {
+          joinRecords = await db.findMany({
             model: joinTableName,
             where: [],
             namespace,
           });
-        } else {
-          const joinRecords = await db.findMany({
-            model: joinTableName,
-            where: [],
-            namespace,
-          });
-          joinCounts[joinStoreKey] = joinRecords.length;
+        } catch (error) {
+          logger?.warn("Reconcile: join count failed", { error: String(error), joinTable: joinTableName, operation: "reconcile-join-count" });
         }
-      } catch (error) {
-        logger?.warn("Reconcile: join count failed", { error: String(error), joinTable: joinStoreKey, operation: "reconcile-join-count" });
-        // Join table might not exist or be queryable; count as 0
-        joinCounts[joinStoreKey] = 0;
+
+        const normalizedRows = joinRecords.map((row) => ({
+          ...row,
+          from: row[fromCol],
+          to: row[toCol],
+        }));
+
+        for (const toResource of toResources) {
+          const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
+          const relationTouchesPrivateResource =
+            isPrivateShareableResource(schema, fromResource) ||
+            isPrivateShareableResource(schema, toResource);
+
+          if (relationTouchesPrivateResource && !actorId) {
+            joinCounts[joinStoreKey] = 0;
+            continue;
+          }
+
+          joinCounts[joinStoreKey] = normalizedRows.filter((row) =>
+            shouldIncludeJoinRowForStore(row, relation, schema, fromResource, toResource),
+          ).length;
+        }
       }
     }
   }

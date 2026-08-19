@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import type { ObservationEvent, SuperfunctionObservability } from '@superfunctions/observability';
 
 export interface FileFnEvent {
   type: string;
@@ -123,8 +124,27 @@ export type FileFnEventTypes = {
   'processing.failed': ProcessingFailedEvent;
 };
 
+export type FileFnEventType = keyof FileFnEventTypes;
+export type FileFnObservationMetadata<TEvent extends FileFnEvent> =
+  Record<string, unknown> & Omit<TEvent, 'type' | 'requestId'>;
+
+export type FileFnObservationEventMap = {
+  [TType in FileFnEventType]: ObservationEvent<
+    'filefn',
+    TType,
+    FileFnObservationMetadata<FileFnEventTypes[TType]>
+  >;
+};
+
+export type FileFnObservationEvent = FileFnObservationEventMap[FileFnEventType];
+
 export class FileFnEventEmitter extends EventEmitter {
+  constructor(private readonly observability?: SuperfunctionObservability<FileFnObservationEvent>) {
+    super();
+  }
+
   emit<K extends keyof FileFnEventTypes>(event: K, payload: FileFnEventTypes[K]): boolean {
+    void this.observability?.events.emit(fileObservationEvent(event, payload));
     return super.emit(event, payload);
   }
 
@@ -189,8 +209,36 @@ export function createFileDeletedEvent(
   };
 }
 
-export function createEventEmitter(): FileFnEventEmitter {
-  return new FileFnEventEmitter();
+export function createEventEmitter(
+  observability?: SuperfunctionObservability<FileFnObservationEvent>
+): FileFnEventEmitter {
+  return new FileFnEventEmitter(observability);
 }
 
-export type FileFnEventType = keyof FileFnEventTypes;
+function fileObservationEvent<K extends FileFnEventType>(
+  event: K,
+  payload: FileFnEventTypes[K]
+): FileFnObservationEvent {
+  const observation: ObservationEvent<
+    'filefn',
+    K,
+    FileFnObservationMetadata<FileFnEventTypes[K]>
+  > = {
+    domain: 'filefn',
+    type: event,
+    severity: event.includes('failed') ? 'error' : 'info',
+    requestId: payload.requestId,
+    metadata: fileEventMetadata(payload),
+  };
+  return observation as FileFnObservationEvent;
+}
+
+function fileEventMetadata<TEvent extends FileFnEvent>(
+  event: TEvent
+): FileFnObservationMetadata<TEvent> {
+  const { type, timestamp, requestId, ...metadata } = event as FileFnEvent & Record<string, unknown>;
+  return {
+    timestamp,
+    ...metadata
+  } as FileFnObservationMetadata<TEvent>;
+}

@@ -144,6 +144,24 @@ Select tokens can traverse multiple levels of relations using dot notation:
 
 Each level is resolved recursively. The intermediate records (tasks) are expanded first, then the nested relation (tags) is expanded within each intermediate record.
 
+## Polymorphic Relations
+
+When a relation endpoint is [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) (declared with an array `from`/`to`), expansion resolves each related ID to its concrete resource. The expanded array can therefore contain records of **different** resource types.
+
+```typescript
+{
+  resource: "collection",
+  version: 1,
+  select: ["id", "items.*#"],
+}
+// items: [
+//   { id: "task:1", title: "...", $relation_metadata: { sortOrder: 1 } },
+//   { id: "note:7", body: "...",  $relation_metadata: { sortOrder: 2 } },
+// ]
+```
+
+Nested expansion across a polymorphic intermediate is validated against every concrete target resource, so `select` tokens like `items.owner.*` must resolve on all possible `items` types.
+
 ## FK Field Auto-Omission
 
 When a relation is expanded, the underlying foreign key field is automatically omitted from the result. For example, if a `todo` has a `many-one` relation to `user` via an `assigneeId` FK field, and you expand `assignee.*`, the `assigneeId` field is removed from the todo record in the response. This avoids redundant data, since the related record is already inlined.

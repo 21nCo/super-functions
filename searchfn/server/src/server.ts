@@ -1,5 +1,11 @@
-import { createRouter, type Router, type Route } from "@superfunctions/http";
+import { createObservabilityMiddleware, createRouter, type Router, type Route } from "@superfunctions/http";
 import type { SearchAdapter } from "@searchfn/adapter-contracts";
+import {
+  normalizeObservability,
+  type ObservabilityInput,
+  type ObservationLogger,
+  type SuperfunctionObservability,
+} from "@superfunctions/observability";
 import { errorResponse, parseJsonBody } from "./http/errors.js";
 import { DEFAULT_LIMITS, type ServerLimits } from "./http/validation.js";
 import { statusHandler, type ServerHealthSnapshot } from "./routes/status.js";
@@ -8,10 +14,11 @@ import { searchHandler } from "./routes/search.js";
 import { searchAllHandler } from "./routes/search-all.js";
 import { removeHandler } from "./routes/remove.js";
 import { clearHandler } from "./routes/clear.js";
+import type { SearchFnEvent } from "./events.js";
 
 export type ServerContext = Record<string, unknown>;
 
-export interface SearchFnLogger {
+interface SearchFnLogger {
   info(message: string, context?: Record<string, unknown>): void;
   warn(message: string, context?: Record<string, unknown>): void;
   error(message: string, context?: Record<string, unknown>): void;
@@ -27,7 +34,7 @@ export interface SearchFnServerConfig<TContext = unknown> {
     action: "status" | "index" | "search" | "searchAll" | "remove" | "clear",
     payload: unknown,
   ) => Promise<boolean> | boolean;
-  logger?: SearchFnLogger;
+  observability?: ObservabilityInput<SearchFnEvent>;
 }
 
 export interface SearchFnServer<TContext = unknown> {
@@ -80,9 +87,12 @@ export async function createSearchFnServer<TContext extends ServerContext = Serv
     basePath = "/searchfn",
     limits: limitsOverrides,
     authorize,
-    logger,
   } = config;
 
+  const observability = normalizeObservability<SearchFnEvent>(config.observability)?.child({
+    component: "searchfn",
+  });
+  const logger = searchFnLoggerFromObservability(observability?.logger);
   const limits: ServerLimits = { ...DEFAULT_LIMITS, ...limitsOverrides };
   const startTime = Date.now();
   const health: ServerHealthSnapshot = {
@@ -120,13 +130,33 @@ export async function createSearchFnServer<TContext extends ServerContext = Serv
           const allowed = await authorize(ctx, action, payload);
           if (!allowed) {
             logger?.warn("authorization.denied", redactContext({ ...logCtx }));
+            await emitSearchFnEvent(observability, {
+              type: "searchfn.authorization.denied",
+              severity: "warn",
+              outcome: "denied",
+              metadata: {
+                operation: action,
+                adapter: adapter.name,
+              },
+            });
             return errorResponse("FORBIDDEN", "Authorization denied");
           }
         } catch (error) {
-          logger?.error("authorization.error", redactContext({
+          const errorContext = {
             ...logCtx,
             ...toErrorLogContext(error),
-          }));
+          };
+          logger?.error("authorization.error", redactContext(errorContext));
+          await emitSearchFnEvent(observability, {
+            type: "searchfn.authorization.failed",
+            severity: "error",
+            outcome: "error",
+            metadata: {
+              operation: action,
+              adapter: adapter.name,
+              ...toErrorLogContext(error),
+            },
+          });
           return errorResponse("FORBIDDEN", "Authorization denied");
         }
       }
@@ -147,13 +177,26 @@ export async function createSearchFnServer<TContext extends ServerContext = Serv
       } catch (error) {
         markDegraded();
         const durationMs = Date.now() - start;
-        logger?.error("request.error", redactContext({
+        const errorContext = {
           ...logCtx,
           durationMs,
           success: false,
           errorCode: "INTERNAL",
           ...toErrorLogContext(error),
-        }));
+        };
+        logger?.error("request.error", redactContext(errorContext));
+        await emitSearchFnEvent(observability, {
+          type: "searchfn.request.failed",
+          severity: "error",
+          outcome: "error",
+          metadata: {
+            operation: action,
+            adapter: adapter.name,
+            durationMs,
+            errorCode: "INTERNAL",
+            ...toErrorLogContext(error),
+          },
+        });
         return errorResponse("INTERNAL", "Unexpected server error");
       }
     };
@@ -195,6 +238,15 @@ export async function createSearchFnServer<TContext extends ServerContext = Serv
   const router = createRouter<TContext>({
     routes,
     basePath: "/",
+    middleware: observability
+      ? [
+          createObservabilityMiddleware({
+            observability,
+            serverTiming: true,
+            headers: { prefix: "x-searchfn" },
+          }),
+        ]
+      : undefined,
   });
 
   async function close(): Promise<void> {
@@ -205,6 +257,28 @@ export async function createSearchFnServer<TContext extends ServerContext = Serv
   }
 
   return { router, close };
+}
+
+function searchFnLoggerFromObservability(
+  logger: ObservationLogger | undefined,
+): SearchFnLogger | undefined {
+  if (!logger) return undefined;
+  return {
+    debug: (message, context) => logger.debug?.(message, context),
+    info: (message, context) => logger.info?.(message, context),
+    warn: (message, context) => logger.warn?.(message, context),
+    error: (message, context) => logger.error?.(message, context),
+  };
+}
+
+async function emitSearchFnEvent(
+  observability: SuperfunctionObservability<SearchFnEvent> | undefined,
+  event: Omit<SearchFnEvent, "domain">,
+): Promise<void> {
+  await observability?.events.emit({
+    domain: "searchfn",
+    ...event,
+  } as SearchFnEvent);
 }
 
 async function getAuthorizationPayload(

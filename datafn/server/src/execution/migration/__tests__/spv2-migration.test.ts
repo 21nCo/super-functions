@@ -89,8 +89,10 @@ async function createHarness(config?: {
   const server = await createDatafnServer({
     allowUnknownResources: true,
     schema,
-    db,
-    logger: createLoggerCollector(warnings),
+    database: db,
+    observability: {
+      logger: createLoggerCollector(warnings),
+    },
     spv2Migration,
     namespaceProvider: {
       getNamespace: () => NAMESPACE,

@@ -124,6 +124,12 @@ These are valid only when the target resource enables the required capability.
 }
 ```
 
+When the deleted record is referenced by relations that declare an [`onDelete` policy](/docs/dfql/schema/relations#delete-policies), the server enforces that policy as part of the delete:
+
+- `restrict` — the delete fails with `RELATION_RESTRICTED` if referencing rows exist.
+- `cascade` — referencing records are deleted recursively.
+- `setNull` / `detach` — referencing foreign keys are cleared (and many-many join rows removed).
+
 ## Capability Examples
 
 ### Trash / Restore
@@ -199,6 +205,12 @@ Examples of stripped fields:
 - `trashedAt`, `trashedBy`
 
 Server-generated values are authoritative.
+
+## Foreign Key Normalization
+
+When a record is written (`insert`, `merge`, `replace`, or via sync push), DataFn normalizes **optional** relation foreign-key fields: an empty string `""` is stored as `null`. This applies to the FK field and its paired polymorphic `*Resource` discriminator field. Required FK fields are left unchanged.
+
+This keeps "unset" foreign keys consistent so relation queries and [delete policies](/docs/dfql/schema/relations#delete-policies) treat them as absent.
 
 ## Batch Mutations
 

@@ -112,7 +112,7 @@ describe('PHASE_00 UPLOAD-001/API-001 upload status contract', () => {
 
   beforeEach(() => {
     fileFn = createFileFn({
-      db: createDb(),
+      database: createDb(),
       storage: createFakeStorageAdapter({
         capabilities: {
           signedUploadUrls: true,

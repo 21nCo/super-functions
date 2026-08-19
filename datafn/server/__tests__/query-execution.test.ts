@@ -6,6 +6,7 @@ import { memoryAdapter } from "@superfunctions/db/adapters";
  */
 
 import { describe, it, expect } from "vitest";
+import { getJoinTableName, type DatafnSchema } from "@datafn/core";
 import { createDatafnServer } from "../src/server.js";
 import { fixtureF1Schema, fixtureF1Data } from "./fixtures/f1.js";
 import { seedFixture } from "./helpers/seed-fixture.js";
@@ -19,7 +20,7 @@ describe("/datafn/query execution", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 
@@ -151,6 +152,109 @@ describe("/datafn/query execution", () => {
         $relation_metadata: { order: 2, addedAt: "2026-01-01" },
       },
     ]);
+  });
+
+  it("expands polymorphic many-many inverse records from multiple concrete resources", async () => {
+    const schema: DatafnSchema = {
+      resources: [
+        {
+          name: "node",
+          version: 1,
+          fields: [{ name: "label", type: "string", required: false }],
+        },
+        {
+          name: "objective",
+          version: 1,
+          fields: [{ name: "label", type: "string", required: false }],
+        },
+        {
+          name: "collection",
+          version: 1,
+          fields: [{ name: "label", type: "string", required: false }],
+        },
+      ],
+      relations: [
+        {
+          from: ["node", "objective"],
+          to: "collection",
+          type: "many-many",
+          relation: "collections",
+          inverse: "items",
+          joinTable: "collection_items",
+          metadata: [{ name: "sortOrder", type: "number" }],
+        },
+      ],
+    };
+    const db = memoryAdapter();
+    const namespace = "datafn";
+    await db.create({ model: "node", data: { id: "node:1", label: "Node 1" }, namespace });
+    await db.create({
+      model: "objective",
+      data: { id: "objective:1", label: "Objective 1" },
+      namespace,
+    });
+    await db.create({
+      model: "collection",
+      data: { id: "collection:1", label: "Collection 1" },
+      namespace,
+    });
+    const joinTable = getJoinTableName("node", "collections", "collection_items");
+    await db.create({
+      model: joinTable,
+      data: {
+        id: "node:1:collection:1",
+        from: "node:1",
+        to: "collection:1",
+        sortOrder: 1,
+      },
+      namespace,
+    });
+    await db.create({
+      model: joinTable,
+      data: {
+        id: "objective:1:collection:1",
+        from: "objective:1",
+        to: "collection:1",
+        sortOrder: 2,
+      },
+      namespace,
+    });
+
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      limits: { maxLimit: 100 },
+      database: db,
+    });
+
+    const req = new Request("http://localhost/datafn/query", {
+      method: "POST",
+      body: JSON.stringify({
+        resource: "collection",
+        version: 1,
+        select: ["id", "items.*#"],
+        filters: { id: "collection:1" },
+      }),
+    });
+
+    const res = await server.router.handle(req, {});
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(body.result.data[0].items).toEqual([
+      {
+        id: "node:1",
+        label: "Node 1",
+        $relation_metadata: { sortOrder: 1 },
+      },
+      {
+        id: "objective:1",
+        label: "Objective 1",
+        $relation_metadata: { sortOrder: 2 },
+      },
+    ]);
+    await server.close?.();
   });
 
   it("TV-QUERY-009: Pagination with limit/offset", async () => {

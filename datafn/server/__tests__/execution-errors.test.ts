@@ -48,7 +48,7 @@ beforeEach(async () => {
   server = await createDatafnServer({
     allowUnknownResources: true,
     schema,
-    db: memoryAdapter(),
+    database: memoryAdapter(),
     debug: true, // detailed errors in tests
   });
 });

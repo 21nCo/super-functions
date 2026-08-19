@@ -97,7 +97,7 @@ async function createServer(opts?: any) {
   return createDatafnServer({
     allowUnknownResources: true,
     schema: securitySchema,
-    db: memoryAdapter(),
+    database: memoryAdapter(),
     ...opts,
   });
 }
@@ -234,7 +234,7 @@ describe("SEC-003: Authz bypass via query fields blocked at route level", () => 
   beforeEach(async () => {
     server = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
     });
   });
 
@@ -338,7 +338,7 @@ describe("SEC-004: Transact per-step authz enforcement", () => {
   beforeEach(async () => {
     server = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
     });
   });
 
@@ -553,7 +553,7 @@ describe("SEC-006: Batch size limit enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxBatchSize: 500 },
     });
 
@@ -581,7 +581,7 @@ describe("SEC-006: Batch size limit enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxBatchSize: 500 },
     });
 
@@ -611,7 +611,7 @@ describe("SEC-006: Batch size limit enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxBatchSize: 10 },
     });
 
@@ -677,7 +677,7 @@ describe("SEC-007: Byte-based payload size measurement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxPayloadBytes: 100 }, // tiny limit
     });
 
@@ -713,7 +713,7 @@ describe("SEC-010: REST path traversal protection", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
     });
   });
 
@@ -783,7 +783,7 @@ describe("SEC-015: LIKE pattern length enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxLikePatternLength: 200 },
     });
   });
@@ -841,7 +841,7 @@ describe("SEC-016: Search query length enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxSearchQueryLength: 1000 },
     });
   });
@@ -887,7 +887,7 @@ describe("VAL-006: ID length limit enforcement", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxIdLength: 255 },
     });
   });
@@ -955,7 +955,7 @@ describe("SEC-009: Relation authz enforcement", () => {
   beforeEach(async () => {
     server = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
     });
   });
 
@@ -998,7 +998,7 @@ describe("SEC-009: Relation authz enforcement", () => {
 
     const s = await createDatafnServer({
       schema: schemaWithAssignee,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
     });
 
     const res = await s.router.handle(
@@ -1030,7 +1030,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
     // Baseline: config type accepts and defaults correctly
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
     });
     expect(s).toBeDefined();
@@ -1040,7 +1040,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
   it("accepts custom maxBatchSize via limits", async () => {
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchSize: 10 },
     });
@@ -1051,7 +1051,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
   it("TV-SEC-006-N1: push rejects batch over configured maxBatchSize", async () => {
     const s = await createDatafnServer({
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchSize: 5 },
     });
@@ -1081,7 +1081,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
   it("TV-SEC-006-P1: push accepts batch exactly at configured limit", async () => {
     const s = await createDatafnServer({
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchSize: 5 },
     });
@@ -1107,7 +1107,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
   it("TV-SEC-006-N2: mutation endpoint rejects array body over configured maxBatchSize", async () => {
     const s = await createDatafnServer({
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchSize: 5 },
     });
@@ -1132,7 +1132,7 @@ describe("FIX-SEC-006: maxBatchSize config plumbing", () => {
   it("TV-SEC-006-P2: mutation endpoint accepts array body at configured limit", async () => {
     const s = await createDatafnServer({
       schema: typeTestSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchSize: 5 },
     });
@@ -1160,7 +1160,7 @@ describe("FIX-SRV-003: maxBatchQueryConcurrency config plumbing", () => {
   it("defaults maxBatchQueryConcurrency to 20 when not specified", async () => {
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
     });
     expect(s).toBeDefined();
@@ -1170,7 +1170,7 @@ describe("FIX-SRV-003: maxBatchQueryConcurrency config plumbing", () => {
   it("accepts custom maxBatchQueryConcurrency via limits", async () => {
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchQueryConcurrency: 3 },
     });
@@ -1181,7 +1181,7 @@ describe("FIX-SRV-003: maxBatchQueryConcurrency config plumbing", () => {
   it("TV-SRV-003-P1: batch query larger than concurrency executes fully", async () => {
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       allowUnknownResources: true,
       limits: { maxBatchQueryConcurrency: 2 },
     });
@@ -1218,7 +1218,7 @@ describe("FIX-SRV-003: maxBatchQueryConcurrency config plumbing", () => {
 
     const s = await createDatafnServer({
       schema: securitySchema,
-      db: base,
+      database: base,
       allowUnknownResources: true,
       limits: { maxBatchQueryConcurrency: 3 },
     });

@@ -22,7 +22,7 @@ This document is intended for large language models and agentic developer tools.
 - [Overview](https://datafn.21n.co/docs/documentation): What DataFn is, what it ships, and how the pieces fit together.
 - [Examples](https://datafn.21n.co/docs/examples): Working reference apps that ship with DataFn — clone, run, copy what you need.
 - [Getting Started](https://datafn.21n.co/docs/getting-started): Get up and running with DataFn in minutes.
-- [DataFn](https://datafn.21n.co/docs): Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
+- [DataFn](https://datafn.21n.co/docs): Self-hosted data management platform with offline-first storage, reactive signals, and a declarative query language.
 - [Quickstart](https://datafn.21n.co/docs/quickstart): Pick your stack and ship a working DataFn integration in 10 minutes.
 - [Recipes](https://datafn.21n.co/docs/recipes): Production-tested patterns for shipping with DataFn. Each recipe is self-contained: the schema, the server config, and the client glue.
 - [API Reference](https://datafn.21n.co/docs/reference): Complete API reference for all DataFn packages.
@@ -54,6 +54,7 @@ This document is intended for large language models and agentic developer tools.
 - [Search](https://datafn.21n.co/docs/dfql/search): Provider-backed full-text search for DFQL and client cross-resource search.
 - [Select and Expand](https://datafn.21n.co/docs/dfql/select): Control which fields are returned and expand relations.
 - [Sorting](https://datafn.21n.co/docs/dfql/sorting): Sort query results by one or more fields.
+- [Temporal](https://datafn.21n.co/docs/dfql/temporal): Timezone-aware date filtering and grouping with the temporal clause and time builders.
 - [Transactions](https://datafn.21n.co/docs/dfql/transactions): Execute atomic sequences of queries and mutations.
 
 ## Documentation
@@ -186,6 +187,7 @@ This document is intended for large language models and agentic developer tools.
 - [Storage Adapter](https://datafn.21n.co/docs/reference/client/storage): Storage adapter interface reference.
 - [@datafn/svelte](https://datafn.21n.co/docs/reference/client/svelte): API reference for the DataFn Svelte adapter package.
 - [Sync Engine](https://datafn.21n.co/docs/reference/client/sync): Sync engine internals reference.
+- [Temporal API](https://datafn.21n.co/docs/reference/client/temporal): Manage user timezones and resolve temporal values from the client.
 - [Transport](https://datafn.21n.co/docs/reference/client/transport): HTTP transport and remote adapter reference.
 - [Configuration Reference](https://datafn.21n.co/docs/reference/configuration): Every option accepted by createDatafnServer and createDatafnClient, end to end.
 - [Date Utilities](https://datafn.21n.co/docs/reference/core/date): Date conversion between formats.
@@ -196,6 +198,7 @@ This document is intended for large language models and agentic developer tools.
 - [Normalization](https://datafn.21n.co/docs/reference/core/normalize): DFQL normalization for caching and comparison.
 - [Schema Utilities](https://datafn.21n.co/docs/reference/core/schema): Schema validation, capability resolution, and schema indexing helpers.
 - [SearchProvider](https://datafn.21n.co/docs/reference/core/search-provider): Interface contract for pluggable search providers in DataFn.
+- [Temporal](https://datafn.21n.co/docs/reference/core/temporal): Timezone-aware temporal types, builders, and resolution helpers from @datafn/core.
 - [Core Types](https://datafn.21n.co/docs/reference/core/types): Type definitions exported by @datafn/core.
 - [Envelopes Reference](https://datafn.21n.co/docs/reference/envelopes): Every DataFn response is a DatafnEnvelope. Here is the shape and the helpers.
 - [Errors Reference](https://datafn.21n.co/docs/reference/errors): Canonical error code matrix: what each code means, what causes it, and how to fix it.

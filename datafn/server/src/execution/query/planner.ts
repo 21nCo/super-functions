@@ -10,6 +10,7 @@
  */
 
 import type { WhereClause, OrderBy } from "@superfunctions/db";
+import { endpointIncludes } from "@datafn/core";
 import { parseSortTerms } from "./sort.js";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,8 @@ const DFQL_TO_ADAPTER_OP: Record<string, PushdownOperator | null> = {
   $in: "in",
   $like: "like",
   $ilike: "ilike",
+  $is_null: "eq",
+  $is_not_null: "ne",
   // Non-$-prefixed equivalents
   eq: "eq",
   ne: "ne",
@@ -63,6 +66,8 @@ const DFQL_TO_ADAPTER_OP: Record<string, PushdownOperator | null> = {
   in: "in",
   like: "like",
   ilike: "ilike",
+  is_null: "eq",
+  is_not_null: "ne",
   // Explicitly unpushable — relation quantifiers
   $any: null,
   $all: null,
@@ -156,6 +161,28 @@ export function convertDfqlFilters(
       if (adapterOp === null) {
         // Explicitly unpushable
         return null;
+      }
+      if (
+        op === "$is_null" ||
+        op === "is_null"
+      ) {
+        result.push({
+          field: key,
+          operator: opVal === false ? "ne" : "eq",
+          value: null,
+        });
+        continue;
+      }
+      if (
+        op === "$is_not_null" ||
+        op === "is_not_null"
+      ) {
+        result.push({
+          field: key,
+          operator: opVal === false ? "eq" : "ne",
+          value: null,
+        });
+        continue;
       }
       result.push({ field: key, operator: adapterOp, value: opVal });
     }
@@ -439,13 +466,13 @@ function buildRelationNames(
   const names = new Set<string>();
   if (!resource) return names;
   const s = schema as
-    | { relations?: Array<{ from: string; to: string; relation: string; inverse?: string }> }
+    | { relations?: Array<{ from: string | readonly string[]; to: string | readonly string[]; relation: string; inverse?: string }> }
     | null
     | undefined;
   if (!s?.relations) return names;
   for (const rel of s.relations) {
-    if (rel.from === resource && rel.relation) names.add(rel.relation);
-    if (rel.to === resource && rel.inverse) names.add(rel.inverse);
+    if (endpointIncludes(rel.from, resource) && rel.relation) names.add(rel.relation);
+    if (endpointIncludes(rel.to, resource) && rel.inverse) names.add(rel.inverse);
   }
   return names;
 }
@@ -488,11 +515,11 @@ function isRelationKey(
   resource: string | undefined,
   schema: unknown,
 ): boolean {
-  const s = schema as { relations?: Array<{ from: string; to: string; relation: string; inverse?: string }> };
+  const s = schema as { relations?: Array<{ from: string | readonly string[]; to: string | readonly string[]; relation: string; inverse?: string }> };
   if (!s?.relations || !resource) return false;
   return s.relations.some(
     (r) =>
-      (r.from === resource && r.relation === key) ||
-      (r.to === resource && r.inverse === key),
+      (endpointIncludes(r.from, resource) && r.relation === key) ||
+      (endpointIncludes(r.to, resource) && r.inverse === key),
   );
 }

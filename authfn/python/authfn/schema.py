@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from superfunctions.schema_helpers import SchemaDefinition, TableSchema
+from .types import AuthFnConfig, AuthFnPlugin, AuthFnSchemaConflictError, TableSchema
 
-from .types import AuthFnConfig, AuthFnPlugin, AuthFnSchemaConflictError
+SchemaDefinition = Dict[str, Any]
 
 AUTHFN_SCHEMA_VERSION = 1
 

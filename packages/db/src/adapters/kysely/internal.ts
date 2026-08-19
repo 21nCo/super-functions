@@ -7,7 +7,9 @@ import {
   assertInternalColumnDefs,
   assertInternalTableName,
   assertInternalWhereClauses,
+  internalListOperatorValues,
   internalOperatorSql,
+  isInternalListOperator,
   normalizeInternalResultCount,
   parseInternalOrderBy,
   quoteInternalIdentifier,
@@ -44,6 +46,17 @@ function buildWhereClause(
 
     if (clause.value === null && clause.op === 'ne') {
       return sql`${fieldSql} IS NOT NULL`;
+    }
+
+    if (isInternalListOperator(clause.op)) {
+      const values = internalListOperatorValues(clause.value, clause.op);
+      if (values.length === 0) {
+        return sql.raw(clause.op === 'in' ? '1 = 0' : '1 = 1');
+      }
+      return sql`${fieldSql} ${sql.raw(internalOperatorSql(clause.op))} (${sql.join(
+        values.map((value) => sql`${value}`),
+        sql`, `,
+      )})`;
     }
 
     return sql`${fieldSql} ${sql.raw(internalOperatorSql(clause.op))} ${clause.value}`;

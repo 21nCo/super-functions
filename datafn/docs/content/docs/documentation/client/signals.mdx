@@ -87,13 +87,32 @@ Mutations on any resource in the footprint trigger a refresh.
 
 For `merge` operations on the primary resource, the signal attempts an optimistic patch before re-fetching. If the mutation's target IDs match cached records, the signal updates in-place immediately and then schedules a background re-fetch for eventual consistency.
 
-Disable optimistic patching per-signal:
+Disable optimistic patching per-signal via [signal options](#signal-options):
 
 ```typescript
 const signal = client.table("todos").signal(
   { filters: { completed: { eq: false } } },
   { disableOptimistic: true },
 );
+```
+
+## Signal Options
+
+`table.signal(query, options?)` (and the batch signals below) accept a `DatafnSignalOptions` object:
+
+```typescript
+interface DatafnSignalOptions {
+  /** Skip optimistic merge patching; always refresh from storage/server. */
+  disableOptimistic?: boolean;
+
+  /** Idle-cache eviction tuning. */
+  cache?: {
+    /** Override the idle TTL (ms) before an unsubscribed signal is disposed. */
+    idleTtlMs?: number;
+    /** Keep this signal cached indefinitely even with zero subscribers. */
+    keepAlive?: boolean;
+  };
+}
 ```
 
 ## Signal Caching
@@ -106,6 +125,20 @@ const s1 = client.table("todos").signal({ limit: 10 });
 const s2 = client.table("todos").signal({ limit: 10 });
 // s1 === s2
 ```
+
+### Idle Eviction
+
+To bound memory, the signal registry disposes signals that have **zero subscribers** after an idle timeout (default 5 minutes), and caps the number of retained idle signals (default 200). Tune this per-signal with `cache`:
+
+```typescript
+// Keep this signal cached even when no component is subscribed
+const pinned = client.table("todos").signal({ limit: 10 }, { cache: { keepAlive: true } });
+
+// Custom idle TTL
+const shortLived = client.table("todos").signal({ limit: 10 }, { cache: { idleTtlMs: 1000 } });
+```
+
+`cache` options also apply when re-fetching an existing cached signal. KV signals accept the same `cache` option (see [KV](/docs/documentation/client/kv)).
 
 ## Cursor-Based Pagination
 
@@ -132,6 +165,105 @@ todosSignal.dispose();
 ```
 
 After disposal, `get()` returns the last cached value (no re-fetch), and the signal stops reacting to mutations.
+
+## Count Signals
+
+The client exposes reactive aggregate signals for counting and looking up records without writing full queries. Like query signals, they auto-refresh when relevant mutations occur and accept [signal options](#signal-options).
+
+### `relationCountsSignal`
+
+Counts related records per parent record. Useful for badge counts (e.g. "items in this collection").
+
+```typescript
+const counts = client.relationCountsSignal({
+  resource: "collection",
+  relation: "items",
+  ids: ["collection:1", "collection:2"],
+  // optional: filter related records before counting
+  targetFilters: { isArchived: { $ne: true }, trashedAt: { $is_null: true } },
+});
+
+counts.subscribe((byId) => {
+  // byId["collection:1"] === number of matching items
+});
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `resource` | `string` | Parent resource. |
+| `relation` | `string` | Relation name on the parent. |
+| `ids` | `string[]` | Parent record IDs to count for. |
+| `filters` | `Record<string, unknown>` | Optional filters on the parent records. |
+| `targetFilters` | `Record<string, unknown>` | Optional filters applied to related records before counting. |
+
+An empty `ids` array yields a static empty signal.
+
+### `resourceCountsSignal`
+
+Live counts across multiple resources.
+
+```typescript
+const counts = client.resourceCountsSignal({
+  resources: ["tasks", "notes"],
+  queriesByResource: { tasks: { filters: { done: false } } },
+});
+// signal value: { tasks: number, notes: number }
+```
+
+### `recordsByIdsSignal`
+
+Reactively resolves records by ID, grouped by resource, across multiple resources.
+
+```typescript
+const records = client.recordsByIdsSignal({
+  ids: ["task:1", "note:2"],
+  selectByResource: { tasks: ["id", "title"] },
+  metadata: { includeTrashed: true },
+});
+// signal value: { "task:1": {...}, "note:2": {...} }
+```
+
+## Derived Signals
+
+Combine or transform signals into new signals. These helpers are exported from `@datafn/client`.
+
+```typescript
+import { combineSignals, mapSignal, emptySignal } from "@datafn/client";
+```
+
+### `mapSignal`
+
+Projects a source signal's value through a mapper. Mapper errors surface as the derived signal's `error`.
+
+```typescript
+const titles = mapSignal(todosSignal, (todos) => todos.map((t) => t.title));
+```
+
+### `combineSignals`
+
+Combines several signals into one computed value. Same-tick child emissions are coalesced; `loading`, `refreshing`, and `error` aggregate across sources. Provide an `equals` comparator to suppress no-op emissions.
+
+```typescript
+const total = combineSignals(
+  [cartSignal, feeSignal],
+  () => cartSignal.get().subtotal + feeSignal.get().amount,
+);
+
+// With custom equality (e.g. array identity)
+const ids = combineSignals(
+  [todosSignal],
+  () => todosSignal.get().map((t) => t.id),
+  { equals: (prev, next) => Array.isArray(prev) && prev.length === next.length && prev.every((v, i) => v === next[i]) },
+);
+```
+
+### `emptySignal`
+
+A static, non-loading signal holding a fixed value. `client.emptySignal(value)` is also available.
+
+```typescript
+const empty = emptySignal<Todo[]>([]);
+```
 
 ## Framework Integration
 

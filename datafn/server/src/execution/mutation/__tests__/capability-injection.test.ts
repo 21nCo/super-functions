@@ -53,7 +53,7 @@ describe("Capability mutation injection", () => {
     await db.initialize();
     server = await createDatafnServer({
       schema,
-      db,
+      database: db,
       allowUnknownResources: true,
       namespaceProvider: {
         getNamespace: () => "ns:1",

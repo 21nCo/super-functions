@@ -28,6 +28,7 @@ The provider implements DataFn's `SearchProvider` interface:
 | `search({ resource, query, ... })` | Forwards to `adapter.search` |
 | `searchAll({ query, resources, ... })` | Native `searchAll` or merged per-resource |
 | `updateIndices(mutations)` | For upserts → `adapter.index`. For deletes → `adapter.remove`. |
+| `clearIndices(resource)` | Forwards to `adapter.clear` before a full DataFn index rebuild. |
 | `dispose()` | Forwards to `adapter.dispose` |
 
 ## Server-side setup

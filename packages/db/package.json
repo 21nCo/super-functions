@@ -26,6 +26,22 @@
       "types": "./dist/adapters/cloudflare-kv/index.d.ts",
       "default": "./dist/adapters/cloudflare-kv/index.js"
     },
+    "./adapters/cloudflare-do": {
+      "types": "./dist/adapters/cloudflare-do/index.d.ts",
+      "default": "./dist/adapters/cloudflare-do/index.js"
+    },
+    "./adapters/redis": {
+      "types": "./dist/adapters/redis/index.d.ts",
+      "default": "./dist/adapters/redis/index.js"
+    },
+    "./adapters/dynamodb": {
+      "types": "./dist/adapters/dynamodb/index.d.ts",
+      "default": "./dist/adapters/dynamodb/index.js"
+    },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "default": "./dist/observability.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
@@ -61,6 +77,11 @@
     "mongodb": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.800.0",
+    "@aws-sdk/lib-dynamodb": "^3.800.0",
+    "@superfunctions/observability": "0.0.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

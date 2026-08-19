@@ -54,3 +54,94 @@ A signal refreshes when a mutation event matches any resource in its footprint.
 3. **Disposal** -- `signal.dispose()` removes the signal from the registry, unsubscribes from events, and releases all references.
 
 Signals that are not disposed will continue to listen for events and refresh. Always call `dispose()` when a signal is no longer needed (e.g., when a component unmounts).
+
+## DatafnSignalOptions
+
+`table.signal(query, options?)`, KV signals, and the batch count signals accept:
+
+```typescript
+interface DatafnSignalOptions {
+  /** Skip optimistic merge patching. */
+  disableOptimistic?: boolean;
+
+  /** Idle-cache eviction tuning. */
+  cache?: DatafnSignalCacheOptions;
+}
+
+interface DatafnSignalCacheOptions {
+  /** Idle TTL (ms) before an unsubscribed signal is disposed. */
+  idleTtlMs?: number;
+  /** Keep the signal cached indefinitely even with zero subscribers. */
+  keepAlive?: boolean;
+}
+```
+
+### Idle eviction
+
+The signal registry disposes signals with zero subscribers after an idle TTL (default 5 minutes) and caps retained idle signals (default 200). Use `cache.keepAlive` to pin a signal, or `cache.idleTtlMs` to override the TTL. Cache options apply both when creating and when re-fetching an existing cached signal.
+
+## Batch / Aggregate Signals
+
+The client exposes reactive aggregate signals. Each returns a `DatafnSignal` and accepts `DatafnSignalOptions`.
+
+```typescript
+// Counts of related records per parent id.
+client.relationCountsSignal(
+  input: {
+    resource: string;
+    relation: string;
+    ids: readonly string[];
+    filters?: Record<string, unknown>;
+    targetFilters?: Record<string, unknown>;
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, number>>;
+
+// Live counts across resources.
+client.resourceCountsSignal(
+  input: {
+    resources: string[];
+    queriesByResource?: Record<string, DfqlQueryFragment>;
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, number>>;
+
+// Records resolved by id, grouped by resource.
+client.recordsByIdsSignal(
+  input: {
+    ids: readonly string[];
+    selectByResource?: Record<string, string[]>;
+    metadata?: { includeTrashed?: boolean; includeArchived?: boolean };
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, Record<string, unknown>>>;
+```
+
+## Derived Signals
+
+Exported from `@datafn/client`:
+
+```typescript
+function mapSignal<TSource, TValue>(
+  source: DatafnSignal<TSource>,
+  mapper: (value: TSource) => TValue,
+): DatafnSignal<TValue>;
+
+interface CombineSignalsOptions<TValue> {
+  equals?: (previous: TValue | undefined, next: TValue) => boolean;
+}
+
+function combineSignals<TValue>(
+  sources: readonly DatafnSignal<unknown>[],
+  compute: () => TValue,
+  options?: CombineSignalsOptions<TValue>,
+): DatafnSignal<TValue>;
+
+function emptySignal<TValue>(value: TValue): DatafnSignal<TValue>;
+```
+
+- `combineSignals` coalesces same-tick child emissions and aggregates `loading` / `refreshing` / `error` across sources.
+- `mapSignal` surfaces mapper exceptions as a `DatafnError` with code `INTERNAL`.
+- `emptySignal` (also `client.emptySignal(value)`) is a static, non-loading signal.
+
+See the [Signals guide](/docs/documentation/client/signals#derived-signals) for usage examples.

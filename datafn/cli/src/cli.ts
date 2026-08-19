@@ -61,19 +61,11 @@ function validateAndResolveExplicitPath(path: string): string {
   }
 
   if (ext === '.ts') {
-    if (!path.endsWith('.datafn.ts')) {
-      throw new Error(
-        `Invalid schema file extension\n` +
-          `  Expected: *.datafn.ts or *.json\n` +
-          `  Got: ${path}\n\n` +
-          `  TypeScript schema files must use .datafn.ts extension for security.`
-      );
-    }
     return resolve(path);
   }
 
   throw new Error(
-    `Unsupported schema file extension: ${ext}\n` + `  Supported: .json, .datafn.ts`
+    `Unsupported schema file extension: ${ext}\n` + `  Supported: .json, .ts`
   );
 }
 
@@ -180,10 +172,22 @@ async function loadSchema(path: string): Promise<unknown> {
   throw new Error(`Unsupported file extension: ${ext}`);
 }
 
+function resolveSchemaExport(value: unknown): unknown {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'getSchema' in value &&
+    typeof (value as { getSchema?: unknown }).getSchema === 'function'
+  ) {
+    return (value as { getSchema(): unknown }).getSchema();
+  }
+  return value;
+}
+
 async function validateCommand() {
   try {
     const schemaPath = resolveSchemaPath();
-    const schema = await loadSchema(schemaPath);
+    const schema = resolveSchemaExport(await loadSchema(schemaPath));
     const result = validateSchema(schema);
     unwrapEnvelope(result);
     console.log(`✓ Schema is valid: ${schemaPath}`);
@@ -210,7 +214,7 @@ async function generateCommand() {
     }
 
     const schemaPath = resolveSchemaPath();
-    const schema = await loadSchema(schemaPath);
+    const schema = resolveSchemaExport(await loadSchema(schemaPath));
 
     const drizzleOutput = generateDrizzleSchema(schema, values.database as any);
     const outputDir = resolve(values.output || './');
@@ -247,7 +251,7 @@ Commands:
 Options:
   --adapter <name>     ORM adapter: drizzle (required)
   --database <name>    Database: postgres, mysql, sqlite (required)
-  --schema <path>      Path to schema file (.json or .datafn.ts)
+  --schema <path>      Path to schema file (.json or .ts)
                        Optional: Auto-discovers schema.datafn.ts if omitted
   --output <dir>       Output directory (default: ./)
   -h, --help           Show this help message
@@ -267,7 +271,8 @@ Examples:
   datafn validate --schema ./schema.datafn.ts
 
 TypeScript Schema Files:
-  TypeScript schema files must use the .datafn.ts extension (e.g., schema.datafn.ts)
+  Explicit --schema paths accept any .ts file
+  Use the .datafn.ts convention (e.g., schema.datafn.ts) for auto-discovery
   Auto-discovery searches in this order:
     1. ./schema.datafn.ts
     2. ./src/schema.datafn.ts

@@ -5,7 +5,7 @@ import {
 } from '../index.js';
 
 describe('@authfn/lookup-dynamodb', () => {
-  it('queries by PK and maps lookup hits and misses', async () => {
+  it('gets raw conditional KV values by composite lookup key', async () => {
     const sent: unknown[] = [];
     const store = createDynamoDbRegionLookupStore({
       tableName: 'authfn-region-lookup',
@@ -13,44 +13,33 @@ describe('@authfn/lookup-dynamodb', () => {
         async send(command: any) {
           sent.push(command.input);
           return {
-            Items: [
-              {
-                PK: 'ada@example.com',
-                SK: 'LOOKUP',
-                identifier: 'ada@example.com',
-                userId: 'user_1',
-                regionId: 'eu-west-1',
-                authority: 'https://eu.account.example.com',
-                createdAt: '2026-04-24T00:00:00.000Z',
-                updatedAt: '2026-04-24T00:00:00.000Z'
-              }
-            ]
+            Item: {
+              PK: 'authfn:region:ada@example.com',
+              SK: 'LOOKUP',
+              value: '{"regionId":"eu-west-1"}'
+            }
           };
         }
       } as any
     });
 
-    await expect(store.getByIdentifier('ada@example.com')).resolves.toMatchObject({
-      identifier: 'ada@example.com',
-      userId: 'user_1',
-      regionId: 'eu-west-1',
-      authority: 'https://eu.account.example.com'
-    });
+    await expect(store.get('authfn:region:ada@example.com'))
+      .resolves.toBe('{"regionId":"eu-west-1"}');
     expect(sent[0]).toMatchObject({
       TableName: 'authfn-region-lookup',
-      KeyConditionExpression: '#pk = :identifier',
-      Limit: 1
+      Key: {
+        PK: 'authfn:region:ada@example.com',
+        SK: 'LOOKUP'
+      }
     });
   });
 
-  it('returns conflict details when conditional put loses the race', async () => {
-    let calls = 0;
+  it('returns the existing raw value when conditional put loses the race', async () => {
     const sent: unknown[] = [];
     const store = createDynamoDbRegionLookupStore({
       tableName: 'authfn-region-lookup',
       documentClient: {
         async send(command: any) {
-          calls += 1;
           sent.push(command.input);
           if (command.input.ConditionExpression) {
             const error = new Error('conditional failed');
@@ -58,43 +47,107 @@ describe('@authfn/lookup-dynamodb', () => {
             throw error;
           }
           return {
-            Items: [
-              {
-                PK: 'ada@example.com',
-                SK: 'LOOKUP',
-                identifier: 'ada@example.com',
-                regionId: 'us-east-1',
-                authority: 'https://us.account.example.com',
-                createdAt: '2026-04-24T00:00:00.000Z',
-                updatedAt: '2026-04-24T00:00:00.000Z'
-              }
-            ]
+            Item: {
+              PK: 'authfn:region:ada@example.com',
+              SK: 'LOOKUP',
+              value: 'existing'
+            }
           };
         }
       } as any
     });
 
-    await expect(store.putIfAbsent({
-      identifier: 'ada@example.com',
-      userId: 'user_2',
-      regionId: 'eu-west-1',
-      authority: 'https://eu.account.example.com',
-      createdAt: '2026-04-24T00:00:00.000Z',
-      updatedAt: '2026-04-24T00:00:00.000Z'
+    await expect(store.setIfAbsent({
+      key: 'authfn:region:ada@example.com',
+      value: 'attempted'
     })).resolves.toEqual({
       inserted: false,
-      existing: expect.objectContaining({
-        regionId: 'us-east-1'
-      })
+      existing: 'existing'
     });
-    expect(calls).toBe(2);
     expect(sent[0]).toMatchObject({
       Item: {
-        PK: 'ada@example.com',
+        PK: 'authfn:region:ada@example.com',
         SK: 'LOOKUP',
-        regionId: 'eu-west-1'
+        value: 'attempted'
       },
-      ConditionExpression: 'attribute_not_exists(PK)'
+      ConditionExpression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
+    });
+  });
+
+  it('reads legacy bare-key records and serializes them for lazy migration', async () => {
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      documentClient: {
+        async send() {
+          return {
+            Item: {
+              PK: 'ada@example.com',
+              SK: 'LOOKUP',
+              identifier: 'ada@example.com',
+              userId: 'user:ada',
+              regionId: 'eu-west-1',
+              authority: 'https://eu.example.com',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z'
+            }
+          };
+        }
+      } as any
+    });
+
+    await expect(store.get('ada@example.com')).resolves.toBe(JSON.stringify({
+      identifier: 'ada@example.com',
+      userId: 'user:ada',
+      regionId: 'eu-west-1',
+      authority: 'https://eu.example.com',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }));
+  });
+
+  it('allows set-if-absent to replace an expired lookup item', async () => {
+    const sent: any[] = [];
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      now: () => new Date('2026-08-19T00:00:00.000Z'),
+      documentClient: {
+        async send(command: any) {
+          sent.push(command.input);
+          return {};
+        }
+      } as any
+    });
+
+    await store.setIfAbsent({ key: 'lookup', value: 'value' });
+    expect(sent[0]).toMatchObject({
+      ConditionExpression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)',
+      ExpressionAttributeValues: {
+        ':now': 1787097600
+      }
+    });
+  });
+
+  it('stores DynamoDB TTL as epoch seconds', async () => {
+    const sent: unknown[] = [];
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      now: () => new Date('2026-04-24T00:00:00.000Z'),
+      documentClient: {
+        async send(command: any) {
+          sent.push(command.input);
+          return {};
+        }
+      } as any
+    });
+
+    await store.set({ key: 'key', value: 'value', ttlSeconds: 60 });
+    expect(sent[0]).toMatchObject({
+      Item: {
+        PK: 'key',
+        SK: 'LOOKUP',
+        value: 'value',
+        expiresAt: 1776988860
+      }
     });
   });
 
@@ -110,37 +163,26 @@ describe('@authfn/lookup-dynamodb', () => {
       } as any
     });
 
-    await expect(store.getByIdentifier('ada@example.com')).rejects.toMatchObject({
+    await expect(store.get('key')).rejects.toMatchObject({
       name: 'AuthFnDynamoDbLookupStoreError',
-      operation: 'getByIdentifier',
+      operation: 'get',
       retryable: true
     } satisfies Partial<AuthFnDynamoDbLookupStoreError>);
   });
 
-  it('rejects corrupt records that are missing the authoritative regionId field', async () => {
+  it('rejects corrupt records that have no raw value', async () => {
     const store = createDynamoDbRegionLookupStore({
       tableName: 'authfn-region-lookup',
       documentClient: {
         async send() {
-          return {
-            Items: [
-              {
-                PK: 'ada@example.com',
-                SK: 'us-east-1',
-                identifier: 'ada@example.com',
-                authority: 'https://us.account.example.com',
-                createdAt: '2026-04-24T00:00:00.000Z',
-                updatedAt: '2026-04-24T00:00:00.000Z'
-              }
-            ]
-          };
+          return { Item: { PK: 'key', SK: 'LOOKUP' } };
         }
       } as any
     });
 
-    await expect(store.getByIdentifier('ada@example.com')).rejects.toMatchObject({
+    await expect(store.get('key')).rejects.toMatchObject({
       name: 'AuthFnDynamoDbLookupStoreError',
-      operation: 'getByIdentifier'
+      operation: 'get'
     });
   });
 });

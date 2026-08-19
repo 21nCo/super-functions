@@ -23,7 +23,7 @@ describe("Namespace Isolation via namespaceProvider", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     const req = new Request("http://localhost/datafn/push", {
@@ -67,7 +67,7 @@ describe("Namespace Isolation via namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider,
     });
 
@@ -132,7 +132,7 @@ describe("Namespace Isolation via namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider,
     });
 
@@ -169,7 +169,7 @@ describe("Namespace Isolation via namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider,
     });
 

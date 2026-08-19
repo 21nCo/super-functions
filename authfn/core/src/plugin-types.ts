@@ -1,14 +1,13 @@
-import type { TableSchema } from '@superfunctions/db';
-import type { OAuthFetchLike, OAuthTokenHttpClient } from '@superfunctions/oauth-http';
+import type { ConditionalKVStoreAdapter, TableSchema } from '@superfunctions/db';
+import type { ObservabilityInput } from '@superfunctions/observability';
 import type { AuthFnPlugin } from './types.js';
 import type {
   AuthFnCookieConfig,
+  AuthFnDeliveryMessageResolver,
   AuthFnPasswordCompromiseChecker,
-  AuthFnRuntimeResolution,
+  AuthFnEnvironment,
   AuthFnDeliveryProvider,
-  AuthFnSocialHandoffMode,
-  AuthFnSocialProviderConfig,
-  AuthFnSocialProviderId
+  AuthFnEvent
 } from './types.js';
 
 export interface AuthFnBundledPluginConfig {
@@ -19,38 +18,61 @@ export interface PasswordPluginConfig extends AuthFnBundledPluginConfig {
   compromisedPasswordChecker?: AuthFnPasswordCompromiseChecker;
   requireEmailVerifiedForSignIn?: boolean;
 }
-export interface EmailOtpPluginConfig extends AuthFnBundledPluginConfig {
-  delivery?: AuthFnDeliveryProvider;
-  codeGenerator?: () => string;
-  now?: () => Date;
-  challengeTtlSeconds?: number;
-  maxAttempts?: number;
+export interface PasswordPluginRuntimeConfig {
+  /** OTP delivery and challenge settings used by password sign-up, sign-in, and reset flows. */
+  otp?: EmailOtpPluginRuntimeConfig;
 }
-export interface SocialOAuthPluginConfig extends AuthFnBundledPluginConfig {
-  providers?: Partial<Record<AuthFnSocialProviderId, AuthFnSocialProviderConfig>>;
-  fetcher?: OAuthFetchLike;
-  tokenHttpClient?: OAuthTokenHttpClient;
+export interface EmailOtpPluginConfig extends AuthFnBundledPluginConfig {
+}
+export interface EmailOtpPluginRuntimeConfig {
+  /** Provider responsible for sending OTP challenges and receiving OTP lifecycle events. */
+  delivery: AuthFnDeliveryProvider;
+  /** Optional resolver used to customize the OTP message before it is passed to the delivery provider. */
+  message?: AuthFnDeliveryMessageResolver;
+  /** Optional code generator for tests or custom OTP formats; defaults to the built-in numeric generator. */
+  codeGenerator?: () => string;
+  /** Clock source used for challenge creation and expiry checks; primarily useful for tests. */
   now?: () => Date;
-  defaultHandoffMode?: AuthFnSocialHandoffMode;
+  /** Number of seconds before an OTP challenge expires. */
+  challengeTtlSeconds?: number;
+  /** Maximum verification attempts allowed before a challenge is rejected. */
+  maxAttempts?: number;
 }
 export interface ApiKeyPluginConfig extends AuthFnBundledPluginConfig {
   secretPrefix?: string;
+}
+export interface ApiKeyPluginRuntimeConfig {
+  /** Clock source used for API key timestamps and expiry checks; primarily useful for tests. */
   now?: () => Date;
 }
 export interface TwoFactorPluginConfig extends AuthFnBundledPluginConfig {
+}
+export interface TwoFactorPluginRuntimeConfig {
+  /** Issuer name displayed by authenticator apps for generated TOTP enrollments. */
   issuer?: string;
+  /** Clock source used for TOTP challenge creation and verification; primarily useful for tests. */
   now?: () => Date;
+  /** Number of seconds before a two-factor challenge expires. */
   challengeTtlSeconds?: number;
+  /** Number of recovery codes generated for each confirmed enrollment. */
   recoveryCodeCount?: number;
+  /** Number of digits in generated TOTP codes. */
   digits?: number;
+  /** TOTP time-step duration in seconds. */
   periodSeconds?: number;
+  /** Number of adjacent TOTP windows accepted during verification. */
   window?: number;
+  /** Key reference passed to encryptionKeyResolver when encrypting two-factor secrets. */
   encryptionKeyRef?: string;
+  /** Resolves the encryption key used for two-factor secret storage. */
   encryptionKeyResolver?: (keyRef: string) => Promise<Buffer> | Buffer;
 }
 
 export interface NativeHandoffPluginConfig extends AuthFnBundledPluginConfig {
   codeTtlSeconds?: number;
+}
+export interface NativeHandoffPluginRuntimeConfig {
+  /** Clock source used for native handoff code timestamps and expiry checks; primarily useful for tests. */
   now?: () => Date;
 }
 
@@ -62,13 +84,13 @@ export interface AuthFnMultiRegionRegionConfig {
   issuer?: string;
   baseUrl?: string;
   cookie?: Partial<AuthFnCookieConfig>;
-  oauth?: AuthFnRuntimeResolution['oauth'];
+  oauth?: AuthFnEnvironment['oauth'];
 }
 
 export interface AuthFnMultiRegionLookupInput {
   identifier: string;
   request?: Request;
-  runtime: AuthFnRuntimeResolution;
+  environment: AuthFnEnvironment;
 }
 
 export interface AuthFnMultiRegionLookupResult {
@@ -85,7 +107,7 @@ export interface AuthFnMultiRegionRegistrationInput {
   authority: string;
   domain?: string;
   request?: Request;
-  runtime: AuthFnRuntimeResolution;
+  environment: AuthFnEnvironment;
 }
 
 export interface AuthFnRegionLookupRecord {
@@ -98,33 +120,18 @@ export interface AuthFnRegionLookupRecord {
   updatedAt: Date | string;
 }
 
-export interface AuthFnRegionLookupStore {
-  getByIdentifier(identifier: string): Promise<AuthFnRegionLookupRecord | null>;
-  putIfAbsent(record: AuthFnRegionLookupRecord): Promise<{
-    inserted: boolean;
-    existing?: AuthFnRegionLookupRecord;
-  }>;
-  update(record: AuthFnRegionLookupRecord): Promise<AuthFnRegionLookupRecord>;
-  deleteByIdentifier(identifier: string): Promise<void>;
-}
-
-export interface AuthFnMultiRegionDirectory {
-  lookupByIdentifier(
-    input: AuthFnMultiRegionLookupInput
-  ): Promise<AuthFnMultiRegionLookupResult | null> | AuthFnMultiRegionLookupResult | null;
-  registerUser?(
-    input: AuthFnMultiRegionRegistrationInput
-  ): Promise<void> | void;
-}
-
 export interface MultiRegionPluginConfig extends AuthFnBundledPluginConfig {
+}
+
+export interface MultiRegionPluginRuntimeConfig {
+  /** Region definitions available to the multi-region resolver and routing plugin. */
   regions?: AuthFnMultiRegionRegionConfig[];
+  /** Region ID used when no request host or identifier lookup selects another region. */
   defaultRegionId?: string;
-  lookupStore?: AuthFnRegionLookupStore;
-  /**
-   * @deprecated Use lookupStore. Retained as a fallback for existing local plugins.
-   */
-  directory?: AuthFnMultiRegionDirectory;
+  /** Store used to look up and register the region that owns a user identifier. */
+  lookupStore?: ConditionalKVStoreAdapter;
+  /** Observability sink for multi-region lookup, registration, and conflict events. */
+  observability?: ObservabilityInput<AuthFnEvent>;
 }
 
 export type AuthFnPluginFactory<TConfig extends AuthFnBundledPluginConfig> = (

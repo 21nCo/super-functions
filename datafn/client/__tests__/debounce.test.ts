@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createDatafnClient } from "../src/client.js";
-import type { DatafnSchema } from "@datafn/core";
+import { getJoinStoreKey, type DatafnSchema } from "@datafn/core";
 import { MemoryStorageAdapter } from "../src/adapters/memoryStorage.js";
 
 describe("Debounced Mutations (DEB-001)", () => {
@@ -26,6 +26,24 @@ describe("Debounced Mutations (DEB-001)", () => {
           { name: "status", type: "string" },
           { name: "priority", type: "number" },
         ],
+      },
+      {
+        name: "label",
+        version: 1,
+        fields: [
+          { name: "id", type: "id", required: true },
+          { name: "name", type: "string" },
+        ],
+      },
+    ],
+    relations: [
+      {
+        from: "task",
+        to: "label",
+        type: "many-many",
+        relation: "labels",
+        inverse: "tasks",
+        metadata: [{ name: "value", type: "string" }],
       },
     ],
   };
@@ -64,6 +82,8 @@ describe("Debounced Mutations (DEB-001)", () => {
     // Initialize hydration state to ready for task resource
     await storage.setHydrationState("task", "hydrating");
     await storage.setHydrationState("task", "ready");
+    await storage.setHydrationState("label", "hydrating");
+    await storage.setHydrationState("label", "ready");
   });
 
   afterEach(async () => {
@@ -117,6 +137,53 @@ describe("Debounced Mutations (DEB-001)", () => {
         title: "First",
         status: "done",
       });
+    });
+
+    it("should coalesce relation metadata updates with same debounceKey into one changelog entry", async () => {
+      await storage.upsertRecord("task", { id: "task:15", title: "Task" });
+      await storage.upsertRecord("label", { id: "label:1", name: "Label" });
+
+      await client.mutate({
+        resource: "task",
+        operation: "relate",
+        id: "task:15",
+        relations: {
+          labels: [{ $ref: "label:1", value: "first" }],
+        },
+        debounceKey: "task:15-label:1",
+        debounceMs: 100,
+      });
+
+      await client.mutate({
+        resource: "task",
+        operation: "relate",
+        id: "task:15",
+        relations: {
+          labels: [{ $ref: "label:1", value: "second" }],
+        },
+        debounceKey: "task:15-label:1",
+        debounceMs: 100,
+      });
+
+      const joinStore = getJoinStoreKey("task", "labels", "label");
+      const rows = await storage.getJoinRows(joinStore, "task:15");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        to: "label:1",
+        value: "second",
+      });
+
+      let changelog = await storage.changelogList({ limit: 100 });
+      expect(changelog).toHaveLength(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      changelog = await storage.changelogList({ limit: 100 });
+      expect(changelog).toHaveLength(1);
+      expect(changelog[0].mutation.operation).toBe("relate");
+      expect(changelog[0].mutation.relations.labels).toEqual([
+        { $ref: "label:1", value: "second" },
+      ]);
     });
 
     it("should update local storage immediately on each debounced call", async () => {

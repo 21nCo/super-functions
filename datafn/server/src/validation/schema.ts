@@ -263,11 +263,11 @@ export function getRelationTarget(
 
     // Check forward relation
     if (fromResources.includes(resourceName) && rel.relation === relationName) {
-      return Array.isArray(rel.to) ? rel.to[0] : rel.to;
+      return typeof rel.to === "string" ? rel.to : (rel.to[0] ?? null);
     }
     // Check inverse relation
     if (toResources.includes(resourceName) && rel.inverse === relationName) {
-      return Array.isArray(rel.from) ? rel.from[0] : rel.from;
+      return typeof rel.from === "string" ? rel.from : (rel.from[0] ?? null);
     }
   }
   return null;

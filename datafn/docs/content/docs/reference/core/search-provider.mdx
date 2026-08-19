@@ -19,6 +19,7 @@ interface SearchProvider {
   search(params: SearchParams): Promise<string[]>;
   searchAll?(params: SearchAllParams): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: UpdateIndicesParams): Promise<void>;
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: InitializeConfig): Promise<void>;
   dispose?(): Promise<void>;
 }
@@ -83,6 +84,14 @@ Called by DataFn after mutations to keep the search index current.
 | `operation` | `"upsert" \| "delete"` | Whether to add/update or remove records from the index. |
 
 ## Optional Members
+
+### `clearIndices`
+
+```typescript
+clearIndices?(resource: string): Promise<void>;
+```
+
+Clears all indexed documents for one resource before DataFn performs a full rebuild. Providers that persist index data should implement this method. DataFn requires it when an existing index fingerprint changes so deleted documents cannot survive a schema, field, provider, or `searchIndexVersion` change. The `@searchfn/datafn-provider` bridge delegates it to the SearchFn adapter's `clear(resource)` method.
 
 ### `searchAll`
 

@@ -36,6 +36,11 @@ import {
   canonicalizePrincipalFromLegacyUserId,
   getSpv2MigrationRuntimeConfig,
 } from "../execution/migration/spv2.js";
+import { hasTemporalGrouping } from "@datafn/core";
+import {
+  getDatafnMultiRegionRuntimeConfig,
+  queryDatafnPermissionGrants,
+} from "../plugins/multi-region.js";
 
 // Re-export query helpers for direct imports from routes/query.
 export { validateQuery, validateFilters } from "./query/validate.js";
@@ -73,7 +78,10 @@ export function createQueryHandler(
   timingEmitter?: TimingEmitter | null,
   handlerOpts?: QueryHandlerOpts,
   logger?: DatafnLogger,
+  /** Unwrapped adapter used only to discover grants in explicitly requested source namespaces. */
+  crossNamespaceDb?: Adapter,
 ) {
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   // Build schema index once for efficient validation
   const schemaIndex = buildSchemaIndex(validatedSchema);
 
@@ -194,6 +202,21 @@ export function createQueryHandler(
   const isGrantActive = (row: Record<string, unknown>): boolean =>
     row.revokedAt === undefined || row.revokedAt === null;
 
+  const normalizePermissionGrantRow = (
+    row: Record<string, unknown>,
+  ): Record<string, unknown> => ({
+    ...row,
+    resourceType: row.resourceType ?? row.resource_type,
+    resourceNs: row.resourceNs ?? row.resource_ns,
+    resourceId: row.resourceId ?? row.resource_id,
+    principalId: row.principalId ?? row.principal_id,
+    grantKind: row.grantKind ?? row.grant_kind,
+    sourceRef: row.sourceRef ?? row.source_ref,
+    grantedBy: row.grantedBy ?? row.granted_by,
+    grantedAt: row.grantedAt ?? row.granted_at,
+    revokedAt: row.revokedAt ?? row.revoked_at,
+  });
+
   const resolveActorPrincipals = async (
     namespace: string,
     actorId: string,
@@ -265,18 +288,92 @@ export function createQueryHandler(
         : undefined;
 
     const principals = await resolveActorPrincipals(namespace, actorId);
+    const readPermissionRows = async (
+      principalId: string,
+    ): Promise<Record<string, unknown>[]> => {
+      const directoryRows = await queryDatafnPermissionGrants({
+        principalId,
+        resourceType: resource,
+      }, multiRegionRuntime);
+      const rows: Record<string, unknown>[] = directoryRows.map((grant) => ({
+        id: grant.id,
+        resourceType: grant.resourceType,
+        resourceNs: grant.resourceNs,
+        resourceId: grant.resourceId,
+        principalId: grant.principalId,
+        level: grant.level,
+        grantKind: grant.grantKind,
+        sourceRef: grant.sourceRef,
+        grantedBy: grant.grantedBy,
+        grantedAt: grant.grantedAt,
+        revokedAt: grant.revokedAt,
+        resourceRegion: grant.resourceRegion,
+      }));
+      if (rows.length > 0) {
+        return rows;
+      }
+      try {
+        rows.push(
+          ...(
+            await db.internal.findMany(globalPermissionsTable, [
+              { field: "resourceType", op: "eq", value: resource },
+              { field: "principalId", op: "eq", value: principalId },
+            ])
+          ).map((row) => normalizePermissionGrantRow(row)),
+        );
+      } catch {
+      }
+      try {
+        rows.push(
+          ...(
+            await db.internal.findMany(globalPermissionsTable, [
+              { field: "resource_type", op: "eq", value: resource },
+              { field: "principal_id", op: "eq", value: principalId },
+            ])
+          ).map((row) => normalizePermissionGrantRow(row)),
+        );
+      } catch {
+      }
+      const permissionDb = crossNamespaceDb ?? db;
+      const candidateNamespaces = namespaceFilterSet ?? new Set([namespace]);
+      for (const sourceNamespace of candidateNamespaces) {
+        rows.push(
+          ...(
+            await permissionDb.findMany({
+              model: globalPermissionsTable,
+              where: [
+                { field: "resourceType", operator: "eq", value: resource },
+                { field: "principalId", operator: "eq", value: principalId },
+                { field: "resourceNs", operator: "eq", value: sourceNamespace },
+              ],
+              namespace: sourceNamespace,
+            })
+          ).map((row) => normalizePermissionGrantRow(row as Record<string, unknown>)),
+        );
+      }
+      return rows;
+    };
+    const seenGrantIds = new Set<string>();
     for (const principalId of principals) {
-      const rows = await db.findMany({
-        model: globalPermissionsTable,
-        where: [
-          { field: "resourceType", operator: "eq", value: resource },
-          { field: "principalId", operator: "eq", value: principalId },
-        ],
-        namespace,
-      });
+      const rows = await readPermissionRows(principalId);
 
       for (const row of rows) {
         const grant = row as Record<string, unknown>;
+        if (
+          typeof grant.__ns === "string" &&
+          typeof grant.resourceNs === "string" &&
+          grant.__ns !== grant.resourceNs
+        ) {
+          continue;
+        }
+        const grantId =
+          typeof grant.id === "string"
+            ? grant.id
+            : `${String(grant.resourceType)}:${String(grant.resourceNs)}:${String(grant.resourceId ?? "*")}:${String(grant.principalId)}`;
+        if (seenGrantIds.has(grantId)) {
+          continue;
+        }
+        seenGrantIds.add(grantId);
         if (!isGrantActive(grant)) {
           continue;
         }
@@ -378,6 +475,7 @@ export function createQueryHandler(
         searchProvider,
         logger,
         timer,
+        multiRegionRuntime,
       );
       if (
         result &&
@@ -527,10 +625,13 @@ export function createQueryHandler(
         resource = typeof q.resource === "string" ? q.resource : undefined;
 
         // Run beforeQuery hooks
-        const hookCtx = { plugins, schema: validatedSchema };
+        const hookCtx = { plugins, schema: validatedSchema, context: ctx };
         const beforeHookResult = await runBeforeQuery(body, hookCtx, plugins);
         if (!beforeHookResult.ok) {
-          return errorResponse(beforeHookResult.error as any);
+          return errorResponse(
+            beforeHookResult.error as any,
+            beforeHookResult.error.code === "FORBIDDEN" ? 403 : 400,
+          );
         }
         // Use potentially transformed query from hooks
         const transformedBody = beforeHookResult.query;
@@ -736,6 +837,7 @@ export function createQueryHandler(
                   searchProvider,
                   logger,
                   timer,
+                  multiRegionRuntime,
                 );
               }).then((result) => {
                 queryDurations.push(Date.now() - queryStart);
@@ -779,14 +881,14 @@ export function createQueryHandler(
           const emptyResult = isBatch
             ? transformedQueries.map((q) => {
                 const query = q as Record<string, unknown>;
-                if (query.groupBy) {
+                if (query.groupBy || hasTemporalGrouping(query)) {
                     return { groups: [], nextCursor: null };
                 }
                 return { data: [], nextCursor: null };
             })
             : (() => {
                 const query = transformedQueries[0] as Record<string, unknown>;
-                if (query.groupBy) {
+                if (query.groupBy || hasTemporalGrouping(query)) {
                     return { groups: [], nextCursor: null };
                 }
                 return { data: [], nextCursor: null };

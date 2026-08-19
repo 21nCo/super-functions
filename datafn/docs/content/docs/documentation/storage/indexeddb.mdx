@@ -68,9 +68,16 @@ When a schema is provided, the adapter automatically:
 
 1. Creates an object store for each resource (keyed by `id`).
 2. Creates indices from the resource schema (e.g., fields listed in `indices`).
-3. Creates foreign key indices inferred from relations.
+3. Creates foreign key indices inferred from relations (including polymorphic discriminator fields).
 4. Creates join stores for many-many relations with composite keys `[from, to]` and indices on both columns.
 5. Creates the built-in `kv` store for key-value operations.
+6. Creates the built-in [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) store (with `by_effectiveFrom` and `by_timezone` indices) for timezone resolution.
+
+## Writing Reactive or Proxy Data
+
+IndexedDB's structured clone algorithm throws `DataCloneError` on functions, symbols, and many framework reactivity Proxies. The adapter runs values through an internal `cloneForStorage` step on every write (records, merges, join rows, and changelog entries) that unwraps Proxies and strips functions/symbols to plain, cloneable data.
+
+This means you can pass reactive objects (e.g. from Svelte 5 runes, Vue refs, or MobX) straight into `client.mutate(...)` without manually serializing them first.
 
 ## Auto-Version Bumping
 
@@ -84,6 +91,15 @@ If the database already exists but is missing stores (for example, after adding 
 ### Version Limit
 
 IndexedDB versions increment over time as the schema evolves. When the version exceeds `MAX_IDB_VERSION` (1000), the adapter recreates the database from scratch by deleting and reopening it. This prevents version number overflow in long-lived applications.
+
+### Connection Resilience
+
+The adapter hardens database opening against common IndexedDB failure modes:
+
+- **`VersionError`** — when another connection already opened a higher version, the adapter retries at the minimum compatible version.
+- **`onblocked`** — when an upgrade is blocked by another open tab, it surfaces an actionable, timed-out error instead of hanging.
+- **`onversionchange`** — the connection auto-closes when another tab requests a newer version, avoiding stuck upgrades.
+- **Missing-store repair** — if an expected object store is missing at runtime, the adapter triggers a version bump to recreate it.
 
 ## Changelog Deduplication
 

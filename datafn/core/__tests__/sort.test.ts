@@ -11,6 +11,7 @@ describe("parseSortTerms (TV-SRT-001)", () => {
   it("field:asc", () => expect(parseSortTerms(["name:asc"])).toEqual([{ field: "name", direction: "asc" }]));
   it("field:desc", () => expect(parseSortTerms(["name:desc"])).toEqual([{ field: "name", direction: "desc" }]));
   it("-field → desc", () => expect(parseSortTerms(["-createdAt"])).toEqual([{ field: "createdAt", direction: "desc" }]));
+  it("structured sort term", () => expect(parseSortTerms([{ field: "updatedAt", direction: "desc" }])).toEqual([{ field: "updatedAt", direction: "desc" }]));
   it("multiple terms", () => expect(parseSortTerms(["-createdAt", "name"])).toEqual([
     { field: "createdAt", direction: "desc" },
     { field: "name", direction: "asc" },

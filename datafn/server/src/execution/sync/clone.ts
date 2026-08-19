@@ -2,8 +2,8 @@
  * Clone implementation - full data sync with change tracking
  */
 
-import type { DatafnErrorCode, DatafnSchema } from "../../core-types.js";
-import { getJoinStoreKey, getJoinTableName } from "@datafn/core";
+import type { DatafnErrorCode, DatafnRelationSchema, DatafnSchema } from "../../core-types.js";
+import { getJoinStoreKey, getRelationJoinTableName } from "@datafn/core";
 import type { Adapter, WhereClause } from "@superfunctions/db";
 import type { SequenceStore } from "./sequence-store.js";
 import { ChangeTrackingService } from "./change-tracking.js";
@@ -310,23 +310,34 @@ export async function executeClone(
       // Skip relations that aren't many-many (no join rows)
       if (relation.type !== "many-many") continue;
 
-      // Logical key used by the client for its join store (matches change tracking and pull)
-      const joinStoreKey = getJoinStoreKey(relation.from as string, relation.relation!, relation.to as string);
-      // Actual DB table name (matches what relations.ts writes and what codegen generates)
-      const joinTableName = getJoinTableName(relation.from as string, relation.relation!, relation.joinTable);
+      const froms = Array.isArray(relation.from) ? relation.from : [relation.from];
+      const tos = Array.isArray(relation.to) ? relation.to : [relation.to];
+      const joinTableName = getRelationJoinTableName(relation, froms[0]);
+      const fromCol = relation.joinColumns?.from || "from";
+      const toCol = relation.joinColumns?.to || "to";
 
       try {
-        // Query join table for all rows using the actual DB table name
         const joinRecords = await db.findMany({
           model: joinTableName,
           where: [],
-          orderBy: [{ field: "from", direction: "asc" }],
+          orderBy: [{ field: "id", direction: "asc" }],
           namespace,
         });
 
-        if (joinRecords.length > 0) {
-          // Return results under the logical client store key
-          joins[joinStoreKey] = joinRecords;
+        const normalizedRows = joinRecords.map((row) =>
+          normalizeJoinCloneRow(row, fromCol, toCol),
+        );
+
+        for (const from of froms) {
+          for (const to of tos) {
+            const joinStoreKey = getJoinStoreKey(from, relation.relation!, to);
+            const rowsForStore = normalizedRows.filter((row) =>
+              shouldIncludeJoinRowForStore(row, relation, schema, from, to),
+            );
+            if (rowsForStore.length > 0) {
+              joins[joinStoreKey] = rowsForStore;
+            }
+          }
         }
       } catch (error) {
         logger?.warn("Clone: join table fetch failed", { error: String(error), operation: "clone-joins" });
@@ -343,4 +354,52 @@ export async function executeClone(
     joins,
     next: Object.keys(next).length > 0 ? next : undefined,
   };
+}
+
+function normalizeJoinCloneRow(
+  row: Record<string, unknown>,
+  fromCol: string,
+  toCol: string,
+): Record<string, unknown> {
+  const normalized = { ...row };
+  if (fromCol !== "from") {
+    normalized.from = normalized[fromCol];
+    delete normalized[fromCol];
+  }
+  if (toCol !== "to") {
+    normalized.to = normalized[toCol];
+    delete normalized[toCol];
+  }
+  return normalized;
+}
+
+function shouldIncludeJoinRowForStore(
+  row: Record<string, unknown>,
+  relation: DatafnRelationSchema,
+  schema: DatafnSchema,
+  from: string,
+  to: string,
+): boolean {
+  const froms = Array.isArray(relation.from) ? relation.from : [relation.from];
+  const tos = Array.isArray(relation.to) ? relation.to : [relation.to];
+  if (typeof row.fromResource === "string" && row.fromResource !== from) {
+    return false;
+  }
+  if (typeof row.toResource === "string" && row.toResource !== to) {
+    return false;
+  }
+  const fromValue = typeof row.from === "string" ? row.from : undefined;
+  const toValue = typeof row.to === "string" ? row.to : undefined;
+
+  const fromMatches =
+    froms.length === 1 || !fromValue || resourceIdMatches(schema, from, fromValue);
+  const toMatches =
+    tos.length === 1 || !toValue || resourceIdMatches(schema, to, toValue);
+  return fromMatches && toMatches;
+}
+
+function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
+  const resource = schema.resources.find((item) => item.name === resourceName);
+  const prefix = resource?.idPrefix ?? resourceName;
+  return id === prefix || id.startsWith(`${prefix}:`);
 }

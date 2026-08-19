@@ -54,20 +54,22 @@ export default {
     expect(output).toContain("id: string;");
   });
 
-  it("rejects .ts files without .datafn extension", () => {
+  it("loads an explicitly selected .ts file without the .datafn convention", () => {
     const schemaPath = join(workDir, "plain.ts");
-    writeFileSync(schemaPath, "export default { resources: [], relations: [] };");
+    const outputDir = join(workDir, "plain-output");
+    writeFileSync(
+      schemaPath,
+      "export default { resources: [{ name: 'plain', version: 1, fields: [{ name: 'id', type: 'string', required: true }] }], relations: [] };"
+    );
 
-    expect(() => {
-      execSync(`node "${CLI_PATH}" generate --adapter drizzle --database postgres --schema "${schemaPath}"`, {
-        encoding: "utf-8",
-        cwd: process.cwd(),
-      });
-    }).toThrow();
+    const result = runCli(
+      `generate --adapter drizzle --database postgres --schema "${schemaPath}" --output "${outputDir}"`
+    );
 
-    try {
-      unlinkSync(schemaPath);
-    } catch (_) {}
+    expect(result).toContain("Types written to");
+    expect(readFileSync(join(outputDir, "datafn-types.ts"), "utf-8")).toContain(
+      "export interface Plain"
+    );
   });
 
   it("extracts schema from named 'schema' export", () => {

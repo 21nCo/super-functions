@@ -229,7 +229,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     });
 
     fileFn = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 1024 * 1024 }],
       auth: {
@@ -328,7 +328,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
       },
     });
     const fileFnUnauthorized = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 1024 * 1024 }],
       auth: {
@@ -348,7 +348,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
 
   it('TV-PROCESS-NEG-002: artifact routes enforce auth by default when auth is required', async () => {
     const authRequiredFileFn = createFileFn({
-      db,
+      database: db,
       storage: createFakeStorageAdapter({
         capabilities: {
           signedUploadUrls: true,
@@ -387,7 +387,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
 
     const events: any[] = [];
     const fileFnWithProcessing = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 1024 * 1024 }],
       auth: {
@@ -504,7 +504,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     });
 
     const fileFnWithShareRate = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 1024 * 1024 }],
       rateLimit: {
@@ -551,7 +551,7 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     });
 
     const fileFnWithArtifactRate = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 1024 * 1024 }],
       rateLimit: {

@@ -84,10 +84,13 @@ const OP_REMAP: Record<string, string> = {
 
 ## normalizeFilterOps
 
-Recursively remaps non-`$`-prefixed operator names to their canonical form.
+Recursively remaps non-`$`-prefixed operator names to their canonical form and strips `undefined` values at every level (top-level keys, operator values, and now-empty operator objects). `null` is preserved.
 
 ```typescript
 function normalizeFilterOps(filters: Record<string, unknown>): Record<string, unknown>;
+
+normalizeFilterOps({ status: { eq: "active", ne: undefined }, archived: undefined });
+// { status: { $eq: "active" } }
 ```
 
 ## likeToRegExp

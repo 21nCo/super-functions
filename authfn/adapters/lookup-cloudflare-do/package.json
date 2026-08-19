@@ -25,7 +25,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@authfn/core": "0.1.1"
+    "@superfunctions/db": "0.1.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

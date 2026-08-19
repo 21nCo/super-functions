@@ -1,6 +1,6 @@
 import { parseCookies, serializeSetCookie } from '@superfunctions/http';
-import type { AuthFnConfig, AuthFnCookieConfig, AuthFnRuntimeResolution } from '../types.js';
-export { resolveRuntime } from './runtime.js';
+import type { AuthFnRuntimeConfig, AuthFnCookieConfig, AuthFnEnvironment } from '../types.js';
+export { resolveEnvironment } from './environment.js';
 
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const DEFAULT_CSRF_MAX_AGE_SECONDS = DEFAULT_SESSION_MAX_AGE_SECONDS;
@@ -23,9 +23,9 @@ export interface AuthFnCookieBundle {
 }
 
 export function resolveCookiePolicy(
-  config: Pick<AuthFnConfig, 'cookie'>,
+  config: Pick<AuthFnRuntimeConfig, 'cookie'>,
   request: Request,
-  runtime?: AuthFnRuntimeResolution
+  runtime?: AuthFnEnvironment
 ): AuthFnResolvedCookiePolicy {
   const effective: AuthFnCookieConfig = {
     ...config.cookie,

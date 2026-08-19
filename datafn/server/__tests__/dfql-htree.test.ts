@@ -9,7 +9,6 @@ describe("DFQL Htree (Phase 13)", () => {
   let router: any;
   let adapter: any;
 
-  // Schema with parentPath field
   const schema: DatafnSchema = {
     resources: [
       {
@@ -17,7 +16,8 @@ describe("DFQL Htree (Phase 13)", () => {
         version: 1,
         fields: [
           { name: "label", type: "string", required: true },
-          { name: "parentPath", type: "string", required: false },
+          { name: "parentId", type: "string", required: false },
+          { name: "ancestry", type: "string", required: false },
         ],
       },
       {
@@ -26,7 +26,17 @@ describe("DFQL Htree (Phase 13)", () => {
         fields: [{ name: "title", type: "string", required: true }],
       },
     ],
-    relations: [],
+    relations: [
+      {
+        from: "goal",
+        to: "goal",
+        type: "htree",
+        relation: "children",
+        inverse: "parent",
+        fkField: "parentId",
+        pathField: "ancestry",
+      },
+    ],
   };
 
   beforeEach(async () => {
@@ -38,9 +48,9 @@ describe("DFQL Htree (Phase 13)", () => {
     await seedFixture(adapter, {
       records: {
         goal: [
-          { id: "goal:g1", label: "Root", parentPath: "" },
-          { id: "goal:g2", label: "Child", parentPath: "goal:g1" },
-          { id: "goal:g3", label: "Grand", parentPath: "goal:g1-goal:g2" },
+          { id: "goal:g1", label: "Root", ancestry: "" },
+          { id: "goal:g2", label: "Child", parentId: "goal:g1", ancestry: "goal:g1" },
+          { id: "goal:g3", label: "Grand", parentId: "goal:g2", ancestry: "goal:g1-goal:g2" },
         ],
         task: [
           { id: "task:t1", title: "Standalone task" }, // No parentPath
@@ -50,7 +60,7 @@ describe("DFQL Htree (Phase 13)", () => {
     });
 
     server = await createDatafnServer({ allowUnknownResources: true,
-      db: adapter,
+      database: adapter,
       schema,
     });
     router = server.router;
@@ -139,7 +149,6 @@ describe("DFQL Htree (Phase 13)", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.ok).toBe(false);
-    // Expect specific error about missing parentPath support
-    expect(body.error.code).toBe("DFQL_UNSUPPORTED");
+    expect(body.error.code).toBe("DFQL_UNKNOWN_RELATION");
   });
 });

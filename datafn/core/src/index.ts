@@ -4,7 +4,14 @@ export type {
   DatafnResourceSchema,
   DatafnFieldSchema,
   DatafnRelationSchema,
+  DatafnRelationIntegrityMode,
+  DatafnRelationDeletePolicy,
+  DatafnRelationDeletePolicies,
+  DatafnDefaultPermissionsFieldMode,
+  DatafnDefaultPermissionsPolicy,
   DatafnPermissionsPolicy,
+  DatafnDefinedSchema,
+  DatafnSchemaLiteral,
   RelationSimpleCapability,
   DatafnEvent,
   DatafnEventFilter,
@@ -38,7 +45,7 @@ export {
 
 // Re-export error types and helpers
 export type { DatafnErrorCode, DatafnError, DatafnEnvelope } from "./errors.js";
-export { ok, err } from "./errors.js";
+export { DATAFN_ERROR_CODES, isDatafnErrorCode, ok, err } from "./errors.js";
 
 // Re-export schema validation
 export { validateSchema, isNamespaced, resolveRelationCapabilities } from "./schema.js";
@@ -57,8 +64,50 @@ export * from "./dfql.js";
 // Re-export KV utilities
 export { ensureBuiltinKv, kvId, KV_RESOURCE_NAME } from "./kv.js";
 
+export {
+  DATAFN_E2EE_ENVELOPE_MARKER,
+  isDatafnE2eeEnvelope,
+  type DatafnE2eeCipherEnvelope,
+} from "./e2ee.js";
+
+export {
+  createBuiltinPublicLinkResource,
+  ensureBuiltinPublicLinks,
+  PUBLIC_LINK_RESOURCE_NAME,
+  type DatafnPublicLinkSchemaOptions,
+} from "./public-links.js";
+
 // Re-export join store utilities
-export { getJoinStoreKey, getJoinTableName, enumerateJoinStoreKeys } from "./joins.js";
+export {
+  getJoinStoreKey,
+  getJoinTableName,
+  getRelationJoinTableName,
+  getRelationName,
+  enumerateJoinStoreKeys,
+} from "./joins.js";
+
+export {
+  type DatafnRelationEndpoint,
+  type DatafnRelationDirection,
+  type DatafnRelationMatch,
+  endpointList,
+  endpointIncludes,
+  firstEndpoint,
+  resourceNameFromId,
+  resolveEndpointResource,
+  relationMatchesForward,
+  relationMatchesInverse,
+  findRelationMatch,
+  relationSourceEndpoint,
+  relationTargetEndpoint,
+  relationKeyFor,
+} from "./relation-endpoints.js";
+
+export {
+  type DatafnRelationFkField,
+  getRelationFkFieldsForResource,
+  normalizeRelationFkRecord,
+} from "./relation-fks.js";
 
 // Re-export schema index utilities
 export {
@@ -88,6 +137,45 @@ export {
 
 // Re-export aggregation utilities
 export { calculateAggregation } from "./aggregate.js";
+
+// Re-export temporal query utilities
+export {
+  type DatafnTemporalScale,
+  type DatafnTemporalStorage,
+  type DatafnTemporalRangeInput,
+  type DatafnTemporalLocalTimeInput,
+  type DatafnTemporalDateParts,
+  type DatafnTemporalPeriodInput,
+  type DatafnTemporalGroupInput,
+  type DatafnTemporalBucketInput,
+  type DatafnTemporalClause,
+  type DatafnTemporalConfig,
+  type DatafnTemporalTimezoneResolver,
+  type DatafnResolvedTemporalGroup,
+  type DatafnTimezoneChangeRecord,
+  TIMEZONE_CHANGE_RESOURCE_NAME,
+  TIMEZONE_CHANGE_ID_PREFIX,
+  normalizeTemporalQuery,
+  getTemporalClauses,
+  hasTemporalGrouping,
+  getTemporalGroups,
+  getTemporalGroupAliases,
+  resolveTemporalBucketValue,
+  resolveTemporalBucketKey,
+  resolveTemporalPeriodRange,
+  startOfTemporalPeriod,
+  addTemporalPeriod,
+  resolveTemporalDateParts,
+  resolveTemporalLocalTime,
+  toTemporalStorageValue,
+  resolveTemporalInputMs,
+  createTimezoneResolver,
+  timezoneChangeId,
+  ensureBuiltinTemporal,
+  createTemporalPlugin,
+  time,
+  temporal,
+} from "./temporal.js";
 
 // Re-export sort utilities
 export { type SortTerm, parseSortTerms, sortRecords } from "./sort.js";

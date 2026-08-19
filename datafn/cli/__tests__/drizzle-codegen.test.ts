@@ -7,6 +7,18 @@ function readSchemaExports(output: string): string[] {
   return match ? match[1].split(", ") : [];
 }
 
+function expectedSchemaExports(names: string[]): string[] {
+  return [
+    "__datafn_changes",
+    "__datafn_idempotency",
+    "__datafn_meta",
+    "__datafn_seed",
+    "datafnTimezoneChange",
+    "kv",
+    ...names,
+  ].sort();
+}
+
 function readTableBlock(output: string, tableName: string): string {
   const start = output.indexOf(`"${tableName}"`);
   if (start < 0) return "";
@@ -55,7 +67,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('  title: text("title").notNull(),');
       // kv is always included as a built-in resource
       expect(result).toContain('export const kv = pgTable("kv", {');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "kv", "task"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["task"]));
 
       // kv table (id, value) appears before task table (alphabetical order)
       const lines = readTableBlock(result, "task").split('\n');
@@ -97,7 +109,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('  scheduledAt: bigint("scheduled_at", { mode: "number" }),');
       // kv is always included as a built-in resource
       expect(result).toContain('export const kv = mysqlTable("kv", {');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "item", "kv"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["item"]));
     });
   });
 
@@ -133,7 +145,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('  scheduledAt: integer("scheduled_at"),');
       // kv is always included as a built-in resource (sqlite uses text for object/array types)
       expect(result).toContain('export const kv = sqliteTable("kv", {');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "item", "kv"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["item"]));
     });
   });
 
@@ -192,7 +204,7 @@ describe("Drizzle Schema Codegen", () => {
       const result = generateDrizzleSchema(schema, "postgres");
 
       // kv adds jsonb to the imports
-      expect(result).toContain('import { bigint, index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";');
+      expect(result).toContain('import { bigint, index, integer, jsonb, numeric, pgTable, text } from "drizzle-orm/pg-core";');
       expect(result).toContain('}, (table) => [');
       expect(result).toContain('  index("event_type_idx").on(table.type),');
       expect(result).toContain('  index("event_created_at_idx").on(table.createdAt),');
@@ -239,7 +251,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('uniqueIndex');
       // kv is always included as a built-in resource
       expect(result).toContain('export const kv = pgTable("kv", {');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_join_todos_tags", "__datafn_meta", "__datafn_seed", "categories", "kv", "todos"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["__datafn_join_todos_tags", "categories", "todos"]));
     });
   });
 
@@ -286,6 +298,140 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('}, (table) => [');
       expect(result).toContain('  uniqueIndex("user_roles_user_id_role_id_idx").on(table.userId, table.roleId),');
       expect(result).toContain(']);');
+    });
+  });
+
+  describe("TV-DRZ-REL-INTEGRITY-001: Relation Integrity DDL", () => {
+    it("should generate FK indexes and constraints for non-polymorphic relations when requested", () => {
+      const schema = {
+        namespaced: true,
+        relationIntegrity: "database",
+        resources: [
+          {
+            name: "project",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "task",
+            version: 1,
+            fields: [
+              { name: "id", type: "string", required: true },
+              { name: "projectId", type: "string", required: false },
+            ],
+          },
+        ],
+        relations: [
+          {
+            from: "task",
+            to: "project",
+            type: "many-one",
+            relation: "project",
+            fkField: "projectId",
+            onDelete: { to: "setNull" },
+          },
+        ],
+      };
+
+      const result = generateDrizzleSchema(schema, "postgres");
+
+      expect(result).toContain("foreignKey");
+      expect(result).toContain('  index("task_project_id_rel_idx").on(table.__ns, table.projectId),');
+      expect(result).toContain(
+        '  foreignKey({ columns: [table.__ns, table.projectId], foreignColumns: [project.__ns, project.id] }).onDelete("set null"),',
+      );
+    });
+
+    it("should generate discriminator columns for polymorphic many-many relations", () => {
+      const schema = {
+        namespaced: false,
+        relationIntegrity: "database",
+        resources: [
+          {
+            name: "node",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "objective",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "collection",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "tag",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+        ],
+        relations: [
+          {
+            from: ["node", "objective"],
+            to: ["collection", "tag"],
+            type: "many-many",
+            relation: "items",
+            joinTable: "resource_items",
+          },
+        ],
+      };
+
+      const result = generateDrizzleSchema(schema, "postgres");
+
+      expect(result).toContain('export const resource_items = pgTable("resource_items", {');
+      expect(result).toContain('  fromResource: text("from_resource").notNull(),');
+      expect(result).toContain('  toResource: text("to_resource").notNull(),');
+      expect(result).toContain(
+        '  uniqueIndex("resource_items_from_to_idx").on(table.fromResource, table.from, table.toResource, table.to),',
+      );
+      expect(result).toContain(
+        '  index("resource_items_from_idx").on(table.fromResource, table.from),',
+      );
+      expect(result).toContain(
+        '  index("resource_items_to_idx").on(table.toResource, table.to),',
+      );
+      expect(readTableBlock(result, "resource_items")).not.toContain("foreignKey");
+    });
+
+    it("should not duplicate discriminator columns when metadata already declares them", () => {
+      const schema = {
+        namespaced: false,
+        resources: [
+          {
+            name: "node",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "objective",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+        ],
+        relations: [
+          {
+            from: ["node", "objective"],
+            to: ["node", "objective"],
+            type: "many-many",
+            relation: "links",
+            joinTable: "record_links",
+            joinColumns: { from: "in", to: "out" },
+            metadata: [
+              { name: "fromResource", type: "string" },
+              { name: "toResource", type: "string" },
+            ],
+          },
+        ],
+      };
+
+      const result = generateDrizzleSchema(schema, "postgres");
+      const block = readTableBlock(result, "record_links");
+
+      expect(block.match(/fromResource:/g)).toHaveLength(1);
+      expect(block.match(/toResource:/g)).toHaveLength(1);
     });
   });
 
@@ -346,10 +492,9 @@ describe("Drizzle Schema Codegen", () => {
 
       const result = generateDrizzleSchema(schema, "postgres");
 
-      // kv and Datafn internal tables add jsonb/index/integer; otherwise imports are minimal.
-      expect(result).toContain('import { index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";');
+      // kv, temporal, and Datafn internal tables add jsonb/numeric/index/integer.
+      expect(result).toContain('import { index, integer, jsonb, numeric, pgTable, text } from "drizzle-orm/pg-core";');
       expect(result).not.toContain('boolean');
-      expect(result).not.toContain('numeric');
       expect(result).not.toContain('bigint');
     });
   });
@@ -392,7 +537,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(middleIndex).toBeLessThan(zebraIndex);
 
       // kv is always included as a built-in resource; internal Datafn tables sort first.
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "alpha", "kv", "middle", "zebra"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["alpha", "middle", "zebra"]));
 
       const result2 = generateDrizzleSchema(schema, "postgres");
       expect(result).toBe(result2);
@@ -483,6 +628,43 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).not.toContain('table.enrolledAt');
     });
 
+    it("should include identity metadata columns in many-many uniqueIndex", () => {
+      const schema = {
+        namespaced: false,
+        resources: [
+          {
+            name: "nodes",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "records",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+        ],
+        relations: [
+          {
+            from: "nodes",
+            to: "records",
+            type: "many-many",
+            relation: "links",
+            metadata: [
+              { name: "linkType", type: "string" },
+              { name: "location", type: "string" },
+            ],
+            identityMetadata: ["linkType"],
+          },
+        ],
+      };
+
+      const result = generateDrizzleSchema(schema, "postgres");
+      expect(result).toContain(
+        'uniqueIndex("__datafn_join_nodes_links_from_to_idx").on(table.from, table.to, table.linkType),',
+      );
+      expect(result).not.toContain("table.location),");
+    });
+
     it("should handle one-many and many-one relations (no join tables)", () => {
       const schema = {
         namespaced: false,
@@ -506,7 +688,7 @@ describe("Drizzle Schema Codegen", () => {
       const result = generateDrizzleSchema(schema, "postgres");
       expect(result).not.toContain('__datafn_join');
       // kv is always included as a built-in resource
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "child", "kv", "parent"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["child", "parent"]));
     });
 
     it("should sanitize variable names with hyphens", () => {
@@ -525,7 +707,7 @@ describe("Drizzle Schema Codegen", () => {
       const result = generateDrizzleSchema(schema, "postgres");
       expect(result).toContain('export const my_resource = pgTable("my-resource", {');
       // kv is always included as a built-in resource
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "kv", "my_resource"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["my_resource"]));
     });
   });
 
@@ -551,8 +733,8 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('export const kv = pgTable("kv", {');
       expect(result).toContain('  id: text("id").primaryKey(),');
       expect(result).toContain('  value: jsonb("value"),');
-      expect(result).toContain('import { index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "kv", "task"]);
+      expect(result).toContain('import { index, integer, jsonb, numeric, pgTable, text } from "drizzle-orm/pg-core";');
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["task"]));
     });
 
     it("should include the built-in kv table for mysql", () => {
@@ -576,7 +758,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('  id: text("id").primaryKey(),');
       expect(result).toContain('  value: json("value"),');
       expect(result).toContain('import { index, int, json, mysqlTable, text } from "drizzle-orm/mysql-core";');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "item", "kv"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["item"]));
     });
 
     it("should include the built-in kv table for sqlite with text value column", () => {
@@ -600,7 +782,7 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain('  id: text("id").primaryKey(),');
       expect(result).toContain('  value: text("value"),');
       expect(result).toContain('import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";');
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "item", "kv"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["item"]));
     });
 
     it("should not duplicate kv table if schema already defines it", () => {
@@ -657,7 +839,7 @@ describe("Drizzle Schema Codegen", () => {
       const result = generateDrizzleSchema(schema, "postgres");
 
       // kv sorts between categories and todos after Datafn internal tables.
-      expect(readSchemaExports(result)).toEqual(["__datafn_changes", "__datafn_idempotency", "__datafn_meta", "__datafn_seed", "categories", "kv", "todos"]);
+      expect(readSchemaExports(result)).toEqual(expectedSchemaExports(["categories", "todos"]));
     });
   });
 

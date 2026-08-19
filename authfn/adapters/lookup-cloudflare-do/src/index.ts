@@ -1,7 +1,4 @@
-import type {
-  AuthFnRegionLookupRecord,
-  AuthFnRegionLookupStore,
-} from '@authfn/core';
+import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
 
 export interface CloudflareDurableObjectNamespace {
   idFromName(name: string): unknown;
@@ -25,10 +22,17 @@ export interface DurableObjectStateLike {
   };
 }
 
+interface StoredEntry {
+  value: string;
+  expiresAt?: number;
+}
+
 interface LookupRequest {
-  operation: 'getByIdentifier' | 'putIfAbsent' | 'update' | 'deleteByIdentifier';
-  identifier?: string;
-  record?: AuthFnRegionLookupRecord;
+  operation: 'get' | 'set' | 'setIfAbsent' | 'compareAndSet' | 'delete';
+  key?: string;
+  value?: string;
+  expected?: string | null;
+  ttlSeconds?: number;
 }
 
 interface LookupResponse<T> {
@@ -65,11 +69,12 @@ export class AuthFnCloudflareDoLookupStoreError extends Error {
 export function createCloudflareRegionLookupStore(
   namespace: CloudflareDurableObjectNamespace,
   options: CloudflareRegionLookupStoreOptions = {},
-): AuthFnRegionLookupStore {
+): ConditionalKVStoreAdapter {
   const path = options.path ?? '/lookup';
 
-  async function call<T>(operation: LookupRequest['operation'], identifier: string, body: Omit<LookupRequest, 'operation' | 'identifier'> = {}): Promise<T> {
-    const objectName = await objectNameForIdentifier(identifier, options.objectNamePrefix);
+  async function call<T>(request: LookupRequest): Promise<T> {
+    const key = requireKey(request.key);
+    const objectName = await objectNameForKey(key, options.objectNamePrefix);
     const stub = namespace.get(namespace.idFromName(objectName));
 
     let response: Response;
@@ -79,16 +84,12 @@ export function createCloudflareRegionLookupStore(
         headers: {
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          operation,
-          identifier,
-          ...body,
-        } satisfies LookupRequest),
+        body: JSON.stringify(request),
       });
     } catch (error) {
       throw new AuthFnCloudflareDoLookupStoreError(
-        operation,
-        `AuthFn Cloudflare DO lookup store failed during ${operation}`,
+        request.operation,
+        `AuthFn Cloudflare DO lookup store failed during ${request.operation}`,
         { cause: error, retryable: true },
       );
     }
@@ -98,7 +99,7 @@ export function createCloudflareRegionLookupStore(
       const message = payload && payload.ok === false
         ? payload.error.message
         : `AuthFn Cloudflare DO lookup store returned ${response.status}`;
-      throw new AuthFnCloudflareDoLookupStoreError(operation, message, {
+      throw new AuthFnCloudflareDoLookupStoreError(request.operation, message, {
         status: response.status,
       });
     }
@@ -107,23 +108,30 @@ export function createCloudflareRegionLookupStore(
   }
 
   return {
-    getByIdentifier(identifier) {
-      return call<AuthFnRegionLookupRecord | null>('getByIdentifier', identifier);
+    get(key) {
+      return call<string | null>({ operation: 'get', key });
     },
 
-    putIfAbsent(record) {
-      return call<{
-        inserted: boolean;
-        existing?: AuthFnRegionLookupRecord;
-      }>('putIfAbsent', record.identifier, { record });
+    async set(input) {
+      await call<null>({ operation: 'set', ...input });
     },
 
-    update(record) {
-      return call<AuthFnRegionLookupRecord>('update', record.identifier, { record });
+    setIfAbsent(input) {
+      return call<{ inserted: boolean; existing?: string }>({
+        operation: 'setIfAbsent',
+        ...input,
+      });
     },
 
-    async deleteByIdentifier(identifier) {
-      await call<null>('deleteByIdentifier', identifier);
+    compareAndSet(input) {
+      return call<{ updated: boolean; existing?: string }>({
+        operation: 'compareAndSet',
+        ...input,
+      });
+    },
+
+    async delete(key) {
+      await call<null>({ operation: 'delete', key });
     },
   };
 }
@@ -173,64 +181,79 @@ export class AuthFnRegionLookupDurableObject {
   }
 
   private async handle(body: LookupRequest): Promise<Response> {
+    requireKey(body.key);
+
     switch (body.operation) {
-      case 'getByIdentifier': {
-        requireIdentifier(body.identifier);
-        const existing = await this.state.storage.get<AuthFnRegionLookupRecord>('record');
-        return json({
-          ok: true,
-          data: existing ?? null,
-        } satisfies LookupResponse<AuthFnRegionLookupRecord | null>);
+      case 'get': {
+        const existing = await this.readEntry();
+        return json({ ok: true, data: existing?.value ?? null } satisfies LookupResponse<string | null>);
       }
 
-      case 'putIfAbsent': {
-        const record = requireRecord(body.record);
-        const existing = await this.state.storage.get<AuthFnRegionLookupRecord>('record');
+      case 'set': {
+        await this.writeEntry(requireValue(body.value), body.ttlSeconds);
+        return json({ ok: true, data: null } satisfies LookupResponse<null>);
+      }
+
+      case 'setIfAbsent': {
+        const existing = await this.readEntry();
         if (existing) {
           return json({
             ok: true,
-            data: {
-              inserted: false,
-              existing,
-            },
-          } satisfies LookupResponse<{
-            inserted: boolean;
-            existing?: AuthFnRegionLookupRecord;
-          }>);
+            data: { inserted: false, existing: existing.value },
+          } satisfies LookupResponse<{ inserted: boolean; existing?: string }>);
         }
 
-        await this.state.storage.put('record', record);
-        return json({
-          ok: true,
-          data: {
-            inserted: true,
-          },
-        } satisfies LookupResponse<{ inserted: boolean }>);
+        await this.writeEntry(requireValue(body.value), body.ttlSeconds);
+        return json({ ok: true, data: { inserted: true } } satisfies LookupResponse<{ inserted: boolean }>);
       }
 
-      case 'update': {
-        const record = requireRecord(body.record);
-        await this.state.storage.put('record', record);
-        return json({
-          ok: true,
-          data: record,
-        } satisfies LookupResponse<AuthFnRegionLookupRecord>);
+      case 'compareAndSet': {
+        const existing = await this.readEntry();
+        const existingValue = existing?.value ?? null;
+        if (existingValue !== body.expected) {
+          return json({
+            ok: true,
+            data: { updated: false, existing: existing?.value },
+          } satisfies LookupResponse<{ updated: boolean; existing?: string }>);
+        }
+
+        await this.writeEntry(requireValue(body.value), body.ttlSeconds);
+        return json({ ok: true, data: { updated: true } } satisfies LookupResponse<{ updated: boolean }>);
       }
 
-      case 'deleteByIdentifier': {
-        requireIdentifier(body.identifier);
+      case 'delete': {
+        await this.state.storage.delete('entry');
         await this.state.storage.delete('record');
-        return json({
-          ok: true,
-          data: null,
-        } satisfies LookupResponse<null>);
+        return json({ ok: true, data: null } satisfies LookupResponse<null>);
       }
     }
   }
+
+  private async readEntry(): Promise<StoredEntry | undefined> {
+    const entry = await this.state.storage.get<StoredEntry>('entry');
+    if (entry?.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
+      await this.state.storage.delete('entry');
+      return undefined;
+    }
+    if (entry) return entry;
+
+    // Older releases stored a structured lookup record under `record` in an
+    // object named from the bare identifier. Expose it as the generic KV value
+    // so AuthFn Core can lazily migrate it to the prefixed key/object.
+    const legacy = await this.state.storage.get<Record<string, unknown>>('record');
+    return legacy ? { value: JSON.stringify(legacy) } : undefined;
+  }
+
+  private async writeEntry(value: string, ttlSeconds?: number): Promise<void> {
+    await this.state.storage.put<StoredEntry>('entry', {
+      value,
+      expiresAt: ttlSeconds === undefined ? undefined : Date.now() + (ttlSeconds * 1000),
+    });
+  }
 }
 
-async function objectNameForIdentifier(identifier: string, prefix = ''): Promise<string> {
-  const data = new TextEncoder().encode(identifier);
+async function objectNameForKey(key: string, prefix = ''): Promise<string> {
+  const data = new TextEncoder().encode(key);
   const digest = await crypto.subtle.digest('SHA-256', data);
   const hash = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -238,18 +261,18 @@ async function objectNameForIdentifier(identifier: string, prefix = ''): Promise
   return `${prefix}${hash}`;
 }
 
-function requireIdentifier(identifier: string | undefined): string {
-  if (!identifier) {
-    throw new Error('identifier is required');
+function requireKey(key: string | undefined): string {
+  if (!key) {
+    throw new Error('key is required');
   }
-  return identifier;
+  return key;
 }
 
-function requireRecord(record: AuthFnRegionLookupRecord | undefined): AuthFnRegionLookupRecord {
-  if (!record?.identifier || !record.regionId || !record.authority) {
-    throw new Error('lookup record with identifier, regionId, and authority is required');
+function requireValue(value: string | undefined): string {
+  if (value === undefined) {
+    throw new Error('value is required');
   }
-  return record;
+  return value;
 }
 
 function json(body: unknown, status = 200): Response {

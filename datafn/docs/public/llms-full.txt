@@ -900,7 +900,7 @@ DFQL supports three top-level operation types:
 
 ### Queries
 
-Retrieve data from a resource. Queries support filtering, sorting, pagination, field selection, aggregation, and full-text search.
+Retrieve data from a resource. Queries support filtering, sorting, pagination, field selection, aggregation, [timezone-aware temporal filtering and grouping](/docs/dfql/temporal), and full-text search.
 
 ```typescript
 const query: DfqlQuery = {
@@ -1248,7 +1248,7 @@ Install the DataFn packages alongside your current backend dependencies:
 
     const datafn = await createDatafnServer({
       schema,
-      db: drizzleAdapter({ db: drizzleInstance, dialect: "postgres" }),
+      database: drizzleAdapter({ db: drizzleInstance, dialect: "postgres" }),
       rest: true, // also exposes a REST API auto-generated from your schema
     });
 
@@ -1524,12 +1524,13 @@ Capabilities keep boilerplate (timestamps, soft-delete, audit trails, sharing) o
 ### DataFn
 
 URL: https://datafn.21n.co/docs
-Description: Self-hosted data sync SDK with offline-first storage, reactive signals, and a declarative query language.
+Description: Self-hosted data management platform with offline-first storage, reactive signals, and a declarative query language.
 --------------------------------------------------------------------------------
 
-DataFn replaces your ORM, your query client, your sync layer, and your realtime stack with one type-safe, offline-first data platform you actually own.
+DataFn is a full-stack data framework for building modern software applications. It provides a unified approach to defining schemas, querying data, managing mutations, and synchronizing state between client and server.
 
-You define a schema. You get back a database, a server, a client, a sync engine, optimistic UI primitives, multi-tenancy, sharing, search hooks, and a native Apple runtime — all with the same DFQL query shape across every layer.
+You define a schema. You get back a server, a client, a sync engine, optimistic UI primitives, multi-tenancy, sharing, search hooks, and a native Apple runtime — all with the same DFQL query shape across every layer. It replaces your ORM, query client, sync layer, and realtime stack with one type-safe, offline-first data platform you actually own.
+
 
 Pick the entry point that matches what you're doing:
 
@@ -2013,7 +2014,7 @@ Description: Generate Drizzle ORM table definitions from your schema.
 
 ## Overview
 
-The `generateDrizzleSchema(schema, dialect)` function produces a complete Drizzle ORM schema file from a DataFn schema. It validates the schema, ensures the built-in KV resource exists, and generates table definitions with column types, indices, and join tables.
+The `generateDrizzleSchema(schema, dialect)` function produces a complete Drizzle ORM schema file from a DataFn schema. It validates the schema, ensures the built-in `kv` and [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) resources exist, and generates table definitions with column types, indices, foreign keys, and join tables.
 
 ```typescript
 import { generateDrizzleSchema } from "@datafn/cli";
@@ -2066,7 +2067,9 @@ Each table may include:
 
 - **Namespace index** -- `idx_{table}___ns` when namespace isolation is enabled.
 - **Base indices** -- one index per field listed in `indices.base`.
+- **Relation FK indices** -- `{table}_{fk_column}_rel_idx` for each generated foreign-key column (see below). Htree relations also index the path column.
 - **Join table unique index** -- `{joinTable}_{from}_{to}_idx` for many-many relations.
+- **Join table directional indices** -- `{joinTable}_{from}_idx` and `{joinTable}_{to}_idx` for efficient traversal in either direction.
 
 ## Join Tables
 
@@ -2076,8 +2079,54 @@ For `many-many` relations, a join table is generated with:
 - An `id` column as the primary key.
 - Any `metadata` fields from the relation schema.
 - A unique index on `(from, to)`.
+- Directional indices on `from` and on `to`.
 
 The join table name defaults to `__datafn_join_{from}_{relation}` unless `joinTable` is specified.
+
+For [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) many-many relations (array `from`/`to`), the join table also gets `fromResource` / `toResource` discriminator columns, and the unique and directional indices include them:
+
+```typescript
+fromResource: text("from_resource").notNull(),
+toResource: text("to_resource").notNull(),
+// uniqueIndex("resource_items_from_to_idx").on(fromResource, from, toResource, to)
+// index("resource_items_from_idx").on(fromResource, from)
+// index("resource_items_to_idx").on(toResource, to)
+```
+
+## Relation Foreign Keys
+
+When a relation (or the schema) uses [`integrity: "database"`](/docs/dfql/schema/relations#relation-integrity), codegen emits real foreign-key columns, indices, and constraints for FK-backed relations (`many-one`, `one-many`, `htree`). The FK column is generated on the holding resource if it is not already declared:
+
+| Relation type | Default FK column | Extra columns |
+| --- | --- | --- |
+| `many-one` | `fkField` or `{relation}Id` | `{relation}Resource` when `to` is polymorphic |
+| `one-many` | `fkField` or `inverse` or `{from}Id` | `{...}Resource` when `from` is polymorphic |
+| `htree` | `fkField` or `inverse` or `parentId` | `pathField` (default `parentPath`); `{parent}Resource` when polymorphic |
+
+`onDelete` policies map to Drizzle `ON DELETE` actions on resource foreign keys:
+
+| `onDelete` policy | Drizzle action |
+| --- | --- |
+| `cascade` | `.onDelete("cascade")` |
+| `restrict` | `.onDelete("restrict")` |
+| `setNull` / `detach` | `.onDelete("set null")` |
+| _(absent)_ | no `.onDelete` clause |
+
+Example (namespaced, `onDelete: { to: "setNull" }`):
+
+```typescript
+index("task_project_id_rel_idx").on(table.__ns, table.projectId),
+foreignKey({
+  columns: [table.__ns, table.projectId],
+  foreignColumns: [project.__ns, project.id],
+}).onDelete("set null"),
+```
+
+Foreign-key **constraints** are not emitted for polymorphic join tables (which use discriminator columns instead). Join-table FKs are emitted only when integrity is `"database"` and the endpoint is non-polymorphic; their `onDelete` mapping is `restrict` → `restrict`, and `cascade`/`detach`/`setNull` → `cascade`.
+
+## Built-in Resources
+
+Generated schemas always include the internal `__datafn_*` tables, the built-in `kv` table, and the [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) table (injected via `ensureBuiltinTemporal`). The temporal table's `number` columns mean minimal Postgres schemas now also import `numeric`.
 
 ## Example Output
 
@@ -2859,12 +2908,18 @@ const code = generateTypes(mySchema);
 
 For each resource, `generateTypes` produces:
 
-1. **Resource interfaces** -- one interface per resource with typed fields.
-2. **Join table interfaces** -- for `many-many` relations that have `metadata`, an interface with join columns and metadata fields.
+1. **Resource interfaces** -- one interface per resource with typed fields, including [relation-derived foreign-key fields](#relation-derived-fields).
+2. **Join table interfaces** -- for `many-many` relations that have `metadata`, `capabilities`, or a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) `from`/`to` endpoint.
 3. **`Tables` type** -- maps resource names (and join table names) to their interfaces.
 4. **`TypedClient` type** -- extends `DatafnClient` with typed table accessors.
 
 All output is **deterministic**: resources, fields, and join tables are sorted by name.
+
+## Relation-Derived Fields
+
+`generateTypes` merges relation foreign-key fields into the holding resource's interface, even if you do not declare them in `fields`. They follow the same naming rules as the [Drizzle FK columns](/docs/cli/drizzle-codegen#relation-foreign-keys) (e.g. a `many-one` relation `project` with `fkField: "projectId"` adds `projectId?: string`). Generated FK fields are optional `string`. Fields you declare explicitly always take precedence.
+
+Polymorphic many-many join interfaces additionally include `fromResource: string` and/or `toResource: string` discriminator fields when those endpoints are polymorphic and the field is not already part of `metadata`.
 
 ## Field Type Mapping
 
@@ -3174,6 +3229,40 @@ Aggregation results support the same pagination as regular queries. Use `limit`,
 }
 ```
 
+## Temporal Grouping
+
+In addition to grouping by raw field values, you can group by **calendar periods** (day, week, month, …) in a specific timezone using a [`temporal`](/docs/dfql/temporal) clause with `groupBy`. This is the time-series equivalent of `groupBy`.
+
+```typescript
+import { time } from "@datafn/core";
+
+{
+  resource: "sessions",
+  version: 1,
+  temporal: time.groupByDay("startedAt", { alias: "day", timezone: "user" }),
+  aggregations: {
+    count: { op: "count", field: "*" },
+    minutes: { op: "sum", field: "minutes" },
+  },
+}
+// Result groups, keyed by the start of each day in the user's timezone:
+// {
+//   groups: [
+//     { day: "2026-05-17T18:30:00.000Z", count: 2, minutes: 30 },
+//     { day: "2026-05-18T18:30:00.000Z", count: 1, minutes: 30 },
+//   ]
+// }
+```
+
+Notes:
+
+- The temporal group **alias** (`day` above) becomes a group key and can be used in `sort` and `having`, exactly like a `groupBy` field.
+- When no `sort` is provided, results are ordered by temporal aliases ascending.
+- A query with a temporal `groupBy` is routed to aggregate execution even without an explicit `groupBy` array.
+- Temporal grouping can be combined with regular `groupBy` fields and `aggregations`.
+
+See [Temporal](/docs/dfql/temporal) for the full clause reference, timezone resolution, and the `time` builder.
+
 ## Programmatic Aggregation
 
 The `calculateAggregation` function computes a single aggregation over an array of records:
@@ -3262,6 +3351,21 @@ import { normalizeFilterOps } from "@datafn/core";
 const normalized = normalizeFilterOps({ priority: { gte: 3 } });
 // { priority: { $gte: 3 } }
 ```
+
+### Undefined Stripping
+
+`normalizeFilterOps` strips `undefined` at every level so optional UI filters can be passed through without affecting results:
+
+```typescript
+normalizeFilterOps({
+  isArchived: undefined,
+  status: { eq: "active", ne: undefined },
+  dueAt: undefined,
+});
+// { status: { $eq: "active" } }
+```
+
+Top-level keys whose value is `undefined` are omitted, `undefined` operator values are dropped, and a field operator object that becomes empty after stripping is removed entirely. `null` is preserved (use it with `$is_null` / `$eq` to match null values).
 
 ## Comparison Operators
 
@@ -3637,6 +3741,12 @@ These are valid only when the target resource enables the required capability.
 }
 ```
 
+When the deleted record is referenced by relations that declare an [`onDelete` policy](/docs/dfql/schema/relations#delete-policies), the server enforces that policy as part of the delete:
+
+- `restrict` — the delete fails with `RELATION_RESTRICTED` if referencing rows exist.
+- `cascade` — referencing records are deleted recursively.
+- `setNull` / `detach` — referencing foreign keys are cleared (and many-many join rows removed).
+
 ## Capability Examples
 
 ### Trash / Restore
@@ -3712,6 +3822,12 @@ Examples of stripped fields:
 - `trashedAt`, `trashedBy`
 
 Server-generated values are authoritative.
+
+## Foreign Key Normalization
+
+When a record is written (`insert`, `merge`, `replace`, or via sync push), DataFn normalizes **optional** relation foreign-key fields: an empty string `""` is stored as `null`. This applies to the FK field and its paired polymorphic `*Resource` discriminator field. Required FK fields are left unchanged.
+
+This keeps "unset" foreign keys consistent so relation queries and [delete policies](/docs/dfql/schema/relations#delete-policies) treat them as absent.
 
 ## Batch Mutations
 
@@ -4211,6 +4327,7 @@ type DatafnSchema = {
   capabilities?: SchemaCapabilities;
   resources: DatafnResourceSchema[];
   relations?: DatafnRelationSchema[];
+  relationIntegrity?: "application" | "database";
   namespaced?: boolean; // defaults to true
 };
 ```
@@ -4220,6 +4337,7 @@ type DatafnSchema = {
 | `capabilities` | `SchemaCapabilities` | Optional global capability entries applied to resources by default. |
 | `resources` | `DatafnResourceSchema[]` | Resource definitions (required, max 100). |
 | `relations` | `DatafnRelationSchema[]` | Optional relation definitions (`[]` when omitted). |
+| `relationIntegrity` | `"application" \| "database"` | Default [relation integrity](/docs/dfql/schema/relations#relation-integrity) mode for all relations. Defaults to `"application"`. The removed `"hybrid"` mode is rejected. |
 | `namespaced` | `boolean` | Namespace isolation flag (defaults to `true`). |
 
 See [Capabilities](/docs/documentation/capabilities) for the behavior model.
@@ -4288,7 +4406,9 @@ On success, DataFn normalizes:
 - capability declarations and capability config validity,
 - capability field collisions (`CAPABILITY_FIELD_COLLISION`),
 - capability dependencies (for example `shareable` requires `audit`),
-- relation capability constraints (`many-many` only, `timestamps|audit` only).
+- relation capability constraints (`many-many` only, `timestamps|audit` only),
+- relation integrity mode (`"application"` or `"database"`; the legacy `"hybrid"` mode is rejected),
+- relation delete policies (`onDelete` must be a valid policy or `{ from?, to? }` object).
 
 ## Namespace default
 
@@ -4327,26 +4447,37 @@ type DatafnRelationSchema = {
     type: "string" | "number" | "boolean" | "date" | "object" | "json";
   }>;
   fkField?: string;
+  fkResourceField?: string;
   pathField?: string;
   joinTable?: string;
   joinColumns?: { from: string; to: string };
+  integrity?: "application" | "database";
+  onDelete?: DatafnRelationDeletePolicies;
 };
+
+type DatafnRelationDeletePolicy = "restrict" | "cascade" | "setNull" | "detach";
+type DatafnRelationDeletePolicies =
+  | DatafnRelationDeletePolicy
+  | { from?: DatafnRelationDeletePolicy; to?: DatafnRelationDeletePolicy };
 ```
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `from` | `string \| string[]` | Source resource name(s). |
-| `to` | `string \| string[]` | Target resource name(s). |
+| `from` | `string \| string[]` | Source resource name(s). An array declares a [polymorphic](#polymorphic-relations) endpoint. |
+| `to` | `string \| string[]` | Target resource name(s). An array declares a [polymorphic](#polymorphic-relations) endpoint. |
 | `type` | `string` | Relation cardinality. |
 | `relation` | `string` | Optional name for the forward relation. |
 | `inverse` | `string` | Optional name for the inverse relation. |
 | `cache` | `boolean` | When `true`, enables relation caching for performance. |
 | `capabilities` | `Array<"timestamps" \| "audit">` | Server-managed capability fields on the join row (many-many only, explicit opt-in). |
 | `metadata` | `Array` | Extra fields stored on the join record (many-many only). |
-| `fkField` | `string` | Foreign key field name override for one-many / many-one. |
-| `pathField` | `string` | Materialized path field for htree relations. |
+| `fkField` | `string` | Foreign key field name override for one-many / many-one / htree. |
+| `fkResourceField` | `string` | Discriminator field that stores the target resource name for a [polymorphic](#polymorphic-relations) FK side. |
+| `pathField` | `string` | Materialized path field for htree relations (default `parentPath`). |
 | `joinTable` | `string` | Explicit join table name for many-many relations. |
 | `joinColumns` | `{ from, to }` | Column name overrides for the join table. |
+| `integrity` | `"application" \| "database"` | Per-relation override of [relation integrity](#relation-integrity). |
+| `onDelete` | `DatafnRelationDeletePolicies` | [Delete policy](#delete-policies) applied when a referenced record is deleted. |
 
 ### One-to-Many
 
@@ -4528,7 +4659,106 @@ const schema = defineSchema({
 });
 ```
 
-The `pathField` stores the materialized path (e.g., `"root/parent/child"`), enabling efficient ancestor and descendant queries without recursive joins.
+The `pathField` stores the materialized path (e.g., `"root/parent/child"`), enabling efficient ancestor and descendant queries without recursive joins. Htree relation traversal is **schema-driven** — the relation's `relation`/`inverse` names and `pathField` define how the tree is queried. Relating a child under a new parent rewrites the descendant paths automatically.
+
+### Relation Integrity
+
+The `relationIntegrity` schema option (and per-relation `integrity` override) controls **where** referential integrity is enforced:
+
+| Mode | Behavior |
+| --- | --- |
+| `"application"` (default) | DataFn enforces relations and [delete policies](#delete-policies) in application code. No database-level foreign keys are generated. |
+| `"database"` | The CLI [Drizzle codegen](/docs/cli/drizzle-codegen) emits real foreign-key constraints and indexes (with `ON DELETE` actions derived from `onDelete`), in addition to application-level enforcement. |
+
+```typescript
+const schema = defineSchema({
+  relationIntegrity: "database", // default for all relations
+  resources: [/* ... */],
+  relations: [
+    {
+      from: "task",
+      to: "project",
+      type: "many-one",
+      relation: "project",
+      fkField: "projectId",
+      integrity: "application", // override for this relation only
+      onDelete: { to: "setNull" },
+    },
+  ],
+});
+```
+
+The effective mode for a relation is `relation.integrity ?? schema.relationIntegrity ?? "application"`.
+
+> The legacy `"hybrid"` integrity mode has been **removed**. Schemas that declare `relationIntegrity: "hybrid"` (or `integrity: "hybrid"`) are now rejected by `validateSchema`. Use `"application"` or `"database"`.
+
+### Delete Policies
+
+`onDelete` declares what happens to related records when a referenced record is deleted. It accepts a single policy that applies to the relation, or a per-side object `{ from?, to? }`.
+
+| Policy | FK relations (`many-one` / `one-many` / `htree`) | `many-many` |
+| --- | --- | --- |
+| `restrict` | Deletion fails with `RELATION_RESTRICTED` if any referencing rows exist. | Fails if any join rows exist. |
+| `setNull` | Sets the FK (and polymorphic `*Resource` discriminator) to `null` on referencing rows. | Removes the affected join rows. |
+| `detach` | Treated like `setNull` on the FK side. | Removes join rows and records a logical join `delete` for sync. |
+| `cascade` | Recursively deletes referencing records. | Removes the join rows (does not delete the other endpoint record). |
+
+```typescript
+relations: [
+  {
+    from: "task",
+    to: "project",
+    type: "many-one",
+    relation: "project",
+    fkField: "projectId",
+    onDelete: { to: "setNull" }, // deleting a project nulls task.projectId
+  },
+  {
+    from: "task",
+    to: "tag",
+    type: "many-many",
+    relation: "tags",
+    onDelete: "detach",          // deleting a task removes its join rows
+  },
+]
+```
+
+Delete policies are enforced by the server on `operation: "delete"`. With `integrity: "database"`, equivalent `ON DELETE` actions are also emitted as database constraints (`cascade` → `cascade`, `restrict` → `restrict`, `setNull`/`detach` → `set null`).
+
+### Polymorphic Relations
+
+A relation endpoint (`from` or `to`) can be an **array** of resource names, allowing one relation to point at several concrete resource types.
+
+```typescript
+relations: [
+  {
+    from: ["task", "note"],
+    to: "tag",
+    type: "many-many",
+    relation: "labels",
+    joinTable: "resource_labels",
+    onDelete: "detach",
+  },
+]
+```
+
+For polymorphic relations:
+
+- **Many-many** join rows carry `fromResource` / `toResource` discriminator columns identifying the concrete resource on each side.
+- **FK sides** (`many-one` / `one-many` / `htree`) store an additional discriminator field alongside the FK, named via `fkResourceField` (or defaulted, e.g. `parentResource`, `<relation>Resource`).
+- Record IDs are expected in `resource:id` form so the concrete resource can be recovered when the discriminator is absent.
+
+Querying a polymorphic relation returns mixed concrete types. With the `#` directive, join metadata is attached as `$relation_metadata`:
+
+```typescript
+{
+  resource: "collection",
+  version: 1,
+  select: ["id", "items.*#"],
+  filters: { items: { $any: { label: { $eq: "Important" } } } },
+}
+// items may contain records of different resource types, each with $relation_metadata
+```
 
 ### Relation Payload Normalization
 
@@ -4747,6 +4977,23 @@ Creates join table rows. If a row already exists for the same pair, it is update
 
 The join row ID is a composite `${fromId}:${toId}`. Metadata fields (like `order`) are stored on the join row.
 
+### Htree
+
+Relating a child to a parent sets the child's FK (`fkField`, default `parentId`) and rewrites its materialized path. Descendant paths are updated to keep the subtree consistent.
+
+```typescript
+{
+  resource: "categories",
+  version: 1,
+  operation: "relate",
+  id: "cat_parent",
+  relations: {
+    categoryTree: [{ $ref: "cat_child" }],
+  },
+}
+// Sets cat_child.parentId = "cat_parent" and updates path/descendant paths
+```
+
 ## ModifyRelation
 
 Updates metadata on existing join rows. Only supported for many-many relations.
@@ -4820,6 +5067,8 @@ Deletes the join table rows:
 }
 // Deletes join rows: todo_1 <-> tag_1, todo_1 <-> tag_2
 ```
+
+For [polymorphic](#polymorphic-relations) FK relations, `unrelate` also clears the `*Resource` discriminator field alongside the FK.
 
 ## Target Validation
 
@@ -4955,6 +5204,8 @@ indices: {
 ```
 
 Index fields must match resource fields (including capability-injected fields after resolution).
+
+Server-side native full-text search reads its fields from the **object** form's `search` array. The shorthand array form (`indices: ["title"]`) configures `base` indices only and provides no search fields, so declare `indices: { search: [...] }` when you rely on database fulltext fallback.
 
 ## Permissions
 
@@ -5134,6 +5385,17 @@ Join-row fields when enabled:
 
 Relation capability fields are also readonly from clients; client-provided values are stripped on `relate`/`modifyRelation` payloads.
 
+## Built-in Resources
+
+DataFn auto-injects a few internal resources into every schema at client/server creation and CLI codegen time. You do not declare these; they are added for you.
+
+| Resource | Injected by | Purpose |
+| --- | --- | --- |
+| `kv` | `ensureBuiltinKv` | Built-in [key-value store](/docs/documentation/client/kv). |
+| `datafnTimezoneChange` | `ensureBuiltinTemporal` | [Timezone-change registry](/docs/dfql/temporal#timezone-change-registry) backing `timezone: "user"` resolution. |
+
+The `datafnTimezoneChange` resource has fields `id`, `timezone`, `effectiveFrom`, `recordedAt`, and optional `source`. Manage its records with the [`client.temporal` API](/docs/reference/client/temporal). It also appears in generated Drizzle schemas, so regenerate and migrate after upgrading.
+
 ## Notes
 
 If you need app-controlled metadata with similar names, choose non-capability field names to avoid collisions.
@@ -5211,6 +5473,41 @@ const result = await client.search({
 });
 ```
 
+### `client.search` Parameters
+
+| Field | Type | Description |
+|---|---|---|
+| `query` | `string` | Search text. |
+| `resources` | `string[]` | Resources to search. Defaults to all searchable resources. |
+| `fields` | `string[]` | Optional subset of indexed fields. |
+| `filters` | `Record<string, Record<string, unknown>>` | Per-resource DFQL filters applied on top of the candidate IDs. |
+| `temporal` | `DatafnTemporalClause \| DatafnTemporalClause[]` | Timezone-aware temporal filter applied to every searched resource. |
+| `temporalByResource` | `Record<string, DatafnTemporalClause \| DatafnTemporalClause[]>` | Per-resource temporal filters. |
+| `select` | `string[]` | Fields to return on hits. |
+| `limit` | `number` | Maximum total results. |
+| `limitPerResource` | `number` | Maximum results per resource. |
+| `prefix` | `boolean` | Prefix token matching. |
+| `fuzzy` | `boolean \| number` | Fuzzy matching (or distance/tolerance hint). |
+| `fieldBoosts` | `Record<string, number>` | Field-specific relevance weights. |
+| `source` | `"auto" \| "local" \| "remote"` | Execution source (see below). |
+| `signal` | `AbortSignal` | Cancel an in-flight search. |
+
+### Temporal Filtering
+
+Search accepts [temporal](/docs/dfql/temporal) clauses, which are compiled to per-resource date filters before execution. Use `temporal` to apply the same clause to every resource, or `temporalByResource` to target specific resources.
+
+```typescript
+import { time } from "@datafn/core";
+
+const result = await client.search({
+  query: "standup",
+  resources: ["sessions"],
+  temporalByResource: {
+    sessions: time.day("startedAt", "2026-05-18T12:00:00.000Z", { timezone: "user" }),
+  },
+});
+```
+
 ### Source Selection
 
 `source: auto|local|remote` controls where search executes:
@@ -5242,11 +5539,14 @@ In sync mode, this gives local-first behavior once resource hydration is ready.
   "prefix": true,
   "fuzzy": 0.2,
   "fieldBoosts": { "text": 2, "name": 1 },
+  "temporalByResource": {
+    "todos": { "field": "dueAt", "period": { "scale": "month" }, "timezone": "user" }
+  },
   "limit": 20
 }
 ```
 
-The server validates these options and forwards them to the configured search provider.
+The server validates these options and forwards them to the configured search provider. Top-level `temporal` and per-resource `temporalByResource` clauses are compiled into per-resource date filters (resolved against the actor's `datafnTimezoneChange` history) before search executes.
 
 ## Setting Up a Search Provider
 
@@ -5546,6 +5846,24 @@ Select tokens can traverse multiple levels of relations using dot notation:
 
 Each level is resolved recursively. The intermediate records (tasks) are expanded first, then the nested relation (tags) is expanded within each intermediate record.
 
+## Polymorphic Relations
+
+When a relation endpoint is [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) (declared with an array `from`/`to`), expansion resolves each related ID to its concrete resource. The expanded array can therefore contain records of **different** resource types.
+
+```typescript
+{
+  resource: "collection",
+  version: 1,
+  select: ["id", "items.*#"],
+}
+// items: [
+//   { id: "task:1", title: "...", $relation_metadata: { sortOrder: 1 } },
+//   { id: "note:7", body: "...",  $relation_metadata: { sortOrder: 2 } },
+// ]
+```
+
+Nested expansion across a polymorphic intermediate is validated against every concrete target resource, so `select` tokens like `items.owner.*` must resolve on all possible `items` types.
+
 ## FK Field Auto-Omission
 
 When a relation is expanded, the underlying foreign key field is automatically omitted from the result. For example, if a `todo` has a `many-one` relation to `user` via an `assigneeId` FK field, and you expand `assignee.*`, the `assigneeId` field is removed from the todo record in the response. This avoids redundant data, since the related record is already inlined.
@@ -5578,7 +5896,7 @@ URL: https://datafn.21n.co/docs/dfql/sorting
 Description: Sort query results by one or more fields.
 --------------------------------------------------------------------------------
 
-The `sort` field in a DFQL query controls the order of returned records. It is an array of string terms, each specifying a field and direction.
+The `sort` field in a DFQL query controls the order of returned records. It is an array of terms, each specifying a field and direction. Terms may be **strings** or **structured objects** — you can mix both in the same array.
 
 ## Sort Term Formats
 
@@ -5588,6 +5906,23 @@ The `sort` field in a DFQL query controls the order of returned records. It is a
 | `"field:asc"` | Ascending (explicit) | `"createdAt:asc"` |
 | `"field:desc"` | Descending (explicit) | `"priority:desc"` |
 | `"-field"` | Descending (shorthand) | `"-priority"` |
+| `{ field, direction }` | Structured term | `{ field: "priority", direction: "desc" }` |
+
+## Structured Sort Terms
+
+In addition to strings, `sort` accepts structured `{ field, direction }` objects. `direction` defaults to `"asc"` when omitted, and an invalid direction throws:
+
+```typescript
+{
+  resource: "todos",
+  version: 1,
+  sort: [
+    { field: "priority", direction: "desc" },
+    { field: "createdAt" }, // defaults to "asc"
+    "-updatedAt",            // strings still work alongside objects
+  ],
+}
+```
 
 ## Basic Usage
 
@@ -5634,12 +5969,15 @@ The sort implementation uses a stable sort algorithm. When all specified sort fi
 
 ## Parsing Sort Terms
 
-Use `parseSortTerms` to convert sort strings into structured `SortTerm` objects:
+Use `parseSortTerms` to normalize a sort array into structured `SortTerm` objects. It accepts both string and structured (`SortInputTerm`) inputs:
 
 ```typescript
 import { parseSortTerms, type SortTerm } from "@datafn/core";
 
-const terms: SortTerm[] = parseSortTerms(["priority:desc", "createdAt"]);
+const terms: SortTerm[] = parseSortTerms([
+  "priority:desc",
+  { field: "createdAt" },
+]);
 // [
 //   { field: "priority", direction: "desc" },
 //   { field: "createdAt", direction: "asc" },
@@ -5660,6 +5998,227 @@ const sorted = sortRecords(records, terms);
 ```
 
 `sortRecords` does not mutate the input array. It returns a new sorted array.
+
+
+
+--------------------------------------------------------------------------------
+### Temporal
+
+URL: https://datafn.21n.co/docs/dfql/temporal
+Description: Timezone-aware date filtering and grouping with the temporal clause and time builders.
+--------------------------------------------------------------------------------
+
+DFQL queries support a `temporal` clause for timezone-aware date filtering and grouping. Temporal is a **query-time** feature — it does not add a new field type to your schema. Instead, you point a temporal clause at an existing date/epoch field and DataFn resolves calendar boundaries (day, week, month, …) in a specific timezone.
+
+Temporal works identically on the client (offline/local execution) and the server, so the same query produces the same buckets in both places.
+
+## How It Works
+
+A temporal clause does one of two things:
+
+- **Period / range filtering** — the clause is compiled into ordinary field filters (`$gte` / `$lte`) on the target field and removed from `temporal`. The calendar boundaries are computed in the resolved timezone.
+- **Grouping** — a `groupBy` clause is retained on the query and drives [aggregation grouping](/docs/dfql/aggregations#temporal-grouping). Each result group is keyed by the start of its period.
+
+## The `time` Builder
+
+Import the `time` builder (also exported as `temporal`) from `@datafn/core` or `@datafn/client`. It returns a `DatafnTemporalClause` you assign to the query's `temporal` field.
+
+```typescript
+import { time } from "@datafn/core";
+
+const query = {
+  resource: "sessions",
+  version: 1,
+  temporal: time.day("startedAt", "2026-05-18T12:00:00.000Z", {
+    timezone: "Asia/Kolkata",
+  }),
+};
+// Compiles to filters: { startedAt: { $gte: <start of that day>, $lte: <end of that day> } }
+```
+
+### Period Helpers
+
+Each period helper selects the calendar period that contains the `at` instant (defaulting to "now" when omitted):
+
+| Helper | Period |
+|---|---|
+| `time.hour(field, at?, options?)` | The hour containing `at` |
+| `time.day(field, at?, options?)` | The day containing `at` |
+| `time.week(field, at?, options?)` | The week containing `at` |
+| `time.month(field, at?, options?)` | The month containing `at` |
+| `time.quarter(field, at?, options?)` | The quarter containing `at` |
+| `time.year(field, at?, options?)` | The year containing `at` |
+
+```typescript
+// All sessions in the current month, in the user's timezone
+temporal: time.month("startedAt", undefined, { timezone: "user" })
+```
+
+### Range Helpers
+
+Use `time.range` or `time.between` for explicit boundaries:
+
+```typescript
+// Inclusive range from start to end
+temporal: time.range("startedAt", {
+  start: "2026-05-01T00:00:00.000Z",
+  end: "2026-05-31T23:59:59.999Z",
+})
+
+// Same, with positional start/end
+temporal: time.between("startedAt", startMs, endMs)
+```
+
+### Generic Period / Group Helpers
+
+```typescript
+// Explicit period object
+temporal: time.period("startedAt", { scale: "week", at: someInstant })
+
+// Explicit grouping by scale
+temporal: time.group("startedAt", "month", { alias: "month", timezone: "user" })
+```
+
+### Group Helpers
+
+Group helpers produce a `groupBy` clause used by aggregation queries:
+
+| Helper | Groups by |
+|---|---|
+| `time.groupByHour(field, options?)` | Hour buckets |
+| `time.groupByDay(field, options?)` | Day buckets |
+| `time.groupByWeek(field, options?)` | Week buckets |
+| `time.groupByMonth(field, options?)` | Month buckets |
+| `time.groupByQuarter(field, options?)` | Quarter buckets |
+| `time.groupByYear(field, options?)` | Year buckets |
+
+```typescript
+const query = {
+  resource: "sessions",
+  version: 1,
+  temporal: time.groupByDay("startedAt", { alias: "day", timezone: "user" }),
+  aggregations: {
+    count: { op: "count", field: "*" },
+    minutes: { op: "sum", field: "minutes" },
+  },
+};
+// Result groups:
+// [
+//   { day: "2026-05-17T18:30:00.000Z", count: 2, minutes: 30 },
+//   { day: "2026-05-18T18:30:00.000Z", count: 1, minutes: 30 },
+// ]
+```
+
+## The `temporal` Clause
+
+The builders are sugar over a plain object. You can also write the clause directly:
+
+```typescript
+type DatafnTemporalClause = {
+  field: string;
+  timezone?: string;             // IANA name or "user"; default UTC
+  storage?: "unix-ms" | "unix-s" | "date" | "iso";  // default "unix-ms"
+  weekStartsOn?: number;         // 0=Sunday … 6=Saturday; default 1 (Monday)
+  range?: { start: string | number | Date; end: string | number | Date };
+  period?: { scale: TemporalScale; at?: string | number | Date };
+  groupBy?: { scale: TemporalScale; alias?: string; output?: TemporalStorage; weekStartsOn?: number };
+};
+```
+
+| Field | Description |
+|---|---|
+| `field` | The target date/epoch field on the resource. Required. |
+| `timezone` | IANA timezone (e.g. `"Asia/Kolkata"`), or the special value `"user"` to resolve from configuration. Defaults to UTC. |
+| `storage` | How the target field is stored. `"unix-ms"` (default), `"unix-s"`, `"date"`, or `"iso"`. Controls how stored values are interpreted and how compiled filter bounds are written back. |
+| `weekStartsOn` | First day of week for `week` scale. Default `1` (Monday). |
+| `range` | Explicit inclusive `{ start, end }` bounds. |
+| `period` | A calendar period `{ scale, at? }`. Mutually exclusive with `range`. |
+| `groupBy` | Retain the clause for aggregation grouping. `alias` defaults to `${field}_${scale}`; `output` defaults to `"iso"`. |
+
+`TemporalScale` is one of `"hour" | "day" | "week" | "month" | "quarter" | "year"`.
+
+You can also pass an **array** of clauses to apply several temporal filters/groupings in one query.
+
+## Timezones
+
+### Fixed Timezone
+
+Pass any IANA name. Boundaries are computed in that zone, so a "day" in `"Asia/Kolkata"` differs from a "day" in UTC.
+
+```typescript
+temporal: time.day("startedAt", instant, { timezone: "America/New_York" })
+```
+
+### `"user"` Timezone
+
+Set `timezone: "user"` to resolve the actor's timezone at query time. Resolution order:
+
+1. A `timezoneResolver` from temporal configuration.
+2. The built-in [timezone-change registry](#timezone-change-registry) (`datafnTimezoneChange` records).
+3. A static or function `timezone` from temporal configuration.
+
+```typescript
+temporal: time.day("startedAt", instant, { timezone: "user" })
+```
+
+On the client, the user's timezone is wired up through the [`temporal` client config](/docs/reference/client/config#temporal) and the [`client.temporal` API](/docs/reference/client/temporal). On the server, queries resolve `"user"` against the `datafnTimezoneChange` records in storage.
+
+## Timezone-Change Registry
+
+DataFn ships a built-in resource, **`datafnTimezoneChange`**, that records a history of timezone changes for the current actor/namespace. It is auto-injected into the schema by `createDatafnClient`, `createDatafnServer`, and the CLI codegen (via `ensureBuiltinTemporal`).
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Record id (`timezoneChange:<effectiveFrom>:<zone>`). |
+| `timezone` | `string` | IANA timezone name. |
+| `effectiveFrom` | `number` | Epoch-ms instant from which this zone applies. |
+| `recordedAt` | `number` | When the change was recorded. |
+| `source` | `string?` | Origin, e.g. `"manual"`, `"browser"`, `"system"`, `"import"`. |
+
+When `timezone: "user"` is resolved, the registry is consulted so that **historical** instants use the timezone that was in effect at that time. Manage these records with the [`client.temporal` API](/docs/reference/client/temporal).
+
+## Programmatic Resolution
+
+`@datafn/core` exports helpers for resolving temporal values outside of a query:
+
+```typescript
+import {
+  normalizeTemporalQuery,
+  resolveTemporalPeriodRange,
+  resolveTemporalBucketKey,
+  createTimezoneResolver,
+} from "@datafn/core";
+
+// Compile a query's temporal clause into filters
+const normalized = normalizeTemporalQuery(query, { timezone: "Asia/Kolkata" });
+
+// Build a resolver from timezone-change records
+const resolver = createTimezoneResolver(timezoneChangeRecords);
+```
+
+See the [`@datafn/core` temporal reference](/docs/reference/core/temporal) for the full helper and type list.
+
+## Plugin
+
+`createTemporalPlugin(config?)` returns a plugin that normalizes the `temporal` clause of every query (client and server) using a shared configuration. Register it through the `plugins` option when you want consistent timezone defaults without threading config into each query.
+
+```typescript
+import { createTemporalPlugin } from "@datafn/core";
+
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  plugins: [createTemporalPlugin({ timezone: "user", weekStartsOn: 1 })],
+});
+```
+
+## Related
+
+- [Aggregations](/docs/dfql/aggregations#temporal-grouping) — temporal grouping in aggregate queries.
+- [Search](/docs/dfql/search#temporal-filtering) — temporal filters in cross-resource search.
+- [`client.temporal` reference](/docs/reference/client/temporal) — managing user timezones.
+- [`@datafn/core` temporal reference](/docs/reference/core/temporal) — helper and type reference.
 
 
 
@@ -8315,7 +8874,7 @@ table.unshare(id, userId);
 table.getPermissions(id);
 ```
 
-For resources with `visibilityDefault: "private"` (or `default: "private"`), server queries are auto-scoped to IDs the caller can access.
+For resources with `visibilityDefault: "private"` (or `default: "private"`), server queries are auto-scoped to IDs the caller can access. An authorized actor can still **create** a private record on first write — `merge`/`replace` are permitted when the target record does not yet exist, even though existing records are access-scoped.
 
 ## Client API Surface
 
@@ -8513,7 +9072,7 @@ Rather than bundling all framework integrations into `@datafn/client`, each fram
 
 | Package | Framework | Status | Converts Signal To |
 |---|---|---|---|
-| `@datafn/svelte` | Svelte 3/4 | **Available** | `Readable` store |
+| `@datafn/svelte` | Svelte 3/4/5 | **Available** | `Readable` store |
 | `@datafn/react` | React 18+ | Planned | Hook (`useDatafnSignal`) |
 | `@datafn/vue` | Vue 3 | Planned | Composable (`useDatafnSignal`) |
 | `@datafn/solid` | Solid.js | Planned | Solid reactive signal |
@@ -8566,6 +9125,52 @@ The store provides `data`, `loading`, `error`, `refreshing`, and `nextCursor` pr
 | `error` | `DatafnError \| null` | Non-null if the last fetch failed. |
 | `refreshing` | `boolean` | `true` when re-fetching after a mutation (data is still available). |
 | `nextCursor` | `string \| null` | Cursor for loading the next page, or `null` if no more pages. |
+
+### Store Options
+
+`toSvelteStore(signal, options?)` accepts:
+
+```typescript
+const todosStore = toSvelteStore(client.todos.signal({ sort: ["-createdAt"] }), {
+  initialData: [],          // data is never undefined (store becomes "ready")
+  equals: (a, b) => a === b // suppress no-op updates
+});
+```
+
+- **`initialData`** — fallback value while loading; narrows `data` to a non-`undefined` type.
+- **`equals`** — custom equality on `data`; also dedupes duplicate synchronous emissions.
+- **`defer`** — delay signal creation until a timeout or browser idle (factory overloads only).
+
+### Data-Only Stores
+
+When you only need the records (not `loading`/`error`/`refreshing`), use `toSvelteDataStore`. It emits the data directly:
+
+```typescript
+import { toSvelteDataStore } from "@datafn/svelte";
+
+const todos = toSvelteDataStore(client.todos.signal({ sort: ["-createdAt"] }), {
+  initialData: [],
+});
+```
+
+```svelte
+{#each $todos as todo}
+  <p>{todo.title}</p>
+{/each}
+```
+
+### Deferred Creation
+
+Defer signal creation until the browser is idle (or after a delay) to keep initial render cheap. This requires a factory overload:
+
+```typescript
+const todos = toSvelteStore(
+  () => client.todos.signal({ sort: ["-createdAt"] }),
+  { initialData: [], defer: "idle" }, // or defer: 150, or { delayMs: 150, strategy: "idle" }
+);
+```
+
+If the store is unsubscribed before the deferral fires, the signal is never created.
 
 ### Lifecycle
 
@@ -8929,7 +9534,38 @@ await client.table("todos").mutate({
 - `silent: true` suppresses mutation events.
 - `system: true` marks event payloads as system-initiated.
 
+## Relation Mutations
+
+Use `relate`, `unrelate`, and `modifyRelation` to manage relationships. Offline, these are applied to local storage (foreign keys, join rows, htree paths, and polymorphic discriminators) and queued for sync.
+
+```typescript
+// Connect a many-many relation with join metadata
+await client.table("tasks").mutate({
+  operation: "relate",
+  id: "task:1",
+  relations: { tags: [{ $ref: "tag:1", order: 0 }] },
+});
+
+// Update join metadata only
+await client.table("tasks").mutate({
+  operation: "modifyRelation",
+  id: "task:1",
+  relations: { tags: { $ref: "tag:1", order: 5 } },
+});
+
+// Remove a relation edge
+await client.table("tasks").mutate({
+  operation: "unrelate",
+  id: "task:1",
+  relations: { tags: "tag:1" },
+});
+```
+
+See [DFQL Relations](/docs/dfql/schema/relations) for payload formats and per-type behavior.
+
 ## Debounced Mutations
+
+Debouncing coalesces rapid writes to the same target into a single mutation. It is supported for `merge`, `relate`, and `modifyRelation` operations (each requires `debounceKey`, `resource`, `operation`, and `id`, and a hydrated/ready resource).
 
 ```typescript
 await client.table("todos").mutate({
@@ -8939,9 +9575,18 @@ await client.table("todos").mutate({
   debounceKey: "todo-title-td:1",
   debounceMs: 1500,
 });
+
+// Relation metadata edits debounce too (e.g. a slider updating join order)
+await client.table("tasks").mutate({
+  operation: "relate",
+  id: "task:1",
+  relations: { labels: [{ $ref: "label:1", value: "first" }] },
+  debounceKey: "task:1-label:1",
+  debounceMs: 100,
+});
 ```
 
-Use `client.flush(key)` or `client.flushAll()` to force execution.
+Successive calls with the same `debounceKey` merge their `record`/`relations` payloads; only the final state is persisted. Use `client.flush(key)` or `client.flushAll()` to force execution.
 
 ## Events
 
@@ -9090,11 +9735,40 @@ The client uses intelligent routing to decide where a query executes:
 
 1. **No storage configured** -- All queries go to the remote server.
 2. **Storage configured, table hydration is `ready`** -- Queries execute locally against the storage adapter. This enables offline access and eliminates network latency.
-3. **Storage configured, table is `hydrating`** -- Queries fall back to the remote server while clone is in progress.
+3. **Storage configured, table is `hydrating`** -- The query runs on the remote server, then the local result is overlaid as hydration progresses.
 4. **Remote-only tables** (`isRemoteOnly: true` in schema) -- Always execute on the server, regardless of hydration state.
-5. **Batch queries** -- Always execute on the remote server.
+5. **Batch queries** -- Execute locally when **every** resource in the batch is `ready` (and none is remote-only); otherwise they execute on the remote server.
 
 This routing is transparent. You write the same query code regardless of whether data is local or remote.
+
+## Capability Auto-Filters
+
+When a query runs locally against a resource with `trash` or `archivable` capabilities, DataFn automatically excludes trashed/archived records — matching server behavior:
+
+- `trashedAt` must be null (unless `metadata.includeTrashed` is `true`),
+- `isArchived` must not be `true` (unless `metadata.includeArchived` is `true`).
+
+Opt out per query with `metadata`:
+
+```typescript
+await client.table("todos").query({
+  metadata: { includeTrashed: true, includeArchived: true },
+});
+```
+
+See [Capabilities](/docs/documentation/capabilities#query-auto-filters).
+
+## Temporal Filtering
+
+Queries accept a [`temporal`](/docs/dfql/temporal) clause for timezone-aware date filtering and grouping. When a local query includes a temporal clause, the client resolves it (including `timezone: "user"`) against the configured [`temporal`](/docs/reference/client/config#temporal) config and the timezone-change registry before executing.
+
+```typescript
+import { time } from "@datafn/core";
+
+await client.table("sessions").query({
+  temporal: time.month("startedAt", undefined, { timezone: "user" }),
+});
+```
 
 
 
@@ -9223,6 +9897,8 @@ Also note that `remoteMode: "icloud"` is incompatible with `isRemoteOnly: true` 
 | `sync` | `DatafnSyncConfig` | Sync and connectivity configuration. See below. |
 | `plugins` | `DatafnPlugin[]` | Client-side plugins for hook execution (beforeQuery, afterMutation, etc.). |
 | `generateId` | `(params: { resource: string; idPrefix?: string }) => string` | Custom ID generator for insert operations. Defaults to `crypto.randomUUID()` with resource prefix. |
+| `searchProvider` | `SearchProvider` | Optional local-first search provider. See [Search](/docs/dfql/search). |
+| `temporal` | `DatafnTemporalConfig & { detectTimezone? }` | Default timezone resolution for [temporal](/docs/dfql/temporal) queries and the [`client.temporal`](/docs/reference/client/temporal) API. |
 
 ### Sync Configuration
 
@@ -9449,13 +10125,32 @@ Mutations on any resource in the footprint trigger a refresh.
 
 For `merge` operations on the primary resource, the signal attempts an optimistic patch before re-fetching. If the mutation's target IDs match cached records, the signal updates in-place immediately and then schedules a background re-fetch for eventual consistency.
 
-Disable optimistic patching per-signal:
+Disable optimistic patching per-signal via [signal options](#signal-options):
 
 ```typescript
 const signal = client.table("todos").signal(
   { filters: { completed: { eq: false } } },
   { disableOptimistic: true },
 );
+```
+
+## Signal Options
+
+`table.signal(query, options?)` (and the batch signals below) accept a `DatafnSignalOptions` object:
+
+```typescript
+interface DatafnSignalOptions {
+  /** Skip optimistic merge patching; always refresh from storage/server. */
+  disableOptimistic?: boolean;
+
+  /** Idle-cache eviction tuning. */
+  cache?: {
+    /** Override the idle TTL (ms) before an unsubscribed signal is disposed. */
+    idleTtlMs?: number;
+    /** Keep this signal cached indefinitely even with zero subscribers. */
+    keepAlive?: boolean;
+  };
+}
 ```
 
 ## Signal Caching
@@ -9468,6 +10163,20 @@ const s1 = client.table("todos").signal({ limit: 10 });
 const s2 = client.table("todos").signal({ limit: 10 });
 // s1 === s2
 ```
+
+### Idle Eviction
+
+To bound memory, the signal registry disposes signals that have **zero subscribers** after an idle timeout (default 5 minutes), and caps the number of retained idle signals (default 200). Tune this per-signal with `cache`:
+
+```typescript
+// Keep this signal cached even when no component is subscribed
+const pinned = client.table("todos").signal({ limit: 10 }, { cache: { keepAlive: true } });
+
+// Custom idle TTL
+const shortLived = client.table("todos").signal({ limit: 10 }, { cache: { idleTtlMs: 1000 } });
+```
+
+`cache` options also apply when re-fetching an existing cached signal. KV signals accept the same `cache` option (see [KV](/docs/documentation/client/kv)).
 
 ## Cursor-Based Pagination
 
@@ -9494,6 +10203,105 @@ todosSignal.dispose();
 ```
 
 After disposal, `get()` returns the last cached value (no re-fetch), and the signal stops reacting to mutations.
+
+## Count Signals
+
+The client exposes reactive aggregate signals for counting and looking up records without writing full queries. Like query signals, they auto-refresh when relevant mutations occur and accept [signal options](#signal-options).
+
+### `relationCountsSignal`
+
+Counts related records per parent record. Useful for badge counts (e.g. "items in this collection").
+
+```typescript
+const counts = client.relationCountsSignal({
+  resource: "collection",
+  relation: "items",
+  ids: ["collection:1", "collection:2"],
+  // optional: filter related records before counting
+  targetFilters: { isArchived: { $ne: true }, trashedAt: { $is_null: true } },
+});
+
+counts.subscribe((byId) => {
+  // byId["collection:1"] === number of matching items
+});
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `resource` | `string` | Parent resource. |
+| `relation` | `string` | Relation name on the parent. |
+| `ids` | `string[]` | Parent record IDs to count for. |
+| `filters` | `Record<string, unknown>` | Optional filters on the parent records. |
+| `targetFilters` | `Record<string, unknown>` | Optional filters applied to related records before counting. |
+
+An empty `ids` array yields a static empty signal.
+
+### `resourceCountsSignal`
+
+Live counts across multiple resources.
+
+```typescript
+const counts = client.resourceCountsSignal({
+  resources: ["tasks", "notes"],
+  queriesByResource: { tasks: { filters: { done: false } } },
+});
+// signal value: { tasks: number, notes: number }
+```
+
+### `recordsByIdsSignal`
+
+Reactively resolves records by ID, grouped by resource, across multiple resources.
+
+```typescript
+const records = client.recordsByIdsSignal({
+  ids: ["task:1", "note:2"],
+  selectByResource: { tasks: ["id", "title"] },
+  metadata: { includeTrashed: true },
+});
+// signal value: { "task:1": {...}, "note:2": {...} }
+```
+
+## Derived Signals
+
+Combine or transform signals into new signals. These helpers are exported from `@datafn/client`.
+
+```typescript
+import { combineSignals, mapSignal, emptySignal } from "@datafn/client";
+```
+
+### `mapSignal`
+
+Projects a source signal's value through a mapper. Mapper errors surface as the derived signal's `error`.
+
+```typescript
+const titles = mapSignal(todosSignal, (todos) => todos.map((t) => t.title));
+```
+
+### `combineSignals`
+
+Combines several signals into one computed value. Same-tick child emissions are coalesced; `loading`, `refreshing`, and `error` aggregate across sources. Provide an `equals` comparator to suppress no-op emissions.
+
+```typescript
+const total = combineSignals(
+  [cartSignal, feeSignal],
+  () => cartSignal.get().subtotal + feeSignal.get().amount,
+);
+
+// With custom equality (e.g. array identity)
+const ids = combineSignals(
+  [todosSignal],
+  () => todosSignal.get().map((t) => t.id),
+  { equals: (prev, next) => Array.isArray(prev) && prev.length === next.length && prev.every((v, i) => v === next[i]) },
+);
+```
+
+### `emptySignal`
+
+A static, non-loading signal holding a fixed value. `client.emptySignal(value)` is also available.
+
+```typescript
+const empty = emptySignal<Todo[]>([]);
+```
 
 ## Framework Integration
 
@@ -9557,6 +10365,11 @@ interface DatafnTable<S, Name, TRecord> {
   version: number;
 
   query(q: DfqlQueryFragment): Promise<unknown>;
+  select(id: string, options?: {
+    select?: readonly string[];
+    metadata?: { includeTrashed?: boolean; includeArchived?: boolean };
+    signal?: AbortSignal;
+  }): Promise<unknown | undefined>;
   mutate(m: DfqlMutationFragment | DfqlMutationFragment[]): Promise<unknown>;
   delete(id: string): Promise<unknown>;
 
@@ -9581,10 +10394,12 @@ interface DatafnTable<S, Name, TRecord> {
   }>>;
 
   transact(payload: DfqlTransact): Promise<unknown>;
-  signal(q: DfqlQueryFragment, options?: { disableOptimistic?: boolean }): DatafnSignal<unknown>;
+  signal(q: DfqlQueryFragment, options?: DatafnSignalOptions): DatafnSignal<unknown>;
   subscribe(handler: EventHandler, filter?: EventFilter): () => void;
 }
 ```
+
+The `signal` `options` is a [`DatafnSignalOptions`](/docs/reference/client/signal#datafnsignaloptions) object (`disableOptimistic` and `cache` tuning).
 
 ## Capability-Gated Method Exposure
 
@@ -9623,6 +10438,19 @@ Same behavior applies to `mutate()`.
 ## Auto-Generated IDs
 
 For `insert` without `id`, table handles generate IDs using resource `idPrefix` + random suffix. You can override generation via `createDatafnClient({ generateId })`.
+
+## Selecting a Single Record
+
+`select(id, options?)` is a convenience for fetching one record by ID. It returns the record or `undefined` if not found, and respects the same routing and capability auto-filters as `query`.
+
+```typescript
+const todo = await client.table("todos").select("td:1", {
+  select: ["id", "title"],
+});
+// { id: "td:1", title: "..." } | undefined
+```
+
+It is equivalent to `query({ filters: { id }, limit: 1, ... })` returning the first row.
 
 ## Query Metadata for Capability Filters
 
@@ -10161,7 +10989,19 @@ This produces a Drizzle-compatible schema with:
 - The `__ns` column for namespace isolation.
 - Capability-injected fields when enabled (for example `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `trashedAt`, `trashedBy`, `isArchived`).
 - Foreign key columns inferred from relations.
-- Join tables for many-many relations.
+- Join tables for many-many relations (with `fromResource`/`toResource` discriminators for [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relations).
+- The built-in `kv` and [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) tables.
+
+### Database-Enforced Relation Integrity
+
+By default DataFn enforces relations in application code. Set [`relationIntegrity: "database"`](/docs/dfql/schema/relations#relation-integrity) (or `integrity: "database"` per relation) to additionally emit real foreign-key constraints, indices, and `ON DELETE` actions from `onDelete` policies (`cascade` → cascade, `restrict` → restrict, `setNull`/`detach` → set null). After changing relation integrity or delete policies, regenerate and apply migrations:
+
+```bash
+datafn generate --adapter drizzle --database postgres --schema ./schema.datafn.ts --output ./
+npx drizzle-kit push
+```
+
+See [Drizzle Schema Generation](/docs/cli/drizzle-codegen#relation-foreign-keys) for the exact column, index, and constraint output.
 
 Example generated output:
 
@@ -13768,6 +14608,18 @@ When a query is executed, the server checks:
 - **GroupBy fields**: Every field in `groupBy` must appear in `read.fields`.
 - **Having fields**: Every field in `having` must appear in `read.fields`.
 - **Search fields**: Every field in `search.fields` must appear in `read.fields`.
+- **Temporal fields**: A [`temporal`](/docs/dfql/temporal) clause's `field` must be readable. Temporal group **aliases** are allowed in `sort`/`having` without a `read.fields` entry.
+
+### Capability Fields
+
+Capability-injected fields do not need to be listed in `read.fields`:
+
+- **Readable by default**: lifecycle fields like `createdAt`, `updatedAt`, `createdBy`, `trashedAt`, and `isArchived` are readable without an explicit entry.
+- **Write differs by field**: readonly capability fields (timestamps/audit/trash) can never be written by clients (they are stripped). Non-readonly capability fields like `isArchived` still require an explicit `write.fields` entry to be set directly via `merge`.
+
+### Polymorphic Relations
+
+When authorizing a query that selects or filters through a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relation, the server resolves and walks **all** concrete target resources for that relation segment, so nested field access is validated against every possible type.
 
 ```typescript
 // This query is REJECTED because "internalNotes" is not in read.fields
@@ -15123,13 +15975,18 @@ The following checks are applied to every query:
 |-------|-------------|
 | Resource exists | The `resource` field must reference a resource defined in the schema. |
 | Field names valid | Fields in `select`, `filters`, `sort`, `groupBy`, `having`, and `search.fields` must exist in the schema. |
-| Relation names valid | Relation tokens in `select` and `filters` must reference defined relations. |
-| Select tokens parseable | Each token in `select` is parsed and validated (e.g., `"assignee.*"`, `"tags.#"`). |
+| Relation names valid | Relation tokens in `select` and `filters` must reference defined relations, including [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) and inverse relations. |
+| Select tokens parseable | Each token in `select` is parsed and validated (e.g., `"assignee.*"`, `"tags.#"`, `"items.*#"`). |
+| Temporal clause valid | A [`temporal`](/docs/dfql/temporal) clause must target a readable field and use a valid `scale` (`hour`/`day`/`week`/`month`/`quarter`/`year`) and `storage`. |
 | Filter depth bounded | Filter nesting depth is capped at 10 levels. |
 | Relation depth bounded | Relation expansion depth in select tokens is capped at 5 levels. |
 | Prototype pollution | Filter objects are checked for disallowed keys (`__proto__`, `constructor`, `prototype`). |
 
 Capability-injected fields are included in query field validation based on resolved capabilities for the target resource.
+
+### Hierarchical (htree) and Polymorphic Relations
+
+Htree traversal is validated against the schema rather than hardcoded field names: the token must match an `htree` relation on the resource, and the resource must define the relation's `pathField` (default `parentPath`). A query that uses htree on a resource without a matching relation is rejected with `DFQL_UNKNOWN_RELATION`. Nested select/filter validation through polymorphic inverse relations is checked across every concrete target resource.
 
 ### Query Limits
 
@@ -15822,9 +16679,16 @@ When a schema is provided, the adapter automatically:
 
 1. Creates an object store for each resource (keyed by `id`).
 2. Creates indices from the resource schema (e.g., fields listed in `indices`).
-3. Creates foreign key indices inferred from relations.
+3. Creates foreign key indices inferred from relations (including polymorphic discriminator fields).
 4. Creates join stores for many-many relations with composite keys `[from, to]` and indices on both columns.
 5. Creates the built-in `kv` store for key-value operations.
+6. Creates the built-in [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) store (with `by_effectiveFrom` and `by_timezone` indices) for timezone resolution.
+
+## Writing Reactive or Proxy Data
+
+IndexedDB's structured clone algorithm throws `DataCloneError` on functions, symbols, and many framework reactivity Proxies. The adapter runs values through an internal `cloneForStorage` step on every write (records, merges, join rows, and changelog entries) that unwraps Proxies and strips functions/symbols to plain, cloneable data.
+
+This means you can pass reactive objects (e.g. from Svelte 5 runes, Vue refs, or MobX) straight into `client.mutate(...)` without manually serializing them first.
 
 ## Auto-Version Bumping
 
@@ -15838,6 +16702,15 @@ If the database already exists but is missing stores (for example, after adding 
 ### Version Limit
 
 IndexedDB versions increment over time as the schema evolves. When the version exceeds `MAX_IDB_VERSION` (1000), the adapter recreates the database from scratch by deleting and reopening it. This prevents version number overflow in long-lived applications.
+
+### Connection Resilience
+
+The adapter hardens database opening against common IndexedDB failure modes:
+
+- **`VersionError`** — when another connection already opened a higher version, the adapter retries at the minimum compatible version.
+- **`onblocked`** — when an upgrade is blocked by another open tab, it surfaces an actionable, timed-out error instead of hanging.
+- **`onversionchange`** — the connection auto-closes when another tab requests a newer version, avoiding stuck upgrades.
+- **Missing-store repair** — if an expected object store is missing at runtime, the adapter triggers a version bump to recreate it.
 
 ## Changelog Deduplication
 
@@ -16315,6 +17188,8 @@ Resources marked as `isRemoteOnly` in the schema are excluded from clone operati
 ## Join Table Data
 
 When `includeJoins: true` (the default), clone also downloads join rows for many-many relations. Join store keys follow the format `fromResource.relationName.toResource`, such as `todos.tags.tags`.
+
+For [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) many-many relations, join rows are returned per concrete `(from, to)` pair (each under its own store key) and filtered by the `fromResource` / `toResource` discriminators, so each endpoint resource receives only the rows that apply to it.
 
 ## Events
 
@@ -22047,8 +22922,36 @@ interface DatafnClientConfig {
 
   /** Optional search provider for client-side search query routing. */
   searchProvider?: SearchProvider;
+
+  /** Default timezone resolution for temporal queries and the client.temporal API. */
+  temporal?: DatafnTemporalConfig & { detectTimezone?: () => string | undefined };
 }
 ```
+
+## temporal
+
+Default timezone configuration for [temporal](/docs/dfql/temporal) queries and the [`client.temporal`](/docs/reference/client/temporal) API.
+
+```typescript
+interface DatafnTemporalConfig {
+  /** Default timezone for "user" resolution (static or function). */
+  timezone?: string | (() => string | undefined);
+
+  /** Custom resolver, consulted before the timezone-change registry. */
+  timezoneResolver?: DatafnTemporalTimezoneResolver;
+
+  /** First day of week for week-scale buckets (0=Sunday … 6=Saturday). Default 1. */
+  weekStartsOn?: number;
+}
+
+// Client extension:
+temporal?: DatafnTemporalConfig & {
+  /** Detects the device timezone, e.g. via Intl. */
+  detectTimezone?: () => string | undefined;
+};
+```
+
+The client merges this configuration with `datafnTimezoneChange` records in storage and (when provided) browser detection. When a query uses `timezone: "user"`, resolution falls back through `timezoneResolver`, the registry, then `timezone`. See [`client.temporal`](/docs/reference/client/temporal) for managing the registry.
 
 ## DatafnSyncConfig
 
@@ -22245,12 +23148,13 @@ interface SearchProvider {
   search(params: SearchParams): Promise<string[]>;
   searchAll?(params: SearchAllParams): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: UpdateIndicesParams): Promise<void>;
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: { resources: Array<{ name: string; searchFields: string[] }> }): Promise<void>;
   dispose?(): Promise<void>;
 }
 ```
 
-At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
+At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. When a persisted index fingerprint changes, DataFn calls `searchProvider.clearIndices()` before rebuilding; custom persistent providers must implement it. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
 
 Two common setups are supported:
 
@@ -22483,11 +23387,21 @@ When you call `client.todos.query(...)` or `client.query(...)`, the client execu
 
 3. **Hydration state routing** -- the client checks the hydration state of the target resource:
    - `"ready"` -- query executes locally against storage.
-   - `"hydrating"` or `"notStarted"` -- query is sent to the remote server.
+   - `"hydrating"` -- query runs on the remote server, then the local result is overlaid.
+   - `"notStarted"` -- query is sent to the remote server.
+   - **Batch queries** execute locally only when every resource in the batch is `ready` (and none is remote-only); otherwise they run remotely.
 
-4. **Date codec** -- date-typed fields in the response are converted from epoch milliseconds to the appropriate format based on the schema.
+4. **Temporal normalization** -- if the query has a [`temporal`](/docs/dfql/temporal) clause, it is resolved (including `timezone: "user"`) using the client `temporal` config and timezone-change registry, compiling period/range clauses into filters.
 
-5. **afterQuery hooks** -- all client-side plugins with `afterQuery` are called. Errors are logged but do not fail the query (fail-open).
+5. **Capability auto-filters** -- for local queries, `trash`/`archivable` resources have trashed/archived records excluded unless `metadata.includeTrashed` / `metadata.includeArchived` is set.
+
+6. **Date codec** -- date-typed fields in the response are converted from epoch milliseconds to the appropriate format based on the schema.
+
+7. **afterQuery hooks** -- all client-side plugins with `afterQuery` are called. Errors are logged but do not fail the query (fail-open).
+
+## Selecting a Single Record
+
+`table.select(id, options?)` fetches a single record by ID, returning it or `undefined`. It is sugar over `query({ filters: { id }, limit: 1, ... })` and follows the same routing, temporal, and capability-auto-filter behavior. `options` accepts `select`, `metadata` (`includeTrashed` / `includeArchived`), and an `AbortSignal`.
 
 ## Offline Query Execution
 
@@ -22564,6 +23478,97 @@ A signal refreshes when a mutation event matches any resource in its footprint.
 3. **Disposal** -- `signal.dispose()` removes the signal from the registry, unsubscribes from events, and releases all references.
 
 Signals that are not disposed will continue to listen for events and refresh. Always call `dispose()` when a signal is no longer needed (e.g., when a component unmounts).
+
+## DatafnSignalOptions
+
+`table.signal(query, options?)`, KV signals, and the batch count signals accept:
+
+```typescript
+interface DatafnSignalOptions {
+  /** Skip optimistic merge patching. */
+  disableOptimistic?: boolean;
+
+  /** Idle-cache eviction tuning. */
+  cache?: DatafnSignalCacheOptions;
+}
+
+interface DatafnSignalCacheOptions {
+  /** Idle TTL (ms) before an unsubscribed signal is disposed. */
+  idleTtlMs?: number;
+  /** Keep the signal cached indefinitely even with zero subscribers. */
+  keepAlive?: boolean;
+}
+```
+
+### Idle eviction
+
+The signal registry disposes signals with zero subscribers after an idle TTL (default 5 minutes) and caps retained idle signals (default 200). Use `cache.keepAlive` to pin a signal, or `cache.idleTtlMs` to override the TTL. Cache options apply both when creating and when re-fetching an existing cached signal.
+
+## Batch / Aggregate Signals
+
+The client exposes reactive aggregate signals. Each returns a `DatafnSignal` and accepts `DatafnSignalOptions`.
+
+```typescript
+// Counts of related records per parent id.
+client.relationCountsSignal(
+  input: {
+    resource: string;
+    relation: string;
+    ids: readonly string[];
+    filters?: Record<string, unknown>;
+    targetFilters?: Record<string, unknown>;
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, number>>;
+
+// Live counts across resources.
+client.resourceCountsSignal(
+  input: {
+    resources: string[];
+    queriesByResource?: Record<string, DfqlQueryFragment>;
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, number>>;
+
+// Records resolved by id, grouped by resource.
+client.recordsByIdsSignal(
+  input: {
+    ids: readonly string[];
+    selectByResource?: Record<string, string[]>;
+    metadata?: { includeTrashed?: boolean; includeArchived?: boolean };
+  },
+  options?: DatafnSignalOptions,
+): DatafnSignal<Record<string, Record<string, unknown>>>;
+```
+
+## Derived Signals
+
+Exported from `@datafn/client`:
+
+```typescript
+function mapSignal<TSource, TValue>(
+  source: DatafnSignal<TSource>,
+  mapper: (value: TSource) => TValue,
+): DatafnSignal<TValue>;
+
+interface CombineSignalsOptions<TValue> {
+  equals?: (previous: TValue | undefined, next: TValue) => boolean;
+}
+
+function combineSignals<TValue>(
+  sources: readonly DatafnSignal<unknown>[],
+  compute: () => TValue,
+  options?: CombineSignalsOptions<TValue>,
+): DatafnSignal<TValue>;
+
+function emptySignal<TValue>(value: TValue): DatafnSignal<TValue>;
+```
+
+- `combineSignals` coalesces same-tick child emissions and aggregates `loading` / `refreshing` / `error` across sources.
+- `mapSignal` surfaces mapper exceptions as a `DatafnError` with code `INTERNAL`.
+- `emptySignal` (also `client.emptySignal(value)`) is a static, non-loading signal.
+
+See the [Signals guide](/docs/documentation/client/signals#derived-signals) for usage examples.
 
 
 
@@ -22703,12 +23708,21 @@ npm install @datafn/svelte
 
 ---
 
-## `toSvelteStore<T>(signal)`
+## `toSvelteStore<T>(signal, options?)`
 
-Converts a `DatafnSignal<T>` to a Svelte `Readable` store.
+Converts a `DatafnSignal<T>` to a Svelte `Readable` store that emits the full signal state (`data`, `loading`, `error`, `refreshing`, `nextCursor`).
 
 ```typescript
-function toSvelteStore<T>(signal: DatafnSignal<T>): DatafnSvelteStore<T>;
+function toSvelteStore<T>(
+  signal: DatafnSignal<T>,
+  options?: ToSvelteStoreOptions<T>,
+): DatafnSvelteStore<T>;
+
+// With initialData, the store is "ready" (data is always T):
+function toSvelteStore<T>(
+  signal: DatafnSignal<T | undefined>,
+  options: ToSvelteStoreOptions<T> & { initialData: T },
+): DatafnSvelteReadyStore<T>;
 ```
 
 ### Parameters
@@ -22716,10 +23730,7 @@ function toSvelteStore<T>(signal: DatafnSignal<T>): DatafnSvelteStore<T>;
 | Parameter | Type | Description |
 |---|---|---|
 | `signal` | `DatafnSignal<T>` | A signal from a table handle, e.g. `client.todos.signal({ ... })`. |
-
-### Returns
-
-A `DatafnSvelteStore<T>` — a Svelte `Readable` store that emits signal state.
+| `options` | `ToSvelteStoreOptions<T>` | Optional. See [options](#tosveltestoreoptionst). |
 
 ### Example
 
@@ -22727,7 +23738,8 @@ A `DatafnSvelteStore<T>` — a Svelte `Readable` store that emits signal state.
 import { toSvelteStore } from "@datafn/svelte";
 
 const todosStore = toSvelteStore(
-  client.todos.signal({ sort: ["-createdAt"] })
+  client.todos.signal({ sort: ["-createdAt"] }),
+  { initialData: [] }, // data is never undefined
 );
 ```
 
@@ -22735,7 +23747,7 @@ const todosStore = toSvelteStore(
 {#if $todosStore.loading}
   <p>Loading...</p>
 {:else}
-  {#each $todosStore.data ?? [] as todo}
+  {#each $todosStore.data as todo}
     <p>{todo.title}</p>
   {/each}
 {/if}
@@ -22743,23 +23755,94 @@ const todosStore = toSvelteStore(
 
 ---
 
-## `DatafnSvelteStore<T>`
+## `ToSvelteStoreOptions<T>`
 
 ```typescript
-type DatafnSvelteStore<T> = Readable<{
+type ToSvelteStoreOptions<T> = {
+  initialData?: T;
+  defer?: DeferredSubscription;
+  equals?: (previous: T | undefined, next: T | undefined) => boolean;
+};
+```
+
+| Option | Description |
+|---|---|
+| `initialData` | Fallback used when the signal value is `null`/`undefined`. Arrays are shallow-copied. When provided, the return type narrows to the `*Ready*` variant (`data` is always `T`). |
+| `defer` | Delay signal creation/subscription. Only valid on the factory overloads. See [`DeferredSubscription`](#deferredsubscription). |
+| `equals` | Custom equality on `data`. Suppresses store updates (and duplicate synchronous emissions) when the value is unchanged. |
+
+Even without `equals`, the store suppresses a duplicate **synchronous** emission so subscribers receive a single initial value.
+
+---
+
+## `DeferredSubscription`
+
+```typescript
+type DeferredSubscription =
+  | number                                   // setTimeout(start, delayMs)
+  | "idle"                                    // requestIdleCallback(start)
+  | { delayMs?: number; strategy?: "timeout" | "idle" };
+```
+
+Defers creating the underlying signal until the delay/idle callback fires. If the store is unsubscribed before then, the signal is never created. The default `strategy` is `"timeout"`.
+
+---
+
+## `toSvelteDataStore<T>(signal, options?)`
+
+Like `toSvelteStore`, but the store emits **only the data** (`T | undefined`, or `T` with `initialData`) instead of the full state object. Ideal for `{#each}` blocks where you do not need `loading`/`error`.
+
+```typescript
+function toSvelteDataStore<T>(
+  signal: DatafnSignal<T | undefined>,
+): DatafnSvelteDataStore<T>;
+
+function toSvelteDataStore<T>(
+  signal: DatafnSignal<T | undefined>,
+  options: ToSvelteStoreOptions<T> & { initialData: T },
+): DatafnSvelteReadyDataStore<T>;
+```
+
+```typescript
+import { toSvelteDataStore } from "@datafn/svelte";
+
+const items = toSvelteDataStore(
+  client.todos.signal({ sort: ["-createdAt"] }),
+  { initialData: [] },
+);
+```
+
+```svelte
+{#each $items as todo}
+  <p>{todo.title}</p>
+{/each}
+```
+
+`toSvelteDataStore` supports the same direct-signal, signal-factory, and `clientRef` overloads as `toSvelteStore`.
+
+---
+
+## Store Types
+
+```typescript
+type DatafnSvelteValue<T> = {
   data: T | undefined;
   loading: boolean;
   error: DatafnError | null;
   refreshing: boolean;
-  nextCursor?: string | null;
-}>;
-```
+  nextCursor: string | null;
+};
+type DatafnSvelteReadyValue<T> = Omit<DatafnSvelteValue<T>, "data"> & { data: T };
 
-### Properties
+type DatafnSvelteStore<T> = Readable<DatafnSvelteValue<T>>;
+type DatafnSvelteReadyStore<T> = Readable<DatafnSvelteReadyValue<T>>;
+type DatafnSvelteDataStore<T> = Readable<T | undefined>;
+type DatafnSvelteReadyDataStore<T> = Readable<T>;
+```
 
 | Property | Type | Description |
 |---|---|---|
-| `data` | `T \| undefined` | Current query result value. |
+| `data` | `T \| undefined` (or `T` when ready) | Current query result value. |
 | `loading` | `boolean` | `true` during initial fetch. |
 | `error` | `DatafnError \| null` | Non-null if the last fetch failed. |
 | `refreshing` | `boolean` | `true` while refreshing after mutation/sync changes. |
@@ -22767,33 +23850,27 @@ type DatafnSvelteStore<T> = Readable<{
 
 ---
 
-## `toSvelteStore<T, C>(clientRef, signalFactory)`
+## Factory Overloads
 
-Overload for client-reference driven signal creation.
+Both `toSvelteStore` and `toSvelteDataStore` accept a zero-arg signal factory or a `clientRef` + factory, each with optional `options`:
 
 ```typescript
-function toSvelteStore<T, C>(
-  clientRef: ClientRef<C>,
-  signalFactory: (client: C) => DatafnSignal<T>,
-): DatafnSvelteStore<T>;
+// Zero-arg factory (supports `defer`)
+toSvelteStore(() => client.todos.signal({ ... }), { initialData: [], defer: "idle" });
+
+// Client-reference driven creation
+toSvelteStore(clientRef, (client) => client.todos.signal({ ... }), options?);
 ```
 
-### Parameters
-
-| Parameter | Type | Description |
-|---|---|---|
-| `clientRef` | `ClientRef<C>` | A subscribable client reference. |
-| `signalFactory` | `(client: C) => DatafnSignal<T>` | Creates a signal from the current client. |
-
----
-
-## `ClientRef<C>`
-
 ```typescript
+type DatafnSignalFactory<T> = () => DatafnSignal<T>;
+
 type ClientRef<C> = {
   subscribe(fn: (client: C) => void): () => void;
 };
 ```
+
+Use the direct signal form when you already have a stable signal. Use a factory with `defer` to delay creation until idle/after a timeout, and use the `clientRef` overload when signal creation depends on a client reference that can change.
 
 
 
@@ -22891,6 +23968,143 @@ During initial startup:
 2. **Background resources** -- clone concurrently after boot completes. The client does not block on these.
 
 Clone requests are paginated using `clonePageSize` (default or per-resource).
+
+
+
+--------------------------------------------------------------------------------
+### Temporal API
+
+URL: https://datafn.21n.co/docs/reference/client/temporal
+Description: Manage user timezones and resolve temporal values from the client.
+--------------------------------------------------------------------------------
+
+`client.temporal` is the client-side entry point for managing the actor's timezone history and resolving temporal values. It reads and writes the built-in [`datafnTimezoneChange` registry](/docs/dfql/temporal#timezone-change-registry) and powers `timezone: "user"` resolution in queries and search.
+
+For the query-time builders (`time.day`, `time.groupByDay`, …) see [DFQL Temporal](/docs/dfql/temporal).
+
+## Configuration
+
+Provide defaults through the `temporal` client config option:
+
+```typescript
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  temporal: {
+    timezone: "UTC",                       // static or () => string | undefined
+    detectTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    weekStartsOn: 1,                       // 0=Sunday … 6=Saturday
+    // timezoneResolver?: custom resolver
+  },
+});
+```
+
+| Option | Type | Description |
+|---|---|---|
+| `timezone` | `string \| (() => string \| undefined)` | Default timezone for `"user"` resolution when no registry record applies. |
+| `detectTimezone` | `() => string \| undefined` | Detects the device timezone (e.g. via `Intl`). Used by `detectTimezone()` and `setTimezone` change detection. |
+| `weekStartsOn` | `number` | Default first day of week for `week`-scale buckets. |
+| `timezoneResolver` | `DatafnTemporalTimezoneResolver` | Custom resolver, consulted before the registry. |
+
+## `DatafnTemporalApi`
+
+```typescript
+interface DatafnTemporalApi {
+  detectTimezone(): string | undefined;
+  listTimezoneChanges(): Promise<DatafnTimezoneChangeRecord[]>;
+  currentTimezone(instant?: number | string | Date): Promise<string>;
+  resolveTimezone(instant?: number | string | Date): Promise<string>;
+
+  recordTimezoneChange(input: RecordTimezoneChangeInput): Promise<
+    | { ok: true; record: DatafnTimezoneChangeRecord }
+    | { ok: false; error: unknown }
+  >;
+  setTimezone(
+    timezone: string,
+    options?: Omit<RecordTimezoneChangeInput, "timezone">,
+  ): Promise<
+    | { ok: true; changed: boolean; record?: DatafnTimezoneChangeRecord }
+    | { ok: false; error: unknown }
+  >;
+
+  resolveRange(
+    period: DatafnTemporalPeriodInput,
+    options?: { timezone?: string; instant?: number | string | Date },
+  ): Promise<{ start: number; end: number; timezone: string }>;
+  resolveRangeSync(period, options?): { start: number; end: number; timezone: string };
+
+  resolveBucket(input: DatafnTemporalBucketInput): Promise<number | string | Date | null>;
+  resolveBucketSync(input): number | string | Date | null;
+
+  resolveLocalTime(
+    value: number | string | Date,
+    options?: { timezone?: string; instant?: number | string | Date },
+  ): Promise<number>;
+  resolveLocalTimeSync(value, options?): number;
+}
+
+type RecordTimezoneChangeInput = {
+  timezone: string;
+  effectiveFrom?: number | string | Date;
+  recordedAt?: number | string | Date;
+  source?: "manual" | "browser" | "system" | "import" | string;
+};
+```
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `detectTimezone()` | Synchronous device timezone from the configured `detectTimezone`. |
+| `listTimezoneChanges()` | All `datafnTimezoneChange` records, ascending by `effectiveFrom`. |
+| `currentTimezone(instant?)` / `resolveTimezone(instant?)` | The timezone effective at `instant` (default now), resolved against the registry and config. |
+| `recordTimezoneChange(input)` | Append a timezone-change record. |
+| `setTimezone(tz, options?)` | Record a change only if the timezone differs from the currently effective one; `changed` reports whether a record was written. |
+| `resolveRange(period, options?)` | Resolve a calendar period to `{ start, end }` epoch-ms in the effective (or overridden) timezone. |
+| `resolveBucket(input)` | Resolve the bucket key for a value/scale. |
+| `resolveLocalTime(value, options?)` | Resolve a wall-clock value to epoch-ms in the effective timezone. |
+
+`*Sync` variants resolve against an in-memory cache of timezone-change records, populated on the first async call. Use the async variants when correctness for historical instants matters and the cache may be cold.
+
+## Examples
+
+### Record and resolve a timezone change
+
+```typescript
+await client.temporal.recordTimezoneChange({
+  timezone: "America/New_York",
+  effectiveFrom: Date.parse("2026-01-01T00:00:00.000Z"),
+  source: "manual",
+});
+
+await client.temporal.resolveTimezone(Date.parse("2026-04-15T12:00:00.000Z"));
+// => "America/New_York"
+```
+
+### Set the timezone if it changed
+
+```typescript
+const result = await client.temporal.setTimezone("Asia/Kolkata", { source: "browser" });
+if (result.ok && result.changed) {
+  console.log("Timezone updated to", result.record?.timezone);
+}
+```
+
+### Resolve a period range for a chart
+
+```typescript
+const { start, end, timezone } = await client.temporal.resolveRange({
+  scale: "day",
+  at: Date.parse("2026-05-18T12:00:00.000Z"),
+});
+```
+
+## Related
+
+- [DFQL Temporal](/docs/dfql/temporal) — temporal clauses and the `time` builder.
+- [Client Configuration](/docs/reference/client/config#temporal) — the `temporal` config option.
+- [`@datafn/core` temporal reference](/docs/reference/core/temporal) — underlying helpers and types.
 
 
 
@@ -23447,10 +24661,13 @@ const OP_REMAP: Record<string, string> = {
 
 ## normalizeFilterOps
 
-Recursively remaps non-`$`-prefixed operator names to their canonical form.
+Recursively remaps non-`$`-prefixed operator names to their canonical form and strips `undefined` values at every level (top-level keys, operator values, and now-empty operator objects). `null` is preserved.
 
 ```typescript
 function normalizeFilterOps(filters: Record<string, unknown>): Record<string, unknown>;
+
+normalizeFilterOps({ status: { eq: "active", ne: undefined }, archived: undefined });
+// { status: { $eq: "active" } }
 ```
 
 ## likeToRegExp
@@ -23707,9 +24924,12 @@ function defineSchema<const T extends {
   readonly capabilities?: readonly CapabilityEntry[];
   readonly resources: readonly DatafnResourceBase[];
   readonly relations?: readonly DatafnRelationSchema[];
+  readonly relationIntegrity?: DatafnRelationIntegrityMode;
   readonly namespaced?: boolean;
-}>(schema: T): T & DatafnSchema;
+}>(schema: T): DatafnDefinedSchema<T>;
 ```
+
+The return type `DatafnDefinedSchema<T>` preserves the literal schema shape (via a hidden symbol) so downstream helpers and codegen can infer exact resource/field/relation types. Use `DatafnSchemaLiteral<S>` to extract the literal type back out when needed.
 
 ## validateSchema
 
@@ -23806,6 +25026,49 @@ function findRelationBidirectional(
 ): DatafnRelationSchema | undefined;
 ```
 
+## Relation Endpoint Helpers
+
+Utilities for working with [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relation endpoints (`from`/`to` that may be a single name or an array):
+
+```typescript
+type DatafnRelationDirection = "forward" | "inverse";
+
+function endpointList(endpoint: string | readonly string[]): string[];
+function endpointIncludes(endpoint: string | readonly string[], resource: string): boolean;
+function firstEndpoint(endpoint: string | readonly string[]): string;
+function resourceNameFromId(id: unknown): string | undefined;            // "task:1" -> "task"
+function resolveEndpointResource(endpoint, id: unknown): string | undefined;
+
+// Direction-aware relation lookup (forward or inverse name match)
+function findRelationMatch(
+  schema: DatafnSchema,
+  resource: string,
+  relationName: string,
+): { relation: DatafnRelationSchema; direction: DatafnRelationDirection } | undefined;
+
+function relationKeyFor(fromResource: string, relation: DatafnRelationSchema): string; // "task.tags"
+```
+
+## Relation Foreign Key Helpers
+
+Derive and normalize foreign-key fields implied by relations:
+
+```typescript
+type DatafnRelationFkField = { field: string; resourceField?: string; optional: boolean };
+
+function getRelationFkFieldsForResource(
+  schema: DatafnSchema,
+  resourceName: string,
+): DatafnRelationFkField[];
+
+// Empty-string optional FK values (and paired *Resource discriminators) become null.
+function normalizeRelationFkRecord(
+  schema: DatafnSchema,
+  resourceName: string,
+  record: Record<string, unknown>,
+): Record<string, unknown>;
+```
+
 ## Related
 
 - [Capabilities](/docs/documentation/capabilities)
@@ -23834,6 +25097,7 @@ interface SearchProvider {
   search(params: SearchParams): Promise<string[]>;
   searchAll?(params: SearchAllParams): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: UpdateIndicesParams): Promise<void>;
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: InitializeConfig): Promise<void>;
   dispose?(): Promise<void>;
 }
@@ -23898,6 +25162,14 @@ Called by DataFn after mutations to keep the search index current.
 | `operation` | `"upsert" \| "delete"` | Whether to add/update or remove records from the index. |
 
 ## Optional Members
+
+### `clearIndices`
+
+```typescript
+clearIndices?(resource: string): Promise<void>;
+```
+
+Clears all indexed documents for one resource before DataFn performs a full rebuild. Providers that persist index data should implement this method. DataFn requires it when an existing index fingerprint changes so deleted documents cannot survive a schema, field, provider, or `searchIndexVersion` change. The `@searchfn/datafn-provider` bridge delegates it to the SearchFn adapter's `clear(resource)` method.
 
 ### `searchAll`
 
@@ -24002,6 +25274,152 @@ See [Search — Setting Up a Search Provider](/docs/dfql/search#setting-up-a-sea
 
 
 --------------------------------------------------------------------------------
+### Temporal
+
+URL: https://datafn.21n.co/docs/reference/core/temporal
+Description: Timezone-aware temporal types, builders, and resolution helpers from @datafn/core.
+--------------------------------------------------------------------------------
+
+`@datafn/core` exports the temporal type system, the `time` clause builder, and a set of resolution helpers. These are isomorphic — the client and server import the same functions. For the conceptual guide, see [DFQL Temporal](/docs/dfql/temporal).
+
+## Types
+
+```typescript
+type DatafnTemporalScale = "hour" | "day" | "week" | "month" | "quarter" | "year";
+type DatafnTemporalStorage = "unix-ms" | "unix-s" | "date" | "iso";
+
+type DatafnTemporalRangeInput = { start: string | number | Date; end: string | number | Date };
+type DatafnTemporalPeriodInput = { scale: DatafnTemporalScale; at?: string | number | Date };
+type DatafnTemporalGroupInput = {
+  scale: DatafnTemporalScale;
+  alias?: string;
+  output?: DatafnTemporalStorage;
+  weekStartsOn?: number;
+};
+
+type DatafnTemporalClause = {
+  field: string;
+  timezone?: string;
+  storage?: DatafnTemporalStorage;
+  weekStartsOn?: number;
+  range?: DatafnTemporalRangeInput;
+  period?: DatafnTemporalPeriodInput;
+  groupBy?: DatafnTemporalGroupInput;
+};
+
+type DatafnTemporalConfig = {
+  timezone?: string | (() => string | undefined);
+  timezoneResolver?: DatafnTemporalTimezoneResolver;
+  weekStartsOn?: number;
+};
+
+type DatafnTemporalTimezoneResolver = (input: {
+  instant: number;
+  field: string;
+  resource?: string;
+  record?: Record<string, unknown>;
+  scale?: DatafnTemporalScale;
+}) => string | undefined;
+
+type DatafnTimezoneChangeRecord = {
+  id: string;
+  timezone: string;
+  effectiveFrom: number;
+  recordedAt: number;
+  source?: string;
+};
+```
+
+## `time` / `temporal`
+
+Clause builders. `temporal` is an alias for `time`.
+
+```typescript
+import { time } from "@datafn/core";
+
+time.range(field, { start, end }, options?);
+time.between(field, start, end, options?);
+time.period(field, { scale, at? }, options?);
+time.group(field, scale, options?);            // options: { alias?, output?, timezone?, storage?, weekStartsOn? }
+
+time.hour(field, at?, options?);
+time.day(field, at?, options?);
+time.week(field, at?, options?);
+time.month(field, at?, options?);
+time.quarter(field, at?, options?);
+time.year(field, at?, options?);
+
+time.groupByHour(field, options?);
+time.groupByDay(field, options?);
+time.groupByWeek(field, options?);
+time.groupByMonth(field, options?);
+time.groupByQuarter(field, options?);
+time.groupByYear(field, options?);
+```
+
+`options` accepts the non-`field` members of `DatafnTemporalClause` (`timezone`, `storage`, `weekStartsOn`). Group helpers additionally accept `alias` and `output`.
+
+## Query Normalization
+
+| Function | Signature | Description |
+|---|---|---|
+| `normalizeTemporalQuery` | `<T>(query: T, config?: DatafnTemporalConfig) => T` | Compiles `period`/`range` clauses into `$gte`/`$lte` filters, retains `groupBy` clauses, and merges generated filters with any existing `filters` using `$and`. |
+| `getTemporalClauses` | `(query) => DatafnTemporalClause[]` | Returns the query's temporal clauses as an array. |
+| `hasTemporalGrouping` | `(query) => boolean` | `true` when any clause has a `groupBy`. |
+| `getTemporalGroups` | `(query, config?) => DatafnResolvedTemporalGroup[]` | Resolved grouping descriptors (alias defaults to `${field}_${scale}`, `output` defaults to `"iso"`, `weekStartsOn` defaults to `1`). |
+| `getTemporalGroupAliases` | `(query) => Set<string>` | The set of group aliases (valid as sort/having keys and in authz). |
+
+```typescript
+import { normalizeTemporalQuery, time } from "@datafn/core";
+
+normalizeTemporalQuery({
+  resource: "session",
+  version: 1,
+  filters: { status: "done" },
+  temporal: time.month("startedAt", instant, { timezone: "Asia/Kolkata" }),
+});
+// => { resource, version, filters: { $and: [{ status: "done" }, { startedAt: { $gte, $lte } }] } }
+```
+
+## Value Resolution
+
+| Function | Description |
+|---|---|
+| `resolveTemporalBucketValue(record, group)` | The bucket key for a record under a resolved group. |
+| `resolveTemporalBucketKey(input, config?)` | The bucket key for an explicit `DatafnTemporalBucketInput`. |
+| `resolveTemporalPeriodRange(period, timezone?, weekStartsOn?)` | `{ start, end }` epoch-ms for a calendar period. |
+| `startOfTemporalPeriod(value, scale, timezone?, weekStartsOn?)` | Period start instant (epoch-ms). |
+| `addTemporalPeriod(periodStartMs, scale, timezone?)` | Advance one period. |
+| `resolveTemporalLocalTime(input, timezone?)` | Resolve a `{ year, month, day, ... }` local time to epoch-ms. |
+| `toTemporalStorageValue(ms, storage?)` | Convert epoch-ms to the configured storage format. |
+| `resolveTemporalInputMs(value, storage?)` | Parse a stored value into epoch-ms. |
+
+## Timezone Registry
+
+| Symbol | Description |
+|---|---|
+| `TIMEZONE_CHANGE_RESOURCE_NAME` | `"datafnTimezoneChange"` — the built-in registry resource name. |
+| `TIMEZONE_CHANGE_ID_PREFIX` | `"timezoneChange"` — id prefix for registry records. |
+| `timezoneChangeId(effectiveFrom, timezone, suffix?)` | Build a deterministic registry record id. |
+| `createTimezoneResolver(records, options?)` | Build a `DatafnTemporalTimezoneResolver` from registry records, resolving the most recent zone effective at each instant. |
+| `ensureBuiltinTemporal(schema)` | Append (or validate) the `datafnTimezoneChange` resource. Called automatically by the client, server, and CLI codegen. |
+
+## Plugin
+
+```typescript
+createTemporalPlugin(config?: DatafnTemporalConfig): DatafnPlugin
+```
+
+Returns a `runsOn: ["client", "server"]` plugin whose `beforeQuery` hook runs `normalizeTemporalQuery` over each query (including batch arrays) with the supplied configuration.
+
+## Related
+
+- [DFQL Temporal](/docs/dfql/temporal) — conceptual guide.
+- [`client.temporal` reference](/docs/reference/client/temporal) — user-timezone management.
+
+
+
+--------------------------------------------------------------------------------
 ### Core Types
 
 URL: https://datafn.21n.co/docs/reference/core/types
@@ -24038,9 +25456,14 @@ type DatafnSchema = {
   capabilities?: SchemaCapabilities;
   resources: DatafnResourceSchema[];
   relations?: DatafnRelationSchema[];
+  relationIntegrity?: DatafnRelationIntegrityMode;
   namespaced?: boolean;
 };
+
+type DatafnRelationIntegrityMode = "application" | "database";
 ```
+
+`relationIntegrity` defaults to `"application"`. The removed `"hybrid"` mode is rejected by `validateSchema`.
 
 ## DatafnResourceSchema
 
@@ -24085,8 +25508,8 @@ type DatafnFieldSchema = {
 
 ```typescript
 type DatafnRelationSchema = {
-  from: string | string[];
-  to: string | string[];
+  from: string | readonly string[];
+  to: string | readonly string[];
   type: "one-many" | "many-one" | "many-many" | "htree";
   relation?: string;
   inverse?: string;
@@ -24096,12 +25519,22 @@ type DatafnRelationSchema = {
     type: "string" | "number" | "boolean" | "date" | "object" | "json";
   }>;
   fkField?: string;
+  fkResourceField?: string;
   pathField?: string;
   joinTable?: string;
   joinColumns?: { from: string; to: string };
   capabilities?: RelationSimpleCapability[];
+  integrity?: DatafnRelationIntegrityMode;
+  onDelete?: DatafnRelationDeletePolicies;
 };
+
+type DatafnRelationDeletePolicy = "restrict" | "cascade" | "setNull" | "detach";
+type DatafnRelationDeletePolicies =
+  | DatafnRelationDeletePolicy
+  | { from?: DatafnRelationDeletePolicy; to?: DatafnRelationDeletePolicy };
 ```
+
+An array `from`/`to` declares a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) endpoint; `fkResourceField` names the discriminator column for polymorphic FK sides. See [Relations](/docs/dfql/schema/relations) for `integrity` and `onDelete` semantics.
 
 ## DatafnEvent
 

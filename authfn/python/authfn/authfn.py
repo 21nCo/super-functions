@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from superfunctions.db import Adapter as DatabaseAdapter
-from superfunctions.db import OrderBy, WhereClause
+from superfunctions.db import Direction, Operator, OrderBy, WhereClause
 
 from .config import get_plugin_config, normalize_config
 from .http import authenticate_request, create_authfn_openapi, create_authfn_routes
@@ -73,13 +73,13 @@ class AuthFnProvider:
         """Revoke a session."""
         await self.database.update(
             model="sessions",
-            where=[WhereClause(field="id", operator="eq", value=session_id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=session_id)],
             data={"revokedAt": _utcnow()},
             namespace=self.namespace,
         )
         await self.database.update(
             model="api_keys",
-            where=[WhereClause(field="id", operator="eq", value=session_id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=session_id)],
             data={
                 "revokedAt": _utcnow(),
                 "updatedAt": _utcnow(),
@@ -142,7 +142,7 @@ class AuthFn:
         """Get API key by ID (without the secret key)."""
         key_data = await self.database.find_one(
             model="api_keys",
-            where=[WhereClause(field="id", operator="eq", value=key_id)],
+            where=[WhereClause(field="id", operator=Operator.EQ, value=key_id)],
             namespace=self.namespace,
         )
 
@@ -170,7 +170,7 @@ class AuthFn:
         keys_data = await self.database.find_many(
             model="api_keys",
             where=[],
-            order_by=[OrderBy(field="createdAt", direction="desc")],
+            order_by=[OrderBy(field="createdAt", direction=Direction.DESC)],
             namespace=self.namespace,
         )
         sanitized_keys = []

@@ -4,9 +4,9 @@ import {
   issueSessionCookies,
   readCookieValues,
   resolveCookiePolicy
-} from '../index.js';
+} from '../core/cookies.js';
 
-describe('@authfn/core cookie policy', () => {
+describe('authfn cookie policy', () => {
   it('derives deterministic default cookie names and attributes', () => {
     const request = new Request('https://account.example.com/auth/session');
     const policy = resolveCookiePolicy({}, request);

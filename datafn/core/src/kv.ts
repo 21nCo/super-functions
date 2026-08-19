@@ -4,6 +4,12 @@
 
 import type { DatafnSchema, DatafnResourceSchema } from "./types.js";
 
+type DatafnIndexCategories = {
+  base?: readonly string[];
+  search?: readonly string[];
+  vector?: readonly string[];
+};
+
 /**
  * Canonical KV resource name
  */
@@ -90,13 +96,16 @@ function isBuiltinKvPlaceholder(resource: DatafnResourceSchema): boolean {
     (fields[0]?.type === "string" ||
       fields[0]?.type === "json" ||
       fields[0]?.type === "object");
+  const indexCategories =
+    resource.indices && !Array.isArray(resource.indices)
+      ? (resource.indices as DatafnIndexCategories)
+      : undefined;
   const hasEmptyIndices =
     resource.indices == null ||
     (Array.isArray(resource.indices) && resource.indices.length === 0) ||
-    (!Array.isArray(resource.indices) &&
-      (resource.indices.base?.length ?? 0) === 0 &&
-      (resource.indices.search?.length ?? 0) === 0 &&
-      (resource.indices.vector?.length ?? 0) === 0);
+    ((indexCategories?.base?.length ?? 0) === 0 &&
+      (indexCategories?.search?.length ?? 0) === 0 &&
+      (indexCategories?.vector?.length ?? 0) === 0);
 
   return (
     resource.version === 1 &&
@@ -127,7 +136,9 @@ function validateBuiltinKv(resource: DatafnResourceSchema): void {
 
   const baseIndices = Array.isArray(resource.indices)
     ? resource.indices
-    : resource.indices?.base ?? [];
+    : resource.indices && !Array.isArray(resource.indices)
+      ? (resource.indices as DatafnIndexCategories).base ?? []
+      : [];
   if (!baseIndices.includes("id")) {
     throw new Error(`KV resource must include an "id" base index`);
   }

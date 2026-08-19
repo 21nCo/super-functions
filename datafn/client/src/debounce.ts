@@ -2,7 +2,7 @@
  * DebouncerMap for per-record-key mutation debouncing (DEB-001)
  *
  * Coalesces rapid mutations with the same debounceKey within a debounce window.
- * Only applies to merge operations; other operations execute immediately.
+ * Debounce eligibility is selected by the mutation executor.
  */
 
 export interface DfqlMutation {
@@ -10,6 +10,7 @@ export interface DfqlMutation {
   operation: string;
   id: string;
   record?: Record<string, unknown>;
+  relations?: Record<string, unknown>;
   mutationId?: string;
   clientId?: string;
   debounceKey?: string;
@@ -27,6 +28,26 @@ interface PendingMutation {
 
 export class DebouncerMap {
   private pending = new Map<string, PendingMutation>();
+
+  private mergeMutation(
+    existingMutation: DfqlMutation,
+    nextMutation: DfqlMutation,
+  ): DfqlMutation {
+    const record = nextMutation.record
+      ? { ...(existingMutation.record ?? {}), ...nextMutation.record }
+      : existingMutation.record;
+    const relations = nextMutation.relations
+      ? { ...(existingMutation.relations ?? {}), ...nextMutation.relations }
+      : existingMutation.relations;
+
+    return {
+      ...existingMutation,
+      ...nextMutation,
+      record,
+      relations,
+      mutationId: existingMutation.mutationId,
+    };
+  }
 
   /**
    * Set a debounced mutation.
@@ -52,27 +73,7 @@ export class DebouncerMap {
       // REL-004: Resolve the old caller's Promise before replacing.
       // Data was merged into the new mutation, so the original caller's mutation is not lost.
       existing.resolve();
-
-      // Merge the new mutation's record fields into the existing mutation's record
-      if (mutation.record && existing.mutation.record) {
-        existing.mutation.record = {
-          ...existing.mutation.record,
-          ...mutation.record,
-        };
-      } else if (mutation.record) {
-        existing.mutation.record = mutation.record;
-      }
-
-      // Update other mutation fields that might have changed
-      // (keep existing mutationId, but update other fields)
-      existing.mutation = {
-        ...existing.mutation,
-        ...mutation,
-        // Preserve the merged record
-        record: existing.mutation.record,
-        // Keep the original mutationId for tracking
-        mutationId: existing.mutation.mutationId,
-      };
+      existing.mutation = this.mergeMutation(existing.mutation, mutation);
     }
 
     return new Promise<void>((resolve, reject) => {

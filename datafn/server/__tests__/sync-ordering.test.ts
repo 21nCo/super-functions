@@ -31,7 +31,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       // Seed the record first via insert
@@ -114,7 +114,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       // Seed the record first via insert
@@ -196,7 +196,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       // Create some records
@@ -268,7 +268,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: remoteOnlySchema,
-        db,
+        database: db,
       });
 
       const res = await server.router.handle(
@@ -295,7 +295,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       // Insert a record
@@ -376,7 +376,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       const res = await server.router.handle(
@@ -402,7 +402,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       // Push insert + merge mutation
@@ -470,7 +470,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       const res = await server.router.handle(
@@ -495,7 +495,7 @@ describe("Phase 09: Server Sync Semantics", () => {
       const server = await createDatafnServer({
         allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
       });
 
       const pushRes = await server.router.handle(
@@ -518,8 +518,9 @@ describe("Phase 09: Server Sync Semantics", () => {
         }),
       );
       const pushBody = await pushRes.json();
-      expect(pushBody.ok).toBe(true);
-      expect(pushBody.result.ok).toBe(true);
+      expect(pushRes.status).toBe(400);
+      expect(pushBody.ok).toBe(false);
+      expect(pushBody.result.ok).toBe(false);
       expect(pushBody.result.applied).not.toContain("m-missing-task");
       expect(pushBody.result.errors).toEqual(
         expect.arrayContaining([

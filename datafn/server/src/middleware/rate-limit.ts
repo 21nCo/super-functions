@@ -1,10 +1,10 @@
 /**
  * Rate Limiting Middleware
  * Implements RATE-001 through RATE-005: configurable per-endpoint rate limiting
- * with Redis-backed and in-memory implementations.
+ * with atomic-store, cache-store, and in-memory implementations.
  */
 
-import type { RedisAdapter } from "@superfunctions/db";
+import type { AtomicStoreAdapter, KVStoreAdapter } from "@superfunctions/db";
 
 /**
  * Rate limiter interface for checking request allowance.
@@ -14,40 +14,67 @@ export interface RateLimiter {
 }
 
 /**
- * Redis-backed rate limiter using atomic INCR with TTL (RATE-002).
+ * Atomic-store-backed rate limiter using atomic INCR with TTL (RATE-002).
  * Key format: ratelimit:{endpoint}:{clientKey}:{windowId}
  */
-export class RedisRateLimiter implements RateLimiter {
-  constructor(private redis: RedisAdapter) {}
+export class AtomicRateLimiter implements RateLimiter {
+  constructor(private atomicStore: AtomicStoreAdapter) {}
 
   async check(key: string, maxRequests: number, windowSeconds: number): Promise<{ allowed: boolean; remaining: number }> {
     const windowId = Math.floor(Date.now() / (windowSeconds * 1000));
-    const redisKey = `ratelimit:${key}:${windowId}`;
-
-    let count: number;
-    // REL-008: Use atomic Lua script to prevent TTL race (crash between incr and expire).
-    // If the Redis client exposes eval(), use a single atomic command.
-    // Use non-atomic incr+set when eval() is unavailable.
-    const redisAny = this.redis as any;
-    if (typeof redisAny.eval === "function") {
-      // Lua: INCR key; if new key (count==1) set EXPIRE; return count
-      count = await redisAny.eval(
-        "local c = redis.call('incr', KEYS[1]); if c == 1 then redis.call('expire', KEYS[1], ARGV[1]) end; return c",
-        1,
-        redisKey,
-        String(windowSeconds),
-      );
-    } else {
-      // Non-atomic path: tiny race window only on first request of a new window
-      count = await this.redis.incr(redisKey);
-      if (count === 1) {
-        await this.redis.set(redisKey, String(count), windowSeconds);
-      }
-    }
+    const storeKey = `ratelimit:${key}:${windowId}`;
+    const count = (await this.atomicStore.incr({
+      key: storeKey,
+      by: 1,
+      ttlSeconds: windowSeconds,
+    })).value;
     return {
       allowed: count <= maxRequests,
       remaining: Math.max(0, maxRequests - count),
     };
+  }
+}
+
+export class CacheRateLimiter implements RateLimiter {
+  private locks = new Map<string, Promise<void>>();
+
+  constructor(private cacheStore: KVStoreAdapter) {}
+
+  async check(key: string, maxRequests: number, windowSeconds: number): Promise<{ allowed: boolean; remaining: number }> {
+    const windowId = Math.floor(Date.now() / (windowSeconds * 1000));
+    const storeKey = `ratelimit:${key}:${windowId}`;
+    return this.withLock(storeKey, async () => {
+      const current = Number(await this.cacheStore.get(storeKey) ?? "0");
+      const next = current + 1;
+      await this.cacheStore.set({
+        key: storeKey,
+        value: String(next),
+        ttlSeconds: windowSeconds,
+      });
+      return {
+        allowed: next <= maxRequests,
+        remaining: Math.max(0, maxRequests - next),
+      };
+    });
+  }
+
+  private async withLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.then(() => current);
+    this.locks.set(key, queued);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.locks.get(key) === queued) {
+        this.locks.delete(key);
+      }
+    }
   }
 }
 

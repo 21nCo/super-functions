@@ -18,7 +18,7 @@ describe("DFQL select extensions (Phase 11)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureDfqlSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 
@@ -340,13 +340,14 @@ describe("DFQL select extensions (Phase 11)", () => {
           tasks: [
             {
               id: "task:t1",
+              goalId: "goal:g1",
               title: "T1",
               tags: [
                 { id: "tag:a", label: "urgent" },
                 { id: "tag:b", label: "home" },
               ],
             },
-            { id: "task:t2", title: "T2", tags: [] },
+            { id: "task:t2", goalId: "goal:g1", title: "T2", tags: [] },
           ],
         },
       ]);
@@ -388,7 +389,7 @@ describe("DFQL bare * wildcard in select", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureDfqlSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 

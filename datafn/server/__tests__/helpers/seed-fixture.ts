@@ -13,7 +13,7 @@ interface FixtureData {
  * Seed fixture data into a database adapter
  */
 export async function seedFixture(
-  db: Adapter,
+  database: Adapter,
   fixtureData: FixtureData,
 ): Promise<void> {
   const namespace = "datafn";
@@ -21,7 +21,7 @@ export async function seedFixture(
   // Seed all records
   for (const [model, records] of Object.entries(fixtureData.records)) {
     for (const record of records) {
-      await db.create({
+      await database.create({
         model,
         data: record,
         namespace,
@@ -38,7 +38,7 @@ export async function seedFixture(
 
       for (const joinRow of joinRows) {
         const id = (joinRow.id as string) ?? `${(joinRow as any).from}:${(joinRow as any).to}`;
-        await db.create({
+        await database.create({
           model: joinTableName,
           data: { id, ...joinRow },
           namespace,

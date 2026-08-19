@@ -11,6 +11,7 @@
     "pagination",
     "select",
     "aggregations",
+    "temporal",
     "search",
     "mutations",
     "transactions"

@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
+import { authFnPasswordPlugin } from '@authfn/password';
+import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
+import { issueSession } from '../core/sessions.js';
+import { createUser } from '../core/users.js';
 import {
-  authFnPasswordPlugin,
-  createAuthFn,
-  createUser,
   getPasswordCredentialByUserId,
-  issueSession,
   signInWithPassword,
-  updatePasswordCredential,
-  type AuthFnEvent,
-  type AuthFnConfig
-} from '../index.js';
+  updatePasswordCredential
+} from '../core/passwords.js';
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
@@ -26,10 +25,10 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
     .join('; ');
 }
 
-describe('@authfn/core password plugin', () => {
+describe('authfn password plugin', () => {
   it('signs up with password, stores a hash, and issues a session cookie pair', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const response = await auth.router.handle(
       new Request('https://account.example.com/auth/sign-up/password', {
@@ -73,7 +72,7 @@ describe('@authfn/core password plugin', () => {
 
   it('rejects wrong passwords with the canonical credentials error and no session cookie', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     await auth.router.handle(
       new Request('https://account.example.com/auth/sign-up/password', {
@@ -116,7 +115,7 @@ describe('@authfn/core password plugin', () => {
   });
 
   it('supports email-verification gating and compromised-password screening when configured', async () => {
-    const auth = createAuthFn({
+    const auth = createTestServer({
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
@@ -222,18 +221,20 @@ describe('@authfn/core password plugin', () => {
 
   it('links a password credential only for the authenticated same verified user', async () => {
     const events: AuthFnEvent[] = [];
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       accountLinking: {
         passwordForAuthenticatedUser: true
       },
       observability: {
-        emit: (event) => events.push(event)
+        events: {
+          emit: (event) => events.push(event)
+        }
       },
       plugins: [authFnPasswordPlugin()]
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com',
       emailVerifiedAt: new Date('2026-03-22T00:00:00.000Z')

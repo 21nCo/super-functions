@@ -78,7 +78,7 @@ describe("Phase 10: Plugin Integration Tests", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: taskSchema,
-        db,
+        database: db,
         plugins: [createFilterPlugin()],
       });
 
@@ -143,7 +143,7 @@ describe("Phase 10: Plugin Integration Tests", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: taskSchema,
-        db,
+        database: db,
         plugins: [createForbiddenPlugin()],
       });
 
@@ -183,7 +183,7 @@ describe("Phase 10: Plugin Integration Tests", () => {
       };
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema,
-        db,
+        database: db,
         searchProvider: createSearchProvider(),
       });
 
@@ -254,7 +254,7 @@ describe("Phase 10: Plugin Integration Tests", () => {
       };
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema,
-        db,
+        database: db,
       });
 
       const response = await server.router.handle(

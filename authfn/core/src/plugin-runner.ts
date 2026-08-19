@@ -1,12 +1,12 @@
 import type { Route } from '@superfunctions/http';
 import type {
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnError,
   AuthFnAccountDeletionResult,
   AuthFnHookContext,
   AuthFnHookFailurePolicy,
   AuthFnHooks,
-  AuthFnPlugin,
+  AuthFnAnyPlugin,
   AuthFnPluginRuntimeContext,
   AuthFnSession
 } from './types.js';
@@ -38,7 +38,7 @@ export interface AuthFnPluginRunner {
 }
 
 export function createPluginRuntimeContext(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks> = config.hooks ?? {}
 ): AuthFnPluginRuntimeContext {
   return {
@@ -46,25 +46,25 @@ export function createPluginRuntimeContext(
     namespace: config.namespace ?? 'authfn',
     basePath: config.basePath ?? '/auth',
     hooks,
-    runtimeResolver: config.runtime
+    environment: config.environment
   };
 }
 
-export function validatePlugins(config: AuthFnConfig): void {
+export function validatePlugins(config: AuthFnRuntimeConfig): void {
   for (const plugin of config.plugins) {
     plugin.validateConfig?.(config);
   }
 }
 
 export function composePluginRoutes(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks> = composePluginHooks(config)
 ): Route[] {
   const runtimeContext = createPluginRuntimeContext(config, hooks);
   return config.plugins.flatMap((plugin) => plugin.routes?.(runtimeContext) ?? []);
 }
 
-export function composePluginHooks(config: AuthFnConfig): Partial<AuthFnHooks> {
+export function composePluginHooks(config: AuthFnRuntimeConfig): Partial<AuthFnHooks> {
   return {
     beforeUserCreate: async (ctx, input) =>
       runBeforeHooks(config.plugins, config, config.hooks, 'beforeUserCreate', ctx, input),
@@ -89,7 +89,7 @@ export function composePluginHooks(config: AuthFnConfig): Partial<AuthFnHooks> {
   };
 }
 
-export function createPluginRunner(config: AuthFnConfig): AuthFnPluginRunner {
+export function createPluginRunner(config: AuthFnRuntimeConfig): AuthFnPluginRunner {
   validatePlugins(config);
   const hooks = composePluginHooks(config);
   return {
@@ -99,8 +99,8 @@ export function createPluginRunner(config: AuthFnConfig): AuthFnPluginRunner {
 }
 
 async function runBeforeHooks(
-  plugins: readonly AuthFnPlugin[],
-  config: AuthFnConfig,
+  plugins: readonly AuthFnAnyPlugin[],
+  config: AuthFnRuntimeConfig,
   configHooks: Partial<AuthFnHooks> | undefined,
   hookName: BeforeHookName,
   ctx: AuthFnHookContext,
@@ -185,8 +185,8 @@ async function runBeforeHooks(
 }
 
 async function runAfterHooks(
-  plugins: readonly AuthFnPlugin[],
-  config: AuthFnConfig,
+  plugins: readonly AuthFnAnyPlugin[],
+  config: AuthFnRuntimeConfig,
   configHooks: Partial<AuthFnHooks> | undefined,
   hookName: AfterHookName,
   ctx: AuthFnHookContext,
@@ -254,7 +254,7 @@ async function runAfterHooks(
 }
 
 function getAfterHookFailurePolicy(
-  plugin: AuthFnPlugin,
+  plugin: AuthFnAnyPlugin,
   hookName: AfterHookName
 ): AuthFnHookFailurePolicy {
   return plugin.hookFailurePolicy?.[hookName] ?? 'observe';

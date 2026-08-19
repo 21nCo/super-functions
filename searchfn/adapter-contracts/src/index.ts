@@ -1,6 +1,7 @@
 export interface SearchDocument {
   id: string | number;
   fields: Record<string, string>;
+  metadata?: Record<string, string | number | boolean | null>;
 }
 
 export interface IndexParams {
@@ -17,6 +18,8 @@ export interface SearchParams {
   fuzzy?: boolean | number;
   prefix?: boolean;
   fieldBoosts?: Record<string, number>;
+  namespaceFilter?: string[];
+  regionFilter?: string[];
   signal?: AbortSignal;
 }
 
@@ -29,6 +32,8 @@ export interface SearchAllParams {
   fuzzy?: boolean | number;
   prefix?: boolean;
   fieldBoosts?: Record<string, number>;
+  namespaceFilter?: string[];
+  regionFilter?: string[];
   signal?: AbortSignal;
 }
 

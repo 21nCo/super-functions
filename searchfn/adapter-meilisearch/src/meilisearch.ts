@@ -10,6 +10,7 @@ import type {
   InitializeParams,
 } from "@searchfn/adapter-contracts";
 import { SearchAdapterError, SEARCH_ADAPTER_DISPOSED } from "@searchfn/adapter-contracts";
+import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
 import { MeiliClient, type MeiliRetryPolicy, type AdapterLogger } from "./meili-client";
 import { createHash } from "node:crypto";
 
@@ -20,7 +21,7 @@ export interface MeilisearchAdapterOptions {
   requestTimeoutMs?: number;
   taskTimeoutMs?: number;
   retry?: MeiliRetryPolicy;
-  logger?: AdapterLogger;
+  observability?: ObservabilityInput;
   /** Construct-time defaults applied when query params are omitted. */
   defaults?: SearchDefaults;
 }
@@ -67,13 +68,16 @@ export class MeilisearchAdapter implements SearchAdapter {
   private readonly resources = new Map<string, string[]>();
 
   constructor(public readonly options: MeilisearchAdapterOptions) {
+    const observability = normalizeObservability(options.observability)?.child({
+      component: "searchfn.meilisearch",
+    });
     this.client = new MeiliClient({
       host: options.host,
       apiKey: options.apiKey,
       requestTimeoutMs: options.requestTimeoutMs,
       taskTimeoutMs: options.taskTimeoutMs,
       retry: options.retry,
-      logger: options.logger,
+      logger: adapterLoggerFromObservability(observability?.logger),
     });
     this.indexPrefix = options.indexPrefix ?? "searchfn";
     this.defaults = options.defaults ?? {};
@@ -250,4 +254,13 @@ export class MeilisearchAdapter implements SearchAdapter {
   async dispose(): Promise<void> {
     this.disposed = true;
   }
+}
+
+function adapterLoggerFromObservability(logger: ObservationLogger | undefined): AdapterLogger | undefined {
+  if (!logger) return undefined;
+  return {
+    debug: (message, context) => logger.debug?.(message, context),
+    warn: (message, context) => logger.warn?.(message, context),
+    error: (message, context) => logger.error?.(message, context),
+  };
 }

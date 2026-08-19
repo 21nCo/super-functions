@@ -16,6 +16,8 @@ const INTERNAL_OPERATOR_MAP: Record<InternalCrudOperator, string> = {
   gte: '>=',
   lt: '<',
   lte: '<=',
+  in: 'IN',
+  not_in: 'NOT IN',
 };
 
 export function assertInternalTableName(name: string): void {
@@ -56,6 +58,22 @@ export function parseInternalOrderBy(
 
 export function internalOperatorSql(op: InternalCrudOperator): string {
   return INTERNAL_OPERATOR_MAP[op];
+}
+
+export function isInternalListOperator(
+  op: InternalCrudOperator,
+): op is 'in' | 'not_in' {
+  return op === 'in' || op === 'not_in';
+}
+
+export function internalListOperatorValues(
+  value: unknown,
+  op: InternalCrudOperator,
+): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`Internal CRUD ${op} operator value must be an array`);
+  }
+  return value;
 }
 
 export function quoteInternalIdentifier(

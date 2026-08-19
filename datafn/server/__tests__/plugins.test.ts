@@ -106,7 +106,7 @@ async function makeRequest(
   const db = memoryAdapter({ namespace: "datafn" });
   const server = await createDatafnServer({ allowUnknownResources: true,
     schema,
-    db,
+    database: db,
     plugins,
   });
 
@@ -126,7 +126,7 @@ describe("Phase 10: Server Plugin Execution", () => {
       const plugins = [createAddFilterIsArchivedFalsePlugin()];
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
         plugins,
       });
 
@@ -222,7 +222,7 @@ describe("Phase 10: Server Plugin Execution", () => {
       const db = memoryAdapter({ namespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: dfqlSchema,
-        db,
+        database: db,
         searchProvider: createSearchProvider(),
       });
 
@@ -308,7 +308,7 @@ describe("Phase 10: Server Plugin Execution", () => {
       const server = await createDatafnServer({
         allowUnknownResources: true,
         schema: dfqlSchema,
-        db,
+        database: db,
       });
 
       await server.router.handle(

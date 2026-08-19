@@ -9,6 +9,8 @@ export interface SearchProvider {
     prefix?: boolean;
     fuzzy?: boolean | number;
     fieldBoosts?: Record<string, number>;
+    namespaceFilter?: string[];
+    regionFilter?: string[];
     signal?: AbortSignal;
   }): Promise<string[]>;
   searchAll?(params: {
@@ -20,6 +22,8 @@ export interface SearchProvider {
     prefix?: boolean;
     fuzzy?: boolean | number;
     fieldBoosts?: Record<string, number>;
+    namespaceFilter?: string[];
+    regionFilter?: string[];
     signal?: AbortSignal;
   }): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: {
@@ -27,6 +31,8 @@ export interface SearchProvider {
     records: Record<string, unknown>[];
     operation: "upsert" | "delete";
   }): Promise<void>;
+  /** Clear one resource before a full rebuild so removed documents cannot survive. */
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: {
     resources: Array<{ name: string; searchFields: string[] }>;
   }): Promise<void>;

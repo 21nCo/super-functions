@@ -9,7 +9,7 @@ authfn ships a first-party SDK for every supported runtime. Pick the right one f
 
 | Layer | Package | Role |
 | --- | --- | --- |
-| Server kernel (Node) | [`@authfn/core`](./core) | Compose the auth runtime, mount on Hono / Express / Bun / SvelteKit / Next.js. |
+| Server kernel (Node) | [`authfn`](./core) | Declare the app, inject runtime dependencies, and mount on Hono / Express / Bun / SvelteKit / Next.js. |
 | TypeScript client | [`@authfn/client`](./client) | Browser, Node, Bun, Deno HTTP client. |
 | Svelte bindings | [`@authfn/svelte`](./svelte) | Stores, context, SvelteKit helpers. |
 | Python kernel | [`authfn`](./python) (PyPI) | Compose the auth runtime, mount on FastAPI / Flask / Starlette. |
@@ -23,7 +23,7 @@ All SDKs speak the **same wire contract**: same paths, same envelopes, same erro
 
 The contract is enforced in CI:
 
-- `@authfn/core` writes its OpenAPI snapshot.
+- `authfn` writes its OpenAPI snapshot.
 - The Python kernel diffs against it.
 - The Swift client tests run against a synthetic Node server.
 

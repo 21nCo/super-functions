@@ -27,7 +27,7 @@
     "validate:no-external-network": "npm run build && node ./dist/e2e/validate-no-external-network.js"
   },
   "dependencies": {
-    "@authfn/core": "*",
+    "authfn": "*",
     "@superfunctions/http": "*",
     "@superfunctions/http-express": "*",
     "express": "^4.21.2"

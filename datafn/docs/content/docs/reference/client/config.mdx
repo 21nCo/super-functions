@@ -34,8 +34,36 @@ interface DatafnClientConfig {
 
   /** Optional search provider for client-side search query routing. */
   searchProvider?: SearchProvider;
+
+  /** Default timezone resolution for temporal queries and the client.temporal API. */
+  temporal?: DatafnTemporalConfig & { detectTimezone?: () => string | undefined };
 }
 ```
+
+## temporal
+
+Default timezone configuration for [temporal](/docs/dfql/temporal) queries and the [`client.temporal`](/docs/reference/client/temporal) API.
+
+```typescript
+interface DatafnTemporalConfig {
+  /** Default timezone for "user" resolution (static or function). */
+  timezone?: string | (() => string | undefined);
+
+  /** Custom resolver, consulted before the timezone-change registry. */
+  timezoneResolver?: DatafnTemporalTimezoneResolver;
+
+  /** First day of week for week-scale buckets (0=Sunday … 6=Saturday). Default 1. */
+  weekStartsOn?: number;
+}
+
+// Client extension:
+temporal?: DatafnTemporalConfig & {
+  /** Detects the device timezone, e.g. via Intl. */
+  detectTimezone?: () => string | undefined;
+};
+```
+
+The client merges this configuration with `datafnTimezoneChange` records in storage and (when provided) browser detection. When a query uses `timezone: "user"`, resolution falls back through `timezoneResolver`, the registry, then `timezone`. See [`client.temporal`](/docs/reference/client/temporal) for managing the registry.
 
 ## DatafnSyncConfig
 
@@ -232,12 +260,13 @@ interface SearchProvider {
   search(params: SearchParams): Promise<string[]>;
   searchAll?(params: SearchAllParams): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: UpdateIndicesParams): Promise<void>;
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: { resources: Array<{ name: string; searchFields: string[] }> }): Promise<void>;
   dispose?(): Promise<void>;
 }
 ```
 
-At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
+At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. When a persisted index fingerprint changes, DataFn calls `searchProvider.clearIndices()` before rebuilding; custom persistent providers must implement it. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
 
 Two common setups are supported:
 

@@ -5,10 +5,12 @@ import {
   validateSchema,
   unwrapEnvelope,
   ensureBuiltinKv,
+  ensureBuiltinTemporal,
   isNamespaced,
   resolveCapabilities,
   getCapabilityFields,
   RELATION_CAPABILITY_FIELD_DEFS,
+  getRelationJoinTableName as resolveRelationJoinTableName,
 } from "@datafn/core";
 
 export type Dialect = "postgres" | "mysql" | "sqlite";
@@ -20,7 +22,7 @@ export function generateDrizzleSchema(
   schemaInput: unknown,
   dialect: Dialect,
 ): string {
-  const schema = ensureBuiltinKv(unwrapEnvelope(validateSchema(schemaInput)));
+  const schema = ensureBuiltinTemporal(ensureBuiltinKv(unwrapEnvelope(validateSchema(schemaInput))));
   const lines: string[] = [];
   const usedImports = new Set<string>();
   const tableConstructor = getTableConstructor(dialect);
@@ -36,6 +38,7 @@ export function generateDrizzleSchema(
   const resources = [...schema.resources].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const relationFkColumnsByResource = buildRelationFkColumnsByResource(schema);
   const shareableResources: string[] = [];
 
   const nsEnabled = isNamespaced(schema);
@@ -46,7 +49,47 @@ export function generateDrizzleSchema(
     tableExports.push(varName);
     usedImports.add(tableConstructor);
 
-    const fields = ensureIdField(resource.fields).sort((a, b) =>
+    const relationFkColumns = relationFkColumnsByResource.get(resource.name) ?? [];
+    const declaredFieldNames = new Set(resource.fields.map((field) => field.name));
+    const generatedRelationFields = relationFkColumns.flatMap((entry): DatafnFieldSchema[] => {
+      const fieldsToAdd: DatafnFieldSchema[] = [];
+      if (!declaredFieldNames.has(entry.field)) {
+        fieldsToAdd.push({
+          name: entry.field,
+          type: "string",
+          required: false,
+          nullable: true,
+        });
+      }
+      if (entry.resourceField && !declaredFieldNames.has(entry.resourceField)) {
+        fieldsToAdd.push({
+          name: entry.resourceField,
+          type: "string",
+          required: false,
+          nullable: true,
+        });
+      }
+      if (entry.pathField && !declaredFieldNames.has(entry.pathField)) {
+        fieldsToAdd.push({
+          name: entry.pathField,
+          type: "string",
+          required: false,
+          nullable: true,
+        });
+      }
+      return fieldsToAdd;
+    });
+    const generatedFieldNames = new Set<string>();
+    const fields = ensureIdField([
+      ...resource.fields,
+      ...generatedRelationFields.filter((field) => {
+        if (declaredFieldNames.has(field.name) || generatedFieldNames.has(field.name)) {
+          return false;
+        }
+        generatedFieldNames.add(field.name);
+        return true;
+      }),
+    ]).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
     const resolvedCapabilities = resolveCapabilities(
@@ -89,8 +132,12 @@ export function generateDrizzleSchema(
       resource.indices &&
       typeof resource.indices === "object" &&
       !Array.isArray(resource.indices) &&
+      "base" in resource.indices &&
       resource.indices.base?.length;
     const hasExplicitIdField = fields.some((field) => field.name === "id");
+    const relationForeignKeys = relationFkColumns
+      .filter((entry) => shouldEmitForeignKey(schema, entry.relation))
+      .filter((entry) => Boolean(entry.targetResource));
 
     lines.push(`export const ${varName} = ${tableConstructor}("${tableName}", {`);
 
@@ -111,7 +158,12 @@ export function generateDrizzleSchema(
       lines.push(`  ${renderTsObjectKey(field.name)}: ${colDef},`);
     }
 
-    const needsIndexCallback = hasBaseIndices || nsEnabled || hasShareable;
+    const needsIndexCallback =
+      hasBaseIndices ||
+      nsEnabled ||
+      hasShareable ||
+      relationFkColumns.length > 0 ||
+      relationForeignKeys.length > 0;
 
     if (needsIndexCallback) {
       usedImports.add("index");
@@ -137,6 +189,20 @@ export function generateDrizzleSchema(
         lines.push(
           `  index("idx_${tableName}_created_by_visibility").on(${tableAccessor("createdBy")}, ${tableAccessor("visibility")}),`,
         );
+      }
+      for (const entry of relationFkColumns) {
+        const indexColumns = relationIndexColumns(entry, nsEnabled);
+        lines.push(`  index("${tableName}_${camelToSnake(entry.field)}_rel_idx").on(${indexColumns}),`);
+        if (entry.pathField) {
+          const pathColumns = nsEnabled
+            ? joinIndexColumnList(["__ns", entry.pathField])
+            : joinIndexColumnList([entry.pathField]);
+          lines.push(`  index("${tableName}_${camelToSnake(entry.pathField)}_rel_idx").on(${pathColumns}),`);
+        }
+      }
+      for (const entry of relationForeignKeys) {
+        usedImports.add("foreignKey");
+        lines.push(`  ${buildForeignKeyDefinition(entry, nsEnabled)},`);
       }
       lines.push(`]);`);
     } else {
@@ -268,19 +334,28 @@ export function generateDrizzleSchema(
   const sortedRelations = [...relations]
     .filter((rel) => rel.type === "many-many")
     .sort((a, b) => {
-      const aName = getJoinTableName(a);
-      const bName = getJoinTableName(b);
+      const aName = resolveRelationJoinTableName(a);
+      const bName = resolveRelationJoinTableName(b);
       return aName.localeCompare(bName);
     });
 
   for (const rel of sortedRelations) {
-    const jtName = getJoinTableName(rel);
+    const jtName = resolveRelationJoinTableName(rel);
     const varName = sanitizeVarName(jtName);
     tableExports.push(varName);
     usedImports.add(tableConstructor);
 
     const fromCol = rel.joinColumns?.from ?? "from";
     const toCol = rel.joinColumns?.to ?? "to";
+    const fromResources = endpointListOf(rel.from);
+    const toResources = endpointListOf(rel.to);
+    const hasPolymorphicFrom = fromResources.length > 1;
+    const hasPolymorphicTo = toResources.length > 1;
+    const metadataFieldNames = new Set(
+      (rel.metadata ?? []).map((field) => field.name),
+    );
+    const emitManyManyFromForeignKey = shouldEmitForeignKey(schema, rel) && !hasPolymorphicFrom;
+    const emitManyManyToForeignKey = shouldEmitForeignKey(schema, rel) && !hasPolymorphicTo;
 
     lines.push(`export const ${varName} = ${tableConstructor}("${jtName}", {`);
 
@@ -317,8 +392,26 @@ export function generateDrizzleSchema(
       },
     );
 
+    if (hasPolymorphicFrom && !metadataFieldNames.has("fromResource")) {
+      usedImports.add("text");
+      joinFields.push({
+        name: "fromResource",
+        def: `text("from_resource").notNull()`,
+      });
+    }
+    if (hasPolymorphicTo && !metadataFieldNames.has("toResource")) {
+      usedImports.add("text");
+      joinFields.push({
+        name: "toResource",
+        def: `text("to_resource").notNull()`,
+      });
+    }
+
     if (rel.metadata) {
       for (const meta of rel.metadata) {
+        const isDeclaredDiscriminator =
+          (meta.name === "fromResource" && hasPolymorphicFrom) ||
+          (meta.name === "toResource" && hasPolymorphicTo);
         joinFields.push({
           name: meta.name,
           def: buildSimpleColumn(
@@ -326,7 +419,7 @@ export function generateDrizzleSchema(
             meta.type,
             dialect,
             usedImports,
-            false,
+            isDeclaredDiscriminator,
           ),
         });
       }
@@ -360,18 +453,35 @@ export function generateDrizzleSchema(
 
     const fromSnake = camelToSnake(fromCol);
     const toSnake = camelToSnake(toCol);
+    const identityColumns = rel.identityMetadata ?? [];
     usedImports.add("uniqueIndex");
+    usedImports.add("index");
     lines.push(`}, (table) => [`);
     if (nsEnabled) {
-      usedImports.add("index");
       usedImports.add("primaryKey");
       lines.push(`  primaryKey({ columns: [table.__ns, table.id] }),`);
       lines.push(`  index("idx_${jtName}___ns").on(table.__ns),`);
     }
     const uniqueColumns = nsEnabled
-      ? `table.__ns, ${tableAccessor(fromCol)}, ${tableAccessor(toCol)}`
-      : `${tableAccessor(fromCol)}, ${tableAccessor(toCol)}`;
+      ? joinIndexColumnList(["__ns", hasPolymorphicFrom ? "fromResource" : undefined, fromCol, hasPolymorphicTo ? "toResource" : undefined, toCol, ...identityColumns])
+      : joinIndexColumnList([hasPolymorphicFrom ? "fromResource" : undefined, fromCol, hasPolymorphicTo ? "toResource" : undefined, toCol, ...identityColumns]);
     lines.push(`  uniqueIndex("${jtName}_${fromSnake}_${toSnake}_idx").on(${uniqueColumns}),`);
+    const fromIndexColumns = nsEnabled
+      ? joinIndexColumnList(["__ns", hasPolymorphicFrom ? "fromResource" : undefined, fromCol])
+      : joinIndexColumnList([hasPolymorphicFrom ? "fromResource" : undefined, fromCol]);
+    const toIndexColumns = nsEnabled
+      ? joinIndexColumnList(["__ns", hasPolymorphicTo ? "toResource" : undefined, toCol])
+      : joinIndexColumnList([hasPolymorphicTo ? "toResource" : undefined, toCol]);
+    lines.push(`  index("${jtName}_${fromSnake}_idx").on(${fromIndexColumns}),`);
+    lines.push(`  index("${jtName}_${toSnake}_idx").on(${toIndexColumns}),`);
+    if (emitManyManyFromForeignKey) {
+      usedImports.add("foreignKey");
+      lines.push(`  ${buildJoinForeignKeyDefinition(fromCol, fromResources[0], "from", rel, nsEnabled)},`);
+    }
+    if (emitManyManyToForeignKey) {
+      usedImports.add("foreignKey");
+      lines.push(`  ${buildJoinForeignKeyDefinition(toCol, toResources[0], "to", rel, nsEnabled)},`);
+    }
     lines.push(`]);`);
     lines.push("");
   }
@@ -460,7 +570,7 @@ function renderTsObjectKey(name: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
-function ensureIdField(fields: DatafnFieldSchema[]): DatafnFieldSchema[] {
+function ensureIdField(fields: readonly DatafnFieldSchema[]): DatafnFieldSchema[] {
   if (fields.some((field) => field.name === "id")) {
     return [...fields];
   }
@@ -703,10 +813,205 @@ function getEpochColumnType(
   return { call: `bigint("${sqlName}", { mode: "number" })`, importName: "bigint" };
 }
 
-function getJoinTableName(rel: DatafnRelationSchema): string {
-  if (rel.joinTable) return rel.joinTable;
+type RelationFkColumn = {
+  resource: string;
+  field: string;
+  relation: DatafnRelationSchema;
+  targetResource?: string;
+  targetSide: "from" | "to";
+  resourceField?: string;
+  pathField?: string;
+};
 
-  const from = Array.isArray(rel.from) ? rel.from[0] : rel.from;
-  const relation = rel.relation ?? (Array.isArray(rel.to) ? rel.to[0] : rel.to);
-  return `__datafn_join_${from}_${relation}`;
+function endpointListOf(endpoint: string | readonly string[]): string[] {
+  return typeof endpoint === "string" ? [endpoint] : [...endpoint];
+}
+
+function firstEndpointOf(endpoint: string | readonly string[]): string {
+  return typeof endpoint === "string" ? endpoint : endpoint[0];
+}
+
+function resolveRelationIntegrity(
+  schema: DatafnSchema,
+  relation: DatafnRelationSchema,
+): string {
+  return relation.integrity ?? schema.relationIntegrity ?? "application";
+}
+
+function shouldEmitForeignKey(
+  schema: DatafnSchema,
+  relation: DatafnRelationSchema,
+): boolean {
+  const mode = resolveRelationIntegrity(schema, relation);
+  return mode === "database";
+}
+
+function fkFieldForOneMany(relation: DatafnRelationSchema): string {
+  return relation.fkField || relation.inverse || `${firstEndpointOf(relation.from)}Id`;
+}
+
+function htreeFkField(relation: DatafnRelationSchema): string {
+  return relation.fkField || relation.inverse || "parentId";
+}
+
+function htreePathField(relation: DatafnRelationSchema): string {
+  return relation.pathField || "parentPath";
+}
+
+function fkResourceFieldForRelation(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string {
+  if (relation.fkResourceField) return relation.fkResourceField;
+  if (relation.type === "htree") {
+    return `${htreeFkField(relation).replace(/Id$/, "")}Resource`;
+  }
+  const base = side === "to"
+    ? (relation.relation || "target")
+    : (relation.inverse || relation.relation || "source");
+  return `${base.replace(/Id$/, "")}Resource`;
+}
+
+function buildRelationFkColumnsByResource(
+  schema: DatafnSchema,
+): Map<string, RelationFkColumn[]> {
+  const byResource = new Map<string, RelationFkColumn[]>();
+  const add = (entry: RelationFkColumn) => {
+    const entries = byResource.get(entry.resource) ?? [];
+    if (!entries.some((existing) => existing.field === entry.field && existing.relation === entry.relation)) {
+      entries.push(entry);
+    }
+    byResource.set(entry.resource, entries);
+  };
+
+  for (const relation of schema.relations ?? []) {
+    if (relation.type === "many-one") {
+      const toResources = endpointListOf(relation.to);
+      const targetResource = toResources.length === 1 ? toResources[0] : undefined;
+      const resourceField = toResources.length > 1
+        ? fkResourceFieldForRelation(relation, "to")
+        : undefined;
+      for (const resource of endpointListOf(relation.from)) {
+        add({
+          resource,
+          field: relation.fkField || `${relation.relation}Id`,
+          relation,
+          targetResource,
+          targetSide: "to",
+          resourceField,
+        });
+      }
+    } else if (relation.type === "one-many") {
+      const fromResources = endpointListOf(relation.from);
+      const targetResource = fromResources.length === 1 ? fromResources[0] : undefined;
+      const resourceField = fromResources.length > 1
+        ? fkResourceFieldForRelation(relation, "from")
+        : undefined;
+      for (const resource of endpointListOf(relation.to)) {
+        add({
+          resource,
+          field: fkFieldForOneMany(relation),
+          relation,
+          targetResource,
+          targetSide: "from",
+          resourceField,
+        });
+      }
+    } else if (relation.type === "htree") {
+      const fromResources = endpointListOf(relation.from);
+      const targetResource = fromResources.length === 1 ? fromResources[0] : undefined;
+      const resourceField = fromResources.length > 1
+        ? fkResourceFieldForRelation(relation, "from")
+        : undefined;
+      for (const resource of endpointListOf(relation.to)) {
+        add({
+          resource,
+          field: htreeFkField(relation),
+          relation,
+          targetResource,
+          targetSide: "from",
+          resourceField,
+          pathField: htreePathField(relation),
+        });
+      }
+    }
+  }
+
+  return byResource;
+}
+
+function joinIndexColumnList(columns: Array<string | undefined>): string {
+  return columns
+    .filter((column): column is string => Boolean(column))
+    .map((column) => tableAccessor(column))
+    .join(", ");
+}
+
+function relationIndexColumns(entry: RelationFkColumn, namespaced: boolean): string {
+  return namespaced
+    ? joinIndexColumnList(["__ns", entry.resourceField, entry.field])
+    : joinIndexColumnList([entry.resourceField, entry.field]);
+}
+
+function resolveDeletePolicy(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string | undefined {
+  const policy = relation.onDelete;
+  if (typeof policy === "string") return policy;
+  if (policy && typeof policy === "object") return policy[side];
+  return undefined;
+}
+
+function relationForeignKeyDeleteAction(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string | undefined {
+  const policy = resolveDeletePolicy(relation, side);
+  if (policy === "cascade") return "cascade";
+  if (policy === "restrict") return "restrict";
+  if (policy === "setNull" || policy === "detach") return "set null";
+  return undefined;
+}
+
+function joinForeignKeyDeleteAction(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string | undefined {
+  const policy = resolveDeletePolicy(relation, side);
+  if (policy === "restrict") return "restrict";
+  if (policy === "cascade" || policy === "detach" || policy === "setNull") return "cascade";
+  return undefined;
+}
+
+function buildForeignKeyDefinition(entry: RelationFkColumn, namespaced: boolean): string {
+  const targetTable = sanitizeVarName(entry.targetResource!);
+  const columns = namespaced
+    ? `[table.__ns, ${tableAccessor(entry.field)}]`
+    : `[${tableAccessor(entry.field)}]`;
+  const foreignColumns = namespaced
+    ? `[${targetTable}.__ns, ${targetTable}.id]`
+    : `[${targetTable}.id]`;
+  const action = relationForeignKeyDeleteAction(entry.relation, entry.targetSide);
+  const definition = `foreignKey({ columns: ${columns}, foreignColumns: ${foreignColumns} })`;
+  return action ? `${definition}.onDelete(${JSON.stringify(action)})` : definition;
+}
+
+function buildJoinForeignKeyDefinition(
+  column: string,
+  resource: string,
+  side: "from" | "to",
+  relation: DatafnRelationSchema,
+  namespaced: boolean,
+): string {
+  const targetTable = sanitizeVarName(resource);
+  const columns = namespaced
+    ? `[table.__ns, ${tableAccessor(column)}]`
+    : `[${tableAccessor(column)}]`;
+  const foreignColumns = namespaced
+    ? `[${targetTable}.__ns, ${targetTable}.id]`
+    : `[${targetTable}.id]`;
+  const action = joinForeignKeyDeleteAction(relation, side);
+  const definition = `foreignKey({ columns: ${columns}, foreignColumns: ${foreignColumns} })`;
+  return action ? `${definition}.onDelete(${JSON.stringify(action)})` : definition;
 }

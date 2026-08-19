@@ -2,7 +2,12 @@ export type {
   DatafnFieldSchema,
   DatafnHookContext,
   DatafnLogger,
+  DatafnDefaultPermissionsFieldMode,
+  DatafnDefaultPermissionsPolicy,
   DatafnPermissionsPolicy,
+  DatafnRelationDeletePolicies,
+  DatafnRelationDeletePolicy,
+  DatafnRelationIntegrityMode,
   DatafnPlugin,
   DatafnRelationSchema,
   DatafnResourceSchema,
@@ -12,6 +17,8 @@ export type { CapabilityEntry } from "@datafn/core/capabilities";
 export type { DatafnEnvelope, DatafnError, DatafnErrorCode } from "@datafn/core/errors";
 export type { NormalizedRelation } from "@datafn/core/relations";
 export type { SortTerm } from "@datafn/core/sort";
+import type { ObservabilityConfigInput, ObservabilityInput } from "@superfunctions/observability";
+import type { DataFnEvent } from "./events.js";
 
 export interface HookError {
   code: string;
@@ -37,22 +44,24 @@ export interface RetentionConfig {
 export interface RateLimitConfig<TContext = any> {
   /** Enable rate limiting. Default: false. */
   enabled: boolean;
+  /** Store guarantee for rate limiting. Default: "strict" when stores.atomicKv exists, otherwise "local". */
+  mode?: "strict" | "best-effort" | "local";
   /** Max requests per window per client. Default: 100. */
   maxRequests?: number;
   /** Window duration in seconds. Default: 60. */
   windowSeconds?: number;
   /** Per-endpoint overrides */
   endpoints?: Partial<Record<
-    'query' | 'mutation' | 'transact' | 'push' | 'pull' | 'clone' | 'reconcile' | 'seed',
+    'query' | 'mutation' | 'transact' | 'push' | 'pull' | 'clone' | 'reconcile' | 'seed' | 'search',
     { maxRequests: number; windowSeconds: number }
   >>;
   /** Key extractor for identifying clients. Default: uses authContext userId or "anonymous". */
   keyExtractor?: (ctx: TContext) => string | Promise<string>;
 }
 
-export interface ObservabilityConfig {
+export type ObservabilityConfig = ObservabilityInput<DataFnEvent> | (ObservabilityConfigInput<DataFnEvent> & {
   /** Emit execution timing events. Default: false. */
   timing?: boolean;
   /** Custom timing event handler. Default: console.debug. */
   onTiming?: (event: import("./middleware/timing.js").ExecutionTimingEvent) => void;
-}
+});

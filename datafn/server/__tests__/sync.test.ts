@@ -16,7 +16,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 
@@ -324,7 +324,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: relSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Seed initial records
@@ -456,7 +456,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: relSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Seed
@@ -781,7 +781,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: schemaWithRemoteOnly as any,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const res = await server.router.handle(
@@ -1311,15 +1311,15 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const idOnlyStub = taskRecords.find((r: any) => r.id === "task:10" && Object.keys(r).length === 1);
     expect(idOnlyStub).toBeUndefined();
 
-    // The FK change SHOULD appear in merged[] as a partial { id, goalId: "goal:2" }
+    // The FK change SHOULD appear in merged[] with the persisted record so clients
+    // do not lose unrelated fields while applying the relation update.
     expect(pullBody.result.merged).toBeDefined();
     expect(pullBody.result.merged.task).toBeDefined();
     const fkDelta = pullBody.result.merged.task.find((r: any) => r.id === "task:10");
     expect(fkDelta).toBeDefined();
     expect(fkDelta.goalId).toBe("goal:2"); // FK was updated
-    // Merge delta must NOT contain other fields (it is partial — only the FK)
-    expect(fkDelta.label).toBeUndefined();
-    expect(fkDelta.priority).toBeUndefined();
+    expect(fkDelta.label).toBe("My task");
+    expect(fkDelta.priority).toBe(5);
   });
 
   it("TV-REL-MANYOONE-UNRELATE-001: many-one unrelate clears FK via merge delta (no id-only stub)", async () => {
@@ -1614,7 +1614,7 @@ describe("hasMore field in canonical pull response (CLIENT-PULL-001)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: simpleSchema as any,
       limits: { maxLimit: 500, maxPullLimit: 200 },
-      db,
+      database: db,
     });
   }
 
@@ -1788,7 +1788,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     let insertCount = 0;
@@ -1945,7 +1945,7 @@ describe("TST-005 (sync): Concurrent push produces correct ordering", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     const makePushReq = (clientId: string, mutations: any[]) =>
@@ -1994,7 +1994,7 @@ describe("TST-005 (sync): Concurrent push produces correct ordering", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     const mutation = {
@@ -2073,7 +2073,7 @@ describe("MRG-003: push merge race retry behavior", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db: db as any,
+      database: db as any,
     });
 
     const res = await server.router.handle(
@@ -2141,7 +2141,7 @@ describe("MRG-003: push merge race retry behavior", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db: db as any,
+      database: db as any,
     });
 
     const res = await server.router.handle(
@@ -2166,8 +2166,9 @@ describe("MRG-003: push merge race retry behavior", () => {
     );
 
     const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.result.ok).toBe(true);
+    expect(res.status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(body.result.ok).toBe(false);
     expect(body.result.applied).not.toContain("m-race-fail");
     expect(body.result.errors).toEqual(
       expect.arrayContaining([

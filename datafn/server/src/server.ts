@@ -4,13 +4,19 @@
  */
 
 import type { RetentionConfig, RateLimitConfig, ObservabilityConfig } from "./core-types.js";
-import type { DatafnPlugin, DatafnResourceSchema, DatafnSchema } from "@datafn/core/types";
+import type {
+  DatafnPlugin,
+  DatafnRelationSchema,
+  DatafnResourceSchema,
+  DatafnSchema,
+} from "@datafn/core/types";
 import type { SearchProvider } from "./search-provider.js";
-import { validateSchema, ensureBuiltinKv, isNamespaced } from "@datafn/core";
-import { createRouter, type Router, type Route, type RouteHandler } from "@superfunctions/http";
-import type { Adapter, RedisAdapter, KVStoreAdapter, RowLevelNamespaceConfig } from "@superfunctions/db";
-import { wrapWithRowLevelNamespace } from "@superfunctions/db";
-import type { DbMapping, SequenceStore } from "./execution/sync/sequence-store.js";
+import { validateSchema, ensureBuiltinKv, ensureBuiltinTemporal, isNamespaced } from "@datafn/core";
+import { createObservabilityMiddleware, createRouter, type Router, type Route, type RouteHandler } from "@superfunctions/http";
+import type { Adapter, RowLevelNamespaceConfig, RuntimeStores } from "@superfunctions/db";
+import { instrumentAdapter, instrumentKVStore, wrapWithRowLevelNamespace } from "@superfunctions/db";
+import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
+import type { SequenceStore, SequenceStorePolicy } from "./execution/sync/sequence-store.js";
 import { createSequenceStore } from "./execution/sync/sequence-store.js";
 import { createStatusHandler } from "./routes/status.js";
 import { createQueryHandler } from "./routes/query.js";
@@ -39,7 +45,8 @@ import { parseJsonBody } from "./http/json.js";
 import { WebSocketManager, type WebSocketClient, type WsAuthContext } from "./ws.js";
 import type { WsManagerConfig } from "./ws.js";
 import {
-  RedisRateLimiter,
+  AtomicRateLimiter,
+  CacheRateLimiter,
   MemoryRateLimiter,
   createRateLimitMiddleware,
 } from "./middleware/rate-limit.js";
@@ -50,21 +57,196 @@ import {
   setSpv2MigrationRuntimeConfig,
   type Spv2MigrationRuntimeConfig,
 } from "./execution/migration/spv2.js";
+import type { DatafnPublicLinksPlugin } from "./plugins/public-links.js";
+import { getDatafnMultiRegionRuntimeConfig } from "./plugins/multi-region.js";
+import type {
+  DataFnAction,
+  DataFnAuthorizationDeniedMetadata,
+  DataFnEvent,
+  DataFnPayloadRejectedMetadata,
+  DataFnRateLimitedMetadata,
+  DataFnRequestEventMetadata,
+  DataFnRequestFailedMetadata,
+} from "./events.js";
+
+type IndexConfig = { search?: readonly string[] };
+
+/** Per-request data available to DataFn route response hooks. */
+export interface DatafnRouteHookInput<TContext = any> {
+  action: DataFnAction;
+  request: Request;
+  context: TContext & { parsedBody?: unknown };
+  payload: unknown;
+  response: Response;
+}
+
+/** Transforms a DataFn HTTP response after route execution. */
+export type DatafnRouteResponseHook<TContext = any> = (
+  input: DatafnRouteHookInput<TContext>,
+) => Response | Promise<Response>;
+
+/** Header tuple entries accepted by DataFn route header hooks. */
+export type DatafnRouteHeaderEntries = [string, string][];
+
+/** Header input accepted by DataFn route header hooks. */
+export type DatafnRouteHeaderInput = Headers | Record<string, string> | DatafnRouteHeaderEntries;
+
+/** Static or computed response headers applied after DataFn route hooks. */
+export type DatafnRouteHeaders<TContext = any> =
+  | DatafnRouteHeaderInput
+  | ((
+    input: DatafnRouteHookInput<TContext>,
+  ) => DatafnRouteHeaderInput | null | undefined | Promise<DatafnRouteHeaderInput | null | undefined>);
+
+/** Route lifecycle hooks for framework-level DataFn HTTP behavior. */
+export interface DatafnRouteHooks<TContext = any> {
+  afterResponse?: DatafnRouteResponseHook<TContext> | readonly DatafnRouteResponseHook<TContext>[];
+  headers?: DatafnRouteHeaders<TContext>;
+}
+
+/** Data provided to server plugins before a DataFn action is authorized and executed. */
+export interface DatafnPluginAuthorizationInput<TContext = any> {
+  action: DataFnAction;
+  request: Request;
+  context: TContext & { parsedBody?: unknown };
+  payload: unknown;
+}
+
+/** Server plugin authorization decisions are fail-closed only when false or an error is returned. */
+export type DatafnPluginAuthorizationResult = boolean | void;
+
+type DatafnServerComposablePlugin = DatafnPlugin & {
+  internalResources?: readonly string[];
+  modelName?: string;
+  withSchema?: (schema: DatafnSchema) => DatafnSchema;
+  routes?: (input: {
+    database: Adapter;
+    crossNamespaceDatabase?: Adapter;
+    schema: DatafnSchema;
+  }) => Route[];
+  authorize?: (
+    input: DatafnPluginAuthorizationInput,
+  ) => Promise<DatafnPluginAuthorizationResult> | DatafnPluginAuthorizationResult;
+};
+
+function isIndexConfig(value: unknown): value is IndexConfig {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function excludeInternalResources(
+  schema: DatafnSchema,
+  internalResourceNames: ReadonlySet<string>,
+): DatafnSchema {
+  if (internalResourceNames.size === 0) {
+    return schema;
+  }
+  return {
+    ...schema,
+    resources: schema.resources.filter((resource) => !internalResourceNames.has(resource.name)),
+    relations: (schema.relations ?? []).filter(
+      (relation) => !relationReferencesInternalResource(relation, internalResourceNames),
+    ),
+  };
+}
+
+function relationReferencesInternalResource(
+  relation: DatafnRelationSchema,
+  internalResourceNames: ReadonlySet<string>,
+): boolean {
+  return [
+    ...normalizeResourceEndpoint(relation.from),
+    ...normalizeResourceEndpoint(relation.to),
+  ].some((resource) => internalResourceNames.has(resource));
+}
+
+function normalizeResourceEndpoint(endpoint: string | readonly string[]): string[] {
+  return typeof endpoint === "string" ? [endpoint] : [...endpoint];
+}
+
+function payloadReferencesInternalResource(
+  payload: unknown,
+  internalResourceNames: ReadonlySet<string>,
+): boolean {
+  if (internalResourceNames.size === 0) {
+    return false;
+  }
+  if (Array.isArray(payload)) {
+    return payload.some((entry) => payloadReferencesInternalResource(entry, internalResourceNames));
+  }
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (typeof record.resource === "string" && internalResourceNames.has(record.resource)) {
+    return true;
+  }
+  if (
+    Array.isArray(record.resources) &&
+    record.resources.some((resource) => typeof resource === "string" && internalResourceNames.has(resource))
+  ) {
+    return true;
+  }
+
+  for (const key of ["mutations", "queries", "steps", "operations"]) {
+    if (Array.isArray(record[key]) && payloadReferencesInternalResource(record[key], internalResourceNames)) {
+      return true;
+    }
+  }
+  for (const key of ["query", "mutation", "payload"]) {
+    if (record[key] && payloadReferencesInternalResource(record[key], internalResourceNames)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizePluginAuthorizationError(
+  error: unknown,
+  pluginName: string,
+): { code: "FORBIDDEN"; message: string; details: Record<string, unknown> } {
+  if (error && typeof error === "object") {
+    const candidate = error as Record<string, unknown>;
+    return {
+      code: "FORBIDDEN",
+      message: typeof candidate.message === "string" ? candidate.message : "Authorization denied",
+      details: {
+        path:
+          candidate.details &&
+          typeof candidate.details === "object" &&
+          !Array.isArray(candidate.details) &&
+          typeof (candidate.details as Record<string, unknown>).path === "string"
+            ? String((candidate.details as Record<string, unknown>).path)
+            : "$",
+        plugin: pluginName,
+      },
+    };
+  }
+  return {
+    code: "FORBIDDEN",
+    message: "Authorization denied",
+    details: { path: "$", plugin: pluginName },
+  };
+}
 
 /**
- * Server configuration
+ * Runtime configuration for a DataFn HTTP server.
  */
 export interface DatafnServerConfig<TContext = any> {
-  /** DataFn schema (will be validated at startup) */
+  /** DataFn schema used to validate resources, relations, fields, permissions, and generated routes at startup. */
   schema: DatafnSchema;
 
-  /** Database adapter (required for persistence) */
-  db?: Adapter;
+  /** Database adapter used for resource persistence, query execution, mutations, sync change logs, and internal tables. */
+  database?: Adapter;
 
-  /** Optional plugins */
+  /** Runtime plugins that extend schema, add internal resources, register routes, or provide DataFn capabilities. */
   plugins?: DatafnPlugin[];
 
-  /** Optional authorization callback */
+  /** Public-link plugin instance used to register share-link routes and resolve link principals. */
+  publicLinks?: DatafnPublicLinksPlugin;
+
+  /** Authorizes each DataFn action after context creation and before route execution. */
   authorize?: (
     ctx: TContext,
     action:
@@ -81,63 +263,59 @@ export interface DatafnServerConfig<TContext = any> {
     payload: unknown,
   ) => Promise<boolean> | boolean;
 
-  /** Optional request context factory passed through to namespace, actor, auth, and route handlers. */
+  /** Static context or request-scoped context factory passed to authorization, namespace resolution, route handlers, and hooks. */
   context?: TContext | ((request: Request) => Promise<TContext> | TContext);
 
-  /** Optional limits configuration */
+  /** Request, query, mutation, and validation limits enforced by DataFn routes. */
   limits?: {
+    /** Maximum number of records a query may request unless a route applies a stricter limit. */
     maxLimit?: number;
+    /** Maximum number of steps accepted in a single transact request. */
     maxTransactSteps?: number;
+    /** Maximum request body size in bytes before DataFn rejects the payload. */
     maxPayloadBytes?: number;
-    /** Max changes returned per pull request. Default: 1000. */
+    /** Maximum number of changes returned by a pull request. Default: 1000. */
     maxPullLimit?: number;
-    /** VAL-002: Max select tokens per query (default 50) */
+    /** Maximum number of select tokens accepted per query. Default: 50. */
     maxSelectTokens?: number;
-    /** VAL-003: Max filter keys per nesting level (default 20) */
+    /** Maximum number of filter keys accepted at each nesting level. Default: 20. */
     maxFilterKeysPerLevel?: number;
-    /** VAL-004: Max sort fields (default 10) */
+    /** Maximum number of sort fields accepted by a query. Default: 10. */
     maxSortFields?: number;
-    /** VAL-005: Max aggregations (default 20) */
+    /** Maximum number of aggregate expressions accepted by a query. Default: 20. */
     maxAggregations?: number;
-    /** VAL-006: Max ID length (default 255) */
+    /** Maximum resource or relation ID length accepted by routes. Default: 255. */
     maxIdLength?: number;
-    /** FIX-SEC-006: Max batch size for push/mutation endpoints (default 500) */
+    /** Maximum number of items accepted by push and mutation batch endpoints. Default: 500. */
     maxBatchSize?: number;
-    /** FIX-SRV-003: Max in-flight query concurrency for batch queries (default 20) */
+    /** Maximum number of concurrent query executions allowed inside a batch request. Default: 20. */
     maxBatchQueryConcurrency?: number;
   };
 
   /**
-   * VAL-009: Debug mode for validation error messages.
-   * When false, error messages are generic (no field names or schema details).
-   * Default: process.env.NODE_ENV !== 'production'
+   * Enables detailed validation errors with field names and schema details.
+   * Defaults to true outside production and generic errors in production.
    */
   debug?: boolean;
 
   /**
-   * VAL-001: Allow queries/mutations on resources with no authorization policy.
-   * When false (default), resources without a policy return FORBIDDEN.
-   * Set to true only for development/testing.
+   * Allows actions on resources that do not define authorization policies.
+   * When false, policy-less resources return FORBIDDEN.
    */
   allowUnknownResources?: boolean;
 
-  /** Optional server time provider (for testing) */
+  /** Clock source used by server routes, sync, and retention logic; primarily useful for tests. */
   getServerTime?: () => number;
 
   /**
-   * Optional flag to enable REST endpoint generation (default: false)
-   * When true, generates REST wrappers:
-   * - GET /datafn/resources/:resource (query wrapper)
-   * - POST /datafn/resources/:resource (insert/merge wrapper)
-   * - PATCH /datafn/resources/:resource/:id (merge wrapper)
-   * - DELETE /datafn/resources/:resource/:id (delete wrapper)
+   * Enables REST wrappers around DataFn resources.
+   * Adds GET, POST, PATCH, and DELETE routes under /datafn/resources/:resource.
    */
   rest?: boolean;
 
   /**
-   * Namespace provider for per-request data isolation.
-   * Returns the namespace string used to scope all data operations.
-   * Without this, all data shares the default "datafn" namespace.
+   * Resolves per-request namespace isolation and actor attribution.
+   * Without this, all data uses the default "datafn" namespace.
    *
    * @example
    * ```typescript
@@ -148,95 +326,55 @@ export interface DatafnServerConfig<TContext = any> {
    * ```
    */
   namespaceProvider?: {
+    /** Returns the namespace that scopes all resource, relation, sync, and search operations for the request. */
     getNamespace: (ctx: TContext) => string | Promise<string>;
-    /** Optional actor ID for audit attribution (separate from isolation). */
+    /** Returns the actor ID used for audit attribution and sync metadata, separate from namespace isolation. */
     getActorId?: (ctx: TContext) => string | undefined | Promise<string | undefined>;
   };
 
-  /**
-   * Optional Redis adapter for atomic operations (serverSeq, rate limiting, caching).
-   * When provided with appropriate dbMapping, enables high-performance atomic operations.
-   * 
-   * @example
-   * ```typescript
-   * redis: myRedisAdapter,
-   * dbMapping: { serverseq: "redis" }
-   * ```
-   */
-  redis?: RedisAdapter;
+  /** Runtime cache and atomic stores used for rate limiting, sync coordination, and optional server state. */
+  stores?: RuntimeStores;
 
-  /**
-   * Optional KV store adapter for simple key-value operations.
-   * Must support `incr()` to be used for serverSeq generation.
-   * 
-   * @example
-   * ```typescript
-   * kvStore: myKVAdapter,
-   * dbMapping: { serverseq: "kv" }
-   * ```
-   */
-  kvStore?: KVStoreAdapter;
-
-  /**
-   * Database mapping configuration - specifies which database to use for each feature.
-   * Defaults to using the main database ("db") for all features.
-   * 
-   * @example
-   * ```typescript
-   * dbMapping: {
-   *   serverseq: "redis",     // Use Redis for serverSeq (atomic INCR)
-   *   ratelimiting: "redis",  // Use Redis for rate limiting
-   *   cache: "kv",            // Use KV store for caching
-   * }
-   * ```
-   */
-  dbMapping?: DbMapping;
+  /** Sequence-store policy used by sync to allocate and persist server sequence numbers. */
+  serverSeq?: SequenceStorePolicy;
 
   /**
    * Row-level namespace isolation configuration.
-   * - Explicitly `false` → disabled.
-   * - Object → used as-is for wrapping configuration.
+   * Pass false to disable database-level namespace wrapping, or an object to configure row-level scoping.
    */
   rowLevelNamespace?: false | RowLevelNamespaceConfig;
 
-  /** Data retention configuration for __datafn_changes and __datafn_idempotency tables. */
+  /** Retention policy for __datafn_changes and __datafn_idempotency internal tables. */
   retention?: RetentionConfig;
 
-  /** Rate limiting configuration (RATE-001 through RATE-005). */
+  /** Rate-limit policy for DataFn HTTP endpoints. */
   rateLimit?: RateLimitConfig<TContext>;
 
-  /** Observability configuration (OBS-001 through OBS-004). */
+  /** HTTP route lifecycle hooks applied after context creation, authorization, and handler execution. */
+  routeHooks?: DatafnRouteHooks<TContext>;
+
+  /** Observability sink and options for DataFn request, rate-limit, authorization, sync, retention, and failure events. */
   observability?: ObservabilityConfig;
 
   /**
-   * WebSocket limits and heartbeat configuration.
-   * SCA-005: maxConnections / maxConnectionsPerNamespace
-   * REL-007: heartbeatIntervalMs / heartbeatTimeoutMs
+   * WebSocket connection limits, per-namespace limits, and heartbeat timing used by the sync transport.
    */
   ws?: WsManagerConfig;
 
   /**
-   * Graceful shutdown drain timeout in ms. Default: 10,000.
-   * REL-009: Server waits up to this long for in-flight requests to complete.
+   * Graceful shutdown drain timeout in milliseconds.
+   * The server waits up to this long for in-flight requests to complete before closing.
    */
   shutdownTimeoutMs?: number;
 
   /**
-   * LOG-001: Pluggable logger. Default: console-based (JSON in prod, pretty in dev).
-   */
-  logger?: DatafnLogger;
-
-  /**
-   * COMP-001: SPV2 migration compatibility flags.
-   * - readMode: v2 (default), dual, or v1 (rollback mode)
-   * - writeMode: v2 (default) or dual
-   * - warnOnLegacyApi: emit deterministic deprecation warnings for shareWith.userId
+   * SPV2 migration compatibility settings for read mode, write mode, and legacy share API warnings.
    */
   spv2Migration?: Spv2MigrationRuntimeConfig;
 
   /**
-   * Optional search provider for full-text and semantic search queries.
-   * When provided, search queries are routed to this provider instead of requiring a searchfn plugin.
+   * Search provider for full-text and semantic search queries.
+   * When provided, search routes and mutation index updates use this provider.
    */
   searchProvider?: SearchProvider;
 }
@@ -278,34 +416,65 @@ export interface DatafnServer<TContext = any> {
 export async function createDatafnServer<TContext = any>(
   config: DatafnServerConfig<TContext>,
 ): Promise<DatafnServer<TContext>> {
+  const plugins = [...(config.plugins ?? [])] as DatafnServerComposablePlugin[];
+  if (config.publicLinks && !plugins.includes(config.publicLinks)) {
+    plugins.push(config.publicLinks);
+  }
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  const schemaWithPluginResources = plugins.reduce(
+    (schema, plugin) => plugin.withSchema ? plugin.withSchema(schema) : schema,
+    config.schema,
+  );
+
   // Validate schema at startup
-  const schemaValidation = validateSchema(config.schema);
+  const schemaValidation = validateSchema(schemaWithPluginResources);
   if (!schemaValidation.ok) {
     throw new Error(
       `Schema validation failed: ${schemaValidation.error.message}`,
     );
   }
 
-  // Ensure built-in KV resource exists (KV-001)
-  const validatedSchema = ensureBuiltinKv(schemaValidation.result);
+  const internalResourceNames = new Set<string>();
+  for (const plugin of plugins) {
+    for (const resourceName of plugin.internalResources ?? []) {
+      internalResourceNames.add(resourceName);
+    }
+    if (typeof plugin.modelName === "string" && plugin.modelName.length > 0) {
+      internalResourceNames.add(plugin.modelName);
+    }
+  }
+
+  const schemaWithBuiltins = ensureBuiltinTemporal(ensureBuiltinKv(schemaValidation.result));
+  const validatedSchema = excludeInternalResources(schemaWithBuiltins, internalResourceNames);
 
   // VAL-009: Debug mode — default to true in non-production
   const debugMode = config.debug ?? (process.env.NODE_ENV !== "production");
 
-  // LOG-001: Pluggable logger — default console-based
-  const logger: DatafnLogger = config.logger ?? createDefaultLogger(debugMode);
+  const observabilityScope = normalizeObservability<DataFnEvent>(
+    config.observability as ObservabilityInput<DataFnEvent>,
+  )?.child({ component: "datafn" });
+  const logger = datafnLoggerFromObservability(
+    observabilityScope?.logger,
+    createDefaultLogger(debugMode),
+  );
+  const emitDataFnEvent = async (event: DataFnEvent): Promise<void> => {
+    try {
+      await observabilityScope?.events.emit(event);
+    } catch {
+    }
+  };
 
   // COMP-001/COMP-002: configure migration compatibility mode for this server instance.
   setSpv2MigrationRuntimeConfig(config.spv2Migration);
 
   // Initialize database adapter if provided and implements Adapter interface
   if (
-    config.db &&
-    typeof config.db === "object" &&
-    "initialize" in config.db &&
-    typeof config.db.initialize === "function"
+    config.database &&
+    typeof config.database === "object" &&
+    "initialize" in config.database &&
+    typeof config.database.initialize === "function"
   ) {
-    await config.db.initialize();
+    await config.database.initialize();
   }
 
   // Row-level namespace auto-wrapping (DFN-001)
@@ -315,7 +484,8 @@ export async function createDatafnServer<TContext = any>(
   // regardless of whether a namespace provider is present — without one, the default "datafn"
   // namespace is used. For in-memory adapters (no schema constraints), wrapping is only
   // applied when a namespace/auth provider is present (explicit namespace isolation).
-  let db = config.db;
+  let db = config.database;
+  const crossNamespaceDb = config.database;
   const schemaIsNamespaced = isNamespaced(validatedSchema);
   const adapterHasSchemaConstraints = db?.capabilities?.schema?.constraints === true;
   const hasNamespaceProvider = !!config.namespaceProvider;
@@ -334,6 +504,27 @@ export async function createDatafnServer<TContext = any>(
       (db as any).internal = internal;
     }
   }
+  if (db && observabilityScope) {
+    db = instrumentAdapter(db, {
+      observability: observabilityScope.child({ component: "datafn.db" }),
+      kind: "db",
+    });
+  }
+  const stores: RuntimeStores = {
+    kv: config.stores?.kv && observabilityScope
+      ? instrumentKVStore(config.stores.kv, {
+          observability: observabilityScope.child({ component: "datafn.cache" }),
+          kind: "cache",
+        })
+      : config.stores?.kv,
+    atomicKv: config.stores?.atomicKv && observabilityScope
+      ? instrumentKVStore(config.stores.atomicKv, {
+          observability: observabilityScope.child({ component: "datafn.atomic" }),
+          kind: "cache",
+        })
+      : config.stores?.atomicKv,
+    directory: config.stores?.directory,
+  };
 
   // Startup pruning (RET-004)
   if (config.retention?.pruneOnStartup && db) {
@@ -342,6 +533,17 @@ export async function createDatafnServer<TContext = any>(
       if (config.retention.changeLogDays) {
         const deleted = await ct.pruneChanges(config.retention.changeLogDays);
         logger.info("Pruned change log entries", { deleted, operation: "startup-prune" });
+        await emitDataFnEvent({
+          domain: "datafn",
+          type: "datafn.retention.pruned",
+          severity: "info",
+          outcome: "ok",
+          metadata: {
+            mode: "startup",
+            target: "changes",
+            deleted,
+          },
+        });
       }
       const idempotencyStoreForPrune = db
         ? new DbIdempotencyStore(db, "datafn", logger)
@@ -349,30 +551,50 @@ export async function createDatafnServer<TContext = any>(
       if (config.retention.idempotencyDays && idempotencyStoreForPrune) {
         const deleted = await idempotencyStoreForPrune.pruneIdempotency(config.retention.idempotencyDays);
         logger.info("Pruned idempotency entries", { deleted, operation: "startup-prune" });
+        await emitDataFnEvent({
+          domain: "datafn",
+          type: "datafn.retention.pruned",
+          severity: "info",
+          outcome: "ok",
+          metadata: {
+            mode: "startup",
+            target: "idempotency",
+            deleted,
+          },
+        });
       }
     } catch (error) {
       logger.warn("Startup pruning failed", { error: String(error), operation: "startup-prune" });
+      await emitDataFnEvent({
+        domain: "datafn",
+        type: "datafn.retention.prune_failed",
+        severity: "warn",
+        outcome: "error",
+        metadata: {
+          mode: "startup",
+          error: String(error),
+        },
+      });
     }
   }
 
-  // Initialize Redis adapter health check if provided
-  if (config.redis) {
+  // Initialize atomic store health check if provided
+  if (stores.atomicKv?.isHealthy) {
     try {
-      const healthy = await config.redis.isHealthy();
+      const healthy = await stores.atomicKv.isHealthy();
       if (!healthy) {
-        logger.warn("Redis adapter health check failed, using main database for secondary operations", { operation: "redis-health" });
+        logger.warn("Atomic store health check failed", { operation: "atomic-health" });
       }
     } catch (error) {
-      logger.warn("Redis adapter health check error", { error: String(error), operation: "redis-health" });
+      logger.warn("Atomic store health check error", { error: String(error), operation: "atomic-health" });
     }
   }
 
-  // Create sequence store based on configuration (Redis/KV/DB)
+  // Create sequence store based on configuration (atomic store/database)
   const sequenceStore = createSequenceStore({
     db,
-    redis: config.redis,
-    kvStore: config.kvStore,
-    dbMapping: config.dbMapping,
+    stores,
+    policy: config.serverSeq,
     logger,
   });
 
@@ -395,16 +617,28 @@ export async function createDatafnServer<TContext = any>(
   };
 
   // Observability: create timing emitter (OBS-004)
-  const timingEmitter = createTimingEmitter(config.observability, logger);
+  const timingEmitter = createTimingEmitter(readTimingConfig(config.observability), logger);
 
   // Rate limiting setup (RATE-001 through RATE-005)
   let rateLimitMiddleware: ((endpoint: string, ctx: TContext) => Promise<Response | null>) | null = null;
   let memoryRateLimiter: MemoryRateLimiter | null = null;
 
   if (config.rateLimit?.enabled) {
-    const limiter = config.redis
-      ? new RedisRateLimiter(config.redis)
-      : (() => { const m = new MemoryRateLimiter(); memoryRateLimiter = m; return m; })();
+    const mode = config.rateLimit.mode ?? (stores.atomicKv ? "strict" : "local");
+    const limiter = (() => {
+      if (mode === "strict") {
+        if (!stores.atomicKv) {
+          throw new Error("DATAFN_ATOMIC_STORE_REQUIRED: rateLimit strict mode requires stores.atomicKv");
+        }
+        return new AtomicRateLimiter(stores.atomicKv);
+      }
+      if (mode === "best-effort" && stores.kv) {
+        return new CacheRateLimiter(stores.kv);
+      }
+      const m = new MemoryRateLimiter();
+      memoryRateLimiter = m;
+      return m;
+    })();
 
     const defaultKeyExtractor = async (ctx: TContext): Promise<string> => {
       if (config.namespaceProvider) {
@@ -441,14 +675,46 @@ export async function createDatafnServer<TContext = any>(
         if (retentionForInterval.changeLogDays) {
           const deleted = await ct.pruneChanges(retentionForInterval.changeLogDays);
           logger.info("Periodic prune: removed change log entries", { deleted, operation: "periodic-prune" });
+          await emitDataFnEvent({
+            domain: "datafn",
+            type: "datafn.retention.pruned",
+            severity: "info",
+            outcome: "ok",
+            metadata: {
+              mode: "periodic",
+              target: "changes",
+              deleted,
+            },
+          });
         }
         const idStore = new DbIdempotencyStore(dbForInterval, "datafn", logger);
         if (retentionForInterval.idempotencyDays) {
           const deleted = await idStore.pruneIdempotency(retentionForInterval.idempotencyDays);
           logger.info("Periodic prune: removed idempotency entries", { deleted, operation: "periodic-prune" });
+          await emitDataFnEvent({
+            domain: "datafn",
+            type: "datafn.retention.pruned",
+            severity: "info",
+            outcome: "ok",
+            metadata: {
+              mode: "periodic",
+              target: "idempotency",
+              deleted,
+            },
+          });
         }
       } catch (e) {
         logger.warn("Periodic prune failed", { error: String(e), operation: "periodic-prune" });
+        await emitDataFnEvent({
+          domain: "datafn",
+          type: "datafn.retention.prune_failed",
+          severity: "warn",
+          outcome: "error",
+          metadata: {
+            mode: "periodic",
+            error: String(e),
+          },
+        });
       }
     }, intervalMs);
     // LOW-005: Unref so this timer does not keep the Node.js process alive
@@ -503,7 +769,7 @@ export async function createDatafnServer<TContext = any>(
     extractNamespace,
     extractActorId,
     db,
-    config.plugins || [],
+    plugins,
     config.searchProvider,
     timingEmitter,
     {
@@ -517,6 +783,7 @@ export async function createDatafnServer<TContext = any>(
       hasSearchProviderFallback: hasDbNativeSearchSupport(db),
     },
     logger,
+    crossNamespaceDb,
   );
 
   // Create mutation handler and idempotency store
@@ -530,7 +797,7 @@ export async function createDatafnServer<TContext = any>(
     extractActorId,
     db,
     idempotencyStore,
-    config.plugins || [], // Pass plugins
+    plugins,
     sequenceStore,
     timingEmitter,
     {
@@ -551,7 +818,7 @@ export async function createDatafnServer<TContext = any>(
     extractNamespace,
     extractActorId,
     sequenceStore,
-    config.plugins || [],
+    plugins,
     {
       allowUnknownResources,
       debug: debugMode,
@@ -564,7 +831,7 @@ export async function createDatafnServer<TContext = any>(
     extractNamespace,
     extractActorId,
     db,
-    config.plugins || [],
+    plugins,
     sequenceStore,
     logger,
   );
@@ -573,7 +840,7 @@ export async function createDatafnServer<TContext = any>(
     extractNamespace,
     extractActorId,
     db,
-    config.plugins || [],
+    plugins,
     sequenceStore,
     limits.maxPullLimit,
     timingEmitter,
@@ -584,7 +851,7 @@ export async function createDatafnServer<TContext = any>(
     extractNamespace,
     extractActorId,
     db,
-    config.plugins || [],
+    plugins,
     sequenceStore,
     logger,
   );
@@ -598,7 +865,7 @@ export async function createDatafnServer<TContext = any>(
     extractActorId,
     db,
     idempotencyStore,
-    config.plugins || [],
+    plugins,
     sequenceStore,
     (seq, namespace) => wsManager.broadcastCursor(String(seq), namespace),
     timingEmitter,
@@ -615,7 +882,9 @@ export async function createDatafnServer<TContext = any>(
   const searchHandler = createSearchHandler(
     validatedSchema,
     extractNamespace,
+    extractActorId,
     db,
+    plugins,
     config.searchProvider,
     logger,
   );
@@ -625,7 +894,10 @@ export async function createDatafnServer<TContext = any>(
     const resources = validatedSchema.resources
       .map((r: DatafnResourceSchema) => ({
         name: r.name,
-        searchFields: Array.isArray(r.indices) ? [] : (r.indices?.search ?? []),
+        searchFields:
+          isIndexConfig(r.indices)
+            ? [...(r.indices.search ?? [])]
+            : [],
       }))
       .filter((resource: { name: string; searchFields: string[] }) => resource.searchFields.length > 0);
     try {
@@ -643,18 +915,6 @@ export async function createDatafnServer<TContext = any>(
 
   // Authorization wrapper
   // AUTH-001: Parse JSON BEFORE authorization. Invalid JSON returns DFQL_INVALID, not FORBIDDEN.
-  type DatafnAction =
-    | "status"
-    | "query"
-    | "mutation"
-    | "transact"
-    | "seed"
-    | "clone"
-    | "pull"
-    | "push"
-    | "reconcile"
-    | "search";
-
   const isPlainObjectContext = (value: unknown): value is Record<string, unknown> => {
     if (!value || typeof value !== "object") {
       return false;
@@ -726,9 +986,90 @@ export async function createDatafnServer<TContext = any>(
     return { parsedBody: undefined } as TContext & { parsedBody?: unknown };
   };
 
+  const routeResponseHooks = Array.isArray(config.routeHooks?.afterResponse)
+    ? [...config.routeHooks.afterResponse]
+    : config.routeHooks?.afterResponse
+      ? [config.routeHooks.afterResponse]
+      : [];
+
+  const completeDatafnResponse = async (input: {
+    action: DataFnAction;
+    request: Request;
+    context: TContext & { parsedBody?: unknown };
+    payload: unknown;
+    response: Response;
+  }): Promise<Response> => {
+    let response = input.response;
+    for (const hook of routeResponseHooks) {
+      response = await hook({
+        action: input.action,
+        request: input.request,
+        context: input.context,
+        payload: input.payload,
+        response,
+      });
+    }
+    const configuredHeaders = typeof config.routeHooks?.headers === "function"
+      ? await config.routeHooks.headers({
+          action: input.action,
+          request: input.request,
+          context: input.context,
+          payload: input.payload,
+          response,
+        })
+      : config.routeHooks?.headers;
+    if (!configuredHeaders) {
+      return response;
+    }
+    const headers = new Headers(response.headers);
+    for (const [key, value] of new Headers(configuredHeaders).entries()) {
+      headers.set(key, value);
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  };
+
+  const authorizePlugins = async (
+    input: DatafnPluginAuthorizationInput<TContext>,
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        error: { code: "FORBIDDEN"; message: string; details: Record<string, unknown> };
+      }
+  > => {
+    for (const plugin of plugins) {
+      if (!plugin.runsOn.includes("server") || !plugin.authorize) {
+        continue;
+      }
+      try {
+        const authorized = await plugin.authorize(input);
+        if (authorized === false) {
+          return {
+            ok: false,
+            error: {
+              code: "FORBIDDEN",
+              message: "Authorization denied",
+              details: { path: "$", plugin: plugin.name },
+            },
+          };
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          error: normalizePluginAuthorizationError(error, plugin.name),
+        };
+      }
+    }
+    return { ok: true };
+  };
+
   // LOW-001: withAuth returns a handler with signature compatible with Route<TContext>.handler
   const withAuth = (
-    action: DatafnAction,
+    action: DataFnAction,
     handler: (
       req: Request,
       ctx: TContext & { parsedBody?: unknown },
@@ -736,12 +1077,19 @@ export async function createDatafnServer<TContext = any>(
   ): ((req: Request, ctx: TContext) => Promise<Response>) => {
     return async (req: Request, ctx: TContext): Promise<Response> => {
       const enrichedCtx = createEnrichedContext(ctx);
+      let payload: unknown = null;
       // REL-009: Reject new requests immediately when shutting down
       if (shuttingDown) {
-        return new Response(
-          JSON.stringify({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Server is shutting down" } }),
-          { status: 503, headers: { "Content-Type": "application/json" } },
-        );
+        return completeDatafnResponse({
+          action,
+          request: req,
+          context: enrichedCtx,
+          payload,
+          response: new Response(
+            JSON.stringify({ ok: false, error: { code: "SERVICE_UNAVAILABLE", message: "Server is shutting down" } }),
+            { status: 503, headers: { "Content-Type": "application/json" } },
+          ),
+        });
       }
 
       // Track in-flight request for graceful shutdown drain
@@ -750,38 +1098,119 @@ export async function createDatafnServer<TContext = any>(
         // Rate limiting — applied BEFORE JSON parsing and authorization (RATE-001)
         if (rateLimitMiddleware) {
           const rateLimitResponse = await rateLimitMiddleware(action, enrichedCtx);
-          if (rateLimitResponse) return rateLimitResponse;
+          if (rateLimitResponse) {
+            await emitDataFnEvent({
+              domain: "datafn",
+              type: "datafn.rate_limited",
+              severity: "warn",
+              requestId: requestId(req),
+              outcome: "blocked",
+              metadata: dataFnRateLimitedMetadata(req, action),
+            });
+            return completeDatafnResponse({
+              action,
+              request: req,
+              context: enrichedCtx,
+              payload,
+              response: rateLimitResponse,
+            });
+          }
         }
 
         // Enforce payload limits (LIMIT-001) — single inline check, no sentinel pattern
         if (limits.maxPayloadBytes) {
           const limitError = checkPayloadLimit(req, limits.maxPayloadBytes);
-          if (limitError) return limitError;
+          if (limitError) {
+            await emitDataFnEvent({
+              domain: "datafn",
+              type: "datafn.payload.rejected",
+              severity: "warn",
+              requestId: requestId(req),
+              outcome: "rejected",
+              metadata: dataFnPayloadRejectedMetadata(
+                req,
+                action,
+                "payload-too-large",
+                "LIMIT_EXCEEDED",
+              ),
+            });
+            return completeDatafnResponse({
+              action,
+              request: req,
+              context: enrichedCtx,
+              payload,
+              response: limitError,
+            });
+          }
         }
 
         // For POST/PUT/PATCH endpoints, parse JSON body FIRST before authorization
         // AUTH-001: Invalid JSON must return DFQL_INVALID, never FORBIDDEN
-        let payload: unknown = null;
-
         if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
           // If maxPayloadBytes is set but Content-Length was missing, enforce on actual body
           if (limits.maxPayloadBytes) {
             const bodyResult = await readBodyWithLimit(req, limits.maxPayloadBytes, logger);
-            if (!bodyResult.ok) return bodyResult.response;
+            if (!bodyResult.ok) {
+              return completeDatafnResponse({
+                action,
+                request: req,
+                context: enrichedCtx,
+                payload,
+                response: bodyResult.response,
+              });
+            }
             // Parse JSON from the already-read body text
             try {
               payload = JSON.parse(bodyResult.body);
             } catch {
-              return errorResponse({
-                code: "DFQL_INVALID",
-                message: "Invalid JSON",
-                details: { path: "$" },
-              }, 400);
+              await emitDataFnEvent({
+                domain: "datafn",
+                type: "datafn.payload.rejected",
+                severity: "warn",
+                requestId: requestId(req),
+                outcome: "rejected",
+                metadata: dataFnPayloadRejectedMetadata(
+                  req,
+                  action,
+                  "invalid-json",
+                  "DFQL_INVALID",
+                ),
+              });
+              return completeDatafnResponse({
+                action,
+                request: req,
+                context: enrichedCtx,
+                payload,
+                response: errorResponse({
+                  code: "DFQL_INVALID",
+                  message: "Invalid JSON",
+                  details: { path: "$" },
+                }, 400),
+              });
             }
           } else {
             const parseResult = await parseJsonBody(req);
             if (!parseResult.ok) {
-              return errorResponse(parseResult.error, 400);
+              await emitDataFnEvent({
+                domain: "datafn",
+                type: "datafn.payload.rejected",
+                severity: "warn",
+                requestId: requestId(req),
+                outcome: "rejected",
+                metadata: dataFnPayloadRejectedMetadata(
+                  req,
+                  action,
+                  "invalid-json",
+                  parseResult.error.code,
+                ),
+              });
+              return completeDatafnResponse({
+                action,
+                request: req,
+                context: enrichedCtx,
+                payload,
+                response: errorResponse(parseResult.error, 400),
+              });
             }
             payload = parseResult.data;
           }
@@ -790,18 +1219,93 @@ export async function createDatafnServer<TContext = any>(
           enrichedCtx.parsedBody = payload;
         }
 
+        if (payloadReferencesInternalResource(payload, internalResourceNames)) {
+          await emitDataFnEvent({
+            domain: "datafn",
+            type: "datafn.authorization.denied",
+            severity: "warn",
+            requestId: requestId(req),
+            outcome: "denied",
+            metadata: dataFnAuthorizationDeniedMetadata(req, action, "internal-resource"),
+          });
+          return completeDatafnResponse({
+            action,
+            request: req,
+            context: enrichedCtx,
+            payload,
+            response: errorResponse(
+              { code: "FORBIDDEN", message: "Authorization denied", details: { path: "resource" } },
+              403,
+            ),
+          });
+        }
+
+        const pluginAuthorization = await authorizePlugins({
+          action,
+          request: req,
+          context: enrichedCtx,
+          payload,
+        });
+        if (!pluginAuthorization.ok) {
+          await emitDataFnEvent({
+            domain: "datafn",
+            type: "datafn.authorization.denied",
+            severity: "warn",
+            requestId: requestId(req),
+            outcome: "denied",
+            metadata: dataFnAuthorizationDeniedMetadata(req, action, "plugin-authorize"),
+          });
+          return completeDatafnResponse({
+            action,
+            request: req,
+            context: enrichedCtx,
+            payload,
+            response: errorResponse(pluginAuthorization.error, 403),
+          });
+        }
+
         // Check authorization if configured - only called AFTER successful JSON parse
         if (config.authorize) {
           const authorized = await config.authorize(enrichedCtx, action, payload);
           if (!authorized) {
-            return errorResponse(
-              { code: "FORBIDDEN", message: "Authorization denied", details: { path: "$" } },
-              403,
-            );
+            await emitDataFnEvent({
+              domain: "datafn",
+              type: "datafn.authorization.denied",
+              severity: "warn",
+              requestId: requestId(req),
+              outcome: "denied",
+              metadata: dataFnAuthorizationDeniedMetadata(req, action, "authorize-callback"),
+            });
+            return completeDatafnResponse({
+              action,
+              request: req,
+              context: enrichedCtx,
+              payload,
+              response: errorResponse(
+                { code: "FORBIDDEN", message: "Authorization denied", details: { path: "$" } },
+                403,
+              ),
+            });
           }
         }
 
-        return await handler(req, enrichedCtx);
+        return completeDatafnResponse({
+          action,
+          request: req,
+          context: enrichedCtx,
+          payload,
+          response: await handler(req, enrichedCtx),
+        });
+      } catch (error) {
+        await emitDataFnEvent({
+          domain: "datafn",
+          type: "datafn.request.failed",
+          severity: "error",
+          requestId: requestId(req),
+          outcome: "error",
+          metadata: dataFnRequestFailedMetadata(req, action, error),
+        });
+        throw error;
       } finally {
         inFlightCount--;
         // If shutdown is waiting and we were the last in-flight request, signal completion
@@ -872,6 +1376,19 @@ export async function createDatafnServer<TContext = any>(
     },
   ];
 
+  if (config.database) {
+    for (const plugin of plugins) {
+      if (!plugin.routes) {
+        continue;
+      }
+      routes.push(...plugin.routes({
+        database: db ?? config.database,
+        crossNamespaceDatabase: crossNamespaceDb,
+        schema: validatedSchema,
+      }) as Route<TContext>[]);
+    }
+  }
+
   // Register REST routes if config.rest is true
   if (config.rest) {
     // FIX-SRV-001: Direct internal execution helpers — no synthetic Request construction.
@@ -913,7 +1430,7 @@ export async function createDatafnServer<TContext = any>(
     // Or introduce "rest" action.
     // For granularity, let's map: GET -> "query", POST/PATCH/DELETE -> "mutation".
     for (const route of restRoutes) {
-      const action: DatafnAction = route.method === "GET" ? "query" : "mutation";
+      const action: DataFnAction = route.method === "GET" ? "query" : "mutation";
       routes.push({
         method: route.method,
         path: route.path,
@@ -928,6 +1445,15 @@ export async function createDatafnServer<TContext = any>(
     routes,
     basePath: "/",
     context: config.context,
+    middleware: observabilityScope
+      ? [
+          createObservabilityMiddleware({
+            observability: observabilityScope,
+            serverTiming: true,
+            headers: { prefix: "x-datafn" },
+          }),
+        ]
+      : undefined,
   });
 
   // REL-009: Graceful shutdown implementation
@@ -1014,12 +1540,14 @@ export async function createDatafnServer<TContext = any>(
       params.namespace && params.namespace.trim() !== ""
         ? params.namespace
         : await extractNamespace(_ctx as TContext);
+    const actorId = await extractActorId(_ctx as TContext);
 
     const searchParams = {
       ...params,
       query,
       limit,
       limitPerResource,
+      actorId,
     };
 
     if (config.searchProvider) {
@@ -1030,6 +1558,7 @@ export async function createDatafnServer<TContext = any>(
         validatedSchema,
         namespace,
         logger,
+        multiRegionRuntime,
       );
     }
     if (!hasDbNativeSearchSupport(db)) {
@@ -1057,5 +1586,89 @@ export async function createDatafnServer<TContext = any>(
       handlePong: (client) => wsManager.handlePong(client),
     },
     close: serverClose,
+  };
+}
+
+function readTimingConfig(
+  observability: ObservabilityConfig | undefined,
+): { timing?: boolean; onTiming?: import("./middleware/timing.js").TimingEmitter } | undefined {
+  if (!observability || typeof observability !== "object") {
+    return undefined;
+  }
+  return {
+    timing: "timing" in observability ? observability.timing : undefined,
+    onTiming: "onTiming" in observability ? observability.onTiming : undefined,
+  };
+}
+
+function requestId(request: Request): string | undefined {
+  return request.headers.get("x-request-id") ?? undefined;
+}
+
+function baseRequestEventMetadata(
+  request: Request,
+  action: DataFnAction,
+): DataFnRequestEventMetadata {
+  return {
+    action,
+    path: new URL(request.url).pathname,
+    method: request.method,
+  };
+}
+
+function dataFnRateLimitedMetadata(
+  request: Request,
+  action: DataFnAction,
+): DataFnRateLimitedMetadata {
+  return {
+    ...baseRequestEventMetadata(request, action),
+    reason: "rate-limit",
+  };
+}
+
+function dataFnPayloadRejectedMetadata(
+  request: Request,
+  action: DataFnAction,
+  reason: DataFnPayloadRejectedMetadata["reason"],
+  code: string,
+): DataFnPayloadRejectedMetadata {
+  return {
+    ...baseRequestEventMetadata(request, action),
+    reason,
+    code,
+  };
+}
+
+function dataFnAuthorizationDeniedMetadata(
+  request: Request,
+  action: DataFnAction,
+  reason: DataFnAuthorizationDeniedMetadata["reason"],
+): DataFnAuthorizationDeniedMetadata {
+  return {
+    ...baseRequestEventMetadata(request, action),
+    reason,
+  };
+}
+
+function dataFnRequestFailedMetadata(
+  request: Request,
+  action: DataFnAction,
+  error: unknown,
+): DataFnRequestFailedMetadata {
+  return {
+    ...baseRequestEventMetadata(request, action),
+    error: String(error),
+  };
+}
+
+function datafnLoggerFromObservability(
+  logger: ObservationLogger | undefined,
+  fallback: DatafnLogger,
+): DatafnLogger {
+  return {
+    info: (message, context) => logger?.info ? logger.info(message, context) : fallback.info(message, context),
+    warn: (message, context) => logger?.warn ? logger.warn(message, context) : fallback.warn(message, context),
+    error: (message, context) => logger?.error ? logger.error(message, context) : fallback.error(message, context),
+    debug: (message, context) => logger?.debug ? logger.debug(message, context) : fallback.debug(message, context),
   };
 }

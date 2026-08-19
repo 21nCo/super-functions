@@ -7,6 +7,11 @@ export { createAdapterFactory } from './adapter/factory.js';
 
 // Row-level namespace isolation
 export { wrapWithRowLevelNamespace, NamespaceRequiredError } from './adapter/row-level-namespace.js';
+export { instrumentAdapter, instrumentKVStore } from './observability.js';
+export type {
+  AdapterInstrumentationOptions,
+  KVStoreInstrumentationOptions,
+} from './observability.js';
 
 // Types
 export type {
@@ -47,6 +52,23 @@ export type {
   DateFieldValueType,
   KVStoreAdapter,
   KVStoreAdapterFactory,
+  ConditionalKVSetResult,
+  ConditionalKVStoreAdapter,
+  ConditionalKVStoreAdapterFactory,
+  AtomicKVStoreAdapter,
+  AtomicKVStoreAdapterFactory,
+  IndexedDirectoryRecord,
+  IndexedDirectoryQuery,
+  IndexedDirectoryQueryResult,
+  IndexedDirectoryStoreAdapter,
+  IndexedDirectoryStoreAdapterFactory,
+  StoreProvisioningProvider,
+  StoreProvisioningResource,
+  StoreProvisioningPlan,
+  ProvisionableStoreAdapter,
+  AtomicStoreAdapter,
+  AtomicStoreAdapterFactory,
+  RuntimeStores,
   RedisAdapter,
   RedisAdapterFactory,
   InternalCrud,

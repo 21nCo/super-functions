@@ -1,5 +1,12 @@
-import type { DatafnSchema } from "../core-types.js";
+import type { DatafnPlugin, DatafnSchema } from "../core-types.js";
 import type { Adapter } from "@superfunctions/db";
+import {
+  TIMEZONE_CHANGE_RESOURCE_NAME,
+  createTimezoneResolver,
+  normalizeTemporalQuery,
+  type DatafnTemporalClause,
+  type DatafnTemporalConfig,
+} from "@datafn/core";
 import type { SearchProvider } from "../search-provider.js";
 import type { DatafnLogger } from "../logger.js";
 import { getBodyFromContext } from "../http/json.js";
@@ -10,6 +17,8 @@ import {
   executeDbNativeCrossResourceSearch,
   NO_PROVIDER_NATIVE_UNSUPPORTED_MESSAGE,
 } from "../execution/search/native-fallback.js";
+import { runBeforeSearch } from "../plugins/run-hooks.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
 
 function analyzeFilterComplexity(
   node: unknown,
@@ -86,13 +95,91 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
+async function normalizeSearchTemporalFilters(input: {
+  raw: Record<string, unknown>;
+  db: Adapter;
+  namespace: string;
+  schema: DatafnSchema;
+}): Promise<Record<string, Record<string, unknown>> | undefined> {
+  const temporalByResource = isPlainObject(input.raw.temporalByResource)
+    ? (input.raw.temporalByResource as Record<
+        string,
+        DatafnTemporalClause | readonly DatafnTemporalClause[]
+      >)
+    : undefined;
+  const temporal = input.raw.temporal as
+    | DatafnTemporalClause
+    | readonly DatafnTemporalClause[]
+    | undefined;
+  const baseFilters = isPlainObject(input.raw.filters)
+    ? (input.raw.filters as Record<string, Record<string, unknown>>)
+    : {};
+
+  if (!temporalByResource && !temporal) {
+    return Object.keys(baseFilters).length > 0 ? baseFilters : undefined;
+  }
+
+  const normalizedFilters: Record<string, Record<string, unknown>> = {
+    ...baseFilters,
+  };
+  const timezoneChanges = await input.db.findMany({
+    model: TIMEZONE_CHANGE_RESOURCE_NAME,
+    where: [],
+    namespace: input.namespace,
+  }).catch(() => []);
+  const temporalConfig: DatafnTemporalConfig = {
+    timezoneResolver: createTimezoneResolver(
+      timezoneChanges as Record<string, unknown>[],
+    ),
+  };
+  const resourcesForTopLevelTemporal = Array.isArray(input.raw.resources)
+    ? input.raw.resources.filter((resource): resource is string => typeof resource === "string")
+    : Object.keys(baseFilters).length > 0
+      ? Object.keys(baseFilters)
+      : input.schema.resources.map((resource) => resource.name);
+  const resourceClauses = new Map<
+    string,
+    DatafnTemporalClause | readonly DatafnTemporalClause[]
+  >();
+
+  if (temporal) {
+    for (const resource of resourcesForTopLevelTemporal) {
+      resourceClauses.set(resource, temporal);
+    }
+  }
+  if (temporalByResource) {
+    for (const [resource, clause] of Object.entries(temporalByResource)) {
+      resourceClauses.set(resource, clause);
+    }
+  }
+
+  for (const [resource, clause] of resourceClauses) {
+    const normalized = normalizeTemporalQuery(
+      {
+        resource,
+        filters: normalizedFilters[resource],
+        temporal: clause,
+      },
+      temporalConfig,
+    );
+    if (isPlainObject(normalized.filters)) {
+      normalizedFilters[resource] = normalized.filters as Record<string, unknown>;
+    }
+  }
+
+  return normalizedFilters;
+}
+
 export function createSearchHandler(
   validatedSchema: DatafnSchema,
   extractNamespace: (ctx: any) => Promise<string>,
+  extractActorId: ((ctx: any) => Promise<string | undefined>) | undefined,
   db?: Adapter,
+  plugins: DatafnPlugin[] = [],
   searchProvider?: SearchProvider,
   logger?: DatafnLogger,
 ) {
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   return async (req: Request, ctx?: { parsedBody?: unknown }): Promise<Response> => {
     const parseResult = await getBodyFromContext(req, ctx);
     if (!parseResult.ok) {
@@ -109,7 +196,31 @@ export function createSearchHandler(
       });
     }
 
-    const raw = body as Record<string, unknown>;
+    const beforeHookResult = await runBeforeSearch(
+      body,
+      { plugins, schema: validatedSchema, context: ctx },
+      plugins,
+    );
+    if (!beforeHookResult.ok) {
+      return errorResponse(
+        beforeHookResult.error as any,
+        beforeHookResult.error.code === "FORBIDDEN" ? 403 : 400,
+      );
+    }
+
+    if (
+      typeof beforeHookResult.search !== "object" ||
+      beforeHookResult.search === null ||
+      Array.isArray(beforeHookResult.search)
+    ) {
+      return errorResponse({
+        code: "DFQL_INVALID",
+        message: "Invalid request: expected object",
+        details: { path: "$" },
+      });
+    }
+
+    const raw = beforeHookResult.search as Record<string, unknown>;
 
     if (typeof raw.query !== "string") {
       return errorResponse({
@@ -263,6 +374,7 @@ export function createSearchHandler(
 
     try {
       const namespace = await extractNamespace(ctx);
+      const actorId = extractActorId ? await extractActorId(ctx) : undefined;
       const limit =
         typeof rawLimit === "number"
           ? Math.min(rawLimit, 10_000)
@@ -271,6 +383,12 @@ export function createSearchHandler(
         typeof rawLimitPerResource === "number"
           ? Math.min(rawLimitPerResource, 1_000)
           : limit;
+      const normalizedFilters = await normalizeSearchTemporalFilters({
+        raw,
+        db,
+        namespace,
+        schema: validatedSchema,
+      });
       const searchParams = {
         query,
         resources: Array.isArray(raw.resources) ? (raw.resources as string[]) : undefined,
@@ -280,10 +398,9 @@ export function createSearchHandler(
         prefix: raw.prefix as boolean | undefined,
         fuzzy: raw.fuzzy as boolean | number | undefined,
         fieldBoosts: raw.fieldBoosts as Record<string, number> | undefined,
-        filters: (typeof raw.filters === "object" && raw.filters !== null && !Array.isArray(raw.filters))
-          ? (raw.filters as Record<string, Record<string, unknown>>)
-          : undefined,
+        filters: normalizedFilters,
         select: Array.isArray(raw.select) ? (raw.select as string[]) : undefined,
+        actorId,
         signal: req.signal,
       };
 
@@ -295,6 +412,7 @@ export function createSearchHandler(
             validatedSchema,
             namespace,
             logger,
+            multiRegionRuntime,
           )
         : await executeDbNativeCrossResourceSearch(
             searchParams,

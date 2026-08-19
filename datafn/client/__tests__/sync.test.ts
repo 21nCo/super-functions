@@ -348,6 +348,7 @@ describe("@datafn/client sync", () => {
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("user", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     // Set per-table cursors
     storage.cursors.set("task", "0");
     storage.cursors.set("user", "0");
@@ -395,6 +396,7 @@ describe("@datafn/client sync", () => {
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("user", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     // Set per-table cursors
     storage.cursors.set("task", "10");
     storage.cursors.set("user", "10");
@@ -451,6 +453,7 @@ describe("@datafn/client sync", () => {
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("tag", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "5");
     storage.cursors.set("tag", "5");
     storage.cursors.set("kv", "5");
@@ -511,6 +514,7 @@ describe("@datafn/client sync", () => {
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("tag", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "0");
     storage.cursors.set("tag", "0");
     storage.cursors.set("kv", "0");
@@ -1740,6 +1744,7 @@ describe("@datafn/client sync", () => {
     const storage = new MockStorageAdapter();
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "0");
 
     let callN = 0;
@@ -1787,6 +1792,7 @@ describe("@datafn/client sync", () => {
     const storage = new MockStorageAdapter();
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "0");
 
     const remote = makeMockRemote(() => ({
@@ -1820,6 +1826,7 @@ describe("@datafn/client sync", () => {
     const storage = new MockStorageAdapter();
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "0");
 
     // Always returns hasMore=true — should be capped at maxPullIterations=3
@@ -1858,6 +1865,7 @@ describe("@datafn/client sync", () => {
     const storage = new MockStorageAdapter();
     storage.hydrationStates.set("task", "ready");
     storage.hydrationStates.set("kv", "ready");
+    storage.hydrationStates.set("datafnTimezoneChange", "ready");
     storage.cursors.set("task", "0");
 
     let callN = 0;

@@ -7,14 +7,671 @@
  * 3. Supporting relation mutations (relate, modifyRelation, unrelate)
  */
 
-import type { DatafnSchema } from "@datafn/core";
+import type {
+  DatafnRelationDeletePolicy,
+  DatafnRelationDirection,
+  DatafnRelationSchema,
+  DatafnSchema,
+} from "@datafn/core";
 import type { DatafnStorageAdapter } from "../storage.js";
 import { createClientError } from "../errors.js";
-import { getJoinStoreKey, normalizeRelationPayload, findRelationBidirectional } from "@datafn/core";
+import {
+  endpointIncludes,
+  endpointList,
+  findRelationMatch,
+  firstEndpoint,
+  getJoinStoreKey,
+  normalizeRelationPayload,
+  resolveEndpointResource,
+} from "@datafn/core";
 import {
   injectCapabilityFieldsForOptimisticRecord,
   sanitizeCapabilityReadonlyFields,
 } from "../capability-fields.js";
+
+function htreeFkField(relation: { fkField?: string; inverse?: string }): string {
+  return relation.fkField || relation.inverse || "parentId";
+}
+
+function htreePathField(relation: { pathField?: string }): string {
+  return relation.pathField || "parentPath";
+}
+
+function fkResourceFieldForRelation(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string {
+  if (relation.fkResourceField) return relation.fkResourceField;
+  if (relation.type === "htree") {
+    return `${htreeFkField(relation).replace(/Id$/, "")}Resource`;
+  }
+  const base = side === "to"
+    ? (relation.relation || "target")
+    : (relation.inverse || relation.relation || "source");
+  return `${base.replace(/Id$/, "")}Resource`;
+}
+
+function endpointIsPolymorphic(endpoint: string | readonly string[]): boolean {
+  return (typeof endpoint === "string" ? [endpoint] : [...endpoint]).length > 1;
+}
+
+function fkResourcePatch(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+  resource: string | null,
+): Record<string, unknown> {
+  const endpoint = side === "to" ? relation.to : relation.from;
+  if (!endpointIsPolymorphic(endpoint)) return {};
+  return { [fkResourceFieldForRelation(relation, side)]: resource };
+}
+
+function resolveManyManyJoin(
+  relation: DatafnRelationSchema,
+  direction: DatafnRelationDirection,
+  resource: string,
+  id: string,
+  targetId: string,
+  path: string,
+) {
+  const relationName = relation.relation || "";
+  if (!relationName) {
+    throw createClientError("DFQL_INVALID", "many-many relation requires relation name", { path });
+  }
+
+  const fromId = direction === "forward" ? id : targetId;
+  const toId = direction === "forward" ? targetId : id;
+  const fromResource =
+    direction === "forward"
+      ? resource
+      : resolveEndpointResource(relation.from, targetId);
+  const toResource =
+    direction === "forward"
+      ? resolveEndpointResource(relation.to, targetId)
+      : resource;
+
+  if (!fromResource || !toResource) {
+    throw createClientError("DFQL_INVALID", `Invalid relation target: ${targetId}`, { path });
+  }
+
+  return {
+    fromId,
+    toId,
+    fromResource,
+    toResource,
+    joinStore: getJoinStoreKey(fromResource, relationName, toResource),
+  };
+}
+
+function joinHtreePath(parentPath: unknown, parentId: string | null): string {
+  if (!parentId) return "";
+  return typeof parentPath === "string" && parentPath.length > 0
+    ? `${parentPath}-${parentId}`
+    : parentId;
+}
+
+function isRecordInactive(record: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(
+    record &&
+    (record.isArchived === true ||
+      (record.trashedAt !== null && record.trashedAt !== undefined)),
+  );
+}
+
+function isRecordEffectivelyInactive(record: Record<string, unknown> | null | undefined): boolean {
+  return isRecordInactive(record) || record?.isAncestorInactive === true;
+}
+
+function dependentEndpoint(relation: DatafnRelationSchema): string | readonly string[] {
+  return relation.type === "many-one" ? relation.from : relation.to;
+}
+
+async function resolveAncestorInactive(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  record: Record<string, unknown>,
+): Promise<boolean> {
+  for (const relation of schema.relations ?? []) {
+    if (relation.inheritsInactive !== true) continue;
+    if (!endpointIncludes(dependentEndpoint(relation), resource)) continue;
+    if (relation.type === "htree") {
+      const parentId = record[htreeFkField(relation)];
+      if (typeof parentId !== "string" || parentId.length === 0) continue;
+      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId) ?? resource, parentId);
+      if (isRecordEffectivelyInactive(parent)) return true;
+    } else if (relation.type === "many-one") {
+      const parentId = record[relation.fkField || `${relation.relation}Id`];
+      if (typeof parentId !== "string" || parentId.length === 0) continue;
+      const parent = await storage.getRecord(resolveEndpointResource(relation.to, parentId) ?? firstEndpoint(relation.to), parentId);
+      if (isRecordEffectivelyInactive(parent)) return true;
+    } else if (relation.type === "one-many") {
+      const parentId = record[relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`];
+      if (typeof parentId !== "string" || parentId.length === 0) continue;
+      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId) ?? firstEndpoint(relation.from), parentId);
+      if (isRecordEffectivelyInactive(parent)) return true;
+    }
+  }
+  return false;
+}
+
+async function updateAncestorInactive(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  record: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const next = await resolveAncestorInactive(storage, schema, resource, record);
+  if (record.isAncestorInactive === next) return null;
+  const updated = { ...record, isAncestorInactive: next };
+  await storage.upsertRecord(resource, updated);
+  return updated;
+}
+
+async function applyInactivePropagation(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  seeds: Array<{ resource: string; id: string }>,
+): Promise<void> {
+  const queue = [...seeds];
+  const processed = new Set<string>();
+  while (queue.length > 0) {
+    const seed = queue.shift();
+    if (!seed) continue;
+    const key = `${seed.resource}:${seed.id}`;
+    if (processed.has(key)) continue;
+    processed.add(key);
+    const record = await storage.getRecord(seed.resource, seed.id);
+    if (!record) continue;
+    const updated = await updateAncestorInactive(storage, schema, seed.resource, record);
+    const source = updated ?? record;
+    for (const relation of schema.relations ?? []) {
+      if (relation.inheritsInactive !== true) continue;
+      if (relation.type === "htree" && endpointIncludes(relation.from, seed.resource)) {
+        const targetResource = firstEndpoint(relation.to);
+        const childPath = joinHtreePath(source[htreePathField(relation)], seed.id);
+        const children = (await storage.listRecords(targetResource)).filter(
+          (child) => child[htreePathField(relation)] === childPath,
+        );
+        for (const child of children) {
+          const changed = await updateAncestorInactive(storage, schema, targetResource, child);
+          if (changed) queue.push({ resource: targetResource, id: child.id as string });
+        }
+      } else if (relation.type === "many-one" && endpointIncludes(relation.to, seed.resource)) {
+        const fkField = relation.fkField || `${relation.relation}Id`;
+        for (const childResource of typeof relation.from === "string" ? [relation.from] : relation.from) {
+          const children = await storage.findRecords(childResource, fkField, seed.id);
+          for (const child of children) {
+            const changed = await updateAncestorInactive(storage, schema, childResource, child);
+            if (changed) queue.push({ resource: childResource, id: child.id as string });
+          }
+        }
+      } else if (relation.type === "one-many" && endpointIncludes(relation.from, seed.resource)) {
+        const fkField = relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+        for (const childResource of typeof relation.to === "string" ? [relation.to] : relation.to) {
+          const children = await storage.findRecords(childResource, fkField, seed.id);
+          for (const child of children) {
+            const changed = await updateAncestorInactive(storage, schema, childResource, child);
+            if (changed) queue.push({ resource: childResource, id: child.id as string });
+          }
+        }
+      }
+    }
+  }
+}
+
+function collectInactivePropagationSeeds(
+  schema: DatafnSchema,
+  mutation: Record<string, unknown>,
+): Array<{ resource: string; id: string }> {
+  const seeds = new Map<string, { resource: string; id: string }>();
+  const addSeed = (resource: string | undefined, id: string | undefined) => {
+    if (!resource || !id) return;
+    seeds.set(`${resource}:${id}`, { resource, id });
+  };
+  const resource = mutation.resource as string | undefined;
+  const id = mutation.id as string | undefined;
+  addSeed(resource, id);
+  const relations = mutation.relations as Record<string, unknown> | undefined;
+  if (!resource || !relations) return [...seeds.values()];
+  for (const [relationName, payload] of Object.entries(relations)) {
+    const match = findRelationMatch(schema, resource, relationName);
+    if (!match) continue;
+    const { relation, direction } = match;
+    if (relation.inheritsInactive !== true && relation.type !== "htree") continue;
+    const targetEndpoint = direction === "forward" ? relation.to : relation.from;
+    for (const item of normalizeRelationPayload(payload)) {
+      addSeed(resolveEndpointResource(targetEndpoint, item.toId) ?? firstEndpoint(targetEndpoint), item.toId);
+    }
+  }
+  return [...seeds.values()];
+}
+
+function relationDeletePolicy(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): DatafnRelationDeletePolicy | undefined {
+  const policy = relation.onDelete;
+  if (typeof policy === "string") return policy;
+  if (policy && typeof policy === "object") return policy[side];
+  return undefined;
+}
+
+function fkFieldForOneMany(relation: DatafnRelationSchema): string {
+  return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+}
+
+function relationDeletePolicyLabel(relation: DatafnRelationSchema): string {
+  return relation.relation ?? relation.inverse ?? relation.type;
+}
+
+function throwRelationRestricted(
+  deletedId: string,
+  relation: DatafnRelationSchema,
+): never {
+  return createClientError(
+    "RELATION_RESTRICTED",
+    `Cannot delete ${deletedId}; relation "${relationDeletePolicyLabel(relation)}" still references it`,
+    { path: "id" },
+  );
+}
+
+async function findFkPolicyRows(
+  storage: DatafnStorageAdapter,
+  resources: string[],
+  fkField: string,
+  deletedId: string,
+  resourceField?: string,
+  deletedResource?: string,
+): Promise<Array<{ resource: string; row: Record<string, unknown> }>> {
+  const rows: Array<{ resource: string; row: Record<string, unknown> }> = [];
+  for (const resource of resources) {
+    const candidates = await storage.findRecords(resource, fkField, deletedId);
+    for (const row of candidates) {
+      if (
+        resourceField &&
+        deletedResource &&
+        row[resourceField] !== deletedResource
+      ) {
+        continue;
+      }
+      rows.push({ resource, row });
+    }
+  }
+  return rows;
+}
+
+async function listManyManyRowsForDeletedResource(
+  storage: DatafnStorageAdapter,
+  relation: DatafnRelationSchema,
+  resource: string,
+  id: string,
+  side: "from" | "to",
+): Promise<Array<{ joinStore: string; row: Record<string, unknown> }>> {
+  const relationName = relation.relation;
+  if (!relationName) return [];
+  const rows: Array<{ joinStore: string; row: Record<string, unknown> }> = [];
+  if (side === "from") {
+    for (const toResource of endpointList(relation.to)) {
+      const joinStore = getJoinStoreKey(resource, relationName, toResource);
+      for (const row of await storage.getJoinRows(joinStore, id)) {
+        rows.push({ joinStore, row });
+      }
+    }
+  } else {
+    for (const fromResource of endpointList(relation.from)) {
+      const joinStore = getJoinStoreKey(fromResource, relationName, resource);
+      for (const row of await storage.getJoinRowsInverse(joinStore, id)) {
+        rows.push({ joinStore, row });
+      }
+    }
+  }
+  return rows;
+}
+
+async function validateFkDeletePolicy(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  relation: DatafnRelationSchema,
+  policy: DatafnRelationDeletePolicy,
+  resources: string[],
+  fkField: string,
+  deletedId: string,
+  visited: Set<string>,
+  resourceField?: string,
+  deletedResource?: string,
+): Promise<void> {
+  const rows = await findFkPolicyRows(
+    storage,
+    resources,
+    fkField,
+    deletedId,
+    resourceField,
+    deletedResource,
+  );
+  if (rows.length > 0 && policy === "restrict") {
+    throwRelationRestricted(deletedId, relation);
+  }
+  if (policy === "cascade") {
+    for (const { resource, row } of rows) {
+      const rowId = String(row.id ?? "");
+      if (!rowId) continue;
+      await validateRelationDeletePolicies(
+        storage,
+        schema,
+        resource,
+        rowId,
+        visited,
+      );
+    }
+  }
+}
+
+async function validateRelationDeletePolicies(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  id: string,
+  visited: Set<string> = new Set(),
+): Promise<void> {
+  const visitKey = `${resource}:${id}`;
+  if (visited.has(visitKey)) return;
+  visited.add(visitKey);
+
+  for (const relation of schema.relations ?? []) {
+    if (relation.type === "many-many") {
+      const side = endpointIncludes(relation.from, resource)
+        ? "from"
+        : endpointIncludes(relation.to, resource)
+          ? "to"
+          : null;
+      if (!side) continue;
+      const policy = relationDeletePolicy(relation, side);
+      if (!policy) continue;
+      const rows = await listManyManyRowsForDeletedResource(
+        storage,
+        relation,
+        resource,
+        id,
+        side,
+      );
+      if (rows.length > 0 && policy === "restrict") {
+        throwRelationRestricted(id, relation);
+      }
+    } else if (relation.type === "many-one" && endpointIncludes(relation.to, resource)) {
+      const policy = relationDeletePolicy(relation, "to");
+      if (!policy) continue;
+      await validateFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.from),
+        relation.fkField || `${relation.relation}Id`,
+        id,
+        visited,
+        endpointIsPolymorphic(relation.to)
+          ? fkResourceFieldForRelation(relation, "to")
+          : undefined,
+        resource,
+      );
+    } else if (relation.type === "one-many" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      await validateFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.to),
+        fkFieldForOneMany(relation),
+        id,
+        visited,
+        endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        resource,
+      );
+    } else if (relation.type === "htree" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      await validateFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.to),
+        htreeFkField(relation),
+        id,
+        visited,
+        endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        resource,
+      );
+    }
+  }
+}
+
+async function applyFkDeletePolicy(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  relation: DatafnRelationSchema,
+  policy: DatafnRelationDeletePolicy,
+  resources: string[],
+  fkField: string,
+  deletedId: string,
+  visited: Set<string>,
+  extraNullFields?: Record<string, unknown>,
+  resourceField?: string,
+  deletedResource?: string,
+): Promise<void> {
+  const rows = await findFkPolicyRows(
+    storage,
+    resources,
+    fkField,
+    deletedId,
+    resourceField,
+    deletedResource,
+  );
+  if (rows.length > 0 && policy === "restrict") {
+    throwRelationRestricted(deletedId, relation);
+  }
+  if (policy === "setNull" || policy === "detach") {
+    const seeds: Array<{ resource: string; id: string }> = [];
+    for (const { resource, row } of rows) {
+      const rowId = String(row.id ?? "");
+      if (!rowId) continue;
+      await storage.upsertRecord(resource, {
+        ...row,
+        [fkField]: null,
+        ...(extraNullFields ?? {}),
+      });
+      seeds.push({ resource, id: rowId });
+    }
+    await applyInactivePropagation(storage, schema, seeds);
+  } else if (policy === "cascade") {
+    for (const { resource, row } of rows) {
+      const rowId = String(row.id ?? "");
+      if (!rowId) continue;
+      await deleteRecordWithRelationPolicies(
+        storage,
+        schema,
+        resource,
+        rowId,
+        visited,
+      );
+    }
+  }
+}
+
+async function applyRelationDeletePolicies(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  id: string,
+  visited: Set<string>,
+): Promise<void> {
+  for (const relation of schema.relations ?? []) {
+    if (relation.type === "many-many") {
+      const side = endpointIncludes(relation.from, resource)
+        ? "from"
+        : endpointIncludes(relation.to, resource)
+          ? "to"
+          : null;
+      if (!side) continue;
+      const policy = relationDeletePolicy(relation, side);
+      if (!policy) continue;
+      const rows = await listManyManyRowsForDeletedResource(
+        storage,
+        relation,
+        resource,
+        id,
+        side,
+      );
+      if (rows.length > 0 && policy === "restrict") {
+        throwRelationRestricted(id, relation);
+      }
+      if (policy === "detach" || policy === "cascade" || policy === "setNull") {
+        for (const { joinStore, row } of rows) {
+          const from = String(row.from ?? "");
+          const to = String(row.to ?? "");
+          if (!from || !to) continue;
+          await storage.deleteJoinRow(joinStore, from, to);
+        }
+      }
+    } else if (relation.type === "many-one" && endpointIncludes(relation.to, resource)) {
+      const policy = relationDeletePolicy(relation, "to");
+      if (!policy) continue;
+      await applyFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.from),
+        relation.fkField || `${relation.relation}Id`,
+        id,
+        visited,
+        fkResourcePatch(relation, "to", null),
+        endpointIsPolymorphic(relation.to)
+          ? fkResourceFieldForRelation(relation, "to")
+          : undefined,
+        resource,
+      );
+    } else if (relation.type === "one-many" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      await applyFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.to),
+        fkFieldForOneMany(relation),
+        id,
+        visited,
+        fkResourcePatch(relation, "from", null),
+        endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        resource,
+      );
+    } else if (relation.type === "htree" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      await applyFkDeletePolicy(
+        storage,
+        schema,
+        relation,
+        policy,
+        endpointList(relation.to),
+        htreeFkField(relation),
+        id,
+        visited,
+        {
+          [htreePathField(relation)]: "",
+          ...fkResourcePatch(relation, "from", null),
+        },
+        endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        resource,
+      );
+    }
+  }
+}
+
+async function deleteRecordWithRelationPolicies(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  id: string,
+  visited: Set<string> = new Set(),
+): Promise<void> {
+  const visitKey = `${resource}:${id}`;
+  if (visited.has(visitKey)) return;
+  visited.add(visitKey);
+  await applyRelationDeletePolicies(storage, schema, resource, id, visited);
+  await storage.deleteRecord(resource, id);
+}
+
+async function updateHtreeDescendantPaths(
+  storage: DatafnStorageAdapter,
+  resource: string,
+  relation: { pathField?: string },
+  childId: string,
+  oldChildPath: string,
+  newChildPath: string,
+): Promise<void> {
+  const pathField = htreePathField(relation);
+  const oldPrefix = joinHtreePath(oldChildPath, childId);
+  const newPrefix = joinHtreePath(newChildPath, childId);
+  const records = await storage.listRecords(resource);
+  for (const record of records) {
+    const currentPath = record[pathField];
+    if (typeof currentPath !== "string") continue;
+    if (currentPath !== oldPrefix && !currentPath.startsWith(`${oldPrefix}-`)) {
+      continue;
+    }
+    const suffix = currentPath.slice(oldPrefix.length);
+    await storage.upsertRecord(resource, {
+      ...record,
+      [pathField]: `${newPrefix}${suffix}`,
+    });
+  }
+}
+
+async function setHtreeParent(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  resource: string,
+  childId: string,
+  parentId: string | null,
+  parentResource: string | null,
+  relation: DatafnRelationSchema,
+): Promise<void> {
+  const child = await storage.getRecord(resource, childId);
+  if (!child) return;
+  const fkField = htreeFkField(relation);
+  const pathField = htreePathField(relation);
+  const oldChildPath = typeof child[pathField] === "string" ? child[pathField] as string : "";
+  const parent = parentId ? await storage.getRecord(parentResource ?? resource, parentId) : null;
+  const newChildPath = parentId ? joinHtreePath(parent?.[pathField], parentId) : "";
+  await storage.upsertRecord(resource, {
+    ...child,
+    [fkField]: parentId,
+    [pathField]: newChildPath,
+    ...fkResourcePatch(relation, "from", parentResource),
+  });
+  await updateHtreeDescendantPaths(
+    storage,
+    resource,
+    relation,
+    childId,
+    oldChildPath,
+    newChildPath,
+  );
+  await applyInactivePropagation(storage, schema, [{ resource, id: childId }]);
+}
 
 /**
  * Handle a mutation when remote is unavailable.
@@ -43,17 +700,10 @@ export async function handleOfflineMutation(
   // CLIENT-CHANGELOG-001, CLIENT-OFFLINE-MUT-001
   const clientId = mutation.clientId as string;
   const mutationId = mutation.mutationId as string;
-  const resource = mutation.resource as string;
   const id = mutation.id as string;
-  const operation = mutation.operation as string;
   const sanitizedMutation = sanitizeCapabilityReadonlyFields(schema, mutation);
-  const record = ((sanitizedMutation.record || {}) as Record<string, unknown>);
 
-  // 2. Validate mutation (no side effects, can throw)
-  // This prevents invalid mutations from being added to changelog
-  if (operation === "relate" || operation === "modifyRelation" || operation === "unrelate") {
-    await validateRelationMutation(storage, schema, sanitizedMutation);
-  }
+  await validateOfflineMutation(storage, schema, sanitizedMutation);
 
   // 3. Append to changelog (after validation, before apply)
   // AUD-001: Enrich with timestamp
@@ -73,62 +723,13 @@ export async function handleOfflineMutation(
 
   // 4. Optimistic local apply
   // Deterministic implementation
-
-  if (operation === "delete") {
-    await storage.deleteRecord(resource, id);
-  } else if (operation === "trash") {
-    await storage.mergeRecord(resource, id, {
-      trashedAt: timestampMs,
-      trashedBy: null,
-    });
-  } else if (operation === "restore") {
-    await storage.mergeRecord(resource, id, {
-      trashedAt: null,
-      trashedBy: null,
-    });
-  } else if (operation === "archive") {
-    await storage.mergeRecord(resource, id, {
-      isArchived: true,
-    });
-  } else if (operation === "unarchive") {
-    await storage.mergeRecord(resource, id, {
-      isArchived: false,
-    });
-  } else if (operation === "merge") {
-    // Merge: Use atomic mergeRecord with one-level-deep merge
-    const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
-      schema,
-      sanitizedMutation,
-      {
-        timestampMs,
-        actorId: clientId,
-      },
-    );
-    await storage.mergeRecord(resource, id, optimisticRecord);
-  } else if (operation === "insert" || operation === "replace") {
-    // Insert/Replace: Overwrite (simple upsert)
-    // Ensure id matches mutation target
-    const existing =
-      operation === "replace" ? await storage.getRecord(resource, id) : null;
-    const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
-      schema,
-      sanitizedMutation,
-      {
-        timestampMs,
-        actorId: clientId,
-        existingRecord: existing,
-      },
-    );
-    const toWrite = { ...optimisticRecord, id };
-    await storage.upsertRecord(resource, toWrite);
-  } else if (operation === "relate") {
-    // Handle relation mutations
-    await applyRelate(storage, schema, sanitizedMutation);
-  } else if (operation === "modifyRelation") {
-    await applyModifyRelation(storage, schema, sanitizedMutation);
-  } else if (operation === "unrelate") {
-    await applyUnrelate(storage, schema, sanitizedMutation);
-  }
+  await applyOptimisticMutationToStorage(
+    storage,
+    schema,
+    sanitizedMutation,
+    timestampMs,
+    clientId,
+  );
 
   // 5. Return optimistic success result
   return {
@@ -139,10 +740,105 @@ export async function handleOfflineMutation(
   };
 }
 
+export async function applyOptimisticMutationToStorage(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  mutation: Record<string, unknown>,
+  timestampMs: number,
+  actorId?: string,
+): Promise<void> {
+  const resource = mutation.resource as string;
+  const id = mutation.id as string;
+  const operation = mutation.operation as string;
+  const sanitizedMutation = sanitizeCapabilityReadonlyFields(schema, mutation);
+
+  if (operation === "delete") {
+    await deleteRecordWithRelationPolicies(storage, schema, resource, id);
+  } else if (operation === "trash") {
+    await storage.mergeRecord(resource, id, {
+      trashedAt: timestampMs,
+      trashedBy: null,
+    });
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "restore") {
+    await storage.mergeRecord(resource, id, {
+      trashedAt: null,
+      trashedBy: null,
+    });
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "archive") {
+    await storage.mergeRecord(resource, id, {
+      isArchived: true,
+    });
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "unarchive") {
+    await storage.mergeRecord(resource, id, {
+      isArchived: false,
+    });
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "merge") {
+    // Merge: Use atomic mergeRecord with one-level-deep merge
+    const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
+      schema,
+      sanitizedMutation,
+      {
+        timestampMs,
+        actorId,
+      },
+    );
+    await storage.mergeRecord(resource, id, optimisticRecord);
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "insert" || operation === "replace") {
+    // Insert/Replace: Overwrite (simple upsert)
+    // Ensure id matches mutation target
+    const existing =
+      operation === "replace" ? await storage.getRecord(resource, id) : null;
+    const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
+      schema,
+      sanitizedMutation,
+      {
+        timestampMs,
+        actorId,
+        existingRecord: existing,
+      },
+    );
+    const toWrite = { ...optimisticRecord, id };
+    await storage.upsertRecord(resource, toWrite);
+    await applyInactivePropagation(storage, schema, [{ resource, id }]);
+  } else if (operation === "relate") {
+    // Handle relation mutations
+    await applyRelate(storage, schema, sanitizedMutation);
+    await applyInactivePropagation(storage, schema, collectInactivePropagationSeeds(schema, sanitizedMutation));
+  } else if (operation === "modifyRelation") {
+    await applyModifyRelation(storage, schema, sanitizedMutation);
+    await applyInactivePropagation(storage, schema, collectInactivePropagationSeeds(schema, sanitizedMutation));
+  } else if (operation === "unrelate") {
+    await applyUnrelate(storage, schema, sanitizedMutation);
+    await applyInactivePropagation(storage, schema, collectInactivePropagationSeeds(schema, sanitizedMutation));
+  }
+}
+
 /**
  * Validate relation mutation (no side effects)
  * Throws if validation fails
  */
+export async function validateOfflineMutation(
+  storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
+  mutation: Record<string, unknown>,
+): Promise<void> {
+  const operation = mutation.operation as string;
+  if (operation === "relate" || operation === "modifyRelation" || operation === "unrelate") {
+    await validateRelationMutation(storage, schema, mutation);
+  } else if (operation === "delete") {
+    const resource = mutation.resource as string;
+    const id = mutation.id as string;
+    if (resource && id) {
+      await validateRelationDeletePolicies(storage, schema, resource, id);
+    }
+  }
+}
+
 async function validateRelationMutation(
   storage: DatafnStorageAdapter,
   schema: DatafnSchema,
@@ -156,14 +852,15 @@ async function validateRelationMutation(
   if (!relations) return;
 
   for (const [relationName, payload] of Object.entries(relations)) {
-    const relation = findRelationBidirectional(schema, resource, relationName);
-    if (!relation) {
+    const match = findRelationMatch(schema, resource, relationName);
+    if (!match) {
       throw createClientError(
         "DFQL_UNKNOWN_RELATION",
         `Unknown relation: ${relationName}`,
         { path: `relations.${relationName}` },
       );
     }
+    const { relation, direction } = match;
 
     // Validate payload structure
     const items = normalizeRelationPayload(payload);
@@ -178,27 +875,17 @@ async function validateRelationMutation(
         );
       }
 
-      const fromResource = resource;
-      const toResources = Array.isArray(relation.to)
-        ? relation.to
-        : [relation.to];
-
       for (const item of items) {
-        const toResource =
-          toResources.length === 1
-            ? toResources[0]
-            : toResources.find((r) => item.toId.startsWith(`${r}:`)) ||
-              toResources[0];
-
-        const joinStore = getJoinStoreKey(
-          fromResource,
-          relationName,
-          toResource,
+        const join = resolveManyManyJoin(
+          relation,
+          direction,
+          resource,
+          id,
+          item.toId,
+          `relations.${relationName}`,
         );
-
-        // Check if join row exists
-        const existingRows = await storage.getJoinRows(joinStore, id);
-        const existingRow = existingRows.find((r) => r.to === item.toId);
+        const existingRows = await storage.getJoinRows(join.joinStore, join.fromId);
+        const existingRow = existingRows.find((r) => r.to === join.toId);
 
         if (!existingRow) {
           throw createClientError(
@@ -238,30 +925,45 @@ async function applyRelate(
   if (!relations) return;
 
   for (const [relationName, payload] of Object.entries(relations)) {
-    const relation = findRelationBidirectional(schema, resource, relationName);
-    if (!relation) continue; // Already validated
+    const match = findRelationMatch(schema, resource, relationName);
+    if (!match) continue;
+    const { relation, direction } = match;
 
     const items = normalizeRelationPayload(payload);
 
     // Apply based on relation type
-    if (relation.type === "many-one") {
-      // Update FK on source record
+    if (relation.type === "many-one" && direction === "forward") {
       const fkField = relation.fkField || `${relationName}Id`;
+      const targetResource = resolveEndpointResource(relation.to, items[0].toId);
       const existing = await storage.getRecord(resource, id);
       if (existing) {
         await storage.upsertRecord(resource, {
           ...existing,
           [fkField]: items[0].toId,
+          ...fkResourcePatch(relation, "to", targetResource ?? null),
         });
       }
-    } else if (relation.type === "one-many") {
-      // Update FK on target records
+    } else if (relation.type === "many-one" && direction === "inverse") {
+      const fkField = relation.fkField || `${relation.relation}Id`;
+      for (const item of items) {
+        const targetResource = resolveEndpointResource(relation.from, item.toId);
+        if (!targetResource) continue;
+        const existing = await storage.getRecord(targetResource, item.toId);
+        if (existing) {
+          await storage.upsertRecord(targetResource, {
+            ...existing,
+            [fkField]: id,
+            ...fkResourcePatch(relation, "to", resource),
+          });
+        }
+      }
+    } else if (relation.type === "one-many" && direction === "forward") {
       const fkField =
         relation.fkField || relation.inverse || `${resource}Id`;
-      const targetResource =
-        typeof relation.to === "string" ? relation.to : relation.to[0];
 
       for (const item of items) {
+        const targetResource = resolveEndpointResource(relation.to, item.toId);
+        if (!targetResource) continue;
         const targetRecord = await storage.getRecord(
           targetResource,
           item.toId,
@@ -270,49 +972,69 @@ async function applyRelate(
           await storage.upsertRecord(targetResource, {
             ...targetRecord,
             [fkField]: id,
+            ...fkResourcePatch(relation, "from", resource),
           });
         }
       }
-    } else if (relation.type === "many-many") {
-      // Upsert join rows
-      const fromResource = resource;
-      const toResources = Array.isArray(relation.to)
-        ? relation.to
-        : [relation.to];
-
+    } else if (relation.type === "one-many" && direction === "inverse") {
+      const fkField = relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+      const targetResource = resolveEndpointResource(relation.from, items[0].toId);
+      const existing = await storage.getRecord(resource, id);
+      if (existing) {
+        await storage.upsertRecord(resource, {
+          ...existing,
+          [fkField]: items[0].toId,
+          ...fkResourcePatch(relation, "from", targetResource ?? null),
+        });
+      }
+    } else if (relation.type === "htree") {
+      const isForward =
+        endpointIncludes(relation.from, resource) &&
+        relation.relation === relationName;
+      const treeResource = isForward
+        ? firstEndpoint(relation.to)
+        : firstEndpoint(relation.from);
       for (const item of items) {
-        // Determine target resource from toId prefix (or use first if single)
-        const toResource =
-          toResources.length === 1
-            ? toResources[0]
-            : toResources.find((r) => item.toId.startsWith(`${r}:`)) ||
-              toResources[0];
-
-        const joinStore = getJoinStoreKey(
-          fromResource,
-          relationName,
-          toResource,
+        await setHtreeParent(
+          storage,
+          schema,
+          treeResource,
+          isForward ? item.toId : id,
+          isForward ? id : item.toId,
+          isForward ? resource : resolveEndpointResource(relation.from, item.toId) ?? null,
+          relation,
         );
-
-        // Upsert join row (merge metadata if exists)
-        const existingRows = await storage.getJoinRows(joinStore, id);
-        const existingRow = existingRows.find((r) => r.to === item.toId);
+      }
+    } else if (relation.type === "many-many") {
+      for (const item of items) {
+        const join = resolveManyManyJoin(
+          relation,
+          direction,
+          resource,
+          id,
+          item.toId,
+          `relations.${relationName}`,
+        );
+        const existingRows = await storage.getJoinRows(join.joinStore, join.fromId);
+        const existingRow = existingRows.find((r) => r.to === join.toId);
 
         if (existingRow) {
-          // Update metadata if provided
           if (Object.keys(item.metadata).length > 0) {
-            await storage.upsertJoinRow(joinStore, {
-              from: id,
-              to: item.toId,
+            await storage.upsertJoinRow(join.joinStore, {
+              from: join.fromId,
+              to: join.toId,
+              fromResource: join.fromResource,
+              toResource: join.toResource,
               ...existingRow,
               ...item.metadata,
             });
           }
         } else {
-          // Create new join row
-          await storage.upsertJoinRow(joinStore, {
-            from: id,
-            to: item.toId,
+          await storage.upsertJoinRow(join.joinStore, {
+            from: join.fromId,
+            to: join.toId,
+            fromResource: join.fromResource,
+            toResource: join.toResource,
             ...item.metadata,
           });
         }
@@ -336,33 +1058,29 @@ async function applyModifyRelation(
   if (!relations) return;
 
   for (const [relationName, payload] of Object.entries(relations)) {
-    const relation = findRelationBidirectional(schema, resource, relationName);
-    if (!relation) continue; // Already validated
+    const match = findRelationMatch(schema, resource, relationName);
+    if (!match) continue;
+    const { relation, direction } = match;
 
     const items = normalizeRelationPayload(payload);
-    const fromResource = resource;
-    const toResources = Array.isArray(relation.to)
-      ? relation.to
-      : [relation.to];
 
     for (const item of items) {
-      // Determine target resource
-      const toResource =
-        toResources.length === 1
-          ? toResources[0]
-          : toResources.find((r) => item.toId.startsWith(`${r}:`)) ||
-            toResources[0];
+      const join = resolveManyManyJoin(
+        relation,
+        direction,
+        resource,
+        id,
+        item.toId,
+        `relations.${relationName}`,
+      );
+      const existingRows = await storage.getJoinRows(join.joinStore, join.fromId);
+      const existingRow = existingRows.find((r) => r.to === join.toId);
 
-      const joinStore = getJoinStoreKey(fromResource, relationName, toResource);
-
-      // Find existing join row (already validated to exist)
-      const existingRows = await storage.getJoinRows(joinStore, id);
-      const existingRow = existingRows.find((r) => r.to === item.toId);
-
-      // Update metadata (existingRow is guaranteed to exist due to validation)
-      await storage.upsertJoinRow(joinStore, {
-        from: id,
-        to: item.toId,
+      await storage.upsertJoinRow(join.joinStore, {
+        from: join.fromId,
+        to: join.toId,
+        fromResource: join.fromResource,
+        toResource: join.toResource,
         ...existingRow,
         ...item.metadata,
       });
@@ -385,29 +1103,43 @@ async function applyUnrelate(
   if (!relations) return;
 
   for (const [relationName, payload] of Object.entries(relations)) {
-    const relation = findRelationBidirectional(schema, resource, relationName);
-    if (!relation) continue; // Already validated
+    const match = findRelationMatch(schema, resource, relationName);
+    if (!match) continue;
+    const { relation, direction } = match;
 
     const items = normalizeRelationPayload(payload);
 
-    if (relation.type === "many-one") {
-      // Clear FK on source record
+    if (relation.type === "many-one" && direction === "forward") {
       const fkField = relation.fkField || `${relationName}Id`;
       const existing = await storage.getRecord(resource, id);
       if (existing) {
         await storage.upsertRecord(resource, {
           ...existing,
           [fkField]: null,
+          ...fkResourcePatch(relation, "to", null),
         });
       }
-    } else if (relation.type === "one-many") {
-      // Clear FK on target records
+    } else if (relation.type === "many-one" && direction === "inverse") {
+      const fkField = relation.fkField || `${relation.relation}Id`;
+      for (const item of items) {
+        const targetResource = resolveEndpointResource(relation.from, item.toId);
+        if (!targetResource) continue;
+        const targetRecord = await storage.getRecord(targetResource, item.toId);
+        if (targetRecord) {
+          await storage.upsertRecord(targetResource, {
+            ...targetRecord,
+            [fkField]: null,
+            ...fkResourcePatch(relation, "to", null),
+          });
+        }
+      }
+    } else if (relation.type === "one-many" && direction === "forward") {
       const fkField =
         relation.fkField || relation.inverse || `${resource}Id`;
-      const targetResource =
-        typeof relation.to === "string" ? relation.to : relation.to[0];
 
       for (const item of items) {
+        const targetResource = resolveEndpointResource(relation.to, item.toId);
+        if (!targetResource) continue;
         const targetRecord = await storage.getRecord(
           targetResource,
           item.toId,
@@ -416,31 +1148,49 @@ async function applyUnrelate(
           await storage.upsertRecord(targetResource, {
             ...targetRecord,
             [fkField]: null,
+            ...fkResourcePatch(relation, "from", null),
           });
         }
       }
-    } else if (relation.type === "many-many") {
-      // Delete join rows
-      const fromResource = resource;
-      const toResources = Array.isArray(relation.to)
-        ? relation.to
-        : [relation.to];
-
+    } else if (relation.type === "one-many" && direction === "inverse") {
+      const fkField = relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+      const existing = await storage.getRecord(resource, id);
+      if (existing) {
+        await storage.upsertRecord(resource, {
+          ...existing,
+          [fkField]: null,
+          ...fkResourcePatch(relation, "from", null),
+        });
+      }
+    } else if (relation.type === "htree") {
+      const isForward =
+        endpointIncludes(relation.from, resource) &&
+        relation.relation === relationName;
+      const treeResource = isForward
+        ? firstEndpoint(relation.to)
+        : firstEndpoint(relation.from);
       for (const item of items) {
-        // Determine target resource
-        const toResource =
-          toResources.length === 1
-            ? toResources[0]
-            : toResources.find((r) => item.toId.startsWith(`${r}:`)) ||
-              toResources[0];
-
-        const joinStore = getJoinStoreKey(
-          fromResource,
-          relationName,
-          toResource,
+        await setHtreeParent(
+          storage,
+          schema,
+          treeResource,
+          isForward ? item.toId : id,
+          null,
+          null,
+          relation,
         );
-
-        await storage.deleteJoinRow(joinStore, id, item.toId);
+      }
+    } else if (relation.type === "many-many") {
+      for (const item of items) {
+        const join = resolveManyManyJoin(
+          relation,
+          direction,
+          resource,
+          id,
+          item.toId,
+          `relations.${relationName}`,
+        );
+        await storage.deleteJoinRow(join.joinStore, join.fromId, join.toId);
       }
     }
   }

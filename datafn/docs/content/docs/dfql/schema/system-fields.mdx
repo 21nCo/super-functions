@@ -116,6 +116,17 @@ Join-row fields when enabled:
 
 Relation capability fields are also readonly from clients; client-provided values are stripped on `relate`/`modifyRelation` payloads.
 
+## Built-in Resources
+
+DataFn auto-injects a few internal resources into every schema at client/server creation and CLI codegen time. You do not declare these; they are added for you.
+
+| Resource | Injected by | Purpose |
+| --- | --- | --- |
+| `kv` | `ensureBuiltinKv` | Built-in [key-value store](/docs/documentation/client/kv). |
+| `datafnTimezoneChange` | `ensureBuiltinTemporal` | [Timezone-change registry](/docs/dfql/temporal#timezone-change-registry) backing `timezone: "user"` resolution. |
+
+The `datafnTimezoneChange` resource has fields `id`, `timezone`, `effectiveFrom`, `recordedAt`, and optional `source`. Manage its records with the [`client.temporal` API](/docs/reference/client/temporal). It also appears in generated Drizzle schemas, so regenerate and migrate after upgrading.
+
 ## Notes
 
 If you need app-controlled metadata with similar names, choose non-capability field names to avoid collisions.

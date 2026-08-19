@@ -6,6 +6,11 @@ import {
   mirrorGrantToLegacyV1,
   removeLegacyV1Grant,
 } from "../migration/spv2.js";
+import {
+  deleteDatafnPermissionGrant,
+  indexDatafnPermissionGrant,
+} from "../../plugins/multi-region.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 
 type ShareableConfig = {
   levels: string[];
@@ -218,6 +223,7 @@ export async function executeShare(
   namespace: string,
   actorId?: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<
   | { ok: true; permissionRecord: Record<string, unknown> }
   | { ok: false; code: string; message: string; path: string }
@@ -402,6 +408,8 @@ export async function executeShare(
     });
   }
 
+  await indexDatafnPermissionGrant(permissionRecord, multiRegionRuntime ?? null);
+
   return { ok: true, permissionRecord };
 }
 
@@ -417,6 +425,7 @@ export async function executeUnshare(
   namespace: string,
   actorId?: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<
   | { ok: true; deleted: boolean; changeId: string }
   | { ok: false; code: string; message: string; path: string }
@@ -519,6 +528,19 @@ export async function executeUnshare(
     namespace,
   });
 
+  // Remove the distributed authorization entry before deleting the
+  // authoritative database grant. If directory invalidation fails, the
+  // database row remains active and the unshare fails without creating a
+  // revoked-database/stale-directory authorization bypass. This also cleans a
+  // stale directory entry when an earlier database deletion already happened.
+  await deleteDatafnPermissionGrant({
+    id: changeId,
+    resourceType: mutation.resource,
+    resourceNs: namespace,
+    resourceId,
+    principalId: unsharePrincipalId,
+  }, multiRegionRuntime ?? null);
+
   if (!existingPermission) {
     return {
       ok: true,
@@ -539,7 +561,6 @@ export async function executeUnshare(
     resourceId,
     principalId: unsharePrincipalId,
   });
-
   return {
     ok: true,
     deleted: true,

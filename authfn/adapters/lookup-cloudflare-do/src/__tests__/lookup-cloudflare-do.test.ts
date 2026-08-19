@@ -7,64 +7,84 @@ import {
   type DurableObjectStateLike,
 } from '../index.js';
 
-const record = {
-  identifier: 'person@example.com',
-  userId: 'user_1',
-  regionId: 'insouth',
-  authority: 'https://account-insouth-dev.nucleum.app',
-  domain: 'nucleum.app',
-  createdAt: '2026-04-27T00:00:00.000Z',
-  updatedAt: '2026-04-27T00:00:00.000Z',
-};
+const key = 'authfn:region:person@example.com';
+const value = '{"regionId":"insouth"}';
 
 describe('AuthFnRegionLookupDurableObject', () => {
-  it('stores records with put-if-absent semantics', async () => {
+  it('stores raw values with put-if-absent semantics', async () => {
     const object = new AuthFnRegionLookupDurableObject(createState());
 
-    const first = await post(object, { operation: 'putIfAbsent', identifier: record.identifier, record });
-    const second = await post(object, {
-      operation: 'putIfAbsent',
-      identifier: record.identifier,
-      record: {
-        ...record,
-        regionId: 'useast',
-      },
-    });
-    const get = await post(object, { operation: 'getByIdentifier', identifier: record.identifier });
+    const first = await post(object, { operation: 'setIfAbsent', key, value });
+    const second = await post(object, { operation: 'setIfAbsent', key, value: 'other' });
+    const get = await post(object, { operation: 'get', key });
 
     expect(first).toEqual({ ok: true, data: { inserted: true } });
-    expect(second).toEqual({ ok: true, data: { inserted: false, existing: record } });
-    expect(get).toEqual({ ok: true, data: record });
+    expect(second).toEqual({ ok: true, data: { inserted: false, existing: value } });
+    expect(get).toEqual({ ok: true, data: value });
   });
 
-  it('updates and deletes lookup records', async () => {
+  it('compares, updates, and deletes raw values', async () => {
     const object = new AuthFnRegionLookupDurableObject(createState());
-    const updated = {
-      ...record,
-      regionId: 'useast',
-      authority: 'https://account-useast-dev.nucleum.app',
-    };
 
-    await post(object, { operation: 'putIfAbsent', identifier: record.identifier, record });
-    expect(await post(object, { operation: 'update', identifier: record.identifier, record: updated }))
-      .toEqual({ ok: true, data: updated });
-    await post(object, { operation: 'deleteByIdentifier', identifier: record.identifier });
+    await post(object, { operation: 'set', key, value });
+    expect(await post(object, {
+      operation: 'compareAndSet',
+      key,
+      expected: 'wrong',
+      value: 'updated',
+    })).toEqual({ ok: true, data: { updated: false, existing: value } });
+    expect(await post(object, {
+      operation: 'compareAndSet',
+      key,
+      expected: value,
+      value: 'updated',
+    })).toEqual({ ok: true, data: { updated: true } });
+    await post(object, { operation: 'delete', key });
 
-    expect(await post(object, { operation: 'getByIdentifier', identifier: record.identifier }))
+    expect(await post(object, { operation: 'get', key }))
+      .toEqual({ ok: true, data: null });
+  });
+
+  it('reads and deletes legacy structured records', async () => {
+    const state = createState({
+      record: {
+        identifier: 'person@example.com',
+        regionId: 'insouth',
+        authority: 'https://insouth.example.com',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const object = new AuthFnRegionLookupDurableObject(state);
+
+    const read = await post(object, { operation: 'get', key: 'person@example.com' });
+    expect(read).toEqual({
+      ok: true,
+      data: JSON.stringify({
+        identifier: 'person@example.com',
+        regionId: 'insouth',
+        authority: 'https://insouth.example.com',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+
+    await post(object, { operation: 'delete', key: 'person@example.com' });
+    expect(await post(object, { operation: 'get', key: 'person@example.com' }))
       .toEqual({ ok: true, data: null });
   });
 });
 
 describe('createCloudflareRegionLookupStore', () => {
-  it('routes adapter calls through identifier-named durable objects', async () => {
+  it('routes conditional KV calls through key-named durable objects', async () => {
     const namespace = createNamespace();
     const store = createCloudflareRegionLookupStore(namespace, {
       objectNamePrefix: 'authfn:',
     });
 
-    await expect(store.getByIdentifier(record.identifier)).resolves.toBeNull();
-    await expect(store.putIfAbsent(record)).resolves.toEqual({ inserted: true });
-    await expect(store.getByIdentifier(record.identifier)).resolves.toEqual(record);
+    await expect(store.get(key)).resolves.toBeNull();
+    await expect(store.setIfAbsent({ key, value })).resolves.toEqual({ inserted: true });
+    await expect(store.get(key)).resolves.toBe(value);
     expect(namespace.names[0]?.startsWith('authfn:')).toBe(true);
   });
 
@@ -77,26 +97,26 @@ describe('createCloudflareRegionLookupStore', () => {
     };
     const store = createCloudflareRegionLookupStore(namespace);
 
-    await expect(store.getByIdentifier(record.identifier)).rejects.toMatchObject({
+    await expect(store.get(key)).rejects.toMatchObject({
       name: 'AuthFnCloudflareDoLookupStoreError',
-      operation: 'getByIdentifier',
+      operation: 'get',
       retryable: true,
     } satisfies Partial<AuthFnCloudflareDoLookupStoreError>);
   });
 });
 
-function createState(): DurableObjectStateLike {
-  const values = new Map<string, unknown>();
+function createState(initial: Record<string, unknown> = {}): DurableObjectStateLike {
+  const values = new Map<string, unknown>(Object.entries(initial));
   return {
     storage: {
-      async get<T>(key: string) {
-        return values.get(key) as T | undefined;
+      async get<T>(entryKey: string) {
+        return values.get(entryKey) as T | undefined;
       },
-      async put<T>(key: string, value: T) {
-        values.set(key, value);
+      async put<T>(entryKey: string, entryValue: T) {
+        values.set(entryKey, entryValue);
       },
-      async delete(key: string) {
-        return values.delete(key);
+      async delete(entryKey: string) {
+        return values.delete(entryKey);
       },
     },
   };

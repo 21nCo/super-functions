@@ -1,4 +1,5 @@
-import type { Adapter, KVStoreAdapter } from '@superfunctions/db';
+import { instrumentKVStore, type Adapter, type AtomicKVStoreAdapter, type KVStoreAdapter } from '@superfunctions/db';
+import { normalizeObservability, type ObservabilityInput } from '@superfunctions/observability';
 
 export { KVStoreAdapter };
 
@@ -10,8 +11,11 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyPrefix?: string;
   persistence?: Adapter | KVStoreAdapter;
+  atomicStore?: AtomicKVStoreAdapter;
   algorithm?: RateLimitAlgorithm;
   now?: () => number;
+  observability?: ObservabilityInput;
+  component?: string;
 }
 
 export interface RateLimitResult {
@@ -133,30 +137,13 @@ function ensureKV(p: Adapter | KVStoreAdapter, now: () => number): KVStoreAdapte
   return p;
 }
 
-async function getState<T>(kv: KVStoreAdapter, key: string): Promise<T | null> {
-  const data = await kv.get(key);
+function parseState<T>(data: string | null): T | null {
   if (!data) return null;
   try {
     return JSON.parse(data) as T;
   } catch {
     return null;
   }
-}
-
-async function setState(
-  kv: KVStoreAdapter,
-  key: string,
-  state: unknown,
-  ttlMs: number
-): Promise<void> {
-  if (ttlMs <= 0) {
-    return;
-  }
-  await kv.set({
-    key,
-    value: JSON.stringify(state),
-    ttlSeconds: Math.ceil(ttlMs / 1000),
-  });
 }
 
 export function createRateLimiter(config: RateLimitConfig): RateLimiter {
@@ -166,10 +153,28 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     maxRequests,
     keyPrefix = 'ratelimit:',
     persistence = createInMemoryKVStore(now),
+    atomicStore,
     algorithm = 'fixed-window',
+    observability: observabilityInput,
+    component = 'rate-limit',
   } = config;
 
-  const kv = ensureKV(persistence, now);
+  const observability = normalizeObservability(observabilityInput)?.child({ component });
+  if (atomicStore && typeof atomicStore.compareAndSet !== 'function') {
+    throw new Error('RATE_LIMIT_ATOMIC_CAS_REQUIRED');
+  }
+  const atomic = atomicStore
+    ? instrumentKVStore(atomicStore, {
+        observability,
+        kind: 'cache',
+        component: `${component}.atomic`,
+      })
+    : undefined;
+  const kv = instrumentKVStore(ensureKV(persistence, now), {
+    observability,
+    kind: 'cache',
+    component: `${component}.cache`,
+  });
   const keyLocks = new Map<string, Promise<void>>();
 
   async function withKeyLock<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -224,13 +229,17 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     }
   }
 
-  async function evaluateKey(
-    key: string,
+  function evaluateState(
+    rawState: string | null,
     currentTime: number,
     effectiveWindowMs: number,
     effectiveLimit: number,
     commit: boolean
-  ): Promise<RateLimitResult> {
+  ): {
+    result: RateLimitResult;
+    nextState?: unknown;
+    ttlMs?: number;
+  } {
     if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
       throw new Error('RATE_LIMIT_WINDOW_INVALID');
     }
@@ -239,30 +248,28 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     }
 
     if (algorithm === 'sliding-window') {
-      const state = (await getState<SlidingWindowState>(kv, key)) ?? { timestamps: [] };
+      const state = parseState<SlidingWindowState>(rawState) ?? { timestamps: [] };
       const floor = currentTime - effectiveWindowMs;
       const timestamps = state.timestamps.filter((timestamp) => timestamp > floor);
       const allowed = timestamps.length < effectiveLimit;
       if (allowed && commit) {
         timestamps.push(currentTime);
       }
-
       const oldest = timestamps[0] ?? currentTime;
       const resetAt = oldest + effectiveWindowMs;
-      if (commit) {
-        await setState(
-          kv,
-          key,
-          { timestamps, expiresAt: resetAt },
-          Math.max(1, resetAt - currentTime)
-        );
-      }
-
       return {
-        allowed,
-        remaining: Math.max(0, effectiveLimit - timestamps.length),
-        resetAt: new Date(resetAt).toISOString(),
-        total: effectiveLimit,
+        result: {
+          allowed,
+          remaining: Math.max(0, effectiveLimit - timestamps.length),
+          resetAt: new Date(resetAt).toISOString(),
+          total: effectiveLimit,
+        },
+        ...(commit
+          ? {
+              nextState: { timestamps, expiresAt: resetAt },
+              ttlMs: Math.max(1, resetAt - currentTime),
+            }
+          : {}),
       };
     }
 
@@ -270,15 +277,17 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       if (effectiveLimit <= 0) {
         const resetAt = currentTime + Math.max(0, effectiveWindowMs);
         return {
-          allowed: false,
-          remaining: 0,
-          resetAt: new Date(resetAt).toISOString(),
-          total: effectiveLimit,
+          result: {
+            allowed: false,
+            remaining: 0,
+            resetAt: new Date(resetAt).toISOString(),
+            total: effectiveLimit,
+          },
         };
       }
 
       const refillRatePerMs = effectiveLimit / effectiveWindowMs;
-      const state = (await getState<TokenBucketState>(kv, key)) ?? {
+      const state = parseState<TokenBucketState>(rawState) ?? {
         tokens: effectiveLimit,
         lastRefill: currentTime,
       };
@@ -291,29 +300,27 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       const msUntilFull = Math.ceil((effectiveLimit - nextTokens) / refillRatePerMs);
       const resetAt = currentTime + msUntilNextToken;
 
-      if (commit) {
-        const expiresAt = currentTime + Math.max(1, msUntilFull);
-        await setState(
-          kv,
-          key,
-          {
-            tokens: nextTokens,
-            lastRefill: currentTime,
-            expiresAt,
-          },
-          Math.max(1, msUntilFull)
-        );
-      }
-
       return {
-        allowed,
-        remaining: Math.max(0, Math.floor(nextTokens)),
-        resetAt: new Date(resetAt).toISOString(),
-        total: effectiveLimit,
+        result: {
+          allowed,
+          remaining: Math.max(0, Math.floor(nextTokens)),
+          resetAt: new Date(resetAt).toISOString(),
+          total: effectiveLimit,
+        },
+        ...(commit
+          ? {
+              nextState: {
+                tokens: nextTokens,
+                lastRefill: currentTime,
+                expiresAt: currentTime + Math.max(1, msUntilFull),
+              },
+              ttlMs: Math.max(1, msUntilFull),
+            }
+          : {}),
       };
     }
 
-    const state = (await getState<FixedWindowState>(kv, key)) ?? {
+    const state = parseState<FixedWindowState>(rawState) ?? {
       count: 0,
       windowStart: currentTime,
     };
@@ -328,22 +335,84 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     }
 
     const resetAt = windowState.windowStart + effectiveWindowMs;
-    if (commit) {
-      await setState(
-        kv,
-        key,
-        { ...windowState, expiresAt: resetAt },
-        Math.max(1, resetAt - currentTime)
-      );
-    }
-
     return {
-      allowed,
-      remaining: Math.max(0, effectiveLimit - windowState.count),
-      resetAt: new Date(resetAt).toISOString(),
-      total: effectiveLimit,
+      result: {
+        allowed,
+        remaining: Math.max(0, effectiveLimit - windowState.count),
+        resetAt: new Date(resetAt).toISOString(),
+        total: effectiveLimit,
+      },
+      ...(commit
+        ? {
+            nextState: { ...windowState, expiresAt: resetAt },
+            ttlMs: Math.max(1, resetAt - currentTime),
+          }
+        : {}),
     };
   }
+
+  async function evaluateKey(
+    key: string,
+    currentTime: number,
+    effectiveWindowMs: number,
+    effectiveLimit: number,
+    commit: boolean
+  ): Promise<RateLimitResult> {
+    const evaluation = evaluateState(
+      await kv.get(key),
+      currentTime,
+      effectiveWindowMs,
+      effectiveLimit,
+      commit,
+    );
+    if (commit && evaluation.nextState !== undefined && evaluation.ttlMs !== undefined) {
+      await kv.set({
+        key,
+        value: JSON.stringify(evaluation.nextState),
+        ttlSeconds: Math.ceil(evaluation.ttlMs / 1000),
+      });
+    }
+    return evaluation.result;
+  }
+
+  async function evaluateAtomicKey(
+    key: string,
+    currentTime: number,
+    effectiveWindowMs: number,
+    effectiveLimit: number,
+    commit: boolean,
+  ): Promise<RateLimitResult> {
+    if (!atomic?.compareAndSet) {
+      throw new Error('RATE_LIMIT_ATOMIC_CAS_REQUIRED');
+    }
+
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const expected = await atomic.get(key);
+      const evaluation = evaluateState(
+        expected,
+        currentTime,
+        effectiveWindowMs,
+        effectiveLimit,
+        commit,
+      );
+      if (!commit || evaluation.nextState === undefined || evaluation.ttlMs === undefined) {
+        return evaluation.result;
+      }
+      const result = await atomic.compareAndSet({
+        key,
+        expected,
+        value: JSON.stringify(evaluation.nextState),
+        ttlSeconds: Math.ceil(evaluation.ttlMs / 1000),
+      });
+      if (result.updated) {
+        return evaluation.result;
+      }
+    }
+
+    throw new Error('RATE_LIMIT_ATOMIC_CONTENTION');
+  }
+
+  const evaluateConfiguredKey = atomic ? evaluateAtomicKey : evaluateKey;
 
   return {
     async check(input: CheckLimitInput): Promise<RateLimitResult> {
@@ -352,7 +421,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
         const effectiveWindowMs =
           (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
         const effectiveLimit = input.limit ?? maxRequests;
-        return evaluateKey(key, now(), effectiveWindowMs, effectiveLimit, true);
+        return evaluateConfiguredKey(key, now(), effectiveWindowMs, effectiveLimit, true);
       });
     },
 
@@ -377,7 +446,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
         const currentTime = now();
         const preflight = await Promise.all(
           namespacedKeys.map((key) =>
-            evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, false)
+            evaluateConfiguredKey(key, currentTime, effectiveWindowMs, effectiveLimit, false)
           )
         );
         const blocked = preflight.filter((result) => !result.allowed);
@@ -398,13 +467,36 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
         }
 
         const committed: RateLimitResult[] = [];
-        for (const key of namespacedKeys) {
-          // Shared KV adapters do not expose a compare-and-set primitive. If a
-          // later write fails, retain earlier quota charges (fail closed)
-          // instead of restoring stale snapshots over another process's work.
-          committed.push(
-            await evaluateKey(key, currentTime, effectiveWindowMs, effectiveLimit, true)
+        for (let index = 0; index < namespacedKeys.length; index += 1) {
+          const key = namespacedKeys[index];
+          // Commit each key through the configured store. If a later commit
+          // becomes blocked or fails, retain earlier quota charges (fail
+          // closed) instead of restoring stale snapshots over concurrent work.
+          const result = await evaluateConfiguredKey(
+            key,
+            currentTime,
+            effectiveWindowMs,
+            effectiveLimit,
+            true,
           );
+          committed.push(result);
+          if (!result.allowed) {
+            const actual = preflight.map((entry, entryIndex) => committed[entryIndex] ?? entry);
+            const blockedActual = actual.filter((entry) => !entry.allowed);
+            return {
+              allowed: false,
+              remainingByKey: new Map(
+                uniqueKeys.map((entry, entryIndex) => [entry, actual[entryIndex].remaining])
+              ),
+              resetAtByKey: new Map(
+                uniqueKeys.map((entry, entryIndex) => [entry, actual[entryIndex].resetAt])
+              ),
+              resetAt: new Date(
+                Math.max(...blockedActual.map((entry) => Date.parse(entry.resetAt)))
+              ).toISOString(),
+              total: effectiveLimit,
+            };
+          }
         }
 
         return {
@@ -426,7 +518,7 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     async reset(key: string): Promise<void> {
       const namespacedKey = `${keyPrefix}${key}`;
       await withKeyLock(namespacedKey, async () => {
-        await kv.delete(namespacedKey);
+        await (atomic ?? kv).delete(namespacedKey);
       });
     },
   };

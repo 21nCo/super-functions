@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  createAuthFn,
-  createUser,
-  authFnSocialOAuthPlugin,
-  markUserEmailVerified,
-  type AuthFnEvent,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import type { AuthFnEvent, AuthFnRuntimeConfig } from '../index.js';
+import { createUser, markUserEmailVerified } from '../core/users.js';
 
 function createIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -39,12 +35,15 @@ function createFetcher() {
   };
 }
 
-function createConfig(overrides: Partial<AuthFnConfig> = {}): AuthFnConfig {
+function createConfig(overrides: Partial<AuthFnRuntimeConfig> = {}): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
-      authFnSocialOAuthPlugin({
+      authFnSocialOAuthPlugin()
+    ],
+    pluginRuntime: {
+      socialOAuth: {
         fetcher: createFetcher(),
         providers: {
           google: {
@@ -57,16 +56,16 @@ function createConfig(overrides: Partial<AuthFnConfig> = {}): AuthFnConfig {
             ]
           }
         }
-      })
-    ],
+      }
+    },
     ...overrides
   };
 }
 
-describe('@authfn/core google social oauth', () => {
+describe('authfn google social oauth', () => {
   it('completes start/callback redirect flow and rejects replayed state and disallowed returns', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -140,7 +139,7 @@ describe('@authfn/core google social oauth', () => {
   });
 
   it('allows afterOAuthCallback hooks to transform an allowlisted redirect target', async () => {
-    const auth = createAuthFn(createConfig({
+    const auth = createTestServer(createConfig({
       hooks: {
         afterOAuthCallback: async (_ctx, payload) => {
           payload.redirectTo = 'https://app.example.com/alternate-post-auth';
@@ -179,10 +178,12 @@ describe('@authfn/core google social oauth', () => {
         }
       },
       observability: {
-        emit: (event) => events.push(event)
+        events: {
+          emit: (event) => events.push(event)
+        }
       }
     });
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -232,10 +233,12 @@ describe('@authfn/core google social oauth', () => {
         }
       },
       observability: {
-        emit: (event) => events.push(event)
+        events: {
+          emit: (event) => events.push(event)
+        }
       }
     });
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -266,7 +269,7 @@ describe('@authfn/core google social oauth', () => {
   });
 
   it('preserves existing fragment params when appending session handoff details', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {

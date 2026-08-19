@@ -38,7 +38,7 @@ Install the DataFn packages alongside your current backend dependencies:
 
     const datafn = await createDatafnServer({
       schema,
-      db: drizzleAdapter({ db: drizzleInstance, dialect: "postgres" }),
+      database: drizzleAdapter({ db: drizzleInstance, dialect: "postgres" }),
       rest: true, // also exposes a REST API auto-generated from your schema
     });
 

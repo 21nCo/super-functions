@@ -165,7 +165,7 @@ export async function generateMigrations(
     console.log('\n⚠️  No library initializations found');
     console.log('   Make sure your files contain calls like:');
     console.log('   - createConductBackend({ ... })');
-    console.log('   - createAuthFn({ ... })');
+    console.log('   - authfn({ ... })');
     console.log('   - createSendFn({ ... })');
     process.exitCode = 1;
     return;

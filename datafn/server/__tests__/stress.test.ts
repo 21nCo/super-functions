@@ -45,7 +45,7 @@ const schema: DatafnSchema = {
  * Bypasses HTTP layer — suitable for high-volume setup.
  */
 async function seedItems(
-  db: Adapter,
+  database: Adapter,
   count: number,
   namespace = "datafn",
 ): Promise<void> {
@@ -55,7 +55,7 @@ async function seedItems(
     await Promise.all(
       Array.from({ length: end - start }, (_, j) => {
         const i = start + j;
-        return db.create({
+        return database.create({
           model: "item",
           data: {
             id: `item:${String(i).padStart(6, "0")}`,
@@ -80,7 +80,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxLimit: 20_000 },
     });
 
@@ -107,7 +107,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxLimit: 5_000 },
     });
 
@@ -139,7 +139,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxLimit: 1_000 }, // allow querying 1,000 records to verify all 500 persisted
     });
 

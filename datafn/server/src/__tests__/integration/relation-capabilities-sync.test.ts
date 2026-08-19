@@ -125,7 +125,7 @@ describe("relation capabilities sync integration (JSY-002)", () => {
     await db.initialize();
     server = await createDatafnServer({
       schema,
-      db,
+      database: db,
       allowUnknownResources: true,
       namespaceProvider: {
         getNamespace: () => "ns:sync",
@@ -360,7 +360,7 @@ describe("relation capabilities sync backward compatibility (COMP-001 via JSY-00
     await db.initialize();
     const server: any = await createDatafnServer({
       schema: noCapSchema,
-      db,
+      database: db,
       allowUnknownResources: true,
       namespaceProvider: {
         getNamespace: () => "ns:compat",

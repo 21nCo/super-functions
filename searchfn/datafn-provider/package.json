@@ -49,10 +49,11 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@searchfn/adapter-contracts": "^0.3.0"
+    "@searchfn/adapter-contracts": "^0.3.0",
+    "@superfunctions/observability": "0.0.1"
   },
   "peerDependencies": {
-    "@datafn/core": "0.0.3"
+    "@datafn/core": "0.0.4"
   },
   "devDependencies": {
     "@datafn/core": "*",

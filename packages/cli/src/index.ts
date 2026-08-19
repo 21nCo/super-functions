@@ -5,17 +5,21 @@
  */
 
 // Re-export types from @superfunctions/db
+import type { RuntimeStores } from '@superfunctions/db';
+
 export type {
   TableSchema,
   TableSchemaMap,
   FieldSchema,
   IndexSchema,
+  RuntimeStores,
 } from '@superfunctions/db';
 
 // Config types
 export interface SuperfunctionsConfig {
   adapter: AdapterConfig;
   migrationsDir?: string;
+  stores?: RuntimeStores;
 
   // Array of file paths that contain library initializations
   // Example: ['./src/conduct.ts', './src/auth.ts']

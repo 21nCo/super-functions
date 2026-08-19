@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  createAuthFn,
-  authFnSocialOAuthPlugin,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import type { AuthFnRuntimeConfig } from '../index.js';
 
 function createIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -12,13 +10,13 @@ function createIdToken(claims: Record<string, unknown>): string {
   return `${header}.${payload}.signature`;
 }
 
-describe('@authfn/core apple social oauth', () => {
+describe('authfn apple social oauth', () => {
   it('uses runtime client secret resolution and links the local account', async () => {
     let capturedBody = '';
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: {
+      environment: {
         resolve() {
           return {
             issuer: 'https://account.example.com',
@@ -36,7 +34,10 @@ describe('@authfn/core apple social oauth', () => {
         }
       },
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           fetcher: async (url, init) => {
             if (url !== 'https://appleid.apple.com/auth/token') {
               throw new Error(`unexpected fetch: ${url}`);
@@ -57,10 +58,10 @@ describe('@authfn/core apple social oauth', () => {
               })
             });
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -108,11 +109,14 @@ describe('@authfn/core apple social oauth', () => {
   });
 
   it('rejects callbacks that do not resolve required Apple claims', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           providers: {
             apple: {
               clientId: 'apple-client-id',
@@ -134,10 +138,10 @@ describe('@authfn/core apple social oauth', () => {
                 })
               })
             })
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -168,11 +172,14 @@ describe('@authfn/core apple social oauth', () => {
 
   it('uses Apple form_post id_token and user payload without token exchange', async () => {
     let tokenExchangeAttempted = false;
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           providers: {
             apple: {
               clientId: 'apple-client-id',
@@ -187,10 +194,10 @@ describe('@authfn/core apple social oauth', () => {
             tokenExchangeAttempted = true;
             throw new Error('token exchange should not be called for Apple form_post identity');
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -255,11 +262,14 @@ describe('@authfn/core apple social oauth', () => {
   });
 
   it('supports native Apple sign-in with nonce-bound identity tokens', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           providers: {
             apple: {
               clientId: 'apple-client-id',
@@ -270,10 +280,10 @@ describe('@authfn/core apple social oauth', () => {
               allowlistedReturnTo: ['nucleum://oauthsignin']
             }
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/native/apple/start', {

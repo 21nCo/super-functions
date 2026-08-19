@@ -4,6 +4,10 @@ import type {
   DatafnFieldSchema,
   DatafnRelationSchema,
 } from "./types.js";
+import {
+  endpointIncludes,
+  firstEndpoint,
+} from "./relation-endpoints.js";
 
 export interface SchemaIndex {
   resourcesByName: Map<string, DatafnResourceSchema>;
@@ -93,7 +97,7 @@ export function getRelation(
 }
 
 export function getRelationTarget(relation: DatafnRelationSchema): string {
-  return Array.isArray(relation.to) ? relation.to[0] : relation.to;
+  return firstEndpoint(relation.to);
 }
 
 /**
@@ -105,12 +109,9 @@ export function findRelationBidirectional(
   resource: string,
   relationName: string,
 ): DatafnRelationSchema | undefined {
-  const matchesEndpoint = (endpoint: string | string[], value: string): boolean =>
-    Array.isArray(endpoint) ? endpoint.includes(value) : endpoint === value;
-
   return schema.relations?.find(
     (r) =>
-      (matchesEndpoint(r.from, resource) && r.relation === relationName) ||
-      (matchesEndpoint(r.to, resource) && r.inverse === relationName),
+      (endpointIncludes(r.from, resource) && r.relation === relationName) ||
+      (endpointIncludes(r.to, resource) && r.inverse === relationName),
   );
 }

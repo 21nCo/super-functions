@@ -44,7 +44,7 @@ describe("SQL regression: merge persistence and false-success gating", () => {
 
     server = await createDatafnServer({
       allowUnknownResources: true,
-      db: adapter,
+      database: adapter,
       schema: {
         resources: [
           {
@@ -180,9 +180,9 @@ describe("SQL regression: merge persistence and false-success gating", () => {
       }),
     );
     const pushBody = await pushRes.json();
-    expect(pushRes.status).toBe(200);
-    expect(pushBody.ok).toBe(true);
-    expect(pushBody.result.ok).toBe(true);
+    expect(pushRes.status).toBe(400);
+    expect(pushBody.ok).toBe(false);
+    expect(pushBody.result.ok).toBe(false);
     expect(pushBody.result.applied).not.toContain("m-merge-missing");
     expect(pushBody.result.errors).toEqual(
       expect.arrayContaining([

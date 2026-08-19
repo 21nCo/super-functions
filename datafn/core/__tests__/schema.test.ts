@@ -94,6 +94,51 @@ describe("validateSchema", () => {
     }
   });
 
+  it("preserves schema default permissions", () => {
+    const input = {
+      defaultPermissions: {
+        read: "allResourceFields",
+        write: "allResourceFields",
+        relationWrites: "all"
+      },
+      resources: [
+        {
+          name: "task",
+          version: 1,
+          fields: [{ name: "label", type: "string", required: true }]
+        }
+      ]
+    };
+
+    const result = validateSchema(input);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.defaultPermissions).toEqual(input.defaultPermissions);
+    }
+  });
+
+  it("rejects invalid schema default permissions", () => {
+    const result = validateSchema({
+      defaultPermissions: {
+        read: "everything"
+      },
+      resources: [
+        {
+          name: "task",
+          version: 1,
+          fields: []
+        }
+      ]
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.details).toEqual({ path: "defaultPermissions.read" });
+    }
+  });
+
   it("validates version is an integer", () => {
     const input = {
       resources: [{ name: "task", version: 1.5, fields: [] }],
@@ -188,6 +233,128 @@ describe("validateSchema — relation from/to resource validation (CLI-004)", ()
     };
     const result = validateSchema(input);
     expect(result.ok).toBe(true);
+  });
+
+  it("accepts identity metadata for many-many relation metadata fields", () => {
+    const input = {
+      resources: [
+        { name: "task", version: 1, fields: [] },
+        { name: "tag", version: 1, fields: [] },
+      ],
+      relations: [
+        {
+          type: "many-many",
+          from: "task",
+          to: "tag",
+          relation: "tags",
+          metadata: [{ name: "linkType", type: "string" }],
+          identityMetadata: ["linkType"],
+        },
+      ],
+    };
+    const result = validateSchema(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.relations?.[0].identityMetadata).toEqual(["linkType"]);
+    }
+  });
+
+  it("rejects identity metadata that is not declared as relation metadata", () => {
+    const input = {
+      resources: [
+        { name: "task", version: 1, fields: [] },
+        { name: "tag", version: 1, fields: [] },
+      ],
+      relations: [
+        {
+          type: "many-many",
+          from: "task",
+          to: "tag",
+          relation: "tags",
+          metadata: [{ name: "order", type: "number" }],
+          identityMetadata: ["linkType"],
+        },
+      ],
+    };
+    const result = validateSchema(input);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.details.path).toBe("relations.identityMetadata.linkType");
+    }
+  });
+
+  it("accepts relation integrity and delete policy declarations", () => {
+    const input = {
+      relationIntegrity: "database",
+      resources: [
+        { name: "task", version: 1, fields: [] },
+        { name: "tag", version: 1, fields: [] },
+      ],
+      relations: [
+        {
+          type: "many-many",
+          from: "task",
+          to: "tag",
+          relation: "tags",
+          integrity: "database",
+          onDelete: { from: "detach", to: "restrict" },
+        },
+      ],
+    };
+    const result = validateSchema(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.relationIntegrity).toBe("database");
+      expect(result.result.relations?.[0].integrity).toBe("database");
+      expect(result.result.relations?.[0].onDelete).toEqual({
+        from: "detach",
+        to: "restrict",
+      });
+    }
+  });
+
+  it("rejects removed hybrid relation integrity mode", () => {
+    const input = {
+      relationIntegrity: "hybrid",
+      resources: [
+        { name: "task", version: 1, fields: [] },
+      ],
+    };
+
+    const result = validateSchema(input);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.message).toBe(
+        "Invalid schema: relationIntegrity must be one of application, database",
+      );
+    }
+  });
+
+  it("rejects invalid relation delete policy declarations", () => {
+    const input = {
+      resources: [
+        { name: "task", version: 1, fields: [] },
+        { name: "tag", version: 1, fields: [] },
+      ],
+      relations: [
+        {
+          type: "many-many",
+          from: "task",
+          to: "tag",
+          relation: "tags",
+          onDelete: { from: "deleteEverything" },
+        },
+      ],
+    };
+    const result = validateSchema(input);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.details.path).toBe("relations.onDelete.from");
+    }
   });
 
   it("rejects relation.from array that contains an unknown resource", () => {

@@ -13,11 +13,23 @@ import type {
 export type DatafnSchema = {
   version?: number;
   capabilities?: SchemaCapabilities;
-  resources: DatafnResourceSchema[];
-  relations?: DatafnRelationSchema[];
+  defaultPermissions?: DatafnDefaultPermissionsPolicy;
+  resources: readonly DatafnResourceSchema[];
+  relations?: readonly DatafnRelationSchema[];
+  relationIntegrity?: DatafnRelationIntegrityMode;
   /** Defaults to true. Set to false to disable row-level namespace isolation. */
   namespaced?: boolean;
 };
+
+export type DatafnDefaultPermissionsFieldMode = "allResourceFields";
+
+export type DatafnDefaultPermissionsPolicy =
+  | DatafnDefaultPermissionsFieldMode
+  | {
+      read?: DatafnDefaultPermissionsFieldMode | false;
+      write?: DatafnDefaultPermissionsFieldMode | false;
+      relationWrites?: "all" | false;
+    };
 
 /**
  * Permissions policy shape for server-side authorization enforcement.
@@ -28,13 +40,13 @@ export type DatafnPermissionsPolicy = {
    * Read policy: controls which fields can be selected and filtered.
    */
   read?: {
-    fields: string[];
+    fields: readonly string[];
   };
   /**
    * Write policy: controls which fields can be written via mutations.
    */
   write?: {
-    fields: string[];
+    fields: readonly string[];
   };
   /**
    * Optional owner field for owner-scoped resources.
@@ -54,14 +66,15 @@ export type DatafnResourceSchema = {
    * visibility/membership/scope-related options while preserving legacy fields.
    */
   capabilities?: ResourceCapabilities;
-  fields: DatafnFieldSchema[];
+  fields: readonly DatafnFieldSchema[];
   indices?:
     | {
-        base?: string[];
-        search?: string[];
-        vector?: string[];
+        base?: readonly string[];
+        search?: readonly string[];
+        vector?: readonly string[];
       }
-    | string[];
+    | readonly string[];
+  defaultPermissions?: false;
   permissions?: DatafnPermissionsPolicy;
 };
 
@@ -72,7 +85,7 @@ export type DatafnFieldSchema = {
   nullable?: boolean;
   readonly?: boolean;
   default?: unknown;
-  enum?: unknown[];
+  enum?: readonly unknown[];
   min?: number;
   max?: number;
   minLength?: number;
@@ -85,22 +98,42 @@ export type DatafnFieldSchema = {
 
 export type RelationSimpleCapability = "timestamps" | "audit";
 
+export type DatafnRelationIntegrityMode = "application" | "database";
+
+export type DatafnRelationDeletePolicy =
+  | "restrict"
+  | "cascade"
+  | "setNull"
+  | "detach";
+
+export type DatafnRelationDeletePolicies =
+  | DatafnRelationDeletePolicy
+  | {
+      from?: DatafnRelationDeletePolicy;
+      to?: DatafnRelationDeletePolicy;
+    };
+
 export type DatafnRelationSchema = {
-  from: string | string[];
-  to: string | string[];
+  from: string | readonly string[];
+  to: string | readonly string[];
   type: "one-many" | "many-one" | "many-many" | "htree";
   relation?: string;
   inverse?: string;
   cache?: boolean;
-  metadata?: Array<{
+  metadata?: readonly {
     name: string;
     type: "string" | "number" | "boolean" | "date" | "object" | "json";
-  }>;
+  }[];
+  identityMetadata?: readonly string[];
   fkField?: string;
+  fkResourceField?: string;
   pathField?: string;
   joinTable?: string;
   joinColumns?: { from: string; to: string };
-  capabilities?: RelationSimpleCapability[];
+  integrity?: DatafnRelationIntegrityMode;
+  onDelete?: DatafnRelationDeletePolicies;
+  inheritsInactive?: boolean;
+  capabilities?: readonly RelationSimpleCapability[];
 };
 
 /**
@@ -132,6 +165,7 @@ type DatafnResourceBase = {
   readonly capabilities?: ResourceCapabilitiesInput;
   readonly fields: readonly DatafnFieldInput[];
   readonly indices?: DatafnIndicesInput<string>;
+  readonly defaultPermissions?: false;
   readonly permissions?: DatafnPermissionsPolicy;
   readonly [k: string]: unknown;
 };
@@ -142,15 +176,26 @@ type ValidateResources<R extends readonly DatafnResourceBase[]> = {
     : R[K];
 };
 
+declare const datafnSchemaLiteral: unique symbol;
+
+export type DatafnDefinedSchema<T> = T & DatafnSchema & {
+  readonly [datafnSchemaLiteral]?: T;
+};
+
+export type DatafnSchemaLiteral<S> =
+  S extends { readonly [datafnSchemaLiteral]?: infer T } ? T : S;
+
 export function defineSchema<
   const T extends {
     readonly capabilities?: SchemaCapabilitiesInput;
+    readonly defaultPermissions?: DatafnDefaultPermissionsPolicy;
     readonly resources: readonly DatafnResourceBase[];
     readonly relations?: readonly DatafnRelationSchema[] | DatafnRelationSchema[];
+    readonly relationIntegrity?: DatafnRelationIntegrityMode;
     readonly namespaced?: boolean;
   }
->(schema: T & { readonly resources: ValidateResources<T["resources"]> }): T & DatafnSchema {
-  return schema as unknown as T & DatafnSchema;
+>(schema: T & { readonly resources: ValidateResources<T["resources"]> }): DatafnDefinedSchema<T> {
+  return schema as unknown as DatafnDefinedSchema<T>;
 }
 
 /**
@@ -161,6 +206,7 @@ export interface DatafnEvent {
   type:
     | "mutation_applied"
     | "mutation_rejected"
+    | "sync_started"
     | "sync_applied"
     | "sync_failed"
     | "sync_retry"
@@ -264,6 +310,10 @@ export interface DatafnPlugin {
   beforeQuery?: (
     ctx: DatafnHookContext,
     q: unknown,
+  ) => Promise<unknown> | unknown;
+  beforeSearch?: (
+    ctx: DatafnHookContext,
+    search: unknown,
   ) => Promise<unknown> | unknown;
   afterQuery?: (
     ctx: DatafnHookContext,

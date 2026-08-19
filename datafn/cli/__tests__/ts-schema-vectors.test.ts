@@ -186,14 +186,22 @@ export const schema = {
     expect(tsOut).toBe(jsonOut);
   });
 
-  it("TV-TS-ERR-001: Reject .ts files without .datafn. extension", () => {
-    const badPath = join(workDir, "schema.ts");
-    writeFileSync(badPath, "export default { resources: [], relations: [] };");
-    expect(() => runCli(`generate --adapter drizzle --database postgres --schema "${badPath}"`, process.cwd(), true)).toThrow();
-    const stderr = runCliStderr(`generate --adapter drizzle --database postgres --schema "${badPath}"`, process.cwd(), true);
-    expect(stderr).toContain("Invalid schema file extension");
-    expect(stderr).toContain("*.datafn.ts");
-    expect(stderr).toContain(".datafn.ts extension for security");
+  it("TV-TS-LOAD-003: Load an explicitly selected plain .ts schema", () => {
+    const schemaPath = join(workDir, "schema.ts");
+    const outputDir = join(workDir, "output-plain-ts");
+    writeFileSync(
+      schemaPath,
+      "export default { resources: [{ name: 'note', version: 1, fields: [{ name: 'id', type: 'string', required: true }] }], relations: [] };"
+    );
+
+    const result = runCli(
+      `generate --adapter drizzle --database postgres --schema "${schemaPath}" --output "${outputDir}"`
+    );
+
+    expect(result).toContain("Types written to");
+    expect(readFileSync(join(outputDir, "datafn-types.ts"), "utf-8")).toContain(
+      "export interface Note"
+    );
   });
 
   it("TV-TS-ERR-002: Reject missing schema export", () => {

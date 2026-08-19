@@ -1,19 +1,19 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
 import { createAuthFnClient } from '@authfn/client';
-import {
-  authFnApiKeyPlugin,
-  authFnEmailOtpPlugin,
-  authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
-  type AuthFnConfig,
-  type AuthFnDeliveryRequest,
-  type AuthFnEvent,
-  type AuthFnPlugin
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnMultiRegionEnvironment, authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
+import type {
+  AuthFnDeliveryRequest,
+  AuthFnEvent,
+  AuthFnPlugin,
+  AuthFnRuntimeConfig
 } from '../index.js';
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -85,7 +85,7 @@ function createCookieJar() {
   };
 }
 
-function createRuntimeResolver() {
+function createEnvironmentResolver() {
   return {
     resolve(request: Request) {
       const url = new URL(request.url);
@@ -138,7 +138,7 @@ function generateTotp(secret: string, now: Date = TEST_NOW, digits = 6, periodSe
   return String(binary % (10 ** digits)).padStart(digits, '0');
 }
 
-describe('@authfn/core integration browser flows', () => {
+describe('authfn integration browser flows', () => {
   it('covers password, otp, social, 2fa, api keys, region lookup, sign-out, openapi, and observability in one deployment', async () => {
     const otpCodes = new Map<string, string>();
     const events: AuthFnEvent[] = [];
@@ -155,21 +155,53 @@ describe('@authfn/core integration browser flows', () => {
       }
     };
 
-    const auth = createAuthFn({
+    const auth = createTestServer({
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com'],
+            cookie: {
+              prefix: 'authfn-us'
+            }
+          },
+          {
+            regionId: 'eu-west-1',
+            authority: 'https://eu.account.example.com',
+            hosts: ['eu.account.example.com'],
+            domain: '.example.com',
+            cookie: {
+              prefix: 'authfn-eu',
+              sameSite: 'none'
+            }
+          }
+        ]
+      }),
       openApi: {
         title: 'AuthFn API',
         version: '2026.03.22'
       },
       observability: {
-        async emit(event) {
-          events.push(event);
+        events: {
+          async emit(event) {
+            events.push(event);
+          }
         }
       },
       plugins: [
-        authFnPasswordPlugin({
+        authFnPasswordPlugin(),
+        authFnEmailOtpPlugin(),
+        authFnSocialOAuthPlugin(),
+        authFnApiKeyPlugin(),
+        authFnTwoFactorPlugin(),
+        authFnMultiRegionPlugin(),
+        auditTrapPlugin
+      ],
+      pluginRuntime: {
+        password: {
           otp: {
             delivery: {
               async send(input: AuthFnDeliveryRequest) {
@@ -179,8 +211,8 @@ describe('@authfn/core integration browser flows', () => {
             },
             codeGenerator: () => '731942'
           }
-        }),
-        authFnEmailOtpPlugin({
+        },
+        emailOtp: {
           delivery: {
             async send(input: AuthFnDeliveryRequest) {
               otpCodes.set(`${input.purpose}:${input.email}`, input.code);
@@ -188,8 +220,8 @@ describe('@authfn/core integration browser flows', () => {
             }
           },
           codeGenerator: () => '731942'
-        }),
-        authFnSocialOAuthPlugin({
+        },
+        socialOAuth: {
           fetcher: createOAuthFetcher(),
           providers: {
             google: {
@@ -198,41 +230,18 @@ describe('@authfn/core integration browser flows', () => {
               allowlistedReturnTo: ['https://app.example.com/post-auth']
             }
           }
-        }),
-        authFnApiKeyPlugin({
+        },
+        apiKey: {
           now: clock.now
-        }),
-        authFnTwoFactorPlugin({
+        },
+        twoFactor: {
           issuer: 'authfn-tests',
           now: clock.now,
           recoveryCodeCount: 3,
           encryptionKeyResolver: () => TEST_2FA_KEY
-        }),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'us-east-1',
-              authority: 'https://us.account.example.com',
-              hosts: ['us.account.example.com'],
-              cookie: {
-                prefix: 'authfn-us'
-              }
-            },
-            {
-              regionId: 'eu-west-1',
-              authority: 'https://eu.account.example.com',
-              hosts: ['eu.account.example.com'],
-              domain: '.example.com',
-              cookie: {
-                prefix: 'authfn-eu',
-                sameSite: 'none'
-              }
-            }
-          ]
-        }),
-        auditTrapPlugin
-      ]
-    } satisfies AuthFnConfig);
+        }
+      }
+    } satisfies AuthFnRuntimeConfig);
 
     const cookieJar = createCookieJar();
 

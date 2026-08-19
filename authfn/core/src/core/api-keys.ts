@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { AuthFnApiKeyRecord, AuthFnConfig, AuthFnSession } from '../types.js';
+import type { AuthFnApiKeyRecord, AuthFnRuntimeConfig, AuthFnSession } from '../types.js';
 import { AuthFnApiKeyRevokedError, AuthFnNotFoundError, AuthFnValidationError } from './errors.js';
 import { hashSecret } from './sessions.js';
 
@@ -31,7 +31,7 @@ export interface SanitizedApiKey {
 }
 
 export async function createApiKey(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: CreateApiKeyInput,
   options?: { now?: () => Date; secretPrefix?: string }
 ): Promise<CreatedApiKey> {
@@ -67,7 +67,7 @@ export async function createApiKey(
 }
 
 export async function listApiKeysForUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<SanitizedApiKey[]> {
   const records = await config.database.findMany<AuthFnApiKeyRecord>({
@@ -84,7 +84,7 @@ export async function listApiKeysForUser(
 }
 
 export async function findApiKeyById(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   keyId: string
 ): Promise<AuthFnApiKeyRecord | null> {
   return config.database.findOne<AuthFnApiKeyRecord>({
@@ -95,7 +95,7 @@ export async function findApiKeyById(
 }
 
 export async function revokeApiKeyById(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   keyId: string,
   options?: { userId?: string; now?: () => Date }
 ): Promise<AuthFnApiKeyRecord> {
@@ -121,7 +121,7 @@ export async function revokeApiKeyById(
 }
 
 export async function authenticateApiKey(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   secret: string,
   options?: { now?: () => Date }
 ): Promise<AuthFnSession | null> {
@@ -199,7 +199,7 @@ function createIdentifier(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

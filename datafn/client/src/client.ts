@@ -5,42 +5,102 @@
 import type {
   DatafnEnvelope,
   DatafnError,
+  DatafnSignal,
   DatafnSchema,
+  DatafnSchemaLiteral,
   DatafnPlugin,
   SearchProvider,
+  DatafnTemporalConfig,
+  DatafnTemporalClause,
 } from "@datafn/core";
-import { validateSchema, buildSchemaIndex, evaluateFilter as coreEvaluateFilter } from "@datafn/core";
+import {
+  validateSchema,
+  buildSchemaIndex,
+  evaluateFilter as coreEvaluateFilter,
+  normalizeFilterOps,
+  normalizeTemporalQuery,
+} from "@datafn/core";
 import { EventBus, type EventHandler } from "./events/bus.js";
 import type { EventFilter } from "./events/filter.js";
 import { createClientError } from "./errors.js";
 import { TableRegistry } from "./tables/registry.js";
-import type { DatafnTable } from "./tables/table.js";
+import type { DatafnTable, DatafnTableQueryFragment } from "./tables/table.js";
 import { executeQuery } from "./query.js";
-import {
-  executeMutation,
-  type MutationPushScheduler,
-} from "./mutate.js";
+import { executeMutation, type MutationPushScheduler } from "./mutate.js";
 import { executeTransact } from "./transact.js";
 import { SignalRegistry } from "./signals/querySignal.js";
 import { LiveSignalRegistry } from "./signals/liveSignal.js";
+import type { DatafnSignalOptions } from "./signals/options.js";
 import {
   createSyncFacade,
   type SyncControlMethods,
   type SyncFacade,
 } from "./sync.js";
+import {
+  createDatafnSyncStatusController,
+  type DatafnSyncStatus,
+} from "./sync/status.js";
 import type { DatafnStorageAdapter, DatafnStorageFactory } from "./storage.js";
-import { DefaultHttpTransport } from "./transport/http.js";
+import {
+  DefaultHttpTransport,
+  type DatafnHttpTransportOptions,
+} from "./transport/http.js";
 import { SyncEngine } from "./sync/engine.js";
 import { createKvApi, type DatafnKvApi, KV_RESOURCE_NAME } from "./kv.js";
-import { ensureBuiltinKv } from "@datafn/core";
+import {
+  buildSearchIndexFingerprint,
+  deriveSearchProviderResources,
+  getSearchIndexMarkerState,
+  markSearchIndexCurrent,
+} from "./searchIndex.js";
+import {
+  ensureBuiltinKv,
+  ensureBuiltinTemporal,
+  TIMEZONE_CHANGE_RESOURCE_NAME,
+} from "@datafn/core";
 import { ExtensionSubscriptionManager } from "./extension/subscriptionManager.js";
 import { DebouncerMap } from "./debounce.js";
-import { exportData, importData, type DatafnExportPayload, type DatafnImportResult } from "./export.js";
+import {
+  exportData,
+  importData,
+  type DatafnExportPayload,
+  type DatafnImportResult,
+} from "./export.js";
 import { CrossTabRelay } from "./crossTab.js";
+import { combineSignals, emptySignal, mapSignal } from "./signals/derived.js";
+import { createTemporalApi, type DatafnTemporalApi } from "./temporal.js";
+import { createClientTemporalConfig } from "./temporalConfig.js";
+import {
+  createDatafnPublicLinksApi,
+  type DatafnPublicLinksApi,
+} from "./public-links.js";
+import {
+  assertRemoteSearchAllowedForE2ee,
+  prepareTransactPayloadForE2ee,
+  type DatafnE2eeConfig,
+} from "./e2ee.js";
+
+type IsAny<T> = 0 extends 1 & T ? true : false;
+type SchemaResources<S extends DatafnSchema> =
+  DatafnSchemaLiteral<S> extends {
+    readonly resources: readonly (infer Resource)[];
+  }
+    ? Resource
+    : S extends { readonly resources: readonly (infer Resource)[] }
+      ? Resource
+      : never;
 
 // Helper type to extract resource names from schema
 export type ResourceNames<S extends DatafnSchema> =
-  S["resources"][number]["name"];
+  IsAny<S> extends true
+    ? string
+    : DatafnSchema extends S
+      ? string
+      : SchemaResources<S> extends infer Resource
+        ? Resource extends { readonly name: infer Name extends string }
+          ? Name
+          : never
+        : never;
 
 export interface DatafnRemoteAdapter {
   query(q: unknown): Promise<unknown>;
@@ -123,6 +183,11 @@ export interface DatafnSyncConfig {
    * Optional when `remoteAdapter` is provided.
    */
   remote?: string;
+
+  /**
+   * Options for the default HTTP transport used when `remote` is configured.
+   */
+  http?: DatafnHttpTransportOptions;
 
   /**
    * Optional injected adapter used instead of DefaultHttpTransport.
@@ -260,61 +325,6 @@ function isNativeBackedBridgeValue(value: unknown): boolean {
   );
 }
 
-function deriveSearchProviderResources(
-  schema: DatafnSchema,
-): Array<{ name: string; searchFields: string[] }> {
-  const resources: Array<{ name: string; searchFields: string[] }> = [];
-  const seen = new Set<string>();
-
-  for (const [index, resource] of schema.resources.entries()) {
-    const searchPath = `schema.resources[${index}].indices.search`;
-    const rawSearchFields = Array.isArray(resource.indices)
-      ? []
-      : (resource.indices?.search ?? []);
-
-    if (!Array.isArray(rawSearchFields)) {
-      throw createClientError(
-        "DFQL_INVALID",
-        "Invalid schema search index configuration: search fields must be an array",
-        { path: searchPath },
-      );
-    }
-
-    const searchFields = rawSearchFields.map((field, fieldIndex) => {
-      if (typeof field !== "string" || field.trim().length === 0) {
-        throw createClientError(
-          "DFQL_INVALID",
-          "Invalid schema search index configuration: search fields must be non-empty strings",
-          { path: `${searchPath}[${fieldIndex}]` },
-        );
-      }
-      return field.trim();
-    });
-
-    if (searchFields.length === 0) {
-      continue;
-    }
-
-    const resourceName = resource.name.trim();
-    const normalizedResourceName = resourceName.toLowerCase();
-    if (seen.has(normalizedResourceName)) {
-      throw createClientError(
-        "DFQL_INVALID",
-        "Duplicate normalized search resource definitions are not allowed",
-        { path: "resources" },
-      );
-    }
-    seen.add(normalizedResourceName);
-
-    resources.push({
-      name: resourceName,
-      searchFields: Array.from(new Set(searchFields)),
-    });
-  }
-
-  return resources;
-}
-
 function normalizeClientErrorDetails(
   details: unknown,
   fallbackPath: string,
@@ -386,6 +396,15 @@ export interface DatafnClientConfig<S extends DatafnSchema> {
    * Optional search provider for client-side search query routing.
    */
   searchProvider?: SearchProvider;
+  /** Application-controlled search index version used to invalidate persistent provider indexes. */
+  searchIndexVersion?: string;
+  /**
+   * Defaults used by DFQL temporal filters and groupings.
+   */
+  temporal?: DatafnTemporalConfig & {
+    detectTimezone?: () => string | undefined;
+  };
+  e2ee?: DatafnE2eeConfig;
 }
 
 /**
@@ -393,22 +412,33 @@ export interface DatafnClientConfig<S extends DatafnSchema> {
  * Only the provided fields are changed; everything else is inherited from the current config.
  */
 export type SwitchContextOverride = {
+  /** New stable client/device id for idempotency and offline change logs */
+  clientId?: string;
+  /** New search provider (replaces current); null clears the current provider */
+  searchProvider?: SearchProvider | null;
+  /** New search index version (replaces current) */
+  searchIndexVersion?: string;
   /** New namespace (replaces current) */
   namespace?: string;
   /** New sync configuration (replaces current, not merged) */
   sync?: DatafnSyncConfig;
-  /** New storage adapter or factory (replaces current) */
-  storage?: DatafnStorageAdapter | DatafnStorageFactory;
+  /** New storage adapter or factory. Use null to remove storage from the context. */
+  storage?: DatafnStorageAdapter | DatafnStorageFactory | null;
+  /** New E2EE configuration. Use null to disable E2EE for the context. */
+  e2ee?: DatafnE2eeConfig | null;
 };
 
 export type DatafnClient<S extends DatafnSchema> = {
   table<Name extends ResourceNames<S>>(name: Name): DatafnTable<S, Name>;
+  table(name: string): DatafnTable<S, ResourceNames<S>>;
   query(q: unknown | unknown[]): Promise<unknown>;
   mutate(mutation: unknown | unknown[]): Promise<unknown>;
   transact(payload: unknown): Promise<unknown>;
   subscribe(handler: EventHandler, filter?: EventFilter): () => void;
   sync: SyncFacade & SyncControlMethods;
   kv: DatafnKvApi;
+  temporal: DatafnTemporalApi;
+  publicLinks: DatafnPublicLinksApi;
   /** Tear down client: stop sync, close connections, unsubscribe all, release resources. */
   destroy(): Promise<void>;
   /** Wipe all local data (IndexedDB stores, cursors, changelog, hydration state). */
@@ -420,11 +450,35 @@ export type DatafnClient<S extends DatafnSchema> = {
   /** Export all local records as structured JSON. */
   exportData(options?: { resources?: string[] }): Promise<unknown>;
   /** Import records from a structured JSON payload. */
-  importData(data: unknown, options?: { triggerCloneUp?: boolean }): Promise<unknown>;
+  importData(
+    data: unknown,
+    options?: { triggerCloneUp?: boolean },
+  ): Promise<unknown>;
   /** Check storage health and verify hydration state consistency. */
-  checkHealth(): Promise<{ ok: boolean; issues: string[]; action?: "none" | "reclone" }>;
+  checkHealth(): Promise<{
+    ok: boolean;
+    issues: string[];
+    action?: "none" | "reclone";
+  }>;
   /** Perform a cross-resource search using the configured search provider. */
-  search(params: unknown): Promise<unknown>;
+  search(params: DatafnSearchParams): Promise<DatafnSearchResult>;
+  /** Batched live counts for multiple top-level resources. */
+  resourceCountsSignal(
+    input: DatafnResourceCountsSignalInput,
+    options?: DatafnSignalOptions,
+  ): DatafnSignal<Record<string, number>>;
+  /** Batched live counts for a relation across many parent records. */
+  relationCountsSignal(
+    input: DatafnRelationCountsSignalInput,
+    options?: DatafnSignalOptions,
+  ): DatafnSignal<Record<string, number>>;
+  /** Batched live lookup for ids that may span multiple resource tables. */
+  recordsByIdsSignal(
+    input: DatafnRecordsByIdsSignalInput,
+    options?: DatafnSignalOptions,
+  ): DatafnSignal<Record<string, Record<string, unknown>>>;
+  /** Static signal for intentionally empty or disabled reactive queries. */
+  emptySignal<TValue>(value: TValue): DatafnSignal<TValue>;
   /**
    * Switch to a different configuration context (auth, sync mode, or storage).
    * Destroys the current underlying client and recreates it with merged config.
@@ -442,6 +496,54 @@ export type DatafnClient<S extends DatafnSchema> = {
   subscribeClient(fn: (client: DatafnClient<S>) => void): () => void;
 } & {
   [Name in ResourceNames<S>]: DatafnTable<S, Name>;
+};
+
+export type DatafnSearchResult = {
+  results: Array<{
+    id: string;
+    resource: string;
+    score: number;
+    data: Record<string, unknown>;
+  }>;
+};
+
+export type DatafnSearchParams = {
+  query: string;
+  resources?: string[];
+  fields?: string[];
+  filters?: Record<string, Record<string, unknown>>;
+  temporal?: DatafnTemporalClause | readonly DatafnTemporalClause[];
+  temporalByResource?: Record<
+    string,
+    DatafnTemporalClause | readonly DatafnTemporalClause[]
+  >;
+  select?: string[];
+  limit?: number;
+  limitPerResource?: number;
+  prefix?: boolean;
+  fuzzy?: boolean | number;
+  fieldBoosts?: Record<string, number>;
+  source?: "auto" | "local" | "remote";
+  signal?: AbortSignal;
+};
+
+export type DatafnResourceCountsSignalInput = {
+  resources: readonly string[];
+  queriesByResource?: Record<string, DatafnTableQueryFragment<any>>;
+};
+
+export type DatafnRelationCountsSignalInput = {
+  resource: string;
+  relation: string;
+  ids: readonly string[];
+  filters?: Record<string, unknown>;
+  targetFilters?: Record<string, unknown>;
+};
+
+export type DatafnRecordsByIdsSignalInput = {
+  ids: readonly string[];
+  selectByResource?: Record<string, readonly string[]>;
+  metadata?: Record<string, unknown>;
 };
 
 /**
@@ -557,7 +659,9 @@ function _buildRawClient<S extends DatafnSchema>(
   }
 
   // Ensure built-in KV resource exists in schema (KV-001)
-  const schema = ensureBuiltinKv(validationResult.result);
+  const schema = ensureBuiltinTemporal(
+    ensureBuiltinKv(validationResult.result),
+  );
   // Optional plugin-level schema validation hook
   for (const plugin of config.plugins || []) {
     const validatePluginSchema = (plugin as unknown as Record<string, unknown>)
@@ -626,6 +730,15 @@ function _buildRawClient<S extends DatafnSchema>(
       { path: "storage" },
     );
   }
+
+  const syncStatusController = createDatafnSyncStatusController({
+    mode: config.sync?.mode === "sync" ? "sync" : "local-only",
+    storage: resolvedStorage,
+    getTimestamp,
+  });
+  const syncStatusUnsubscribe = eventBus.subscribe((event) => {
+    syncStatusController.handleEvent(event);
+  });
 
   if (config.sync && (config.sync.owner ?? "javascript") === "native") {
     const nativeConfig = config.sync.native;
@@ -752,7 +865,10 @@ function _buildRawClient<S extends DatafnSchema>(
             throw createClientError(
               "BRIDGE_PROTOCOL_MISMATCH",
               "Native bridge must disable IndexedDB persistence",
-              { path: "sync.native", indexedDbDisabled: result.indexedDbDisabled },
+              {
+                path: "sync.native",
+                indexedDbDisabled: result.indexedDbDisabled,
+              },
             );
           }
         })()
@@ -825,18 +941,111 @@ function _buildRawClient<S extends DatafnSchema>(
 
   // PROV-008: Initialize search provider at client startup when configured.
   // This promise is awaited by query/mutate/search so init failures surface deterministically.
+  const searchProviderResources = deriveSearchProviderResources(schema);
   const searchProviderInitPromise = (async () => {
     if (!config.searchProvider?.initialize) return;
     if (isNativeBackedBridgeValue(config.searchProvider)) {
       await awaitNativeBridgeReady();
     }
-    const resources = deriveSearchProviderResources(schema);
-    await config.searchProvider.initialize({ resources });
+    await config.searchProvider.initialize({
+      resources: searchProviderResources,
+    });
   })();
   searchProviderInitPromise.catch(() => {});
+  const hydratedSearchResources = new Set<string>();
+  const searchHydrationPromises = new Map<string, Promise<void>>();
+  const searchProviderResourceByName = new Map(
+    searchProviderResources.map((resource) => [resource.name, resource]),
+  );
+
+  const hydrateSearchProviderResources = async (
+    requestedResources?: string[],
+  ) => {
+    if (
+      !config.searchProvider ||
+      isNativeBackedBridgeValue(config.searchProvider) ||
+      !resolvedStorage
+    ) {
+      return;
+    }
+
+    const searchableResources = new Set(
+      searchProviderResources.map((resource) => resource.name),
+    );
+    const resourcesToHydrate = (
+      requestedResources ?? [...searchableResources]
+    ).filter((resource) => searchableResources.has(resource));
+
+    await Promise.all(
+      resourcesToHydrate.map((resource) => {
+        if (hydratedSearchResources.has(resource)) {
+          return Promise.resolve();
+        }
+        const existing = searchHydrationPromises.get(resource);
+        if (existing) {
+          return existing;
+        }
+        const promise = (async () => {
+          const resourceConfig = searchProviderResourceByName.get(resource);
+          if (!resourceConfig) {
+            return;
+          }
+          const hydrationState =
+            await resolvedStorage.getHydrationState(resource);
+          if (hydrationState !== "ready") {
+            return;
+          }
+          const fingerprint = buildSearchIndexFingerprint({
+            providerName: config.searchProvider?.name,
+            resource: resourceConfig,
+            version: config.searchIndexVersion,
+          });
+          const marker = await getSearchIndexMarkerState({
+            storage: resolvedStorage,
+            resource,
+          });
+          if (marker.fingerprint === fingerprint) {
+            hydratedSearchResources.add(resource);
+            return;
+          }
+          // A fingerprint mismatch is a full rebuild, not an upsert pass.
+          // Clear provider-owned state first so documents removed from local
+          // storage cannot remain searchable and crowd out live results.
+          if (marker.exists && !config.searchProvider?.clearIndices) {
+            throw createClientError(
+              "DFQL_UNSUPPORTED",
+              "Search provider must implement clearIndices to rebuild a changed index",
+              { path: "searchProvider.clearIndices", resource },
+            );
+          }
+          await config.searchProvider?.clearIndices?.(resource);
+          const records = await resolvedStorage.listRecords(resource);
+          if (records.length > 0) {
+            await config.searchProvider!.updateIndices({
+              resource,
+              records,
+              operation: "upsert",
+            });
+          }
+          await markSearchIndexCurrent({
+            storage: resolvedStorage,
+            resource,
+            fingerprint,
+          });
+          hydratedSearchResources.add(resource);
+        })().finally(() => {
+          searchHydrationPromises.delete(resource);
+        });
+        searchHydrationPromises.set(resource, promise);
+        return promise;
+      }),
+    );
+  };
 
   // Resolve remote adapter (CFG-001)
-  let remote: DatafnRemoteAdapter;
+  let remote: DatafnRemoteAdapter & {
+    publicLinks?(endpoint: string, payload: unknown): Promise<unknown>;
+  };
   let extensionSubscriptionManager: ExtensionSubscriptionManager | undefined;
   let extensionEventUnsubscribe: (() => void) | undefined;
 
@@ -855,31 +1064,37 @@ function _buildRawClient<S extends DatafnSchema>(
     // EXT-001: Wire inbound remote events if extension adapter supports it
     // Check if the adapter has onEvent capability (extension adapter)
     if ("onEvent" in extAdapter && typeof extAdapter.onEvent === "function") {
-      extensionEventUnsubscribe = extAdapter.onEvent((delivery: { subscriptionId: string; event: any }) => {
-        if (
-          !extensionSubscriptionManager ||
-          extensionSubscriptionManager.ownsSubscriptionId(delivery.subscriptionId)
-        ) {
-          // Emit only events for subscriptions owned by this client.
-          eventBus.emit(delivery.event);
-          return;
-        }
-
-        // Subscription responses and fanout events can arrive in the same tick.
-        // Re-check after pending subscribe promises settle before dropping the event.
-        setTimeout(() => {
+      extensionEventUnsubscribe = extAdapter.onEvent(
+        (delivery: { subscriptionId: string; event: any }) => {
           if (
             !extensionSubscriptionManager ||
-            extensionSubscriptionManager.ownsSubscriptionId(delivery.subscriptionId)
+            extensionSubscriptionManager.ownsSubscriptionId(
+              delivery.subscriptionId,
+            )
           ) {
+            // Emit only events for subscriptions owned by this client.
             eventBus.emit(delivery.event);
+            return;
           }
-        }, 0);
-      });
+
+          // Subscription responses and fanout events can arrive in the same tick.
+          // Re-check after pending subscribe promises settle before dropping the event.
+          setTimeout(() => {
+            if (
+              !extensionSubscriptionManager ||
+              extensionSubscriptionManager.ownsSubscriptionId(
+                delivery.subscriptionId,
+              )
+            ) {
+              eventBus.emit(delivery.event);
+            }
+          }, 0);
+        },
+      );
     }
   } else if (config.sync?.remote) {
     // Precedence 2: Create DefaultHttpTransport from remote URL
-    remote = new DefaultHttpTransport(config.sync.remote);
+    remote = new DefaultHttpTransport(config.sync.remote, config.sync.http);
   } else {
     // Precedence 3: Create throwing adapter for local-only mode
     // This adapter should only be called if code violates routing invariants
@@ -940,6 +1155,13 @@ function _buildRawClient<S extends DatafnSchema>(
           { path: "sync" },
         );
       },
+      publicLinks: async () => {
+        throw createClientError(
+          "TRANSPORT_ERROR",
+          "No remote adapter configured",
+          { path: "sync" },
+        );
+      },
     };
   }
 
@@ -960,6 +1182,8 @@ function _buildRawClient<S extends DatafnSchema>(
       config.plugins || [],
       getTimestamp,
       config.searchProvider,
+      config.searchIndexVersion,
+      config.e2ee,
     );
   }
 
@@ -986,24 +1210,35 @@ function _buildRawClient<S extends DatafnSchema>(
       syncConfig: config.sync,
       eventBus,
       getTimestamp,
+      e2ee: config.e2ee,
     },
     config.plugins || [],
     schema,
     eventBus,
     getTimestamp,
+    config.e2ee,
   );
 
   // Enhanced sync facade with start/stop/pullNow/cloneNow/reconcileNow
   const sync: SyncFacade & SyncControlMethods = {
     ...baseSync,
     async start() {
-      if (nativeSyncController) {
-        await awaitNativeBridgeReady();
-        await nativeSyncController.start();
-        return;
-      }
-      if (syncEngine) {
-        await syncEngine.start();
+      syncStatusController.markStarting();
+      try {
+        if (nativeSyncController) {
+          await awaitNativeBridgeReady();
+          await nativeSyncController.start();
+          syncStatusController.markReady();
+          return;
+        }
+        if (syncEngine) {
+          await syncEngine.start();
+          return;
+        }
+        syncStatusController.markReady();
+      } catch (error) {
+        syncStatusController.markError(error);
+        throw error;
       }
     },
     stop() {
@@ -1016,41 +1251,81 @@ function _buildRawClient<S extends DatafnSchema>(
       if (syncEngine) {
         syncEngine.stop();
       }
+      syncStatusController.markStopped();
     },
     async pullNow() {
-      if (nativeSyncController) {
-        await awaitNativeBridgeReady();
-        await nativeSyncController.pullNow();
-        return;
-      }
-      if (syncEngine) {
-        await syncEngine.pullNow();
+      syncStatusController.markSyncing("pull");
+      try {
+        if (nativeSyncController) {
+          await awaitNativeBridgeReady();
+          await nativeSyncController.pullNow();
+          syncStatusController.markReady();
+          return;
+        }
+        if (syncEngine) {
+          await syncEngine.pullNow();
+          await syncStatusController.refreshStatus();
+          return;
+        }
+        syncStatusController.markReady();
+      } catch (error) {
+        syncStatusController.markError(error, "pull");
+        throw error;
       }
     },
     async cloneNow() {
-      if (nativeSyncController) {
-        await awaitNativeBridgeReady();
-        await nativeSyncController.cloneNow();
-        return;
-      }
-      if (syncEngine) {
-        await syncEngine.cloneNow();
+      syncStatusController.markSyncing("clone");
+      try {
+        if (nativeSyncController) {
+          await awaitNativeBridgeReady();
+          await nativeSyncController.cloneNow();
+          syncStatusController.markReady();
+          return;
+        }
+        if (syncEngine) {
+          await syncEngine.cloneNow();
+          await syncStatusController.refreshStatus();
+          return;
+        }
+        syncStatusController.markReady();
+      } catch (error) {
+        syncStatusController.markError(error, "clone");
+        throw error;
       }
     },
     async reconcileNow() {
-      if (nativeSyncController) {
-        await awaitNativeBridgeReady();
-        await nativeSyncController.reconcileNow();
-        return;
-      }
-      if (syncEngine) {
-        await syncEngine.reconcileNow();
+      syncStatusController.markSyncing("reconcile");
+      try {
+        if (nativeSyncController) {
+          await awaitNativeBridgeReady();
+          await nativeSyncController.reconcileNow();
+          syncStatusController.markReady();
+          return;
+        }
+        if (syncEngine) {
+          await syncEngine.reconcileNow();
+          await syncStatusController.refreshStatus();
+          return;
+        }
+        syncStatusController.markReady();
+      } catch (error) {
+        syncStatusController.markError(error, "reconcile");
+        throw error;
       }
     },
     async schedulePush() {
       if (schedulePush) {
         await schedulePush();
       }
+    },
+    getStatus() {
+      return syncStatusController.getStatus();
+    },
+    statusSignal() {
+      return syncStatusController.statusSignal();
+    },
+    refreshStatus() {
+      return syncStatusController.refreshStatus();
     },
   };
 
@@ -1060,27 +1335,24 @@ function _buildRawClient<S extends DatafnSchema>(
   // Client lifecycle state (CLN-001)
   let destroyed = false;
   let destroying = false;
-  
+
   /**
    * Guard method to ensure client is not destroyed
    */
   const guardDestroyed = () => {
     if (destroyed || destroying) {
-      throw createClientError(
-        "DFQL_INVALID",
-        "Client has been destroyed",
-        { path: "client", context: "client lifecycle" }
-      );
+      throw createClientError("DFQL_INVALID", "Client has been destroyed", {
+        path: "client",
+        context: "client lifecycle",
+      });
     }
   };
 
   const assertSearchNotAborted = (signal?: AbortSignal) => {
     if (signal?.aborted) {
-      throw createClientError(
-        "DFQL_ABORTED",
-        "Search request aborted",
-        { path: "signal" },
-      );
+      throw createClientError("DFQL_ABORTED", "Search request aborted", {
+        path: "signal",
+      });
     }
   };
 
@@ -1089,11 +1361,133 @@ function _buildRawClient<S extends DatafnSchema>(
     select?: string[],
   ): Record<string, unknown> => {
     if (!select || select.length === 0) return record;
+    if (select.includes("*")) return record;
     const out: Record<string, unknown> = {};
     for (const field of select) {
       if (field in record) out[field] = record[field];
     }
     return out;
+  };
+
+  const isRecordObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+  const normalizeSearchFilters = (
+    filters: unknown,
+  ): Record<string, Record<string, unknown>> | undefined => {
+    if (!isRecordObject(filters)) {
+      return undefined;
+    }
+    const normalized: Record<string, Record<string, unknown>> = {};
+    for (const [resource, filter] of Object.entries(filters)) {
+      if (!isRecordObject(filter)) {
+        continue;
+      }
+      const normalizedFilter = normalizeFilterOps(filter);
+      if (Object.keys(normalizedFilter).length > 0) {
+        normalized[resource] = normalizedFilter;
+      }
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  };
+
+  const normalizeSearchTemporalParams = async (
+    raw: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    const temporalByResource = isRecordObject(raw.temporalByResource)
+      ? (raw.temporalByResource as Record<
+          string,
+          DatafnTemporalClause | readonly DatafnTemporalClause[]
+        >)
+      : undefined;
+    const temporal = raw.temporal as
+      | DatafnTemporalClause
+      | readonly DatafnTemporalClause[]
+      | undefined;
+
+    const baseFilters = normalizeSearchFilters(raw.filters) ?? {};
+
+    if (!temporalByResource && !temporal) {
+      const { filters: _filters, ...rest } = raw;
+      return Object.keys(baseFilters).length > 0
+        ? { ...rest, filters: baseFilters }
+        : rest;
+    }
+
+    const normalizedFilters: Record<string, Record<string, unknown>> = {
+      ...baseFilters,
+    };
+    const timezoneChanges = resolvedStorage
+      ? await resolvedStorage
+          .listRecords(TIMEZONE_CHANGE_RESOURCE_NAME)
+          .catch(() => [])
+      : [];
+    const temporalConfig = createClientTemporalConfig(
+      config.temporal,
+      timezoneChanges,
+    );
+    const resourcesForTopLevelTemporal = Array.isArray(raw.resources)
+      ? raw.resources.filter(
+          (resource): resource is string => typeof resource === "string",
+        )
+      : Object.keys(baseFilters);
+    const resourceClauses = new Map<
+      string,
+      DatafnTemporalClause | readonly DatafnTemporalClause[]
+    >();
+
+    if (temporal) {
+      for (const resource of resourcesForTopLevelTemporal) {
+        resourceClauses.set(resource, temporal);
+      }
+    }
+    if (temporalByResource) {
+      for (const [resource, clause] of Object.entries(temporalByResource)) {
+        resourceClauses.set(resource, clause);
+      }
+    }
+
+    for (const [resource, clause] of resourceClauses) {
+      const normalized = normalizeTemporalQuery(
+        {
+          resource,
+          filters: normalizedFilters[resource],
+          temporal: clause,
+        },
+        temporalConfig,
+      );
+      if (isRecordObject(normalized.filters)) {
+        normalizedFilters[resource] = normalized.filters as Record<
+          string,
+          unknown
+        >;
+      }
+    }
+
+    const {
+      temporal: _temporal,
+      temporalByResource: _temporalByResource,
+      ...rest
+    } = raw;
+    return {
+      ...rest,
+      ...(Object.keys(normalizedFilters).length > 0
+        ? { filters: normalizedFilters }
+        : {}),
+    };
+  };
+
+  const resourceNameById = (id: string): string | undefined => {
+    const prefix = id.includes(":") ? id.split(":")[0] : undefined;
+    if (!prefix) return undefined;
+    const byIdPrefix = schema.resources.find(
+      (resource) => resource.idPrefix === prefix,
+    );
+    if (byIdPrefix) return byIdPrefix.name;
+    const byName = schema.resources.find(
+      (resource) => resource.name === prefix,
+    );
+    return byName?.name;
   };
 
   // Create debouncer for mutation debouncing (DEB-001)
@@ -1139,6 +1533,8 @@ function _buildRawClient<S extends DatafnSchema>(
         schema,
         schemaIndex,
         nativeSyncConfig?.remoteMode,
+        config.temporal,
+        config.e2ee,
       );
     },
 
@@ -1148,11 +1544,20 @@ function _buildRawClient<S extends DatafnSchema>(
     sync,
 
     /**
+     * Public-link sharing API.
+     */
+    publicLinks: createDatafnPublicLinksApi(remote),
+
+    /**
      * Execute a transaction (CLIENT-TX-001)
      */
     async transact(payload: unknown) {
       guardDestroyed();
-      return executeTransact(remote, payload, awaitNativeBridgeReady);
+      await awaitNativeBridgeReady();
+      return executeTransact(
+        remote,
+        await prepareTransactPayloadForE2ee(schema, config.e2ee, payload),
+      );
     },
 
     /**
@@ -1177,6 +1582,7 @@ function _buildRawClient<S extends DatafnSchema>(
         config.clientId,
         debouncerMap,
         config.searchProvider,
+        config.e2ee,
       );
     },
 
@@ -1270,6 +1676,8 @@ function _buildRawClient<S extends DatafnSchema>(
         extensionEventUnsubscribe?.();
 
         // 6. Clear event bus
+        syncStatusUnsubscribe();
+        syncStatusController.dispose();
         eventBus.clear();
 
         // 7. Close storage
@@ -1298,15 +1706,16 @@ function _buildRawClient<S extends DatafnSchema>(
     async clear() {
       guardDestroyed();
       await awaitNativeBridgeReady();
-      
+
       if (resolvedStorage) {
         // 1. Clear all data
         await resolvedStorage.clearAll();
-        
+
         // 2. Reset hydration states
         // clearAll() already cleared the hydration state metadata, so all resources
         // are implicitly back to "notStarted" (the default)
         // No need to explicitly set them
+        await syncStatusController.refreshStatus();
       }
     },
 
@@ -1331,18 +1740,20 @@ function _buildRawClient<S extends DatafnSchema>(
     /**
      * Export all local records as structured JSON (EXP-001)
      */
-    async exportData(options?: { resources?: string[] }): Promise<DatafnExportPayload> {
+    async exportData(options?: {
+      resources?: string[];
+    }): Promise<DatafnExportPayload> {
       guardDestroyed();
       await awaitNativeBridgeReady();
-      
+
       if (!resolvedStorage) {
         throw createClientError(
           "DFQL_INVALID",
           "Export requires storage adapter",
-          { path: "exportData", context: "exportData" }
+          { path: "exportData", context: "exportData" },
         );
       }
-      
+
       return exportData(resolvedStorage, schema, options);
     },
 
@@ -1350,29 +1761,33 @@ function _buildRawClient<S extends DatafnSchema>(
      * Import records from a structured JSON payload (EXP-002)
      */
     async importData(
-      data: DatafnExportPayload, 
-      options?: { triggerCloneUp?: boolean }
+      data: DatafnExportPayload,
+      options?: { triggerCloneUp?: boolean },
     ): Promise<DatafnImportResult> {
       guardDestroyed();
       await awaitNativeBridgeReady();
-      
+
       if (!resolvedStorage) {
         throw createClientError(
           "DFQL_INVALID",
           "Import requires storage adapter",
-          { path: "importData", context: "importData" }
+          { path: "importData", context: "importData" },
         );
       }
-      
+
       return importData(resolvedStorage, schema, sync, data, options);
     },
 
-    async search(params: unknown): Promise<unknown> {
+    async search(params: unknown): Promise<DatafnSearchResult> {
       guardDestroyed();
       await awaitNativeBridgeReady();
       await searchProviderInitPromise;
 
-      if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      if (
+        typeof params !== "object" ||
+        params === null ||
+        Array.isArray(params)
+      ) {
         throw createClientError(
           "DFQL_INVALID",
           "Search query must not be empty",
@@ -1421,7 +1836,12 @@ function _buildRawClient<S extends DatafnSchema>(
         }
       }
 
-      if (raw.filters !== undefined && (typeof raw.filters !== "object" || raw.filters === null || Array.isArray(raw.filters))) {
+      if (
+        raw.filters !== undefined &&
+        (typeof raw.filters !== "object" ||
+          raw.filters === null ||
+          Array.isArray(raw.filters))
+      ) {
         throw createClientError(
           "DFQL_INVALID",
           "Invalid request: filters must be an object",
@@ -1431,7 +1851,9 @@ function _buildRawClient<S extends DatafnSchema>(
 
       if (
         raw.limit !== undefined &&
-        (typeof raw.limit !== "number" || !Number.isFinite(raw.limit) || raw.limit < 1)
+        (typeof raw.limit !== "number" ||
+          !Number.isFinite(raw.limit) ||
+          raw.limit < 1)
       ) {
         throw createClientError(
           "DFQL_INVALID",
@@ -1441,7 +1863,9 @@ function _buildRawClient<S extends DatafnSchema>(
       }
       if (
         raw.limitPerResource !== undefined &&
-        (typeof raw.limitPerResource !== "number" || !Number.isFinite(raw.limitPerResource) || raw.limitPerResource < 1)
+        (typeof raw.limitPerResource !== "number" ||
+          !Number.isFinite(raw.limitPerResource) ||
+          raw.limitPerResource < 1)
       ) {
         throw createClientError(
           "DFQL_INVALID",
@@ -1460,7 +1884,9 @@ function _buildRawClient<S extends DatafnSchema>(
       if (
         raw.fuzzy !== undefined &&
         typeof raw.fuzzy !== "boolean" &&
-        (typeof raw.fuzzy !== "number" || !Number.isFinite(raw.fuzzy) || raw.fuzzy < 0)
+        (typeof raw.fuzzy !== "number" ||
+          !Number.isFinite(raw.fuzzy) ||
+          raw.fuzzy < 0)
       ) {
         throw createClientError(
           "DFQL_INVALID",
@@ -1483,7 +1909,9 @@ function _buildRawClient<S extends DatafnSchema>(
             { path: "fieldBoosts" },
           );
         }
-        const entries = Object.entries(fieldBoostsValue as Record<string, unknown>);
+        const entries = Object.entries(
+          fieldBoostsValue as Record<string, unknown>,
+        );
         if (entries.length > 100) {
           throw createClientError(
             "LIMIT_EXCEEDED",
@@ -1492,7 +1920,11 @@ function _buildRawClient<S extends DatafnSchema>(
           );
         }
         for (const [field, value] of entries) {
-          if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+          if (
+            typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            value <= 0
+          ) {
             throw createClientError(
               "DFQL_INVALID",
               "Invalid request: fieldBoosts values must be finite positive numbers",
@@ -1523,28 +1955,36 @@ function _buildRawClient<S extends DatafnSchema>(
         typeof raw.limitPerResource === "number" ? raw.limitPerResource : limit,
         1_000,
       );
-      const resources = Array.isArray(raw.resources) ? (raw.resources as string[]) : undefined;
-      const fields = Array.isArray(raw.fields) ? (raw.fields as string[]) : undefined;
+      const resources = Array.isArray(raw.resources)
+        ? (raw.resources as string[])
+        : undefined;
+      const fields = Array.isArray(raw.fields)
+        ? (raw.fields as string[])
+        : undefined;
       const prefix = raw.prefix as boolean | undefined;
       const fuzzy = raw.fuzzy as boolean | number | undefined;
       const fieldBoosts = raw.fieldBoosts as Record<string, number> | undefined;
       const source = (raw.source ?? "auto") as "auto" | "local" | "remote";
       const signal = raw.signal as AbortSignal | undefined;
+      const normalizedRaw = await normalizeSearchTemporalParams(raw);
       assertSearchNotAborted(signal);
 
       const hasRemote = !!(config.sync?.remote || config.sync?.remoteAdapter);
-      const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
-      const hasLocalSearch = typeof config.searchProvider?.searchAll === "function";
+      const isOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      const hasLocalSearch =
+        typeof config.searchProvider?.searchAll === "function";
 
-      const runRemoteSearch = async (): Promise<unknown> => {
+      const runRemoteSearch = async (): Promise<DatafnSearchResult> => {
+        assertRemoteSearchAllowedForE2ee(config.e2ee);
         if (typeof (remote as any).search === "function") {
-          return (remote as any).search({
-            ...raw,
+          return (await (remote as any).search({
+            ...normalizedRaw,
             query,
             limit,
             limitPerResource,
             signal,
-          });
+          })) as DatafnSearchResult;
         }
         throw createClientError(
           "DFQL_UNSUPPORTED",
@@ -1553,7 +1993,7 @@ function _buildRawClient<S extends DatafnSchema>(
         );
       };
 
-      const runLocalSearch = async (): Promise<{ results: Array<{ id: string; resource: string; score: number; data: Record<string, unknown> }> }> => {
+      const runLocalSearch = async (): Promise<DatafnSearchResult> => {
         const searchAll = config.searchProvider?.searchAll;
         if (!searchAll) {
           throw createClientError(
@@ -1564,6 +2004,7 @@ function _buildRawClient<S extends DatafnSchema>(
         }
         await storageValidationPromise;
         await localOnlyInitPromise;
+        await hydrateSearchProviderResources(resources);
         const candidates = await (searchAll as any)({
           query,
           resources,
@@ -1578,11 +2019,20 @@ function _buildRawClient<S extends DatafnSchema>(
         assertSearchNotAborted(signal);
 
         const filters =
-          typeof raw.filters === "object" && raw.filters !== null && !Array.isArray(raw.filters)
-            ? (raw.filters as Record<string, Record<string, unknown>>)
+          typeof normalizedRaw.filters === "object" &&
+          normalizedRaw.filters !== null &&
+          !Array.isArray(normalizedRaw.filters)
+            ? (normalizedRaw.filters as Record<string, Record<string, unknown>>)
             : undefined;
-        const select = Array.isArray(raw.select) ? (raw.select as string[]) : undefined;
-        const results: Array<{ id: string; resource: string; score: number; data: Record<string, unknown> }> = [];
+        const select = Array.isArray(normalizedRaw.select)
+          ? (normalizedRaw.select as string[])
+          : undefined;
+        const results: Array<{
+          id: string;
+          resource: string;
+          score: number;
+          data: Record<string, unknown>;
+        }> = [];
 
         for (const candidate of candidates) {
           assertSearchNotAborted(signal);
@@ -1607,7 +2057,8 @@ function _buildRawClient<S extends DatafnSchema>(
 
         results.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
-          if (a.resource !== b.resource) return a.resource < b.resource ? -1 : 1;
+          if (a.resource !== b.resource)
+            return a.resource < b.resource ? -1 : 1;
           return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
         });
 
@@ -1626,7 +2077,11 @@ function _buildRawClient<S extends DatafnSchema>(
       }
 
       if (source === "remote") {
-        if (!hasRemote || isOffline || typeof (remote as any).search !== "function") {
+        if (
+          !hasRemote ||
+          isOffline ||
+          typeof (remote as any).search !== "function"
+        ) {
           throw createClientError(
             "DFQL_UNSUPPORTED",
             "Remote search unavailable",
@@ -1650,16 +2105,160 @@ function _buildRawClient<S extends DatafnSchema>(
       );
     },
 
+    resourceCountsSignal(
+      input: DatafnResourceCountsSignalInput,
+      options?: DatafnSignalOptions,
+    ): DatafnSignal<Record<string, number>> {
+      const resources = [
+        ...new Set(input.resources.map((resource) => String(resource))),
+      ];
+      const signals = resources.map((resource) => {
+        const query = input.queriesByResource?.[resource] ?? {};
+        return client.table(resource).signal(
+          {
+            ...query,
+            count: true,
+            select: query.select ?? ["id"],
+          },
+          options,
+        );
+      });
+      return combineSignals(signals, () => {
+        const counts: Record<string, number> = {};
+        resources.forEach((resource, index) => {
+          const result = signals[index]?.get() as
+            | { count?: number; data?: unknown[] }
+            | unknown[]
+            | undefined;
+          counts[resource] = Array.isArray(result)
+            ? result.length
+            : typeof result?.count === "number"
+              ? result.count
+              : Array.isArray(result?.data)
+                ? result.data.length
+                : 0;
+        });
+        return counts;
+      });
+    },
+
+    relationCountsSignal(
+      input: DatafnRelationCountsSignalInput,
+      options?: DatafnSignalOptions,
+    ): DatafnSignal<Record<string, number>> {
+      const ids = [
+        ...new Set(input.ids.map((id) => String(id)).filter(Boolean)),
+      ];
+      if (ids.length === 0) {
+        return emptySignal({});
+      }
+      const source = client.table(input.resource).signal(
+        {
+          select: ["id", `${input.relation}.*`],
+          filters: {
+            ...(input.filters ?? {}),
+            id: { $in: ids },
+          },
+        },
+        options,
+      );
+      const targetFilters = input.targetFilters
+        ? normalizeFilterOps(input.targetFilters)
+        : undefined;
+      return mapSignal(source, (records) => {
+        const counts = Object.fromEntries(ids.map((id) => [id, 0])) as Record<
+          string,
+          number
+        >;
+        for (const record of (Array.isArray(records) ? records : []) as Array<
+          Record<string, unknown>
+        >) {
+          const id = typeof record.id === "string" ? record.id : undefined;
+          if (!id) continue;
+          const relationValue = record[input.relation];
+          if (!Array.isArray(relationValue)) {
+            counts[id] = 0;
+            continue;
+          }
+          counts[id] = targetFilters
+            ? relationValue.filter(
+                (target): target is Record<string, unknown> =>
+                  Boolean(target) &&
+                  typeof target === "object" &&
+                  !Array.isArray(target) &&
+                  coreEvaluateFilter(
+                    target as Record<string, unknown>,
+                    targetFilters,
+                  ),
+              ).length
+            : relationValue.length;
+        }
+        return counts;
+      });
+    },
+
+    recordsByIdsSignal(
+      input: DatafnRecordsByIdsSignalInput,
+      options?: DatafnSignalOptions,
+    ): DatafnSignal<Record<string, Record<string, unknown>>> {
+      const grouped = new Map<string, string[]>();
+      for (const rawId of input.ids) {
+        const id = String(rawId);
+        const resource = resourceNameById(id);
+        if (!resource) continue;
+        const ids = grouped.get(resource) ?? [];
+        if (!ids.includes(id)) ids.push(id);
+        grouped.set(resource, ids);
+      }
+      const entries = Array.from(grouped.entries());
+      if (entries.length === 0) {
+        return emptySignal({});
+      }
+      const signals = entries.map(([resource, ids]) =>
+        client.table(resource).signal(
+          {
+            select: input.selectByResource?.[resource] ?? ["*"],
+            filters: {
+              id: { $in: ids },
+            },
+            metadata: input.metadata,
+          },
+          options,
+        ),
+      );
+      return combineSignals(signals, () => {
+        const records: Record<string, Record<string, unknown>> = {};
+        for (const signal of signals) {
+          const data = signal.get();
+          if (!Array.isArray(data)) continue;
+          for (const record of data as Array<Record<string, unknown>>) {
+            if (typeof record.id === "string") {
+              records[record.id] = record;
+            }
+          }
+        }
+        return records;
+      });
+    },
+
+    emptySignal<TValue>(value: TValue): DatafnSignal<TValue> {
+      return emptySignal(value);
+    },
+
     /**
      * Check storage health and verify hydration state consistency (HEAL-001)
      */
-    async checkHealth(): Promise<{ ok: boolean; issues: string[]; action?: "none" | "reclone" }> {
+    async checkHealth(): Promise<{
+      ok: boolean;
+      issues: string[];
+      action?: "none" | "reclone";
+    }> {
       guardDestroyed();
       await awaitNativeBridgeReady();
-      
+
       // Wait for local-only init to complete
       await localOnlyInitPromise;
-      
+
       if (!resolvedStorage) {
         return { ok: true, issues: [], action: "none" };
       }
@@ -1671,15 +2270,17 @@ function _buildRawClient<S extends DatafnSchema>(
       // 2. Check hydration state consistency
       for (const resource of schema.resources) {
         if (resource.isRemoteOnly) continue;
-        
+
         const state = await resolvedStorage.getHydrationState(resource.name);
-        
+
         // Detect stuck hydrating state
         // Note: We don't have a reliable way to check if sync is actively cloning,
         // so we detect this as a potential issue but not a hard failure.
         // In production, this would need coordination with SyncEngine state.
         if (state === "hydrating") {
-          issues.push(`Resource ${resource.name} is in hydrating state (may be stuck)`);
+          issues.push(
+            `Resource ${resource.name} is in hydrating state (may be stuck)`,
+          );
         }
       }
 
@@ -1712,6 +2313,17 @@ function _buildRawClient<S extends DatafnSchema>(
     debouncerMap,
   });
   (client as any).kv = kvApi;
+
+  const temporalTable = registry.getTable(TIMEZONE_CHANGE_RESOURCE_NAME);
+  const temporalApi = createTemporalApi({
+    storage: resolvedStorage,
+    temporalTable,
+    clientId: config.clientId,
+    getTimestamp,
+    defaultTimezone: config.temporal?.timezone,
+    detectTimezone: config.temporal?.detectTimezone,
+  });
+  (client as any).temporal = temporalApi;
 
   // Wrap client in Proxy for table property access (CLIENT-REG-001, CLIENT-REG-002)
   return new Proxy(client, {
@@ -1765,6 +2377,7 @@ export function createDatafnClient<S extends DatafnSchema>(
   const wrappedTableCache = new Map<string, DatafnTable<S, any>>();
   // Cached wrapped KV handle (singleton per client proxy).
   let wrappedKv: DatafnKvApi | null = null;
+  let wrappedSync: (SyncFacade & SyncControlMethods) | null = null;
 
   // Return a cached wrapped table handle for `tableName`.
   // The handle intercepts .signal() to return LiveSignals; all other props delegate
@@ -1775,27 +2388,35 @@ export function createDatafnClient<S extends DatafnSchema>(
   // After performSwitch reassigns realClient, re-calling factory() uses the new client.
   // Do NOT destructure or snapshot realClient into a local const inside the factory.
   function getOrCreateWrappedTable(tableName: string): DatafnTable<S, any> {
+    const typedTableName = tableName as ResourceNames<S>;
     const cached = wrappedTableCache.get(tableName);
     if (cached) return cached;
 
     // Validate the table name upfront — throws DFQL_UNKNOWN_RESOURCE if not in schema.
     // This preserves the same eager-throw behavior as direct realClient.table() calls.
-    realClient.table(tableName);
+    realClient.table(typedTableName);
 
     const wrapped = new Proxy(Object.create(null), {
       get(_proxyTarget, prop) {
         if (prop === "signal") {
-          return (query: unknown, options?: { disableOptimistic?: boolean }) => {
-            const currentRawTable = realClient.table(tableName);
+          return (query: unknown, options?: DatafnSignalOptions) => {
+            const currentRawTable = realClient.table(typedTableName);
             const version = (currentRawTable as any).version as number;
-            const factory = () => realClient.table(tableName).signal(query as any, options);
-            return liveRegistry.getOrCreateTableSignal(tableName, version, query, options, factory);
+            const factory = () =>
+              realClient.table(typedTableName).signal(query as any, options);
+            return liveRegistry.getOrCreateTableSignal(
+              tableName,
+              version,
+              query,
+              options,
+              factory,
+            );
           };
         }
         // Delegate all other property accesses to the current realClient's raw table.
         // This ensures non-signal methods (mutate, query, subscribe) are always bound
         // to the current underlying client, not a stale snapshot.
-        return (realClient.table(tableName) as any)[prop];
+        return (realClient.table(typedTableName) as any)[prop];
       },
     }) as DatafnTable<S, any>;
 
@@ -1808,9 +2429,15 @@ export function createDatafnClient<S extends DatafnSchema>(
       wrappedKv = new Proxy(Object.create(null), {
         get(_proxyTarget, prop) {
           if (prop === "signal") {
-            return (key: string, options?: { defaultValue?: unknown }) => {
+            return (
+              key: string,
+              options?: {
+                defaultValue?: unknown;
+                cache?: DatafnSignalOptions["cache"];
+              },
+            ) => {
               const factory = () => realClient.kv.signal(key, options);
-              return liveRegistry.getOrCreateKvSignal(key, factory);
+              return liveRegistry.getOrCreateKvSignal(key, options, factory);
             };
           }
           return (realClient.kv as any)[prop];
@@ -1818,6 +2445,25 @@ export function createDatafnClient<S extends DatafnSchema>(
       }) as DatafnKvApi;
     }
     return wrappedKv;
+  }
+
+  function getOrCreateWrappedSync(): SyncFacade & SyncControlMethods {
+    if (!wrappedSync) {
+      wrappedSync = new Proxy(Object.create(null), {
+        get(_proxyTarget, prop) {
+          if (prop === "statusSignal") {
+            return (options?: DatafnSignalOptions) =>
+              liveRegistry.getOrCreateSignal<DatafnSyncStatus>(
+                "sync:status",
+                options,
+                () => realClient.sync.statusSignal(),
+              );
+          }
+          return (realClient.sync as any)[prop];
+        },
+      }) as SyncFacade & SyncControlMethods;
+    }
+    return wrappedSync;
   }
 
   function isTableLike(val: unknown): val is DatafnTable<S, any> {
@@ -1834,13 +2480,35 @@ export function createDatafnClient<S extends DatafnSchema>(
   // outer is declared with let so closures can reference it before assignment
   let outer: DatafnClient<S>;
 
-  async function performSwitch(overrides: SwitchContextOverride): Promise<void> {
+  async function performSwitch(
+    overrides: SwitchContextOverride,
+  ): Promise<void> {
     const previousClient = realClient;
+    const storageOverride =
+      overrides.storage === null
+        ? { storage: undefined }
+        : overrides.storage !== undefined
+          ? { storage: overrides.storage }
+          : {};
     const newConfig: DatafnClientConfig<S> = {
       ...currentConfig,
-      ...(overrides.namespace !== undefined ? { namespace: overrides.namespace } : {}),
+      ...(overrides.clientId !== undefined
+        ? { clientId: overrides.clientId }
+        : {}),
+      ...(overrides.searchProvider !== undefined
+        ? { searchProvider: overrides.searchProvider ?? undefined }
+        : {}),
+      ...(overrides.searchIndexVersion !== undefined
+        ? { searchIndexVersion: overrides.searchIndexVersion }
+        : {}),
+      ...(overrides.namespace !== undefined
+        ? { namespace: overrides.namespace }
+        : {}),
       ...(overrides.sync !== undefined ? { sync: overrides.sync } : {}),
-      ...(overrides.storage !== undefined ? { storage: overrides.storage } : {}),
+      ...(overrides.e2ee !== undefined
+        ? { e2ee: overrides.e2ee ?? undefined }
+        : {}),
+      ...storageOverride,
     };
     let nextClient: DatafnClient<S> | undefined;
 
@@ -1896,9 +2564,15 @@ export function createDatafnClient<S extends DatafnSchema>(
     }
   }
 
-  async function switchContextFn(overrides: SwitchContextOverride): Promise<void> {
+  async function switchContextFn(
+    overrides: SwitchContextOverride,
+  ): Promise<void> {
     if (isDestroyed) {
-      throw createClientError("DFQL_INVALID", "Cannot switch context on a destroyed client", { path: "client" });
+      throw createClientError(
+        "DFQL_INVALID",
+        "Cannot switch context on a destroyed client",
+        { path: "client" },
+      );
     }
 
     if (switchInProgress) {
@@ -1932,7 +2606,7 @@ export function createDatafnClient<S extends DatafnSchema>(
   async function destroyFn(): Promise<void> {
     // Wait for any in-progress switch to complete
     while (switchInProgress) {
-      await new Promise<void>(r => setTimeout(r, 10));
+      await new Promise<void>((r) => setTimeout(r, 10));
     }
     switchQueue = [];
     isDestroyed = true;
@@ -1956,6 +2630,23 @@ export function createDatafnClient<S extends DatafnSchema>(
         return getOrCreateWrappedKv();
       }
 
+      if (prop === "sync") {
+        return getOrCreateWrappedSync();
+      }
+
+      if (
+        prop === "resourceCountsSignal" ||
+        prop === "relationCountsSignal" ||
+        prop === "recordsByIdsSignal"
+      ) {
+        return (input: unknown, options?: DatafnSignalOptions) =>
+          liveRegistry.getOrCreateSignal(
+            `${String(prop)}:${JSON.stringify(input)}`,
+            options,
+            () => (realClient as any)[prop](input, options),
+          );
+      }
+
       const val = (realClient as any)[prop];
 
       if (isTableLike(val)) {
@@ -1975,11 +2666,25 @@ export function createDatafnClient<S extends DatafnSchema>(
       );
     },
     ownKeys(_target) {
-      return [...Reflect.ownKeys(realClient), "switchContext", "currentNamespace", "subscribeClient"];
+      return [
+        ...Reflect.ownKeys(realClient),
+        "switchContext",
+        "currentNamespace",
+        "subscribeClient",
+      ];
     },
     getOwnPropertyDescriptor(_target, prop) {
-      if (prop === "switchContext" || prop === "currentNamespace" || prop === "subscribeClient") {
-        return { configurable: true, enumerable: true, writable: true, value: undefined };
+      if (
+        prop === "switchContext" ||
+        prop === "currentNamespace" ||
+        prop === "subscribeClient"
+      ) {
+        return {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: undefined,
+        };
       }
       return Object.getOwnPropertyDescriptor(realClient, prop);
     },

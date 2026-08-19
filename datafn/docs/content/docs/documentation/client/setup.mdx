@@ -123,6 +123,8 @@ Also note that `remoteMode: "icloud"` is incompatible with `isRemoteOnly: true` 
 | `sync` | `DatafnSyncConfig` | Sync and connectivity configuration. See below. |
 | `plugins` | `DatafnPlugin[]` | Client-side plugins for hook execution (beforeQuery, afterMutation, etc.). |
 | `generateId` | `(params: { resource: string; idPrefix?: string }) => string` | Custom ID generator for insert operations. Defaults to `crypto.randomUUID()` with resource prefix. |
+| `searchProvider` | `SearchProvider` | Optional local-first search provider. See [Search](/docs/dfql/search). |
+| `temporal` | `DatafnTemporalConfig & { detectTimezone? }` | Default timezone resolution for [temporal](/docs/dfql/temporal) queries and the [`client.temporal`](/docs/reference/client/temporal) API. |
 
 ### Sync Configuration
 

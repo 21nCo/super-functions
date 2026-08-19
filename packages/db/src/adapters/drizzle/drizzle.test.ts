@@ -450,6 +450,7 @@ describe('DrizzleAdapter - SQLite', () => {
           { id: 'w2', name: 'Bob', email: 'bob@test.com', age: 30 },
           { id: 'w3', name: 'Charlie', email: 'charlie@test.com', age: 35 },
           { id: 'w4', name: 'Alicia', email: 'alicia@test.com', age: 28 },
+          { id: 'w5', name: 'Literal 100%_!\\path', email: 'literal@test.com', age: 29 },
         ],
       });
     });
@@ -484,6 +485,18 @@ describe('DrizzleAdapter - SQLite', () => {
         where: [{ field: 'name', operator: 'contains', value: 'lic' }],
       });
       expect(results.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('treats LIKE wildcards, the escape marker, and backslashes as literals', async () => {
+      const results = await adapter.findMany({
+        model: 'users',
+        where: [{ field: 'name', operator: 'contains', value: '100%_!\\path' }],
+      });
+      expect(results.map((result) => result.id)).toEqual(['w5']);
+    });
+
+    it('should advertise native text search support', () => {
+      expect(adapter.capabilities.operations.fulltext).toBe(true);
     });
 
     it('should filter with starts_with', async () => {

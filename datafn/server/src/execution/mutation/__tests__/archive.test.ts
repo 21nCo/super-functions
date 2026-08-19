@@ -45,7 +45,7 @@ describe("Archive and unarchive operations", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ns:1",
         getActorId: () => actorId as any,

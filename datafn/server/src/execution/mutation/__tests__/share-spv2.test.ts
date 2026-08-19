@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { memoryAdapter } from "@superfunctions/db/adapters";
+import {
+  createMemoryIndexedDirectoryStore,
+  memoryAdapter,
+} from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../../server.js";
 import type { DatafnSchema } from "../../../core-types.js";
+import { datafnMultiRegionPlugin } from "../../../plugins/multi-region.js";
 
 const namespace = "user:owner";
 const globalPermissionsTable = "__datafn_permissions_global";
@@ -81,7 +85,7 @@ describe("share SPV2 mutation semantics", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => namespace,
         getActorId: () => actorId as any,
@@ -301,6 +305,112 @@ describe("share SPV2 mutation semantics", () => {
 
     const grantsAfterUnshare = await listGlobalGrants();
     expect(grantsAfterUnshare).toHaveLength(0);
+  });
+
+  it("keeps the database grant active when directory invalidation fails", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const backingDirectory = createMemoryIndexedDirectoryStore();
+    let rejectDelete = false;
+    const directory = {
+      ...backingDirectory,
+      async delete(key: string) {
+        if (rejectDelete) throw new Error("directory unavailable");
+        await backingDirectory.delete(key);
+      },
+    };
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:test",
+        directory,
+      })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return { response, body: await response.json() as any };
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "directory-order",
+        mutationId: "directory-order-insert",
+        id: "note:directory-order",
+        record: { title: "Directory ordering" },
+      });
+      const shared = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "directory-order",
+        mutationId: "directory-order-share",
+        id: "note:directory-order",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+      expect(shared.body.result.ok).toBe(true);
+
+      rejectDelete = true;
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "unshare",
+        clientId: "directory-order",
+        mutationId: "directory-order-unshare-failed",
+        id: "note:directory-order",
+        shareWith: { principalId: "user:partner" },
+      });
+
+      const grantsAfterFailure = await localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      });
+      expect(grantsAfterFailure).toHaveLength(1);
+      const directoryAfterFailure = await backingDirectory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(directoryAfterFailure.records).toHaveLength(1);
+
+      rejectDelete = false;
+      const retried = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "unshare",
+        clientId: "directory-order",
+        mutationId: "directory-order-unshare-retry",
+        id: "note:directory-order",
+        shareWith: { principalId: "user:partner" },
+      });
+      expect(retried.body.result.ok).toBe(true);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(backingDirectory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+    } finally {
+      await localServer.close();
+    }
   });
 
   it("rejects resource scope share and unshare for non-owners", async () => {

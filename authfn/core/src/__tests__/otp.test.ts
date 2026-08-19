@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-  createUser,
-  getLatestOtpChallenge,
-  signInWithPassword,
-  type AuthFnConfig,
-  type AuthFnDeliveryRequest,
-  type AuthFnEvent,
-  type AuthFnOtpChallengeLifecycleEvent
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnPasswordPlugin } from '@authfn/password';
+import type {
+  AuthFnDeliveryRequest,
+  AuthFnEvent,
+  AuthFnOtpChallengeLifecycleEvent,
+  AuthFnRuntimeConfig
 } from '../index.js';
+import { signInWithPassword } from '../core/passwords.js';
+import { createUser } from '../core/users.js';
+import { getLatestOtpChallenge } from '../core/verifications.js';
 
 function createClock(start: Date = new Date('2026-03-22T00:00:00.000Z')) {
   let current = start;
@@ -52,34 +52,38 @@ function createDeliveryRecorder() {
   };
 }
 
-function createConfig(overrides?: Partial<AuthFnConfig>): AuthFnConfig {
+function createConfig(overrides?: Partial<AuthFnRuntimeConfig>): AuthFnRuntimeConfig {
   const clock = createClock();
   const delivery = createDeliveryRecorder();
 
-  const config: AuthFnConfig = {
+  const config: AuthFnRuntimeConfig = {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
-      authFnPasswordPlugin({
+      authFnPasswordPlugin(),
+      authFnEmailOtpPlugin()
+    ],
+    pluginRuntime: {
+      password: {
         otp: {
           delivery: delivery.provider,
           now: clock.now,
           codeGenerator: () => '731942'
         }
-      }),
-      authFnEmailOtpPlugin({
+      },
+      emailOtp: {
         delivery: delivery.provider,
         now: clock.now,
         codeGenerator: () => '731942'
-      })
-    ],
+      }
+    },
     ...(overrides ?? {})
   };
 
   return Object.assign(config, {
     __clock: clock,
     __delivery: delivery
-  }) as AuthFnConfig & {
+  }) as AuthFnRuntimeConfig & {
     __clock: ReturnType<typeof createClock>;
     __delivery: ReturnType<typeof createDeliveryRecorder>;
   };
@@ -91,12 +95,12 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
     .join('; ');
 }
 
-describe('@authfn/core otp plugin', () => {
+describe('authfn otp plugin', () => {
   it('sends and verifies verify-email OTP challenges exactly once', async () => {
-    const config = createConfig() as AuthFnConfig & {
+    const config = createConfig() as AuthFnRuntimeConfig & {
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -179,11 +183,11 @@ describe('@authfn/core otp plugin', () => {
   });
 
   it('expires OTP challenges and rejects purpose mismatches for reset completion', async () => {
-    const config = createConfig() as AuthFnConfig & {
+    const config = createConfig() as AuthFnRuntimeConfig & {
       __clock: ReturnType<typeof createClock>;
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     await auth.router.handle(
       new Request('https://account.example.com/auth/otp/send', {
@@ -239,7 +243,7 @@ describe('@authfn/core otp plugin', () => {
 
   it('rejects malformed JSON bodies with a validation error instead of a 500', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const response = await auth.router.handle(
       new Request('https://account.example.com/auth/otp/send', {
@@ -254,10 +258,10 @@ describe('@authfn/core otp plugin', () => {
   });
 
   it('supports otp sign-in and reset-password completion', async () => {
-    const config = createConfig() as AuthFnConfig & {
+    const config = createConfig() as AuthFnRuntimeConfig & {
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     await auth.router.handle(
       new Request('https://account.example.com/auth/sign-up/password', {
@@ -375,11 +379,11 @@ describe('@authfn/core otp plugin', () => {
           hookCalls.push(`afterUserCreate:${String(user.primaryEmail)}`);
         }
       }
-    }) as AuthFnConfig & {
+    }) as AuthFnRuntimeConfig & {
       __clock: ReturnType<typeof createClock>;
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const sendResponse = await auth.router.handle(
       new Request('https://account.example.com/auth/otp/send', {
@@ -468,12 +472,14 @@ describe('@authfn/core otp plugin', () => {
         otpSignUpExistingUser: true
       },
       observability: {
-        emit: (event) => events.push(event)
+        events: {
+          emit: (event) => events.push(event)
+        }
       }
-    }) as AuthFnConfig & {
+    }) as AuthFnRuntimeConfig & {
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -521,10 +527,10 @@ describe('@authfn/core otp plugin', () => {
       accountLinking: {
         otpSignUpExistingUser: true
       }
-    }) as AuthFnConfig & {
+    }) as AuthFnRuntimeConfig & {
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const verifiedAt = new Date('2026-03-22T00:00:00.000Z');
     const user = await createUser(config, {
       primaryEmail: 'verified@example.com',
@@ -568,10 +574,10 @@ describe('@authfn/core otp plugin', () => {
   });
 
   it('rejects otp sign-in for missing users before consuming the challenge', async () => {
-    const config = createConfig() as AuthFnConfig & {
+    const config = createConfig() as AuthFnRuntimeConfig & {
       __delivery: ReturnType<typeof createDeliveryRecorder>;
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     await auth.router.handle(
       new Request('https://account.example.com/auth/otp/send', {
@@ -607,7 +613,7 @@ describe('@authfn/core otp plugin', () => {
   it('applies beforeChallengeSend transformations and keeps afterChallengeSend fail-open', async () => {
     const delivery = createDeliveryRecorder();
     const seenContexts: Array<{ hasConfig: boolean; requestUrl?: string; baseUrl?: string }> = [];
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       hooks: {
@@ -615,7 +621,7 @@ describe('@authfn/core otp plugin', () => {
           seenContexts.push({
             hasConfig: Boolean(ctx.config),
             requestUrl: ctx.request?.url,
-            baseUrl: ctx.runtime?.baseUrl
+            baseUrl: ctx.environment?.baseUrl
           });
           return {
             ...input,
@@ -630,15 +636,18 @@ describe('@authfn/core otp plugin', () => {
         }
       },
       plugins: [
-        authFnEmailOtpPlugin({
+        authFnEmailOtpPlugin()
+      ],
+      pluginRuntime: {
+        emailOtp: {
           delivery: delivery.provider,
           codeGenerator: () => '731942',
           now: () => new Date('2026-03-22T00:00:00.000Z')
-        })
-      ]
+        }
+      }
     };
 
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const response = await auth.router.handle(
       new Request('https://account.example.com/auth/otp/send', {
         method: 'POST',

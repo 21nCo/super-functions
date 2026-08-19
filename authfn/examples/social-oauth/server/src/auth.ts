@@ -1,13 +1,5 @@
-import {
-  authFnSocialOAuthPlugin,
-  createAuthFn,
-  getSchema,
-  type AuthFnEvent,
-  type AuthFnInstance,
-  type AuthFnPlugin,
-  type AuthFnSocialProfile,
-  type AuthFnSocialProviderId
-} from '@authfn/core';
+import { authFnPlugins, authfn, type AuthFnEvent, type AuthFnServer } from 'authfn';
+import { authFnSocialOAuthPlugin, type AuthFnSocialProfile, type AuthFnSocialProviderId, type SocialOAuthPluginRuntimeConfig } from '@authfn/social-oauth';
 import {
   assertExampleLocalUrl,
   type FakeOAuthProvider,
@@ -30,22 +22,22 @@ const REVOCATION_ENDPOINTS: Record<AuthFnSocialProviderId, string> = {
   apple: 'https://appleid.apple.com/auth/revoke'
 };
 
-export const socialOAuthSchema = getSchema({
-  database: {} as Adapter,
+export const socialOAuthAuthApp = authfn({
   namespace: SOCIAL_OAUTH_NAMESPACE,
-  plugins: createSocialOAuthSchemaPlugins('http://127.0.0.1:4012')
+  plugins: createSocialOAuthPlugins()
 });
+
+export const socialOAuthSchema = socialOAuthAuthApp.getSchema();
 
 export function createSocialOAuthAuth(options: {
   database: Adapter;
   clientOrigin: string;
   fakeOAuthProvider: FakeOAuthProvider;
   onEvent?(event: AuthFnEvent): Promise<void> | void;
-}): AuthFnInstance {
-  return createAuthFn({
+}): AuthFnServer {
+  return socialOAuthAuthApp.createServer({
     database: options.database,
-    namespace: SOCIAL_OAUTH_NAMESPACE,
-    runtime: {
+    environment: {
       resolve(request) {
         const url = new URL(request.url);
         return {
@@ -60,59 +52,48 @@ export function createSocialOAuthAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
+      events: options.onEvent
     },
-    plugins: createSocialOAuthPlugins({
-      clientOrigin: options.clientOrigin,
-      fakeOAuthProvider: options.fakeOAuthProvider
-    })
+    pluginRuntime: {
+      socialOAuth: createSocialOAuthRuntimeConfig({
+        clientOrigin: options.clientOrigin,
+        fakeOAuthProvider: options.fakeOAuthProvider
+      })
+    }
   });
 }
 
-function createSocialOAuthSchemaPlugins(clientOrigin: string): AuthFnPlugin[] {
-  return [
-    authFnSocialOAuthPlugin({
-      providers: Object.fromEntries(
-        SOCIAL_PROVIDER_IDS.map((providerId) => [
-          providerId,
-          {
-            clientId: `demo-${providerId}-client`,
-            clientSecret: `demo-${providerId}-secret`,
-            allowlistedReturnTo: [buildReturnTarget(clientOrigin, providerId)]
-          }
-        ])
-      )
-    })
-  ];
+function createSocialOAuthPlugins() {
+  return authFnPlugins(
+    authFnSocialOAuthPlugin()
+  );
 }
 
-function createSocialOAuthPlugins(input: {
+function createSocialOAuthRuntimeConfig(input: {
   clientOrigin: string;
   fakeOAuthProvider: FakeOAuthProvider;
-}): AuthFnPlugin[] {
+}): SocialOAuthPluginRuntimeConfig {
   const fetcher = createFakeProviderFetcher(input.fakeOAuthProvider);
 
-  return [
-    authFnSocialOAuthPlugin({
-      fetcher,
-      providers: Object.fromEntries(
-        SOCIAL_PROVIDER_IDS.map((providerId) => [
-          providerId,
-          {
-            clientId: `demo-${providerId}-client`,
-            clientSecret: `demo-${providerId}-secret`,
-            allowlistedReturnTo: [buildReturnTarget(input.clientOrigin, providerId)],
-            profileResolver: async ({ tokenSet }) =>
-              resolveFakeProviderProfile({
-                providerId,
-                accessToken: tokenSet.accessToken,
-                fakeOAuthProvider: input.fakeOAuthProvider
-              })
-          }
-        ])
-      )
-    })
-  ];
+  return {
+    fetcher,
+    providers: Object.fromEntries(
+      SOCIAL_PROVIDER_IDS.map((providerId) => [
+        providerId,
+        {
+          clientId: `demo-${providerId}-client`,
+          clientSecret: `demo-${providerId}-secret`,
+          allowlistedReturnTo: [buildReturnTarget(input.clientOrigin, providerId)],
+          profileResolver: async ({ tokenSet }) =>
+            resolveFakeProviderProfile({
+              providerId,
+              accessToken: tokenSet.accessToken,
+              fakeOAuthProvider: input.fakeOAuthProvider
+            })
+        }
+      ])
+    )
+  };
 }
 
 async function resolveFakeProviderProfile(input: {

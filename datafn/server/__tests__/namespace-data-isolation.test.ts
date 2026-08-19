@@ -45,7 +45,7 @@ function setUser(userId: string, tenantId?: string) {
 async function createIsolatedServer(db: Adapter) {
   return createDatafnServer({ allowUnknownResources: true,
     schema: testSchema,
-    db,
+    database: db,
     namespaceProvider: {
       getNamespace: () => {
         if (currentUser.tenantId) return `tenant:${currentUser.tenantId}:user:${currentUser.userId}`;

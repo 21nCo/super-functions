@@ -9,14 +9,14 @@ import {
 import { AesGcmTokenCipher } from '@superfunctions/oauth-storage';
 import type {
   AuthFnAuthMethod,
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnSession,
   AuthFnTwoFactorChallengeRecord,
   AuthFnTwoFactorEnrollmentRecord,
   AuthFnTwoFactorRecoveryCodeRecord,
   AuthFnUserRecord
 } from '../types.js';
-import type { TwoFactorPluginConfig } from '../plugin-types.js';
+import type { TwoFactorPluginRuntimeConfig } from '../plugin-types.js';
 import {
   AuthFnConfigError,
   AuthFnConflictError,
@@ -26,6 +26,7 @@ import {
 } from './errors.js';
 import { hashSecret } from './sessions.js';
 import { findUserById } from './users.js';
+import { readPluginRuntimeConfig } from './plugin-runtime.js';
 
 const DEFAULT_ISSUER = 'authfn';
 const DEFAULT_DIGITS = 6;
@@ -35,8 +36,6 @@ const DEFAULT_RECOVERY_CODE_COUNT = 10;
 const DEFAULT_CHALLENGE_TTL_SECONDS = 300;
 const DEFAULT_ENCRYPTION_KEY_REF = 'authfn-2fa';
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-
-const twoFactorPluginConfigs = new WeakMap<object, TwoFactorPluginConfig>();
 
 export interface CreatedTwoFactorEnrollment {
   enrollment: AuthFnTwoFactorEnrollmentRecord;
@@ -57,29 +56,16 @@ export interface SatisfiedTwoFactorChallenge {
   usedRecoveryCode: boolean;
 }
 
-export function rememberTwoFactorPluginConfig(
-  plugin: object,
-  config: TwoFactorPluginConfig
-): void {
-  twoFactorPluginConfigs.set(plugin, config);
-}
-
 export function getTwoFactorPluginConfig(
-  config: Pick<AuthFnConfig, 'plugins'>
-): TwoFactorPluginConfig | null {
-  for (const plugin of config.plugins) {
-    if (plugin.name !== 'twoFactor') {
-      continue;
-    }
-
-    return twoFactorPluginConfigs.get(plugin) ?? {};
-  }
-
-  return null;
+  config: Pick<AuthFnRuntimeConfig, 'plugins' | 'pluginRuntime'>
+): TwoFactorPluginRuntimeConfig | null {
+  return config.plugins.some((plugin) => plugin.name === 'twoFactor')
+    ? readPluginRuntimeConfig<TwoFactorPluginRuntimeConfig>(config as AuthFnRuntimeConfig, 'twoFactor')
+    : null;
 }
 
 export async function getConfirmedTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnTwoFactorEnrollmentRecord | null> {
   const enrollment = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
@@ -92,7 +78,7 @@ export async function getConfirmedTwoFactorEnrollment(
 }
 
 export async function hasConfirmedTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<boolean> {
   const enrollment = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
@@ -105,9 +91,9 @@ export async function hasConfirmedTwoFactorEnrollment(
 }
 
 export async function createTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorEnrollment> {
   const existing = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
     model: 'two_factor_enrollments',
@@ -183,10 +169,10 @@ export async function createTwoFactorEnrollment(
 }
 
 export async function confirmTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   code: string,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<AuthFnTwoFactorEnrollmentRecord> {
   const enrollment = await requireTwoFactorEnrollment(config, userId);
   if (enrollment.confirmedAt) {
@@ -207,10 +193,10 @@ export async function confirmTwoFactorEnrollment(
 }
 
 export async function createTwoFactorChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   user: AuthFnUserRecord,
   primaryMethod: Exclude<AuthFnAuthMethod, 'two-factor' | 'api-key'>,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorChallenge | null> {
   const enrollment = await requireConfirmedEnrollment(config, user.id);
   if (!enrollment) {
@@ -241,19 +227,19 @@ export async function createTwoFactorChallenge(
 }
 
 export async function beginTwoFactorChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   user: AuthFnUserRecord,
   primaryMethod: Exclude<AuthFnAuthMethod, 'two-factor' | 'api-key'>,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<CreatedTwoFactorChallenge | null> {
   return createTwoFactorChallenge(config, user, primaryMethod, pluginConfig);
 }
 
 export async function satisfyTwoFactorChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   challengeId: string,
   code: string,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<SatisfiedTwoFactorChallenge> {
   const challenge = await config.database.findOne<AuthFnTwoFactorChallengeRecord>({
     model: 'two_factor_challenges',
@@ -271,7 +257,7 @@ export async function satisfyTwoFactorChallenge(
     });
   }
 
-  const user = await findUserById(config as AuthFnConfig, challenge.userId);
+  const user = await findUserById(config as AuthFnRuntimeConfig, challenge.userId);
   if (!user) {
     throw new AuthFnNotFoundError('User not found for two-factor challenge', {
       challengeId,
@@ -311,10 +297,10 @@ export async function satisfyTwoFactorChallenge(
 }
 
 export async function disableTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   code: string,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<void> {
   const enrollment = await requireConfirmedEnrollment(config, userId);
   if (!enrollment) {
@@ -345,10 +331,10 @@ export async function disableTwoFactorEnrollment(
 }
 
 export async function verifyTwoFactorCode(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   code: string,
-  pluginConfig: TwoFactorPluginConfig = {}
+  pluginConfig: TwoFactorPluginRuntimeConfig = {}
 ): Promise<{ usedRecoveryCode: boolean }> {
   const enrollment = await requireConfirmedEnrollment(config, userId);
   if (!enrollment) {
@@ -365,7 +351,7 @@ export async function verifyTwoFactorCode(
 }
 
 export async function appendTwoFactorMethodToSession(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   sessionId: string
 ): Promise<AuthFnSession['methods']> {
   const record = await config.database.findOne<{ methods: AuthFnAuthMethod[]; id: string }>({
@@ -406,7 +392,7 @@ export function createPendingTwoFactorResponse(
 }
 
 async function requireTwoFactorEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnTwoFactorEnrollmentRecord> {
   const enrollment = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
@@ -422,7 +408,7 @@ async function requireTwoFactorEnrollment(
 }
 
 async function requireConfirmedEnrollment(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnTwoFactorEnrollmentRecord | null> {
   const enrollment = await config.database.findOne<AuthFnTwoFactorEnrollmentRecord>({
@@ -438,7 +424,7 @@ async function requireConfirmedEnrollment(
 }
 
 async function tryConsumeRecoveryCode(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   enrollmentId: string,
   code: string,
   now: Date
@@ -468,10 +454,10 @@ async function tryConsumeRecoveryCode(
 }
 
 async function verifyTwoFactorTotp(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   enrollment: AuthFnTwoFactorEnrollmentRecord,
   code: string,
-  pluginConfig: TwoFactorPluginConfig
+  pluginConfig: TwoFactorPluginRuntimeConfig
 ): Promise<void> {
   const now = resolveNow(pluginConfig);
   const secret = await decryptSecret(config, pluginConfig, enrollment.secretEncrypted);
@@ -535,8 +521,8 @@ async function verifyTwoFactorTotp(
 }
 
 async function encryptSecret(
-  config: Pick<AuthFnConfig, 'namespace'>,
-  pluginConfig: TwoFactorPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'namespace'>,
+  pluginConfig: TwoFactorPluginRuntimeConfig,
   secret: string
 ): Promise<string> {
   const cipher = createSecretCipher(config, pluginConfig);
@@ -544,8 +530,8 @@ async function encryptSecret(
 }
 
 async function decryptSecret(
-  config: Pick<AuthFnConfig, 'namespace'>,
-  pluginConfig: TwoFactorPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'namespace'>,
+  pluginConfig: TwoFactorPluginRuntimeConfig,
   encrypted: string
 ): Promise<string> {
   const cipher = createSecretCipher(config, pluginConfig);
@@ -553,8 +539,8 @@ async function decryptSecret(
 }
 
 function createSecretCipher(
-  config: Pick<AuthFnConfig, 'namespace'>,
-  pluginConfig: TwoFactorPluginConfig
+  config: Pick<AuthFnRuntimeConfig, 'namespace'>,
+  pluginConfig: TwoFactorPluginRuntimeConfig
 ): AesGcmTokenCipher {
   const resolver = pluginConfig.encryptionKeyResolver;
   if (!resolver) {
@@ -578,7 +564,7 @@ function createSecretCipher(
 }
 
 function buildOtpAuthUri(
-  pluginConfig: TwoFactorPluginConfig,
+  pluginConfig: TwoFactorPluginRuntimeConfig,
   user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>,
   secret: string
 ): string {
@@ -621,7 +607,7 @@ function generateRecoveryCodes(count: number): string[] {
 function verifyTotpCode(
   secret: string,
   code: string,
-  pluginConfig: TwoFactorPluginConfig,
+  pluginConfig: TwoFactorPluginRuntimeConfig,
   now: Date,
   lastUsedCounter: number | null
 ): number | null {
@@ -699,7 +685,7 @@ function safeCompareHex(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function resolveNow(pluginConfig: TwoFactorPluginConfig): Date {
+function resolveNow(pluginConfig: TwoFactorPluginRuntimeConfig): Date {
   return pluginConfig.now?.() ?? new Date();
 }
 
@@ -707,6 +693,6 @@ function createIdentifier(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }

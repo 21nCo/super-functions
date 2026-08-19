@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import { createDatafnServer } from "../../../server.js";
 import type { DatafnSchema } from "../../../core-types.js";
@@ -57,7 +57,7 @@ describe("Query auto-filtering for trash and archive", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ns:1",
       },
@@ -164,6 +164,30 @@ describe("Query auto-filtering for trash and archive", () => {
     expect(res.res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.result.data.map((r: any) => r.id)).toEqual(["todo:1"]);
+  });
+
+  it("trash auto-filter uses a database-safe null predicate", async () => {
+    const findManySpy = vi.spyOn(db, "findMany");
+    const res = await query({
+      resource: "todos",
+      version: 1,
+      filters: { id: "todo:1" },
+      select: ["id"],
+    });
+
+    expect(res.res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    const todoCall = findManySpy.mock.calls.find(
+      ([params]) => (params as { model?: string }).model === "todos",
+    );
+    const where = (todoCall?.[0] as { where?: unknown } | undefined)?.where;
+    expect(where).toEqual(
+      expect.arrayContaining([
+        { field: "trashedAt", operator: "eq", value: null },
+      ]),
+    );
+    expect(JSON.stringify(where)).not.toContain("undefined");
+    findManySpy.mockRestore();
   });
 
   it("includeTrashed: true includes trashed records", async () => {

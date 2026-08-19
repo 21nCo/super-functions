@@ -1,3 +1,6 @@
+import type { AuthFnTransportAuthOptions } from './transport-auth.js';
+import type { HttpTransportAuthProvider } from '@superfunctions/http';
+
 export type AuthFnActorType = 'user' | 'api-key';
 export type AuthFnSocialProviderId = 'google' | 'apple' | 'github';
 export type AuthFnOtpPurpose = 'verify-email' | 'sign-in' | 'sign-up' | 'reset-password';
@@ -145,7 +148,7 @@ export interface AuthFnRegionalEmailAuthPreparation {
   redirectTo?: string;
 }
 
-export interface AuthFnRuntimeResolution {
+export interface AuthFnEnvironment {
   issuer: string;
   baseUrl: string;
   regionId: string | null;
@@ -169,6 +172,7 @@ export interface AuthFnRuntimeResolution {
 }
 
 export interface AuthFnClient {
+  createTransportAuth(input?: AuthFnTransportAuthOptions): HttpTransportAuthProvider;
   getSession(): Promise<AuthFnSessionEnvelope | AuthFnErrorEnvelope>;
   getAccountDetails(): Promise<AuthFnAccountDetailsEnvelope | AuthFnErrorEnvelope>;
   deleteAccount(): Promise<AuthFnDeleteAccountEnvelope | AuthFnErrorEnvelope>;
@@ -276,7 +280,7 @@ export interface AuthFnClient {
   lookupRegion(input: {
     identifier: string;
   }): Promise<AuthFnSuccessEnvelope<AuthFnRegionLookupResult> | AuthFnErrorEnvelope>;
-  getRuntime(): Promise<AuthFnSuccessEnvelope<AuthFnRuntimeResolution> | AuthFnErrorEnvelope>;
+  getEnvironment(): Promise<AuthFnSuccessEnvelope<AuthFnEnvironment> | AuthFnErrorEnvelope>;
 }
 
 export interface AuthFnCachedRegion {
@@ -352,3 +356,8 @@ export interface AuthFnClientOptions {
   credentials?: RequestCredentials;
   onRequestMetric?(metric: AuthFnClientRequestMetric): void;
 }
+
+export type {
+  AuthFnTransportAuthOptions
+} from './transport-auth.js';
+export type { AuthFnBearerTokenProvider } from './transport-auth-internal.js';

@@ -9,15 +9,24 @@ import type {
   DatafnChangelogEntry,
 } from "../storage.js";
 import type { DatafnSchema, DatafnRelationSchema } from "@datafn/core";
-import { KV_RESOURCE_NAME, getJoinStoreKey, enumerateJoinStoreKeys } from "@datafn/core";
+import {
+  KV_RESOURCE_NAME,
+  TIMEZONE_CHANGE_RESOURCE_NAME,
+  endpointIncludes,
+  firstEndpoint,
+  getJoinStoreKey,
+  enumerateJoinStoreKeys,
+} from "@datafn/core";
 import {
   validateHydrationState,
   validateTransition,
   validateCursor,
+  cloneForStorage,
 } from "./shared.js";
 
 const DB_NAME = "datafn_client_db";
 const DB_VERSION = 2;
+const BLOCKED_UPGRADE_TIMEOUT_MS = 1000;
 /** CLI-013: Maximum IDB version before database recreation */
 const MAX_IDB_VERSION = 1000;
 
@@ -91,10 +100,15 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     dbName: string;
     schema: DatafnSchema;
   }): IndexedDbStorageAdapter {
-    const resources = options.schema.resources.map((r) => r.name);
+    const resources = options.schema.resources
+      .filter((r) => !r.isRemoteOnly)
+      .map((r) => r.name);
     // Ensure built-in KV resource is always valid (KV-001)
     if (!resources.includes(KV_RESOURCE_NAME)) {
       resources.push(KV_RESOURCE_NAME);
+    }
+    if (!resources.includes(TIMEZONE_CHANGE_RESOURCE_NAME)) {
+      resources.push(TIMEZONE_CHANGE_RESOURCE_NAME);
     }
     // Register join store keys for many-many relations
     if (options.schema.relations) {
@@ -128,10 +142,15 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
 
     let finalResources = resources;
     if (!finalResources && schema) {
-      finalResources = schema.resources.map((r) => r.name);
+      finalResources = schema.resources
+        .filter((r) => !r.isRemoteOnly)
+        .map((r) => r.name);
     }
     if (finalResources && !finalResources.includes(KV_RESOURCE_NAME)) {
       finalResources = [...finalResources, KV_RESOURCE_NAME];
+    }
+    if (finalResources && !finalResources.includes(TIMEZONE_CHANGE_RESOURCE_NAME)) {
+      finalResources = [...finalResources, TIMEZONE_CHANGE_RESOURCE_NAME];
     }
     if (finalResources && schema?.relations) {
       for (const key of enumerateJoinStoreKeys(schema.relations)) {
@@ -154,27 +173,72 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
       this.validResources = new Set(resources);
       // Ensure built-in KV resource is always valid (KV-001)
       this.validResources.add(KV_RESOURCE_NAME);
+      this.validResources.add(TIMEZONE_CHANGE_RESOURCE_NAME);
     }
     this.schema = schema;
 
     // Open the database, then verify all expected stores exist.
     // If stores are missing (stale DB from prior version without schema),
     // close and reopen with a bumped version to trigger onupgradeneeded.
-    this.dbPromise = this.openDatabase(DB_VERSION).then((db) =>
+    this.dbPromise = this.openDatabaseAtMinimumVersion(DB_VERSION).then((db) =>
       this.ensureStores(db),
     );
+  }
+
+  private async openDatabaseAtMinimumVersion(
+    version: number,
+  ): Promise<IDBDatabase> {
+    try {
+      return await this.openDatabase(version);
+    } catch (error: any) {
+      if (error?.name !== "VersionError") {
+        throw error;
+      }
+      return this.openDatabase();
+    }
   }
 
   /**
    * Open (or upgrade) the IndexedDB database at the given version.
    * All object store creation happens inside `onupgradeneeded`.
    */
-  private openDatabase(version: number): Promise<IDBDatabase> {
+  private openDatabase(version?: number): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, version);
+      const request =
+        version === undefined
+          ? indexedDB.open(this.dbName)
+          : indexedDB.open(this.dbName, version);
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      let blockedTimer: ReturnType<typeof setTimeout> | undefined;
+      const clearBlockedTimer = () => {
+        if (blockedTimer) {
+          clearTimeout(blockedTimer);
+          blockedTimer = undefined;
+        }
+      };
+
+      request.onerror = () => {
+        clearBlockedTimer();
+        reject(request.error);
+      };
+      request.onblocked = () => {
+        clearBlockedTimer();
+        blockedTimer = setTimeout(() => {
+          reject(
+            new Error(
+              `IndexedDB upgrade blocked for ${this.dbName}. Close other tabs using this database and retry.`,
+            ),
+          );
+        }, BLOCKED_UPGRADE_TIMEOUT_MS);
+      };
+      request.onsuccess = () => {
+        clearBlockedTimer();
+        const db = request.result;
+        db.onversionchange = () => {
+          db.close();
+        };
+        resolve(db);
+      };
 
       request.onupgradeneeded = (event) => {
         const db = request.result;
@@ -224,7 +288,9 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
               if (resource.indices) {
                 const indices = Array.isArray(resource.indices)
                   ? resource.indices
-                  : resource.indices.base || [];
+                  : "base" in resource.indices
+                    ? resource.indices.base || []
+                    : [];
 
                 for (const field of indices) {
                   store.createIndex(`by_${field}`, field, { unique: false });
@@ -234,14 +300,14 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
               // FK indices (inferred from relations)
               if (this.schema.relations) {
                 for (const rel of this.schema.relations) {
-                  if (rel.type === "many-one" && rel.from === resource.name) {
+                  if (rel.type === "many-one" && endpointIncludes(rel.from, resource.name)) {
                      const fk = rel.fkField || `${rel.relation}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }
-                  } else if (rel.type === "one-many" && rel.to === resource.name) {
+                  } else if (rel.type === "one-many" && endpointIncludes(rel.to, resource.name)) {
                      // For one-many, 'to' has the FK back to 'from'
-                     const fk = rel.fkField || rel.inverse || `${rel.from}Id`;
+                     const fk = rel.fkField || rel.inverse || `${firstEndpoint(rel.from)}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }
@@ -280,6 +346,13 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
         if (!db.objectStoreNames.contains("kv")) {
           const kvStore = db.createObjectStore("kv", { keyPath: "id" });
           kvStore.createIndex("by_id", "id", { unique: true });
+        }
+
+        if (!db.objectStoreNames.contains(TIMEZONE_CHANGE_RESOURCE_NAME)) {
+          const store = db.createObjectStore(TIMEZONE_CHANGE_RESOURCE_NAME, { keyPath: "id" });
+          store.createIndex("by_id", "id", { unique: true });
+          store.createIndex("by_effectiveFrom", "effectiveFrom", { unique: false });
+          store.createIndex("by_timezone", "timezone", { unique: false });
         }
 
         // --- Meta Stores (Preserve/Create) ---
@@ -379,11 +452,57 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     storeName: string,
     mode: IDBTransactionMode,
   ): Promise<IDBObjectStore> {
-    const db = await this.dbPromise;
+    let db = await this.dbPromise;
     if (!db.objectStoreNames.contains(storeName)) {
-        throw new Error(`Store not found: ${storeName}`);
+      db = await this.repairMissingStore(storeName, db);
+    }
+    if (!db.objectStoreNames.contains(storeName)) {
+      throw new Error(`Store not found: ${storeName}`);
     }
     return db.transaction(storeName, mode).objectStore(storeName);
+  }
+
+  private async repairMissingStore(
+    storeName: string,
+    db: IDBDatabase,
+  ): Promise<IDBDatabase> {
+    if (!this.schema || !this.isExpectedStore(storeName)) {
+      return db;
+    }
+
+    const nextVersion = db.version + 1;
+    db.close();
+
+    if (nextVersion > MAX_IDB_VERSION) {
+      await new Promise<void>((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(this.dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+        req.onblocked = () => resolve();
+      });
+      this.dbPromise = this.openDatabase(DB_VERSION).then((opened) =>
+        this.ensureStores(opened),
+      );
+    } else {
+      this.dbPromise = this.openDatabase(nextVersion).then((opened) =>
+        this.ensureStores(opened),
+      );
+    }
+
+    return this.dbPromise;
+  }
+
+  private isExpectedStore(storeName: string): boolean {
+    if (
+      storeName === "meta" ||
+      storeName === "changelog" ||
+      storeName === "kv" ||
+      storeName === "__datafn_meta" ||
+      storeName === TIMEZONE_CHANGE_RESOURCE_NAME
+    ) {
+      return true;
+    }
+    return this.validResources?.has(storeName) === true;
   }
 
   // --- Records ---
@@ -417,9 +536,9 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
   ): Promise<void> {
     this.validateTableName(resource);
     const store = await this.getStore(resource, "readwrite");
+    const storageRecord = cloneForStorage(record);
     return new Promise((resolve, reject) => {
-      // In new design, record is just the object. Key is 'id'.
-      const request = store.put(record);
+      const request = store.put(storageRecord);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
@@ -461,14 +580,12 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
           ? deepMergeOneLevel(existing, partial)
           : { ...partial, id };
         
-        // Ensure id is present
         merged.id = id;
-        
-        // Write merged record
-        const putRequest = store.put(merged);
+        const storageRecord = cloneForStorage(merged);
+        const putRequest = store.put(storageRecord);
         
         putRequest.onsuccess = () => {
-          resolve(merged);
+          resolve(storageRecord);
         };
         putRequest.onerror = () => {
           reject(putRequest.error);
@@ -529,8 +646,9 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     row: Record<string, unknown>,
   ): Promise<void> {
     const store = await this.getStore(storeName, "readwrite");
+    const storageRow = cloneForStorage(row);
     return new Promise((resolve, reject) => {
-      const request = store.put(row);
+      const request = store.put(storageRow);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
@@ -553,7 +671,7 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
       };
 
       for (const row of rows) {
-        const req = store.put(row);
+        const req = store.put(cloneForStorage(row));
         req.onsuccess = checkDone;
         req.onerror = () => reject(req.error);
       }
@@ -689,12 +807,12 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     }
 
     // Insert new
+    const storageEntry = cloneForStorage(entry);
     return new Promise((resolve, reject) => {
-      // Don't pass seq, let autoIncrement handle it
-      const request = store.add(entry);
+      const request = store.add(storageEntry);
       request.onsuccess = () => {
         const seq = request.result as number;
-        resolve({ ...entry, seq });
+        resolve({ ...storageEntry, seq });
       };
       request.onerror = () => reject(request.error);
     });

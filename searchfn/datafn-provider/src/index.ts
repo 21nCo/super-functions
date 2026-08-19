@@ -1,5 +1,10 @@
 import type { SearchAdapter } from "@searchfn/adapter-contracts";
 import type { SearchProvider } from "@datafn/core";
+import {
+  instrumentMethods,
+  normalizeObservability,
+  type ObservabilityInput,
+} from "@superfunctions/observability";
 
 export type { SearchProvider };
 
@@ -13,6 +18,7 @@ export interface CreateSearchProviderOptions {
    * { tasks: ["title", "description"], notes: ["content"] }
    */
   resourceFields?: Record<string, string[]>;
+  observability?: ObservabilityInput;
 }
 
 interface SearchProviderSearchParams {
@@ -23,6 +29,8 @@ interface SearchProviderSearchParams {
   prefix?: boolean;
   fuzzy?: boolean | number;
   fieldBoosts?: Record<string, number>;
+  namespaceFilter?: string[];
+  regionFilter?: string[];
   signal?: AbortSignal;
 }
 
@@ -35,6 +43,8 @@ interface SearchProviderSearchAllParams {
   prefix?: boolean;
   fuzzy?: boolean | number;
   fieldBoosts?: Record<string, number>;
+  namespaceFilter?: string[];
+  regionFilter?: string[];
   signal?: AbortSignal;
 }
 
@@ -65,8 +75,11 @@ export function createSearchProvider(
   options?: CreateSearchProviderOptions,
 ): SearchProvider {
   const resourceFields = options?.resourceFields ?? {};
+  const observability = normalizeObservability(options?.observability)?.child({
+    component: "searchfn.provider",
+  });
 
-  return {
+  const provider: SearchProvider = {
     get name() {
       return adapter.name;
     },
@@ -80,6 +93,8 @@ export function createSearchProvider(
         fuzzy: params.fuzzy,
         prefix: params.prefix,
         fieldBoosts: params.fieldBoosts,
+        namespaceFilter: params.namespaceFilter,
+        regionFilter: params.regionFilter,
         signal: params.signal,
       });
       return ids.map((id: string | number) => String(id));
@@ -96,9 +111,14 @@ export function createSearchProvider(
         const documents = records.map((r: Record<string, unknown>) => ({
           id: String(r.id),
           fields: extractFields(r, searchFieldNames),
+          metadata: extractMetadata(r),
         }));
         await adapter.index({ resource, documents });
       }
+    },
+
+    async clearIndices(resource: string) {
+      await adapter.clear(resource);
     },
 
     async searchAll(params: SearchProviderSearchAllParams) {
@@ -112,6 +132,8 @@ export function createSearchProvider(
           fuzzy: params.fuzzy,
           prefix: params.prefix,
           fieldBoosts: params.fieldBoosts,
+          namespaceFilter: params.namespaceFilter,
+          regionFilter: params.regionFilter,
           signal: params.signal,
         });
         return results.map((r: { resource: string; id: string | number; score: number }) => ({
@@ -145,6 +167,8 @@ export function createSearchProvider(
               fuzzy: params.fuzzy,
               prefix: params.prefix,
               fieldBoosts: params.fieldBoosts,
+              namespaceFilter: params.namespaceFilter,
+              regionFilter: params.regionFilter,
               signal: params.signal,
             });
             return ids.map((id: string | number, index: number) => ({
@@ -193,6 +217,20 @@ export function createSearchProvider(
       }
     },
   };
+
+  return instrumentMethods({
+    target: provider,
+    observability,
+    kind: "search",
+    component: "searchfn.provider",
+    extract: ({ property, args }) => {
+      const input = args[0] as Record<string, unknown> | undefined;
+      return {
+        operation: String(property),
+        resource: typeof input?.resource === "string" ? input.resource : undefined,
+      };
+    },
+  });
 }
 
 function extractFields(
@@ -215,6 +253,13 @@ function extractFields(
     }
   }
   return result;
+}
+
+function extractMetadata(record: Record<string, unknown>): Record<string, string> {
+  const metadata: Record<string, string> = {};
+  if (typeof record.__ns === "string") metadata.__ns = record.__ns;
+  if (typeof record.__region === "string") metadata.__region = record.__region;
+  return metadata;
 }
 
 function safeStringify(value: object): string {

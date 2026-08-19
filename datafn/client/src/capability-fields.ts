@@ -1,4 +1,8 @@
-import { resolveCapabilities, type DatafnSchema } from "@datafn/core";
+import {
+  normalizeRelationFkRecord,
+  resolveCapabilities,
+  type DatafnSchema,
+} from "@datafn/core";
 
 type CapabilityMutationOp = "insert" | "merge" | "replace";
 
@@ -53,6 +57,36 @@ function isRecordOperation(operation: unknown): operation is CapabilityMutationO
   return operation === "insert" || operation === "merge" || operation === "replace";
 }
 
+function applySchemaDefaults(
+  schema: DatafnSchema,
+  resourceName: string,
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const resource = schema.resources.find((r) => r.name === resourceName);
+  if (!resource?.fields) return record;
+
+  const next = { ...record };
+  for (const field of resource.fields as readonly Record<string, unknown>[]) {
+    const name = field.name;
+    if (typeof name !== "string") continue;
+    if (next[name] !== undefined) continue;
+    if ("default" in field) {
+      const defaultValue = field.default;
+      if (Array.isArray(defaultValue)) {
+        next[name] = [...defaultValue];
+      } else if (
+        defaultValue !== null &&
+        typeof defaultValue === "object"
+      ) {
+        next[name] = { ...(defaultValue as Record<string, unknown>) };
+      } else {
+        next[name] = defaultValue;
+      }
+    }
+  }
+  return next;
+}
+
 export function sanitizeCapabilityReadonlyFields(
   schema: DatafnSchema | undefined,
   mutation: Record<string, unknown>,
@@ -75,7 +109,11 @@ export function sanitizeCapabilityReadonlyFields(
   return {
     ...mutation,
     record: stripReadonlyCapabilityFields(
-      mutation.record as Record<string, unknown>,
+      normalizeRelationFkRecord(
+        schema,
+        resourceName,
+        mutation.record as Record<string, unknown>,
+      ),
       context,
     ),
   };
@@ -106,46 +144,55 @@ export function injectCapabilityFieldsForOptimisticRecord(
   }
 
   const base = stripReadonlyCapabilityFields(
-    ((mutation.record || {}) as Record<string, unknown>),
+    normalizeRelationFkRecord(
+      schema,
+      resourceName,
+      (mutation.record || {}) as Record<string, unknown>,
+    ),
     context,
   );
   const next = { ...base };
 
   if (operation === "insert") {
+    const defaulted = applySchemaDefaults(schema, resourceName, next);
     if (context.hasTimestamps) {
-      next.createdAt = opts.timestampMs;
-      next.updatedAt = opts.timestampMs;
+      defaulted.createdAt = opts.timestampMs;
+      defaulted.updatedAt = opts.timestampMs;
     }
     if (context.hasAudit) {
-      next.createdBy = opts.actorId ?? null;
-      next.updatedBy = opts.actorId ?? null;
+      defaulted.createdBy = opts.actorId ?? null;
+      defaulted.updatedBy = opts.actorId ?? null;
     }
-    return next;
+    return defaulted;
   }
 
   if (operation === "merge") {
+    const defaulted = opts.existingRecord
+      ? next
+      : applySchemaDefaults(schema, resourceName, next);
     if (context.hasTimestamps) {
-      next.updatedAt = opts.timestampMs;
+      defaulted.updatedAt = opts.timestampMs;
     }
     if (context.hasAudit) {
-      next.updatedBy = opts.actorId ?? null;
+      defaulted.updatedBy = opts.actorId ?? null;
     }
-    return next;
+    return defaulted;
   }
 
   // replace
   const existing = opts.existingRecord || null;
+  const defaulted = applySchemaDefaults(schema, resourceName, next);
   if (context.hasTimestamps) {
     if (existing && existing.createdAt !== undefined) {
-      next.createdAt = existing.createdAt;
+      defaulted.createdAt = existing.createdAt;
     }
-    next.updatedAt = opts.timestampMs;
+    defaulted.updatedAt = opts.timestampMs;
   }
   if (context.hasAudit) {
     if (existing && existing.createdBy !== undefined) {
-      next.createdBy = existing.createdBy;
+      defaulted.createdBy = existing.createdBy;
     }
-    next.updatedBy = opts.actorId ?? null;
+    defaulted.updatedBy = opts.actorId ?? null;
   }
-  return next;
+  return defaulted;
 }

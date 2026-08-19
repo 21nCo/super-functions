@@ -4,6 +4,8 @@
  * - Field value type validation against schema types
  */
 
+import { isDatafnE2eeEnvelope } from "./e2ee.js";
+
 const DISALLOWED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
@@ -63,6 +65,10 @@ export function validateFieldValue(
   value: unknown,
   nullable: boolean,
 ): { ok: boolean; error?: string } {
+  if (isDatafnE2eeEnvelope(value)) {
+    return { ok: true };
+  }
+
   // Null handling
   if (value === null) {
     if (nullable) return { ok: true };

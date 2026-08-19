@@ -49,7 +49,7 @@ async function createHarness(): Promise<Harness> {
   const server = await createDatafnServer({
     allowUnknownResources: true,
     schema,
-    db,
+    database: db,
     namespaceProvider: {
       getNamespace: () => NAMESPACE,
       getActorId: () => actor.current as any,

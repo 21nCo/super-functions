@@ -1,34 +1,28 @@
-import {
-  authFnPasswordPlugin,
-  createAuthFn,
-  getSchema,
-  type AuthFnEvent,
-  type AuthFnInstance,
-  type AuthFnPlugin
-} from '@authfn/core';
+import { authFnPlugins, authfn, type AuthFnEvent, type AuthFnServer } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
 import type { Adapter } from '@superfunctions/db';
 
 export const PASSWORD_SESSIONS_NAMESPACE = 'authfn_password_sessions';
 export const PASSWORD_SESSIONS_COOKIE_PREFIX = 'authfn-password-sessions';
 
-export function createPasswordSessionsPlugins(): AuthFnPlugin[] {
-  return [authFnPasswordPlugin()];
+export function createPasswordSessionsPlugins() {
+  return authFnPlugins(authFnPasswordPlugin());
 }
 
-export const passwordSessionsSchema = getSchema({
-  database: {} as Adapter,
+export const passwordSessionsAuthApp = authfn({
   namespace: PASSWORD_SESSIONS_NAMESPACE,
   plugins: createPasswordSessionsPlugins()
 });
 
+export const passwordSessionsSchema = passwordSessionsAuthApp.getSchema();
+
 export function createPasswordSessionsAuth(options: {
   database: Adapter;
   onEvent?(event: AuthFnEvent): Promise<void> | void;
-}): AuthFnInstance {
-  return createAuthFn({
+}): AuthFnServer {
+  return passwordSessionsAuthApp.createServer({
     database: options.database,
-    namespace: PASSWORD_SESSIONS_NAMESPACE,
-    runtime: {
+    environment: {
       resolve(request) {
         const url = new URL(request.url);
         return {
@@ -43,9 +37,8 @@ export function createPasswordSessionsAuth(options: {
       }
     },
     observability: {
-      emit: options.onEvent
-    },
-    plugins: createPasswordSessionsPlugins()
+      events: options.onEvent
+    }
   });
 }
 

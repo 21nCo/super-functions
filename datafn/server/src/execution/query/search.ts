@@ -33,6 +33,8 @@ export async function executeSearchQuery(
     prefix?: boolean;
     fuzzy?: boolean | number;
     fieldBoosts?: Record<string, number>;
+    namespaceFilter?: string[];
+    regionFilter?: string[];
     signal?: AbortSignal;
   }) => Promise<string[]>,
   logger?: DatafnLogger,
@@ -46,6 +48,13 @@ export async function executeSearchQuery(
 
   const signal = (query as unknown as { signal?: AbortSignal }).signal;
   assertNotAborted(signal);
+  const metadata = (query as unknown as { metadata?: Record<string, unknown> }).metadata;
+  const namespaceFilter = Array.isArray(metadata?.searchNamespaceFilter)
+    ? metadata.searchNamespaceFilter.filter((value): value is string => typeof value === "string")
+    : undefined;
+  const regionFilter = Array.isArray(metadata?.searchRegionFilter)
+    ? metadata.searchRegionFilter.filter((value): value is string => typeof value === "string")
+    : undefined;
 
   // 1. Get candidates
   const candidates = searchProvider
@@ -58,6 +67,8 @@ export async function executeSearchQuery(
           prefix: query.search.prefix,
           fuzzy: query.search.fuzzy,
           fieldBoosts: query.search.fieldBoosts,
+          namespaceFilter,
+          regionFilter,
           signal,
         })
       : resolveCandidates
@@ -70,6 +81,8 @@ export async function executeSearchQuery(
             prefix: query.search.prefix,
             fuzzy: query.search.fuzzy,
             fieldBoosts: query.search.fieldBoosts,
+            namespaceFilter,
+            regionFilter,
             signal,
           })
       : (() => {

@@ -4,19 +4,20 @@ import {
   AuthFnAdminConfigError,
   AuthFnAdminUnauthorizedError,
   AuthFnValidationError,
-  createPluginRunner,
+  getSchema,
+  type AuthFnAccountDeletionResult,
+  type AuthFnRuntimeConfig,
+  type AuthFnHooks
+} from 'authfn';
+import { createPluginRunner } from 'authfn/plugin-runner';
+import {
   deleteAuthFnAdminUserById,
   deleteAuthFnAdminUsersByEmail,
-  getSchema,
-  jsonError,
-  jsonSuccess,
   listAuthFnAdminUsers,
-  type AuthFnAccountDeletionResult,
   type AuthFnAdminDeleteUsersByEmailResult,
-  type AuthFnAdminListUsersResult,
-  type AuthFnConfig,
-  type AuthFnHooks
-} from '@authfn/core';
+  type AuthFnAdminListUsersResult
+} from 'authfn/core/admin-users';
+import { jsonError, jsonSuccess } from 'authfn/http/envelopes';
 
 export type AuthFnAdminAction = 'users.list' | 'users.delete';
 
@@ -46,7 +47,7 @@ export type AuthFnAdminAuthorize = (
 ) => Promise<AuthFnAdminAuthorizationResult> | AuthFnAdminAuthorizationResult;
 
 export interface AuthFnAdminOptions {
-  authFnConfig: AuthFnConfig;
+  authFnConfig: AuthFnRuntimeConfig;
   authorize: AuthFnAdminAuthorize;
   basePath?: string;
 }
@@ -63,7 +64,7 @@ export interface StaticAdminKeyAuthorizerOptions {
 }
 
 interface PreparedAuthFnAdmin {
-  config: AuthFnConfig;
+  config: AuthFnRuntimeConfig;
   hooks: Partial<AuthFnHooks>;
   authorize: AuthFnAdminAuthorize;
 }
@@ -122,7 +123,7 @@ function prepareAuthFnAdmin(options: AuthFnAdminOptions): PreparedAuthFnAdmin {
   }
 
   const schema = getSchema(options.authFnConfig);
-  const config: AuthFnConfig = {
+  const config: AuthFnRuntimeConfig = {
     ...options.authFnConfig,
     database: wrapWithSchema(options.authFnConfig.database, schema)
   };
