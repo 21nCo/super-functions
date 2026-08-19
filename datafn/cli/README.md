@@ -42,7 +42,7 @@ npx @datafn/cli generate --adapter drizzle --database postgres --output ./src/db
 |--------|-------------|---------|
 | `--adapter <name>` | ORM adapter (currently only `drizzle` supported) | Required |
 | `--database <name>` | Database dialect: `postgres`, `mysql`, `sqlite` | Required |
-| `--schema <path>` | Schema file (`.json` or `.datafn.ts`). Auto-discovers if omitted | Auto-discover |
+| `--schema <path>` | Schema file (`.json` or `.ts`). Auto-discovers if omitted | Auto-discover |
 | `--output <dir>` | Output directory for generated files | `./` |
 | `-h, --help` | Show help | — |
 
@@ -200,7 +200,7 @@ The DataFn CLI supports TypeScript schema files for a better developer experienc
 
 ### Convention: `.datafn.ts` Extension
 
-TypeScript schema files **must** use the `.datafn.ts` extension:
+Explicit `--schema` paths accept any `.ts` file. Use the `.datafn.ts` extension for auto-discovery and to make schema files easy to identify:
 
 ```typescript
 // schema.datafn.ts
@@ -223,7 +223,7 @@ export default {
 ```
 
 **Why `.datafn.ts`?**
-- Security: Prevents accidental execution of arbitrary TypeScript files
+- Auto-discovery: Only conventional `.datafn.ts` paths are searched automatically
 - Clarity: Signals that the file contains a DataFn schema
 - Convention: Similar to `*.config.ts`, `*.spec.ts`, etc.
 

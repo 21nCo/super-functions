@@ -65,7 +65,7 @@ function validateAndResolveExplicitPath(path: string): string {
   }
 
   throw new Error(
-    `Unsupported schema file extension: ${ext}\n` + `  Supported: .json, .datafn.ts`
+    `Unsupported schema file extension: ${ext}\n` + `  Supported: .json, .ts`
   );
 }
 
@@ -251,7 +251,7 @@ Commands:
 Options:
   --adapter <name>     ORM adapter: drizzle (required)
   --database <name>    Database: postgres, mysql, sqlite (required)
-  --schema <path>      Path to schema file (.json or .datafn.ts)
+  --schema <path>      Path to schema file (.json or .ts)
                        Optional: Auto-discovers schema.datafn.ts if omitted
   --output <dir>       Output directory (default: ./)
   -h, --help           Show this help message
@@ -271,7 +271,8 @@ Examples:
   datafn validate --schema ./schema.datafn.ts
 
 TypeScript Schema Files:
-  TypeScript schema files must use the .datafn.ts extension (e.g., schema.datafn.ts)
+  Explicit --schema paths accept any .ts file
+  Use the .datafn.ts convention (e.g., schema.datafn.ts) for auto-discovery
   Auto-discovery searches in this order:
     1. ./schema.datafn.ts
     2. ./src/schema.datafn.ts
