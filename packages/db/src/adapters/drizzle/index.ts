@@ -51,10 +51,11 @@ export interface DrizzleAdapterConfig {
 
 /**
  * Escape SQL LIKE wildcards to prevent SQL injection
- * Escapes % and _ characters that have special meaning in LIKE patterns
+ * Uses ! as an explicit SQL LIKE escape character and escapes every input
+ * character that could otherwise alter the pattern, including backslashes.
  */
 function escapeLikeWildcards(value: string): string {
-  return value.replace(/[%_]/g, '\\$&');
+  return value.replace(/[\\!%_]/g, '!$&');
 }
 
 function loadDrizzleOps(): typeof import('drizzle-orm') {
@@ -97,11 +98,11 @@ function buildWhere(
       case 'not_in':
         return not(inArray(col, Array.isArray(val) ? val : [val]));
       case 'contains':
-        return sql`${col} LIKE ${'%' + escapeLikeWildcards(String(val)) + '%'}`;
+        return sql`${col} LIKE ${'%' + escapeLikeWildcards(String(val)) + '%'} ESCAPE '!'`;
       case 'starts_with':
-        return sql`${col} LIKE ${escapeLikeWildcards(String(val)) + '%'}`;
+        return sql`${col} LIKE ${escapeLikeWildcards(String(val)) + '%'} ESCAPE '!'`;
       case 'ends_with':
-        return sql`${col} LIKE ${'%' + escapeLikeWildcards(String(val))}`;
+        return sql`${col} LIKE ${'%' + escapeLikeWildcards(String(val))} ESCAPE '!'`;
       default:
         throw new Error(`Unsupported operator: ${op}`);
     }

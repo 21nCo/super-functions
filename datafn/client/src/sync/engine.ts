@@ -770,7 +770,8 @@ export class SyncEngine {
    */
   private async cloneResources(tables: string[]) {
     try {
-      this.emitSyncStarted("clone", { resources: tables.sort() });
+      const sortedResources = [...tables].sort((left, right) => left.localeCompare(right));
+      this.emitSyncStarted("clone", { resources: sortedResources });
 
       // Mark tables as hydrating
       for (const table of tables) {

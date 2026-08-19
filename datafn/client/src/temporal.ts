@@ -222,7 +222,7 @@ export function createTemporalApi(deps: TemporalApiDeps): DatafnTemporalApi {
           id: record.id,
           record,
           clientId: deps.clientId,
-          mutationId: `temporal-tz-${recordedAt}-${Math.random().toString(36).slice(2)}`,
+          mutationId: `temporal-tz-${record.id}`,
           context: "temporal_timezone_change",
         } as any)) as any;
 
