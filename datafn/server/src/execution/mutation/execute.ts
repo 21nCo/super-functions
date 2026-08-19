@@ -232,12 +232,15 @@ async function executeMutationCore(
             id: mutation.id,
             delta: mergeData,
             update: async () => {
-              await db.update({
+              const updated = await db.update({
                 model: mutation.resource,
                 where: [{ field: "id", operator: "eq", value: mutation.id }],
                 data: mergeData,
                 namespace,
               });
+              if (strictUpdateNotFound && updated === undefined) {
+                throw { name: "NotFoundError", message: "Record not found after update" };
+              }
             },
             create: async (record) => {
               await db.create({

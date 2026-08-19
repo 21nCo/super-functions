@@ -121,9 +121,10 @@ export class ChangeTrackingService {
    * REL-011: Create a new ChangeTrackingService with a different db adapter.
    * Used to run change tracking within a transaction (pass tx db here).
    * The namespace and sequenceStore are inherited from the original instance.
-   */
+  */
   withDb(txDb: Adapter): ChangeTrackingService {
-    return new ChangeTrackingService(txDb, this.namespace, this.sequenceStore, this.onChange, this.logger);
+    const sequenceStore = this.sequenceStore?.withDb?.(txDb) ?? this.sequenceStore;
+    return new ChangeTrackingService(txDb, this.namespace, sequenceStore, this.onChange, this.logger);
   }
 
   /**

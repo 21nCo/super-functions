@@ -219,15 +219,17 @@ export async function executePush(
 
   let initialSeqBatchAllocated = false;
   let seqPool: number[] = [];
-  async function takeNextServerSeq(): Promise<number> {
+  async function takeNextServerSeq(
+    targetChangeTracking = changeTracking,
+  ): Promise<number> {
     if (seqPool.length === 0) {
       if (!initialSeqBatchAllocated) {
         initialSeqBatchAllocated = true;
-        seqPool = await changeTracking.getNextServerSeqBatch(
+        seqPool = await targetChangeTracking.getNextServerSeqBatch(
           Math.max(1, request.mutations.length),
         );
       } else {
-        seqPool = await changeTracking.getNextServerSeqBatch(1);
+        seqPool = await targetChangeTracking.getNextServerSeqBatch(1);
       }
     }
     return seqPool.shift()!;
@@ -290,7 +292,10 @@ export async function executePush(
         const mergeResult = await executeSchemaAwareMerge({
           schema, resource: mut.resource, id: mut.id, delta: createData,
           update: async () => {
-            await targetDb.update({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], data: updateData, namespace });
+            const updated = await targetDb.update({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], data: updateData, namespace });
+            if (strictUpdateNotFound && updated === undefined) {
+              throw { name: "NotFoundError", message: "Record not found after update" };
+            }
           },
           create: async (record) => {
             await targetDb.create({ model: mut.resource, data: record, namespace });
@@ -755,7 +760,7 @@ export async function executePush(
           const changes = opResult.changes;
           const txChangeTracking = changeTracking.withDb(txDb);
           for (const change of changes) {
-            const seq = await takeNextServerSeq();
+            const seq = await takeNextServerSeq(txChangeTracking);
             latestSeq = Math.max(latestSeq, seq);
             resourceSeqs[change.resource] = Math.max(resourceSeqs[change.resource] || 0, seq);
             // FIX-REL-002: retry within transaction
