@@ -528,6 +528,19 @@ export async function executeUnshare(
     namespace,
   });
 
+  // Remove the distributed authorization entry before deleting the
+  // authoritative database grant. If directory invalidation fails, the
+  // database row remains active and the unshare fails without creating a
+  // revoked-database/stale-directory authorization bypass. This also cleans a
+  // stale directory entry when an earlier database deletion already happened.
+  await deleteDatafnPermissionGrant({
+    id: changeId,
+    resourceType: mutation.resource,
+    resourceNs: namespace,
+    resourceId,
+    principalId: unsharePrincipalId,
+  }, multiRegionRuntime ?? null);
+
   if (!existingPermission) {
     return {
       ok: true,
@@ -548,14 +561,6 @@ export async function executeUnshare(
     resourceId,
     principalId: unsharePrincipalId,
   });
-  await deleteDatafnPermissionGrant({
-    id: changeId,
-    resourceType: mutation.resource,
-    resourceNs: namespace,
-    resourceId,
-    principalId: unsharePrincipalId,
-  }, multiRegionRuntime ?? null);
-
   return {
     ok: true,
     deleted: true,

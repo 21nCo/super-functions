@@ -267,11 +267,21 @@ export async function prepareTransactPayloadForE2ee(
       if ("query" in step) {
         assertRemoteQueryAllowedForE2ee(e2ee, step.query);
       }
-      if (!("mutation" in step)) return step;
-      return {
-        ...step,
-        mutation: await encryptMutationForE2ee(schema, e2ee, step.mutation),
-      };
+      if ("mutation" in step) {
+        return {
+          ...step,
+          mutation: await encryptMutationForE2ee(schema, e2ee, step.mutation),
+        };
+      }
+      // The server accepts both wrapped and bare transaction steps. Apply the
+      // same E2EE boundary before either shape reaches the transport.
+      if (typeof step.operation === "string") {
+        return encryptMutationForE2ee(schema, e2ee, step);
+      }
+      if (typeof step.resource === "string") {
+        assertRemoteQueryAllowedForE2ee(e2ee, step);
+      }
+      return step;
     })),
   };
 }

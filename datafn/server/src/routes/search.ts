@@ -99,6 +99,7 @@ async function normalizeSearchTemporalFilters(input: {
   raw: Record<string, unknown>;
   db: Adapter;
   namespace: string;
+  schema: DatafnSchema;
 }): Promise<Record<string, Record<string, unknown>> | undefined> {
   const temporalByResource = isPlainObject(input.raw.temporalByResource)
     ? (input.raw.temporalByResource as Record<
@@ -133,7 +134,9 @@ async function normalizeSearchTemporalFilters(input: {
   };
   const resourcesForTopLevelTemporal = Array.isArray(input.raw.resources)
     ? input.raw.resources.filter((resource): resource is string => typeof resource === "string")
-    : Object.keys(baseFilters);
+    : Object.keys(baseFilters).length > 0
+      ? Object.keys(baseFilters)
+      : input.schema.resources.map((resource) => resource.name);
   const resourceClauses = new Map<
     string,
     DatafnTemporalClause | readonly DatafnTemporalClause[]
@@ -384,6 +387,7 @@ export function createSearchHandler(
         raw,
         db,
         namespace,
+        schema: validatedSchema,
       });
       const searchParams = {
         query,

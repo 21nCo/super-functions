@@ -4,6 +4,7 @@ import { TsSearchCoreEngine, encodeTermPostings } from "@searchfn/core";
 import { SearchAdapterError } from "@searchfn/adapter-contracts";
 import {
   IndexedDbAdapter,
+  IndexedDbManager,
   type SearchCoreEngineFactoryOptions,
   type SearchFnWasmModule,
 } from "../src/index";
@@ -281,6 +282,58 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
       })).resolves.toEqual(["task:legacy"]);
     } finally {
       await adapter.dispose();
+    }
+  });
+
+  it("does not let a delayed legacy migration overwrite newer shared data", async () => {
+    const dbName = freshDbName();
+    const seedDbName = `${dbName}-seed`;
+    const legacyDbName = `${dbName}-tasks`;
+    const seed = new IndexedDbAdapter({ dbName: seedDbName });
+    await seed.index({
+      resource: "tasks",
+      documents: [{ id: "task:legacy", fields: { title: "Legacy snapshot" } }],
+    });
+    await seed.dispose();
+    await copySharedResourceToLegacyDatabase(seedDbName, legacyDbName, "tasks");
+
+    const delayedManager = new IndexedDbManager(dbName);
+    const winningManager = new IndexedDbManager(dbName);
+    const delayedStorage = delayedManager.forResource("tasks");
+    const winningStorage = winningManager.forResource("tasks");
+    let releaseRead!: () => void;
+    let notifyRead!: () => void;
+    const holdRead = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const readComplete = new Promise<void>((resolve) => {
+      notifyRead = resolve;
+    });
+    const delayedInternals = delayedManager as any;
+    const originalRead = delayedInternals.readLegacyDatabase.bind(delayedManager);
+    delayedInternals.readLegacyDatabase = async (...args: unknown[]) => {
+      const snapshot = await originalRead(...args);
+      notifyRead();
+      await holdRead;
+      return snapshot;
+    };
+
+    const delayedMigration = delayedStorage.migrateLegacyDatabase(legacyDbName);
+    await readComplete;
+    await winningStorage.migrateLegacyDatabase(legacyDbName);
+    const newerPayload = new TextEncoder().encode("newer-shared-state").buffer;
+    await winningStorage.putCacheState("doc-terms", newerPayload);
+    releaseRead();
+    await delayedMigration;
+
+    try {
+      const persisted = await delayedStorage.getCacheState("doc-terms");
+      expect(Array.from(new Uint8Array(persisted))).toEqual(
+        Array.from(new Uint8Array(newerPayload)),
+      );
+    } finally {
+      await delayedManager.close();
+      await winningManager.close();
     }
   });
 

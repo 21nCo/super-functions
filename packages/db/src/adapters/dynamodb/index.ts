@@ -263,29 +263,44 @@ export function dynamoDbIndexedDirectoryStore(
       }));
     },
     async query(input) {
-      const result = await client.send(new QueryCommand({
-        TableName: options.tableName,
-        KeyConditionExpression: '#pk = :pk',
-        ExpressionAttributeNames: { '#pk': 'PK' },
-        ExpressionAttributeValues: { ':pk': directoryIndexPk(input.index, input.value) },
-        Limit: input.limit,
-        ExclusiveStartKey: input.cursor ? JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')) : undefined,
-      }));
-      const keys = (result.Items ?? [])
-        .map((item) => typeof item.dirKey === 'string' ? item.dirKey : null)
-        .filter((key): key is string => Boolean(key));
-      const records = (
-        await Promise.all(keys.map((key) => this.get(key)))
-      ).filter((record): record is IndexedDirectoryRecord =>
-        Boolean(
-          record
-          && normalizeIndexValues(record.indexes?.[input.index]).includes(input.value),
-        )
-      );
+      const records: IndexedDirectoryRecord[] = [];
+      let exclusiveStartKey = input.cursor
+        ? JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8'))
+        : undefined;
+      let lastEvaluatedKey: Record<string, unknown> | undefined;
+      do {
+        const remaining = input.limit === undefined
+          ? undefined
+          : input.limit - records.length;
+        if (remaining !== undefined && remaining <= 0) break;
+        const result = await client.send(new QueryCommand({
+          TableName: options.tableName,
+          KeyConditionExpression: '#pk = :pk',
+          ExpressionAttributeNames: { '#pk': 'PK' },
+          ExpressionAttributeValues: { ':pk': directoryIndexPk(input.index, input.value) },
+          Limit: remaining,
+          ExclusiveStartKey: exclusiveStartKey,
+        }));
+        const keys = (result.Items ?? [])
+          .map((item) => typeof item.dirKey === 'string' ? item.dirKey : null)
+          .filter((key): key is string => Boolean(key));
+        const pageRecords = (
+          await Promise.all(keys.map((key) => this.get(key)))
+        ).filter((record): record is IndexedDirectoryRecord =>
+          Boolean(
+            record
+            && normalizeIndexValues(record.indexes?.[input.index]).includes(input.value),
+          )
+        );
+        records.push(...pageRecords);
+        lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+        exclusiveStartKey = lastEvaluatedKey;
+        if (input.limit === undefined) break;
+      } while (lastEvaluatedKey && records.length < input.limit);
       return {
         records,
-        ...(result.LastEvaluatedKey
-          ? { cursor: Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64url') }
+        ...(lastEvaluatedKey
+          ? { cursor: Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64url') }
           : {}),
       };
     },

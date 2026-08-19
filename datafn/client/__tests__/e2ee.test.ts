@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   KV_RESOURCE_NAME,
   isDatafnE2eeEnvelope,
@@ -12,6 +12,8 @@ import {
   prepareTransactPayloadForE2ee,
   type DatafnE2eeProvider,
 } from "../src/e2ee.js";
+import { createDatafnClient } from "../src/client.js";
+import { DefaultHttpTransport } from "../src/transport/http.js";
 
 const schema: DatafnSchema = {
   capabilities: ["timestamps", "audit", "trash"],
@@ -62,6 +64,10 @@ function createProvider(): DatafnE2eeProvider {
 }
 
 describe("DataFn E2EE client transforms", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("encrypts data fields while leaving capability and relationship fields plain", async () => {
     const record = {
       id: "task:1",
@@ -171,5 +177,49 @@ describe("DataFn E2EE client transforms", () => {
       code: "DFQL_UNSUPPORTED",
       details: { path: "query" },
     });
+  });
+
+  it("encrypts bare transaction mutations before transport", async () => {
+    const transact = vi.spyOn(DefaultHttpTransport.prototype, "transact")
+      .mockResolvedValue({ ok: true, result: { ok: true, results: [] } });
+    const client = createDatafnClient({
+      schema,
+      sync: { remote: "http://example.com" },
+      clientId: "e2ee-transact-client",
+      e2ee: { enabled: true, provider: createProvider() },
+    });
+
+    await client.transact({
+      steps: [{
+        operation: "insert",
+        resource: "task",
+        id: "task:bare",
+        record: { id: "task:bare", title: "Bare secret" },
+      }],
+    });
+
+    const transported = transact.mock.calls[0]?.[0] as {
+      steps: Array<{ record: Record<string, unknown> }>;
+    };
+    expect(isDatafnE2eeEnvelope(transported.steps[0]!.record.title)).toBe(true);
+  });
+
+  it("rejects bare encrypted-resource transaction queries before transport", async () => {
+    const transact = vi.spyOn(DefaultHttpTransport.prototype, "transact")
+      .mockResolvedValue({ ok: true, result: { ok: true, results: [] } });
+    const client = createDatafnClient({
+      schema,
+      sync: { remote: "http://example.com" },
+      clientId: "e2ee-query-client",
+      e2ee: { enabled: true, provider: createProvider() },
+    });
+
+    await expect(client.transact({
+      steps: [{ resource: "task", select: ["id", "title"] }],
+    })).rejects.toMatchObject({
+      code: "DFQL_UNSUPPORTED",
+      details: { path: "query" },
+    });
+    expect(transact).not.toHaveBeenCalled();
   });
 });

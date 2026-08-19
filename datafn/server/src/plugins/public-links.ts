@@ -93,6 +93,7 @@ export interface DatafnPublicLinksPlugin<TSession = unknown> extends DatafnPlugi
   authorize(input: DatafnPublicLinkAuthorizationInput): boolean | undefined;
   routes(input: {
     database: Adapter;
+    crossNamespaceDatabase?: Adapter;
     schema: DatafnSchema;
   }): Route[];
 }
@@ -161,7 +162,7 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
         directory: config.directory
       });
     },
-    routes({ database, schema }) {
+    routes({ database, crossNamespaceDatabase, schema }) {
       return [
         {
           method: "POST",
@@ -216,7 +217,10 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
               typeof (body as Record<string, unknown>).token === "string"
                 ? ((body as Record<string, unknown>).token as string)
                 : readDatafnPublicLinkToken(request, tokenHeader);
-            const link = await plugin.resolve(database, token);
+            const link = await plugin.resolve(
+              crossNamespaceDatabase ?? database,
+              token,
+            );
             if (!link) {
               return errorResponse(
                 {

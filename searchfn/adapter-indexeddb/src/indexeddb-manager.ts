@@ -158,19 +158,39 @@ export class IndexedDbManager {
       async (transaction) => {
         const terms = transaction.objectStore(STORE_NAMES.terms);
         const cacheState = transaction.objectStore(STORE_NAMES.cacheState);
+        const migrationState = transaction.objectStore(STORE_NAMES.migrationState);
+        const [marker, termCount, cacheCount] = await Promise.all([
+          this.requestToPromise<MigrationStateDbRecord | undefined>(
+            migrationState.get([resource, LEGACY_MIGRATION_KEY]),
+          ),
+          this.requestToPromise<number>(
+            terms.index(RESOURCE_INDEX).count(resource),
+          ),
+          this.requestToPromise<number>(
+            cacheState.index(RESOURCE_INDEX).count(resource),
+          ),
+        ]);
+        // Another tab may have completed the migration or written newer shared
+        // data while this manager was reading the legacy database. IndexedDB
+        // serializes this readwrite transaction, so this is the commit-time
+        // authority for whether the legacy snapshot is still safe to copy.
+        if (marker) return;
+        const hasSharedData = termCount > 0 || cacheCount > 0;
         const writes: Array<Promise<unknown>> = [
-          transaction.objectStore(STORE_NAMES.migrationState).put({
+          migrationState.put({
             resource,
             key: LEGACY_MIGRATION_KEY,
             completedAt: Date.now(),
           } satisfies MigrationStateDbRecord),
         ].map((request) => this.requestToPromise(request));
-        writes.push(...(legacy?.terms ?? []).map((record) =>
-          this.requestToPromise(terms.put({ resource, ...record }))
-        ));
-        writes.push(...(legacy?.cacheState ?? []).map((record) =>
-          this.requestToPromise(cacheState.put({ resource, ...record }))
-        ));
+        if (!hasSharedData) {
+          writes.push(...(legacy?.terms ?? []).map((record) =>
+            this.requestToPromise(terms.put({ resource, ...record }))
+          ));
+          writes.push(...(legacy?.cacheState ?? []).map((record) =>
+            this.requestToPromise(cacheState.put({ resource, ...record }))
+          ));
+        }
         await Promise.all(writes);
       },
     );

@@ -157,6 +157,14 @@ describe("DataFn public-links plugin", () => {
 
     const token = readString(created.body.result.token);
     const tokenHeaders = publicLinkHeaders(token);
+    const resolved = await post(server, "/datafn/public-links/resolve", { token });
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.ok).toBe(true);
+    expect(resolved.body.result).toMatchObject({
+      principalId: readString(created.body.result.principalId),
+      resource: "linkTag",
+      recordId: "tag:1",
+    });
     const publicRead = await post(server, "/datafn/query", {
       resource: "linkTag",
       version: 1,
@@ -251,6 +259,10 @@ describe("DataFn public-links plugin", () => {
     }, ownerHeaders());
     expect(revoked.status).toBe(200);
     expect(revoked.body.ok).toBe(true);
+
+    const revokedResolve = await post(server, "/datafn/public-links/resolve", { token });
+    expect(revokedResolve.status).toBe(404);
+    expect(revokedResolve.body.error.code).toBe("NOT_FOUND");
 
     const revokedRead = await post(server, "/datafn/query", {
       resource: "linkTag",

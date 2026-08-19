@@ -284,6 +284,65 @@ describe('dynamoDbIndexedDirectoryStore', () => {
     })).resolves.toEqual({ records: [] });
   });
 
+  it('continues paginating until the requested number of live records is found', async () => {
+    const queries: QueryCommand[] = [];
+    const documentClient = {
+      async send(command: unknown): Promise<Record<string, unknown>> {
+        if (command instanceof QueryCommand) {
+          queries.push(command);
+          if (queries.length === 1) {
+            return {
+              Items: [{ dirKey: 'expired' }],
+              LastEvaluatedKey: { PK: 'index', SK: 'expired' },
+            };
+          }
+          return { Items: [{ dirKey: 'live' }] };
+        }
+        if (command instanceof GetCommand) {
+          const key = String(command.input.Key?.PK);
+          return key.includes('expired')
+            ? {
+                Item: {
+                  dirKey: 'expired',
+                  value: 'old',
+                  indexes: { email: 'ada@example.com' },
+                  expiresAt: Math.floor(Date.now() / 1000) - 1,
+                },
+              }
+            : {
+                Item: {
+                  dirKey: 'live',
+                  value: 'current',
+                  indexes: { email: 'ada@example.com' },
+                },
+              };
+        }
+        throw new Error('Unexpected DynamoDB command');
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const store = dynamoDbIndexedDirectoryStore({
+      tableName: 'runtime-store',
+      documentClient,
+    });
+
+    await expect(store.query({
+      index: 'email',
+      value: 'ada@example.com',
+      limit: 1,
+    })).resolves.toEqual({
+      records: [{
+        key: 'live',
+        value: 'current',
+        indexes: { email: 'ada@example.com' },
+      }],
+    });
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.input.ExclusiveStartKey).toEqual({
+      PK: 'index',
+      SK: 'expired',
+    });
+  });
+
   it('does not delete and put the same index edge in one transaction', async () => {
     let transaction: TransactWriteCommand | undefined;
     const existing = {

@@ -119,7 +119,11 @@ type DatafnServerComposablePlugin = DatafnPlugin & {
   internalResources?: readonly string[];
   modelName?: string;
   withSchema?: (schema: DatafnSchema) => DatafnSchema;
-  routes?: (input: { database: Adapter; schema: DatafnSchema }) => Route[];
+  routes?: (input: {
+    database: Adapter;
+    crossNamespaceDatabase?: Adapter;
+    schema: DatafnSchema;
+  }) => Route[];
   authorize?: (
     input: DatafnPluginAuthorizationInput,
   ) => Promise<DatafnPluginAuthorizationResult> | DatafnPluginAuthorizationResult;
@@ -1379,6 +1383,7 @@ export async function createDatafnServer<TContext = any>(
       }
       routes.push(...plugin.routes({
         database: db ?? config.database,
+        crossNamespaceDatabase: crossNamespaceDb,
         schema: validatedSchema,
       }) as Route<TContext>[]);
     }
