@@ -3,9 +3,24 @@
  * Enforces read/write field policies and rejects unauthorized access with FORBIDDEN.
  */
 
-import type { DatafnSchema, DatafnResourceSchema, DatafnPermissionsPolicy } from "../core-types.js";
+import type {
+  DatafnDefaultPermissionsFieldMode,
+  DatafnDefaultPermissionsPolicy,
+  DatafnSchema,
+  DatafnResourceSchema,
+  DatafnPermissionsPolicy
+} from "../core-types.js";
 import type { Adapter } from "@superfunctions/db";
-import { resolveCapabilities, getCapabilityFields } from "@datafn/core";
+import {
+  endpointIncludes,
+  endpointList,
+  findRelationMatch,
+  getCapabilityFields,
+  getTemporalClauses,
+  getTemporalGroupAliases,
+  relationTargetEndpoint,
+  resolveCapabilities,
+} from "@datafn/core";
 import type { CapabilityEntry, ShareableCapability } from "@datafn/core";
 import { canonicalizeActorPrincipal, resolveEffectivePrincipals } from "../execution/auth/principal-resolver.js";
 import { resolveEffectiveLevel, type AccessGrant } from "../execution/auth/access-resolver.js";
@@ -64,8 +79,79 @@ function getCapabilityFieldSets(
   return { capabilityFields, readonlyCapabilityFields };
 }
 
-function getReadFields(policy: DatafnPermissionsPolicy | undefined): string[] {
+function getReadFields(policy: DatafnPermissionsPolicy | undefined): readonly string[] {
   return policy?.read?.fields || [];
+}
+
+function defaultPermissionModeEnabled(
+  value: unknown,
+): value is DatafnDefaultPermissionsFieldMode {
+  return value === "allResourceFields";
+}
+
+function relationWriteModeEnabled(
+  value: DatafnDefaultPermissionsPolicy,
+): boolean {
+  return typeof value === "object" && value.relationWrites === "all";
+}
+
+function resourceFieldNames(resource: DatafnResourceSchema): string[] {
+  return [...new Set(["id", ...resource.fields.map((field) => field.name)])];
+}
+
+function relationWriteFields(schema: DatafnSchema, resourceName: string): string[] {
+  const names = new Set<string>();
+  for (const relation of schema.relations ?? []) {
+    if (relation.relation && endpointIncludes(relation.from, resourceName)) {
+      names.add(relation.relation);
+    }
+    if (relation.inverse && endpointIncludes(relation.to, resourceName)) {
+      names.add(relation.inverse);
+    }
+  }
+  return [...names];
+}
+
+function resolveDefaultPermissions(
+  schema: DatafnSchema,
+  resource: DatafnResourceSchema,
+): DatafnPermissionsPolicy | undefined {
+  if (resource.defaultPermissions === false) {
+    return undefined;
+  }
+
+  const defaults = schema.defaultPermissions;
+  if (!defaults) {
+    return undefined;
+  }
+
+  const fields = resourceFieldNames(resource);
+  const readDefault = typeof defaults === "string" ? defaults : defaults.read;
+  const writeDefault = typeof defaults === "string" ? defaults : defaults.write;
+  const readFields = defaultPermissionModeEnabled(readDefault) ? fields : undefined;
+  const writeFields = defaultPermissionModeEnabled(writeDefault)
+    ? fields.concat(
+        relationWriteModeEnabled(defaults)
+          ? relationWriteFields(schema, resource.name)
+          : [],
+      )
+    : undefined;
+
+  if (!readFields && !writeFields) {
+    return undefined;
+  }
+
+  return {
+    ...(readFields ? { read: { fields: readFields } } : {}),
+    ...(writeFields ? { write: { fields: writeFields } } : {}),
+  };
+}
+
+function resolvePermissions(
+  schema: DatafnSchema,
+  resource: DatafnResourceSchema,
+): DatafnPermissionsPolicy | undefined {
+  return resource.permissions ?? resolveDefaultPermissions(schema, resource);
 }
 
 function getResourceSchema(
@@ -87,26 +173,19 @@ function canReadField(
   if (capabilityFields.has(field)) {
     return true;
   }
-  return getReadFields(resource.permissions).includes(field);
+  return getReadFields(resolvePermissions(schema, resource)).includes(field);
 }
 
-function resolveRelationTargetResource(
+function resolveRelationTargetResources(
   schema: DatafnSchema,
   sourceResource: string,
   relationName: string,
-): string | null {
+): string[] {
   if (!Array.isArray(schema.relations)) {
-    return null;
+    return [];
   }
-  for (const relation of schema.relations) {
-    if (relation.from === sourceResource && relation.relation === relationName) {
-      return relation.to as string;
-    }
-    if (relation.to === sourceResource && relation.inverse === relationName) {
-      return relation.from as string;
-    }
-  }
-  return null;
+  const match = findRelationMatch(schema, sourceResource, relationName);
+  return match ? endpointList(relationTargetEndpoint(match.relation, match.direction)) : [];
 }
 
 /**
@@ -123,7 +202,7 @@ export function validateQueryAuthz(
     return { ok: true };
   }
 
-  const policy = resource.permissions;
+  const policy = resolvePermissions(schema, resource);
   if (!policy) {
     // VAL-001: Deny-by-default — resources without a policy are FORBIDDEN unless escape hatch enabled
     if (!opts?.allowUnknownResources) {
@@ -150,7 +229,7 @@ export function validateQueryAuthz(
       if (token === "*") continue;
 
       const parts = token.split(".");
-      let currentResourceName = resource.name;
+      let currentResourceNames = [resource.name];
 
       for (let segmentIndex = 0; segmentIndex < parts.length; segmentIndex++) {
         const segment = parts[segmentIndex];
@@ -161,22 +240,23 @@ export function validateQueryAuthz(
           break;
         }
 
-        const relationTarget = resolveRelationTargetResource(
-          schema,
-          currentResourceName,
-          segment,
-        );
-        if (relationTarget) {
-          currentResourceName = relationTarget;
+        const relationTargets = [
+          ...new Set(
+            currentResourceNames.flatMap((currentResourceName) =>
+              resolveRelationTargetResources(schema, currentResourceName, segment),
+            ),
+          ),
+        ];
+        if (relationTargets.length > 0) {
+          currentResourceNames = relationTargets;
           continue;
         }
 
-        const currentResource = getResourceSchema(schema, currentResourceName);
-        if (!currentResource) {
-          break;
-        }
-
-        if (!canReadField(schema, currentResource, segment)) {
+        const readable = currentResourceNames.every((currentResourceName) => {
+          const currentResource = getResourceSchema(schema, currentResourceName);
+          return currentResource ? canReadField(schema, currentResource, segment) : true;
+        });
+        if (!readable) {
           return {
             ok: false,
             code: "FORBIDDEN",
@@ -205,6 +285,20 @@ export function validateQueryAuthz(
   }
 
   const readFields = policy.read?.fields || [];
+  const temporalAliases = getTemporalGroupAliases(query);
+
+  for (const clause of getTemporalClauses(query)) {
+    const field = clause.field;
+    if (field === "id" || capabilityFields.has(field)) continue;
+    if (!readFields.includes(field)) {
+      return {
+        ok: false,
+        code: "FORBIDDEN",
+        message: "Authorization denied",
+        path: "temporal.field",
+      };
+    }
+  }
 
   // SEC-003: Validate aggregation fields
   if (query.aggregations && typeof query.aggregations === "object" && !Array.isArray(query.aggregations)) {
@@ -267,6 +361,9 @@ export function validateQueryAuthz(
       if (field === "id" || capabilityFields.has(field)) continue;
       // Allow sorting by aggregation aliases
       if (query.aggregations && typeof query.aggregations === "object" && field in (query.aggregations as object)) {
+        continue;
+      }
+      if (temporalAliases.has(field)) {
         continue;
       }
       const isField = resource.fields.some((f) => f.name === field) ||
@@ -374,7 +471,7 @@ export function validateMutationAuthz(
     return { ok: true };
   }
 
-  const policy = resource.permissions;
+  const policy = resolvePermissions(schema, resource);
   if (!policy) {
     // VAL-001: Deny-by-default — resources without a policy are FORBIDDEN unless escape hatch enabled
     if (!opts?.allowUnknownResources) {
@@ -434,8 +531,8 @@ export function validateMutationAuthz(
  */
 export function validateRelationAuthz(
   mutation: Record<string, unknown>,
-  resource: { fields: Array<{ name: string }>; name?: string },
-  writeFields: string[],
+  resource: { fields: readonly { name: string }[]; name?: string },
+  writeFields: readonly string[],
 ): { ok: true } | AuthzError {
   // The relation field name can be: mutation.relation (relation name) or mutation.fkField
   const relation = mutation.relation as string | undefined;
@@ -725,6 +822,11 @@ export async function resolveAccessLevel(
 
   const recordObject = record as Record<string, unknown>;
   const actorPrincipal = canonicalizeActorPrincipal(actorId);
+  const namespacePrincipal = normalizeNonEmptyString(namespace);
+  if (namespacePrincipal && actorPrincipal === namespacePrincipal) {
+    return "owner";
+  }
+
   const createdByValue = normalizeNonEmptyString(recordObject.createdBy);
   if (
     createdByValue &&
@@ -838,6 +940,21 @@ export async function validateShareableOperationAccess(input: {
       message: "Authorization denied",
       path: "operation",
     };
+  }
+
+  if (
+    input.operation === "merge" ||
+    input.operation === "replace" ||
+    input.operation === "delete"
+  ) {
+    const existingRecord = await input.db.findOne({
+      model: input.resource,
+      where: [{ field: "id", operator: "eq", value: input.id }],
+      namespace: input.namespace,
+    });
+    if (!existingRecord) {
+      return { ok: true };
+    }
   }
 
   const accessLevel = await resolveAccessLevel(

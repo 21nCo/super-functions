@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-  type AuthFnConfig,
-  type AuthFnDeliveryRequest
-} from '@authfn/core';
+import type { AuthFnRuntimeConfig, AuthFnDeliveryRequest } from 'authfn';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnPasswordPlugin } from '@authfn/password';
 import { createAuthFnClient } from '../index.js';
 import { createAuthFnHttpClient } from '../http-client.js';
 
@@ -188,22 +185,26 @@ describe('@authfn/client otp flows', () => {
       }
     };
 
-    const auth = createAuthFn({
+    const auth = createTestServer({
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnPasswordPlugin({
+        authFnPasswordPlugin(),
+        authFnEmailOtpPlugin()
+      ],
+      pluginRuntime: {
+        password: {
           otp: {
             delivery: provider,
             codeGenerator: () => '731942'
           }
-        }),
-        authFnEmailOtpPlugin({
+        },
+        emailOtp: {
           delivery: provider,
           codeGenerator: () => '731942'
-        })
-      ]
-    } satisfies AuthFnConfig);
+        }
+      }
+    } satisfies AuthFnRuntimeConfig);
 
     const cookieJar = createCookieJar();
     const client = createAuthFnClient({

@@ -284,7 +284,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       dbMapping: { serverseq: "redis" },
     });
@@ -298,7 +298,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       dbMapping: { serverseq: "redis" },
     });
@@ -338,7 +338,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       kvStore: kv,
       dbMapping: { serverseq: "kv" },
     });
@@ -377,7 +377,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       // No dbMapping - defaults to "db"
     });
@@ -412,7 +412,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       dbMapping: { serverseq: "redis" },
     });
@@ -496,7 +496,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       dbMapping: { serverseq: "redis" },
       namespaceProvider,
@@ -568,7 +568,7 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       redis,
       dbMapping: { serverseq: "redis" },
     });

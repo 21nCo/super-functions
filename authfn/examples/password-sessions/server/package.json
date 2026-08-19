@@ -13,8 +13,9 @@
     "db:push": "drizzle-kit push --config drizzle.config.ts"
   },
   "dependencies": {
-    "@authfn/core": "*",
+    "authfn": "*",
     "@authfn/examples-shared": "*",
+    "@authfn/password": "*",
     "@superfunctions/db": "*",
     "@superfunctions/http-express": "*",
     "dotenv": "^17.2.2",

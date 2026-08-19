@@ -8,6 +8,7 @@ import type { DatafnStorageAdapter } from "./storage.js";
 import { EventBus } from "./events/bus.js";
 import type { DatafnTable } from "./tables/table.js";
 import { DebouncerMap } from "./debounce.js";
+import type { DatafnSignalCacheOptions } from "./signals/options.js";
 
 // Re-export for convenience
 export { kvId, KV_RESOURCE_NAME } from "@datafn/core";
@@ -32,7 +33,7 @@ export interface DatafnKvApi {
   flush(key?: string): Promise<void>;
   signal<T = unknown>(
     key: string,
-    options?: { defaultValue?: T },
+    options?: { defaultValue?: T; cache?: DatafnSignalCacheOptions },
   ): DatafnSignal<T>;
 }
 
@@ -413,7 +414,7 @@ export function createKvApi(deps: KvApiDeps): DatafnKvApi {
 
     signal<T = unknown>(
       key: string,
-      options?: { defaultValue?: T },
+      options?: { defaultValue?: T; cache?: DatafnSignalCacheOptions },
     ): DatafnSignal<T> {
       if (typeof key !== "string") {
         throw new Error("Invalid KV key: must be string");

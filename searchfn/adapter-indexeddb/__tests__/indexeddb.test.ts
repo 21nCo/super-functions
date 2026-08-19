@@ -20,7 +20,9 @@ function createDelegatingWasmModule(options?: {
 }): SearchFnWasmModule {
   return {
     abiVersion: options?.abiVersion ?? 1,
-    async createSearchCoreEngine(factoryOptions: SearchCoreEngineFactoryOptions) {
+    async createSearchCoreEngine(
+      factoryOptions: SearchCoreEngineFactoryOptions,
+    ) {
       const delegate = new TsSearchCoreEngine({
         storage: factoryOptions.storage,
         termCache: factoryOptions.termCache,
@@ -56,7 +58,10 @@ function createDelegatingWasmModule(options?: {
   };
 }
 
-runAdapterContractTests("IndexedDbAdapter", () => new IndexedDbAdapter({ dbName: freshDbName() }));
+runAdapterContractTests(
+  "IndexedDbAdapter",
+  () => new IndexedDbAdapter({ dbName: freshDbName() }),
+);
 
 describe("IndexedDbAdapter — IDB-specific tests", () => {
   // TV-IDB-002: persistence across dispose/reinitialize
@@ -67,15 +72,27 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
     await adapter1.index({
       resource: "tasks",
       documents: [
-        { id: "task:1", fields: { title: "Buy groceries", description: "Get milk and bread" } },
-        { id: "task:2", fields: { title: "Review pull request", description: "Check auth changes" } },
+        {
+          id: "task:1",
+          fields: { title: "Buy groceries", description: "Get milk and bread" },
+        },
+        {
+          id: "task:2",
+          fields: {
+            title: "Review pull request",
+            description: "Check auth changes",
+          },
+        },
       ],
     });
     await adapter1.dispose();
 
     const adapter2 = new IndexedDbAdapter({ dbName });
     try {
-      const result = await adapter2.search({ resource: "tasks", query: "groceries" });
+      const result = await adapter2.search({
+        resource: "tasks",
+        query: "groceries",
+      });
       expect(result).toEqual(["task:1"]);
     } finally {
       await adapter2.dispose();
@@ -98,9 +115,17 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
 
     const adapter2 = new IndexedDbAdapter({ dbName });
     try {
-      const result = await adapter2.search({ resource: "tasks", query: "groceries", fields: ["title"] });
+      const result = await adapter2.search({
+        resource: "tasks",
+        query: "groceries",
+        fields: ["title"],
+      });
       expect(result).toEqual([]);
-      const result2 = await adapter2.search({ resource: "tasks", query: "review", fields: ["title"] });
+      const result2 = await adapter2.search({
+        resource: "tasks",
+        query: "review",
+        fields: ["title"],
+      });
       expect(result2).toContain("task:2");
     } finally {
       await adapter2.dispose();
@@ -135,8 +160,7 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
     }
   });
 
-  // TV-IDB-004: multiple resources in same adapter use separate IDBs
-  it("isolates multiple resources — each resource uses a separate database", async () => {
+  it("isolates multiple resources within one database", async () => {
     const dbName = freshDbName();
     const adapter = new IndexedDbAdapter({ dbName });
 
@@ -150,10 +174,24 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
         documents: [{ id: "1", fields: { title: "Note A" } }],
       });
 
-      const taskResult = await adapter.search({ resource: "tasks", query: "Note" });
+      const databaseNames = (await indexedDB.databases())
+        .map((database) => database.name)
+        .filter(
+          (name): name is string =>
+            name === dbName || name?.startsWith(`${dbName}-`) === true,
+        );
+      expect(databaseNames).toEqual([dbName]);
+
+      const taskResult = await adapter.search({
+        resource: "tasks",
+        query: "Note",
+      });
       expect(taskResult).toEqual([]);
 
-      const noteResult = await adapter.search({ resource: "notes", query: "Task" });
+      const noteResult = await adapter.search({
+        resource: "notes",
+        query: "Task",
+      });
       expect(noteResult).toEqual([]);
     } finally {
       await adapter.dispose();
@@ -179,10 +217,18 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
 
     const adapter3 = new IndexedDbAdapter({ dbName });
     try {
-      const oldResult = await adapter3.search({ resource: "tasks", query: "old", fields: ["title"] });
+      const oldResult = await adapter3.search({
+        resource: "tasks",
+        query: "old",
+        fields: ["title"],
+      });
       expect(oldResult).toEqual([]);
 
-      const newResult = await adapter3.search({ resource: "tasks", query: "new", fields: ["title"] });
+      const newResult = await adapter3.search({
+        resource: "tasks",
+        query: "new",
+        fields: ["title"],
+      });
       expect(newResult).toContain("1");
     } finally {
       await adapter3.dispose();
@@ -224,7 +270,10 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
 
     const legacySnapshot = JSON.parse(
       new TextDecoder().decode(docTermsBuffer),
-    ) as Record<string, Array<{ field: string; term: string; isPrefix?: boolean }>>;
+    ) as Record<
+      string,
+      Array<{ field: string; term: string; isPrefix?: boolean }>
+    >;
 
     for (const entries of Object.values(legacySnapshot)) {
       for (const entry of entries) {
@@ -273,7 +322,10 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
 
     const legacySnapshot = JSON.parse(
       new TextDecoder().decode(docTermsBuffer),
-    ) as Record<string, Array<{ field: string; term: string; isPrefix?: boolean }>>;
+    ) as Record<
+      string,
+      Array<{ field: string; term: string; isPrefix?: boolean }>
+    >;
 
     for (const entries of Object.values(legacySnapshot)) {
       for (const entry of entries) {
@@ -352,14 +404,32 @@ describe("IndexedDbAdapter — IDB-specific tests", () => {
   });
 
   it("honors configured searchFields when params.fields is omitted", async () => {
-    const adapter = new IndexedDbAdapter({ dbName: freshDbName() });
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      pipeline: {
+        enableStemming: true,
+        enableEdgeNGrams: true,
+        edgeNGramMinLength: 2,
+        edgeNGramMaxLength: 20,
+        edgeNGramFieldConfig: {
+          label: { enabled: true, minLength: 1, maxLength: 30 },
+        },
+      },
+      defaults: {
+        prefix: true,
+        fuzzy: 1,
+        fieldBoosts: { label: 4 },
+      },
+    });
     try {
       await adapter.initialize({
         resources: [{ name: "tasks", searchFields: ["title"] }],
       });
       await adapter.index({
         resource: "tasks",
-        documents: [{ id: "1", fields: { title: "visible", body: "hidden-body-term" } }],
+        documents: [
+          { id: "1", fields: { title: "visible", body: "hidden-body-term" } },
+        ],
       });
 
       const result = await adapter.search({
@@ -513,7 +583,10 @@ describe("IndexedDbAdapter — prefix search", () => {
 
   // TV-IDB-002: construct-time defaults.prefix applied
   it("TV-IDB-002: construct-time defaults.prefix applied when param omitted", async () => {
-    const adapter = new IndexedDbAdapter({ dbName: freshDbName(), defaults: { prefix: true } });
+    const adapter = new IndexedDbAdapter({
+      dbName: freshDbName(),
+      defaults: { prefix: true },
+    });
     try {
       await adapter.index({
         resource: "r",
@@ -532,6 +605,131 @@ describe("IndexedDbAdapter — prefix search", () => {
   it("TV-IDB-CAP: capabilities include prefix: true", () => {
     const adapter = new IndexedDbAdapter();
     expect(adapter.capabilities.prefix).toBe(true);
+  });
+
+  it("prioritizes exact multi-token matches before broad prefix matches", async () => {
+    const adapter = new IndexedDbAdapter({ dbName: freshDbName() });
+    try {
+      const noisyCollections = Array.from({ length: 80 }, (_, index) => ({
+        id: `noise-${index}`,
+        fields: {
+          label: `codex cloud bulk collection 17797977${1000 + index}`,
+        },
+      }));
+      await adapter.index({
+        resource: "collection",
+        documents: [
+          ...noisyCollections,
+          {
+            id: "exact-1",
+            fields: {
+              label: "codex-cloud-bulk-action-1782209090531 collection 1",
+            },
+          },
+          {
+            id: "exact-2",
+            fields: {
+              label: "codex-cloud-bulk-action-1782209090531 collection 2",
+            },
+          },
+        ],
+      });
+
+      const result = await adapter.searchAll({
+        resources: ["collection"],
+        query: "codex-cloud-bulk-action-1782209090531 collection 1",
+        fields: ["label"],
+        prefix: true,
+        fuzzy: 0.2,
+        limit: 50,
+        limitPerResource: 50,
+      });
+
+      expect(result.map((entry) => entry.id).slice(0, 2)).toEqual([
+        "exact-1",
+        "exact-2",
+      ]);
+    } finally {
+      await adapter.dispose();
+    }
+  });
+
+  it("does not return removed exact-match documents from broad prefix searchAll queries", async () => {
+    const adapter = new IndexedDbAdapter({ dbName: freshDbName() });
+    try {
+      await adapter.index({
+        resource: "collection",
+        documents: [
+          {
+            id: "exact-stale",
+            fields: {
+              label: "codex-cloud-bulk-action-1782209090531 collection 1",
+            },
+          },
+          {
+            id: "broad-noise",
+            fields: {
+              label: "codex cloud bulk collection 177979771000",
+            },
+          },
+        ],
+      });
+
+      const beforeRemove = await adapter.searchAll({
+        resources: ["collection"],
+        query: "codex-cloud-bulk-action-1782209090531 collection 1",
+        fields: ["label"],
+        prefix: true,
+        fuzzy: 0.2,
+        limit: 10,
+        limitPerResource: 10,
+      });
+      expect(beforeRemove.map((entry) => entry.id)).toContain("exact-stale");
+
+      await adapter.remove({
+        resource: "collection",
+        ids: ["exact-stale"],
+      });
+
+      const afterRemove = await adapter.searchAll({
+        resources: ["collection"],
+        query: "codex-cloud-bulk-action-1782209090531 collection 1",
+        fields: ["label"],
+        prefix: true,
+        fuzzy: 0.2,
+        limit: 10,
+        limitPerResource: 10,
+      });
+      expect(afterRemove.map((entry) => entry.id)).not.toContain("exact-stale");
+
+      await adapter.index({
+        resource: "collection",
+        documents: [
+          {
+            id: "exact-reindexed",
+            fields: {
+              label: "codex-cloud-bulk-action-1782209090531 collection 1",
+            },
+          },
+        ],
+      });
+
+      const afterReindex = await adapter.searchAll({
+        resources: ["collection"],
+        query: "codex-cloud-bulk-action-1782209090531 collection 1",
+        fields: ["label"],
+        prefix: true,
+        fuzzy: 0.2,
+        limit: 10,
+        limitPerResource: 10,
+      });
+      expect(afterReindex[0]).toMatchObject({
+        id: "exact-reindexed",
+        resource: "collection",
+      });
+    } finally {
+      await adapter.dispose();
+    }
   });
 });
 
@@ -556,7 +754,9 @@ describe("IndexedDbAdapter — engine selection", () => {
         resource: "docs",
         documents: [{ id: "1", fields: { title: "hello world" } }],
       });
-      expect(await adapter.search({ resource: "docs", query: "hello" })).toEqual(["1"]);
+      expect(
+        await adapter.search({ resource: "docs", query: "hello" }),
+      ).toEqual(["1"]);
       expect(loaderCalls).toBe(0);
       expect(selections).toContainEqual({ engine: "ts", code: "explicit_ts" });
     } finally {
@@ -565,16 +765,32 @@ describe("IndexedDbAdapter — engine selection", () => {
   });
 
   it("falls back to TypeScript in auto mode when no wasm loader is configured", async () => {
-    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
-    const fallbackEvents: Array<{ code: string; reason: string; resource?: string }> = [];
+    const selections: Array<{
+      engine: "ts" | "wasm";
+      code: string;
+      resource?: string;
+    }> = [];
+    const fallbackEvents: Array<{
+      code: string;
+      reason: string;
+      resource?: string;
+    }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "auto",
       onWasmFallback: (info) => {
-        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource });
+        fallbackEvents.push({
+          code: info.code,
+          reason: info.reason,
+          resource: info.resource,
+        });
       },
       onEngineSelected: (info) => {
-        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
+        selections.push({
+          engine: info.engine,
+          code: info.code,
+          resource: info.resource,
+        });
       },
     });
 
@@ -583,13 +799,20 @@ describe("IndexedDbAdapter — engine selection", () => {
         resource: "docs",
         documents: [{ id: "1", fields: { title: "fallback path" } }],
       });
-      expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
+      expect(
+        await adapter.search({ resource: "docs", query: "fallback" }),
+      ).toEqual(["1"]);
       expect(fallbackEvents).toContainEqual({
         code: "auto_loader_missing",
-        reason: "No wasmLoader was configured; falling back to the TypeScript engine.",
-        resource: "docs"
+        reason:
+          "No wasmLoader was configured; falling back to the TypeScript engine.",
+        resource: "docs",
       });
-      expect(selections).toContainEqual({ engine: "ts", code: "auto_loader_missing", resource: "docs" });
+      expect(selections).toContainEqual({
+        engine: "ts",
+        code: "auto_loader_missing",
+        resource: "docs",
+      });
     } finally {
       await adapter.dispose();
     }
@@ -627,18 +850,32 @@ describe("IndexedDbAdapter — engine selection", () => {
         resource: "docs",
         documents: [{ id: "1", fields: { title: "portable fallback" } }],
       });
-      expect(await adapter.search({ resource: "docs", query: "portable" })).toEqual(["1"]);
+      expect(
+        await adapter.search({ resource: "docs", query: "portable" }),
+      ).toEqual(["1"]);
       expect(loaderCalls).toBe(0);
       expect(fallbackEvents).toContain("auto_pipeline_not_portable");
-      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_pipeline_not_portable" });
+      expect(selectionEvents).toContainEqual({
+        engine: "ts",
+        code: "auto_pipeline_not_portable",
+      });
     } finally {
       await adapter.dispose();
     }
   });
 
   it("emits fallback metadata when auto mode fails to initialize WASM", async () => {
-    const fallbackEvents: Array<{ code: string; reason: string; resource?: string; error?: unknown }> = [];
-    const selectionEvents: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const fallbackEvents: Array<{
+      code: string;
+      reason: string;
+      resource?: string;
+      error?: unknown;
+    }> = [];
+    const selectionEvents: Array<{
+      engine: "ts" | "wasm";
+      code: string;
+      resource?: string;
+    }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "auto",
@@ -646,10 +883,19 @@ describe("IndexedDbAdapter — engine selection", () => {
         throw new Error("boom");
       },
       onWasmFallback: (info) => {
-        fallbackEvents.push({ code: info.code, reason: info.reason, resource: info.resource, error: info.error });
+        fallbackEvents.push({
+          code: info.code,
+          reason: info.reason,
+          resource: info.resource,
+          error: info.error,
+        });
       },
       onEngineSelected: (info) => {
-        selectionEvents.push({ engine: info.engine, code: info.code, resource: info.resource });
+        selectionEvents.push({
+          engine: info.engine,
+          code: info.code,
+          resource: info.resource,
+        });
       },
     });
 
@@ -658,14 +904,20 @@ describe("IndexedDbAdapter — engine selection", () => {
         resource: "docs",
         documents: [{ id: "1", fields: { title: "engine fallback" } }],
       });
-      expect(await adapter.search({ resource: "docs", query: "fallback" })).toEqual(["1"]);
+      expect(
+        await adapter.search({ resource: "docs", query: "fallback" }),
+      ).toEqual(["1"]);
       expect(fallbackEvents).toContainEqual({
         code: "auto_init_failed",
         reason: "boom",
         resource: "docs",
-        error: expect.any(Error)
+        error: expect.any(Error),
       });
-      expect(selectionEvents).toContainEqual({ engine: "ts", code: "auto_init_failed", resource: "docs" });
+      expect(selectionEvents).toContainEqual({
+        engine: "ts",
+        code: "auto_init_failed",
+        resource: "docs",
+      });
     } finally {
       await adapter.dispose();
     }
@@ -714,13 +966,21 @@ describe("IndexedDbAdapter — engine selection", () => {
   });
 
   it("uses the provided WASM engine when initialization succeeds", async () => {
-    const selections: Array<{ engine: "ts" | "wasm"; code: string; resource?: string }> = [];
+    const selections: Array<{
+      engine: "ts" | "wasm";
+      code: string;
+      resource?: string;
+    }> = [];
     const adapter = new IndexedDbAdapter({
       dbName: freshDbName(),
       engine: "wasm",
       wasmLoader: async () => createDelegatingWasmModule(),
       onEngineSelected: (info) => {
-        selections.push({ engine: info.engine, code: info.code, resource: info.resource });
+        selections.push({
+          engine: info.engine,
+          code: info.code,
+          resource: info.resource,
+        });
       },
     });
 
@@ -729,8 +989,14 @@ describe("IndexedDbAdapter — engine selection", () => {
         resource: "docs",
         documents: [{ id: "1", fields: { title: "wasm path" } }],
       });
-      expect(await adapter.search({ resource: "docs", query: "wasm" })).toEqual(["1"]);
-      expect(selections).toContainEqual({ engine: "wasm", code: "explicit_wasm", resource: "docs" });
+      expect(await adapter.search({ resource: "docs", query: "wasm" })).toEqual(
+        ["1"],
+      );
+      expect(selections).toContainEqual({
+        engine: "wasm",
+        code: "explicit_wasm",
+        resource: "docs",
+      });
     } finally {
       await adapter.dispose();
     }
@@ -757,8 +1023,12 @@ describe("IndexedDbAdapter — engine selection", () => {
         documents: [{ id: "2", fields: { title: "shared loader notes" } }],
       });
 
-      expect(await adapter.search({ resource: "docs", query: "shared" })).toEqual(["1"]);
-      expect(await adapter.search({ resource: "notes", query: "shared" })).toEqual(["2"]);
+      expect(
+        await adapter.search({ resource: "docs", query: "shared" }),
+      ).toEqual(["1"]);
+      expect(
+        await adapter.search({ resource: "notes", query: "shared" }),
+      ).toEqual(["2"]);
       expect(loaderCalls).toBe(1);
     } finally {
       await adapter.dispose();
@@ -781,7 +1051,10 @@ describe("IndexedDbAdapter — engine selection", () => {
 
     const tsAdapter = new IndexedDbAdapter({ dbName, engine: "ts" });
     try {
-      const results = await tsAdapter.search({ resource: "docs", query: "binary" });
+      const results = await tsAdapter.search({
+        resource: "docs",
+        query: "binary",
+      });
       expect(results).toEqual(["1"]);
     } finally {
       await tsAdapter.dispose();

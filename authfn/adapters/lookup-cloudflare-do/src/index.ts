@@ -1,7 +1,7 @@
 import type {
   AuthFnRegionLookupRecord,
   AuthFnRegionLookupStore,
-} from '@authfn/core';
+} from '@authfn/multi-region';
 
 export interface CloudflareDurableObjectNamespace {
   idFromName(name: string): unknown;

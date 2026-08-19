@@ -41,7 +41,7 @@ describe("PAGE-001: nextCursor Emission", () => {
 
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
     });
   });
 
@@ -148,7 +148,7 @@ describe("PAGE-002: Cursor Backwards Pagination", () => {
 
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
     });
   });
 
@@ -222,7 +222,7 @@ describe("DETERM-003: Cursor Sort Validation", () => {
     beforeEach(async () => {
       db = memoryAdapter();
       await db.initialize();
-      server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+      server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
     });
 
     it("TV-CURSOR-SORT-VALID-001: Valid cursor with id tie-breaker", async () => {

@@ -1,12 +1,12 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type {
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnHooks,
   AuthFnHookContext,
   AuthFnPasswordCompromiseCheckResult,
   AuthFnPasswordCompromiseChecker,
   AuthFnPasswordCredentialRecord,
-  AuthFnRuntimeResolution,
+  AuthFnEnvironment,
   AuthFnSession,
   AuthFnUserRecord
 } from '../types.js';
@@ -66,7 +66,7 @@ export interface PasswordPolicyOptions {
   email?: string;
   purpose?: 'sign-up' | 'reset-password' | 'update-password';
   request?: Request;
-  runtime?: AuthFnRuntimeResolution;
+  environment?: AuthFnEnvironment;
 }
 
 export interface HaveIBeenPwnedPasswordCheckerOptions {
@@ -76,12 +76,12 @@ export interface HaveIBeenPwnedPasswordCheckerOptions {
 }
 
 export async function signUpWithPassword(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: PasswordSignUpInput,
   context: {
     request?: Request;
-    runtime?: AuthFnRuntimeResolution;
+    environment?: AuthFnEnvironment;
     authenticatedSession?: AuthFnSession | null;
     policy?: PasswordPolicyOptions;
   } = {}
@@ -92,7 +92,7 @@ export async function signUpWithPassword(
   const beforeUserInput = await runBeforeUserCreateHook(hooks, {
     config,
     request: context.request,
-    runtime: context.runtime
+    environment: context.environment
   }, {
     primaryEmail: email,
     metadata: input.profile ?? {}
@@ -102,7 +102,7 @@ export async function signUpWithPassword(
   await assertValidPassword(input.password, {
     ...context.policy,
     request: context.request,
-    runtime: context.runtime,
+    environment: context.environment,
     email: resolvedEmail,
     purpose: 'sign-up'
   });
@@ -113,7 +113,7 @@ export async function signUpWithPassword(
       existingUser,
       authenticatedSession: context.authenticatedSession,
       request: context.request,
-      runtime: context.runtime,
+      environment: context.environment,
       policy: context.policy
     });
   }
@@ -136,7 +136,7 @@ export async function signUpWithPassword(
         await hooks.afterUserCreate?.({
           config,
           request: context.request,
-          runtime: context.runtime,
+          environment: context.environment,
           actorId: user.id
         }, {
           id: user.id,
@@ -159,13 +159,13 @@ export async function signUpWithPassword(
 }
 
 async function linkPasswordCredentialForExistingUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   password: string,
   context: {
     existingUser: AuthFnUserRecord;
     authenticatedSession?: AuthFnSession | null;
     request?: Request;
-    runtime?: AuthFnRuntimeResolution;
+    environment?: AuthFnEnvironment;
     policy?: PasswordPolicyOptions;
   }
 ): Promise<PasswordSignUpResult> {
@@ -176,7 +176,7 @@ async function linkPasswordCredentialForExistingUser(
     await emitAccountLinkingConflictEvent(config, {
       request: context.request,
       user: context.existingUser,
-      regionId: context.runtime?.regionId,
+      regionId: context.environment?.regionId,
       method: 'password',
       reason: authenticatedUserId ? 'authenticated_user_mismatch' : 'authentication_required',
       metadata: {
@@ -196,7 +196,7 @@ async function linkPasswordCredentialForExistingUser(
     await emitAccountLinkingConflictEvent(config, {
       request: context.request,
       user: context.existingUser,
-      regionId: context.runtime?.regionId,
+      regionId: context.environment?.regionId,
       method: 'password',
       reason: 'existing_email_unverified'
     });
@@ -211,7 +211,7 @@ async function linkPasswordCredentialForExistingUser(
     await emitAccountLinkingConflictEvent(config, {
       request: context.request,
       user: context.existingUser,
-      regionId: context.runtime?.regionId,
+      regionId: context.environment?.regionId,
       method: 'password',
       reason: 'password_already_exists'
     });
@@ -237,7 +237,7 @@ async function linkPasswordCredentialForExistingUser(
 }
 
 export async function signInWithPassword(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   input: PasswordSignInInput,
   options: PasswordPolicyOptions = {}
 ): Promise<PasswordSignInResult> {
@@ -270,7 +270,7 @@ export async function signInWithPassword(
 }
 
 export async function createPasswordCredential(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: { userId: string; passwordHash: string }
 ): Promise<AuthFnPasswordCredentialRecord> {
   const now = new Date();
@@ -290,7 +290,7 @@ export async function createPasswordCredential(
 }
 
 export async function getPasswordCredentialByUserId(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnPasswordCredentialRecord | null> {
   return config.database.findOne<AuthFnPasswordCredentialRecord>({
@@ -301,7 +301,7 @@ export async function getPasswordCredentialByUserId(
 }
 
 export async function updatePasswordCredential(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: { userId: string; password: string },
   options: PasswordPolicyOptions = {}
 ): Promise<AuthFnPasswordCredentialRecord> {
@@ -458,7 +458,7 @@ async function assertValidPassword(
     email: options.email,
     purpose: options.purpose ?? 'update-password',
     request: options.request,
-    runtime: options.runtime
+    environment: options.environment
   });
   const { compromised, count } = readCompromiseCheckResult(result);
   if (compromised) {
@@ -514,7 +514,7 @@ async function runUserCredentialTransaction<T>(
 }
 
 async function rollbackPasswordSignUp(
-  config: Pick<AuthFnConfig, 'cacheStore' | 'database' | 'namespace' | 'observability' | 'plugins'>,
+  config: Pick<AuthFnRuntimeConfig, 'stores' | 'database' | 'namespace' | 'observability' | 'plugins' | 'pluginRuntime'>,
   userId: string,
   primaryEmail?: string | null,
   credentialId?: string
@@ -611,7 +611,7 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

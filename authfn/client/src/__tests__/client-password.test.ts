@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import { authFnPasswordPlugin, createAuthFn, type AuthFnConfig } from '@authfn/core';
+import type { AuthFnRuntimeConfig } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
 import { createAuthFnClient } from '../index.js';
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
@@ -38,7 +40,7 @@ function createCookieJar() {
 
 describe('@authfn/client password flows', () => {
   it('uses cookie credentials by default and completes sign-up -> session -> sign-out', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
     const cookieJar = createCookieJar();
     const observedCredentials: RequestCredentials[] = [];
 
@@ -104,7 +106,7 @@ describe('@authfn/client password flows', () => {
   });
 
   it('sends the csrf header from the readable csrf cookie on sign-out', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
     const cookieJar = createCookieJar();
     let observedCsrfHeader: string | null = null;
 
@@ -147,7 +149,7 @@ describe('@authfn/client password flows', () => {
   });
 
   it('uses an explicit cookie prefix when the session cookie is httpOnly and hidden from the accessor', async () => {
-    const auth = createAuthFn({
+    const auth = createTestServer({
       ...createConfig(),
       cookie: {
         prefix: 'demo-auth'
@@ -203,7 +205,7 @@ describe('@authfn/client password flows', () => {
   });
 
   it('returns canonical auth errors for wrong passwords', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
     const cookieJar = createCookieJar();
 
     const client = createAuthFnClient({

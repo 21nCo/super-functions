@@ -4,10 +4,10 @@ import {
   generateOpenApiDocument
 } from '@superfunctions/http-openapi';
 import { AuthFnInternalError } from './core/errors.js';
-import type { AuthFnConfig } from './types.js';
+import type { AuthFnRuntimeConfig } from './types.js';
 
 export function createAuthFnOpenApiDocument(
-  config: Pick<AuthFnConfig, 'basePath' | 'openApi'>,
+  config: Pick<AuthFnRuntimeConfig, 'basePath' | 'openApi'>,
   router: Pick<Router, 'getRoutes'>
 ): Record<string, unknown> {
   const metadata = resolveOpenApiMetadata(config);
@@ -32,7 +32,7 @@ export function createAuthFnOpenApiDocument(
 }
 
 function resolveOpenApiMetadata(
-  config: Pick<AuthFnConfig, 'openApi'>
+  config: Pick<AuthFnRuntimeConfig, 'openApi'>
 ): { title: string; version: string } {
   if (typeof config.openApi === 'object') {
     return config.openApi;

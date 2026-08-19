@@ -9,10 +9,10 @@ This guide walks through a minimal end-to-end authfn setup: install the packages
 
 ## 1. Install the packages
 
-You'll typically want the server kernel and the matching client SDK:
+You'll typically want the server kernel, the plugins you use, and the matching client SDK:
 
 ```bash
-npm install @authfn/core @authfn/client
+npm install authfn @authfn/password @authfn/email-otp @authfn/social-oauth @authfn/client
 ```
 
 For Svelte apps, also install:
@@ -29,45 +29,52 @@ pip install authfn
 
 ## 2. Create the server runtime
 
-`createAuthFn()` composes a database adapter, your chosen plugins, and observability into a single runtime. Plugins are opt-in — only the auth methods you enable are exposed.
+`authfn()` declares schema and routes. `.createServer()` injects runtime dependencies such as the database, delivery provider, and OAuth provider configuration.
 
 ```ts
 import { memoryAdapter } from "@superfunctions/db/testing";
 import {
-  createAuthFn,
-  authFnPasswordPlugin,
-  authFnEmailOtpPlugin,
-  authFnSocialOAuthPlugin,
-} from "@authfn/core";
+  authfn,
+  authFnPlugins,
+} from "authfn";
+import { authFnPasswordPlugin } from "@authfn/password";
+import { authFnEmailOtpPlugin } from "@authfn/email-otp";
+import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
 
-const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+const authApp = authfn({
   namespace: "authfn",
   openApi: {
     title: "AuthFn API",
     version: "1.0.0",
   },
+  plugins: authFnPlugins(
+    authFnPasswordPlugin(),
+    authFnEmailOtpPlugin(),
+    authFnSocialOAuthPlugin(),
+  ),
+});
+
+const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
   observability: {
     emit(event) {
       console.log(event.type, event.requestId);
     },
   },
-  plugins: [
-    authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
+  pluginRuntime: {
+    emailOtp: {
       delivery: {
         async send(input) {
-          // hand off to your mail provider here
           return { sent: true, metadata: { channel: input.channel } };
         },
       },
-    }),
-    authFnSocialOAuthPlugin({
+    },
+    socialOAuth: {
       providers: {
         google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! },
       },
-    }),
-  ],
+    },
+  },
 });
 ```
 

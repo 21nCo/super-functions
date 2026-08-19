@@ -191,7 +191,7 @@ describe('@filefn/server files', () => {
     });
 
     fileFn = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [{ name: 'user-avatar', contentTypes: ['image/png', 'image/jpeg'], maxSizeBytes: 10485760 }],
       auth: { required: false },
@@ -227,7 +227,7 @@ describe('@filefn/server files', () => {
       const { fileId } = await createFileViaUpload(fileFn, db, storageSizes, 'user_123', 'org_123');
 
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -285,7 +285,7 @@ describe('@filefn/server files', () => {
 
       // Create a new instance with resolveSession that returns the file owner
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -318,7 +318,7 @@ describe('@filefn/server files', () => {
 
       // Create new instance with auth that resolves to different user
       const fileFnOther = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -364,7 +364,7 @@ describe('@filefn/server files', () => {
       // Create a new instance with resolveSession that returns the file owner
       // Must use the same DB instance to see the versions
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -642,7 +642,7 @@ describe('@filefn/server files', () => {
       };
 
       const fileFnWithRateLimit = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -667,7 +667,7 @@ describe('@filefn/server files', () => {
       const { fileId } = await createFileViaUpload(fileFn, db, storageSizes, 'user_123');
 
       const fileFnWithCategoryRateLimit = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -709,7 +709,7 @@ describe('@filefn/server files', () => {
   describe('Render descriptors', () => {
     it('TV-API-001 / TV-VIEW-001: render route returns a canonical artifact descriptor envelope', async () => {
       const pdfFileFn = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -756,7 +756,7 @@ describe('@filefn/server files', () => {
       });
 
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -807,7 +807,7 @@ describe('@filefn/server files', () => {
 
     it('TV-FILE-002: render route returns deterministic PDF placeholder when preview artifacts are unavailable', async () => {
       const pdfFileFn = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -838,7 +838,7 @@ describe('@filefn/server files', () => {
       );
 
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,

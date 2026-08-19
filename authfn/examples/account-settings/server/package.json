@@ -13,8 +13,11 @@
     "db:push": "drizzle-kit push --config drizzle.config.ts"
   },
   "dependencies": {
-    "@authfn/core": "*",
+    "@authfn/api-keys": "*",
+    "authfn": "*",
     "@authfn/examples-shared": "*",
+    "@authfn/password": "*",
+    "@authfn/two-factor": "*",
     "@superfunctions/db": "*",
     "@superfunctions/http-express": "*",
     "dotenv": "^17.2.2",

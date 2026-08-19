@@ -86,7 +86,7 @@ describe("PER-001: Batch serverSeq allocation", () => {
     const result = await executePush(
       { clientId: "client-perf", mutations },
       oneManySchema,
-      db,
+      database: db,
       idempotencyStore,
       "datafn",
     );
@@ -114,7 +114,7 @@ describe("PER-001: Batch serverSeq allocation", () => {
     const result = await executePush(
       { clientId: "client-perf", mutations: [] },
       oneManySchema,
-      db,
+      database: db,
       idempotencyStore,
       "datafn",
     );
@@ -152,7 +152,7 @@ describe("PER-004: Batch relation DB calls", () => {
       });
     }
 
-    server = await createDatafnServer({ allowUnknownResources: true, schema: oneManySchema, db });
+    server = await createDatafnServer({ allowUnknownResources: true, schema: oneManySchema, database: db });
   });
 
   it("TV-PER-002: one-many relate with 50 items uses 1 updateMany, not 50 update calls", async () => {

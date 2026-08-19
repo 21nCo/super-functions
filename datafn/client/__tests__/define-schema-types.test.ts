@@ -1,6 +1,7 @@
 import { describe, it, expectTypeOf } from "vitest";
 import { defineSchema, type DatafnSchema } from "@datafn/core";
 import type { ResourceNames } from "../src/client.js";
+import type { DatafnResourceRecord } from "../src/tables/table.js";
 
 describe("defineSchema type preservation", () => {
   const schema = defineSchema({
@@ -12,6 +13,11 @@ describe("defineSchema type preservation", () => {
 
   it("ResourceNames resolves to literal union", () => {
     expectTypeOf<ResourceNames<typeof schema>>().toEqualTypeOf<"todos" | "tags">();
+  });
+
+  it("resource records preserve field names and value types", () => {
+    type Todo = DatafnResourceRecord<typeof schema, "todos">;
+    expectTypeOf<Todo["title"]>().toEqualTypeOf<string>();
   });
 
   it("schema satisfies DatafnSchema", () => {

@@ -3,7 +3,7 @@ import type {
   AuthFnDeliveryRequest,
   AuthFnDeliveryResult,
   AuthFnOtpPurpose
-} from '@authfn/core';
+} from 'authfn';
 
 export interface ExampleOtpMessage {
   challengeId: string;

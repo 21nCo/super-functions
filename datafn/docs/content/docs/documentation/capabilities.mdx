@@ -200,7 +200,7 @@ table.unshare(id, userId);
 table.getPermissions(id);
 ```
 
-For resources with `visibilityDefault: "private"` (or `default: "private"`), server queries are auto-scoped to IDs the caller can access.
+For resources with `visibilityDefault: "private"` (or `default: "private"`), server queries are auto-scoped to IDs the caller can access. An authorized actor can still **create** a private record on first write — `merge`/`replace` are permitted when the target record does not yet exist, even though existing records are access-scoped.
 
 ## Client API Surface
 

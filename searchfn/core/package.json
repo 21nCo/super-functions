@@ -1,7 +1,7 @@
 {
   "name": "@searchfn/core",
   "version": "0.3.0",
-  "description": "Core engine internals for searchfn — pipeline, indexer, scoring, storage, and utilities.",
+  "description": "Storage-neutral SearchFn algorithms for pipelines, indexing, scoring, querying, and posting codecs.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.cjs",
@@ -33,9 +33,7 @@
   },
   "keywords": [
     "search",
-    "indexeddb",
     "full-text-search",
-    "browser",
     "bm25",
     "pipeline"
   ],

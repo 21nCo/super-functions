@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createDatafnClient } from "../src/client.js";
-import type { DatafnSchema } from "@datafn/core";
+import { TIMEZONE_CHANGE_RESOURCE_NAME, time, type DatafnSchema } from "@datafn/core";
 
 const schema: DatafnSchema = {
   version: 1,
@@ -8,7 +8,10 @@ const schema: DatafnSchema = {
     {
       name: "tasks",
       version: 1,
-      fields: [{ name: "title", type: "string" as const }],
+      fields: [
+        { name: "title", type: "string" as const },
+        { name: "startUnix", type: "number" as const },
+      ],
     },
   ],
 };
@@ -104,6 +107,134 @@ describe("TV-OFFL-001: client.search() offline — uses searchProvider.searchAll
     expect(result.results).toHaveLength(1);
     expect(result.results[0].id).toBe("t1");
     expect(result.results[0].data.id).toBe("t1");
+  });
+
+  it("ignores undefined local search filters when hydrating candidates", async () => {
+    const { MemoryStorageAdapter } = await import("../src/adapters/memoryStorage.js");
+    const storage = new MemoryStorageAdapter();
+    await storage.upsertRecord("tasks", { id: "t1", title: "task one" });
+
+    const searchProvider: any = {
+      name: "offline-provider",
+      search: vi.fn().mockResolvedValue([]),
+      searchAll: vi.fn().mockResolvedValue([
+        { resource: "tasks", id: "t1", score: 0.8 },
+      ]),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const client = createDatafnClient({
+      schema,
+      sync: { mode: "local-only" },
+      storage,
+      clientId: "test-offline-undefined-filter-search",
+      searchProvider,
+    });
+
+    const result = await client.search({
+      query: "task",
+      resources: ["tasks"],
+      source: "local",
+      filters: {
+        tasks: {
+          title: undefined,
+          startUnix: undefined,
+        },
+      },
+    });
+
+    expect(result.results.map((entry) => entry.id)).toEqual(["t1"]);
+  });
+
+  it("preserves base row fields for wildcard local search selects", async () => {
+    const { MemoryStorageAdapter } = await import("../src/adapters/memoryStorage.js");
+    const storage = new MemoryStorageAdapter();
+    await storage.upsertRecord("tasks", {
+      id: "t1",
+      title: "task one",
+      isChecked: false,
+    });
+
+    const searchProvider: any = {
+      name: "offline-provider",
+      search: vi.fn().mockResolvedValue([]),
+      searchAll: vi.fn().mockResolvedValue([
+        { resource: "tasks", id: "t1", score: 0.8 },
+      ]),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const client = createDatafnClient({
+      schema,
+      sync: { mode: "local-only" },
+      storage,
+      clientId: "test-offline-wildcard-search-select",
+      searchProvider,
+    });
+
+    const result = await client.search({
+      query: "task",
+      resources: ["tasks"],
+      source: "local",
+      select: ["*", "objective.*"],
+    });
+
+    expect(result.results[0].data).toMatchObject({
+      id: "t1",
+      title: "task one",
+      isChecked: false,
+    });
+  });
+
+  it("applies temporalByResource filters with timezone registry data", async () => {
+    const { MemoryStorageAdapter } = await import("../src/adapters/memoryStorage.js");
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord(TIMEZONE_CHANGE_RESOURCE_NAME, {
+      id: "timezoneChange:1:Asia_Kolkata",
+      timezone: "Asia/Kolkata",
+      effectiveFrom: Date.parse("2026-01-01T00:00:00.000Z"),
+      recordedAt: Date.parse("2026-01-01T00:00:00.000Z"),
+    });
+    await storage.upsertRecord("tasks", {
+      id: "t1",
+      title: "task one",
+      startUnix: Date.parse("2026-05-17T19:00:00.000Z"),
+    });
+    await storage.upsertRecord("tasks", {
+      id: "t2",
+      title: "task two",
+      startUnix: Date.parse("2026-05-18T19:00:00.000Z"),
+    });
+
+    const searchProvider: any = {
+      name: "offline-provider",
+      search: vi.fn().mockResolvedValue([]),
+      searchAll: vi.fn().mockResolvedValue([
+        { resource: "tasks", id: "t1", score: 0.9 },
+        { resource: "tasks", id: "t2", score: 0.8 },
+      ]),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const client = createDatafnClient({
+      schema,
+      sync: { mode: "local-only" },
+      storage,
+      clientId: "test-offline-temporal-search",
+      searchProvider,
+    });
+
+    const result = await client.search({
+      query: "task",
+      resources: ["tasks"],
+      temporalByResource: {
+        tasks: time.day("startUnix", "2026-05-18T12:00:00.000Z", {
+          timezone: "user",
+        }),
+      },
+    });
+
+    expect(result.results.map((entry) => entry.id)).toEqual(["t1"]);
   });
 });
 

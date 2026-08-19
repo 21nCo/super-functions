@@ -12,7 +12,7 @@
 import type { DatafnStorageAdapter } from "../storage.js";
 import type { DatafnRemoteAdapter, DatafnSyncConfig } from "../client.js";
 import type { EventBus } from "../events/bus.js";
-import type { DatafnSchema, DatafnPlugin, SearchProvider } from "@datafn/core";
+import type { DatafnFieldSchema, DatafnSchema, DatafnPlugin, SearchProvider } from "@datafn/core";
 import { enumerateJoinStoreKeys, getJoinStoreKey } from "@datafn/core";
 import {
   applyCloneResult,
@@ -23,6 +23,20 @@ import {
   type PullResult,
 } from "./apply.js";
 import { runBeforeSync, runAfterSync } from "../plugins/run-hooks.js";
+import {
+  buildSearchIndexFingerprint,
+  clearSearchIndexCurrent,
+  deriveSearchProviderResources,
+  markSearchIndexCurrent,
+  type DatafnSearchIndexResource,
+} from "../searchIndex.js";
+import {
+  decryptCloneResultForE2ee,
+  decryptPullResultForE2ee,
+  encryptPushPayloadForE2ee,
+  type DatafnE2eeConfig,
+} from "../e2ee.js";
+import type { DatafnSyncPhase } from "./status.js";
 // CLI-008: buildEvent import removed (was unused)
 
 const ACTOR_FEED_CURSOR_KEY = "__datafn_actor_feed__";
@@ -54,8 +68,287 @@ function computeBackoffDelay(
   return Math.min(exponentialDelay + jitter, config.maxDelayMs);
 }
 
+type RecordMutationOperation = "insert" | "merge" | "replace";
+
+type PushMutationError = {
+  mutationId?: string;
+  code?: string;
+  message?: string;
+  path?: string;
+  retryable?: boolean;
+};
+
+type PushSyncResult = {
+  ok: boolean;
+  applied?: string[];
+  errors?: PushMutationError[];
+  cursor?: string;
+  cursorBefore?: string;
+  cursors?: Record<string, string>;
+};
+
+function isRecordMutationOperation(operation: unknown): operation is RecordMutationOperation {
+  return operation === "insert" || operation === "merge" || operation === "replace";
+}
+
+function cloneDefaultValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneDefaultValue(item));
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, cloneDefaultValue(child)]),
+    );
+  }
+
+  return value;
+}
+
+function resolveFieldDefault(field: DatafnFieldSchema): { hasDefault: boolean; value?: unknown } {
+  if (Object.prototype.hasOwnProperty.call(field, "default")) {
+    return { hasDefault: true, value: cloneDefaultValue(field.default) };
+  }
+
+  if (field.required && field.type === "array") {
+    return { hasDefault: true, value: [] };
+  }
+
+  return { hasDefault: false };
+}
+
+function buildWritableRecordFieldsByResource(
+  schema: DatafnSchema,
+): Map<string, Set<string>> {
+  const fieldsByResource = new Map<string, Set<string>>();
+
+  for (const resource of schema.resources) {
+    const fields = new Set<string>(["id"]);
+    for (const field of resource.fields) {
+      if (!field.readonly) fields.add(field.name);
+    }
+    fieldsByResource.set(resource.name, fields);
+  }
+
+  for (const relation of schema.relations ?? []) {
+    const fromResources = Array.isArray(relation.from)
+      ? relation.from
+      : [relation.from];
+    for (const fromResource of fromResources) {
+      const fields = fieldsByResource.get(fromResource);
+      if (!fields) continue;
+      if (typeof relation.fkField === "string" && relation.fkField.length > 0) {
+        fields.add(relation.fkField);
+      }
+      if (
+        relation.type === "htree" &&
+        typeof relation.pathField === "string" &&
+        relation.pathField.length > 0
+      ) {
+        fields.add(relation.pathField);
+      }
+    }
+  }
+
+  return fieldsByResource;
+}
+
+function buildWritableRecordDefaultsByResource(
+  schema: DatafnSchema,
+): Map<string, Map<string, unknown>> {
+  const defaultsByResource = new Map<string, Map<string, unknown>>();
+
+  for (const resource of schema.resources) {
+    const defaults = new Map<string, unknown>();
+    for (const field of resource.fields) {
+      if (field.readonly) continue;
+      const fieldDefault = resolveFieldDefault(field);
+      if (fieldDefault.hasDefault) defaults.set(field.name, fieldDefault.value);
+    }
+    if (defaults.size > 0) defaultsByResource.set(resource.name, defaults);
+  }
+
+  return defaultsByResource;
+}
+
+function buildWritableRelationMetadataByResource(
+  schema: DatafnSchema,
+): Map<string, Map<string, Set<string>>> {
+  const relationMetadataByResource = new Map<string, Map<string, Set<string>>>();
+
+  for (const relation of schema.relations ?? []) {
+    if (!relation.relation) continue;
+    const fromResources = Array.isArray(relation.from)
+      ? relation.from
+      : [relation.from];
+    for (const fromResource of fromResources) {
+      const relationMap =
+        relationMetadataByResource.get(fromResource) ?? new Map<string, Set<string>>();
+      relationMap.set(
+        relation.relation,
+        new Set(relation.metadata?.map((item) => item.name) ?? []),
+      );
+      relationMetadataByResource.set(fromResource, relationMap);
+    }
+  }
+
+  return relationMetadataByResource;
+}
+
+function sanitizeRelationPayloadMetadata(
+  value: unknown,
+  allowedMetadata: Set<string>,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeRelationPayloadMetadata(item, allowedMetadata));
+  }
+
+  if (typeof value !== "object" || value === null) return value;
+  const item = value as Record<string, unknown>;
+  if (typeof item.$ref !== "string") return value;
+  return Object.fromEntries(
+    Object.entries(item).filter(
+      ([key]) => key === "$ref" || allowedMetadata.has(key),
+    ),
+  );
+}
+
+function sanitizeChangelogMutationForSchema(
+  fieldsByResource: Map<string, Set<string>>,
+  defaultsByResource: Map<string, Map<string, unknown>>,
+  relationMetadataByResource: Map<string, Map<string, Set<string>>>,
+  mutation: unknown,
+): unknown {
+  if (typeof mutation !== "object" || mutation === null || Array.isArray(mutation)) {
+    return mutation;
+  }
+
+  const entry = mutation as Record<string, unknown>;
+  if (typeof entry.resource !== "string") return mutation;
+  let changed = false;
+  let nextEntry = entry;
+
+  if (
+    isRecordMutationOperation(entry.operation) &&
+    typeof entry.record === "object" &&
+    entry.record !== null &&
+    !Array.isArray(entry.record)
+  ) {
+    const fields = fieldsByResource.get(entry.resource);
+    if (fields) {
+      const record = entry.record as Record<string, unknown>;
+      const nextRecord: Record<string, unknown> = {};
+
+      for (const [key, value] of Object.entries(record)) {
+        if (fields.has(key)) {
+          nextRecord[key] = value;
+        } else {
+          changed = true;
+        }
+      }
+
+      if (entry.operation === "insert" || entry.operation === "replace") {
+        const defaults = defaultsByResource.get(entry.resource);
+        if (defaults) {
+          for (const [key, value] of defaults) {
+            if (!(key in nextRecord)) {
+              nextRecord[key] = cloneDefaultValue(value);
+              changed = true;
+            }
+          }
+        }
+      }
+
+      if (changed) {
+        nextEntry = {
+          ...nextEntry,
+          record: nextRecord,
+        };
+      }
+    }
+  }
+
+  if (
+    typeof entry.relations === "object" &&
+    entry.relations !== null &&
+    !Array.isArray(entry.relations)
+  ) {
+    const relationMetadata = relationMetadataByResource.get(entry.resource);
+    if (relationMetadata) {
+      const relations = entry.relations as Record<string, unknown>;
+      const nextRelations: Record<string, unknown> = {};
+      for (const [relationName, value] of Object.entries(relations)) {
+        const allowedMetadata = relationMetadata.get(relationName);
+        if (!allowedMetadata) {
+          nextRelations[relationName] = value;
+          continue;
+        }
+        const nextValue = sanitizeRelationPayloadMetadata(value, allowedMetadata);
+        nextRelations[relationName] = nextValue;
+        if (nextValue !== value) changed = true;
+      }
+      if (changed) {
+        nextEntry = {
+          ...nextEntry,
+          relations: nextRelations,
+        };
+      }
+    }
+  }
+
+  return changed ? nextEntry : mutation;
+}
+
+function getChangelogMutationId(entry: {
+  mutationId?: string;
+  mutation?: Record<string, unknown>;
+}): string | undefined {
+  const mutationId =
+    typeof entry.mutation?.mutationId === "string"
+      ? entry.mutation.mutationId
+      : entry.mutationId;
+  return typeof mutationId === "string" ? mutationId : undefined;
+}
+
+function computeAckThroughSeq(
+  entries: Array<{
+    seq: number;
+    mutationId?: string;
+    mutation?: Record<string, unknown>;
+  }>,
+  result: PushSyncResult,
+): number | null {
+  const applied = new Set(result.applied ?? []);
+  const errorsByMutationId = new Map<string, PushMutationError>();
+  for (const error of result.errors ?? []) {
+    if (typeof error.mutationId === "string") {
+      errorsByMutationId.set(error.mutationId, error);
+    }
+  }
+
+  let throughSeq: number | null = null;
+  for (const entry of entries) {
+    const mutationId = getChangelogMutationId(entry);
+    if (!mutationId) break;
+    if (applied.has(mutationId)) {
+      throughSeq = entry.seq;
+      continue;
+    }
+    const error = errorsByMutationId.get(mutationId);
+    if (error?.retryable === false) {
+      throughSeq = entry.seq;
+      continue;
+    }
+    break;
+  }
+  return throughSeq;
+}
+
+function hasTerminalMutationError(result: PushSyncResult): boolean {
+  return (result.errors ?? []).some((error) => error.retryable === false);
+}
+
 export class SyncEngine {
-  private static readonly SEARCH_REBUILD_BATCH_SIZE = 1000;
   private inFlight = false;
   private pullInFlight = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -84,7 +377,12 @@ export class SyncEngine {
   private config?: DatafnSyncConfig;
   private pushConsecutiveFailures = 0;
   private pushIntervalBackoffActive = false;
-  private searchRebuildState: "idle" | "pending" | "running" | "failed" | "completed" = "idle";
+  private pushRerunRequested = false;
+  private writableRecordFieldsByResource: Map<string, Set<string>>;
+  private writableRecordDefaultsByResource: Map<string, Map<string, unknown>>;
+  private writableRelationMetadataByResource: Map<string, Map<string, Set<string>>>;
+  private searchIndexVersion?: string;
+  private searchProviderResourceByName: Map<string, DatafnSearchIndexResource>;
 
   constructor(
     private storage: DatafnStorageAdapter,
@@ -96,6 +394,8 @@ export class SyncEngine {
     plugins?: DatafnPlugin[],
     getTimestamp?: () => number,
     searchProvider?: SearchProvider,
+    searchIndexVersion?: string,
+    private e2ee?: DatafnE2eeConfig,
   ) {
     this.config = config;
     this.pushBatchSize = config?.pushBatchSize ?? 100;
@@ -109,6 +409,19 @@ export class SyncEngine {
     this.plugins = plugins || [];
     this.getTimestamp = getTimestamp || (() => Date.now());
     this.searchProvider = searchProvider;
+    this.searchIndexVersion = searchIndexVersion;
+    this.writableRecordFieldsByResource =
+      buildWritableRecordFieldsByResource(schema);
+    this.writableRecordDefaultsByResource =
+      buildWritableRecordDefaultsByResource(schema);
+    this.writableRelationMetadataByResource =
+      buildWritableRelationMetadataByResource(schema);
+    this.searchProviderResourceByName = new Map(
+      deriveSearchProviderResources(schema).map((resource) => [
+        resource.name,
+        resource,
+      ]),
+    );
 
     if (config?.ws && config?.remote) {
       const remote = config.remote;
@@ -451,109 +764,14 @@ export class SyncEngine {
     }
   }
 
-  private emitSearchRebuildProgress(
-    stage: "pending" | "running" | "failed" | "completed",
-    indexedRecords: number,
-    totalRecords: number,
-    error?: { code: string; message: string },
-  ) {
-    const percent = totalRecords === 0 ? 100 : Math.min(100, Math.floor((indexedRecords / totalRecords) * 100));
-    if (stage === "failed") {
-      this.eventBus.emit({
-        type: "sync_failed",
-        timestampMs: this.getTimestamp(),
-        context: {
-          phase: "search-rebuild",
-          stage,
-          indexedRecords,
-          totalRecords,
-          percent,
-          error,
-        },
-      });
-      return;
-    }
-    this.eventBus.emit({
-      type: "sync_applied",
-      timestampMs: this.getTimestamp(),
-      context: {
-        phase: "search-rebuild",
-        stage,
-        indexedRecords,
-        totalRecords,
-        percent,
-      },
-    });
-  }
-
-  private scheduleSearchRebuild(resources: string[], attempt = 0) {
-    if (
-      !this.searchProvider ||
-      isNativeBackedSearchProvider(this.searchProvider) ||
-      resources.length === 0
-    ) return;
-    this.searchRebuildState = "pending";
-    this.emitSearchRebuildProgress("pending", 0, 0);
-    setTimeout(() => {
-      this.rebuildSearchIndices(resources, attempt).catch(() => {
-        // Failures are emitted in rebuildSearchIndices.
-      });
-    }, 0);
-  }
-
-  private async rebuildSearchIndices(resources: string[], attempt = 0): Promise<void> {
-    if (!this.searchProvider || isNativeBackedSearchProvider(this.searchProvider)) return;
-
-    let totalRecords = 0;
-    for (const resource of resources) {
-      const records = await this.storage.listRecords(resource);
-      totalRecords += records.length;
-    }
-
-    this.searchRebuildState = "running";
-    this.emitSearchRebuildProgress("running", 0, totalRecords);
-
-    let indexedRecords = 0;
-    try {
-      for (const resource of resources) {
-        const records = await this.storage.listRecords(resource);
-        for (
-          let offset = 0;
-          offset < records.length;
-          offset += SyncEngine.SEARCH_REBUILD_BATCH_SIZE
-        ) {
-          const batch = records.slice(offset, offset + SyncEngine.SEARCH_REBUILD_BATCH_SIZE);
-          if (batch.length === 0) continue;
-          await this.searchProvider.updateIndices({
-            resource,
-            records: batch,
-            operation: "upsert",
-          });
-          indexedRecords += batch.length;
-          this.emitSearchRebuildProgress("running", indexedRecords, totalRecords);
-        }
-      }
-      this.searchRebuildState = "completed";
-      this.emitSearchRebuildProgress("completed", totalRecords, totalRecords);
-    } catch (error: any) {
-      this.searchRebuildState = "failed";
-      this.emitSearchRebuildProgress("failed", indexedRecords, totalRecords, {
-        code: error?.code || "INTERNAL",
-        message: error?.message || "Search rebuild failed",
-      });
-      // Allow retry without data loss: retry once asynchronously.
-      if (attempt < 1) {
-        this.scheduleSearchRebuild(resources, attempt + 1);
-      }
-    }
-  }
-
   /**
    * Clone specific resources and wait for completion
    * Implements HOOK-001 and EVT-003
    */
   private async cloneResources(tables: string[]) {
     try {
+      this.emitSyncStarted("clone", { resources: tables.sort() });
+
       // Mark tables as hydrating
       for (const table of tables) {
         await this.storage.setHydrationState(table, "hydrating");
@@ -580,34 +798,36 @@ export class SyncEngine {
       const searchProvider = this.searchProvider;
       const shouldManageSearchIndices =
         !!searchProvider && !isNativeBackedSearchProvider(searchProvider);
+      const failedSearchIndexResources = new Set<string>();
+      const usesPaginatedClone = !!pageSize && pageSize < 1000;
       let result: CloneResult;
       
-      if (pageSize && pageSize < 1000) {
+      if (usesPaginatedClone) {
         // Use pagination
         for (const table of tables) {
           await this.cloneTablePaginated(table, pageSize, !skipCloneIndexing);
         }
-        // Create a synthetic result for event emission
         result = { ok: true, data: {}, cursors: {}, next: {} };
-        if (shouldManageSearchIndices && skipCloneIndexing) {
-          this.scheduleSearchRebuild(tables);
-        }
       } else {
         // Clone all at once
         const response: any = await this.remote.clone(transformedPayload);
 
         if (response.ok && response.result?.ok) {
-          result = response.result as CloneResult;
+          result = await decryptCloneResultForE2ee(
+            this.schema,
+            this.e2ee,
+            response.result as CloneResult,
+          );
           await applyCloneResult(this.storage, result);
           if (shouldManageSearchIndices) {
-            if (skipCloneIndexing) {
-              this.scheduleSearchRebuild(tables);
-            } else {
+            if (!skipCloneIndexing) {
               for (const [resource, records] of Object.entries(result.data)) {
-                  if (records.length > 0) {
+                if (records.length > 0) {
                   try {
                     await searchProvider.updateIndices({ resource, records, operation: "upsert" });
-                  } catch (e) {
+                  } catch {
+                    failedSearchIndexResources.add(resource);
+                    await this.clearSearchIndexComplete(resource);
                     // fail-soft
                   }
                 }
@@ -627,6 +847,14 @@ export class SyncEngine {
         const state = await this.storage.getHydrationState(table);
         if (state !== "ready") {
           await this.storage.setHydrationState(table, "ready");
+        }
+      }
+
+      if (shouldManageSearchIndices && !skipCloneIndexing && !usesPaginatedClone) {
+        for (const table of tables) {
+          if (!failedSearchIndexResources.has(table)) {
+            await this.markSearchIndexComplete(table);
+          }
         }
       }
 
@@ -705,6 +933,7 @@ export class SyncEngine {
   private async cloneTablePaginated(table: string, pageSize: number, indexAfterPage: boolean) {
     let afterId: string | null = null;
     let hasMore = true;
+    let searchIndexComplete = true;
 
     while (hasMore) {
       const response: any = await this.remote.clone({
@@ -719,7 +948,11 @@ export class SyncEngine {
       });
 
       if (response.ok && response.result?.ok) {
-        const cloneResult = response.result as CloneResult;
+        const cloneResult = await decryptCloneResultForE2ee(
+          this.schema,
+          this.e2ee,
+          response.result as CloneResult,
+        );
         await applyCloneResult(this.storage, cloneResult);
         if (indexAfterPage && this.searchProvider && !isNativeBackedSearchProvider(this.searchProvider)) {
           const records = cloneResult.data?.[table] ?? [];
@@ -731,6 +964,8 @@ export class SyncEngine {
                 operation: "upsert",
               });
             } catch {
+              searchIndexComplete = false;
+              await this.clearSearchIndexComplete(table);
               // fail-soft
             }
           }
@@ -746,6 +981,15 @@ export class SyncEngine {
       } else {
         throw new Error(response.error?.message || "Clone rejected by server");
       }
+    }
+
+    if (
+      indexAfterPage &&
+      this.searchProvider &&
+      !isNativeBackedSearchProvider(this.searchProvider) &&
+      searchIndexComplete
+    ) {
+      await this.markSearchIndexComplete(table);
     }
   }
 
@@ -766,6 +1010,79 @@ export class SyncEngine {
     return 1000; // Default
   }
 
+  private getSearchIndexFingerprint(resource: string): string | undefined {
+    const resourceConfig = this.searchProviderResourceByName.get(resource);
+    if (!resourceConfig) {
+      return undefined;
+    }
+    return buildSearchIndexFingerprint({
+      providerName: this.searchProvider?.name,
+      resource: resourceConfig,
+      version: this.searchIndexVersion,
+    });
+  }
+
+  private async markSearchIndexComplete(resource: string): Promise<void> {
+    const fingerprint = this.getSearchIndexFingerprint(resource);
+    if (!fingerprint) {
+      return;
+    }
+    await markSearchIndexCurrent({
+      storage: this.storage,
+      resource,
+      fingerprint,
+    });
+  }
+
+  private async clearSearchIndexComplete(resource: string): Promise<void> {
+    if (!this.searchProviderResourceByName.has(resource)) {
+      return;
+    }
+    await clearSearchIndexCurrent({
+      storage: this.storage,
+      resource,
+    });
+  }
+
+  private async compactDeletedRecordMutations(mutations: any[]): Promise<any[]> {
+    const deletedKeys = new Set<string>();
+    for (const mutation of mutations) {
+      if (
+        mutation &&
+        typeof mutation.resource === "string" &&
+        typeof mutation.id === "string" &&
+        mutation.operation === "delete"
+      ) {
+        deletedKeys.add(`${mutation.resource}\u0000${mutation.id}`);
+      }
+    }
+
+    if (deletedKeys.size === 0) return mutations;
+
+    const existingByKey = new Map<string, boolean>();
+    const compacted: any[] = [];
+    for (const mutation of mutations) {
+      if (
+        mutation &&
+        typeof mutation.resource === "string" &&
+        typeof mutation.id === "string" &&
+        isRecordMutationOperation(mutation.operation)
+      ) {
+        const key = `${mutation.resource}\u0000${mutation.id}`;
+        if (deletedKeys.has(key)) {
+          if (!existingByKey.has(key)) {
+            const existing = await this.storage.getRecord(mutation.resource, mutation.id);
+            existingByKey.set(key, existing !== null);
+          }
+          if (existingByKey.get(key) === false) continue;
+        }
+      }
+      compacted.push(mutation);
+    }
+
+    return compacted;
+  }
+
   /**
    * Perform a full clone
    * Implements HOOK-001 and EVT-003
@@ -776,6 +1093,7 @@ export class SyncEngine {
       .map((r) => r.name);
 
     if (tables.length === 0) {
+      this.emitSyncStarted("clone", { resources: [] });
       // No tables to clone, emit success event
       this.eventBus.emit({
         type: "sync_applied",
@@ -797,6 +1115,7 @@ export class SyncEngine {
   async pullNow() {
     if (this.pullInFlight) return;
     this.pullInFlight = true;
+    this.emitSyncStarted("pull");
 
     try {
       const cursors = await this.buildPullCursors();
@@ -867,26 +1186,36 @@ export class SyncEngine {
         const response: any = await this.remote.pull(iterPayload);
 
         if (response.ok && response.result?.ok) {
-          lastResult = response.result;
+          lastResult = await decryptPullResultForE2ee(
+            this.schema,
+            this.e2ee,
+            response.result,
+          );
           await applyPullResult(this.storage, lastResult);
           if (this.searchProvider && !isNativeBackedSearchProvider(this.searchProvider) && lastResult) {
-            try {
-              if (lastResult.records) {
-                for (const [resource, records] of Object.entries(lastResult.records as Record<string, unknown[]>)) {
-                  if ((records as unknown[]).length > 0) {
+            if (lastResult.records) {
+              for (const [resource, records] of Object.entries(lastResult.records as Record<string, unknown[]>)) {
+                if ((records as unknown[]).length > 0) {
+                  try {
                     await this.searchProvider.updateIndices({ resource, records: records as Record<string, unknown>[], operation: "upsert" });
+                  } catch {
+                    await this.clearSearchIndexComplete(resource);
+                    // fail-soft
                   }
                 }
               }
-              if (lastResult.deleted) {
-                for (const [resource, ids] of Object.entries(lastResult.deleted as Record<string, string[]>)) {
-                  for (const id of ids as string[]) {
+            }
+            if (lastResult.deleted) {
+              for (const [resource, ids] of Object.entries(lastResult.deleted as Record<string, string[]>)) {
+                for (const id of ids as string[]) {
+                  try {
                     await this.searchProvider.updateIndices({ resource, records: [{ id }], operation: "delete" });
+                  } catch {
+                    await this.clearSearchIndexComplete(resource);
+                    // fail-soft
                   }
                 }
               }
-            } catch (e) {
-              // fail-soft
             }
           }
 
@@ -969,6 +1298,8 @@ export class SyncEngine {
    */
   async reconcileNow() {
     try {
+      this.emitSyncStarted("reconcile");
+
       // Run beforeSync hooks (fail-closed) (HOOK-001)
       const payload = {
         clientId: this.clientId,
@@ -1134,7 +1465,10 @@ export class SyncEngine {
    * Process pending changelog entries
    */
   async processPush() {
-    if (this.inFlight) return;
+    if (this.inFlight) {
+      this.pushRerunRequested = true;
+      return;
+    }
     // Fast-fail: skip push when browser reports offline — saves battery and avoids doomed requests.
     // The existing retry-with-backoff logic remains authoritative for transport failures.
     if (!this.isOnline) return;
@@ -1151,13 +1485,51 @@ export class SyncEngine {
         return;
       }
 
-      const mutations = pending.map((p) => p.mutation);
-      const throughSeq = pending[pending.length - 1].seq;
+      this.emitSyncStarted("push", { pendingCount: pending.length });
+
+      const firstPending = pending[0];
+      const batchClientId =
+        typeof firstPending.mutation?.clientId === "string"
+          ? firstPending.mutation.clientId
+          : firstPending.clientId;
+      const clientIdMismatchIndex = pending.findIndex((entry) => {
+        const entryClientId =
+          typeof entry.mutation?.clientId === "string"
+            ? entry.mutation.clientId
+            : entry.clientId;
+        return entryClientId !== batchClientId;
+      });
+      const batchPending = pending.slice(
+        0,
+        clientIdMismatchIndex === -1 ? pending.length : clientIdMismatchIndex,
+      );
+
+      const sanitizedMutations = batchPending.map((p) =>
+        sanitizeChangelogMutationForSchema(
+          this.writableRecordFieldsByResource,
+          this.writableRecordDefaultsByResource,
+          this.writableRelationMetadataByResource,
+          p.mutation,
+        ),
+      );
+      const mutations = await this.compactDeletedRecordMutations(
+        sanitizedMutations,
+      );
+      const batchThroughSeq = batchPending[batchPending.length - 1].seq;
 
       // 2. Push with retries
-      const pushResult = await this.pushWithRetries(mutations);
+      const pushResult = await this.pushWithRetries(mutations, batchClientId);
 
       if (pushResult) {
+        const throughSeq = pushResult.ok
+          ? batchThroughSeq
+          : computeAckThroughSeq(batchPending, pushResult);
+        if (throughSeq === null) {
+          this.pushConsecutiveFailures++;
+          this.applyPushIntervalBackoff();
+          return;
+        }
+
         // Success: reset consecutive failures
         this.pushConsecutiveFailures = 0;
 
@@ -1172,7 +1544,7 @@ export class SyncEngine {
           this.timer = setInterval(() => this.processPush(), this.pushInterval);
         }
 
-        // 3. Ack on success
+        // 3. Ack applied entries and terminal non-retryable failures
         await this.storage.changelogAck({ throughSeq });
 
         // 3a. Advance per-table cursors from push response (FIX-B)
@@ -1212,35 +1584,27 @@ export class SyncEngine {
         }
 
         // If we filled the batch, there might be more
-        if (pending.length === this.pushBatchSize) {
+        if (
+          throughSeq < batchThroughSeq ||
+          batchPending.length < pending.length ||
+          pending.length === this.pushBatchSize
+        ) {
           // Schedule next batch immediately
           setTimeout(() => this.processPush(), 0);
         }
       } else {
         // Failure: increment consecutive failures and apply interval backoff
         this.pushConsecutiveFailures++;
-
-        if (this.pushInterval) {
-          // Clear the regular interval and switch to backoff mode
-          if (this.timer && !this.pushIntervalBackoffActive) {
-            clearInterval(this.timer);
-            this.timer = null;
-          }
-          this.pushIntervalBackoffActive = true;
-
-          // Compute backoff delay
-          const backoffDelay = this.computePushIntervalBackoff();
-
-          // Schedule next push with backoff delay
-          this.timer = setTimeout(() => {
-            this.processPush();
-          }, backoffDelay);
-        }
+        this.applyPushIntervalBackoff();
       }
     } catch (err) {
       console.error("Sync engine internal error", err);
     } finally {
       this.inFlight = false;
+      if (this.pushRerunRequested) {
+        this.pushRerunRequested = false;
+        setTimeout(() => this.processPush(), 0);
+      }
     }
   }
 
@@ -1251,7 +1615,8 @@ export class SyncEngine {
    */
   private async pushWithRetries(
     mutations: any[],
-  ): Promise<{ ok: boolean; cursor?: string; cursorBefore?: string; cursors?: Record<string, string> } | null> {
+    clientId = this.clientId,
+  ): Promise<PushSyncResult | null> {
     let attempt = 0;
     // Initial attempt (0) + retries
     const maxAttempts = 1 + this.pushMaxRetries;
@@ -1266,18 +1631,24 @@ export class SyncEngine {
 
     // Prepare payload for hooks
     const payload = {
-      clientId: this.clientId,
+      clientId,
       mutations,
     };
 
     // Run beforeSync hooks (fail-closed) (HOOK-001)
     let transformedPayload: any;
+    let payloadForRemote: any;
     try {
       transformedPayload = await runBeforeSync(
         this.plugins,
         this.schema,
         "push",
         payload,
+      );
+      payloadForRemote = await encryptPushPayloadForE2ee(
+        this.schema,
+        this.e2ee,
+        transformedPayload,
       );
     } catch (err: any) {
       // beforeSync failed, emit sync_failed and return
@@ -1298,10 +1669,10 @@ export class SyncEngine {
     while (attempt < maxAttempts) {
       attempt++;
       try {
-        const response: any = await this.remote.push(transformedPayload);
+        const response: any = await this.remote.push(payloadForRemote);
 
-        if (response.ok && response.result?.ok) {
-          const result = response.result;
+        if (response.result && (response.ok || hasTerminalMutationError(response.result))) {
+          const result = response.result as PushSyncResult;
 
           // Run afterSync hooks (fail-open) (HOOK-001)
           await runAfterSync(
@@ -1312,18 +1683,18 @@ export class SyncEngine {
             result,
           );
 
-          // Emit sync_applied event (EVT-003)
+          // Emit sync_applied/sync_failed event (EVT-003)
           this.eventBus.emit({
-            type: "sync_applied",
+            type: result.ok ? "sync_applied" : "sync_failed",
             timestampMs: this.getTimestamp(),
             context: {
               phase: "push",
               cursor: result.cursor || null,
               appliedCount: result.applied ? result.applied.length : 0,
+              errors: result.errors ?? [],
             },
           });
 
-          // Success (backoff resets on next call)
           return result;
         } else {
           // Protocol error (e.g. invalid clientId) or server rejection
@@ -1369,5 +1740,34 @@ export class SyncEngine {
     }
 
     return null;
+  }
+
+  private applyPushIntervalBackoff(): void {
+    if (!this.pushInterval) return;
+
+    if (this.timer && !this.pushIntervalBackoffActive) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.pushIntervalBackoffActive = true;
+
+    const backoffDelay = this.computePushIntervalBackoff();
+    this.timer = setTimeout(() => {
+      this.processPush();
+    }, backoffDelay);
+  }
+
+  private emitSyncStarted(
+    phase: DatafnSyncPhase,
+    context: Record<string, unknown> = {},
+  ): void {
+    this.eventBus.emit({
+      type: "sync_started",
+      timestampMs: this.getTimestamp(),
+      context: {
+        ...context,
+        phase,
+      },
+    });
   }
 }

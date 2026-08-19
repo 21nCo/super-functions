@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { AuthFnConfig, AuthFnSocialProfile, AuthFnSocialProviderId } from '../types.js';
+import type { AuthFnRuntimeConfig, AuthFnSocialProfile, AuthFnSocialProviderId } from '../types.js';
 import { AuthFnNotFoundError } from './errors.js';
 
 export interface AuthFnOAuthAccountRecord {
@@ -24,7 +24,7 @@ export interface UpsertOAuthAccountInput {
 }
 
 export async function findOAuthAccountByProviderAccountId(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   provider: AuthFnSocialProviderId,
   providerAccountId: string
 ): Promise<AuthFnOAuthAccountRecord | null> {
@@ -39,7 +39,7 @@ export async function findOAuthAccountByProviderAccountId(
 }
 
 export async function findOAuthAccountForUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   provider: AuthFnSocialProviderId
 ): Promise<AuthFnOAuthAccountRecord | null> {
@@ -54,7 +54,7 @@ export async function findOAuthAccountForUser(
 }
 
 export async function listOAuthAccountsForUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnOAuthAccountRecord[]> {
   return config.database.findMany<AuthFnOAuthAccountRecord>({
@@ -65,7 +65,7 @@ export async function listOAuthAccountsForUser(
 }
 
 export async function findOAuthAccountByConnectionId(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   connectionId: string
 ): Promise<AuthFnOAuthAccountRecord | null> {
   return config.database.findOne<AuthFnOAuthAccountRecord>({
@@ -76,7 +76,7 @@ export async function findOAuthAccountByConnectionId(
 }
 
 export async function upsertOAuthAccount(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   input: UpsertOAuthAccountInput
 ): Promise<AuthFnOAuthAccountRecord> {
   const existing = await findOAuthAccountByProviderAccountId(
@@ -121,7 +121,7 @@ export async function upsertOAuthAccount(
 }
 
 export async function deleteOAuthAccountByConnectionId(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   connectionId: string
 ): Promise<void> {
   await config.database.deleteMany({
@@ -132,7 +132,7 @@ export async function deleteOAuthAccountByConnectionId(
 }
 
 export async function requireOAuthAccountForUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string,
   provider: AuthFnSocialProviderId
 ): Promise<AuthFnOAuthAccountRecord> {
@@ -161,7 +161,7 @@ export function buildOAuthAccountProfile(
   };
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

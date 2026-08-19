@@ -406,8 +406,8 @@ describe("TV-REG-001: LiveSignalRegistry deduplication", () => {
     const registry = new LiveSignalRegistry();
     const { factory } = createMockFactory();
 
-    const sig1 = registry.getOrCreateKvSignal("theme", factory);
-    const sig2 = registry.getOrCreateKvSignal("theme", factory);
+    const sig1 = registry.getOrCreateKvSignal("theme", undefined, factory);
+    const sig2 = registry.getOrCreateKvSignal("theme", undefined, factory);
 
     expect(sig1).toBe(sig2);
   });
@@ -417,7 +417,7 @@ describe("TV-REG-001: LiveSignalRegistry deduplication", () => {
     const { factory } = createMockFactory();
 
     const tableSig = registry.getOrCreateTableSignal("theme", 1, { select: ["*"] }, undefined, factory);
-    const kvSig = registry.getOrCreateKvSignal("theme", factory);
+    const kvSig = registry.getOrCreateKvSignal("theme", undefined, factory);
 
     expect(tableSig).not.toBe(kvSig);
   });
@@ -468,7 +468,7 @@ describe("TV-REG-003: LiveSignalRegistry.disposeAll()", () => {
     const { factory } = createMockFactory();
 
     const sig1 = registry.getOrCreateTableSignal("task", 1, { select: ["*"] }, undefined, factory);
-    const sig2 = registry.getOrCreateKvSignal("theme", factory);
+    const sig2 = registry.getOrCreateKvSignal("theme", undefined, factory);
 
     registry.disposeAll();
 
@@ -519,5 +519,107 @@ describe("TV-REG-004: LiveSignalRegistry re-creation after dispose", () => {
     // rebind on new signal works independently
     expect(() => sig2.rebind()).not.toThrow();
     expect(sig2.error).toBe(null);
+  });
+});
+
+describe("LiveSignalRegistry idle cache eviction", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("evicts an idle signal after its TTL expires", () => {
+    vi.useFakeTimers();
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 1000 });
+    const { factory } = createMockFactory();
+    const q = { select: ["*"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, q, undefined, factory);
+    const unsub = sig1.subscribe(() => {});
+    unsub();
+
+    vi.advanceTimersByTime(999);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).toBe(sig1);
+
+    vi.advanceTimersByTime(1000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).not.toBe(sig1);
+  });
+
+  it("does not evict an active signal", () => {
+    vi.useFakeTimers();
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 1000 });
+    const { factory } = createMockFactory();
+    const q = { select: ["*"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, q, undefined, factory);
+    const unsub = sig1.subscribe(() => {});
+
+    vi.advanceTimersByTime(5000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).toBe(sig1);
+
+    unsub();
+    vi.advanceTimersByTime(1000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).not.toBe(sig1);
+  });
+
+  it("keeps idle signals with keepAlive enabled", () => {
+    vi.useFakeTimers();
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 1000 });
+    const { factory } = createMockFactory();
+    const q = { select: ["*"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, q, { cache: { keepAlive: true } }, factory);
+    const unsub = sig1.subscribe(() => {});
+    unsub();
+
+    vi.advanceTimersByTime(5000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).toBe(sig1);
+  });
+
+  it("applies cache overrides when reusing an existing signal", () => {
+    vi.useFakeTimers();
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 1000 });
+    const { factory } = createMockFactory();
+    const q = { select: ["*"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, q, undefined, factory);
+    const unsub = sig1.subscribe(() => {});
+    unsub();
+
+    expect(registry.getOrCreateTableSignal("task", 1, q, { cache: { keepAlive: true } }, factory)).toBe(sig1);
+    vi.advanceTimersByTime(5000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).toBe(sig1);
+  });
+
+  it("allows per-signal idle TTL overrides", () => {
+    vi.useFakeTimers();
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 1000 });
+    const { factory } = createMockFactory();
+    const q = { select: ["*"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, q, { cache: { idleTtlMs: 3000 } }, factory);
+    const unsub = sig1.subscribe(() => {});
+    unsub();
+
+    vi.advanceTimersByTime(2999);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).toBe(sig1);
+
+    vi.advanceTimersByTime(3000);
+    expect(registry.getOrCreateTableSignal("task", 1, q, undefined, factory)).not.toBe(sig1);
+  });
+
+  it("evicts least recently used idle signals over the idle cache cap", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const registry = new LiveSignalRegistry({ defaultIdleTtlMs: 100000, maxIdleSignals: 1 });
+    const { factory } = createMockFactory();
+    const firstQuery = { select: ["id"] };
+    const secondQuery = { select: ["title"] };
+
+    const sig1 = registry.getOrCreateTableSignal("task", 1, firstQuery, undefined, factory);
+    vi.advanceTimersByTime(1);
+    const sig2 = registry.getOrCreateTableSignal("task", 1, secondQuery, undefined, factory);
+
+    expect(registry.getOrCreateTableSignal("task", 1, secondQuery, undefined, factory)).toBe(sig2);
+    expect(registry.getOrCreateTableSignal("task", 1, firstQuery, undefined, factory)).not.toBe(sig1);
   });
 });

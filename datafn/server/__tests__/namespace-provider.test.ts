@@ -42,7 +42,7 @@ describe("namespaceProvider (NS-003, NS-004)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: (ctx: any) => "acme:u1",
       },
@@ -71,7 +71,7 @@ describe("namespaceProvider (NS-003, NS-004)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "workspace:ws-42",
       },
@@ -105,7 +105,7 @@ describe("Empty namespace validation (NS-022)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "",
       },
@@ -133,7 +133,7 @@ describe("Empty namespace validation (NS-022)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => {
           throw new Error("auth expired");
@@ -168,7 +168,7 @@ describe("Rate limit key uses namespace (NS-006)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: (ctx: { query: URLSearchParams }) =>
           `org:${ctx.query.get("tenant") ?? "anonymous"}`,
@@ -206,7 +206,7 @@ describe("Actor ID extraction (NS-015)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ns-1",
         getActorId: () => "actor-7",
@@ -236,7 +236,7 @@ describe("Actor ID extraction (NS-015)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ns-1",
         getActorId: () => {
@@ -273,7 +273,7 @@ describe("WS namespace (NS-021)", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ws-ns-1",
       },
@@ -301,7 +301,7 @@ describe("Namespace isolation correctness", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const server = await createDatafnServer({
       schema: testSchema, allowUnknownResources: true,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => currentNs,
       },

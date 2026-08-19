@@ -20,12 +20,18 @@ const code = generateTypes(mySchema);
 
 For each resource, `generateTypes` produces:
 
-1. **Resource interfaces** -- one interface per resource with typed fields.
-2. **Join table interfaces** -- for `many-many` relations that have `metadata`, an interface with join columns and metadata fields.
+1. **Resource interfaces** -- one interface per resource with typed fields, including [relation-derived foreign-key fields](#relation-derived-fields).
+2. **Join table interfaces** -- for `many-many` relations that have `metadata`, `capabilities`, or a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) `from`/`to` endpoint.
 3. **`Tables` type** -- maps resource names (and join table names) to their interfaces.
 4. **`TypedClient` type** -- extends `DatafnClient` with typed table accessors.
 
 All output is **deterministic**: resources, fields, and join tables are sorted by name.
+
+## Relation-Derived Fields
+
+`generateTypes` merges relation foreign-key fields into the holding resource's interface, even if you do not declare them in `fields`. They follow the same naming rules as the [Drizzle FK columns](/docs/cli/drizzle-codegen#relation-foreign-keys) (e.g. a `many-one` relation `project` with `fkField: "projectId"` adds `projectId?: string`). Generated FK fields are optional `string`. Fields you declare explicitly always take precedence.
+
+Polymorphic many-many join interfaces additionally include `fromResource: string` and/or `toResource: string` discriminator fields when those endpoints are polymorphic and the field is not already part of `metadata`.
 
 ## Field Type Mapping
 

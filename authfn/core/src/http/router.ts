@@ -1,5 +1,5 @@
-import { createRouter, type Route, type Router } from '@superfunctions/http';
-import type { AuthFnConfig, AuthFnHooks } from '../types.js';
+import { createObservabilityMiddleware, createRouter, type Route, type Router } from '@superfunctions/http';
+import type { AuthFnRuntimeConfig, AuthFnHooks } from '../types.js';
 import { AuthFnNotImplementedError, AuthFnUnauthenticatedError } from '../core/errors.js';
 import { AuthFnValidationError } from '../core/errors.js';
 import { clearSessionCookies, issueSessionCookies } from '../core/cookies.js';
@@ -14,16 +14,32 @@ import {
 } from '../core/sessions.js';
 import { deleteAccountForUser, getAccountDetailsForUser } from '../core/account.js';
 import { emitAuthEvent, eventRequestId } from '../core/observability.js';
+import { createAuthFnRateLimitMiddleware } from '../core/rate-limit.js';
 import { findUserById } from '../core/users.js';
 import { jsonError, jsonSuccess } from './envelopes.js';
 
 export function createAuthFnRouter(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   _hooks: Partial<AuthFnHooks>,
   pluginRoutes: Route[]
 ): Router {
+  const rateLimitMiddleware = createAuthFnRateLimitMiddleware(config);
+  const middleware = [
+    ...(config.observability
+      ? [
+          createObservabilityMiddleware({
+            observability: config.observability,
+            serverTiming: true,
+            headers: { prefix: 'x-authfn' }
+          })
+        ]
+      : []),
+    ...(rateLimitMiddleware ? [rateLimitMiddleware] : [])
+  ];
+
   return createRouter({
     basePath: config.basePath ?? '/auth',
+    middleware: middleware.length > 0 ? middleware : undefined,
     routes: [...createBaseRoutes(config, _hooks), ...pluginRoutes],
     onError: async (error, request) => {
       const metadata = sanitizeErrorMetadata(describeRouteError(error, request));
@@ -82,7 +98,7 @@ function describeRouteError(error: unknown, request: Request): Record<string, un
 }
 
 export function createBaseRoutes(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   _hooks: Partial<AuthFnHooks>
 ): Route[] {
   return [
@@ -305,7 +321,7 @@ export function createPlaceholderRoute(
   };
 }
 
-export function cookieNamesForRequest(config: AuthFnConfig, request: Request): Promise<{
+export function cookieNamesForRequest(config: AuthFnRuntimeConfig, request: Request): Promise<{
   sessionCookieName: string;
   csrfCookieName: string;
 }> {
@@ -316,7 +332,7 @@ export function cookieNamesForRequest(config: AuthFnConfig, request: Request): P
 }
 
 export function issueCookiesForRequest(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request,
   sessionToken: string,
   csrfToken: string

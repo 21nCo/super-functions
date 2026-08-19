@@ -26,7 +26,7 @@ describe("DB-backed Idempotency", () => {
     // First server instance
     const server1 = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db: sharedDb,
+      database: sharedDb,
     });
 
     // Execute mutation
@@ -52,7 +52,7 @@ describe("DB-backed Idempotency", () => {
     // "Restart" server (new instance, same adapter)
     const server2 = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db: sharedDb,
+      database: sharedDb,
     });
 
     // Replay same mutation after "restart"
@@ -83,7 +83,7 @@ describe("DB-backed Idempotency", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     // First mutation: client1 + m1

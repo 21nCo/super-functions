@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { errorEnvelope, jsonError } from '../http/envelopes.js';
 
-describe('@authfn/core envelopes', () => {
+describe('authfn envelopes', () => {
   it('preserves authfn-shaped errors from another realm', async () => {
     const request = new Request('https://account.example.com/auth/session');
     const foreignAuthError = {

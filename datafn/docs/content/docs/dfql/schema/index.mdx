@@ -14,6 +14,7 @@ type DatafnSchema = {
   capabilities?: SchemaCapabilities;
   resources: DatafnResourceSchema[];
   relations?: DatafnRelationSchema[];
+  relationIntegrity?: "application" | "database";
   namespaced?: boolean; // defaults to true
 };
 ```
@@ -23,6 +24,7 @@ type DatafnSchema = {
 | `capabilities` | `SchemaCapabilities` | Optional global capability entries applied to resources by default. |
 | `resources` | `DatafnResourceSchema[]` | Resource definitions (required, max 100). |
 | `relations` | `DatafnRelationSchema[]` | Optional relation definitions (`[]` when omitted). |
+| `relationIntegrity` | `"application" \| "database"` | Default [relation integrity](/docs/dfql/schema/relations#relation-integrity) mode for all relations. Defaults to `"application"`. The removed `"hybrid"` mode is rejected. |
 | `namespaced` | `boolean` | Namespace isolation flag (defaults to `true`). |
 
 See [Capabilities](/docs/documentation/capabilities) for the behavior model.
@@ -91,7 +93,9 @@ On success, DataFn normalizes:
 - capability declarations and capability config validity,
 - capability field collisions (`CAPABILITY_FIELD_COLLISION`),
 - capability dependencies (for example `shareable` requires `audit`),
-- relation capability constraints (`many-many` only, `timestamps|audit` only).
+- relation capability constraints (`many-many` only, `timestamps|audit` only),
+- relation integrity mode (`"application"` or `"database"`; the legacy `"hybrid"` mode is rejected),
+- relation delete policies (`onDelete` must be a valid policy or `{ from?, to? }` object).
 
 ## Namespace default
 

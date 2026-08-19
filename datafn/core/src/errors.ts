@@ -18,6 +18,7 @@ export type DatafnErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "RELATION_RESTRICTED"
   | "INTERNAL"
   | "TRANSACTION_ROLLED_BACK"
   | "BRIDGE_UNAVAILABLE"

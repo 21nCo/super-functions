@@ -3,18 +3,24 @@
  */
 
 import type { DatafnSchema } from "../../core-types.js";
-import { coerceDateFieldsToEpoch, resolveCapabilities } from "@datafn/core";
+import { coerceDateFieldsToEpoch, normalizeRelationFkRecord, resolveCapabilities } from "@datafn/core";
 import type { Adapter } from "@superfunctions/db";
-import type { IdempotencyStore, MutationResult } from "../idempotency.js";
+import {
+  isRetryableMutationResult,
+  type IdempotencyStore,
+  type MutationResult,
+} from "../idempotency.js";
 import type { SequenceStore } from "./sequence-store.js";
 import { ChangeTrackingService, recordChangeWithRetry } from "./change-tracking.js";
 import {
+  applyInactivePropagation,
+  collectInactivePropagationSeeds,
   executeRelate,
   executeModifyRelation,
   executeUnrelate,
   extractJoinDeltas,
   extractJoinDeltasFromDB,
-  extractRelationFkDeltas,
+  extractRelationRecordDeltasFromDB,
 } from "../mutation/relations.js";
 import { executeSchemaAwareMerge } from "../mutation/merge-decision.js";
 import { stripReadonlyCapabilityFields } from "../mutation/execute.js";
@@ -35,10 +41,17 @@ export interface PushResult {
     code: string;
     message: string;
     path: string;
+    retryable?: boolean;
   }>;
   cursor: string;
   cursorBefore?: string; // global seq before this push started; absent on early-exit error paths
   cursors?: Record<string, string>; // per-resource max serverSeq after this push
+}
+
+function formatUnknownError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = "cause" in error && error.cause ? `\ncause: ${formatUnknownError(error.cause)}` : "";
+  return `${error.stack || error.message}${cause}`;
 }
 
 function applyDateCoercion(
@@ -111,6 +124,77 @@ function injectCapabilityFieldsOnUpdate(
   return next;
 }
 
+function isConflictError(error: unknown, seen = new WeakSet<object>()): boolean {
+  const value = error as { cause?: unknown; code?: unknown; message?: unknown };
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return false;
+    seen.add(value);
+  }
+  const code = String(value?.code || "");
+  const message = String(value?.message || "").toLowerCase();
+  if (
+    code === "23505" ||
+    code === "UNIQUE_VIOLATION" ||
+    code === "ER_DUP_ENTRY" ||
+    code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    message.includes("unique") ||
+    message.includes("duplicate") ||
+    message.includes("already exists") ||
+    message.includes("conflict")
+  ) {
+    return true;
+  }
+  return value?.cause ? isConflictError(value.cause, seen) : false;
+}
+
+function isNumberLikeString(value: string): boolean {
+  return value.trim() !== "" && Number.isFinite(Number(value));
+}
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+  if (left instanceof Date) return valuesEqual(left.getTime(), right);
+  if (right instanceof Date) return valuesEqual(left, right.getTime());
+  if (Object.is(left, right)) return true;
+  if (typeof left === "number" && typeof right === "string" && isNumberLikeString(right)) {
+    return left === Number(right);
+  }
+  if (typeof left === "string" && typeof right === "number" && isNumberLikeString(left)) {
+    return Number(left) === right;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((item, index) => valuesEqual(item, right[index]));
+  }
+  if (left && right && typeof left === "object" && typeof right === "object") {
+    const leftEntries = Object.entries(left as Record<string, unknown>);
+    const rightRecord = right as Record<string, unknown>;
+    const rightKeys = new Set(Object.keys(rightRecord));
+    if (leftEntries.length !== rightKeys.size) return false;
+    return leftEntries.every(([key, value]) => rightKeys.has(key) && valuesEqual(value, rightRecord[key]));
+  }
+  return false;
+}
+
+function providedFieldsMatchExisting(
+  existing: Record<string, unknown>,
+  provided: Record<string, unknown>,
+): boolean {
+  for (const [key, value] of Object.entries(provided)) {
+    if (value === undefined) continue;
+    if (!providedValueMatchesExisting(existing[key], value)) return false;
+  }
+  return true;
+}
+
+function providedValueMatchesExisting(existingValue: unknown, providedValue: unknown): boolean {
+  if (Array.isArray(existingValue) && Array.isArray(providedValue)) {
+    if (providedValue.length <= existingValue.length) {
+      return providedValue.every((item, index) => valuesEqual(existingValue[index], item));
+    }
+  }
+  return valuesEqual(existingValue, providedValue);
+}
+
 function hasTrashCapability(resolvedCapabilities: unknown[]): boolean {
   return resolvedCapabilities.some((entry) => entry === "trash");
 }
@@ -145,6 +229,7 @@ export async function executePush(
           code: "DFQL_INVALID",
           message: "Invalid DFQL: clientId must be string",
           path: "clientId",
+          retryable: false,
         },
       ],
       cursor: "0",
@@ -164,6 +249,7 @@ export async function executePush(
             code: "DFQL_INVALID",
             message: `Invalid DFQL: push.mutations[${i}].clientId must equal request.clientId`,
             path: `mutations[${i}].clientId`,
+            retryable: false,
           },
         ],
         cursor: "0",
@@ -177,6 +263,7 @@ export async function executePush(
     code: string;
     message: string;
     path: string;
+    retryable?: boolean;
   }> = [];
 
   // Create change tracking service with user/tenant namespace and optional sequence store
@@ -245,6 +332,18 @@ export async function executePush(
     | { ok: true; changes: PendingChange[] }
     | { ok: false; code: string; message: string; path: string };
 
+  async function collectPropagationChanges(
+    targetDb: Adapter,
+    seeds: Array<{ resource: string; id: string }>,
+  ): Promise<PendingChange[]> {
+    return (await applyInactivePropagation(targetDb, schema, seeds, namespace)).map((change) => ({
+      resource: change.resource,
+      id: change.id,
+      op: change.op,
+      record: change.record,
+    }));
+  }
+
   // Local dedup: track mutations processed in this batch (clientId:mutationId → ok)
   const batchLocalSeen = new Map<string, boolean>();
 
@@ -259,23 +358,62 @@ export async function executePush(
     switch (mut.operation) {
       case "insert": {
         const coercedData = applyDateCoercion(schema, mut.resource, mut.record || {}, logger);
-        const strippedRecord = stripReadonlyCapabilityFields(coercedData, resolvedCapabilities);
+        const normalizedData = normalizeRelationFkRecord(schema, mut.resource, coercedData);
+        const strippedRecord = stripReadonlyCapabilityFields(normalizedData, resolvedCapabilities);
         const insertRecord = injectCapabilityFieldsOnInsert(
           strippedRecord,
           resolvedCapabilities,
           actorId,
         );
-        await targetDb.create({ model: mut.resource, data: { id: mut.id, ...insertRecord }, namespace });
+        const existing = await targetDb.findOne({
+          model: mut.resource,
+          where: [{ field: "id", operator: "eq", value: mut.id }],
+          namespace,
+        });
+        if (
+          existing &&
+          providedFieldsMatchExisting(existing as Record<string, unknown>, {
+            id: mut.id,
+            ...strippedRecord,
+          })
+        ) {
+          return { ok: true, changes: [] };
+        }
+        if (existing) {
+          return {
+            ok: false,
+            code: "CONFLICT",
+            message: "Record already exists",
+            path: "id",
+          };
+        }
+        try {
+          await targetDb.create({ model: mut.resource, data: { id: mut.id, ...insertRecord }, namespace });
+        } catch (error) {
+          if (!isConflictError(error)) throw error;
+          return {
+            ok: false,
+            code: "CONFLICT",
+            message: "Record already exists",
+            path: "id",
+          };
+        }
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
           changes: [
             { resource: mut.resource, id: mut.id, op: "insert", record: { id: mut.id, ...insertRecord } },
+            ...propagationChanges,
           ],
         };
       }
       case "merge": {
         const coercedData = applyDateCoercion(schema, mut.resource, mut.record || {}, logger);
-        const strippedRecord = stripReadonlyCapabilityFields(coercedData, resolvedCapabilities);
+        const normalizedData = normalizeRelationFkRecord(schema, mut.resource, coercedData);
+        const strippedRecord = stripReadonlyCapabilityFields(normalizedData, resolvedCapabilities);
         const updateData = injectCapabilityFieldsOnUpdate(
           strippedRecord,
           resolvedCapabilities,
@@ -286,7 +424,6 @@ export async function executePush(
           resolvedCapabilities,
           actorId,
         );
-        const strictUpdateNotFound = targetDb.capabilities?.operations?.strictUpdateNotFound === true;
         const mergeResult = await executeSchemaAwareMerge({
           schema, resource: mut.resource, id: mut.id, delta: createData,
           update: async () => {
@@ -295,16 +432,21 @@ export async function executePush(
           create: async (record) => {
             await targetDb.create({ model: mut.resource, data: record, namespace });
           },
-          ...(strictUpdateNotFound ? {} : {
-            findOne: async () => targetDb.findOne({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], namespace }),
-          }),
+          findOne: async () => targetDb.findOne({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], namespace }),
         });
         if (mergeResult.ok) {
           const changeRecordData =
             mergeResult.mode === "create" ? createData : updateData;
+          const propagationChanges = await collectPropagationChanges(
+            targetDb,
+            [{ resource: mut.resource, id: mut.id }],
+          );
           return {
             ok: true,
-            changes: [{ resource: mut.resource, id: mut.id, op: "merge", record: { id: mut.id, ...changeRecordData } }],
+            changes: [
+              { resource: mut.resource, id: mut.id, op: "merge", record: { id: mut.id, ...changeRecordData } },
+              ...propagationChanges,
+            ],
           };
         }
         if (mergeResult.code === "NOT_FOUND") return { ok: false, code: "NOT_FOUND", message: `Record not found: ${mut.id}`, path: "id" };
@@ -313,7 +455,8 @@ export async function executePush(
       }
       case "replace": {
         const coercedData = applyDateCoercion(schema, mut.resource, mut.record || {}, logger);
-        const strippedRecord = stripReadonlyCapabilityFields(coercedData, resolvedCapabilities);
+        const normalizedData = normalizeRelationFkRecord(schema, mut.resource, coercedData);
+        const strippedRecord = stripReadonlyCapabilityFields(normalizedData, resolvedCapabilities);
         const createData = injectCapabilityFieldsOnInsert(
           strippedRecord,
           resolvedCapabilities,
@@ -332,6 +475,10 @@ export async function executePush(
           namespace,
           conflictTarget: "id",
         });
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
           changes: [
@@ -341,15 +488,25 @@ export async function executePush(
               op: "replace",
               record: { id: mut.id, ...(persistedRecord as Record<string, unknown>) },
             },
+            ...propagationChanges,
           ],
         };
       }
-      case "delete":
+      case "delete": {
+        const existing = await targetDb.findOne({
+          model: mut.resource,
+          where: [{ field: "id", operator: "eq", value: mut.id }],
+          namespace,
+        });
+        if (!existing) {
+          return { ok: true, changes: [] };
+        }
         await targetDb.delete({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], namespace });
         return {
           ok: true,
           changes: [{ resource: mut.resource, id: mut.id, op: "delete", record: null }],
         };
+      }
       case "trash": {
         if (!hasTrashCapability(resolvedCapabilities)) {
           return {
@@ -390,9 +547,16 @@ export async function executePush(
           ...(existing as Record<string, unknown>),
           ...trashPayload,
         };
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
-          changes: [{ resource: mut.resource, id: mut.id, op: "merge", record: changeRecord }],
+          changes: [
+            { resource: mut.resource, id: mut.id, op: "merge", record: changeRecord },
+            ...propagationChanges,
+          ],
         };
       }
       case "restore": {
@@ -442,9 +606,16 @@ export async function executePush(
           ...existingRecord,
           ...restorePayload,
         };
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
-          changes: [{ resource: mut.resource, id: mut.id, op: "merge", record: changeRecord }],
+          changes: [
+            { resource: mut.resource, id: mut.id, op: "merge", record: changeRecord },
+            ...propagationChanges,
+          ],
         };
       }
       case "archive": {
@@ -487,9 +658,16 @@ export async function executePush(
           ...(existing as Record<string, unknown>),
           ...archivePayload,
         };
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
-          changes: [{ resource: mut.resource, id: mut.id, op: "merge", record: changeRecord }],
+          changes: [
+            { resource: mut.resource, id: mut.id, op: "merge", record: changeRecord },
+            ...propagationChanges,
+          ],
         };
       }
       case "unarchive": {
@@ -532,9 +710,16 @@ export async function executePush(
           ...(existing as Record<string, unknown>),
           ...unarchivePayload,
         };
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          [{ resource: mut.resource, id: mut.id }],
+        );
         return {
           ok: true,
-          changes: [{ resource: mut.resource, id: mut.id, op: "merge", record: changeRecord }],
+          changes: [
+            { resource: mut.resource, id: mut.id, op: "merge", record: changeRecord },
+            ...propagationChanges,
+          ],
         };
       }
       case "share": {
@@ -605,7 +790,11 @@ export async function executePush(
           return { ok: false, code: result.code, message: result.message, path: result.path };
         }
         const changes: PendingChange[] = [];
-        for (const delta of extractRelationFkDeltas(mut, schema)) {
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          collectInactivePropagationSeeds(mut, schema),
+        );
+        for (const delta of await extractRelationRecordDeltasFromDB(targetDb, mut, schema, namespace)) {
           changes.push({ resource: delta.resource, id: delta.id, op: delta.op, record: delta.record });
         }
         // JSY-002: read back persisted join rows to include server-injected capability fields
@@ -617,6 +806,7 @@ export async function executePush(
             record: delta.record,
           });
         }
+        changes.push(...propagationChanges);
         return { ok: true, changes };
       }
       case "modifyRelation": {
@@ -626,7 +816,11 @@ export async function executePush(
           return { ok: false, code: result.code, message: result.message, path: result.path };
         }
         const changes: PendingChange[] = [];
-        for (const delta of extractRelationFkDeltas(mut, schema)) {
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          collectInactivePropagationSeeds(mut, schema),
+        );
+        for (const delta of await extractRelationRecordDeltasFromDB(targetDb, mut, schema, namespace)) {
           changes.push({ resource: delta.resource, id: delta.id, op: delta.op, record: delta.record });
         }
         // JSY-002: read back persisted join rows to include server-injected capability fields
@@ -638,6 +832,7 @@ export async function executePush(
             record: delta.record,
           });
         }
+        changes.push(...propagationChanges);
         return { ok: true, changes };
       }
       case "unrelate": {
@@ -646,7 +841,11 @@ export async function executePush(
           return { ok: false, code: result.code, message: result.message, path: result.path };
         }
         const changes: PendingChange[] = [];
-        for (const delta of extractRelationFkDeltas(mut, schema)) {
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          collectInactivePropagationSeeds(mut, schema),
+        );
+        for (const delta of await extractRelationRecordDeltasFromDB(targetDb, mut, schema, namespace)) {
           changes.push({ resource: delta.resource, id: delta.id, op: delta.op, record: delta.record });
         }
         for (const delta of extractJoinDeltas(mut, schema)) {
@@ -657,6 +856,7 @@ export async function executePush(
             record: delta.record,
           });
         }
+        changes.push(...propagationChanges);
         return { ok: true, changes };
       }
       default:
@@ -668,10 +868,15 @@ export async function executePush(
    * Record a mutation as failed in errors list and idempotency store.
    */
   async function recordMutationFailure(mut: any, code: string, message: string, path: string) {
-    errors.push({ mutationId: mut.mutationId, code, message, path });
+    const retryable = code === "INTERNAL" ||
+      code === "MUTATION_FAILED" ||
+      code === "FORBIDDEN" ||
+      code === "NOT_FOUND" ||
+      (code === "CONFLICT" && path === "id" && mut.operation === "insert");
+    errors.push({ mutationId: mut.mutationId, code, message, path, retryable });
     const failResult: MutationResult = {
       ok: false, mutationId: mut.mutationId, affectedIds: [],
-      errors: [{ code, message, path, retryable: code === "INTERNAL" }], deduped: false,
+      errors: [{ code, message, path, retryable }], deduped: false,
     };
     await idempotencyStore.set(mut.clientId, mut.mutationId, failResult);
     batchLocalSeen.set(`${mut.clientId}:${mut.mutationId}`, false);
@@ -695,7 +900,7 @@ export async function executePush(
 
     // Validate required fields
     if (!mut.clientId || !mut.mutationId) {
-      errors.push({ mutationId: mut.mutationId || "", code: "DFQL_INVALID", message: "Invalid DFQL: missing clientId or mutationId", path: "$" });
+      errors.push({ mutationId: mut.mutationId || "", code: "DFQL_INVALID", message: "Invalid DFQL: missing clientId or mutationId", path: "$", retryable: false });
       continue;
     }
 
@@ -712,11 +917,16 @@ export async function executePush(
     if (cached) {
       if (cached.ok) {
         applied.push(mut.mutationId);
-      } else if (cached.errors?.length) {
-        errors.push({ mutationId: mut.mutationId, code: cached.errors[0].code, message: cached.errors[0].message, path: cached.errors[0].path || "$" });
+        batchLocalSeen.set(batchKey, true);
+        continue;
+      } else if (
+        cached.errors?.length &&
+        !isRetryableMutationResult(cached)
+      ) {
+        errors.push({ mutationId: mut.mutationId, code: cached.errors[0].code, message: cached.errors[0].message, path: cached.errors[0].path || "$", retryable: false });
+        batchLocalSeen.set(batchKey, false);
+        continue;
       }
-      batchLocalSeen.set(batchKey, cached.ok);
-      continue;
     }
 
     const shareableAuthz = await validateShareableOperationAccess({
@@ -758,10 +968,9 @@ export async function executePush(
             const seq = await takeNextServerSeq();
             latestSeq = Math.max(latestSeq, seq);
             resourceSeqs[change.resource] = Math.max(resourceSeqs[change.resource] || 0, seq);
-            // FIX-REL-002: retry within transaction
             await recordChangeWithRetry(txChangeTracking, {
               serverSeq: seq, resource: change.resource, id: change.id, op: change.op, record: change.record,
-            }, 2, logger);
+            }, 0, logger);
           }
         });
         mutationSucceeded = true;
@@ -769,8 +978,8 @@ export async function executePush(
         if (err?.__opFailed) {
           await recordMutationFailure(mut, err.code, err.message, err.path);
         } else {
-          logger?.error("Push atomic mutation failed", { error: String(err), operation: "push.transaction", resource: mut.resource });
-          await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
+          logger?.error("Push atomic mutation failed", { error: formatUnknownError(err), operation: "push.transaction", resource: mut.resource });
+          await recordMutationFailure(mut, "MUTATION_FAILED", "Mutation failed", `mutations[${mut.mutationId}]`);
         }
       }
 
@@ -784,7 +993,12 @@ export async function executePush(
         opResult = await executeMutationOp(mut, db);
       } catch (error) {
         logger?.error("Push operation failed", { error: String(error), operation: mut.operation, resource: mut.resource, id: mut.id });
-        opResult = { ok: false, code: "INTERNAL", message: "Internal error", path: "$" };
+        opResult = {
+          ok: false,
+          code: "MUTATION_FAILED",
+          message: "Mutation failed",
+          path: `mutations[${mut.mutationId}]`,
+        };
       }
 
       if (opResult.ok) {
@@ -828,7 +1042,7 @@ export async function executePush(
   }
 
   return {
-    ok: true,
+    ok: errors.length === 0,
     applied,
     errors,
     cursor: String(latestSeq),

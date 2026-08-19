@@ -10,6 +10,7 @@ import type {
   SearchDefaults,
 } from "@searchfn/adapter-contracts";
 import { SearchAdapterError, SEARCH_ADAPTER_DISPOSED } from "@searchfn/adapter-contracts";
+import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
 import {
   ElasticClient,
   type ElasticDialect,
@@ -24,7 +25,7 @@ export interface ElasticsearchAdapterOptions {
   indexPrefix?: string;
   requestTimeoutMs?: number;
   retry?: ElasticRetryPolicy;
-  logger?: AdapterLogger;
+  observability?: ObservabilityInput;
   defaults?: SearchDefaults;
 }
 
@@ -47,6 +48,17 @@ function coerceId(value: string): string | number {
     }
   }
   return value;
+}
+
+function searchMetadataFilters(params: SearchParams | SearchAllParams): Array<{ field: string; values: string[] }> {
+  const filters: Array<{ field: string; values: string[] }> = [];
+  if (params.namespaceFilter?.length) {
+    filters.push({ field: "__ns", values: params.namespaceFilter });
+  }
+  if (params.regionFilter?.length) {
+    filters.push({ field: "__region", values: params.regionFilter });
+  }
+  return filters;
 }
 
 interface ElasticBulkResponseItem {
@@ -94,13 +106,16 @@ export class ElasticsearchAdapter implements SearchAdapter {
     this.dialect = dialect;
     this.indexPrefix = options.indexPrefix ?? "searchfn";
     this.defaults = options.defaults;
+    const observability = normalizeObservability(options.observability)?.child({
+      component: `searchfn.${dialect}`,
+    });
     this.client = new ElasticClient({
       node: options.node,
       dialect,
       auth: options.auth,
       requestTimeoutMs: options.requestTimeoutMs,
       retry: options.retry,
-      logger: options.logger,
+      logger: adapterLoggerFromObservability(observability?.logger),
     });
   }
 
@@ -147,16 +162,28 @@ export class ElasticsearchAdapter implements SearchAdapter {
     fields: string[],
     fuzzy: boolean | number | undefined,
     prefix: boolean | undefined,
+    filters?: Array<{ field: string; values: string[] }>,
   ): unknown {
     const useFuzzy = !!fuzzy;
     const usePrefix = !!prefix;
+    const wrapFilters = (inner: unknown): unknown => {
+      if (!filters?.length) return inner;
+      return {
+        bool: {
+          must: [inner],
+          filter: filters.map((filter) => ({
+            terms: { [filter.field]: filter.values },
+          })),
+        },
+      };
+    };
 
     if (!usePrefix && !useFuzzy) {
-      return { multi_match: { query, fields } };
+      return wrapFilters({ multi_match: { query, fields } });
     }
 
     if (useFuzzy && !usePrefix) {
-      return { multi_match: { query, fields, fuzziness: "AUTO" } };
+      return wrapFilters({ multi_match: { query, fields, fuzziness: "AUTO" } });
     }
 
     const should: unknown[] = [
@@ -168,7 +195,7 @@ export class ElasticsearchAdapter implements SearchAdapter {
       should.push({ multi_match: { query, fields, fuzziness: "AUTO" } });
     }
 
-    return { bool: { should, minimum_should_match: 1 } };
+    return wrapFilters({ bool: { should, minimum_should_match: 1 } });
   }
 
   async initialize(params: InitializeParams): Promise<void> {
@@ -200,6 +227,8 @@ export class ElasticsearchAdapter implements SearchAdapter {
               dynamic: true,
               properties: {
                 ...Object.fromEntries(fields.map((field) => [field, { type: "text" }])),
+                __ns: { type: "keyword" },
+                __region: { type: "keyword" },
               },
             },
           },
@@ -212,6 +241,8 @@ export class ElasticsearchAdapter implements SearchAdapter {
           body: {
             properties: {
               ...Object.fromEntries(fields.map((field) => [field, { type: "text" }])),
+              __ns: { type: "keyword" },
+              __region: { type: "keyword" },
             },
           },
         });
@@ -230,7 +261,10 @@ export class ElasticsearchAdapter implements SearchAdapter {
         throw new SearchAdapterError("DFQL_ABORTED", "Index operation aborted");
       }
       payload.push(JSON.stringify({ index: { _index: indexName, _id: String(document.id) } }));
-      payload.push(JSON.stringify(document.fields));
+      payload.push(JSON.stringify({
+        ...document.fields,
+        ...(document.metadata ?? {}),
+      }));
     }
 
     const response = await this.client.request<ElasticBulkResponse>({
@@ -263,7 +297,7 @@ export class ElasticsearchAdapter implements SearchAdapter {
       body: {
         size: Math.max(1, params.limit ?? 10),
         track_total_hits: false,
-        query: this.buildElasticQuery(params.query, boostedFields, fuzzy, prefix),
+        query: this.buildElasticQuery(params.query, boostedFields, fuzzy, prefix, searchMetadataFilters(params)),
         sort: [{ _score: { order: "desc" } }, { _id: { order: "asc" } }],
       },
       signal: params.signal,
@@ -299,7 +333,7 @@ export class ElasticsearchAdapter implements SearchAdapter {
         body: {
           size: limitPerResource,
           track_total_hits: false,
-          query: this.buildElasticQuery(params.query, boostedFields, fuzzy, prefix),
+          query: this.buildElasticQuery(params.query, boostedFields, fuzzy, prefix, searchMetadataFilters(params)),
           sort: [{ _score: { order: "desc" } }, { _id: { order: "asc" } }],
         },
         signal: params.signal,
@@ -363,4 +397,13 @@ export class ElasticsearchAdapter implements SearchAdapter {
   async dispose(): Promise<void> {
     this.disposed = true;
   }
+}
+
+function adapterLoggerFromObservability(logger: ObservationLogger | undefined): AdapterLogger | undefined {
+  if (!logger) return undefined;
+  return {
+    debug: (message, context) => logger.debug?.(message, context),
+    warn: (message, context) => logger.warn?.(message, context),
+    error: (message, context) => logger.error?.(message, context),
+  };
 }

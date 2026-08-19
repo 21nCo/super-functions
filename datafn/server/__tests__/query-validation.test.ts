@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createDatafnServer } from "../src/server.js";
+import { validateQuery } from "../src/routes/query/validate.js";
 
 // Fixture F1 schema from TEST_VECTORS.md
 const fixtureF1Schema = {
@@ -55,6 +56,35 @@ const fixtureF1Schema = {
         { name: "order", type: "number" as const },
         { name: "addedAt", type: "date" as const },
       ],
+    },
+  ],
+};
+
+const polymorphicCollectionSchema = {
+  resources: [
+    {
+      name: "collection",
+      version: 1,
+      fields: [{ name: "label", type: "string", required: false }],
+    },
+    {
+      name: "node",
+      version: 1,
+      fields: [{ name: "label", type: "string", required: false }],
+    },
+    {
+      name: "objective",
+      version: 1,
+      fields: [{ name: "label", type: "string", required: false }],
+    },
+  ],
+  relations: [
+    {
+      from: ["node", "objective"],
+      to: "collection",
+      type: "many-many" as const,
+      relation: "collections",
+      inverse: "items",
     },
   ],
 };
@@ -431,6 +461,37 @@ describe("/datafn/query validation", () => {
 
     const res2 = await server.router.handle(req2, {});
     expect(res2.status).toBe(200);
+  });
+
+  it("validates polymorphic inverse relation expansion and relation filters", () => {
+    expect(
+      validateQuery(
+        {
+          resource: "collection",
+          version: 1,
+          select: ["id", "items.*#"],
+          filters: { items: { $any: { label: { $eq: "Important" } } } },
+        },
+        polymorphicCollectionSchema,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("rejects unknown nested relation after polymorphic inverse relation", () => {
+    expect(
+      validateQuery(
+        {
+          resource: "collection",
+          version: 1,
+          select: ["id", "items.notARelation.*"],
+        },
+        polymorphicCollectionSchema,
+      ),
+    ).toMatchObject({
+      ok: false,
+      code: "DFQL_UNKNOWN_RELATION",
+      path: "select[1]",
+    });
   });
 });
 

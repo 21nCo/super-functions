@@ -22,6 +22,31 @@ const mockSchema: any = {
   ]
 };
 
+const taskOnlySchema: any = {
+  resources: [{ name: "tasks", version: 1, fields: [] }],
+  relations: []
+};
+
+function openRawDb(dbName: string, version: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(dbName, version);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("meta")) {
+        db.createObjectStore("meta", { keyPath: ["type", "key"] });
+      }
+      if (!db.objectStoreNames.contains("changelog")) {
+        db.createObjectStore("changelog", {
+          keyPath: "seq",
+          autoIncrement: true,
+        });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 function runStorageTests(
   name: string,
   createAdapter: () => any
@@ -81,3 +106,45 @@ function runStorageTests(
 
 runStorageTests("Memory", () => new MemoryStorageAdapter(["tasks"]));
 runStorageTests("IDB", () => new IndexedDbStorageAdapter("test_join_" + Date.now(), ["tasks", "tags"], mockSchema));
+
+describe("IDB stale schema upgrades", () => {
+  it("reopens databases after ensureStores has bumped the IndexedDB version", async () => {
+    const dbName = `test_version_reopen_${Date.now()}`;
+    const adapterV1 = IndexedDbStorageAdapter.create({
+      dbName,
+      schema: taskOnlySchema,
+    });
+
+    expect(await adapterV1.healthCheck()).toEqual({ ok: true, issues: [] });
+    await adapterV1.close();
+
+    const adapterV2 = IndexedDbStorageAdapter.create({
+      dbName,
+      schema: mockSchema,
+    });
+    expect(await adapterV2.countJoinRows("join_tasks_tags_tags")).toBe(0);
+    await adapterV2.close();
+
+    const adapterAfterBump = IndexedDbStorageAdapter.create({
+      dbName,
+      schema: mockSchema,
+    });
+    expect(await adapterAfterBump.countJoinRows("join_tasks_tags_tags")).toBe(0);
+    await adapterAfterBump.close();
+  });
+
+  it("reports a blocked schema upgrade instead of hanging forever", async () => {
+    const dbName = `test_blocked_upgrade_${Date.now()}`;
+    const rawDb = await openRawDb(dbName, 2);
+    const adapter = IndexedDbStorageAdapter.create({
+      dbName,
+      schema: taskOnlySchema,
+    });
+
+    const health = await adapter.healthCheck();
+
+    expect(health.ok).toBe(false);
+    expect(health.issues.join(" ")).toContain("IndexedDB upgrade blocked");
+    rawDb.close();
+  });
+});

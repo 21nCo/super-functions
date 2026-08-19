@@ -37,7 +37,7 @@ describe("TX-001: Atomic Transactions", () => {
     
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxTransactSteps: 5 }
     });
   });

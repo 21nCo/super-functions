@@ -46,7 +46,7 @@ describe("EXEC-001: Query Execution Error Surfacing", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const req = new Request("http://localhost/datafn/query", {
@@ -85,7 +85,7 @@ describe("EXEC-001: Query Execution Error Surfacing", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Cursor without id in sort should fail validation
@@ -130,7 +130,7 @@ describe("EXEC-001: Query Execution Error Surfacing", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Query on non-existent table should cause adapter error
@@ -168,7 +168,7 @@ describe("EXEC-001: Query Execution Error Surfacing", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const req = new Request("http://localhost/datafn/query", {
@@ -207,7 +207,7 @@ describe("EXEC-002: Mutation Execution Error Surfacing", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Unsupported operation - now caught by validation

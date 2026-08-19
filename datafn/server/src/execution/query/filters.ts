@@ -4,7 +4,17 @@
  * normalizes non-$-prefixed operator names before delegating to core.
  */
 
-import { evaluateFilter as coreEvaluateFilter, OP_REMAP, findRelationBidirectional } from "@datafn/core";
+import {
+  endpointList,
+  evaluateFilter as coreEvaluateFilter,
+  findRelationMatch,
+  firstEndpoint,
+  OP_REMAP,
+  relationKeyFor,
+  relationTargetEndpoint,
+  resolveEndpointResource,
+  resourceNameFromId,
+} from "@datafn/core";
 
 function normalizeOps(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
@@ -79,16 +89,15 @@ export function evaluateFilter(
 }
 
 function findRelation(schema: any, resourceName: string, relationName: string) {
-  if (!schema.relations) return null;
-  // EXE-012: Prefer forward (direct) matches to avoid ambiguity when both
-  // forward and inverse relations share the same name
-  for (const rel of schema.relations) {
-    if (rel.from === resourceName && rel.relation === relationName) {
-      return rel;
-    }
-  }
-  // Fall back to bidirectional search (handles inverse relations)
-  return findRelationBidirectional(schema, resourceName, relationName);
+  return findRelationMatch(schema, resourceName, relationName) ?? null;
+}
+
+function recordResourceName(id: unknown, fallback: string | readonly string[]): string {
+  return (
+    resolveEndpointResource(fallback, id) ??
+    resourceNameFromId(id) ??
+    firstEndpoint(fallback)
+  );
 }
 
 function getRelatedRecords(
@@ -97,48 +106,55 @@ function getRelatedRecords(
   store: any,
   resourceName: string,
 ): Record<string, unknown>[] {
-  const isForward = rel.from === resourceName;
+  const relation = rel.relation;
+  const direction = rel.direction;
+  const isForward = direction === "forward";
+  const targetEndpoint = relationTargetEndpoint(relation, direction);
 
-  if (rel.type === "many-one") {
+  if (relation.type === "many-one") {
     if (isForward) {
-      const fk = rel.fkField || rel.foreignKey;
+      const fk = relation.fkField || relation.foreignKey || `${relation.relation}Id`;
       const targetId = record[fk];
       if (!targetId) return [];
-      const target = store.getRecord(rel.to, targetId as string);
+      const target = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
       return target ? [target] : [];
     } else {
-      // PER-005: Targeted lookup instead of getRecords() full scan
-      const fk = rel.fkField || rel.foreignKey;
-      return store.findRecords(rel.from, fk, record.id);
+      const fk = relation.fkField || relation.foreignKey || `${relation.relation}Id`;
+      return endpointList(targetEndpoint).flatMap((targetResource) =>
+        store.findRecords(targetResource, fk, record.id),
+      );
     }
-  } else if (rel.type === "one-many") {
+  } else if (relation.type === "one-many") {
     if (isForward) {
-      // PER-005: Targeted lookup instead of getRecords() full scan
-      const fk = rel.fkField || rel.foreignKey;
-      return store.findRecords(rel.to, fk, record.id);
+      const fk = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
+      return endpointList(targetEndpoint).flatMap((targetResource) =>
+        store.findRecords(targetResource, fk, record.id),
+      );
     } else {
-      const fk = rel.fkField || rel.foreignKey;
+      const fk = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
       const targetId = record[fk];
       if (!targetId) return [];
-      const target = store.getRecord(rel.from, targetId as string);
+      const target = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
       return target ? [target] : [];
     }
-  } else if (rel.type === "many-many") {
-    const canonicalKey = `${rel.from}.${rel.relation}`;
-    const joinRows = store.getJoinRows(canonicalKey);
-
+  } else if (relation.type === "many-many") {
     if (isForward) {
+      const joinRows = store.getJoinRows(relationKeyFor(resourceName, relation));
       const relatedIds = joinRows
         .filter((row: any) => row.from === record.id)
         .map((row: any) => row.to);
-      const targets = store.getRecords(rel.to);
-      return targets.filter((r: any) => relatedIds.includes(r.id));
+      return relatedIds
+        .map((id: unknown) => store.getRecord(recordResourceName(id, targetEndpoint), id as string))
+        .filter((target: unknown): target is Record<string, unknown> => Boolean(target));
     } else {
-      const relatedIds = joinRows
-        .filter((row: any) => row.to === record.id)
-        .map((row: any) => row.from);
-      const targets = store.getRecords(rel.from);
-      return targets.filter((r: any) => relatedIds.includes(r.id));
+      return endpointList(relation.from).flatMap((fromResource) => {
+        const joinRows = store.getJoinRows(relationKeyFor(fromResource, relation));
+        return joinRows
+          .filter((row: any) => row.to === record.id)
+          .map((row: any) => row.from)
+          .map((id: unknown) => store.getRecord(recordResourceName(id, targetEndpoint), id as string))
+          .filter((target: unknown): target is Record<string, unknown> => Boolean(target));
+      });
     }
   }
   return [];
@@ -156,12 +172,14 @@ function evaluateRelationFilter(
   if (!rel) return false;
 
   const relatedRecords = getRelatedRecords(record, rel, store, resourceName);
-  const targetResource = rel.from === resourceName ? rel.to : rel.from;
+  const targetEndpoint = relationTargetEndpoint(rel.relation, rel.direction);
+  const relatedResource = (relatedRecord: Record<string, unknown>) =>
+    recordResourceName(relatedRecord.id, targetEndpoint);
 
   if (ops.$any) {
     const subFilter = ops.$any as Record<string, unknown>;
     return relatedRecords.some((r) =>
-      evaluateFilter(r, subFilter, targetResource as string, schema, store),
+      evaluateFilter(r, subFilter, relatedResource(r), schema, store),
     );
   }
 
@@ -169,7 +187,7 @@ function evaluateRelationFilter(
     const subFilter = ops.$all as Record<string, unknown>;
     if (relatedRecords.length === 0) return false;
     return relatedRecords.every((r) =>
-      evaluateFilter(r, subFilter, targetResource as string, schema, store),
+      evaluateFilter(r, subFilter, relatedResource(r), schema, store),
     );
   }
 
@@ -177,7 +195,7 @@ function evaluateRelationFilter(
     const subFilter = ops.$none as Record<string, unknown>;
     if (relatedRecords.length === 0) return true;
     return !relatedRecords.some((r) =>
-      evaluateFilter(r, subFilter, targetResource as string, schema, store),
+      evaluateFilter(r, subFilter, relatedResource(r), schema, store),
     );
   }
 

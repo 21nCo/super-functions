@@ -1,8 +1,10 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { NotFoundError } from '@superfunctions/db';
 import type {
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
+  AuthFnDeliveryMessageResolver,
   AuthFnDeliveryProvider,
+  AuthFnDeliveryRequest,
   AuthFnHookContext,
   AuthFnHooks,
   AuthFnOtpChallengeRecord,
@@ -23,7 +25,7 @@ import { emitAuthEvent, eventRequestId } from './observability.js';
 import { hashSecret } from './sessions.js';
 import { createUser, findUserByPrimaryEmail, markUserEmailVerified } from './users.js';
 import { type PasswordPolicyOptions, updatePasswordCredential } from './passwords.js';
-import { resolveRuntime } from './runtime.js';
+import { resolveEnvironment } from './environment.js';
 import {
   allowsOtpSignUpExistingUser,
   emitAccountLinkingConflictEvent
@@ -34,6 +36,7 @@ const DEFAULT_OTP_MAX_ATTEMPTS = 5;
 
 export interface OtpRuntimeOptions {
   delivery?: AuthFnDeliveryProvider;
+  message?: AuthFnDeliveryMessageResolver;
   codeGenerator?: () => string;
   now?: () => Date;
   challengeTtlSeconds?: number;
@@ -78,7 +81,7 @@ export interface VerifyOtpResult {
 }
 
 export async function sendOtpChallenge(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   runtimeOptions: OtpRuntimeOptions,
   input: SendOtpInput
@@ -111,14 +114,19 @@ export async function sendOtpChallenge(
     namespace: namespace(config)
   });
 
-  const delivery = await deliverChallenge(runtimeOptions.delivery, {
+  const deliveryInput = await resolveDeliveryRequest(runtimeOptions, {
     channel: 'email',
+    kind: 'authfn.otp',
+    to: challenge.email,
+    userId: challenge.id,
     challengeId: challenge.id,
     purpose: challenge.purpose,
     email: challenge.email,
     code: challengeCode,
-    metadata: challenge.deliveryMetadata
+    metadata: challenge.deliveryMetadata,
+    ...defaultDeliveryMessage(challenge.purpose, challengeCode)
   });
+  const delivery = await deliverChallenge(runtimeOptions.delivery, deliveryInput);
 
   const challengeWithDelivery = delivery.metadata
     ? await config.database.update<AuthFnOtpChallengeRecord>({
@@ -178,8 +186,60 @@ export async function sendOtpChallenge(
   };
 }
 
+async function resolveDeliveryRequest(
+  runtimeOptions: OtpRuntimeOptions,
+  input: AuthFnDeliveryRequest
+): Promise<AuthFnDeliveryRequest> {
+  const message = await runtimeOptions.message?.(input);
+  if (!message) {
+    return input;
+  }
+  return {
+    ...input,
+    ...message,
+    metadata: {
+      ...(input.metadata ?? {}),
+      ...(message.metadata ?? {})
+    }
+  };
+}
+
+function defaultDeliveryMessage(
+  purpose: AuthFnOtpPurpose,
+  code: string
+): Pick<AuthFnDeliveryRequest, 'subject' | 'text' | 'html'> {
+  const subject = defaultDeliverySubject(purpose);
+  const escapedCode = escapeHtml(code);
+  return {
+    subject,
+    text: `Your verification code is ${code}. It expires shortly.`,
+    html: `<p>Your verification code is <strong>${escapedCode}</strong>.</p><p>It expires shortly.</p>`
+  };
+}
+
+function defaultDeliverySubject(purpose: AuthFnOtpPurpose): string {
+  switch (purpose) {
+    case 'reset-password':
+      return 'Reset your password';
+    case 'sign-in':
+      return 'Your sign-in code';
+    case 'sign-up':
+      return 'Your sign-up code';
+    case 'verify-email':
+      return 'Verify your email';
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
 export async function verifyOtpChallenge(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   runtimeOptions: OtpRuntimeOptions,
   input: VerifyOtpInput
@@ -251,7 +311,7 @@ export async function verifyOtpChallenge(
         await emitAccountLinkingConflictEvent(config, {
           request: input.request,
           user,
-          regionId: pendingSignUp.runtime?.regionId,
+          regionId: pendingSignUp.environment?.regionId,
           method: 'email-otp',
           reason: 'otp_sign_up_existing_user_disabled'
         });
@@ -295,7 +355,7 @@ export async function verifyOtpChallenge(
         {
           config,
           request: input.request,
-          runtime: pendingSignUp.runtime,
+          environment: pendingSignUp.environment,
           actorId: user.id
         },
         {
@@ -344,7 +404,7 @@ export async function verifyOtpChallenge(
 }
 
 async function consumeOtpChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   challenge: AuthFnOtpChallengeRecord,
   attemptCount: number,
   consumedAt: Date
@@ -374,12 +434,12 @@ async function consumeOtpChallenge(
 }
 
 export async function completeResetPassword(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   runtimeOptions: OtpRuntimeOptions,
   input: CompleteResetPasswordInput
 ): Promise<{ passwordUpdated: true }> {
   const email = normalizeEmail(input.email);
-  const runtime = input.request ? await resolveRuntime(config, input.request) : undefined;
+  const runtime = input.request ? await resolveEnvironment(config, input.request) : undefined;
   const challenge = await verifyOtpChallenge(config, {}, runtimeOptions, {
     request: input.request,
     purpose: input.purpose,
@@ -400,7 +460,7 @@ export async function completeResetPassword(
   }, {
     ...runtimeOptions.passwordPolicy,
     request: input.request,
-    runtime,
+    environment: runtime,
     email,
     purpose: 'reset-password'
   });
@@ -411,7 +471,7 @@ export async function completeResetPassword(
 }
 
 export async function getLatestOtpChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   purpose: AuthFnOtpPurpose,
   email: string
 ): Promise<AuthFnOtpChallengeRecord | null> {
@@ -419,7 +479,7 @@ export async function getLatestOtpChallenge(
 }
 
 async function findLatestChallenge(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   purpose: AuthFnOtpPurpose,
   email: string
 ): Promise<AuthFnOtpChallengeRecord | null> {
@@ -440,7 +500,7 @@ async function findLatestChallenge(
 }
 
 async function incrementAttemptCount(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   challengeId: string,
   attemptCount: number,
   updatedAt: Date
@@ -538,12 +598,12 @@ function readPurpose(value: unknown, fallback: AuthFnOtpPurpose): AuthFnOtpPurpo
   return fallback;
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 
 async function rollbackOtpSignUpUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace' | 'observability'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace' | 'observability'>,
   userId: string
 ): Promise<void> {
   const failures: string[] = [];
@@ -588,24 +648,24 @@ function isNotFoundError(error: unknown): boolean {
 }
 
 async function buildChallengeHookContext(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request?: Request
 ): Promise<AuthFnHookContext> {
   return {
     config,
     request,
-    runtime: request ? await resolveRuntime(config, request) : undefined
+    environment: request ? await resolveEnvironment(config, request) : undefined
   };
 }
 
 interface OtpSignUpUserInput {
   primaryEmail: string;
   metadata?: Record<string, unknown>;
-  runtime?: Awaited<ReturnType<typeof resolveRuntime>>;
+  environment?: Awaited<ReturnType<typeof resolveEnvironment>>;
 }
 
 async function resolveOtpSignUpUserInput(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: VerifyOtpInput,
   verifiedAt: Date
@@ -620,7 +680,7 @@ async function resolveOtpSignUpUserInput(
   return {
     primaryEmail: normalizeEmail(readString(beforeUserInput.primaryEmail) ?? input.email),
     metadata: readRecord(beforeUserInput.metadata) ?? input.profile,
-    runtime: hookContext.runtime
+    environment: hookContext.environment
   };
 }
 

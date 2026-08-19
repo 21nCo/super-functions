@@ -1,11 +1,10 @@
-import { authFnPasswordPlugin, createAuthFn } from '@authfn/core';
-import type { Adapter } from '@superfunctions/db';
+import { authFnPlugins, authfn } from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
 import { PASSWORD_SESSIONS_NAMESPACE } from './auth.js';
 
-export const passwordSessionsSchemaSource = createAuthFn({
-  database: {} as Adapter,
+export const passwordSessionsSchemaSource = authfn({
   namespace: PASSWORD_SESSIONS_NAMESPACE,
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin()
-  ]
+  )
 });

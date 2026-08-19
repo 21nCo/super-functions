@@ -9,9 +9,14 @@
 
 import type { DatafnSignal, DatafnError } from "@datafn/core";
 import { dfqlKey } from "@datafn/core";
+import type { DatafnSignalCacheOptions, DatafnSignalOptions } from "./options.js";
 
 type SignalFactory<T> = () => DatafnSignal<T>;
 type UnsubscribeFn = () => void;
+type LiveSignalChangeHandler<T> = (signal: LiveSignal<T>) => void;
+
+const DEFAULT_IDLE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_IDLE_SIGNALS = 200;
 
 export class LiveSignal<T> implements DatafnSignal<T> {
   private raw: DatafnSignal<T> | null = null;
@@ -20,6 +25,7 @@ export class LiveSignal<T> implements DatafnSignal<T> {
   private lastValue: T | undefined = undefined;
   private currentError: DatafnError | null = null;
   private subscribers = new Set<(value: T) => void>();
+  private lastAccessedAt = Date.now();
 
   /**
    * Set by the Proxy layer (Phase 2) to unsubscribe from the client lifecycle.
@@ -30,6 +36,8 @@ export class LiveSignal<T> implements DatafnSignal<T> {
   constructor(
     private factory: SignalFactory<T>,
     private removeFromRegistry: () => void,
+    private cacheOptions?: DatafnSignalCacheOptions,
+    private onSubscriberChange?: LiveSignalChangeHandler<T>,
   ) {
     this.bindRaw();
   }
@@ -84,18 +92,64 @@ export class LiveSignal<T> implements DatafnSignal<T> {
   }
 
   get(): T {
+    this.touch();
     return (this.raw?.get() ?? this.lastValue) as T;
   }
 
   subscribe(handler: (value: T) => void): () => void {
     if (this.disposed) return () => {};
+    const wasIdle = this.subscribers.size === 0;
+    this.touch();
     this.subscribers.add(handler);
+    this.onSubscriberChange?.(this);
     if (this.lastValue !== undefined) {
       handler(this.lastValue);
     }
+    if (wasIdle && this.lastValue !== undefined) {
+      queueMicrotask(() => {
+        if (!this.disposed && this.subscribers.size > 0) {
+          void (this.raw as any)?.refresh?.();
+        }
+      });
+    }
     return () => {
-      this.subscribers.delete(handler);
+      if (this.subscribers.delete(handler)) {
+        this.touch();
+        this.onSubscriberChange?.(this);
+      }
     };
+  }
+
+  touch(): void {
+    this.lastAccessedAt = Date.now();
+  }
+
+  updateCacheOptions(options: DatafnSignalCacheOptions | undefined): void {
+    if (!options) return;
+    this.cacheOptions = {
+      ...this.cacheOptions,
+      ...options,
+    };
+  }
+
+  get activeSubscriberCount(): number {
+    return this.subscribers.size;
+  }
+
+  get isIdle(): boolean {
+    return this.subscribers.size === 0;
+  }
+
+  get accessedAt(): number {
+    return this.lastAccessedAt;
+  }
+
+  get keepAlive(): boolean {
+    return this.cacheOptions?.keepAlive === true;
+  }
+
+  get idleTtlMs(): number | undefined {
+    return this.cacheOptions?.idleTtlMs;
   }
 
   get loading(): boolean {
@@ -127,34 +181,155 @@ export class LiveSignal<T> implements DatafnSignal<T> {
 
 export class LiveSignalRegistry {
   private signals = new Map<string, LiveSignal<any>>();
+  private idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  constructor(
+    private options: {
+      defaultIdleTtlMs?: number;
+      maxIdleSignals?: number;
+    } = {},
+  ) {}
 
   getOrCreateTableSignal<T>(
     name: string,
     version: number,
     query: unknown,
-    options: { disableOptimistic?: boolean } | undefined,
+    options: DatafnSignalOptions | undefined,
     factory: SignalFactory<T>,
   ): DatafnSignal<T> {
     const key = dfqlKey({ resource: name, version, ...(query as object) });
     if (this.signals.has(key)) {
-      return this.signals.get(key) as DatafnSignal<T>;
+      const cached = this.signals.get(key) as LiveSignal<T>;
+      this.markAccessed(key, cached, options?.cache);
+      return cached as DatafnSignal<T>;
     }
-    const signal = new LiveSignal<T>(factory, () => this.signals.delete(key));
-    this.signals.set(key, signal);
+    let signal!: LiveSignal<T>;
+    signal = new LiveSignal<T>(
+      factory,
+      () => this.removeSignal(key),
+      options?.cache,
+      () => this.handleSubscriberChange(key, signal),
+    );
+    this.trackSignal(key, signal);
     return signal;
   }
 
   getOrCreateKvSignal<T>(
     key: string,
+    options: DatafnSignalOptions | undefined,
     factory: SignalFactory<T>,
   ): DatafnSignal<T> {
     const registryKey = `kv:${key}`;
     if (this.signals.has(registryKey)) {
-      return this.signals.get(registryKey) as DatafnSignal<T>;
+      const cached = this.signals.get(registryKey) as LiveSignal<T>;
+      this.markAccessed(registryKey, cached, options?.cache);
+      return cached as DatafnSignal<T>;
     }
-    const signal = new LiveSignal<T>(factory, () => this.signals.delete(registryKey));
-    this.signals.set(registryKey, signal);
+    let signal!: LiveSignal<T>;
+    signal = new LiveSignal<T>(
+      factory,
+      () => this.removeSignal(registryKey),
+      options?.cache,
+      () => this.handleSubscriberChange(registryKey, signal),
+    );
+    this.trackSignal(registryKey, signal);
     return signal;
+  }
+
+  getOrCreateSignal<T>(
+    key: string,
+    options: DatafnSignalOptions | undefined,
+    factory: SignalFactory<T>,
+  ): DatafnSignal<T> {
+    const registryKey = `signal:${key}`;
+    if (this.signals.has(registryKey)) {
+      const cached = this.signals.get(registryKey) as LiveSignal<T>;
+      this.markAccessed(registryKey, cached, options?.cache);
+      return cached as DatafnSignal<T>;
+    }
+    let signal!: LiveSignal<T>;
+    signal = new LiveSignal<T>(
+      factory,
+      () => this.removeSignal(registryKey),
+      options?.cache,
+      () => this.handleSubscriberChange(registryKey, signal),
+    );
+    this.trackSignal(registryKey, signal);
+    return signal;
+  }
+
+  private trackSignal(key: string, signal: LiveSignal<any>): void {
+    this.signals.set(key, signal);
+    this.scheduleIdleEviction(key, signal);
+    this.evictOverflowIdleSignals();
+  }
+
+  private markAccessed(
+    key: string,
+    signal: LiveSignal<any>,
+    cacheOptions?: DatafnSignalCacheOptions,
+  ): void {
+    signal.updateCacheOptions(cacheOptions);
+    signal.touch();
+    this.scheduleIdleEviction(key, signal);
+    this.evictOverflowIdleSignals();
+  }
+
+  private handleSubscriberChange(key: string, signal: LiveSignal<any>): void {
+    this.scheduleIdleEviction(key, signal);
+    this.evictOverflowIdleSignals();
+  }
+
+  private clearIdleTimer(key: string): void {
+    const timer = this.idleTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.idleTimers.delete(key);
+    }
+  }
+
+  private scheduleIdleEviction(key: string, signal: LiveSignal<any>): void {
+    this.clearIdleTimer(key);
+    if (!signal.isIdle || signal.keepAlive) {
+      return;
+    }
+
+    const ttl = signal.idleTtlMs ?? this.options.defaultIdleTtlMs ?? DEFAULT_IDLE_TTL_MS;
+    if (ttl <= 0) {
+      signal.dispose();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (this.signals.get(key) === signal && signal.isIdle && !signal.keepAlive) {
+        signal.dispose();
+      }
+    }, ttl);
+    (timer as any).unref?.();
+    this.idleTimers.set(key, timer);
+  }
+
+  private evictOverflowIdleSignals(): void {
+    const maxIdleSignals = this.options.maxIdleSignals ?? DEFAULT_MAX_IDLE_SIGNALS;
+    if (maxIdleSignals < 0) {
+      return;
+    }
+
+    const idleSignals = Array.from(this.signals.entries())
+      .filter(([, signal]) => signal.isIdle && !signal.keepAlive)
+      .sort(([, a], [, b]) => a.accessedAt - b.accessedAt);
+
+    while (idleSignals.length > maxIdleSignals) {
+      const [key, signal] = idleSignals.shift()!;
+      if (this.signals.get(key) === signal && signal.isIdle && !signal.keepAlive) {
+        signal.dispose();
+      }
+    }
+  }
+
+  private removeSignal(key: string): void {
+    this.clearIdleTimer(key);
+    this.signals.delete(key);
   }
 
   rebindAll(): void {

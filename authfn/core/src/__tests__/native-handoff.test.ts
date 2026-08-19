@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnMultiRegionPlugin,
-  authFnNativeHandoffPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnMultiRegionEnvironment, authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnNativeHandoffPlugin } from '@authfn/native-handoff';
+import { authFnPasswordPlugin } from '@authfn/password';
+import type { AuthFnRuntimeConfig } from '../index.js';
 
 function createCookieJar() {
   const values = new Map<string, string>();
@@ -41,29 +39,30 @@ function createCookieJar() {
   };
 }
 
-function createConfig(database = memoryAdapter({ debug: false })): AuthFnConfig {
+function createConfig(database = memoryAdapter({ debug: false })): AuthFnRuntimeConfig {
   return {
     database,
     namespace: 'authfn',
+    environment: authFnMultiRegionEnvironment({
+      regions: [
+        {
+          regionId: 'us-east-1',
+          authority: 'https://us.account.example.com',
+          hosts: ['us.account.example.com']
+        }
+      ]
+    }),
     plugins: [
       authFnPasswordPlugin(),
-      authFnMultiRegionPlugin({
-        regions: [
-          {
-            regionId: 'us-east-1',
-            authority: 'https://us.account.example.com',
-            hosts: ['us.account.example.com']
-          }
-        ]
-      }),
+      authFnMultiRegionPlugin(),
       authFnNativeHandoffPlugin()
     ]
   };
 }
 
-describe('@authfn/core native handoff plugin', () => {
+describe('authfn native handoff plugin', () => {
   it('can create native handoff codes from bearer web sessions for embedded WebViews', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
     const dispatch = async (
       path: string,
       init: {
@@ -112,7 +111,7 @@ describe('@authfn/core native handoff plugin', () => {
   it('guards handoff code consumption with consumedAt for single-use exchanges', async () => {
     const database = memoryAdapter({ debug: false });
     const handoffUpdates: unknown[] = [];
-    const auth = createAuthFn(createConfig({
+    const auth = createTestServer(createConfig({
       ...database,
       async update(params) {
         if (params.model === 'native_handoff_codes') {
@@ -176,7 +175,7 @@ describe('@authfn/core native handoff plugin', () => {
   });
 
   it('exchanges web cookie sessions to native bearer sessions and back to web cookies', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
     const cookieJar = createCookieJar();
 
     const dispatch = async (

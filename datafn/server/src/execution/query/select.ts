@@ -3,12 +3,53 @@
  */
 
 import type { DatafnSchema, DatafnRelationSchema } from "../../core-types.js";
-import { parseSelectToken } from "@datafn/core";
+import {
+  endpointIncludes,
+  endpointList,
+  findRelationMatch,
+  firstEndpoint,
+  parseSelectToken,
+  relationKeyFor,
+  relationTargetEndpoint,
+  resolveEndpointResource,
+  resourceNameFromId,
+  type DatafnRelationEndpoint,
+  type DatafnRelationMatch,
+} from "@datafn/core";
 import type { DataStore } from "../store.js";
 
 export type { SelectToken } from "@datafn/core";
 
 export { parseSelectToken };
+
+type QueryMetadata = {
+  includeAncestorInactive?: boolean;
+};
+
+function relationInheritsInactiveToTarget(
+  relation: DatafnRelationSchema,
+  isForward: boolean,
+): boolean {
+  if (relation.inheritsInactive !== true) return false;
+  if (relation.type === "htree") return isForward;
+  if (relation.type === "many-one") return !isForward;
+  if (relation.type === "one-many") return isForward;
+  return false;
+}
+
+function filterAncestorInactiveRecords(
+  records: Record<string, unknown>[],
+  match: DatafnRelationMatch,
+  metadata?: QueryMetadata,
+): Record<string, unknown>[] {
+  if (
+    metadata?.includeAncestorInactive === true ||
+    !relationInheritsInactiveToTarget(match.relation, match.direction === "forward")
+  ) {
+    return records;
+  }
+  return records.filter((record) => record.isAncestorInactive !== true);
+}
 
 /**
  * Apply omit to a record, removing specified fields (but never id)
@@ -69,6 +110,96 @@ function isMaterializedRecord(
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function pathFieldForHtree(relation: DatafnRelationSchema): string {
+  return relation.pathField || "parentPath";
+}
+
+function hasHtreePath(
+  record: Record<string, unknown>,
+  relation: DatafnRelationSchema,
+): boolean {
+  return typeof record[pathFieldForHtree(relation)] === "string";
+}
+
+function htreePath(record: Record<string, unknown>, relation: DatafnRelationSchema): string {
+  return (record[pathFieldForHtree(relation)] as string | undefined) || "";
+}
+
+function recordResourceName(id: unknown, fallback: DatafnRelationEndpoint): string {
+  return (
+    resolveEndpointResource(fallback, id) ??
+    resourceNameFromId(id) ??
+    firstEndpoint(fallback)
+  );
+}
+
+function targetEndpointFor(match: DatafnRelationMatch): DatafnRelationEndpoint {
+  return relationTargetEndpoint(match.relation, match.direction);
+}
+
+function materializeRelatedRecord(
+  record: Record<string, unknown>,
+  match: DatafnRelationMatch,
+  select: string[],
+  schema: DatafnSchema,
+  store: DataStore,
+  omit?: string[],
+  metadata?: QueryMetadata,
+): Record<string, unknown> {
+  const resource = recordResourceName(record.id, targetEndpointFor(match));
+  return materializeSelect(record, resource, select, schema, store, omit, metadata);
+}
+
+function htreeAncestors(
+  record: Record<string, unknown>,
+  resource: string,
+  relation: DatafnRelationSchema,
+  store: DataStore,
+): Record<string, unknown>[] {
+  const path = htreePath(record, relation);
+  if (!path) return [];
+  const allRecords = store.getRecords(resource);
+  return path
+    .split("-")
+    .map((id) => allRecords.find((r) => r.id === id))
+    .filter(isMaterializedRecord);
+}
+
+function htreeChildren(
+  record: Record<string, unknown>,
+  resource: string,
+  relation: DatafnRelationSchema,
+  store: DataStore,
+  deep: boolean,
+): Record<string, unknown>[] {
+  const allRecords = store.getRecords(resource);
+  const currentId = record.id as string;
+  const currentPath = htreePath(record, relation);
+  const prefix = currentPath ? `${currentPath}-${currentId}` : currentId;
+  const records = allRecords.filter((candidate) => {
+    const candidatePath = htreePath(candidate, relation);
+    return deep
+      ? candidatePath === prefix || candidatePath.startsWith(`${prefix}-`)
+      : candidatePath === prefix;
+  });
+  return records.sort((a, b) => {
+    const aOrder = typeof a.sortOrder === "number" ? a.sortOrder : undefined;
+    const bOrder = typeof b.sortOrder === "number" ? b.sortOrder : undefined;
+    if (aOrder !== undefined || bOrder !== undefined) {
+      if (aOrder === undefined) return 1;
+      if (bOrder === undefined) return -1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+    }
+    if (!deep) return String(a.id || "").localeCompare(String(b.id || ""));
+    const aPath = htreePath(a, relation);
+    const bPath = htreePath(b, relation);
+    const aLen = aPath ? aPath.split("-").length : 0;
+    const bLen = bPath ? bPath.split("-").length : 0;
+    if (aLen !== bLen) return aLen - bLen;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+}
+
 /**
  * EXE-014: Compute FK fields to omit for a target resource, cached per (schema, targetResource) pair.
  * Avoids O(N) recomputation inside per-record loops.
@@ -87,9 +218,12 @@ function getFkFieldsToOmit(schema: DatafnSchema, targetResource: string): Set<st
   cached = new Set<string>();
   if (schema.relations) {
     for (const rel of schema.relations) {
-      if (rel.from === targetResource && rel.type === "many-one") {
+      if (endpointIncludes(rel.from, targetResource) && rel.type === "many-one") {
         const fkField = rel.fkField || `${rel.relation}Id`;
         cached.add(fkField);
+        if (Array.isArray(rel.to) && rel.to.length > 1) {
+          cached.add(rel.fkResourceField || `${(rel.relation || "target").replace(/Id$/, "")}Resource`);
+        }
       }
     }
   }
@@ -107,6 +241,7 @@ export function materializeSelect(
   schema: DatafnSchema,
   store: DataStore,
   omit?: string[],
+  metadata?: QueryMetadata,
 ): Record<string, unknown> {
   const resourceSchema = schema.resources.find((r) => r.name === resource);
   if (!resourceSchema) return { id: record.id };
@@ -162,29 +297,30 @@ export function materializeSelect(
 
       // Always expand from source records so successive nested tokens (e.g. items.id + items.title)
       // do not lose fields when earlier tokens projected only partial child objects.
-      const intermediateRecords = expandRelationToRecords(record, relation, schema, store);
+      const intermediateRecords = expandRelationToRecords(
+        record,
+        relation,
+        schema,
+        store,
+        resource,
+        metadata,
+      );
 
       if (!intermediateRecords) continue;
 
       // For each intermediate record, apply the rest of the select token
       if (Array.isArray(intermediateRecords)) {
-        // EXE-014: Cache FK omit-set outside per-record loop
-        const targetFkFieldsToOmit = getFkFieldsToOmit(schema, relation.to as string);
-        const nestedFkFieldsToOmit = new Set(targetFkFieldsToOmit);
-        if (relation.type === "one-many") {
-          const derivedFk = relation.inverse ? `${relation.inverse}Id` : "fkId";
-          nestedFkFieldsToOmit.add(relation.fkField || derivedFk);
-        }
         const targetEffectiveOmit = omit ? [...omit] : [];
 
         const newRecords = intermediateRecords.map((intermediateRecord) => {
-          const nestedResult = materializeSelect(
+          const nestedResult = materializeRelatedRecord(
             intermediateRecord,
-            relation.to as string,
+            relation,
             [restToken],
             schema,
             store,
-            omit, // Pass user's omit, let each level calculate its own FK fields
+            omit,
+            metadata,
           );
 
           // Merge with existing record if present
@@ -202,24 +338,20 @@ export function materializeSelect(
             mergedRecord = nestedResult;
           }
 
-          // Explicitly remove FK fields from merged record before applying remaining omit
-          for (const fkField of nestedFkFieldsToOmit) {
-            delete mergedRecord[fkField];
-          }
-
           return applyOmit(mergedRecord, targetEffectiveOmit);
         });
         result[firstRelation] = newRecords;
       } else {
         // Single record (many-one)
         const intermediateRecord = intermediateRecords as Record<string, unknown>;
-        const nestedResult = materializeSelect(
+        const nestedResult = materializeRelatedRecord(
           intermediateRecord,
-          relation.to as string,
+          relation,
           [restToken],
           schema,
           store,
-          omit, // Pass user's omit, let each level calculate its own FK fields
+          omit,
+          metadata,
         );
 
         // Merge with existing if present
@@ -238,61 +370,44 @@ export function materializeSelect(
 
     const parsed = parseSelectToken(token);
 
-    // Phase 13: HTREE support
-    if (parsed.baseName === "parent" || parsed.baseName === "children") {
-      const parentPath = record.parentPath;
-      if (typeof parentPath !== "string") continue; // Should not happen if validation passed
-
-      if (parsed.baseName === "parent") {
-        // Expand ancestors: Root -> Parent
-        const path = parentPath || "";
-        if (!path) {
-          result["parent"] = [];
-        } else {
-          const ancestorIds = path.split("-");
-          const allRecords = store.getRecords(resource);
-          const ancestors = ancestorIds
-            .map((id) => allRecords.find((r) => r.id === id))
-            .filter((r) => r !== undefined) as Record<string, unknown>[];
-          result["parent"] = ancestors.map((a) => applyOmit(a, omit));
-        }
-        includedFields.add("parent");
-      } else if (parsed.baseName === "children") {
-        const allRecords = store.getRecords(resource);
-        const currentId = record.id as string;
-        // Construct expected path prefix for children
-        const prefix = parentPath ? `${parentPath}-${currentId}` : currentId;
-
+    const htreeRelation = findRelation(schema, resource, parsed.baseName);
+    if (htreeRelation?.relation.type === "htree") {
+      if (!hasHtreePath(record, htreeRelation.relation)) continue;
+      if (parsed.baseName === "children") {
         if (parsed.directive === "*") {
-          // Immediate children: path === prefix
-          const children = allRecords.filter((r) => {
-            const rPath = (r.parentPath as string) || "";
-            return rPath === prefix;
-          });
-          // Sort by id
-          children.sort((a, b) =>
-            String(a.id || "").localeCompare(String(b.id || "")),
-          );
-          result["children"] = children.map((c) => applyOmit(c, omit));
+          result[parsed.baseName] = filterAncestorInactiveRecords(
+            htreeChildren(
+              record,
+              resource,
+              htreeRelation.relation,
+              store,
+              false,
+            ),
+            htreeRelation,
+            metadata,
+          ).map((c) => applyOmit(c, omit));
         } else if (parsed.directive === "**") {
-          // Descendants: path === prefix OR path starts with prefix + "-"
-          const descendants = allRecords.filter((r) => {
-            const rPath = (r.parentPath as string) || "";
-            return rPath === prefix || rPath.startsWith(prefix + "-");
-          });
-
-          // Sort by path length (asc), then id (asc)
-          descendants.sort((a, b) => {
-            const aPath = (a.parentPath as string) || "";
-            const bPath = (b.parentPath as string) || "";
-            const aLen = aPath ? aPath.split("-").length : 0;
-            const bLen = bPath ? bPath.split("-").length : 0;
-            if (aLen !== bLen) return aLen - bLen;
-            return String(a.id || "").localeCompare(String(b.id || ""));
-          });
-          result["children"] = descendants.map((d) => applyOmit(d, omit));
+          result[parsed.baseName] = filterAncestorInactiveRecords(
+            htreeChildren(
+              record,
+              resource,
+              htreeRelation.relation,
+              store,
+              true,
+            ),
+            htreeRelation,
+            metadata,
+          ).map((d) => applyOmit(d, omit));
         }
-        includedFields.add("children");
+        includedFields.add(parsed.baseName);
+      } else if (parsed.baseName === "parent") {
+        result[parsed.baseName] = htreeAncestors(
+          record,
+          resource,
+          htreeRelation.relation,
+          store,
+        ).map((a) => applyOmit(a, omit));
+        includedFields.add(parsed.baseName);
       }
       continue;
     }
@@ -303,7 +418,7 @@ export function materializeSelect(
       const relation = findRelation(schema, resource, parsed.baseName);
       if (relation) {
         // ids-only relation token
-        result[parsed.baseName] = getRelationIds(record, relation, store);
+        result[parsed.baseName] = getRelationIds(record, relation, store, resource, metadata);
         includedFields.add(parsed.baseName);
       } else {
         // Regular field
@@ -326,15 +441,17 @@ export function materializeSelect(
         store,
         false,
         omit, // Pass user's omit, not effectiveOmit (which has parent's FK fields)
+        resource,
+        metadata,
       );
     } else if (parsed.directive === "#") {
       // Emit join rows for many-many
-      if (relation.type === "many-many") {
+      if (relation.relation.type === "many-many") {
         result[parsed.baseName] = getJoinRows(record, relation, store);
       }
     } else if (parsed.directive === "*#") {
       // Expand relation with metadata for many-many
-      if (relation.type === "many-many") {
+      if (relation.relation.type === "many-many") {
         result[parsed.baseName] = expandRelation(
           record,
           relation,
@@ -342,6 +459,8 @@ export function materializeSelect(
           store,
           true,
           omit, // Pass user's omit, not effectiveOmit
+          resource,
+          metadata,
         );
       }
     }
@@ -362,36 +481,27 @@ function findRelation(
   schema: DatafnSchema,
   resource: string,
   relationName: string,
-): DatafnRelationSchema | null {
-  if (!schema.relations) return null;
+): DatafnRelationMatch | null {
+  return findRelationMatch(schema, resource, relationName) ?? null;
+}
 
-  for (const rel of schema.relations) {
-    if (rel.from === resource && rel.relation === relationName) {
-      return rel;
-    }
-    if (rel.to === resource && rel.inverse === relationName) {
-      // Inverse relation: swap from/to and relation/inverse
-      // For one-many -> many-one inversion, keep the same fkField
-      // For many-one -> one-many inversion, keep the same fkField
-      return {
-        ...rel,
-        from: rel.to,
-        to: rel.from,
-        relation: rel.inverse,
-        inverse: rel.relation,
-        // Type inversion
-        type:
-          rel.type === "one-many"
-            ? "many-one"
-            : rel.type === "many-one"
-              ? "one-many"
-              : rel.type,
-        // fkField stays the same
-      };
-    }
+function getManyManyRows(
+  record: Record<string, unknown>,
+  match: DatafnRelationMatch,
+  resource: string,
+  store: DataStore,
+): Array<Record<string, unknown>> {
+  const relation = match.relation;
+  const recordId = record.id as string;
+  if (match.direction === "forward") {
+    const joinRows = store.getJoinRows(relationKeyFor(resource, relation));
+    return joinRows.filter((j) => j.from === recordId);
   }
 
-  return null;
+  return endpointList(relation.from).flatMap((fromResource) => {
+    const joinRows = store.getJoinRows(relationKeyFor(fromResource, relation));
+    return joinRows.filter((j) => j.to === recordId);
+  });
 }
 
 /**
@@ -399,37 +509,58 @@ function findRelation(
  */
 function getRelationIds(
   record: Record<string, unknown>,
-  relation: DatafnRelationSchema,
+  match: DatafnRelationMatch,
   store: DataStore,
+  resource: string,
+  metadata?: QueryMetadata,
 ): unknown {
+  const relation = match.relation;
+  const isForward = match.direction === "forward";
+
   if (relation.type === "many-one") {
-    // relation.from is the current resource (has FK)
-    // relation.to is the target resource
+    if (isForward) {
+      const fkField = relation.fkField || `${relation.relation}Id`;
+      const relatedId = record[fkField] as string | undefined;
+      return relatedId || null;
+    }
     const fkField = relation.fkField || `${relation.relation}Id`;
-    const relatedId = record[fkField] as string | undefined;
-    return relatedId || null;
+    const records = endpointList(relation.from).flatMap((targetResource) =>
+      store.findRecords(targetResource, fkField, record.id),
+    );
+    return filterAncestorInactiveRecords(records, match, metadata).map((r) => r.id);
   }
 
   if (relation.type === "many-many") {
-    const relationKey = `${relation.from}.${relation.relation}`;
-    const joinRows = store.getJoinRows(relationKey);
-    const recordId = record.id as string;
-    const relevantJoins = joinRows.filter((j) => j.from === recordId);
-    const sortedJoins = sortJoinRows(relevantJoins, relation);
-    return sortedJoins.map((j) => j.to);
+    const sortedJoins = sortJoinRows(getManyManyRows(record, match, resource, store), relation);
+    return sortedJoins.map((j) => (isForward ? j.to : j.from));
   }
 
   if (relation.type === "one-many") {
-    const recordId = record.id as string;
+    if (!isForward) {
+      const fkField = relation.fkField || `${relation.inverse}Id`;
+      return (record[fkField] as string | undefined) || null;
+    }
     const fkField = relation.fkField || `${relation.inverse}Id`;
-    // EXE-015: Use findRecords for O(m) targeted lookup instead of O(n) scan
-    const relatedRecords = store.findRecords(relation.to as string, fkField, recordId);
+    const relatedRecords = endpointList(relation.to).flatMap((targetResource) =>
+      store.findRecords(targetResource, fkField, record.id),
+    );
     const sorted = relatedRecords.sort((a, b) => {
       const aId = String(a.id || "");
       const bId = String(b.id || "");
       return aId.localeCompare(bId);
     });
-    return sorted.map((r) => r.id);
+    return filterAncestorInactiveRecords(sorted, match, metadata).map((r) => r.id);
+  }
+
+  if (relation.type === "htree") {
+    if (relation.relation === "children") {
+      return filterAncestorInactiveRecords(
+        htreeChildren(record, firstEndpoint(targetEndpointFor(match)), relation, store, false),
+        match,
+        metadata,
+      );
+    }
+    return htreeAncestors(record, firstEndpoint(targetEndpointFor(match)), relation, store);
   }
 
   return null;
@@ -441,50 +572,59 @@ function getRelationIds(
  */
 function expandRelationToRecords(
   record: Record<string, unknown>,
-  relation: DatafnRelationSchema,
+  match: DatafnRelationMatch,
   schema: DatafnSchema,
   store: DataStore,
+  resource: string,
+  metadata?: QueryMetadata,
 ): Record<string, unknown> | Record<string, unknown>[] | null {
+  const relation = match.relation;
+  const isForward = match.direction === "forward";
+  const targetEndpoint = targetEndpointFor(match);
+
   if (relation.type === "many-one") {
+    if (isForward) {
+      const fkField = relation.fkField || `${relation.relation}Id`;
+      const relatedId = record[fkField] as string | undefined;
+      if (!relatedId) return null;
+      const relatedRecord = store.getRecord(recordResourceName(relatedId, targetEndpoint), relatedId);
+      return relatedRecord ?? null;
+    }
     const fkField = relation.fkField || `${relation.relation}Id`;
-    const relatedId = record[fkField] as string | undefined;
-    if (!relatedId) return null;
-
-    const relatedRecord = store.getRecord(relation.to as string, relatedId);
-    if (!relatedRecord) return null;
-
-    return relatedRecord;
+    const records = endpointList(targetEndpoint)
+      .flatMap((targetResource) => store.findRecords(targetResource, fkField, record.id))
+      .sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+    return filterAncestorInactiveRecords(records, match, metadata);
   }
 
   if (relation.type === "many-many") {
-    const relationKey = `${relation.from}.${relation.relation}`;
-    const joinRows = store.getJoinRows(relationKey);
-    const recordId = record.id as string;
-    const relevantJoins = joinRows.filter((j) => j.from === recordId);
-    const sortedJoins = sortJoinRows(relevantJoins, relation);
+    const sortedJoins = sortJoinRows(getManyManyRows(record, match, resource, store), relation);
 
     return sortedJoins
       .map((join) => {
-        const relatedRecord = store.getRecord(
-          relation.to as string,
-          join.to as string,
-        );
-        return relatedRecord;
+        const targetId = isForward ? join.to : join.from;
+        return store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
       })
       .filter(isMaterializedRecord);
   }
 
   if (relation.type === "one-many") {
-    const recordId = record.id as string;
+    if (!isForward) {
+      const fkField = relation.fkField || `${relation.inverse}Id`;
+      const relatedId = record[fkField] as string | undefined;
+      if (!relatedId) return null;
+      return store.getRecord(recordResourceName(relatedId, targetEndpoint), relatedId);
+    }
     const fkField = relation.fkField || `${relation.inverse}Id`;
-    // EXE-015: Use findRecords for O(m) targeted lookup instead of O(n) scan
-    const relatedRecords = store.findRecords(relation.to as string, fkField, recordId);
+    const relatedRecords = endpointList(targetEndpoint).flatMap((targetResource) =>
+      store.findRecords(targetResource, fkField, record.id),
+    );
     const sorted = relatedRecords.sort((a, b) => {
       const aId = String(a.id || "");
       const bId = String(b.id || "");
       return aId.localeCompare(bId);
     });
-    return sorted;
+    return filterAncestorInactiveRecords(sorted, match, metadata);
   }
 
   return null;
@@ -495,109 +635,61 @@ function expandRelationToRecords(
  */
 function expandRelation(
   record: Record<string, unknown>,
-  relation: DatafnRelationSchema,
+  match: DatafnRelationMatch,
   schema: DatafnSchema,
   store: DataStore,
   includeMetadata: boolean,
   omit?: string[],
+  resource?: string,
+  metadata?: QueryMetadata,
 ): unknown {
+  const relation = match.relation;
+  const isForward = match.direction === "forward";
+  const currentResource = resource ?? firstEndpoint(match.direction === "forward" ? relation.from : relation.to);
+  const targetEndpoint = targetEndpointFor(match);
+
   if (relation.type === "many-one") {
-    // Get related record via foreign key
-    const fkField = relation.fkField || `${relation.relation}Id`;
-    const relatedId = record[fkField] as string | undefined;
-    if (!relatedId) return null;
-
-    const relatedRecord = store.getRecord(relation.to as string, relatedId);
-    if (!relatedRecord) return null;
-
-    // EXE-014: Use cached FK omit-set for target resource
-    const targetFkFieldsToOmit = getFkFieldsToOmit(schema, relation.to as string);
-    const oneManyFkFieldsToOmit = new Set(targetFkFieldsToOmit);
-    oneManyFkFieldsToOmit.add(fkField);
-    const targetEffectiveOmit = omit
-      ? [...omit, ...Array.from(oneManyFkFieldsToOmit)]
-      : Array.from(oneManyFkFieldsToOmit);
-
-    // Return full record for many-one
-    const targetResource = schema.resources.find((r) => r.name === relation.to);
-    if (!targetResource) return relatedRecord;
-
-    const result: Record<string, unknown> = { id: relatedRecord.id };
-    for (const field of targetResource.fields) {
-      if (relatedRecord[field.name] !== undefined) {
-        result[field.name] = relatedRecord[field.name];
-      }
+    const records = expandRelationToRecords(record, match, schema, store, currentResource, metadata);
+    if (!records) return isForward ? null : [];
+    if (Array.isArray(records)) {
+      return records.map((relatedRecord) =>
+        materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata),
+      );
     }
-    return applyOmit(result, targetEffectiveOmit);
+    return materializeRelatedRecord(records, match, ["*"], schema, store, omit, metadata);
   }
 
   if (relation.type === "many-many") {
-    const relationKey = `${relation.from}.${relation.relation}`;
-    const joinRows = store.getJoinRows(relationKey);
-    const recordId = record.id as string;
-
-    // Filter join rows for this record
-    const relevantJoins = joinRows.filter((j) => j.from === recordId);
-
-    // Sort by order metadata if present, then by to/id
-    const sortedJoins = sortJoinRows(relevantJoins, relation);
+    const sortedJoins = sortJoinRows(getManyManyRows(record, match, currentResource, store), relation);
 
     if (!includeMetadata) {
-      // Return array of related records
       return sortedJoins
         .map((join) => {
-          const relatedRecord = store.getRecord(
-            relation.to as string,
-            join.to as string,
-          );
+          const targetId = isForward ? join.to : join.from;
+          const relatedRecord = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
           if (!relatedRecord) return null;
-
-          const targetResource = schema.resources.find(
-            (r) => r.name === relation.to,
-          );
-          if (!targetResource) return relatedRecord;
-
-          const result: Record<string, unknown> = { id: relatedRecord.id };
-          for (const field of targetResource.fields) {
-            if (relatedRecord[field.name] !== undefined) {
-              result[field.name] = relatedRecord[field.name];
-            }
-          }
-          return applyOmit(result, omit);
+          if (filterAncestorInactiveRecords([relatedRecord], match, metadata).length === 0) return null;
+          return materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata);
         })
         .filter(isMaterializedRecord);
     } else {
-      // Return array of related records with $relation_metadata
       return sortedJoins
         .map((join) => {
-          const relatedRecord = store.getRecord(
-            relation.to as string,
-            join.to as string,
-          );
+          const targetId = isForward ? join.to : join.from;
+          const relatedRecord = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
           if (!relatedRecord) return null;
+          if (filterAncestorInactiveRecords([relatedRecord], match, metadata).length === 0) return null;
+          const result = materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata);
 
-          const targetResource = schema.resources.find(
-            (r) => r.name === relation.to,
-          );
-          if (!targetResource) return relatedRecord;
-
-          const result: Record<string, unknown> = { id: relatedRecord.id };
-          for (const field of targetResource.fields) {
-            if (relatedRecord[field.name] !== undefined) {
-              result[field.name] = relatedRecord[field.name];
-            }
-          }
-
-          // Add metadata
-          const metadata: Record<string, unknown> = {};
+          const relationMetadata: Record<string, unknown> = {};
           if (relation.metadata) {
             for (const metaField of relation.metadata) {
               if (join[metaField.name] !== undefined) {
-                metadata[metaField.name] = join[metaField.name];
+                relationMetadata[metaField.name] = join[metaField.name];
               }
             }
           }
-          result.$relation_metadata = metadata;
+          result.$relation_metadata = relationMetadata;
 
           return applyOmit(result, omit);
         })
@@ -607,36 +699,13 @@ function expandRelation(
 
   // one-many: inverse of many-one
   if (relation.type === "one-many") {
-    const recordId = record.id as string;
-    const fkField = relation.fkField || `${relation.inverse}Id`;
-    // EXE-015: Use findRecords for O(m) targeted lookup instead of O(n) scan
-    const relatedRecords = store.findRecords(relation.to as string, fkField, recordId);
-
-    // Sort by id for deterministic ordering
-    const sorted = relatedRecords.sort((a, b) => {
-      const aId = String(a.id || "");
-      const bId = String(b.id || "");
-      return aId.localeCompare(bId);
-    });
-
-    // EXE-014: Use cached FK omit-set for target resource
-    const targetFkFieldsToOmit = getFkFieldsToOmit(schema, relation.to as string);
-    const targetEffectiveOmit = omit
-      ? [...omit, ...Array.from(targetFkFieldsToOmit)]
-      : Array.from(targetFkFieldsToOmit);
-
-    const targetResource = schema.resources.find((r) => r.name === relation.to);
-    if (!targetResource) return sorted;
-
-    return sorted.map((relatedRecord) => {
-      const result: Record<string, unknown> = { id: relatedRecord.id };
-      for (const field of targetResource.fields) {
-        if (relatedRecord[field.name] !== undefined) {
-          result[field.name] = relatedRecord[field.name];
-        }
-      }
-      return applyOmit(result, targetEffectiveOmit);
-    });
+    const records = expandRelationToRecords(record, match, schema, store, currentResource, metadata);
+    if (!records) return isForward ? [] : null;
+    const list = Array.isArray(records) ? records : [records];
+    const materialized = list.map((relatedRecord) =>
+      materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata),
+    );
+    return isForward ? materialized : materialized[0] ?? null;
   }
 
   return null;
@@ -647,15 +716,15 @@ function expandRelation(
  */
 function getJoinRows(
   record: Record<string, unknown>,
-  relation: DatafnRelationSchema,
+  match: DatafnRelationMatch,
   store: DataStore,
 ): unknown[] {
-  const relationKey = `${relation.from}.${relation.relation}`;
-  const joinRows = store.getJoinRows(relationKey);
-  const recordId = record.id as string;
-
-  const relevantJoins = joinRows.filter((j) => j.from === recordId);
-  const sorted = sortJoinRows(relevantJoins, relation);
+  const relation = match.relation;
+  const resource = recordResourceName(
+    record.id,
+    match.direction === "forward" ? relation.from : relation.to,
+  );
+  const sorted = sortJoinRows(getManyManyRows(record, match, resource, store), relation);
 
   // Return join rows with from, to, and metadata
   return sorted.map((join) => {

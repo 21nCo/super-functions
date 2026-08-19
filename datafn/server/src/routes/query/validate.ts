@@ -6,7 +6,13 @@
 import type { DatafnSchema } from "../../core-types.js";
 import type { SchemaIndex, QueryValidationLimits } from "../../validation/index.js";
 import { validateQueryBody as validateQueryBodyCore } from "../../validation/index.js";
-import { getCapabilityFields, resolveCapabilities } from "@datafn/core";
+import {
+  endpointList,
+  findRelationMatch,
+  getCapabilityFields,
+  relationTargetEndpoint,
+  resolveCapabilities,
+} from "@datafn/core";
 
 export interface QueryRouteValidationOpts extends QueryValidationLimits {
   maxLimit: number;
@@ -35,6 +41,60 @@ function getResourceFieldNames(
   }
 
   return fields;
+}
+
+function relationNamesForResource(schema: DatafnSchema, resourceName: string): Set<string> {
+  const relationNames = new Set<string>();
+  for (const relation of schema.relations ?? []) {
+    if (relation.relation) {
+      const matchForward = findRelationMatch(
+        { ...schema, relations: [relation] },
+        resourceName,
+        relation.relation,
+      );
+      if (matchForward?.direction === "forward") {
+        relationNames.add(relation.relation);
+      }
+    }
+    if (!relation.relation && relation.inverse) {
+      const matchForward = findRelationMatch(
+        { ...schema, relations: [relation] },
+        resourceName,
+        relation.inverse,
+      );
+      if (matchForward?.direction === "forward") {
+        relationNames.add(relation.inverse);
+      }
+    } else if (!relation.relation) {
+      const relationName = Array.isArray(relation.to) ? relation.to[0] : relation.to;
+      relationNames.add(relationName);
+    }
+    if (relation.inverse) {
+      const matchInverse = findRelationMatch(
+        { ...schema, relations: [relation] },
+        resourceName,
+        relation.inverse,
+      );
+      if (matchInverse?.direction === "inverse") {
+        relationNames.add(relation.inverse);
+      }
+    }
+  }
+  return relationNames;
+}
+
+function validateFiltersForAnyResource(
+  filters: Record<string, unknown>,
+  resourceNames: string[],
+  schema: DatafnSchema,
+): { ok: false; code: string; message: string; path: string } | null {
+  let firstError: { ok: false; code: string; message: string; path: string } | null = null;
+  for (const resourceName of resourceNames) {
+    const error = validateFilters(filters, resourceName, schema);
+    if (!error) return null;
+    firstError ??= error;
+  }
+  return firstError;
 }
 
 /**
@@ -89,18 +149,7 @@ export function validateQuery(
 
   const fieldNames = getResourceFieldNames(schema, resource.name);
 
-  // Collect all relation names
-  const relationNames = new Set<string>();
-  if (schema.relations) {
-    for (const rel of schema.relations) {
-      if (rel.from === q.resource && rel.relation) {
-        relationNames.add(rel.relation);
-      }
-      if (rel.to === q.resource && rel.inverse) {
-        relationNames.add(rel.inverse);
-      }
-    }
-  }
+  const relationNames = relationNamesForResource(schema, q.resource);
 
   // Validate select tokens
   if (q.select && Array.isArray(q.select)) {
@@ -189,13 +238,9 @@ export function validateQuery(
       // For nested tokens (e.g., "tasks.tags.*"), validate intermediate relations
       if (parts.length > 2) {
         // Validate intermediate relation exists
-        const intermediateRelation = schema.relations?.find(
-          (r) =>
-            (r.from === q.resource && r.relation === baseName) ||
-            (r.to === q.resource && r.inverse === baseName),
-        );
+        const intermediateMatch = findRelationMatch(schema, q.resource, baseName);
 
-        if (!intermediateRelation) {
+        if (!intermediateMatch) {
           return {
             ok: false,
             code: "DFQL_UNKNOWN_RELATION",
@@ -205,16 +250,16 @@ export function validateQuery(
         }
 
         // Validate next level relation
-        const targetResource =
-          intermediateRelation.from === q.resource
-            ? intermediateRelation.to
-            : intermediateRelation.from;
+        const targetResources = endpointList(
+          relationTargetEndpoint(
+            intermediateMatch.relation,
+            intermediateMatch.direction,
+          ),
+        );
         const nextRelation = parts[1];
 
-        const nextRelationExists = schema.relations?.some(
-          (r) =>
-            (r.from === targetResource && r.relation === nextRelation) ||
-            (r.to === targetResource && r.inverse === nextRelation),
+        const nextRelationExists = targetResources.some((targetResource) =>
+          Boolean(findRelationMatch(schema, targetResource, nextRelation)),
         );
 
         if (
@@ -471,13 +516,9 @@ export function validateFilters(
 
       for (let i = 0; i < parts.length - 1; i++) {
         const relName = parts[i];
-        const rel = rules.find(
-          (r) =>
-            (r.from === currentRes && r.relation === relName) ||
-            (r.to === currentRes && r.inverse === relName),
-        );
+        const match = findRelationMatch(schema, currentRes, relName);
 
-        if (!rel) {
+        if (!match) {
           return {
             ok: false,
             code: "DFQL_UNKNOWN_FIELD",
@@ -485,11 +526,9 @@ export function validateFilters(
             path: `filters.${key}`,
           };
         }
-        const nextRes =
-          rel.from === currentRes
-            ? rel.to
-            : rel.from;
-        currentRes = Array.isArray(nextRes) ? nextRes[0] : nextRes;
+        currentRes = endpointList(
+          relationTargetEndpoint(match.relation, match.direction),
+        )[0] ?? currentRes;
       }
 
       const lastField = parts[parts.length - 1];
@@ -507,11 +546,7 @@ export function validateFilters(
     }
 
     // Check if it's a relation (for quantifiers)
-    const rel = rules.find(
-      (r) =>
-        (r.from === resourceName && r.relation === key) ||
-        (r.to === resourceName && r.inverse === key),
-    );
+    const rel = findRelationMatch(schema, resourceName, key);
 
     if (rel) {
       const val = filters[key];
@@ -536,15 +571,14 @@ export function validateFilters(
             path: `filters.${key}`,
           };
         }
-        const relationTarget = rel.from === resourceName ? rel.to : rel.from;
-        const targetRes = Array.isArray(relationTarget)
-          ? relationTarget[0]
-          : relationTarget;
+        const targetResources = endpointList(
+          relationTargetEndpoint(rel.relation, rel.direction),
+        );
         const subFilter = ops[opKey];
         if (subFilter && typeof subFilter === "object") {
-          const subErr = validateFilters(
+          const subErr = validateFiltersForAnyResource(
             subFilter as Record<string, unknown>,
-            targetRes,
+            targetResources,
             schema,
           );
           if (subErr) return subErr;
@@ -593,9 +627,13 @@ export function validateFilters(
         "between",
         "not_between",
         "is_null",
+        "$is_null",
         "is_not_null",
+        "$is_not_null",
         "is_empty",
+        "$is_empty",
         "is_not_empty",
+        "$is_not_empty",
         "before",
         "after",
         "$any",

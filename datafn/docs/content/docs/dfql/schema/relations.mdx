@@ -23,26 +23,37 @@ type DatafnRelationSchema = {
     type: "string" | "number" | "boolean" | "date" | "object" | "json";
   }>;
   fkField?: string;
+  fkResourceField?: string;
   pathField?: string;
   joinTable?: string;
   joinColumns?: { from: string; to: string };
+  integrity?: "application" | "database";
+  onDelete?: DatafnRelationDeletePolicies;
 };
+
+type DatafnRelationDeletePolicy = "restrict" | "cascade" | "setNull" | "detach";
+type DatafnRelationDeletePolicies =
+  | DatafnRelationDeletePolicy
+  | { from?: DatafnRelationDeletePolicy; to?: DatafnRelationDeletePolicy };
 ```
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `from` | `string \| string[]` | Source resource name(s). |
-| `to` | `string \| string[]` | Target resource name(s). |
+| `from` | `string \| string[]` | Source resource name(s). An array declares a [polymorphic](#polymorphic-relations) endpoint. |
+| `to` | `string \| string[]` | Target resource name(s). An array declares a [polymorphic](#polymorphic-relations) endpoint. |
 | `type` | `string` | Relation cardinality. |
 | `relation` | `string` | Optional name for the forward relation. |
 | `inverse` | `string` | Optional name for the inverse relation. |
 | `cache` | `boolean` | When `true`, enables relation caching for performance. |
 | `capabilities` | `Array<"timestamps" \| "audit">` | Server-managed capability fields on the join row (many-many only, explicit opt-in). |
 | `metadata` | `Array` | Extra fields stored on the join record (many-many only). |
-| `fkField` | `string` | Foreign key field name override for one-many / many-one. |
-| `pathField` | `string` | Materialized path field for htree relations. |
+| `fkField` | `string` | Foreign key field name override for one-many / many-one / htree. |
+| `fkResourceField` | `string` | Discriminator field that stores the target resource name for a [polymorphic](#polymorphic-relations) FK side. |
+| `pathField` | `string` | Materialized path field for htree relations (default `parentPath`). |
 | `joinTable` | `string` | Explicit join table name for many-many relations. |
 | `joinColumns` | `{ from, to }` | Column name overrides for the join table. |
+| `integrity` | `"application" \| "database"` | Per-relation override of [relation integrity](#relation-integrity). |
+| `onDelete` | `DatafnRelationDeletePolicies` | [Delete policy](#delete-policies) applied when a referenced record is deleted. |
 
 ### One-to-Many
 
@@ -224,7 +235,106 @@ const schema = defineSchema({
 });
 ```
 
-The `pathField` stores the materialized path (e.g., `"root/parent/child"`), enabling efficient ancestor and descendant queries without recursive joins.
+The `pathField` stores the materialized path (e.g., `"root/parent/child"`), enabling efficient ancestor and descendant queries without recursive joins. Htree relation traversal is **schema-driven** — the relation's `relation`/`inverse` names and `pathField` define how the tree is queried. Relating a child under a new parent rewrites the descendant paths automatically.
+
+### Relation Integrity
+
+The `relationIntegrity` schema option (and per-relation `integrity` override) controls **where** referential integrity is enforced:
+
+| Mode | Behavior |
+| --- | --- |
+| `"application"` (default) | DataFn enforces relations and [delete policies](#delete-policies) in application code. No database-level foreign keys are generated. |
+| `"database"` | The CLI [Drizzle codegen](/docs/cli/drizzle-codegen) emits real foreign-key constraints and indexes (with `ON DELETE` actions derived from `onDelete`), in addition to application-level enforcement. |
+
+```typescript
+const schema = defineSchema({
+  relationIntegrity: "database", // default for all relations
+  resources: [/* ... */],
+  relations: [
+    {
+      from: "task",
+      to: "project",
+      type: "many-one",
+      relation: "project",
+      fkField: "projectId",
+      integrity: "application", // override for this relation only
+      onDelete: { to: "setNull" },
+    },
+  ],
+});
+```
+
+The effective mode for a relation is `relation.integrity ?? schema.relationIntegrity ?? "application"`.
+
+> The legacy `"hybrid"` integrity mode has been **removed**. Schemas that declare `relationIntegrity: "hybrid"` (or `integrity: "hybrid"`) are now rejected by `validateSchema`. Use `"application"` or `"database"`.
+
+### Delete Policies
+
+`onDelete` declares what happens to related records when a referenced record is deleted. It accepts a single policy that applies to the relation, or a per-side object `{ from?, to? }`.
+
+| Policy | FK relations (`many-one` / `one-many` / `htree`) | `many-many` |
+| --- | --- | --- |
+| `restrict` | Deletion fails with `RELATION_RESTRICTED` if any referencing rows exist. | Fails if any join rows exist. |
+| `setNull` | Sets the FK (and polymorphic `*Resource` discriminator) to `null` on referencing rows. | Removes the affected join rows. |
+| `detach` | Treated like `setNull` on the FK side. | Removes join rows and records a logical join `delete` for sync. |
+| `cascade` | Recursively deletes referencing records. | Removes the join rows (does not delete the other endpoint record). |
+
+```typescript
+relations: [
+  {
+    from: "task",
+    to: "project",
+    type: "many-one",
+    relation: "project",
+    fkField: "projectId",
+    onDelete: { to: "setNull" }, // deleting a project nulls task.projectId
+  },
+  {
+    from: "task",
+    to: "tag",
+    type: "many-many",
+    relation: "tags",
+    onDelete: "detach",          // deleting a task removes its join rows
+  },
+]
+```
+
+Delete policies are enforced by the server on `operation: "delete"`. With `integrity: "database"`, equivalent `ON DELETE` actions are also emitted as database constraints (`cascade` → `cascade`, `restrict` → `restrict`, `setNull`/`detach` → `set null`).
+
+### Polymorphic Relations
+
+A relation endpoint (`from` or `to`) can be an **array** of resource names, allowing one relation to point at several concrete resource types.
+
+```typescript
+relations: [
+  {
+    from: ["task", "note"],
+    to: "tag",
+    type: "many-many",
+    relation: "labels",
+    joinTable: "resource_labels",
+    onDelete: "detach",
+  },
+]
+```
+
+For polymorphic relations:
+
+- **Many-many** join rows carry `fromResource` / `toResource` discriminator columns identifying the concrete resource on each side.
+- **FK sides** (`many-one` / `one-many` / `htree`) store an additional discriminator field alongside the FK, named via `fkResourceField` (or defaulted, e.g. `parentResource`, `<relation>Resource`).
+- Record IDs are expected in `resource:id` form so the concrete resource can be recovered when the discriminator is absent.
+
+Querying a polymorphic relation returns mixed concrete types. With the `#` directive, join metadata is attached as `$relation_metadata`:
+
+```typescript
+{
+  resource: "collection",
+  version: 1,
+  select: ["id", "items.*#"],
+  filters: { items: { $any: { label: { $eq: "Important" } } } },
+}
+// items may contain records of different resource types, each with $relation_metadata
+```
 
 ### Relation Payload Normalization
 
@@ -443,6 +553,23 @@ Creates join table rows. If a row already exists for the same pair, it is update
 
 The join row ID is a composite `${fromId}:${toId}`. Metadata fields (like `order`) are stored on the join row.
 
+### Htree
+
+Relating a child to a parent sets the child's FK (`fkField`, default `parentId`) and rewrites its materialized path. Descendant paths are updated to keep the subtree consistent.
+
+```typescript
+{
+  resource: "categories",
+  version: 1,
+  operation: "relate",
+  id: "cat_parent",
+  relations: {
+    categoryTree: [{ $ref: "cat_child" }],
+  },
+}
+// Sets cat_child.parentId = "cat_parent" and updates path/descendant paths
+```
+
 ## ModifyRelation
 
 Updates metadata on existing join rows. Only supported for many-many relations.
@@ -516,6 +643,8 @@ Deletes the join table rows:
 }
 // Deletes join rows: todo_1 <-> tag_1, todo_1 <-> tag_2
 ```
+
+For [polymorphic](#polymorphic-relations) FK relations, `unrelate` also clears the `*Resource` discriminator field alongside the FK.
 
 ## Target Validation
 

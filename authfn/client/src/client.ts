@@ -1,4 +1,5 @@
 import { createAuthFnHttpClient } from './http-client.js';
+import { createAuthFnSessionTransportAuth } from './transport-auth-internal.js';
 import type {
   AuthFnClient,
   AuthFnClientOptions
@@ -8,6 +9,12 @@ export function createAuthFnClient(options: AuthFnClientOptions = {}): AuthFnCli
   const http = createAuthFnHttpClient(options);
 
   return {
+    createTransportAuth: (input) =>
+      createAuthFnSessionTransportAuth({
+        credentials: options.credentials,
+        bearerToken: options.bearerToken,
+        ...input
+      }),
     getSession: () =>
       http.requestJson({
         method: 'GET',
@@ -152,10 +159,10 @@ export function createAuthFnClient(options: AuthFnClientOptions = {}): AuthFnCli
         path: '/regions/lookup',
         body: input
       }),
-    getRuntime: () =>
+    getEnvironment: () =>
       http.requestJson({
         method: 'GET',
-        path: '/runtime'
+        path: '/environment'
       })
   };
 }

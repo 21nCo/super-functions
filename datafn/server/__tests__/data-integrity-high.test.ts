@@ -132,7 +132,7 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
         if (primaryCalls === 1) return [100];
         throw new Error("Redis unavailable");
       }),
-      getCurrent: vi.fn(),
+      getCurrent: vi.fn(async () => primaryCalls > 0 ? 100 : 0),
       isHealthy: vi.fn(async () => true),
     };
 
@@ -158,7 +158,7 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
     const mockPrimary = {
       getNext: vi.fn(),
       getNextN: vi.fn(async () => [50]),
-      getCurrent: vi.fn(),
+      getCurrent: vi.fn(async () => 0),
       isHealthy: vi.fn(async () => false), // unhealthy after first call
     };
 
@@ -187,7 +187,7 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
     const mockPrimary = {
       getNext: vi.fn(),
       getNextN: vi.fn(async () => { throw new Error("Redis down"); }),
-      getCurrent: vi.fn(),
+      getCurrent: vi.fn(async () => 0),
     };
 
     const mockDb = { internal: makeInternalApi() } as any;
@@ -227,6 +227,49 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
       ],
       { next_server_seq: 11 },
     );
+  });
+
+  it("TV-DI-003e: primary allocations persist high water to database sequence", async () => {
+    const mockPrimary = {
+      getNext: vi.fn(),
+      getNextN: vi.fn(async () => [9459]),
+      getCurrent: vi.fn(async () => 9458),
+      ensureMinSeq: vi.fn(async () => {}),
+      isHealthy: vi.fn(async () => true),
+    };
+
+    const mockDb = { internal: makeInternalApi() } as any;
+    const dbStore = new DatabaseSequenceStore(mockDb);
+    const ensureMinSeqSpy = vi.spyOn(dbStore, "ensureMinSeq").mockResolvedValue();
+    vi.spyOn(dbStore, "getCurrent").mockResolvedValue(9458);
+
+    const store = new ChainedSequenceStore(mockPrimary, dbStore);
+    const seqs = await store.getNextN("default", 1);
+
+    expect(seqs).toEqual([9459]);
+    expect(ensureMinSeqSpy).toHaveBeenCalledWith("default", 9459);
+  });
+
+  it("TV-DI-003f: stale primary is synchronized before allocation", async () => {
+    const mockPrimary = {
+      getNext: vi.fn(),
+      getNextN: vi.fn(async () => [9459]),
+      getCurrent: vi.fn(async () => 0),
+      ensureMinSeq: vi.fn(async () => {}),
+      isHealthy: vi.fn(async () => true),
+    };
+
+    const mockDb = { internal: makeInternalApi() } as any;
+    const dbStore = new DatabaseSequenceStore(mockDb);
+    const ensureMinSeqSpy = vi.spyOn(dbStore, "ensureMinSeq").mockResolvedValue();
+    vi.spyOn(dbStore, "getCurrent").mockResolvedValue(9458);
+
+    const store = new ChainedSequenceStore(mockPrimary, dbStore);
+    const seqs = await store.getNextN("default", 1);
+
+    expect(seqs).toEqual([9459]);
+    expect(mockPrimary.ensureMinSeq).toHaveBeenCalledWith("default", 9458);
+    expect(ensureMinSeqSpy).toHaveBeenCalledWith("default", 9459);
   });
 });
 

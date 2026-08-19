@@ -20,7 +20,7 @@ description: The most comprehensive authentication library for TypeScript and Py
 
 - **[Getting Started](./getting-started)** — install, configure, and authenticate your first user in minutes.
 - **[Core Concepts](./core-concepts)** — sessions, plugins, regions, observability.
-- **[Core (`@authfn/core`)](./core)** — server runtime and plugin reference.
+- **[Core (`authfn`)](./core)** — server runtime and plugin reference.
 - **[TypeScript Client](./client)** — `@authfn/client` for browsers and Node.
 - **[Python SDK](./python)** — Python server integration.
 - **[Svelte Bindings](./svelte)** — `@authfn/svelte` stores.

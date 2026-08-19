@@ -78,7 +78,19 @@ This produces a Drizzle-compatible schema with:
 - The `__ns` column for namespace isolation.
 - Capability-injected fields when enabled (for example `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `trashedAt`, `trashedBy`, `isArchived`).
 - Foreign key columns inferred from relations.
-- Join tables for many-many relations.
+- Join tables for many-many relations (with `fromResource`/`toResource` discriminators for [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relations).
+- The built-in `kv` and [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) tables.
+
+### Database-Enforced Relation Integrity
+
+By default DataFn enforces relations in application code. Set [`relationIntegrity: "database"`](/docs/dfql/schema/relations#relation-integrity) (or `integrity: "database"` per relation) to additionally emit real foreign-key constraints, indices, and `ON DELETE` actions from `onDelete` policies (`cascade` → cascade, `restrict` → restrict, `setNull`/`detach` → set null). After changing relation integrity or delete policies, regenerate and apply migrations:
+
+```bash
+datafn generate --adapter drizzle --database postgres --schema ./schema.datafn.ts --output ./
+npx drizzle-kit push
+```
+
+See [Drizzle Schema Generation](/docs/cli/drizzle-codegen#relation-foreign-keys) for the exact column, index, and constraint output.
 
 Example generated output:
 

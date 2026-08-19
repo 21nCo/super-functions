@@ -199,6 +199,67 @@ describe("Client capability methods", () => {
     expect(row).toBeNull();
   });
 
+  it("offline local queries default-exclude trashed and archived records", async () => {
+    const storage = new MemoryStorageAdapter(["todos", "logs"]);
+    const client = createDatafnClient({
+      schema,
+      sync: { mode: "local-only", offlinability: true },
+      storage,
+      clientId: "client:1",
+      getTimestamp: () => 1234,
+    });
+
+    await client.todos.mutate({
+      operation: "insert",
+      id: "todo:active",
+      record: { title: "active" },
+    });
+    await client.todos.mutate({
+      operation: "insert",
+      id: "todo:trashed",
+      record: { title: "trashed" },
+    });
+    await client.todos.mutate({
+      operation: "insert",
+      id: "todo:archived",
+      record: { title: "archived" },
+    });
+
+    await client.todos.trash!("todo:trashed");
+    await client.todos.archive!("todo:archived");
+
+    const activeOnly = await client.todos.query({ select: ["id"] });
+    expect(activeOnly.data.map((row) => row.id)).toEqual(["todo:active"]);
+
+    const withTrashed = await client.todos.query({
+      select: ["id"],
+      metadata: { includeTrashed: true },
+    });
+    expect(withTrashed.data.map((row) => row.id)).toEqual([
+      "todo:active",
+      "todo:trashed",
+    ]);
+
+    const withArchived = await client.todos.query({
+      select: ["id"],
+      metadata: { includeArchived: true },
+    });
+    expect(withArchived.data.map((row) => row.id)).toEqual([
+      "todo:active",
+      "todo:archived",
+    ]);
+
+    const withBoth = await client.todos.query({
+      select: ["id"],
+      metadata: { includeTrashed: true, includeArchived: true },
+    });
+    expect(withBoth.data.map((row) => row.id)).toEqual([
+      "todo:active",
+      "todo:archived",
+      "todo:trashed",
+    ]);
+  });
+
   it("local-first injects capability fields optimistically but strips them from changelog mutations", async () => {
     const storage = new MemoryStorageAdapter(["todos"]);
     const client = createDatafnClient({

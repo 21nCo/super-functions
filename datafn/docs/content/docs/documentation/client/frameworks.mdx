@@ -19,7 +19,7 @@ Rather than bundling all framework integrations into `@datafn/client`, each fram
 
 | Package | Framework | Status | Converts Signal To |
 |---|---|---|---|
-| `@datafn/svelte` | Svelte 3/4 | **Available** | `Readable` store |
+| `@datafn/svelte` | Svelte 3/4/5 | **Available** | `Readable` store |
 | `@datafn/react` | React 18+ | Planned | Hook (`useDatafnSignal`) |
 | `@datafn/vue` | Vue 3 | Planned | Composable (`useDatafnSignal`) |
 | `@datafn/solid` | Solid.js | Planned | Solid reactive signal |
@@ -72,6 +72,52 @@ The store provides `data`, `loading`, `error`, `refreshing`, and `nextCursor` pr
 | `error` | `DatafnError \| null` | Non-null if the last fetch failed. |
 | `refreshing` | `boolean` | `true` when re-fetching after a mutation (data is still available). |
 | `nextCursor` | `string \| null` | Cursor for loading the next page, or `null` if no more pages. |
+
+### Store Options
+
+`toSvelteStore(signal, options?)` accepts:
+
+```typescript
+const todosStore = toSvelteStore(client.todos.signal({ sort: ["-createdAt"] }), {
+  initialData: [],          // data is never undefined (store becomes "ready")
+  equals: (a, b) => a === b // suppress no-op updates
+});
+```
+
+- **`initialData`** — fallback value while loading; narrows `data` to a non-`undefined` type.
+- **`equals`** — custom equality on `data`; also dedupes duplicate synchronous emissions.
+- **`defer`** — delay signal creation until a timeout or browser idle (factory overloads only).
+
+### Data-Only Stores
+
+When you only need the records (not `loading`/`error`/`refreshing`), use `toSvelteDataStore`. It emits the data directly:
+
+```typescript
+import { toSvelteDataStore } from "@datafn/svelte";
+
+const todos = toSvelteDataStore(client.todos.signal({ sort: ["-createdAt"] }), {
+  initialData: [],
+});
+```
+
+```svelte
+{#each $todos as todo}
+  <p>{todo.title}</p>
+{/each}
+```
+
+### Deferred Creation
+
+Defer signal creation until the browser is idle (or after a delay) to keep initial render cheap. This requires a factory overload:
+
+```typescript
+const todos = toSvelteStore(
+  () => client.todos.signal({ sort: ["-createdAt"] }),
+  { initialData: [], defer: "idle" }, // or defer: 150, or { delayMs: 150, strategy: "idle" }
+);
+```
+
+If the store is unsubscribed before the deferral fires, the signal is never created.
 
 ### Lifecycle
 

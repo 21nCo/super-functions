@@ -1,5 +1,5 @@
 import { createRouter, type Router } from '@superfunctions/http';
-import type { AuthFnOtpPurpose } from '@authfn/core';
+import type { AuthFnOtpPurpose } from 'authfn';
 import type { ExampleEventRecord } from './event-buffer.js';
 import type { ExampleOtpMessage } from './otp-inbox.js';
 

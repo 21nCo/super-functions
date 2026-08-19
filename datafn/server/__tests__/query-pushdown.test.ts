@@ -51,9 +51,9 @@ async function createPushdownServer() {
   const server = await createDatafnServer({ allowUnknownResources: true,
     schema: PUSHDOWN_SCHEMA,
     limits: { maxLimit: 100 },
-    db,
+    database: db,
   });
-  return { db, server };
+  return { database: db, server };
 }
 
 function queryReq(body: unknown): Request {
@@ -70,7 +70,7 @@ function queryReq(body: unknown): Request {
 
 describe("Full push-down query execution", () => {
   it("TV-PUSHDOWN-001: filter + sort + limit returns correct data, nextCursor, and calls findMany with limit+1", async () => {
-    const { db, server } = await createPushdownServer();
+    const { database: db, server } = await createPushdownServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     const res = await server.router.handle(
@@ -376,9 +376,9 @@ async function createTaskTagServer() {
   const server = await createDatafnServer({ allowUnknownResources: true,
     schema: TASK_TAG_SCHEMA,
     limits: { maxLimit: 100 },
-    db,
+    database: db,
   });
-  return { db, server };
+  return { database: db, server };
 }
 
 async function createTaskCategoryServer() {
@@ -398,9 +398,9 @@ async function createTaskCategoryServer() {
   const server = await createDatafnServer({ allowUnknownResources: true,
     schema: TASK_CATEGORY_SCHEMA,
     limits: { maxLimit: 100 },
-    db,
+    database: db,
   });
-  return { db, server };
+  return { database: db, server };
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ async function createTaskCategoryServer() {
 
 describe("Partial push-down query execution", () => {
   it("TV-PARTIAL-001: many-many — only join rows and tags for active tasks are fetched", async () => {
-    const { db, server } = await createTaskTagServer();
+    const { database: db, server } = await createTaskTagServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     const res = await server.router.handle(
@@ -458,7 +458,7 @@ describe("Partial push-down query execution", () => {
   });
 
   it("TV-PARTIAL-002: many-one — only categories referenced by active tasks are fetched", async () => {
-    const { db, server } = await createTaskCategoryServer();
+    const { database: db, server } = await createTaskCategoryServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     const res = await server.router.handle(
@@ -517,7 +517,7 @@ describe("IN_MEMORY pre-filter optimisation", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: TASK_TAG_SCHEMA,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const findManySpy = vi.spyOn(db, "findMany");
@@ -607,9 +607,9 @@ async function createProjectTaskServer() {
   const server = await createDatafnServer({ allowUnknownResources: true,
     schema: PROJECT_TASK_SCHEMA,
     limits: { maxLimit: 100 },
-    db,
+    database: db,
   });
-  return { db, server };
+  return { database: db, server };
 }
 
 // ---------------------------------------------------------------------------
@@ -618,7 +618,7 @@ async function createProjectTaskServer() {
 
 describe("IN_MEMORY targeted secondary loading", () => {
   it("TV-INMEM-SEC-001: many-many — secondary tag loaded with IN filter on join-referenced IDs only", async () => {
-    const { db, server } = await createTaskTagServer();
+    const { database: db, server } = await createTaskTagServer();
 
     // Add bulk tags that must NOT be fetched
     for (let i = 0; i < 10; i++) {
@@ -667,7 +667,7 @@ describe("IN_MEMORY targeted secondary loading", () => {
   });
 
   it("TV-INMEM-SEC-002: many-one — secondary category loaded with IN filter on FK values from active tasks", async () => {
-    const { db, server } = await createTaskCategoryServer();
+    const { database: db, server } = await createTaskCategoryServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     // $any on category forces IN_MEMORY; status=active pre-filters primary to t1, t2
@@ -703,7 +703,7 @@ describe("IN_MEMORY targeted secondary loading", () => {
   });
 
   it("TV-INMEM-SEC-003: one-many — secondary tasks loaded with IN filter on primary project IDs", async () => {
-    const { db, server } = await createProjectTaskServer();
+    const { database: db, server } = await createProjectTaskServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     // $any on tasks forces IN_MEMORY; active=true pre-filters projects to p1, p2
@@ -738,7 +738,7 @@ describe("IN_MEMORY targeted secondary loading", () => {
   });
 
   it("TV-INMEM-SEC-004: secondary needed by both filter and select — loaded exactly once", async () => {
-    const { db, server } = await createTaskTagServer();
+    const { database: db, server } = await createTaskTagServer();
     const findManySpy = vi.spyOn(db, "findMany");
 
     // $any filter AND tags.* select both reference tags — must be loaded only once
@@ -782,7 +782,7 @@ describe("IN_MEMORY targeted secondary loading", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: TASK_TAG_SCHEMA,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const findManySpy = vi.spyOn(db, "findMany");
@@ -854,8 +854,10 @@ describe("IN_MEMORY targeted secondary loading", () => {
       createDatafnServer({ allowUnknownResources: true,
         schema: unknownRelSchema,
         limits: { maxLimit: 100 },
-        db,
-        logger: mockLogger,
+        database: db,
+        observability: {
+          logger: mockLogger,
+        },
       }),
     ).rejects.toThrow(/relation\.type must be one of one-many, many-one, many-many, htree/i);
     expect(warnLogs).toHaveLength(0);

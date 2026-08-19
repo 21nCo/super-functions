@@ -45,7 +45,7 @@ const schema: DatafnSchema = {
  * Bypasses HTTP layer — suitable for high-volume setup.
  */
 async function seedItems(
-  db: Adapter,
+  database: Adapter,
   count: number,
   namespace = "datafn",
 ): Promise<void> {
@@ -80,7 +80,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxLimit: 20_000 },
     });
 
@@ -107,7 +107,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxLimit: 5_000 },
     });
 
@@ -139,7 +139,7 @@ describe("TST-006: High-volume operations", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       limits: { maxLimit: 1_000 }, // allow querying 1,000 records to verify all 500 persisted
     });
 
@@ -248,7 +248,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10_000, // maxCloneRecords: 10,000 — triggers pagination
@@ -274,7 +274,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10_000,
@@ -300,7 +300,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const page1 = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10,
@@ -329,7 +329,7 @@ describe("TST-007: Clone pagination boundaries", () => {
         },
       },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10,
@@ -362,7 +362,7 @@ describe("TST-007: Clone pagination boundaries", () => {
           },
         },
         schema,
-        db,
+        database: db,
         "datafn",
         undefined,
         10,
@@ -397,7 +397,7 @@ describe("TST-007: Clone pagination boundaries", () => {
         },
       },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10,
@@ -413,7 +413,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["phantom"] },
       schema,
-      db,
+      database: db,
       "datafn",
       undefined,
       10_000,
@@ -446,7 +446,7 @@ describe("TST-007: Clone pagination boundaries", () => {
           },
         },
         schema,
-        db,
+        database: db,
         "datafn",
         undefined,
         10_000,

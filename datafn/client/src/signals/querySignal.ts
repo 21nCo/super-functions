@@ -5,8 +5,14 @@
  */
 
 import type { DatafnSignal, DatafnError, DatafnSchema } from "@datafn/core";
-import { dfqlKey } from "@datafn/core";
+import {
+  dfqlKey,
+  endpointList,
+  findRelationMatch,
+  relationTargetEndpoint,
+} from "@datafn/core";
 import type { EventBus } from "../events/bus.js";
+import type { DatafnSignalOptions } from "./options.js";
 
 /**
  * Signal registry for caching signals by dfqlKey
@@ -23,7 +29,7 @@ export class SignalRegistry {
     this.schema = schema;
   }
 
-  getSignal<T>(fullQuery: unknown, options?: { disableOptimistic?: boolean }): DatafnSignal<T> {
+  getSignal<T>(fullQuery: unknown, options?: DatafnSignalOptions): DatafnSignal<T> {
     const key = dfqlKey(fullQuery);
 
     // Return cached signal if exists
@@ -86,27 +92,12 @@ function deriveQueryFootprint(query: any, schema: DatafnSchema): Set<string> {
   if (Array.isArray(query.select) && schema.relations) {
     for (const token of query.select) {
       if (typeof token === "string" && token.includes(".")) {
-        // Extract the relation name (first segment before dot)
         const relationName = token.split(".")[0];
-        
-        // Look up the relation in schema to find the target resource
-        for (const relation of schema.relations) {
-          // Check if this relation matches (by relation field name or inverse)
-          const matchesRelation = relation.relation === relationName;
-          const matchesInverse = relation.inverse === relationName;
-          
-          if (matchesRelation || matchesInverse) {
-            // Add the target resource (to) for forward relations
-            // Add the source resource (from) for inverse relations
-            const targetResource = matchesRelation 
-              ? (Array.isArray(relation.to) ? relation.to[0] : relation.to)
-              : (Array.isArray(relation.from) ? relation.from[0] : relation.from);
-            
-            if (targetResource && targetResource !== query.resource) {
-              footprint.add(targetResource);
-            }
-            break;
-          }
+        const match = findRelationMatch(schema, query.resource, relationName);
+        if (match) {
+          endpointList(relationTargetEndpoint(match.relation, match.direction))
+            .filter((resource) => resource !== query.resource)
+            .forEach((resource) => footprint.add(resource));
         }
       }
     }
@@ -219,6 +210,17 @@ function applyOptimisticPatch(currentValue: any, event: any): any | null {
   return null;
 }
 
+function hasMembershipSensitiveQueryShape(query: any): boolean {
+  return Boolean(
+    query?.filters ||
+      query?.search ||
+      query?.sort ||
+      query?.limit ||
+      query?.offset ||
+      query?.count
+  );
+}
+
 /**
  * Create a reactive query signal
  */
@@ -229,7 +231,7 @@ function createQuerySignal<T>(
   fullQuery: any,
   signalKey: string,
   removeFromRegistry: () => void,
-  options?: { disableOptimistic?: boolean },
+  options?: DatafnSignalOptions,
 ): DatafnSignal<T> {
   let currentValue: T | undefined;
   let currentCursor: string | null = null;
@@ -410,7 +412,9 @@ function createQuerySignal<T>(
         const affectsCachedRecord = event.ids.some(id => cachedIds!.has(id));
         
         if (!affectsCachedRecord) {
-          // Mutation doesn't affect cached records, skip refresh
+          if (hasMembershipSensitiveQueryShape(fullQuery)) {
+            scheduleRefresh();
+          }
           return;
         }
         
@@ -437,7 +441,7 @@ function createQuerySignal<T>(
     }
   });
 
-  return {
+  const signal = {
     subscribe(fn: (value: T) => void): () => void {
       subscribers.add(fn);
 
@@ -479,6 +483,10 @@ function createQuerySignal<T>(
       return currentCursor;
     },
 
+    refresh(): Promise<void> {
+      return fetchQuery(true);
+    },
+
     dispose(): void {
       // Guard against double-dispose
       if (disposed) {
@@ -500,4 +508,5 @@ function createQuerySignal<T>(
       // Note: We keep currentValue intact so get() returns last cached value
     },
   };
+  return signal as DatafnSignal<T>;
 }

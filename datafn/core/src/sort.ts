@@ -3,6 +3,8 @@ export interface SortTerm {
   direction: "asc" | "desc";
 }
 
+export type SortInputTerm = string | SortTerm;
+
 function isSortDirection(direction: string): direction is SortTerm["direction"] {
   return direction === "asc" || direction === "desc";
 }
@@ -12,10 +14,17 @@ function isSortDirection(direction: string): direction is SortTerm["direction"] 
  * Handles "field", "field:asc", "field:desc", "-field".
  * Returns [] for undefined or empty input.
  */
-export function parseSortTerms(sort: string[] | undefined): SortTerm[] {
+export function parseSortTerms(sort: SortInputTerm[] | undefined): SortTerm[] {
   if (!sort || sort.length === 0) return [];
 
   return sort.map((term) => {
+    if (typeof term === "object" && term !== null) {
+      const direction = term.direction ?? "asc";
+      if (!isSortDirection(direction)) {
+        throw new Error(`Invalid sort direction "${direction}" for field "${term.field}"`);
+      }
+      return { field: term.field, direction };
+    }
     if (term.startsWith("-")) {
       return { field: term.slice(1), direction: "desc" };
     }

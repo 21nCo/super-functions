@@ -1,19 +1,19 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import type { Adapter } from '@superfunctions/db';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
+import type { AuthFnRuntimeConfig } from '../index.js';
+import { issueSessionCookies } from '../core/cookies.js';
+import { issueSession } from '../core/sessions.js';
 import {
-  authFnPasswordPlugin,
-  authFnTwoFactorPlugin,
   confirmTwoFactorEnrollment,
-  createAuthFn,
   createTwoFactorEnrollment,
-  createUser,
-  issueSession,
-  issueSessionCookies,
-  verifyTwoFactorCode,
-  type AuthFnConfig
-} from '../index.js';
+  verifyTwoFactorCode
+} from '../core/two-factor.js';
+import { createUser } from '../core/users.js';
 
 const TEST_NOW = new Date('2026-03-22T00:00:00.000Z');
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -29,15 +29,18 @@ function createClock(start: Date = TEST_NOW) {
   };
 }
 
-function createConfig(clock = createClock()): AuthFnConfig {
+function createConfig(clock = createClock()): AuthFnRuntimeConfig {
   const twoFactorConfig = createTwoFactorPluginConfig(clock);
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
       authFnPasswordPlugin(),
-      authFnTwoFactorPlugin(twoFactorConfig)
-    ]
+      authFnTwoFactorPlugin()
+    ],
+    pluginRuntime: {
+      twoFactor: twoFactorConfig
+    }
   };
 }
 
@@ -109,11 +112,11 @@ function generateTotp(secret: string, now: Date = TEST_NOW, digits = 6, periodSe
   return String(binary % (10 ** digits)).padStart(digits, '0');
 }
 
-describe('@authfn/core two factor plugin', () => {
+describe('authfn two factor plugin', () => {
   it('enrolls, confirms, gates password sign-in, satisfies challenges, and supports disable', async () => {
     const clock = createClock();
     const config = createConfig(clock);
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const signUp = await auth.router.handle(
       new Request('https://account.example.com/auth/sign-up/password', {
@@ -296,13 +299,16 @@ describe('@authfn/core two factor plugin', () => {
   it('accepts valid TOTP codes without relying on adapter update re-read semantics', async () => {
     const clock = createClock();
     const twoFactorConfig = createTwoFactorPluginConfig(clock);
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: createPrismaStyleUpdateWrapper(memoryAdapter({ debug: false })),
       namespace: 'authfn',
       plugins: [
         authFnPasswordPlugin(),
-        authFnTwoFactorPlugin(twoFactorConfig)
-      ]
+        authFnTwoFactorPlugin()
+      ],
+      pluginRuntime: {
+        twoFactor: twoFactorConfig
+      }
     };
 
     const user = await createUser(config, {
@@ -337,7 +343,7 @@ describe('@authfn/core two factor plugin', () => {
   it('supports confirming and satisfying 2fa with deterministic recovery/session helpers', async () => {
     const clock = createClock();
     const config = createConfig(clock);
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'bea@example.com'
     });
@@ -379,17 +385,20 @@ describe('@authfn/core two factor plugin', () => {
   });
 
   it('defaults to ten recovery codes when no override is provided', async () => {
-    const auth = createAuthFn({
+    const auth = createTestServer({
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
         authFnPasswordPlugin(),
-        authFnTwoFactorPlugin({
+        authFnTwoFactorPlugin()
+      ],
+      pluginRuntime: {
+        twoFactor: {
           issuer: 'authfn-tests',
           now: createClock().now,
           encryptionKeyResolver: () => TEST_2FA_KEY
-        })
-      ]
+        }
+      }
     });
 
     const signUp = await auth.router.handle(
@@ -421,16 +430,19 @@ describe('@authfn/core two factor plugin', () => {
   });
 
   it('requires an explicit two-factor encryption key resolver', async () => {
-    const auth = createAuthFn({
+    const auth = createTestServer({
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
         authFnPasswordPlugin(),
-        authFnTwoFactorPlugin({
+        authFnTwoFactorPlugin()
+      ],
+      pluginRuntime: {
+        twoFactor: {
           issuer: 'authfn-tests',
           now: () => TEST_NOW
-        })
-      ]
+        }
+      }
     });
 
     const signUp = await auth.router.handle(

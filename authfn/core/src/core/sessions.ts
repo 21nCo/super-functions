@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { WhereClause } from '@superfunctions/db';
 import type {
   AuthFnAuthMethod,
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnHookContext,
   AuthFnHooks,
   AuthFnSession,
@@ -22,7 +22,7 @@ import { authenticateApiKey as authenticateApiKeyRecord } from './api-keys.js';
 import {
   readCookieValues,
   resolveCookiePolicy,
-  resolveRuntime,
+  resolveEnvironment,
   type AuthFnResolvedCookiePolicy
 } from './cookies.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
@@ -43,12 +43,12 @@ export interface IssuedSession {
   record: AuthFnSessionRecord;
   sessionToken: string;
   csrfToken: string;
-  runtime?: Awaited<ReturnType<typeof resolveRuntime>>;
+  runtime?: Awaited<ReturnType<typeof resolveEnvironment>>;
   cookiePolicy?: AuthFnResolvedCookiePolicy;
 }
 
 export interface AuthenticatedRequestState {
-  runtime: Awaited<ReturnType<typeof resolveRuntime>>;
+  runtime: Awaited<ReturnType<typeof resolveEnvironment>>;
   cookiePolicy: AuthFnResolvedCookiePolicy;
   session?: AuthFnSession;
   sessionRecord?: AuthFnSessionRecord;
@@ -61,17 +61,17 @@ export interface AuthenticatedRequestState {
 let lastIssuedTimestampMs = 0;
 
 export async function issueSession(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: IssueSessionInput
 ): Promise<IssuedSession> {
-  const runtime = input.request ? await resolveRuntime(config, input.request) : undefined;
+  const runtime = input.request ? await resolveEnvironment(config, input.request) : undefined;
   const cookiePolicy = input.request ? resolveCookiePolicy(config, input.request, runtime) : undefined;
 
   const payload = await runBeforeSessionIssueHook(hooks, {
     config,
     request: input.request,
-    runtime,
+    environment: runtime,
     actorId: input.userId
   }, {
     userId: input.userId,
@@ -119,7 +119,7 @@ export async function issueSession(
   await hooks.afterSessionIssue?.({
     config,
     request: input.request,
-    runtime,
+    environment: runtime,
     actorId: session.actorId,
     session
   }, session);
@@ -148,7 +148,7 @@ export async function issueSession(
 }
 
 export async function authenticateRequest(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request
 ): Promise<AuthFnSession | null> {
   const cookieState = await getCookieSessionState(config, request);
@@ -172,10 +172,10 @@ export async function authenticateRequest(
 }
 
 export async function getCookieSessionState(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request
 ): Promise<AuthenticatedRequestState> {
-  const runtime = await resolveRuntime(config, request);
+  const runtime = await resolveEnvironment(config, request);
   const cookiePolicy = resolveCookiePolicy(config, request, runtime);
   const cookieValues = readCookieValues(request, cookiePolicy);
   const state: AuthenticatedRequestState = {
@@ -258,7 +258,7 @@ export async function getCookieSessionState(
 }
 
 export async function requireCookieSession(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request
 ): Promise<AuthenticatedRequestState & {
   session: AuthFnSession;
@@ -307,7 +307,7 @@ export function assertValidCsrf(
 }
 
 export async function listActiveSessionsForUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   user: AuthFnUserRecord,
   options?: { regionId?: string }
 ): Promise<AuthFnSession[]> {
@@ -328,7 +328,7 @@ export async function listActiveSessionsForUser(
 }
 
 export async function revokeSessionById(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   sessionId: string,
   options?: { userId?: string }
 ): Promise<AuthFnSessionRecord> {
@@ -369,7 +369,7 @@ export async function revokeSessionById(
 }
 
 export async function revokeSessionsForUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   userId: string
 ): Promise<number> {
   const records = await config.database.findMany<AuthFnSessionRecord>({
@@ -422,14 +422,14 @@ function buildUserSession(
 }
 
 async function authenticateApiKey(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   secret: string
 ): Promise<AuthFnSession | null> {
   return authenticateApiKeyRecord(config, secret);
 }
 
 export async function authenticateSessionToken(
-  config: Pick<AuthFnConfig, 'database' | 'namespace' | 'plugins' | 'cookie' | 'runtime'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace' | 'plugins' | 'cookie' | 'environment'>,
   sessionToken: string,
   request?: Request
 ): Promise<AuthFnSession | null> {
@@ -447,7 +447,7 @@ export async function authenticateSessionToken(
     return null;
   }
 
-  const runtime = request ? await resolveRuntime(config, request) : undefined;
+  const runtime = request ? await resolveEnvironment(config, request) : undefined;
   const now = new Date();
   await config.database.update<AuthFnSessionRecord>({
     model: 'sessions',
@@ -516,7 +516,7 @@ function sortSessions(left: AuthFnSessionRecord, right: AuthFnSessionRecord): nu
 }
 
 function resolveSessionMaxAgeMs(
-  config: Pick<AuthFnConfig, 'cookie'>,
+  config: Pick<AuthFnRuntimeConfig, 'cookie'>,
   cookiePolicy?: AuthFnResolvedCookiePolicy
 ): number {
   const seconds = cookiePolicy?.sessionMaxAgeSeconds ?? config.cookie?.sessionMaxAgeSeconds ?? 60 * 60 * 24 * 7;
@@ -578,7 +578,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

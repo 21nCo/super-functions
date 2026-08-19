@@ -1,38 +1,12 @@
-import {
-  authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  createAuthFn
-} from '@authfn/core';
-import type { Adapter } from '@superfunctions/db';
-import {
-  MULTI_REGION_EU_BASE_URL,
-  MULTI_REGION_ROUTING_NAMESPACE,
-  MULTI_REGION_US_BASE_URL
-} from './auth.js';
+import { authFnPlugins, authfn } from 'authfn';
+import { authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { MULTI_REGION_ROUTING_NAMESPACE } from './auth.js';
 
-export const multiRegionRoutingSchemaSource = createAuthFn({
-  database: {} as Adapter,
+export const multiRegionRoutingSchemaSource = authfn({
   namespace: MULTI_REGION_ROUTING_NAMESPACE,
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin(),
-    authFnMultiRegionPlugin({
-      defaultRegionId: 'us-east-1',
-      regions: [
-        {
-          regionId: 'us-east-1',
-          authority: MULTI_REGION_US_BASE_URL,
-          cookie: {
-            prefix: 'authfn-us'
-          }
-        },
-        {
-          regionId: 'eu-west-1',
-          authority: MULTI_REGION_EU_BASE_URL,
-          cookie: {
-            prefix: 'authfn-eu'
-          }
-        }
-      ]
-    })
-  ]
+    authFnMultiRegionPlugin()
+  )
 });

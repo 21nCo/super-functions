@@ -2,9 +2,16 @@ export {
   createSearchFnServer,
   type SearchFnServer,
   type SearchFnServerConfig,
-  type SearchFnLogger,
   type ServerContext,
 } from "./server.js";
+
+export type {
+  SearchFnAuthorizationDeniedEvent,
+  SearchFnAuthorizationFailedEvent,
+  SearchFnEvent,
+  SearchFnEventType,
+  SearchFnRequestFailedEvent,
+} from "./events.js";
 
 export {
   type SearchFnErrorCode,

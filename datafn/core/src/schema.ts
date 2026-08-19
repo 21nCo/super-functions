@@ -9,6 +9,9 @@ import type {
   DatafnRelationSchema,
   DatafnSchema,
   DatafnResourceSchema,
+  DatafnDefaultPermissionsPolicy,
+  DatafnRelationDeletePolicies,
+  DatafnRelationIntegrityMode,
   RelationSimpleCapability,
 } from "./types.js";
 import type {
@@ -60,6 +63,71 @@ const RELATION_TYPES: ReadonlySet<DatafnRelationSchema["type"]> = new Set([
   "many-one",
   "many-many",
   "htree",
+]);
+
+const RELATION_INTEGRITY_MODES: ReadonlySet<DatafnRelationIntegrityMode> = new Set([
+  "application",
+  "database",
+]);
+
+function validateDefaultPermissions(
+  value: unknown,
+): DatafnEnvelope<DatafnDefaultPermissionsPolicy | undefined> {
+  if (value === undefined) return ok(undefined);
+  if (value === "allResourceFields") return ok(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return err(
+      "SCHEMA_INVALID",
+      "Invalid schema: defaultPermissions must be allResourceFields or an object",
+      { path: "defaultPermissions" },
+    );
+  }
+
+  const config = value as Record<string, unknown>;
+  for (const key of ["read", "write"] as const) {
+    const mode = config[key];
+    if (
+      mode !== undefined &&
+      mode !== false &&
+      mode !== "allResourceFields"
+    ) {
+      return err(
+        "SCHEMA_INVALID",
+        `Invalid schema: defaultPermissions.${key} must be allResourceFields or false`,
+        { path: `defaultPermissions.${key}` },
+      );
+    }
+  }
+  if (
+    config.relationWrites !== undefined &&
+    config.relationWrites !== false &&
+    config.relationWrites !== "all"
+  ) {
+    return err(
+      "SCHEMA_INVALID",
+      "Invalid schema: defaultPermissions.relationWrites must be all or false",
+      { path: "defaultPermissions.relationWrites" },
+    );
+  }
+
+  return ok({
+    ...(config.read === undefined
+      ? {}
+      : { read: config.read as "allResourceFields" | false }),
+    ...(config.write === undefined
+      ? {}
+      : { write: config.write as "allResourceFields" | false }),
+    ...(config.relationWrites === undefined
+      ? {}
+      : { relationWrites: config.relationWrites as "all" | false }),
+  });
+}
+
+const RELATION_DELETE_POLICIES: ReadonlySet<string> = new Set([
+  "restrict",
+  "cascade",
+  "setNull",
+  "detach",
 ]);
 
 // Canonical ordering for relation capabilities (RCAP-004)
@@ -139,6 +207,19 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
   const globalCapsResult = parseSchemaCapabilities(s.capabilities);
   if (!globalCapsResult.ok) return globalCapsResult;
   const globalCapabilities = globalCapsResult.result;
+  const defaultPermissionsResult = validateDefaultPermissions(s.defaultPermissions);
+  if (!defaultPermissionsResult.ok) return defaultPermissionsResult;
+
+  if (
+    s.relationIntegrity !== undefined &&
+    !RELATION_INTEGRITY_MODES.has(s.relationIntegrity as DatafnRelationIntegrityMode)
+  ) {
+    return err(
+      "SCHEMA_INVALID",
+      `Invalid schema: relationIntegrity must be one of ${[...RELATION_INTEGRITY_MODES].join(", ")}`,
+      { path: "relationIntegrity" },
+    );
+  }
 
   // Check resources exists and is an array
   if (!s.resources || !Array.isArray(s.resources)) {
@@ -219,7 +300,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     }
 
     const fieldNames = new Set<string>();
-    const normalizedFields: DatafnResourceSchema["fields"] = [];
+    const normalizedFields: DatafnFieldSchema[] = [];
     for (const field of r.fields) {
       if (typeof field !== "object" || field === null || Array.isArray(field)) {
         return err("SCHEMA_INVALID", "Invalid schema: field must be object", {
@@ -359,17 +440,20 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
       }
     }
 
-    normalizedResources.push({
+    const normalizedResource: DatafnResourceSchema = {
       ...r,
+      name: r.name,
+      version: r.version,
       capabilities: resourceCapsResult.result as DatafnResourceSchema["capabilities"],
       fields: [...normalizedFields, ...injectedFields],
       indices: normalizedIndices,
-    } as DatafnResourceSchema);
+    };
+    normalizedResources.push(normalizedResource);
   }
 
   // Normalize relations (default to empty array)
   const relations = Array.isArray(s.relations) ? s.relations : [];
-  const normalizedRelations: DatafnSchema["relations"] = [];
+  const normalizedRelations: DatafnRelationSchema[] = [];
 
   // Validate relation fields
   for (const rel of relations) {
@@ -430,9 +514,26 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
         path: "relations.cache",
       });
     }
+    if (r.inheritsInactive !== undefined) {
+      if (typeof r.inheritsInactive !== "boolean") {
+        return err("SCHEMA_INVALID", "Invalid schema: relation.inheritsInactive must be boolean", {
+          path: "relations.inheritsInactive",
+        });
+      }
+      if (r.inheritsInactive === true && r.type === "many-many") {
+        return err("SCHEMA_INVALID", "Invalid schema: relation.inheritsInactive is not supported on many-many relations", {
+          path: "relations.inheritsInactive",
+        });
+      }
+    }
     if (r.fkField !== undefined && typeof r.fkField !== "string") {
       return err("SCHEMA_INVALID", "Invalid schema: relation.fkField must be string", {
         path: "relations.fkField",
+      });
+    }
+    if (r.fkResourceField !== undefined && typeof r.fkResourceField !== "string") {
+      return err("SCHEMA_INVALID", "Invalid schema: relation.fkResourceField must be string", {
+        path: "relations.fkResourceField",
       });
     }
     if (r.pathField !== undefined && typeof r.pathField !== "string") {
@@ -471,6 +572,39 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
         }
       }
     }
+    if (r.identityMetadata !== undefined) {
+      if (r.type !== "many-many") {
+        return err("SCHEMA_INVALID", "Invalid schema: relation.identityMetadata is only supported on many-many relations", {
+          path: "relations.identityMetadata",
+        });
+      }
+      if (!Array.isArray(r.identityMetadata)) {
+        return err("SCHEMA_INVALID", "Invalid schema: relation.identityMetadata must be array", {
+          path: "relations.identityMetadata",
+        });
+      }
+      const metadataFields = new Map(
+        (r.metadata ?? []).map((field) => [field.name, field.type]),
+      );
+      for (const fieldName of r.identityMetadata) {
+        if (typeof fieldName !== "string" || fieldName.length === 0) {
+          return err("SCHEMA_INVALID", "Invalid schema: relation.identityMetadata entries must be non-empty strings", {
+            path: "relations.identityMetadata",
+          });
+        }
+        const fieldType = metadataFields.get(fieldName);
+        if (!fieldType) {
+          return err("SCHEMA_INVALID", `Invalid schema: relation.identityMetadata references unknown metadata field "${fieldName}"`, {
+            path: `relations.identityMetadata.${fieldName}`,
+          });
+        }
+        if (fieldType === "object" || fieldType === "json") {
+          return err("SCHEMA_INVALID", "Invalid schema: relation.identityMetadata cannot reference object or json metadata fields", {
+            path: `relations.identityMetadata.${fieldName}`,
+          });
+        }
+      }
+    }
 
     // CLI-004: Validate that from/to reference declared resource names
     const validateRelationRef = (
@@ -493,6 +627,21 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     if (fromRefError) return fromRefError;
     const toRefError = validateRelationRef(normalizedTo.result, "to");
     if (toRefError) return toRefError;
+    if (r.inheritsInactive === true) {
+      const dependentResources = r.type === "many-one"
+        ? (Array.isArray(normalizedFrom.result) ? normalizedFrom.result : [normalizedFrom.result])
+        : (Array.isArray(normalizedTo.result) ? normalizedTo.result : [normalizedTo.result]);
+      for (const name of dependentResources) {
+        const dependentResource = normalizedResources.find((resource) => resource.name === name);
+        if (!dependentResource?.fields.some((field) => field.name === "isAncestorInactive")) {
+          return err(
+            "SCHEMA_INVALID",
+            `Invalid schema: relation.inheritsInactive requires resource "${name}" to define isAncestorInactive`,
+            { path: "relations.inheritsInactive" },
+          );
+        }
+      }
+    }
 
     if (r.joinTable !== undefined && typeof r.joinTable !== "string") {
       return err("SCHEMA_INVALID", "Invalid schema: relation.joinTable must be string", {
@@ -511,6 +660,20 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
           path: "relations",
         });
       }
+    }
+    if (
+      r.integrity !== undefined &&
+      !RELATION_INTEGRITY_MODES.has(r.integrity as DatafnRelationIntegrityMode)
+    ) {
+      return err(
+        "SCHEMA_INVALID",
+        `Invalid schema: relation.integrity must be one of ${[...RELATION_INTEGRITY_MODES].join(", ")}`,
+        { path: "relations.integrity" },
+      );
+    }
+    if (r.onDelete !== undefined) {
+      const policyValidation = validateRelationDeletePolicies(r.onDelete);
+      if (!policyValidation.ok) return policyValidation;
     }
 
     // RCAP-001, RCAP-002, RCAP-003: Validate relation capabilities if present
@@ -555,10 +718,51 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
 
   return ok({
     capabilities: globalCapabilities,
+    defaultPermissions: defaultPermissionsResult.result,
     resources: normalizedResources,
     relations: normalizedRelations,
+    relationIntegrity: s.relationIntegrity as DatafnRelationIntegrityMode | undefined,
     namespaced,
   });
+}
+
+function validateRelationDeletePolicies(
+  value: unknown,
+): DatafnEnvelope<DatafnRelationDeletePolicies> {
+  if (typeof value === "string") {
+    if (RELATION_DELETE_POLICIES.has(value)) return ok(value as DatafnRelationDeletePolicies);
+    return err(
+      "SCHEMA_INVALID",
+      `Invalid schema: relation.onDelete must use one of ${[...RELATION_DELETE_POLICIES].join(", ")}`,
+      { path: "relations.onDelete" },
+    );
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return err(
+      "SCHEMA_INVALID",
+      "Invalid schema: relation.onDelete must be a policy string or { from, to } object",
+      { path: "relations.onDelete" },
+    );
+  }
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (key !== "from" && key !== "to") {
+      return err(
+        "SCHEMA_INVALID",
+        "Invalid schema: relation.onDelete only supports from and to keys",
+        { path: "relations.onDelete" },
+      );
+    }
+    const policy = obj[key];
+    if (policy !== undefined && (typeof policy !== "string" || !RELATION_DELETE_POLICIES.has(policy))) {
+      return err(
+        "SCHEMA_INVALID",
+        `Invalid schema: relation.onDelete.${key} must use one of ${[...RELATION_DELETE_POLICIES].join(", ")}`,
+        { path: `relations.onDelete.${key}` },
+      );
+    }
+  }
+  return ok(obj as DatafnRelationDeletePolicies);
 }
 
 function parseSchemaCapabilities(

@@ -1,8 +1,11 @@
 import {
   type DatafnFieldSchema,
+  type DatafnRelationSchema,
+  type DatafnSchema,
   validateSchema,
   unwrapEnvelope,
   RELATION_CAPABILITY_FIELD_DEFS,
+  getRelationJoinTableName,
 } from "@datafn/core";
 
 /**
@@ -34,6 +37,7 @@ export function generateTypes(schemaInput: unknown): string {
   const resources = [...schema.resources].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const relationFieldsByResource = buildRelationFieldsByResource(schema);
 
   // Generate an interface for each resource
   for (const resource of resources) {
@@ -41,7 +45,16 @@ export function generateTypes(schemaInput: unknown): string {
     lines.push(`export interface ${pascalName} {`);
 
     // Sort fields for stability
-    const fields = ensureIdField(resource.fields).sort((a, b) =>
+    const declaredFieldNames = new Set(resource.fields.map((field) => field.name));
+    const generatedFieldNames = new Set<string>();
+    const relationFields = (relationFieldsByResource.get(resource.name) ?? []).filter((field) => {
+      if (declaredFieldNames.has(field.name) || generatedFieldNames.has(field.name)) {
+        return false;
+      }
+      generatedFieldNames.add(field.name);
+      return true;
+    });
+    const fields = ensureIdField([...resource.fields, ...relationFields]).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
     const hasShareable =
@@ -81,18 +94,30 @@ export function generateTypes(schemaInput: unknown): string {
     // JCG-002: emit join interface when metadata OR relation capabilities are present
     const hasMetadata = rel.metadata && rel.metadata.length > 0;
     const hasCapabilities = rel.capabilities && rel.capabilities.length > 0;
-    if (rel.type !== "many-many" || (!hasMetadata && !hasCapabilities)) {
+    const hasPolymorphicFrom = Array.isArray(rel.from) && rel.from.length > 1;
+    const hasPolymorphicTo = Array.isArray(rel.to) && rel.to.length > 1;
+    const metadataFieldNames = new Set((rel.metadata ?? []).map((field) => field.name));
+    if (
+      rel.type !== "many-many" ||
+      (!hasMetadata && !hasCapabilities && !hasPolymorphicFrom && !hasPolymorphicTo)
+    ) {
       continue;
     }
 
-    const jtName = rel.joinTable ?? `__datafn_join_${Array.isArray(rel.from) ? rel.from[0] : rel.from}_${rel.relation ?? (Array.isArray(rel.to) ? rel.to[0] : rel.to)}`;
+    const jtName = getRelationJoinTableName(rel);
     const pascalName = toPascalCase(jtName);
     const fromCol = rel.joinColumns?.from ?? "from";
     const toCol = rel.joinColumns?.to ?? "to";
 
     lines.push(`export interface ${pascalName} {`);
     lines.push(`  ${renderTsPropertyName(fromCol)}: string;`);
+    if (hasPolymorphicFrom && !metadataFieldNames.has("fromResource")) {
+      lines.push(`  fromResource: string;`);
+    }
     lines.push(`  ${renderTsPropertyName(toCol)}: string;`);
+    if (hasPolymorphicTo && !metadataFieldNames.has("toResource")) {
+      lines.push(`  toResource: string;`);
+    }
 
     // Sort metadata fields for stability
     if (hasMetadata) {
@@ -148,6 +173,97 @@ export function generateTypes(schemaInput: unknown): string {
   return lines.join("\n");
 }
 
+function endpointList(endpoint: string | readonly string[]): string[] {
+  return typeof endpoint === "string" ? [endpoint] : [...endpoint];
+}
+
+function firstEndpoint(endpoint: string | readonly string[]): string {
+  return endpointList(endpoint)[0] ?? "";
+}
+
+function fkFieldForOneMany(relation: DatafnRelationSchema): string {
+  return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+}
+
+function htreeFkField(relation: DatafnRelationSchema): string {
+  return relation.fkField || relation.inverse || "parentId";
+}
+
+function htreePathField(relation: DatafnRelationSchema): string {
+  return relation.pathField || "parentPath";
+}
+
+function fkResourceFieldForRelation(
+  relation: DatafnRelationSchema,
+  side: "from" | "to",
+): string {
+  if (relation.fkResourceField) return relation.fkResourceField;
+  if (relation.type === "htree") {
+    return `${htreeFkField(relation).replace(/Id$/, "")}Resource`;
+  }
+  const base = side === "to"
+    ? (relation.relation || "target")
+    : (relation.inverse || relation.relation || "source");
+  return `${base.replace(/Id$/, "")}Resource`;
+}
+
+function stringField(name: string): DatafnFieldSchema {
+  return {
+    name,
+    type: "string",
+    required: false,
+    nullable: true,
+  };
+}
+
+function addRelationField(
+  byResource: Map<string, DatafnFieldSchema[]>,
+  resource: string,
+  field: DatafnFieldSchema,
+): void {
+  const fields = byResource.get(resource) ?? [];
+  if (!fields.some((existing) => existing.name === field.name)) {
+    fields.push(field);
+  }
+  byResource.set(resource, fields);
+}
+
+function buildRelationFieldsByResource(schema: DatafnSchema): Map<string, DatafnFieldSchema[]> {
+  const byResource = new Map<string, DatafnFieldSchema[]>();
+  for (const relation of schema.relations ?? []) {
+    if (relation.type === "many-one") {
+      const toResources = endpointList(relation.to);
+      const resourceField = toResources.length > 1
+        ? fkResourceFieldForRelation(relation, "to")
+        : undefined;
+      for (const resource of endpointList(relation.from)) {
+        addRelationField(byResource, resource, stringField(relation.fkField || `${relation.relation}Id`));
+        if (resourceField) addRelationField(byResource, resource, stringField(resourceField));
+      }
+    } else if (relation.type === "one-many") {
+      const fromResources = endpointList(relation.from);
+      const resourceField = fromResources.length > 1
+        ? fkResourceFieldForRelation(relation, "from")
+        : undefined;
+      for (const resource of endpointList(relation.to)) {
+        addRelationField(byResource, resource, stringField(fkFieldForOneMany(relation)));
+        if (resourceField) addRelationField(byResource, resource, stringField(resourceField));
+      }
+    } else if (relation.type === "htree") {
+      const fromResources = endpointList(relation.from);
+      const resourceField = fromResources.length > 1
+        ? fkResourceFieldForRelation(relation, "from")
+        : undefined;
+      for (const resource of endpointList(relation.to)) {
+        addRelationField(byResource, resource, stringField(htreeFkField(relation)));
+        addRelationField(byResource, resource, stringField(htreePathField(relation)));
+        if (resourceField) addRelationField(byResource, resource, stringField(resourceField));
+      }
+    }
+  }
+  return byResource;
+}
+
 function toPascalCase(str: string): string {
   const parts = str
     .split(/[^A-Za-z0-9]+/)
@@ -168,7 +284,7 @@ function renderTsPropertyName(name: string): string {
   return isValidTsIdentifier(name) ? name : JSON.stringify(name);
 }
 
-function ensureIdField(fields: DatafnFieldSchema[]): DatafnFieldSchema[] {
+function ensureIdField(fields: readonly DatafnFieldSchema[]): DatafnFieldSchema[] {
   if (fields.some((field) => field.name === "id")) {
     return [...fields];
   }

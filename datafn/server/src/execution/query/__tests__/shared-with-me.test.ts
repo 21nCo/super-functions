@@ -46,7 +46,7 @@ describe("shared-with-me query mode and permission inspection", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => namespace,
         getActorId: () => actorId as any,
@@ -85,47 +85,11 @@ describe("shared-with-me query mode and permission inspection", () => {
     await db.create({
       model: "__datafn_permissions_global",
       data: {
-        id: "p1",
-        resourceType: "collections",
-        resourceNs: "user:alice",
-        resourceId: "col_trip",
-        principalId: "user:bob",
-        level: "viewer",
-        grantKind: "record",
-        sourceRef: null,
-        grantedBy: "user:alice",
-        grantedAt: 1,
-        revokedAt: null,
-        __ns: "user:bob",
-      },
-      namespace: "user:bob",
-    });
-    await db.create({
-      model: "__datafn_permissions_global",
-      data: {
-        id: "p2",
-        resourceType: "collections",
-        resourceNs: "org:acme",
-        resourceId: null,
-        principalId: "team:home",
-        level: "viewer",
-        grantKind: "scope",
-        sourceRef: null,
-        grantedBy: "user:sam",
-        grantedAt: 2,
-        revokedAt: null,
-        __ns: "user:bob",
-      },
-      namespace: "user:bob",
-    });
-    await db.create({
-      model: "__datafn_permissions_global",
-      data: {
         id: "p3",
         resourceType: "collections",
         resourceNs: "user:eve",
         resourceId: "col_secret",
-        principalId: "user:charlie",
+        principalId: "user:bob",
         level: "viewer",
         grantKind: "record",
         sourceRef: null,
@@ -160,18 +124,18 @@ describe("shared-with-me query mode and permission inspection", () => {
       data: {
         id: "owner-p2",
         resourceType: "collections",
-        resourceNs: "user:alice",
+        resourceNs: "org:acme",
         resourceId: null,
         principalId: "team:home",
         level: "viewer",
         grantKind: "scope",
         sourceRef: null,
-        grantedBy: "user:alice",
+        grantedBy: "user:sam",
         grantedAt: 11,
         revokedAt: null,
-        __ns: "user:alice",
+        __ns: "org:acme",
       },
-      namespace: "user:alice",
+      namespace: "org:acme",
     });
     await db.create({
       model: "__datafn_permissions_global",
@@ -261,10 +225,6 @@ describe("shared-with-me query mode and permission inspection", () => {
       expect.objectContaining({
         principalId: "user:bob",
         grantKind: "record",
-      }),
-      expect.objectContaining({
-        principalId: "team:home",
-        grantKind: "scope",
       }),
       expect.objectContaining({
         principalId: "user:charlie",

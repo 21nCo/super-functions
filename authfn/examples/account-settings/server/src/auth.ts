@@ -1,54 +1,34 @@
-import {
-  authFnApiKeyPlugin,
-  authFnPasswordPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
-  getSchema,
-  type AuthFnEvent,
-  type AuthFnInstance,
-  type AuthFnPlugin
-} from '@authfn/core';
+import { authFnPlugins, authfn, type AuthFnEvent, type AuthFnServer } from 'authfn';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
 import type { Adapter } from '@superfunctions/db';
 
 export const ACCOUNT_SETTINGS_NAMESPACE = 'authfn_account_settings';
 export const ACCOUNT_SETTINGS_COOKIE_PREFIX = 'authfn-account-settings';
 
-export function createAccountSettingsSchemaPlugins(): AuthFnPlugin[] {
-  return [
+export function createAccountSettingsPlugins() {
+  return authFnPlugins(
     authFnPasswordPlugin(),
     authFnApiKeyPlugin(),
-    authFnTwoFactorPlugin({
-      issuer: 'authfn-account-settings',
-      recoveryCodeCount: 3
-    })
-  ];
+    authFnTwoFactorPlugin()
+  );
 }
 
-export function createAccountSettingsPlugins(): AuthFnPlugin[] {
-  return [
-    authFnPasswordPlugin(),
-    authFnApiKeyPlugin(),
-    authFnTwoFactorPlugin({
-      issuer: 'authfn-account-settings',
-      recoveryCodeCount: 3
-    })
-  ];
-}
-
-export const accountSettingsSchema = getSchema({
-  database: {} as Adapter,
+export const accountSettingsAuthApp = authfn({
   namespace: ACCOUNT_SETTINGS_NAMESPACE,
-  plugins: createAccountSettingsSchemaPlugins()
+  plugins: createAccountSettingsPlugins()
 });
+
+export const accountSettingsSchema = accountSettingsAuthApp.getSchema();
 
 export function createAccountSettingsAuth(options: {
   database: Adapter;
   onEvent?(event: AuthFnEvent): Promise<void> | void;
-}): AuthFnInstance {
-  return createAuthFn({
+}): AuthFnServer {
+  return accountSettingsAuthApp.createServer({
     database: options.database,
-    namespace: ACCOUNT_SETTINGS_NAMESPACE,
-    runtime: {
+    environment: {
       resolve(request) {
         const url = new URL(request.url);
         return {
@@ -65,7 +45,12 @@ export function createAccountSettingsAuth(options: {
     observability: {
       emit: options.onEvent
     },
-    plugins: createAccountSettingsPlugins()
+    pluginRuntime: {
+      twoFactor: {
+        issuer: 'authfn-account-settings',
+        recoveryCodeCount: 3
+      }
+    }
   });
 }
 

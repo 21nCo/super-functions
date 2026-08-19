@@ -58,6 +58,18 @@ When a query is executed, the server checks:
 - **GroupBy fields**: Every field in `groupBy` must appear in `read.fields`.
 - **Having fields**: Every field in `having` must appear in `read.fields`.
 - **Search fields**: Every field in `search.fields` must appear in `read.fields`.
+- **Temporal fields**: A [`temporal`](/docs/dfql/temporal) clause's `field` must be readable. Temporal group **aliases** are allowed in `sort`/`having` without a `read.fields` entry.
+
+### Capability Fields
+
+Capability-injected fields do not need to be listed in `read.fields`:
+
+- **Readable by default**: lifecycle fields like `createdAt`, `updatedAt`, `createdBy`, `trashedAt`, and `isArchived` are readable without an explicit entry.
+- **Write differs by field**: readonly capability fields (timestamps/audit/trash) can never be written by clients (they are stripped). Non-readonly capability fields like `isArchived` still require an explicit `write.fields` entry to be set directly via `merge`.
+
+### Polymorphic Relations
+
+When authorizing a query that selects or filters through a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relation, the server resolves and walks **all** concrete target resources for that relation segment, so nested field access is validated against every possible type.
 
 ```typescript
 // This query is REJECTED because "internalNotes" is not in read.fields

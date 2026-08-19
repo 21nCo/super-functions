@@ -38,9 +38,12 @@ describe("DefaultHttpTransport", () => {
       "https://api.example.com/query",
       expect.objectContaining({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(query),
       }),
+    );
+    const options = (global.fetch as any).mock.calls[0][1] as RequestInit;
+    expect((options.headers as Headers).get("content-type")).toBe(
+      "application/json",
     );
     expect(result).toEqual(mockResponse);
   });
@@ -59,9 +62,12 @@ describe("DefaultHttpTransport", () => {
       "https://api.example.com/mutation",
       expect.objectContaining({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(mutation),
       }),
+    );
+    const options = (global.fetch as any).mock.calls[0][1] as RequestInit;
+    expect((options.headers as Headers).get("content-type")).toBe(
+      "application/json",
     );
     expect(result).toEqual(mockResponse);
   });

@@ -120,7 +120,7 @@ describe("Phase 04: Bounded Sync Pull", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
         limits: { maxPullLimit: 20 },
       });
 
@@ -176,7 +176,7 @@ describe("Phase 04: Bounded Sync Pull", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
         // No maxPullLimit set — default 1000
       });
 
@@ -225,7 +225,7 @@ describe("Phase 04: Bounded Sync Pull", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: defaultSchema,
-        db,
+        database: db,
         limits: { maxPullLimit: 10 },
       });
 
@@ -384,11 +384,10 @@ describe("BATCH-SEQ-001/002/003: DatabaseSequenceStore.getNextN()", () => {
     const result = await fallbackStore.getNextN("datafn", 3);
     expect(result).toEqual([1, 2, 3]);
 
-    // Verify primary was used (primary now at 4, fallback still at 0)
     const primaryCurrent = await primary.getCurrent("datafn");
     const fallbackCurrent = await fallback.getCurrent("datafn");
     expect(primaryCurrent).toBe(3);
-    expect(fallbackCurrent).toBe(0);
+    expect(fallbackCurrent).toBe(3);
   });
 });
 

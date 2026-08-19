@@ -42,7 +42,7 @@ describe("DatafnServer.search()", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider,
     });
 
@@ -60,7 +60,7 @@ describe("DatafnServer.search()", () => {
       namespace: "datafn",
     });
 
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
     const result: any = await server.search({ query: "report" });
     expect(result.results[0].id).toBe("t-native");
   });
@@ -68,7 +68,7 @@ describe("DatafnServer.search()", () => {
   it("throws canonical unsupported when provider is missing and DB-native search is unavailable", async () => {
     const db = memoryAdapter();
     await db.initialize();
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
 
     await expect(server.search({ query: "report" })).rejects.toMatchObject({
       code: "DFQL_UNSUPPORTED",
@@ -88,7 +88,7 @@ describe("DatafnServer.search()", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider,
     });
 

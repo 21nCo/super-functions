@@ -10,15 +10,25 @@ import type { EventBus } from "./events/bus.js";
 import type { DatafnPlugin, DatafnSchema, SearchProvider } from "@datafn/core";
 import { unwrapRemoteSuccess } from "./remote/unwrap.js";
 import { isTransportError } from "./errors.js";
-import { handleOfflineMutation } from "./offline/mutate.js";
+import {
+  applyOptimisticMutationToStorage,
+  handleOfflineMutation,
+  validateOfflineMutation,
+} from "./offline/mutate.js";
 import { runBeforeMutation, runAfterMutation } from "./plugins/run-hooks.js";
 import { serializeDateFields } from "./codecs/date.js";
 import {
-  injectCapabilityFieldsForOptimisticRecord,
   sanitizeCapabilityReadonlyFields,
 } from "./capability-fields.js";
+import {
+  encryptMutationPayloadForE2ee,
+  type DatafnE2eeConfig,
+} from "./e2ee.js";
 
-import type { DebouncerMap } from "./debounce.js";
+import type {
+  DebouncerMap,
+  DfqlMutation as DebouncedMutation,
+} from "./debounce.js";
 
 export type MutationPushScheduler = () => void | Promise<void>;
 
@@ -154,6 +164,14 @@ async function schedulePushFailSoft(
   }
 }
 
+function isDebounceableMutationOperation(operation: unknown): boolean {
+  return (
+    operation === "merge" ||
+    operation === "relate" ||
+    operation === "modifyRelation"
+  );
+}
+
 /**
  * Generate a unique mutation ID
  */
@@ -239,6 +257,130 @@ function isNativeBackedSearchProvider(
   );
 }
 
+function isRemoteMutationResultFullyApplied(result: unknown): boolean {
+  if (Array.isArray(result)) {
+    return result.every((entry) => isRemoteMutationResultFullyApplied(entry));
+  }
+  if (typeof result !== "object" || result === null) return true;
+  const value = result as Record<string, unknown>;
+  if (value.ok === false) return false;
+  if (Array.isArray(value.errors) && value.errors.length > 0) return false;
+  if (Array.isArray(value.results)) {
+    return value.results.every((entry) => isRemoteMutationResultFullyApplied(entry));
+  }
+  return true;
+}
+
+function getMutationId(mutation: unknown): string | undefined {
+  const value = mutation as Record<string, unknown>;
+  return typeof value?.mutationId === "string" ? value.mutationId : undefined;
+}
+
+function resolveRemoteResultForMutation(
+  result: unknown,
+  mutation: unknown,
+  index: number,
+): unknown {
+  if (Array.isArray(result)) {
+    return result[index] ?? { ok: false, errors: [{ code: "UNKNOWN", message: "Missing mutation result", path: "$" }] };
+  }
+
+  if (typeof result !== "object" || result === null) {
+    return result;
+  }
+
+  const value = result as Record<string, unknown>;
+  const mutationId = getMutationId(mutation);
+  const errors = Array.isArray(value.errors) ? value.errors as Record<string, unknown>[] : [];
+  const matchedError = mutationId
+    ? errors.find((error) => error.mutationId === mutationId)
+    : undefined;
+  if (matchedError) {
+    return { ok: false, errors: [matchedError] };
+  }
+
+  const applied = Array.isArray(value.applied) ? value.applied : [];
+  if (mutationId && applied.includes(mutationId)) {
+    return { ok: true, mutationId };
+  }
+
+  if (value.ok === true && errors.length === 0 && applied.length === 0) {
+    return { ok: true, mutationId };
+  }
+
+  if (value.ok === true && !mutationId) {
+    return { ok: true };
+  }
+
+  return { ok: false, errors: [{ code: "UNKNOWN", message: "Mutation was not applied", path: "$" }] };
+}
+
+function isRemoteMutationApplied(result: unknown, mutation: unknown, index: number): boolean {
+  return isRemoteMutationResultFullyApplied(
+    resolveRemoteResultForMutation(result, mutation, index),
+  );
+}
+
+async function applyRemoteSuccessToLocalStorage(
+  storage: DatafnStorageAdapter | undefined,
+  schema: DatafnSchema | undefined,
+  offlinability: boolean | undefined,
+  clientId: string | undefined,
+  searchProvider: SearchProvider | undefined,
+  mutationForRemote: unknown | unknown[],
+  result: unknown,
+  getTimestamp: () => number,
+): Promise<void> {
+  if (!storage || !schema || !offlinability || !clientId) return;
+
+  const mutations = Array.isArray(mutationForRemote)
+    ? mutationForRemote
+    : [mutationForRemote];
+  for (let index = 0; index < mutations.length; index++) {
+    const mutation = mutations[index];
+    if (!isRemoteMutationApplied(result, mutation, index)) continue;
+    const mutationRecord = mutation as Record<string, unknown>;
+    if (isRemoteOnlyMutation(schema, mutationRecord)) continue;
+    await applyOptimisticMutationToStorage(
+      storage,
+      schema,
+      mutationRecord,
+      getTimestamp(),
+      clientId,
+    );
+    await tryUpdateSearchIndex(
+      searchProvider,
+      storage,
+      mutationRecord,
+    );
+  }
+}
+
+function isRemoteOnlyMutation(
+  schema: DatafnSchema | undefined,
+  mutation: Record<string, unknown>,
+): boolean {
+  const resource = mutation.resource;
+  return (
+    typeof resource === "string" &&
+    schema?.resources.some((item) => item.name === resource && item.isRemoteOnly) === true
+  );
+}
+
+function hasRemoteOnlyMutation(
+  schema: DatafnSchema | undefined,
+  mutation: unknown | unknown[],
+): boolean {
+  const mutations = Array.isArray(mutation) ? mutation : [mutation];
+  return mutations.some(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      isRemoteOnlyMutation(schema, item as Record<string, unknown>),
+  );
+}
+
 async function tryUpdateSearchIndex(
   searchProvider: SearchProvider | undefined,
   storage: DatafnStorageAdapter | undefined,
@@ -305,6 +447,7 @@ export async function executeMutation(
   clientId?: string,
   debouncerMap?: DebouncerMap,
   searchProvider?: SearchProvider,
+  e2ee?: DatafnE2eeConfig,
 ): Promise<unknown> {
   // Validate clientId is provided when offline functionality is needed
   if ((offlinability || storage) && !clientId) {
@@ -341,131 +484,112 @@ export async function executeMutation(
     }
   }
 
-  // Check for debounced mutations (DEB-001)
-  // Only single merge mutations with debounceKey are debounced
   if (
     !Array.isArray(m) &&
     debouncerMap &&
     storage &&
+    schema &&
     offlinability &&
     clientId
   ) {
-    const mutation = m as any;
-    const debounceKey = mutation.debounceKey as string | undefined;
-    const debounceMs = (mutation.debounceMs as number | undefined) || 1500;
+    const mutation = m as Record<string, unknown>;
+    const debounceKey =
+      typeof mutation.debounceKey === "string"
+        ? mutation.debounceKey
+        : undefined;
+    const debounceMs =
+      typeof mutation.debounceMs === "number" ? mutation.debounceMs : 1500;
 
-    if (debounceKey) {
-      // If operation is NOT merge, execute immediately (no debounce for insert/delete/replace)
-      if (mutation.operation !== "merge") {
-        // Fall through to normal execution below
-      } else {
-        // This is a debounced merge mutation
-        const mutationId = mutation.mutationId || generateMutationId();
-        const sanitizedMutation = schema
-          ? sanitizeCapabilityReadonlyFields(schema, mutation as Record<string, unknown>)
-          : mutation;
-        const enrichedMutation = {
-          ...sanitizedMutation,
+    if (
+      debounceKey &&
+      typeof mutation.resource === "string" &&
+      typeof mutation.operation === "string" &&
+      typeof mutation.id === "string" &&
+      isDebounceableMutationOperation(mutation.operation)
+    ) {
+      const mutationId =
+        typeof mutation.mutationId === "string"
+          ? mutation.mutationId
+          : generateMutationId();
+      const sanitizedMutation = sanitizeCapabilityReadonlyFields(
+        schema,
+        mutation as Record<string, unknown>,
+      );
+      const enrichedMutation: DebouncedMutation = {
+        ...sanitizedMutation,
+        resource: mutation.resource,
+        operation: mutation.operation,
+        id: mutation.id,
+        clientId,
+        mutationId,
+      };
+
+      const state = await storage.getHydrationState(mutation.resource);
+      if (state === "ready") {
+        await validateOfflineMutation(storage, schema, enrichedMutation);
+        await applyOptimisticMutationToStorage(
+          storage,
+          schema,
+          enrichedMutation,
+          getTimestamp(),
           clientId,
+        );
+        await tryUpdateSearchIndex(searchProvider, storage, enrichedMutation);
+
+        debouncerMap.set(
+          debounceKey,
+          enrichedMutation,
+          debounceMs,
+          async (debouncedMutation) => {
+            try {
+              // Append to changelog (AUD-001: with timestamp enrichment)
+              await storage.changelogAppend({
+                clientId: debouncedMutation.clientId as string,
+                mutationId: debouncedMutation.mutationId as string,
+                mutation: debouncedMutation,
+                timestampMs: getTimestamp(),
+                timestamp: new Date().toISOString(),
+              });
+
+              // Emit mutation_applied event
+              emitMutationEvents(
+                eventBus,
+                getTimestamp,
+                debouncedMutation,
+                { ok: true, mutationId: debouncedMutation.mutationId },
+              );
+
+              // Scheduling push is best-effort once the durable local write succeeded.
+              await schedulePushFailSoft(schedulePush);
+            } catch (err) {
+              // If changelog append fails, emit rejection event
+              const errorContext = {
+                code: "INTERNAL",
+                message: "Failed to append to changelog",
+                path: "$",
+              };
+              eventBus.emit({
+                type: "mutation_rejected",
+                resource: debouncedMutation.resource as string,
+                ids: [debouncedMutation.id as string],
+                mutationId: debouncedMutation.mutationId as string,
+                clientId: debouncedMutation.clientId as string,
+                timestampMs: getTimestamp(),
+                action: debouncedMutation.operation as string,
+                context: errorContext,
+              } as any);
+              // Don't re-throw - we've emitted the rejection event
+              // and the debouncer promise will be rejected anyway
+            }
+          },
+        );
+
+        return {
+          ok: true,
           mutationId,
+          affectedIds: [mutation.id],
+          deduped: false,
         };
-
-        // Check hydration state - only proceed if ready
-        const state = await storage.getHydrationState(mutation.resource);
-        if (state === "ready") {
-          // Apply to local storage immediately (optimistic) - inline merge logic
-          const resource = mutation.resource as string;
-          const id = mutation.id as string;
-          const existing = await storage.getRecord(resource, id);
-          const optimisticRecord = schema
-            ? injectCapabilityFieldsForOptimisticRecord(
-                schema,
-                enrichedMutation as Record<string, unknown>,
-                {
-                  timestampMs: getTimestamp(),
-                  actorId: clientId,
-                  existingRecord: existing,
-                },
-              )
-            : (((enrichedMutation as any).record || {}) as Record<string, unknown>);
-
-          const merged = existing
-            ? { ...existing, ...optimisticRecord }
-            : { ...optimisticRecord, id };
-          merged.id = id;
-          await storage.upsertRecord(resource, merged);
-          await tryUpdateSearchIndex(
-            searchProvider,
-            storage,
-            enrichedMutation as Record<string, unknown>,
-            merged,
-          );
-
-          // Add to debouncer for delayed changelog append + event emission
-          debouncerMap.set(
-            debounceKey,
-            enrichedMutation,
-            debounceMs,
-            async (debouncedMutation) => {
-              // This executor runs after the debounce delay
-              // The mutation is already in local storage (coalesced from all calls)
-              // Now we need to:
-              // 1. Append to changelog with the coalesced mutation
-              // 2. Emit mutation_applied event
-              // 3. Schedule push
-
-              try {
-                // Append to changelog (AUD-001: with timestamp enrichment)
-                await storage.changelogAppend({
-                  clientId: debouncedMutation.clientId as string,
-                  mutationId: debouncedMutation.mutationId as string,
-                  mutation: debouncedMutation,
-                  timestampMs: getTimestamp(),
-                  timestamp: new Date().toISOString(),
-                });
-
-                // Emit mutation_applied event
-                emitMutationEvents(
-                  eventBus,
-                  getTimestamp,
-                  debouncedMutation,
-                  { ok: true, mutationId: debouncedMutation.mutationId },
-                );
-
-                // Scheduling push is best-effort once the durable local write succeeded.
-                await schedulePushFailSoft(schedulePush);
-              } catch (err) {
-                // If changelog append fails, emit rejection event
-                const errorContext = {
-                  code: "INTERNAL",
-                  message: "Failed to append to changelog",
-                  path: "$",
-                };
-                eventBus.emit({
-                  type: "mutation_rejected",
-                  resource: debouncedMutation.resource as string,
-                  ids: [debouncedMutation.id as string],
-                  mutationId: debouncedMutation.mutationId as string,
-                  clientId: debouncedMutation.clientId as string,
-                  timestampMs: getTimestamp(),
-                  action: debouncedMutation.operation as string,
-                  context: errorContext,
-                } as any);
-                // Don't re-throw - we've emitted the rejection event
-                // and the debouncer promise will be rejected anyway
-              }
-            },
-          );
-
-          // Return immediately (optimistic result)
-          // The mutation is in local storage and will be synced after debounce
-          return {
-            ok: true,
-            mutationId,
-            affectedIds: [mutation.id],
-            deduped: false,
-          };
-        }
       }
     }
   }
@@ -509,6 +633,10 @@ export async function executeMutation(
     for (const mut of mutations) {
       const resource = (mut as any).resource;
       if (!resource) continue;
+      if (isRemoteOnlyMutation(schema, mut as Record<string, unknown>)) {
+        allReady = false;
+        break;
+      }
       const state = await storage.getHydrationState(resource);
       if (state !== "ready") {
         allReady = false;
@@ -564,10 +692,11 @@ export async function executeMutation(
   // If storage is available, enrich mutations before remote call
   // so they're ready for offline handling if remote fails.
   let mutationForRemote = capabilitySanitizedMutation;
+  let mutationForLocal = capabilitySanitizedMutation;
   if (storage && clientId) {
-    const mutations = Array.isArray(codecAppliedMutation)
-      ? codecAppliedMutation
-      : [codecAppliedMutation];
+    const mutations = Array.isArray(capabilitySanitizedMutation)
+      ? capabilitySanitizedMutation
+      : [capabilitySanitizedMutation];
     const enriched = mutations.map((mut) => {
       const mutation = mut as Record<string, unknown>;
       return {
@@ -576,9 +705,20 @@ export async function executeMutation(
         mutationId: mutation.mutationId || generateMutationId(),
       };
     });
-    mutationForRemote = Array.isArray(codecAppliedMutation)
+    mutationForLocal = Array.isArray(capabilitySanitizedMutation)
       ? enriched
       : enriched[0];
+    mutationForRemote = await encryptMutationPayloadForE2ee(
+      schema!,
+      e2ee,
+      mutationForLocal,
+    );
+  } else if (schema) {
+    mutationForRemote = await encryptMutationPayloadForE2ee(
+      schema,
+      e2ee,
+      mutationForRemote,
+    );
   }
 
   // Extract retryIndividual option from first mutation if batch
@@ -591,6 +731,16 @@ export async function executeMutation(
   try {
     const response = await remote.mutation(mutationForRemote);
     result = unwrapRemoteSuccess(response);
+    await applyRemoteSuccessToLocalStorage(
+      storage,
+      schema,
+      offlinability,
+      clientId,
+      searchProvider,
+      mutationForLocal,
+      result,
+      getTimestamp,
+    );
     // Run afterMutation hooks (fail-open)
     result = schema
       ? await runAfterMutation(plugins, schema, mutationForRemote, result)
@@ -598,6 +748,9 @@ export async function executeMutation(
   } catch (err: unknown) {
     // BULK-001: If batch fails and retryIndividual is true, retry each individually
     if (retryIndividualBatch && Array.isArray(mutationForRemote) && clientId) {
+      const localMutations = Array.isArray(mutationForLocal)
+        ? mutationForLocal
+        : [mutationForLocal];
       const results: any[] = [];
       for (const mutation of mutationForRemote) {
         try {
@@ -634,14 +787,14 @@ export async function executeMutation(
           emitMutationEvents(
             eventBus,
             getTimestamp,
-            mutationForRemote[i],
-            { ok: true, mutationId: (mutationForRemote[i] as any).mutationId },
+            localMutations[i],
+            { ok: true, mutationId: (localMutations[i] as any).mutationId },
           );
         } else {
           emitRejectionForError(
             eventBus,
             getTimestamp,
-            mutationForRemote[i],
+            localMutations[i],
             results[i].error,
           );
         }
@@ -656,12 +809,17 @@ export async function executeMutation(
 
     // Check if we can failover to offline handling
     // OFF-001: Batch offline handling
-    if (storage && schema && isTransportError(err)) {
+    if (
+      storage &&
+      schema &&
+      isTransportError(err) &&
+      !hasRemoteOnlyMutation(schema, mutationForRemote)
+    ) {
       try {
-        if (Array.isArray(mutationForRemote)) {
+        if (Array.isArray(mutationForLocal)) {
           // Batch offline handling: iterate through each mutation
           const results: any[] = [];
-          for (const mutation of mutationForRemote) {
+          for (const mutation of mutationForLocal) {
             const mutationRecord = mutation as Record<string, unknown>;
             try {
               const mutResult = await handleOfflineMutation(
@@ -687,7 +845,7 @@ export async function executeMutation(
           usedOfflinePath = true;
         } else {
           // Single mutation offline handling
-          const mutationToUse = mutationForRemote as Record<string, unknown>;
+          const mutationToUse = mutationForLocal as Record<string, unknown>;
           result = await handleOfflineMutation(
             storage,
             schema,
@@ -705,10 +863,10 @@ export async function executeMutation(
         }
       } catch (offlineErr) {
         // REL-012: Offline path also failed — emit rejection now and rethrow
-        if (!Array.isArray(mutationForRemote)) {
-          emitRejectionForError(eventBus, getTimestamp, mutationForRemote as any, offlineErr);
+        if (!Array.isArray(mutationForLocal)) {
+          emitRejectionForError(eventBus, getTimestamp, mutationForLocal as any, offlineErr);
         } else {
-          for (const mut of mutationForRemote as any[]) {
+          for (const mut of mutationForLocal as any[]) {
             emitRejectionForError(eventBus, getTimestamp, mut, offlineErr);
           }
         }
@@ -717,16 +875,16 @@ export async function executeMutation(
     } else {
       // REL-012: No offline path available — emit rejection now and rethrow
       // CLIENT-EVENT-001: Emit mutation_rejected for thrown errors
-      if (!Array.isArray(mutationForRemote)) {
+      if (!Array.isArray(mutationForLocal)) {
         emitRejectionForError(
           eventBus,
           getTimestamp,
-          mutationForRemote as any,
+          mutationForLocal as any,
           err,
         );
       } else {
         // For batch mutations, emit rejection for each
-        for (const mut of mutationForRemote as any[]) {
+        for (const mut of mutationForLocal as any[]) {
           emitRejectionForError(eventBus, getTimestamp, mut, err);
         }
       }
@@ -736,25 +894,34 @@ export async function executeMutation(
 
   // Handle single mutation result
   // REL-012: Skip final emit for offline path — events already emitted inside offline handling
-  if (!Array.isArray(m)) {
+  if (!Array.isArray(mutationForLocal)) {
     if (!usedOfflinePath) {
-      emitMutationEvents(eventBus, getTimestamp, m as any, result as any);
+      emitMutationEvents(
+        eventBus,
+        getTimestamp,
+        mutationForLocal as any,
+        resolveRemoteResultForMutation(result, mutationForLocal, 0) as any,
+      );
     }
     return result;
   }
 
   // Handle batch mutation results
   // REL-012: Skip final emit for offline path — events already emitted inside the offline loop
-  const mutations = m as any[];
-  const results = result as any[];
+  const mutations = mutationForLocal as any[];
 
   if (!usedOfflinePath) {
     for (let i = 0; i < mutations.length; i++) {
-      emitMutationEvents(eventBus, getTimestamp, mutations[i], results[i]);
+      emitMutationEvents(
+        eventBus,
+        getTimestamp,
+        mutations[i],
+        resolveRemoteResultForMutation(result, mutations[i], i) as any,
+      );
     }
   }
 
-  return results;
+  return result;
 }
 
 /**

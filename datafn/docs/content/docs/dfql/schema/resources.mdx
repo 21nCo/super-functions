@@ -123,6 +123,8 @@ indices: {
 
 Index fields must match resource fields (including capability-injected fields after resolution).
 
+Server-side native full-text search reads its fields from the **object** form's `search` array. The shorthand array form (`indices: ["title"]`) configures `base` indices only and provides no search fields, so declare `indices: { search: [...] }` when you rely on database fulltext fallback.
+
 ## Permissions
 
 ```typescript

@@ -13,7 +13,7 @@ interface FixtureData {
  * Seed fixture data into a database adapter
  */
 export async function seedFixture(
-  db: Adapter,
+  database: Adapter,
   fixtureData: FixtureData,
 ): Promise<void> {
   const namespace = "datafn";

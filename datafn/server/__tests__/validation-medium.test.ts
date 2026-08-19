@@ -61,7 +61,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-001: query on resource with no policy is FORBIDDEN by default", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         // allowUnknownResources omitted → defaults to false (deny-by-default)
       });
 
@@ -81,7 +81,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-002: query on resource with no policy + allowUnknownResources passes", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -102,7 +102,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-003: select with 51 tokens is rejected (max 50)", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -129,7 +129,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-004: filter with 21 keys is rejected (max 20)", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -157,7 +157,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-005: sort with 11 fields is rejected (max 10)", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -186,7 +186,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-006: 21 aggregations are rejected (max 20)", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -222,7 +222,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-007: mutation with 300-char ID is rejected", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -252,7 +252,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-008: mutation with empty clientId is rejected", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -282,7 +282,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-009: mutation with version -1 is rejected", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
       });
 
@@ -322,7 +322,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-010: debug: false returns generic 'Validation error' message", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
         debug: false,
       });
@@ -338,7 +338,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-011: debug: true returns detailed error message", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
         debug: true,
       });
@@ -358,7 +358,7 @@ describe("Phase 09: Validation MEDIUM", () => {
     it("TV-VAL-012: payload exceeding configured limit is rejected with 413 LIMIT_EXCEEDED", async () => {
       const server = await createDatafnServer({
         schema: schemaNoPerm,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         allowUnknownResources: true,
         limits: { maxPayloadBytes: 100 }, // tiny limit for testing
       });

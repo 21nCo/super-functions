@@ -55,6 +55,16 @@ describe("evaluateFilter — string operators (TV-FLT-003)", () => {
     expect(normalizeFilterOps({ name: { contains: "Ali", startsWith: "A", endsWith: "n" } })).toEqual({
       name: { $contains: "Ali", $startsWith: "A", $endsWith: "n" },
     }));
+  it("normalizeFilterOps strips undefined filters and operators", () =>
+    expect(
+      normalizeFilterOps({
+        isArchived: undefined,
+        status: { eq: "active", ne: undefined },
+        dateUnix: undefined,
+      }),
+    ).toEqual({
+      status: { $eq: "active" },
+    }));
 });
 
 describe("evaluateFilter — null/empty/range operators (TV-FLT-004)", () => {

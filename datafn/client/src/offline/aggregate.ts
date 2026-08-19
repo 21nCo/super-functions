@@ -2,8 +2,13 @@
  * Offline aggregation logic
  */
 
-import type { DatafnSchema } from "@datafn/core";
-import { evaluateFilter as coreEvaluateFilter, calculateAggregation } from "@datafn/core";
+import type { DatafnSchema, DatafnTemporalConfig } from "@datafn/core";
+import {
+  evaluateFilter as coreEvaluateFilter,
+  calculateAggregation,
+  getTemporalGroups,
+  resolveTemporalBucketValue,
+} from "@datafn/core";
 import type { DatafnStorageAdapter } from "../storage.js";
 import { expandRelation } from "./relations.js";
 
@@ -14,6 +19,7 @@ export async function executeAggregateQuery(
   storage: DatafnStorageAdapter,
   schema: DatafnSchema,
   query: Record<string, unknown>,
+  temporal?: DatafnTemporalConfig,
 ): Promise<{ groups: Record<string, unknown>[]; nextCursor: null }> {
   // 1. Fetch all records
   // We assume filter is already applied? No, query executor applies filters.
@@ -58,7 +64,8 @@ export async function executeAggregateQuery(
   }
 
   // 2. Group By
-  const groupBy = query.groupBy as string[];
+  const groupBy = Array.isArray(query.groupBy) ? (query.groupBy as string[]) : [];
+  const temporalGroups = getTemporalGroups(query, temporal);
   const groups = new Map<string, Record<string, unknown>[]>();
   
   for (const record of records) {
@@ -67,7 +74,10 @@ export async function executeAggregateQuery(
       for (const field of groupBy) {
           // Handle dot paths?
           // Simple field access for now.
-          keyParts.push(String(record[field]));
+          keyParts.push(record[field]);
+      }
+      for (const group of temporalGroups) {
+          keyParts.push(resolveTemporalBucketValue(record, group));
       }
       const groupKey = JSON.stringify(keyParts); // Collision-safe key (DUP-10)
       
@@ -89,6 +99,9 @@ export async function executeAggregateQuery(
       groupBy.forEach((field) => {
           result[field] = rows[0][field];
       });
+      for (const group of temporalGroups) {
+          result[group.alias] = resolveTemporalBucketValue(rows[0], group);
+      }
       
       // Compute aggregations using shared core implementation
       if (aggregations) {
@@ -122,6 +135,12 @@ export async function executeAggregateQuery(
           if (va < vb) return -1;
           if (va > vb) return 1;
       }
+      for (const group of temporalGroups) {
+          const va = a[group.alias] as any;
+          const vb = b[group.alias] as any;
+          if (va < vb) return -1;
+          if (va > vb) return 1;
+      }
       return 0;
   });
 
@@ -130,5 +149,3 @@ export async function executeAggregateQuery(
     nextCursor: null, // Pagination not fully implemented for local aggregation in this phase
   };
 }
-
-

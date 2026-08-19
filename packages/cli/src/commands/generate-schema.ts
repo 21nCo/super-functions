@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { loadConfig } from "../utils/config.js";
 import { parseLibraryInitializations } from "../utils/parse-library-init.js";
 import {
@@ -18,6 +19,8 @@ import {
   generatePrismaSchemaFile,
   generateKyselySchemaFile,
 } from "../utils/schema-generators.js";
+
+const superfunctionsAppMetadata = Symbol.for("superfunctions.app");
 
 export interface GenerateSchemaOptions {
   config: string;
@@ -91,6 +94,16 @@ export async function generateSchemas(
     }
 
     try {
+      const executableInits = await importLibrarySchemaInstances(filePath);
+      if (executableInits.length > 0) {
+        const displayPath = path.relative(process.cwd(), filePath);
+        console.log(
+          `   ✅ ${displayPath}: Found ${executableInits.length} executable schema source(s)`
+        );
+        allLibraryInits.push(...executableInits);
+        continue;
+      }
+
       const inits = parseLibraryInitializations(filePath, registry);
       if (inits.length > 0) {
         const displayPath = path.relative(process.cwd(), filePath);
@@ -144,9 +157,9 @@ export async function generateSchemas(
           resolveLibraryPackageEntryPoint(pkgJson)
         );
       }
-      const libraryPackage = await import(resolvedPath);
+      const libraryPackage = init.schema ? null : await import(resolvedPath);
 
-      if (!libraryPackage.getSchema) {
+      if (!init.schema && !libraryPackage?.getSchema) {
         console.log(
           `   ⚠️  ${init.libraryName} doesn't export getSchema function`
         );
@@ -155,7 +168,7 @@ export async function generateSchemas(
       }
 
       // Get abstract schema
-      const abstractSchema = libraryPackage.getSchema(init.config);
+      const abstractSchema = init.schema ?? libraryPackage.getSchema(init.config);
 
       // Ensure output directory exists
       const outputDir = path.resolve(process.cwd(), options.output);
@@ -228,6 +241,68 @@ export async function generateSchemas(
   console.log(
     "   3. Pass ORM instance to adapter (no schema parameter needed)"
   );
+}
+
+async function importLibrarySchemaInstances(
+  filePath: string
+): Promise<Array<{
+  libraryName: string;
+  packageName: string;
+  functionName: string;
+  config: any;
+  schema: any;
+  location: { line: number; column: number };
+}>> {
+  try {
+    const mod = await import(pathToFileURL(filePath).href);
+    return Object.values(mod)
+      .map(resolveExecutableSchemaSource)
+      .filter((source): source is ExecutableSchemaSource => Boolean(source))
+      .map((source) => ({
+        libraryName: source.metadata.libraryName,
+        packageName: source.metadata.packageName,
+        functionName: "getSchema",
+        config: source.config ?? {},
+        schema: source.getSchema(),
+        location: { line: 1, column: 1 },
+      }));
+  } catch {
+    return [];
+  }
+}
+
+interface ExecutableSchemaSource {
+  metadata: {
+    libraryName: string;
+    packageName: string;
+  };
+  config?: unknown;
+  getSchema(): unknown;
+}
+
+function resolveExecutableSchemaSource(value: unknown): ExecutableSchemaSource | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const metadata = (value as Record<PropertyKey, unknown>)[superfunctionsAppMetadata];
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const libraryName = (metadata as { libraryName?: unknown }).libraryName;
+  const packageName = (metadata as { packageName?: unknown }).packageName;
+  if (
+    typeof libraryName !== "string" ||
+    typeof packageName !== "string" ||
+    !("getSchema" in value) ||
+    typeof (value as { getSchema?: unknown }).getSchema !== "function"
+  ) {
+    return null;
+  }
+  return {
+    metadata: { libraryName, packageName },
+    config: (value as { config?: unknown }).config,
+    getSchema: (value as { getSchema(): unknown }).getSchema.bind(value),
+  };
 }
 
 export function resolveLibraryPackageEntryPoint(

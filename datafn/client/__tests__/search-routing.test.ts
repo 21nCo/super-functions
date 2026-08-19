@@ -92,6 +92,32 @@ describe("TV-CLI-003: client.search() routing semantics", () => {
     expect(result).toEqual({ ok: true, result: remoteResult });
   });
 
+  it("falls back to remote after switchContext clears the local provider", async () => {
+    const remoteResult = { results: [{ id: "t4", resource: "tasks", score: 0.7, data: {} }] };
+    const remoteSearch = vi.fn().mockResolvedValue({ ok: true, result: remoteResult });
+    const remote = makeRemoteAdapter(remoteSearch);
+    const localProvider: any = {
+      name: "local",
+      search: vi.fn().mockResolvedValue([]),
+      searchAll: vi.fn().mockResolvedValue([{ resource: "tasks", id: "t1", score: 0.9 }]),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const client = createDatafnClient({
+      schema,
+      sync: { mode: "sync", remoteAdapter: remote },
+      clientId: "routing-clear-local",
+      searchProvider: localProvider,
+    });
+
+    await client.switchContext({ searchProvider: null });
+
+    const result = await client.search({ query: "task" });
+    expect(localProvider.searchAll).not.toHaveBeenCalled();
+    expect(remoteSearch).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, result: remoteResult });
+  });
+
   it("fails source=local when no local provider is available", async () => {
     const remote = makeRemoteAdapter(vi.fn().mockResolvedValue({ ok: true, result: { results: [] } }));
     const client = createDatafnClient({

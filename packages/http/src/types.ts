@@ -44,6 +44,49 @@ export interface SetCookieInput {
 }
 
 // ============================================================================
+// Client Transport Auth
+// ============================================================================
+
+export type HttpTransportAuthRetryDecision = 'retry' | 'fail' | void;
+
+export interface HttpTransportErrorEvent {
+  endpoint: string;
+  url: string;
+  status: number;
+  result: unknown;
+}
+
+/**
+ * Supplies authentication material for fetch-based Superfunctions transports.
+ */
+export interface HttpTransportAuthProvider {
+  getRequestHeaders?(): HeadersInit | null | undefined | Promise<HeadersInit | null | undefined>;
+  getCredentials?(): RequestCredentials | undefined | Promise<RequestCredentials | undefined>;
+  onUnauthorized?(
+    event: HttpTransportErrorEvent,
+  ): HttpTransportAuthRetryDecision | Promise<HttpTransportAuthRetryDecision>;
+}
+
+/**
+ * Adds auth-related request material to a transport auth provider without owning the base session.
+ */
+export interface HttpTransportAuthPlugin {
+  getRequestHeaders?(): HeadersInit | null | undefined | Promise<HeadersInit | null | undefined>;
+}
+
+/**
+ * Configures a transport auth provider implementation.
+ */
+export interface HttpTransportAuthOptions {
+  credentials?: RequestCredentials;
+  headers?: HeadersInit | (() => HeadersInit | null | undefined | Promise<HeadersInit | null | undefined>);
+  plugins?: HttpTransportAuthPlugin[];
+  onUnauthorized?(
+    event: HttpTransportErrorEvent,
+  ): HttpTransportAuthRetryDecision | Promise<HttpTransportAuthRetryDecision>;
+}
+
+// ============================================================================
 // Router Configuration
 // ============================================================================
 

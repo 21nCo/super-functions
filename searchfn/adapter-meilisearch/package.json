@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@searchfn/adapter-contracts": "0.3.0"
+    "@searchfn/adapter-contracts": "0.3.0",
+    "@superfunctions/observability": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

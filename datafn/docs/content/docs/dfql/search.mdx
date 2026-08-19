@@ -69,6 +69,41 @@ const result = await client.search({
 });
 ```
 
+### `client.search` Parameters
+
+| Field | Type | Description |
+|---|---|---|
+| `query` | `string` | Search text. |
+| `resources` | `string[]` | Resources to search. Defaults to all searchable resources. |
+| `fields` | `string[]` | Optional subset of indexed fields. |
+| `filters` | `Record<string, Record<string, unknown>>` | Per-resource DFQL filters applied on top of the candidate IDs. |
+| `temporal` | `DatafnTemporalClause \| DatafnTemporalClause[]` | Timezone-aware temporal filter applied to every searched resource. |
+| `temporalByResource` | `Record<string, DatafnTemporalClause \| DatafnTemporalClause[]>` | Per-resource temporal filters. |
+| `select` | `string[]` | Fields to return on hits. |
+| `limit` | `number` | Maximum total results. |
+| `limitPerResource` | `number` | Maximum results per resource. |
+| `prefix` | `boolean` | Prefix token matching. |
+| `fuzzy` | `boolean \| number` | Fuzzy matching (or distance/tolerance hint). |
+| `fieldBoosts` | `Record<string, number>` | Field-specific relevance weights. |
+| `source` | `"auto" \| "local" \| "remote"` | Execution source (see below). |
+| `signal` | `AbortSignal` | Cancel an in-flight search. |
+
+### Temporal Filtering
+
+Search accepts [temporal](/docs/dfql/temporal) clauses, which are compiled to per-resource date filters before execution. Use `temporal` to apply the same clause to every resource, or `temporalByResource` to target specific resources.
+
+```typescript
+import { time } from "@datafn/core";
+
+const result = await client.search({
+  query: "standup",
+  resources: ["sessions"],
+  temporalByResource: {
+    sessions: time.day("startedAt", "2026-05-18T12:00:00.000Z", { timezone: "user" }),
+  },
+});
+```
+
 ### Source Selection
 
 `source: auto|local|remote` controls where search executes:
@@ -100,11 +135,14 @@ In sync mode, this gives local-first behavior once resource hydration is ready.
   "prefix": true,
   "fuzzy": 0.2,
   "fieldBoosts": { "text": 2, "name": 1 },
+  "temporalByResource": {
+    "todos": { "field": "dueAt", "period": { "scale": "month" }, "timezone": "user" }
+  },
   "limit": 20
 }
 ```
 
-The server validates these options and forwards them to the configured search provider.
+The server validates these options and forwards them to the configured search provider. Top-level `temporal` and per-resource `temporalByResource` clauses are compiled into per-resource date filters (resolved against the actor's `datafnTimezoneChange` history) before search executes.
 
 ## Setting Up a Search Provider
 

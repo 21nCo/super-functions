@@ -101,7 +101,7 @@ async function main() {
   // ── Create DataFn Server ───────────────────────────────────────────
   const datafn = await createDatafnServer({
     schema,
-    db: adapter,
+    database: adapter,
     searchProvider,
 
     // Authorization — allow everything in this example.

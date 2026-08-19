@@ -1,41 +1,53 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
 import {
-  authFnEmailOtpPlugin,
+  authFnMultiRegionEnvironment,
   authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  createAuthFn,
-  findUserByPrimaryEmail,
-  getLatestOtpChallenge,
-  type AuthFnConfig,
-  type AuthFnDeliveryRequest,
-  type AuthFnRegionLookupRecord,
-  type AuthFnPlugin
-} from '../index.js';
+  type AuthFnRegionLookupRecord
+} from '@authfn/multi-region';
+import { authFnPasswordPlugin } from '@authfn/password';
+import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import type { AuthFnDeliveryRequest, AuthFnPlugin, AuthFnRuntimeConfig } from '../index.js';
+import { findUserByPrimaryEmail } from '../core/users.js';
+import { getLatestOtpChallenge } from '../core/verifications.js';
 
-function createRuntimeResolver() {
+function createLookupStore(
+  records: Map<string, AuthFnRegionLookupRecord>,
+  lookupCalls?: string[]
+): ConditionalKVStoreAdapter {
   return {
-    resolve(request: Request) {
-      const url = new URL(request.url);
-      return {
-        issuer: url.origin,
-        baseUrl: url.origin,
-        cookie: {
-          prefix: 'authfn-base',
-          sameSite: 'lax'
-        },
-        oauth: {
-          google: {
-            clientId: 'base-google-client',
-            scopes: ['openid', 'email']
-          }
-        }
-      };
+    async get(key) {
+      const identifier = identifierFromLookupKey(key);
+      lookupCalls?.push(identifier);
+      const record = records.get(identifier);
+      return record ? JSON.stringify(record) : null;
+    },
+    async set(input) {
+      const record = JSON.parse(input.value) as AuthFnRegionLookupRecord;
+      records.set(identifierFromLookupKey(input.key), record);
+    },
+    async setIfAbsent(input) {
+      const identifier = identifierFromLookupKey(input.key);
+      const existing = records.get(identifier);
+      if (existing) {
+        return { inserted: false, existing: JSON.stringify(existing) };
+      }
+      records.set(identifier, JSON.parse(input.value) as AuthFnRegionLookupRecord);
+      return { inserted: true };
+    },
+    async delete(key) {
+      records.delete(identifierFromLookupKey(key));
     }
   };
 }
 
-describe('@authfn/core multi-region plugin', () => {
+function identifierFromLookupKey(key: string): string {
+  return key.replace(/^authfn:region:/, '');
+}
+
+describe('authfn multi-region plugin', () => {
   it('returns deterministic lookup guidance, exposes runtime overrides, and rejects cross-region sign-in completion', async () => {
     const otpCodes = new Map<string, string>();
     const otpDelivery = {
@@ -46,53 +58,56 @@ describe('@authfn/core multi-region plugin', () => {
         };
       }
     };
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
-      plugins: [
-        authFnPasswordPlugin(),
-        authFnEmailOtpPlugin({
-          delivery: otpDelivery,
-          codeGenerator: () => '731942'
-        }),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'us-east-1',
-              authority: 'https://us.account.example.com',
-              hosts: ['us.account.example.com'],
-              cookie: {
-                prefix: 'authfn-us'
-              },
-              oauth: {
-                google: {
-                  clientId: 'us-google-client',
-                  scopes: ['openid', 'email', 'profile']
-                }
-              }
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com'],
+            cookie: {
+              prefix: 'authfn-us'
             },
-            {
-              regionId: 'eu-west-1',
-              authority: 'https://eu.account.example.com',
-              hosts: ['eu.account.example.com'],
-              domain: '.example.com',
-              cookie: {
-                prefix: 'authfn-eu',
-                sameSite: 'none'
-              },
-              oauth: {
-                google: {
-                  clientId: 'eu-google-client',
-                  scopes: ['openid', 'email', 'profile']
-                }
+            oauth: {
+              google: {
+                clientId: 'us-google-client',
+                scopes: ['openid', 'email', 'profile']
               }
             }
-          ]
-        })
-      ]
+          },
+          {
+            regionId: 'eu-west-1',
+            authority: 'https://eu.account.example.com',
+            hosts: ['eu.account.example.com'],
+            domain: '.example.com',
+            cookie: {
+              prefix: 'authfn-eu',
+              sameSite: 'none'
+            },
+            oauth: {
+              google: {
+                clientId: 'eu-google-client',
+                scopes: ['openid', 'email', 'profile']
+              }
+            }
+          }
+        ]
+      }),
+      plugins: [
+        authFnPasswordPlugin(),
+        authFnEmailOtpPlugin(),
+        authFnMultiRegionPlugin()
+      ],
+      pluginRuntime: {
+        emailOtp: {
+          delivery: otpDelivery,
+          codeGenerator: () => '731942'
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const signUp = await auth.router.handle(
       new Request('https://eu.account.example.com/auth/sign-up/password', {
@@ -112,7 +127,7 @@ describe('@authfn/core multi-region plugin', () => {
     expect(signUp.headers.getSetCookie().some((cookie) => cookie.startsWith('__Secure-authfn-eu.session='))).toBe(true);
 
     const runtime = await auth.router.handle(
-      new Request('https://eu.account.example.com/auth/runtime')
+      new Request('https://eu.account.example.com/auth/environment')
     );
     expect(runtime.status).toBe(200);
     expect(await runtime.json()).toEqual({
@@ -281,72 +296,50 @@ describe('@authfn/core multi-region plugin', () => {
     });
   });
 
-  it('uses lookupStore with plugin-owned normalization and cacheStore acceleration', async () => {
+  it('uses lookupStore with plugin-owned normalization and cache acceleration', async () => {
     const records = new Map<string, AuthFnRegionLookupRecord>();
     const lookupCalls: string[] = [];
     const cacheWrites: string[] = [];
     const cache = new Map<string, string>();
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
-      cacheStore: {
-        async get(key) {
-          return cache.get(key) ?? null;
-        },
-        async set(input) {
-          cacheWrites.push(input.key);
-          cache.set(input.key, input.value);
-        },
-        async delete(key) {
-          cache.delete(key);
+      stores: {
+        kv: {
+          async get(key) {
+            return cache.get(key) ?? null;
+          },
+          async set(input) {
+            cacheWrites.push(input.key);
+            cache.set(input.key, input.value);
+          },
+          async delete(key) {
+            cache.delete(key);
+          }
         }
       },
       namespace: 'nucleus',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com']
+          },
+          {
+            regionId: 'eu-west-1',
+            authority: 'https://eu.account.example.com',
+            hosts: ['eu.account.example.com']
+          }
+        ],
+        lookupStore: createLookupStore(records, lookupCalls)
+      }),
       plugins: [
         authFnPasswordPlugin(),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'us-east-1',
-              authority: 'https://us.account.example.com',
-              hosts: ['us.account.example.com']
-            },
-            {
-              regionId: 'eu-west-1',
-              authority: 'https://eu.account.example.com',
-              hosts: ['eu.account.example.com']
-            }
-          ],
-          lookupStore: {
-            async getByIdentifier(identifier) {
-              lookupCalls.push(identifier);
-              return records.get(identifier) ?? null;
-            },
-            async putIfAbsent(record) {
-              const existing = records.get(record.identifier);
-              if (existing) {
-                return {
-                  inserted: false,
-                  existing
-                };
-              }
-              records.set(record.identifier, record);
-              return {
-                inserted: true
-              };
-            },
-            async update(record) {
-              records.set(record.identifier, record);
-              return record;
-            },
-            async deleteByIdentifier(identifier) {
-              records.delete(identifier);
-            }
-          }
-        })
-      ]
+        authFnMultiRegionPlugin()
+      ],
+      pluginRuntime: {}
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const signUp = await auth.router.handle(
       new Request('https://eu.account.example.com/auth/sign-up/password', {
@@ -462,51 +455,51 @@ describe('@authfn/core multi-region plugin', () => {
   });
 
   it('fails password sign-up and rolls back local records when global lookup conflicts after user creation', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com']
+          },
+          {
+            regionId: 'eu-west-1',
+            authority: 'https://eu.account.example.com',
+            hosts: ['eu.account.example.com']
+          }
+        ],
+        lookupStore: {
+          async get() {
+            return null;
+          },
+          async set() {
+          },
+          async setIfAbsent(input) {
+            const record = JSON.parse(input.value) as AuthFnRegionLookupRecord;
+            return {
+              inserted: false,
+              existing: JSON.stringify({
+                ...record,
+                userId: 'user_external',
+                regionId: 'eu-west-1',
+                authority: 'https://eu.account.example.com'
+              })
+            };
+          },
+          async delete() {
+          }
+        }
+      }),
       plugins: [
         authFnPasswordPlugin(),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'us-east-1',
-              authority: 'https://us.account.example.com',
-              hosts: ['us.account.example.com']
-            },
-            {
-              regionId: 'eu-west-1',
-              authority: 'https://eu.account.example.com',
-              hosts: ['eu.account.example.com']
-            }
-          ],
-          lookupStore: {
-            async getByIdentifier() {
-              return null;
-            },
-            async putIfAbsent(record) {
-              return {
-                inserted: false,
-                existing: {
-                  ...record,
-                  userId: 'user_external',
-                  regionId: 'eu-west-1',
-                  authority: 'https://eu.account.example.com'
-                }
-              };
-            },
-            async update(record) {
-              return record;
-            },
-            async deleteByIdentifier() {
-              // no-op
-            }
-          }
-        })
-      ]
+        authFnMultiRegionPlugin()
+      ],
+      pluginRuntime: {}
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const response = await auth.router.handle(
       new Request('https://us.account.example.com/auth/sign-up/password', {
@@ -546,40 +539,41 @@ describe('@authfn/core multi-region plugin', () => {
 
   it('does not use shared cookie domains as routable region hosts', async () => {
     const sharedDomain = '.nucleum.app';
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'insouth',
+            authority: 'https://account-insouth-dev.nucleum.app',
+            hosts: ['account-insouth-dev.nucleum.app'],
+            domain: sharedDomain
+          },
+          {
+            regionId: 'useast',
+            authority: 'https://account-useast-dev.nucleum.app',
+            hosts: ['account-useast-dev.nucleum.app'],
+            domain: sharedDomain
+          },
+          {
+            regionId: 'euwest',
+            authority: 'https://account-euwest-dev.nucleum.app',
+            hosts: ['account-euwest-dev.nucleum.app'],
+            domain: sharedDomain
+          }
+        ]
+      }),
       plugins: [
         authFnPasswordPlugin(),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'insouth',
-              authority: 'https://account-insouth-dev.nucleum.app',
-              hosts: ['account-insouth-dev.nucleum.app'],
-              domain: sharedDomain
-            },
-            {
-              regionId: 'useast',
-              authority: 'https://account-useast-dev.nucleum.app',
-              hosts: ['account-useast-dev.nucleum.app'],
-              domain: sharedDomain
-            },
-            {
-              regionId: 'euwest',
-              authority: 'https://account-euwest-dev.nucleum.app',
-              hosts: ['account-euwest-dev.nucleum.app'],
-              domain: sharedDomain
-            }
-          ]
-        })
-      ]
+        authFnMultiRegionPlugin()
+      ],
+      pluginRuntime: {}
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const runtime = await auth.router.handle(
-      new Request('https://account-euwest-dev.nucleum.app/auth/runtime')
+      new Request('https://account-euwest-dev.nucleum.app/auth/environment')
     );
 
     expect(runtime.status).toBe(200);
@@ -620,68 +614,45 @@ describe('@authfn/core multi-region plugin', () => {
 
   it('treats product-specific account aliases for the same region as locally aligned', async () => {
     const records = new Map<string, AuthFnRegionLookupRecord>();
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'insouth',
+            authority: 'https://account-insouth-dev.nucleum.app',
+            hosts: ['account-insouth-dev.nucleum.app'],
+            domain: '.nucleum.app'
+          },
+          {
+            regionId: 'useast',
+            authority: 'https://account-useast-dev.nucleum.app',
+            hosts: ['account-useast-dev.nucleum.app'],
+            domain: '.nucleum.app'
+          },
+          {
+            regionId: 'insouth',
+            authority: 'https://account-insouth-dev.memotron.app',
+            hosts: ['account-insouth-dev.memotron.app'],
+            domain: '.memotron.app'
+          },
+          {
+            regionId: 'useast',
+            authority: 'https://account-useast-dev.memotron.app',
+            hosts: ['account-useast-dev.memotron.app'],
+            domain: '.memotron.app'
+          }
+        ],
+        lookupStore: createLookupStore(records)
+      }),
       plugins: [
         authFnPasswordPlugin(),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'insouth',
-              authority: 'https://account-insouth-dev.nucleum.app',
-              hosts: ['account-insouth-dev.nucleum.app'],
-              domain: '.nucleum.app'
-            },
-            {
-              regionId: 'useast',
-              authority: 'https://account-useast-dev.nucleum.app',
-              hosts: ['account-useast-dev.nucleum.app'],
-              domain: '.nucleum.app'
-            },
-            {
-              regionId: 'insouth',
-              authority: 'https://account-insouth-dev.memotron.app',
-              hosts: ['account-insouth-dev.memotron.app'],
-              domain: '.memotron.app'
-            },
-            {
-              regionId: 'useast',
-              authority: 'https://account-useast-dev.memotron.app',
-              hosts: ['account-useast-dev.memotron.app'],
-              domain: '.memotron.app'
-            }
-          ],
-          lookupStore: {
-            async getByIdentifier(identifier) {
-              return records.get(identifier) ?? null;
-            },
-            async putIfAbsent(record) {
-              const existing = records.get(record.identifier);
-              if (existing) {
-                return {
-                  inserted: false,
-                  existing
-                };
-              }
-              records.set(record.identifier, record);
-              return {
-                inserted: true
-              };
-            },
-            async update(record) {
-              records.set(record.identifier, record);
-              return record;
-            },
-            async deleteByIdentifier(identifier) {
-              records.delete(identifier);
-            }
-          }
-        })
-      ]
+        authFnMultiRegionPlugin()
+      ],
+      pluginRuntime: {}
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const signUp = await auth.router.handle(
       new Request('https://account-insouth-dev.nucleum.app/auth/sign-up/password', {
@@ -786,10 +757,31 @@ describe('@authfn/core multi-region plugin', () => {
       }
     };
 
-    const failingBeforeConfig: AuthFnConfig = {
+    const failingBeforeConfig: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com']
+          }
+        ],
+        lookupStore: {
+          async get() {
+            return null;
+          },
+          async set() {
+          },
+          async setIfAbsent(input) {
+            hookOrder.push('multiRegion:afterUserCreate');
+            return { inserted: true };
+          },
+          async delete() {
+          }
+        }
+      }),
       plugins: [
         authFnPasswordPlugin(),
         authFnMultiRegionPlugin(),
@@ -797,7 +789,7 @@ describe('@authfn/core multi-region plugin', () => {
         abortingPlugin
       ]
     };
-    const failingBeforeAuth = createAuthFn(failingBeforeConfig);
+    const failingBeforeAuth = createTestServer(failingBeforeConfig);
     const aborted = await failingBeforeAuth.router.handle(
       new Request('https://us.account.example.com/auth/sign-up/password', {
         method: 'POST',
@@ -829,31 +821,39 @@ describe('@authfn/core multi-region plugin', () => {
       }
     };
 
-    const successConfig: AuthFnConfig = {
+    const successConfig: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: createRuntimeResolver(),
+      environment: authFnMultiRegionEnvironment({
+        regions: [
+          {
+            regionId: 'us-east-1',
+            authority: 'https://us.account.example.com',
+            hosts: ['us.account.example.com']
+          }
+        ],
+        lookupStore: {
+          async get() {
+            return null;
+          },
+          async set() {
+          },
+          async setIfAbsent() {
+            hookOrder.push('multiRegion:afterUserCreate');
+            return { inserted: true };
+          },
+          async delete() {
+          }
+        }
+      }),
       plugins: [
         authFnPasswordPlugin(),
-        authFnMultiRegionPlugin({
-          regions: [
-            {
-              regionId: 'us-east-1',
-              authority: 'https://us.account.example.com',
-              hosts: ['us.account.example.com']
-            }
-          ],
-          directory: {
-            registerUser: async () => {
-              hookOrder.push('multiRegion:afterUserCreate');
-            },
-            lookupByIdentifier: async () => null
-          }
-        }),
+        authFnMultiRegionPlugin(),
         afterAuditPlugin
-      ]
+      ],
+      pluginRuntime: {}
     };
-    const successAuth = createAuthFn(successConfig);
+    const successAuth = createTestServer(successConfig);
     const success = await successAuth.router.handle(
       new Request('https://us.account.example.com/auth/sign-up/password', {
         method: 'POST',

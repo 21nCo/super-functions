@@ -242,11 +242,13 @@ export function createMutationHandler(
         if (
             error.code === "CONFLICT" ||
             error.code === "NOT_FOUND" ||
-            error.code === "DFQL_INVALID"
+            error.code === "DFQL_INVALID" ||
+            error.code === "RELATION_RESTRICTED"
         ) {
             let status = 400;
             if (error.code === "CONFLICT") status = 409;
             if (error.code === "NOT_FOUND") status = 404;
+            if (error.code === "RELATION_RESTRICTED") status = 409;
 
             return errorResponse(
             {

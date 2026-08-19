@@ -21,6 +21,11 @@ export type {
   MatchedRoute,
   HttpMethod,
   CorsOptions,
+  HttpTransportAuthOptions,
+  HttpTransportAuthPlugin,
+  HttpTransportAuthProvider,
+  HttpTransportAuthRetryDecision,
+  HttpTransportErrorEvent,
 } from './types.js';
 
 // Errors
@@ -63,3 +68,18 @@ export {
   serializeSetCookie,
   assertValidRouteMeta,
 } from './cookies.js';
+
+export {
+  applyMetricHeaders,
+  applyObservationHeaders,
+  createObservabilityMiddleware,
+  formatServerTiming,
+  runObservedRequest,
+  resolveObservability,
+} from './observability.js';
+export type {
+  ObservationHeaderOptions,
+  RequestObservabilityMiddlewareOptions,
+  RunObservedRequestOptions,
+  ServerTimingOptions,
+} from './observability.js';

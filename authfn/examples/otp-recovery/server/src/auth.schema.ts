@@ -1,14 +1,12 @@
-import { authFnEmailOtpPlugin, authFnPasswordPlugin, createAuthFn } from '@authfn/core';
-import type { Adapter } from '@superfunctions/db';
+import { authFnPlugins, authfn } from 'authfn';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnPasswordPlugin } from '@authfn/password';
 import { OTP_RECOVERY_NAMESPACE } from './auth.js';
 
-export const otpRecoverySchemaSource = createAuthFn({
-  database: {} as Adapter,
+export const otpRecoverySchemaSource = authfn({
   namespace: OTP_RECOVERY_NAMESPACE,
-  plugins: [
-    authFnPasswordPlugin({
-      otp: {}
-    }),
+  plugins: authFnPlugins(
+    authFnPasswordPlugin(),
     authFnEmailOtpPlugin()
-  ]
+  )
 });

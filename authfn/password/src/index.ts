@@ -1,0 +1,233 @@
+import type { Route } from '@superfunctions/http';
+import type {
+  PasswordPluginConfig,
+  PasswordPluginRuntimeConfig
+} from 'authfn/plugin-types';
+import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import { createAuthFnRouteMeta, readOptionalJson } from 'authfn/http/router';
+import { authenticateRequest, issueSession } from 'authfn/core/sessions';
+import { resolveEnvironment } from 'authfn/core/environment';
+import { signInWithPassword, signUpWithPassword } from 'authfn/core/passwords';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { completeResetPassword, sendOtpChallenge } from 'authfn/core/verifications';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { emitAccountLinkedEvent } from 'authfn/core/account-linking';
+import { buildSessionResponse, type AuthFnSessionResponseMode } from 'authfn/core/session-responses';
+import {
+  beginTwoFactorChallenge,
+  createPendingTwoFactorResponse,
+  getTwoFactorPluginConfig
+} from 'authfn/core/two-factor';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
+
+export type {
+  PasswordPluginConfig,
+  PasswordPluginRuntimeConfig
+} from 'authfn/plugin-types';
+
+export function authFnPasswordPlugin(
+  config: PasswordPluginConfig = {}
+): AuthFnPlugin<'password', PasswordPluginRuntimeConfig, false> {
+  return {
+    name: 'password',
+    schema: () => config.schema ?? createPasswordSchema(),
+    routes: (ctx) => createPasswordRoutes(ctx, config)
+  };
+}
+
+function createPasswordSchema(): AuthFnSchemaDefinition['schemas'] {
+  return [
+    {
+      modelName: 'password_credentials',
+      fields: {
+        id: { type: 'string', required: true, fieldName: 'id' },
+        userId: { type: 'string', required: true, fieldName: 'user_id' },
+        passwordHash: { type: 'string', required: true, fieldName: 'password_hash' },
+        createdAt: { type: 'date', required: true, fieldName: 'created_at' },
+        updatedAt: { type: 'date', required: true, fieldName: 'updated_at' }
+      },
+      indexes: [
+        {
+          name: 'idx_authfn_password_credentials_user_id',
+          fields: ['userId'],
+          unique: true
+        }
+      ]
+    }
+  ];
+}
+
+function createPasswordRoutes(
+  ctx: AuthFnPluginRuntimeContext,
+  config: PasswordPluginConfig
+): Route[] {
+  const runtimeConfig = readPluginRuntimeConfig<PasswordPluginRuntimeConfig>(ctx, 'password');
+  const otpConfig = runtimeConfig.otp ?? {};
+
+  return [
+    {
+      method: 'POST',
+      path: '/sign-up/password',
+      meta: createAuthFnRouteMeta('signUpWithPassword', 'Create a user and session using email/password', {
+        mode: 'none'
+      }),
+      handler: async (request) => {
+        const body = await readOptionalJson<{
+          email?: string;
+          password?: string;
+          profile?: Record<string, unknown>;
+          sessionMode?: AuthFnSessionResponseMode;
+        }>(request);
+        const runtime = await resolveEnvironment(ctx.config, request);
+        const authenticatedSession = await authenticateRequest(ctx.config, request);
+        const result = await signUpWithPassword(ctx.config, ctx.hooks, {
+          email: body.email ?? '',
+          password: body.password ?? '',
+          profile: body.profile
+        }, {
+          request,
+          environment: runtime,
+          authenticatedSession,
+          policy: {
+            compromisedPasswordChecker: config.compromisedPasswordChecker
+          }
+        });
+        if (result.linkedExistingUser) {
+          await emitAccountLinkedEvent(ctx.config, {
+            request,
+            user: result.user,
+            method: 'password',
+            regionId: runtime.regionId
+          });
+        } else {
+          await emitAuthEvent(ctx.config, {
+            type: 'authfn.user.created',
+            requestId: eventRequestId(request),
+            actorId: result.user.id,
+            userId: result.user.id,
+            regionId: runtime.regionId,
+            outcome: 'created',
+            metadata: {
+              email: result.user.primaryEmail
+            }
+          });
+        }
+        const issued = await issueSession(ctx.config, ctx.hooks, {
+          request,
+          userId: result.user.id,
+          primaryEmail: result.user.primaryEmail,
+          methods: ['password']
+        });
+        const response = buildSessionResponse(issued, body.sessionMode);
+
+        return jsonSuccess(request, response.data, {
+          setCookies: response.setCookies
+        });
+      }
+    },
+    {
+      method: 'POST',
+      path: '/password/reset/start',
+      meta: createAuthFnRouteMeta('startPasswordReset', 'Start an OTP-backed password reset flow', {
+        mode: 'none'
+      }),
+      handler: async (request) => {
+        const body = await readOptionalJson<{
+          email?: string;
+        }>(request);
+        const result = await sendOtpChallenge(ctx.config, ctx.hooks, otpConfig, {
+          request,
+          purpose: 'reset-password',
+          email: body.email ?? ''
+        });
+
+        return jsonSuccess(request, {
+          challengeId: result.challenge.id,
+          sent: result.delivery.sent
+        });
+      }
+    },
+    {
+      method: 'POST',
+      path: '/password/reset/complete',
+      meta: createAuthFnRouteMeta('completePasswordReset', 'Complete a password reset with a valid OTP challenge', {
+        mode: 'none'
+      }),
+      handler: async (request) => {
+        const body = await request.json() as {
+          email?: string;
+          code?: string;
+          newPassword?: string;
+        };
+        const result = await completeResetPassword(ctx.config, {
+          ...otpConfig,
+          passwordPolicy: {
+            compromisedPasswordChecker: config.compromisedPasswordChecker
+          }
+        }, {
+          purpose: 'reset-password',
+          email: body.email ?? '',
+          code: body.code ?? '',
+          newPassword: body.newPassword ?? '',
+          request
+        });
+
+        return jsonSuccess(request, result);
+      }
+    },
+    {
+      method: 'POST',
+      path: '/sign-in/password',
+      meta: createAuthFnRouteMeta('signInWithPassword', 'Sign in and issue a session using email/password', {
+        mode: 'none'
+      }),
+      handler: async (request) => {
+        const body = await request.json() as {
+          email?: string;
+          password?: string;
+          sessionMode?: AuthFnSessionResponseMode;
+        };
+        const result = await signInWithPassword(ctx.config, {
+          email: body.email ?? '',
+          password: body.password ?? ''
+        }, {
+          requireEmailVerifiedForSignIn: config.requireEmailVerifiedForSignIn
+        });
+        const twoFactorConfig = getTwoFactorPluginConfig(ctx.config);
+        if (twoFactorConfig) {
+          const challenge = await beginTwoFactorChallenge(
+            ctx.config,
+            result.user,
+            'password',
+            twoFactorConfig
+          );
+          if (challenge) {
+            await emitAuthEvent(ctx.config, {
+              type: 'authfn.2fa.challenged',
+              requestId: eventRequestId(request),
+              actorId: result.user.id,
+              userId: result.user.id,
+              outcome: 'required',
+              metadata: {
+                challengeId: challenge.challenge.id,
+                primaryMethod: 'password'
+              }
+            });
+            throw createPendingTwoFactorResponse(challenge.challenge);
+          }
+        }
+        const issued = await issueSession(ctx.config, ctx.hooks, {
+          request,
+          userId: result.user.id,
+          primaryEmail: result.user.primaryEmail,
+          methods: ['password']
+        });
+        const response = buildSessionResponse(issued, body.sessionMode);
+
+        return jsonSuccess(request, response.data, {
+          setCookies: response.setCookies
+        });
+      }
+    }
+  ];
+}

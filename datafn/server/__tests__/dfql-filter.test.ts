@@ -78,7 +78,7 @@ describe("DFQL Filters (Phase 12)", () => {
     // It calls `adapter = memoryAdapter()`.
 
     server = await createDatafnServer({ allowUnknownResources: true,
-      db: adapter,
+      database: adapter,
       schema,
     });
     router = server.router;

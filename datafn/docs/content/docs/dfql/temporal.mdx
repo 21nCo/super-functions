@@ -1,0 +1,218 @@
+---
+title: "Temporal"
+description: "Timezone-aware date filtering and grouping with the temporal clause and time builders."
+audience: reference
+applies_to: both
+---
+
+DFQL queries support a `temporal` clause for timezone-aware date filtering and grouping. Temporal is a **query-time** feature — it does not add a new field type to your schema. Instead, you point a temporal clause at an existing date/epoch field and DataFn resolves calendar boundaries (day, week, month, …) in a specific timezone.
+
+Temporal works identically on the client (offline/local execution) and the server, so the same query produces the same buckets in both places.
+
+## How It Works
+
+A temporal clause does one of two things:
+
+- **Period / range filtering** — the clause is compiled into ordinary field filters (`$gte` / `$lte`) on the target field and removed from `temporal`. The calendar boundaries are computed in the resolved timezone.
+- **Grouping** — a `groupBy` clause is retained on the query and drives [aggregation grouping](/docs/dfql/aggregations#temporal-grouping). Each result group is keyed by the start of its period.
+
+## The `time` Builder
+
+Import the `time` builder (also exported as `temporal`) from `@datafn/core` or `@datafn/client`. It returns a `DatafnTemporalClause` you assign to the query's `temporal` field.
+
+```typescript
+import { time } from "@datafn/core";
+
+const query = {
+  resource: "sessions",
+  version: 1,
+  temporal: time.day("startedAt", "2026-05-18T12:00:00.000Z", {
+    timezone: "Asia/Kolkata",
+  }),
+};
+// Compiles to filters: { startedAt: { $gte: <start of that day>, $lte: <end of that day> } }
+```
+
+### Period Helpers
+
+Each period helper selects the calendar period that contains the `at` instant (defaulting to "now" when omitted):
+
+| Helper | Period |
+|---|---|
+| `time.hour(field, at?, options?)` | The hour containing `at` |
+| `time.day(field, at?, options?)` | The day containing `at` |
+| `time.week(field, at?, options?)` | The week containing `at` |
+| `time.month(field, at?, options?)` | The month containing `at` |
+| `time.quarter(field, at?, options?)` | The quarter containing `at` |
+| `time.year(field, at?, options?)` | The year containing `at` |
+
+```typescript
+// All sessions in the current month, in the user's timezone
+temporal: time.month("startedAt", undefined, { timezone: "user" })
+```
+
+### Range Helpers
+
+Use `time.range` or `time.between` for explicit boundaries:
+
+```typescript
+// Inclusive range from start to end
+temporal: time.range("startedAt", {
+  start: "2026-05-01T00:00:00.000Z",
+  end: "2026-05-31T23:59:59.999Z",
+})
+
+// Same, with positional start/end
+temporal: time.between("startedAt", startMs, endMs)
+```
+
+### Generic Period / Group Helpers
+
+```typescript
+// Explicit period object
+temporal: time.period("startedAt", { scale: "week", at: someInstant })
+
+// Explicit grouping by scale
+temporal: time.group("startedAt", "month", { alias: "month", timezone: "user" })
+```
+
+### Group Helpers
+
+Group helpers produce a `groupBy` clause used by aggregation queries:
+
+| Helper | Groups by |
+|---|---|
+| `time.groupByHour(field, options?)` | Hour buckets |
+| `time.groupByDay(field, options?)` | Day buckets |
+| `time.groupByWeek(field, options?)` | Week buckets |
+| `time.groupByMonth(field, options?)` | Month buckets |
+| `time.groupByQuarter(field, options?)` | Quarter buckets |
+| `time.groupByYear(field, options?)` | Year buckets |
+
+```typescript
+const query = {
+  resource: "sessions",
+  version: 1,
+  temporal: time.groupByDay("startedAt", { alias: "day", timezone: "user" }),
+  aggregations: {
+    count: { op: "count", field: "*" },
+    minutes: { op: "sum", field: "minutes" },
+  },
+};
+// Result groups:
+// [
+//   { day: "2026-05-17T18:30:00.000Z", count: 2, minutes: 30 },
+//   { day: "2026-05-18T18:30:00.000Z", count: 1, minutes: 30 },
+// ]
+```
+
+## The `temporal` Clause
+
+The builders are sugar over a plain object. You can also write the clause directly:
+
+```typescript
+type DatafnTemporalClause = {
+  field: string;
+  timezone?: string;             // IANA name or "user"; default UTC
+  storage?: "unix-ms" | "unix-s" | "date" | "iso";  // default "unix-ms"
+  weekStartsOn?: number;         // 0=Sunday … 6=Saturday; default 1 (Monday)
+  range?: { start: string | number | Date; end: string | number | Date };
+  period?: { scale: TemporalScale; at?: string | number | Date };
+  groupBy?: { scale: TemporalScale; alias?: string; output?: TemporalStorage; weekStartsOn?: number };
+};
+```
+
+| Field | Description |
+|---|---|
+| `field` | The target date/epoch field on the resource. Required. |
+| `timezone` | IANA timezone (e.g. `"Asia/Kolkata"`), or the special value `"user"` to resolve from configuration. Defaults to UTC. |
+| `storage` | How the target field is stored. `"unix-ms"` (default), `"unix-s"`, `"date"`, or `"iso"`. Controls how stored values are interpreted and how compiled filter bounds are written back. |
+| `weekStartsOn` | First day of week for `week` scale. Default `1` (Monday). |
+| `range` | Explicit inclusive `{ start, end }` bounds. |
+| `period` | A calendar period `{ scale, at? }`. Mutually exclusive with `range`. |
+| `groupBy` | Retain the clause for aggregation grouping. `alias` defaults to `${field}_${scale}`; `output` defaults to `"iso"`. |
+
+`TemporalScale` is one of `"hour" | "day" | "week" | "month" | "quarter" | "year"`.
+
+You can also pass an **array** of clauses to apply several temporal filters/groupings in one query.
+
+## Timezones
+
+### Fixed Timezone
+
+Pass any IANA name. Boundaries are computed in that zone, so a "day" in `"Asia/Kolkata"` differs from a "day" in UTC.
+
+```typescript
+temporal: time.day("startedAt", instant, { timezone: "America/New_York" })
+```
+
+### `"user"` Timezone
+
+Set `timezone: "user"` to resolve the actor's timezone at query time. Resolution order:
+
+1. A `timezoneResolver` from temporal configuration.
+2. The built-in [timezone-change registry](#timezone-change-registry) (`datafnTimezoneChange` records).
+3. A static or function `timezone` from temporal configuration.
+
+```typescript
+temporal: time.day("startedAt", instant, { timezone: "user" })
+```
+
+On the client, the user's timezone is wired up through the [`temporal` client config](/docs/reference/client/config#temporal) and the [`client.temporal` API](/docs/reference/client/temporal). On the server, queries resolve `"user"` against the `datafnTimezoneChange` records in storage.
+
+## Timezone-Change Registry
+
+DataFn ships a built-in resource, **`datafnTimezoneChange`**, that records a history of timezone changes for the current actor/namespace. It is auto-injected into the schema by `createDatafnClient`, `createDatafnServer`, and the CLI codegen (via `ensureBuiltinTemporal`).
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Record id (`timezoneChange:<effectiveFrom>:<zone>`). |
+| `timezone` | `string` | IANA timezone name. |
+| `effectiveFrom` | `number` | Epoch-ms instant from which this zone applies. |
+| `recordedAt` | `number` | When the change was recorded. |
+| `source` | `string?` | Origin, e.g. `"manual"`, `"browser"`, `"system"`, `"import"`. |
+
+When `timezone: "user"` is resolved, the registry is consulted so that **historical** instants use the timezone that was in effect at that time. Manage these records with the [`client.temporal` API](/docs/reference/client/temporal).
+
+## Programmatic Resolution
+
+`@datafn/core` exports helpers for resolving temporal values outside of a query:
+
+```typescript
+import {
+  normalizeTemporalQuery,
+  resolveTemporalPeriodRange,
+  resolveTemporalBucketKey,
+  createTimezoneResolver,
+} from "@datafn/core";
+
+// Compile a query's temporal clause into filters
+const normalized = normalizeTemporalQuery(query, { timezone: "Asia/Kolkata" });
+
+// Build a resolver from timezone-change records
+const resolver = createTimezoneResolver(timezoneChangeRecords);
+```
+
+See the [`@datafn/core` temporal reference](/docs/reference/core/temporal) for the full helper and type list.
+
+## Plugin
+
+`createTemporalPlugin(config?)` returns a plugin that normalizes the `temporal` clause of every query (client and server) using a shared configuration. Register it through the `plugins` option when you want consistent timezone defaults without threading config into each query.
+
+```typescript
+import { createTemporalPlugin } from "@datafn/core";
+
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  plugins: [createTemporalPlugin({ timezone: "user", weekStartsOn: 1 })],
+});
+```
+
+## Related
+
+- [Aggregations](/docs/dfql/aggregations#temporal-grouping) — temporal grouping in aggregate queries.
+- [Search](/docs/dfql/search#temporal-filtering) — temporal filters in cross-resource search.
+- [`client.temporal` reference](/docs/reference/client/temporal) — managing user timezones.
+- [`@datafn/core` temporal reference](/docs/reference/core/temporal) — helper and type reference.

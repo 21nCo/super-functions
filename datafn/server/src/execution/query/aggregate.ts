@@ -1,6 +1,16 @@
 import { evaluateFilter } from "./filters.js";
 import { parseSortTerms } from "./sort.js";
-import { calculateAggregation } from "@datafn/core";
+import {
+  calculateAggregation,
+  findRelationMatch,
+  firstEndpoint,
+  getTemporalGroups,
+  relationTargetEndpoint,
+  resolveEndpointResource,
+  resolveTemporalBucketValue,
+  resourceNameFromId,
+  type DatafnTemporalConfig,
+} from "@datafn/core";
 import { applyLimitOffset, applyCursorAfter, computeNextCursor } from "./pagination.js";
 
 /**
@@ -9,8 +19,9 @@ import { applyLimitOffset, applyCursorAfter, computeNextCursor } from "./paginat
 export function executeAggregateQuery(
   query: Record<string, unknown>,
   records: Record<string, unknown>[],
-  schema: { resources: Array<{ name: string; fields: Array<{ name: string }> }>; relations?: unknown[] },
+  schema: { resources: readonly { name: string; fields: readonly { name: string }[] }[]; relations?: readonly unknown[] },
   store: { getRecord: (resource: string, id: string) => Record<string, unknown> | null | undefined },
+  temporal?: DatafnTemporalConfig,
 ): { groups: Record<string, unknown>[]; nextCursor: unknown | null } {
   // EXE-013: Cache resource schema lookup (called per record otherwise)
   const resourceSchema = schema.resources.find((r) => r.name === query.resource);
@@ -31,7 +42,8 @@ export function executeAggregateQuery(
   }
 
   // 2. Group
-  const groupBy = query.groupBy as string[];
+  const groupBy = Array.isArray(query.groupBy) ? (query.groupBy as string[]) : [];
+  const temporalGroups = getTemporalGroups(query, temporal);
   const groups = new Map<string, Record<string, unknown>[]>();
 
   for (const record of filtered) {
@@ -45,8 +57,11 @@ export function executeAggregateQuery(
         query.resource as string,
         resourceSchema,
       );
-      return String(val); // Composite key component
+      return val; // Composite key component
     });
+    for (const group of temporalGroups) {
+      keyParts.push(resolveTemporalBucketValue(record, group));
+    }
     const key = JSON.stringify(keyParts); // Structured key avoids collision when values contain separator chars
 
     if (!groups.has(key)) {
@@ -75,6 +90,9 @@ export function executeAggregateQuery(
       );
       row[field] = val;
     });
+    for (const group of temporalGroups) {
+      row[group.alias] = resolveTemporalBucketValue(groupRecords[0], group);
+    }
 
     // Calculate aggregations
     for (const [alias, def] of Object.entries(aggregations)) {
@@ -101,7 +119,10 @@ export function executeAggregateQuery(
   // 5. Order
   const sort = query.sort as string[] | undefined;
   // If no sort provided, default to group keys ASC
-  const effectiveSort = sort || groupBy.map(k => `${k}:asc`);
+  const effectiveSort = sort || [
+    ...groupBy.map(k => `${k}:asc`),
+    ...temporalGroups.map((group) => `${group.alias}:asc`),
+  ];
   
   const sortTerms = parseSortTerms(effectiveSort);
   results = orderGroupedResults(results, sortTerms);
@@ -166,10 +187,10 @@ function orderGroupedResults(groups: Record<string, unknown>[], sortTerms: Array
 function resolveValue(
   record: Record<string, unknown>,
   path: string,
-  schema: { resources: Array<{ name: string; fields: Array<{ name: string }> }>; relations?: unknown[] },
+  schema: { resources: readonly { name: string; fields: readonly { name: string }[] }[]; relations?: readonly unknown[] },
   store: { getRecord: (resource: string, id: string) => Record<string, unknown> | null | undefined },
   resourceName: string,
-  precomputedResource?: { name: string; fields: Array<{ name: string }> }, // EXE-013: pre-computed to avoid per-record O(n) lookup
+  precomputedResource?: { name: string; fields: readonly { name: string }[] }, // EXE-013: pre-computed to avoid per-record O(n) lookup
 ): unknown {
   if (!path.includes(".")) {
     return record[path];
@@ -199,25 +220,26 @@ function resolveValue(
 
   for (let i = 0; i < parts.length - 1; i++) {
     const relName = parts[i];
-    // Find relation
-    const rel = (schema.relations as Array<Record<string, unknown>> | undefined)?.find(
-      (r) =>
-        (r.from === currentResource && r.relation === relName) ||
-        (r.to === currentResource && r.inverse === relName),
-    );
+    const match = findRelationMatch(schema as any, currentResource, relName);
 
-    if (!rel) return undefined; // Invalid path or not loaded
+    if (!match) return undefined; // Invalid path or not loaded
 
-    const isForward = rel.from === currentResource;
+    const rel = match.relation as Record<string, unknown>;
+    const isForward = match.direction === "forward";
 
     if (rel.type === "many-one" && isForward) {
       const fk = (rel.fkField || rel.foreignKey) as string;
       const targetId = currentRecord[fk];
       if (!targetId) return null;
-      const target = store.getRecord(rel.to as string, targetId as string);
+      const targetEndpoint = relationTargetEndpoint(match.relation as any, match.direction);
+      const targetResource =
+        resolveEndpointResource(targetEndpoint, targetId) ??
+        resourceNameFromId(targetId) ??
+        firstEndpoint(targetEndpoint);
+      const target = store.getRecord(targetResource, targetId as string);
       if (!target) return null;
       currentRecord = target;
-      currentResource = rel.to as string;
+      currentResource = targetResource;
     } else {
       return undefined; // Not supported
     }

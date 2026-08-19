@@ -20,6 +20,10 @@
       "import": "./dist/internal/errors.js",
       "default": "./dist/internal/errors.js"
     },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "default": "./dist/observability.js"
+    },
     "./types": {
       "types": "./dist/types.d.ts"
     }
@@ -43,6 +47,7 @@
   },
   "publishConfig": { "access": "public" },
   "dependencies": {
+    "@superfunctions/observability": "0.0.1",
     "@aws-sdk/client-s3": "^3.600.0",
     "@aws-sdk/s3-request-presigner": "^3.600.0"
   },

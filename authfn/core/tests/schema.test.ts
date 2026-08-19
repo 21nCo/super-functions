@@ -1,22 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from '../src/__tests__/test-server.js';
 import {
-  AuthFnConfigError,
   AuthFnConflictError,
-  authFnApiKeyPlugin,
-  authFnEmailOtpPlugin,
-  authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
   getSchema,
-  type AuthFnConfig,
   type AuthFnPlugin,
-  type AuthFnSchemaConfig
+  type AuthFnRuntimeConfig
 } from '../src/index.js';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
 
-const config = (): AuthFnConfig => ({
-  database: {} as AuthFnConfig['database'],
+const config = (): AuthFnRuntimeConfig => ({
+  database: {} as AuthFnRuntimeConfig['database'],
   namespace: 'authfn',
   plugins: [
     authFnPasswordPlugin(),
@@ -28,7 +26,7 @@ const config = (): AuthFnConfig => ({
   ]
 });
 
-describe('@authfn/core schema composition', () => {
+describe('authfn schema composition', () => {
   it('returns deterministic table order for a fixed plugin config', () => {
     const first = getSchema(config());
     const second = getSchema(config());
@@ -58,68 +56,6 @@ describe('@authfn/core schema composition', () => {
       required: true,
       unique: true
     });
-  });
-
-  it('resolves bundled plugin descriptors into schema tables', () => {
-    const descriptorConfig: AuthFnSchemaConfig = {
-      database: {} as AuthFnConfig['database'],
-      namespace: 'authfn',
-      plugins: [
-        { __functionCall: 'authFnPasswordPlugin', __args: [{ requireEmailVerifiedForSignIn: true }] },
-        { __functionCall: 'authFnEmailOtpPlugin', __args: [{ maxAttempts: 5 }] },
-        { __functionCall: 'authFnSocialOAuthPlugin', __args: [{ providers: { github: { clientId: 'demo' } } }] },
-        { __functionCall: 'authFnApiKeyPlugin', __args: [{ secretPrefix: 'demo' }] },
-        { __functionCall: 'authFnTwoFactorPlugin', __args: [{ issuer: 'Demo' }] },
-        { __functionCall: 'authFnMultiRegionPlugin', __args: [{ defaultRegionId: 'us' }] }
-      ]
-    };
-
-    const schema = getSchema(descriptorConfig);
-
-    expect(schema.schemas.map((table) => table.modelName)).toEqual([
-      'users',
-      'sessions',
-      'password_credentials',
-      'otp_challenges',
-      'oauth_states',
-      'oauth_tokens',
-      'oauth_consents',
-      'oauth_revocation_failures',
-      'oauth_accounts',
-      'api_keys',
-      'two_factor_enrollments',
-      'two_factor_recovery_codes',
-      'two_factor_challenges',
-      'region_profiles'
-    ]);
-  });
-
-  it('fails with a structured invalid-config error for unknown bundled plugin descriptors', () => {
-    expect(() =>
-      getSchema({
-        database: {} as AuthFnConfig['database'],
-        namespace: 'authfn',
-        plugins: [{ __functionCall: 'customPlugin', __args: [] }]
-      })
-    ).toThrowError(AuthFnConfigError);
-
-    try {
-      getSchema({
-        database: {} as AuthFnConfig['database'],
-        namespace: 'authfn',
-        plugins: [{ __functionCall: 'customPlugin', __args: [] }]
-      });
-      throw new Error('expected getSchema to throw');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AuthFnConfigError);
-      expect(error).toMatchObject({
-        code: 'AUTHFN_CONFIG_INVALID',
-        details: {
-          factoryName: 'customPlugin'
-        },
-        message: 'Unsupported authfn schema plugin descriptor'
-      });
-    }
   });
 
   it('fails deterministically on duplicate table names', () => {
@@ -166,8 +102,8 @@ describe('@authfn/core schema composition', () => {
   });
 
   it('produces stable route output across runs', () => {
-    const first = createAuthFn(config()).router.getRoutes().map((route) => `${route.method}:${route.path}`);
-    const second = createAuthFn(config()).router.getRoutes().map((route) => `${route.method}:${route.path}`);
+    const first = createTestServer(config()).router.getRoutes().map((route) => `${route.method}:${route.path}`);
+    const second = createTestServer(config()).router.getRoutes().map((route) => `${route.method}:${route.path}`);
 
     expect(first).toEqual(second);
     expect(first.length).toBeGreaterThan(4);

@@ -139,7 +139,38 @@ await client.table("todos").mutate({
 - `silent: true` suppresses mutation events.
 - `system: true` marks event payloads as system-initiated.
 
+## Relation Mutations
+
+Use `relate`, `unrelate`, and `modifyRelation` to manage relationships. Offline, these are applied to local storage (foreign keys, join rows, htree paths, and polymorphic discriminators) and queued for sync.
+
+```typescript
+// Connect a many-many relation with join metadata
+await client.table("tasks").mutate({
+  operation: "relate",
+  id: "task:1",
+  relations: { tags: [{ $ref: "tag:1", order: 0 }] },
+});
+
+// Update join metadata only
+await client.table("tasks").mutate({
+  operation: "modifyRelation",
+  id: "task:1",
+  relations: { tags: { $ref: "tag:1", order: 5 } },
+});
+
+// Remove a relation edge
+await client.table("tasks").mutate({
+  operation: "unrelate",
+  id: "task:1",
+  relations: { tags: "tag:1" },
+});
+```
+
+See [DFQL Relations](/docs/dfql/schema/relations) for payload formats and per-type behavior.
+
 ## Debounced Mutations
+
+Debouncing coalesces rapid writes to the same target into a single mutation. It is supported for `merge`, `relate`, and `modifyRelation` operations (each requires `debounceKey`, `resource`, `operation`, and `id`, and a hydrated/ready resource).
 
 ```typescript
 await client.table("todos").mutate({
@@ -149,9 +180,18 @@ await client.table("todos").mutate({
   debounceKey: "todo-title-td:1",
   debounceMs: 1500,
 });
+
+// Relation metadata edits debounce too (e.g. a slider updating join order)
+await client.table("tasks").mutate({
+  operation: "relate",
+  id: "task:1",
+  relations: { labels: [{ $ref: "label:1", value: "first" }] },
+  debounceKey: "task:1-label:1",
+  debounceMs: 100,
+});
 ```
 
-Use `client.flush(key)` or `client.flushAll()` to force execution.
+Successive calls with the same `debounceKey` merge their `record`/`relations` payloads; only the final state is persisted. Use `client.flush(key)` or `client.flushAll()` to force execution.
 
 ## Events
 

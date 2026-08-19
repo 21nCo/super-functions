@@ -133,7 +133,7 @@ describe('@filefn/server upload sessions', () => {
     });
 
     fileFn = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [
         {
@@ -253,7 +253,7 @@ describe('@filefn/server upload sessions', () => {
       });
 
       const routedFileFn = createFileFn({
-        db,
+        database: db,
         storage,
         policies: [
           { name: 'durable-policy', contentTypes: ['image/png'], storageTarget: 'durable' },
@@ -320,7 +320,7 @@ describe('@filefn/server upload sessions', () => {
       });
 
       const routedFileFn = createFileFn({
-        db,
+        database: db,
         storage,
         policies: [
           { name: 'durable-policy', contentTypes: ['image/png'], storageTarget: 'durable' },
@@ -361,7 +361,7 @@ describe('@filefn/server upload sessions', () => {
 
     it('ships Nucleus policies with wildcard mime support and a 100 MiB cap', async () => {
       const nucleusFileFn = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -450,7 +450,7 @@ describe('@filefn/server upload sessions', () => {
       };
 
       const fileFnWithQuota = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -594,7 +594,7 @@ describe('@filefn/server upload sessions', () => {
     it('should reject completion with missing parts', async () => {
       // Create a fileFn with a larger size limit for this test
       const fileFnLarge = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -706,7 +706,7 @@ describe('@filefn/server upload sessions', () => {
       };
 
       const fileFnWithRateLimit = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -732,7 +732,7 @@ describe('@filefn/server upload sessions', () => {
 
     it('TV-RATE-001: should enforce uploadInit category limits with ISO8601 resetAt', async () => {
       const fileFnWithCategoryRateLimit = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),
@@ -769,7 +769,7 @@ describe('@filefn/server upload sessions', () => {
 
     it('TV-RATE-NEG-001: should reject legacy non-category rateLimit config', () => {
       expect(() => createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
         }),

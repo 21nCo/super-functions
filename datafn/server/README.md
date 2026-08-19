@@ -55,7 +55,7 @@ const server = await createDatafnServer({
       },
     ],
   },
-  db: drizzleAdapter({ db: myDrizzleInstance, dialect: "postgres" }),
+  database: drizzleAdapter({ db: myDrizzleInstance, dialect: "postgres" }),
   authorize: async (ctx, action, payload) => {
     return true; // Allow all (replace with real logic)
   },
@@ -563,7 +563,7 @@ Isolate change tracking per user or tenant. Each namespace gets its own `serverS
 ```typescript
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
   authContextProvider: {
     getContext: (ctx) => ({
       userId: ctx.session?.userId,
@@ -595,13 +595,13 @@ The server uses a `SequenceStore` for generating monotonically increasing sequen
 // Default: use main database
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
 });
 
 // Redis for high-throughput atomic INCR
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
   redis: myRedisAdapter,
   dbMapping: { serverseq: "redis" },
 });
@@ -609,7 +609,7 @@ const server = await createDatafnServer({
 // KV store (e.g. Cloudflare KV, DynamoDB)
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
   kvStore: myKVAdapter,
   dbMapping: { serverseq: "kv" },
 });
@@ -647,7 +647,7 @@ Enable REST wrappers alongside DFQL endpoints:
 ```typescript
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
   rest: true, // Enable REST endpoints
 });
 ```
@@ -668,7 +668,7 @@ const server = await createDatafnServer({
 The server exposes a WebSocket handler for real-time cursor broadcasts:
 
 ```typescript
-const server = await createDatafnServer({ schema, db: adapter });
+const server = await createDatafnServer({ schema, database: adapter });
 
 // Wire WebSocket connections to server handler
 wss.on("connection", (ws) => {
@@ -702,7 +702,7 @@ const auditPlugin: DatafnPlugin = {
 
 const server = await createDatafnServer({
   schema,
-  db: adapter,
+  database: adapter,
   plugins: [auditPlugin],
 });
 ```

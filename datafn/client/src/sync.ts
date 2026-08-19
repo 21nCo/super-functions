@@ -14,9 +14,16 @@ import { applyCloneResult, applyPullResult } from "./sync/apply.js";
 import type { CloneResult, PullResult } from "./sync/apply.js";
 import { cloneUp as executeCloneUp } from "./sync/cloneUp.js";
 import type { CloneUpOptions, CloneUpResult, CloneUpDeps } from "./sync/cloneUp.js";
-import type { DatafnPlugin, DatafnSchema } from "@datafn/core";
+import type { DatafnPlugin, DatafnSchema, DatafnSignal } from "@datafn/core";
 import type { EventBus } from "./events/bus.js";
 import { runBeforeSync, runAfterSync } from "./plugins/run-hooks.js";
+import type { DatafnSyncPhase, DatafnSyncStatus } from "./sync/status.js";
+import {
+  decryptCloneResultForE2ee,
+  decryptPullResultForE2ee,
+  encryptPushPayloadForE2ee,
+  type DatafnE2eeConfig,
+} from "./e2ee.js";
 
 export interface SyncFacade {
   seed(payload: unknown): Promise<unknown>;
@@ -33,6 +40,9 @@ export interface SyncControlMethods {
   cloneNow(): Promise<void>;
   reconcileNow(): Promise<void>;
   schedulePush(): Promise<void>;
+  getStatus(): DatafnSyncStatus;
+  statusSignal(): DatafnSignal<DatafnSyncStatus>;
+  refreshStatus(): Promise<DatafnSyncStatus>;
 }
 
 /**
@@ -48,6 +58,7 @@ export function createSyncFacade(
   schema?: DatafnSchema,
   eventBus?: EventBus,
   getTimestamp?: () => number,
+  e2ee?: DatafnE2eeConfig,
 ): SyncFacade {
   // Helper to get current timestamp
   const timestamp = getTimestamp || (() => Date.now());
@@ -57,12 +68,20 @@ export function createSyncFacade(
    * Phase-specific logic for each sync method
    */
   const wrapSyncMethod = async <T>(
-    phase: "seed" | "clone" | "pull" | "push" | "cloneUp" | "reconcile",
+    phase: DatafnSyncPhase,
     methodName: keyof DatafnRemoteAdapter,
     payload: unknown,
     applyFn?: (result: T) => Promise<void>,
   ): Promise<T> => {
     try {
+      if (eventBus) {
+        eventBus.emit({
+          type: "sync_started",
+          timestampMs: timestamp(),
+          context: { phase },
+        });
+      }
+
       // Run beforeSync hooks (fail-closed) (HOOK-001)
       const transformedPayload = schema
         ? await runBeforeSync(plugins, schema, phase, payload)
@@ -78,18 +97,29 @@ export function createSyncFacade(
         );
       }
 
+      const payloadForRemote =
+        phase === "push" && schema
+          ? await encryptPushPayloadForE2ee(schema, e2ee, transformedPayload)
+          : transformedPayload;
+
       // Call remote method and unwrap
-      const response = await method.call(remote, transformedPayload);
+      const response = await method.call(remote, payloadForRemote);
       const result = unwrapRemoteSuccess(response) as T;
+      const resultForLocal =
+        phase === "clone" && schema
+          ? (await decryptCloneResultForE2ee(schema, e2ee, result as CloneResult) as T)
+          : phase === "pull" && schema
+            ? (await decryptPullResultForE2ee(schema, e2ee, result as PullResult) as T)
+            : result;
 
       // Apply to storage if configured
       if (applyFn) {
-        await applyFn(result);
+        await applyFn(resultForLocal);
       }
 
       // Run afterSync hooks (fail-open) (HOOK-001)
       if (schema) {
-        await runAfterSync(plugins, schema, phase, transformedPayload, result);
+        await runAfterSync(plugins, schema, phase, transformedPayload, resultForLocal);
       }
 
       // Emit sync_applied event (EVT-003)
@@ -97,11 +127,11 @@ export function createSyncFacade(
         eventBus.emit({
           type: "sync_applied",
           timestampMs: timestamp(),
-          context: createSyncEventContext(phase, result),
+          context: createSyncEventContext(phase, resultForLocal),
         });
       }
 
-      return result;
+      return resultForLocal;
     } catch (error: any) {
       // Emit sync_failed event (EVT-003)
       if (eventBus) {
@@ -217,6 +247,14 @@ export function createSyncFacade(
       }
 
       try {
+        if (eventBus) {
+          eventBus.emit({
+            type: "sync_started",
+            timestampMs: timestamp(),
+            context: { phase: "cloneUp" },
+          });
+        }
+
         // Run beforeSync hooks (fail-closed) (HOOK-001)
         const transformedOptions = schema
           ? await runBeforeSync(plugins, schema, "cloneUp", options || {})

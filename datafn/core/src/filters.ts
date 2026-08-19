@@ -27,6 +27,7 @@ function assertSafeKey(key: string, context: string): void {
 export function normalizeFilterOps(filters: Record<string, unknown>): Record<string, unknown> {
   const out = createSafeRecord();
   for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined) continue;
     assertSafeKey(key, "filter key");
     if ((key === "$and" || key === "$or") && Array.isArray(value)) {
       out[key] = (value as Record<string, unknown>[]).map(normalizeFilterOps);
@@ -34,11 +35,14 @@ export function normalizeFilterOps(filters: Record<string, unknown>): Record<str
       const ops = value as Record<string, unknown>;
       const normalized = createSafeRecord();
       for (const [op, opVal] of Object.entries(ops)) {
+        if (opVal === undefined) continue;
         const mappedOp = OP_REMAP[op] ?? op;
         assertSafeKey(mappedOp, "filter operator");
         normalized[mappedOp] = opVal;
       }
-      out[key] = normalized;
+      if (Object.keys(normalized).length > 0) {
+        out[key] = normalized;
+      }
     } else {
       out[key] = value;
     }

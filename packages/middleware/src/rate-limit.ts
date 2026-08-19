@@ -1,4 +1,5 @@
-import type { Adapter, KVStoreAdapter } from '@superfunctions/db';
+import { instrumentKVStore, type Adapter, type AtomicStoreAdapter, type KVStoreAdapter } from '@superfunctions/db';
+import { normalizeObservability, type ObservabilityInput } from '@superfunctions/observability';
 
 export { KVStoreAdapter };
 
@@ -10,8 +11,11 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyPrefix?: string;
   persistence?: Adapter | KVStoreAdapter;
+  atomicStore?: AtomicStoreAdapter;
   algorithm?: RateLimitAlgorithm;
   now?: () => number;
+  observability?: ObservabilityInput;
+  component?: string;
 }
 
 export interface RateLimitResult {
@@ -148,10 +152,25 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     maxRequests,
     keyPrefix = 'ratelimit:',
     persistence = createInMemoryKVStore(now),
+    atomicStore,
     algorithm = 'fixed-window',
+    observability: observabilityInput,
+    component = 'rate-limit',
   } = config;
 
-  const kv = ensureKV(persistence, now);
+  const observability = normalizeObservability(observabilityInput)?.child({ component });
+  const atomic = atomicStore
+    ? instrumentKVStore(atomicStore, {
+        observability,
+        kind: 'cache',
+        component: `${component}.atomic`,
+      })
+    : undefined;
+  const kv = instrumentKVStore(ensureKV(persistence, now), {
+    observability,
+    kind: 'cache',
+    component: `${component}.cache`,
+  });
   const keyLocks = new Map<string, Promise<void>>();
 
   async function withKeyLock<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -177,19 +196,35 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
   return {
     async check(input: CheckLimitInput): Promise<RateLimitResult> {
       const key = `${keyPrefix}${input.key}`;
+      const effectiveWindowMs =
+        (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
+      const effectiveLimit = input.limit ?? maxRequests;
+      const currentTime = now();
+
+      if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
+        throw new Error('RATE_LIMIT_WINDOW_INVALID');
+      }
+      if (!Number.isFinite(effectiveLimit) || effectiveLimit < 0) {
+        throw new Error('RATE_LIMIT_LIMIT_INVALID');
+      }
+
+      if (atomic && algorithm === 'fixed-window') {
+        const windowStart = Math.floor(currentTime / effectiveWindowMs) * effectiveWindowMs;
+        const resetAt = windowStart + effectiveWindowMs;
+        const count = (await atomic.incr({
+          key: `${key}:${windowStart}`,
+          by: 1,
+          ttlSeconds: Math.ceil(effectiveWindowMs / 1000),
+        })).value;
+        return {
+          allowed: count <= effectiveLimit,
+          remaining: Math.max(0, effectiveLimit - count),
+          resetAt: new Date(resetAt).toISOString(),
+          total: effectiveLimit,
+        };
+      }
+
       return withKeyLock(key, async () => {
-        const effectiveWindowMs =
-          (input.windowSeconds !== undefined ? input.windowSeconds * 1000 : undefined) ?? windowMs;
-        const effectiveLimit = input.limit ?? maxRequests;
-        const currentTime = now();
-
-        if (!Number.isFinite(effectiveWindowMs) || effectiveWindowMs <= 0) {
-          throw new Error('RATE_LIMIT_WINDOW_INVALID');
-        }
-        if (!Number.isFinite(effectiveLimit) || effectiveLimit < 0) {
-          throw new Error('RATE_LIMIT_LIMIT_INVALID');
-        }
-
         if (algorithm === 'sliding-window') {
           const state = (await getState<SlidingWindowState>(kv, key)) ?? { timestamps: [] };
           const floor = currentTime - effectiveWindowMs;

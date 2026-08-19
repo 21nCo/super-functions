@@ -33,6 +33,7 @@ interface ResourceEngine {
   statsManager: DocumentStatsManager;
   postings: Map<string, Map<string, PostingInfo>>;
   docIds: Map<string, DocId>;
+  docMetadata: Map<string, Record<string, string | number | boolean | null>>;
   fieldNames: Set<string>;
   vocabulary: Set<string>;
   vocabularyRefs: Map<string, number>;
@@ -75,6 +76,7 @@ export class MemoryAdapter implements SearchAdapter {
       statsManager: new DocumentStatsManager(),
       postings: new Map(),
       docIds: new Map(),
+      docMetadata: new Map(),
       fieldNames: new Set(),
       vocabulary: new Set(),
       vocabularyRefs: new Map(),
@@ -94,7 +96,8 @@ export class MemoryAdapter implements SearchAdapter {
   private addDocToEngine(
     engine: ResourceEngine,
     docId: DocId,
-    fields: Record<string, string>
+    fields: Record<string, string>,
+    metadata?: Record<string, string | number | boolean | null>
   ): void {
     const ingest = engine.indexer.ingest({ docId, fields });
     if (ingest.totalLength === 0) return;
@@ -102,6 +105,9 @@ export class MemoryAdapter implements SearchAdapter {
     const docKey = this.toKey(docId);
     engine.statsManager.addDocument(docKey, ingest.totalLength);
     engine.docIds.set(docKey, docId);
+    if (metadata) {
+      engine.docMetadata.set(docKey, metadata);
+    }
 
     for (const [field, termFrequencies] of ingest.fieldFrequencies.entries()) {
       engine.fieldNames.add(field);
@@ -136,6 +142,7 @@ export class MemoryAdapter implements SearchAdapter {
     }
     engine.statsManager.removeDocument(docKey);
     engine.docIds.delete(docKey);
+    engine.docMetadata.delete(docKey);
   }
 
   private incrementVocabularyRef(engine: ResourceEngine, term: string): void {
@@ -340,10 +347,28 @@ export class MemoryAdapter implements SearchAdapter {
     });
 
     const limit = Math.max(1, params.limit ?? 10);
-      return scored.slice(0, limit).map((entry) => ({
+    return scored
+      .filter((entry) => this.matchesMetadataFilters(engine, String(entry.docId), params))
+      .slice(0, limit)
+      .map((entry) => ({
         docId: engine.docIds.get(String(entry.docId)) ?? entry.docId,
         score: entry.score,
       }));
+  }
+
+  private matchesMetadataFilters(
+    engine: ResourceEngine,
+    docKey: string,
+    params: SearchParams | SearchAllParams
+  ): boolean {
+    const metadata = engine.docMetadata.get(docKey);
+    if (params.namespaceFilter?.length) {
+      if (!metadata || !params.namespaceFilter.includes(String(metadata.__ns))) return false;
+    }
+    if (params.regionFilter?.length) {
+      if (!metadata || !params.regionFilter.includes(String(metadata.__region))) return false;
+    }
+    return true;
   }
 
   index({ resource, documents, signal }: IndexParams): Promise<void> {
@@ -364,7 +389,7 @@ export class MemoryAdapter implements SearchAdapter {
         for (const doc of chunk) {
           this.assertNotAborted(signal, "Index operation");
           this.removeDocFromEngine(engine, doc.id);
-          this.addDocToEngine(engine, doc.id, doc.fields);
+          this.addDocToEngine(engine, doc.id, doc.fields, doc.metadata);
         }
       }
       return Promise.resolve();
@@ -442,6 +467,8 @@ export class MemoryAdapter implements SearchAdapter {
           prefix: params.prefix ?? this.config.defaults?.prefix,
           fuzzy: params.fuzzy ?? this.config.defaults?.fuzzy,
           fieldBoosts: params.fieldBoosts ?? this.config.defaults?.fieldBoosts,
+          namespaceFilter: params.namespaceFilter,
+          regionFilter: params.regionFilter,
         });
 
         for (const item of detailed) {

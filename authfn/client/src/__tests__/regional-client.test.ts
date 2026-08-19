@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { createAuthFnRegionalClient, type AuthFnCachedRegion, type AuthFnRegionStorage } from '../index.js';
 
 function memoryRegionStorage(): AuthFnRegionStorage & { values: Map<string, AuthFnCachedRegion> } {

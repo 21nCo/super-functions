@@ -1,24 +1,20 @@
-# @authfn/core
+# authfn
 
-`@authfn/core` is the authfn session and identity kernel for the Superfunctions ecosystem. It composes browser-session auth, password auth, email OTP, social OAuth, API keys, 2FA, multi-region routing, shared OpenAPI generation, and `@superfunctions/auth` provider integration without duplicating shared HTTP, DB, or OAuth primitives.
+`authfn` is the authfn session and identity kernel for the Superfunctions ecosystem. It composes declared plugins, manages browser sessions, generates schema/OpenAPI output, and provides `@superfunctions/auth` provider integration without bundling every auth method into the root package.
 
 ## What It Ships
 
 - Cookie-backed browser sessions with CSRF protection
-- Bundled plugins for:
-  - password sign-up/sign-in
-  - email OTP send/verify and password reset
-  - Google, Apple, and GitHub social sign-in
-  - user-owned API keys
-  - TOTP-based 2FA
-  - multi-region lookup and runtime overlays
+- Plugin composition primitives
 - Shared OpenAPI generation through `@superfunctions/http-openapi`
 - Structured lifecycle events through `config.observability.emit(...)`
 
 ## Package Inventory
 
-- `@authfn/core`
+- `authfn`
   - core runtime, router composition, schema generation, provider integration
+- `@authfn/password`, `@authfn/email-otp`, `@authfn/social-oauth`, `@authfn/api-keys`, `@authfn/two-factor`, `@authfn/multi-region`, `@authfn/native-handoff`
+  - optional server plugins
 - `@authfn/client`
   - typed browser client using cookie credentials by default
 - `@authfn/svelte`
@@ -29,36 +25,46 @@
 ```ts
 import { memoryAdapter } from '@superfunctions/db/testing';
 import {
-  authFnEmailOtpPlugin,
-  authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn
-} from '@authfn/core';
+  authFnPlugins,
+  authfn
+} from 'authfn';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
+import { authFnMultiRegionPlugin } from '@authfn/multi-region';
 
-const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+const authApp = authfn({
   namespace: 'authfn',
   openApi: {
     title: 'AuthFn API',
     version: '1.0.0'
   },
+  plugins: authFnPlugins(
+    authFnPasswordPlugin(),
+    authFnEmailOtpPlugin(),
+    authFnSocialOAuthPlugin(),
+    authFnTwoFactorPlugin(),
+    authFnMultiRegionPlugin()
+  )
+});
+
+const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
   observability: {
     emit(event) {
       console.log(event.type, event.requestId);
     }
   },
-  plugins: [
-    authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
+  pluginRuntime: {
+    emailOtp: {
       delivery: {
         async send(input) {
           return { sent: true, metadata: { channel: input.channel } };
         }
       }
-    }),
-    authFnSocialOAuthPlugin({
+    },
+    socialOAuth: {
       providers: {
         google: {
           clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -66,10 +72,8 @@ const auth = createAuthFn({
           allowlistedReturnTo: ['https://app.example.com/post-auth']
         }
       }
-    }),
-    authFnTwoFactorPlugin(),
-    authFnMultiRegionPlugin()
-  ]
+    }
+  }
 });
 ```
 
@@ -118,7 +122,7 @@ API key routes:
 Multi-region routes:
 
 - `POST /auth/regions/lookup`
-- `GET /auth/runtime`
+- `GET /auth/environment`
 
 ## OpenAPI
 

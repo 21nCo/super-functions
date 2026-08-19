@@ -128,7 +128,7 @@ describe('PHASE_00 AUTH-001 upload-session binding tests', () => {
 
   beforeEach(() => {
     fileFn = createFileFn({
-      db: createDb(),
+      database: createDb(),
       storage: createFakeStorageAdapter({
         capabilities: {
           signedUploadUrls: true,

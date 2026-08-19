@@ -148,7 +148,7 @@ describe("Timing integration", () => {
     // No observability config at all
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     await server.router.handle(
@@ -170,7 +170,7 @@ describe("Timing integration", () => {
     const events: ExecutionTimingEvent[] = [];
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       observability: {
         timing: true,
         onTiming: (e) => events.push(e),
@@ -206,7 +206,7 @@ describe("Timing integration", () => {
     const events: ExecutionTimingEvent[] = [];
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       observability: {
         timing: true,
         onTiming: (e) => events.push(e),
@@ -244,7 +244,7 @@ describe("Timing integration", () => {
     const events: ExecutionTimingEvent[] = [];
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       observability: {
         timing: true,
         onTiming: (e) => events.push(e),
@@ -280,7 +280,7 @@ describe("Timing integration", () => {
     const events: ExecutionTimingEvent[] = [];
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       observability: {
         timing: true,
         onTiming: (e) => events.push(e),
@@ -324,7 +324,7 @@ describe("Timing integration", () => {
     const handler = vi.fn();
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       observability: {
         timing: false,
         onTiming: handler,

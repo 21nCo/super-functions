@@ -49,9 +49,7 @@ describe("TV-XSRV-001: executeCrossResourceSearch — basic cross-resource searc
 
     const result = await executeCrossResourceSearch(
       { query: "alpha" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -70,9 +68,7 @@ describe("TV-XSRV-001: executeCrossResourceSearch — basic cross-resource searc
 
     const result = await executeCrossResourceSearch(
       { query: "nothing" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -96,9 +92,7 @@ describe("TV-XSRV-001: executeCrossResourceSearch — basic cross-resource searc
         fuzzy: 0.2,
         fieldBoosts: { title: 2 },
       },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -127,9 +121,7 @@ describe("TV-XSRV-002: executeCrossResourceSearch — deleted records silently e
 
     const result = await executeCrossResourceSearch(
       { query: "ghost" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -150,9 +142,7 @@ describe("TV-XSRV-002: executeCrossResourceSearch — deleted records silently e
 
     const result = await executeCrossResourceSearch(
       { query: "task" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -175,9 +165,7 @@ describe("TV-XSRV-003: executeCrossResourceSearch — select projection", () => 
 
     const result = await executeCrossResourceSearch(
       { query: "hello", select: ["id", "title"] },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -199,9 +187,7 @@ describe("TV-XSRV-003: executeCrossResourceSearch — select projection", () => 
 
     const result = await executeCrossResourceSearch(
       { query: "hello" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -228,9 +214,7 @@ describe("TV-DET-001: executeCrossResourceSearch — deterministic sort", () => 
 
     const result = await executeCrossResourceSearch(
       { query: "x" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -254,9 +238,7 @@ describe("TV-DET-001: executeCrossResourceSearch — deterministic sort", () => 
 
     const result = await executeCrossResourceSearch(
       { query: "score" },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 
@@ -288,9 +270,7 @@ describe("TV-ABRT-001: executeCrossResourceSearch — abort support", () => {
     await expect(
       executeCrossResourceSearch(
         { query: "test", signal: controller.signal },
-        provider,
-        db,
-        schema,
+        provider, db, schema,
         "datafn",
       ),
     ).rejects.toMatchObject({
@@ -315,9 +295,7 @@ describe("TV-ABRT-001: executeCrossResourceSearch — abort support", () => {
     await expect(
       executeCrossResourceSearch(
         { query: "task", signal: controller.signal },
-        provider,
-        db,
-        schema,
+        provider, db, schema,
         "datafn",
       ),
     ).rejects.toMatchObject({
@@ -343,9 +321,7 @@ describe("executeCrossResourceSearch — limit enforcement", () => {
 
     const result = await executeCrossResourceSearch(
       { query: "task", limit: 3 },
-      provider,
-      db,
-      schema,
+      provider, db, schema,
       "datafn",
     );
 

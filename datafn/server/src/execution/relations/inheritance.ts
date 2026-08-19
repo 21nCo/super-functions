@@ -3,7 +3,7 @@ import type {
   DatafnResourceSchema,
   DatafnSchema,
 } from "../../core-types.js";
-import { getJoinTableName, normalizeRelationPayload, resolveCapabilities } from "@datafn/core";
+import { getRelationJoinTableName, normalizeRelationPayload, resolveCapabilities } from "@datafn/core";
 import type { CapabilityEntry, ShareableCapability } from "@datafn/core";
 import type { Adapter } from "@superfunctions/db";
 import type { DFQLMutation } from "../mutation/dfql.js";
@@ -70,15 +70,12 @@ function isGrantActive(row: Record<string, unknown>): boolean {
   return row.revokedAt === undefined || row.revokedAt === null;
 }
 
-function includesResourceName(name: string | string[], resource: string): boolean {
-  if (Array.isArray(name)) {
-    return name.includes(resource);
-  }
-  return name === resource;
+function includesResourceName(name: string | readonly string[], resource: string): boolean {
+  return typeof name === "string" ? name === resource : name.includes(resource);
 }
 
-function pickResourceName(name: string | string[]): string {
-  return Array.isArray(name) ? name[0] : name;
+function pickResourceName(name: string | readonly string[]): string {
+  return typeof name === "string" ? name : name[0];
 }
 
 function isShareableCapability(entry: CapabilityEntry): entry is ShareableCapability {
@@ -187,7 +184,7 @@ async function getChildIdsForParentRelation(input: {
   }
 
   if (relation.type === "many-many") {
-    const joinTable = getJoinTableName(parentResource, relationName, relation.joinTable);
+    const joinTable = getRelationJoinTableName(relation, parentResource);
     const fromColumn = relation.joinColumns?.from || "from";
     const toColumn = relation.joinColumns?.to || "to";
     const rows = await db.findMany({

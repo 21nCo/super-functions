@@ -1,6 +1,6 @@
 {
   "name": "@datafn/core",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Core types and utilities for datafn - schema validation, DFQL normalization, and shared types",
   "license": "MIT",
   "type": "module",

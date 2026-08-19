@@ -308,7 +308,7 @@ describe('ProcessingService', () => {
     const processingCompleted = vi.fn();
 
     const fileFn = createFileFn({
-      db: structuredDb,
+      database: structuredDb,
       storage: createFakeStorageAdapter({
         capabilities: {
           signedUploadUrls: true,

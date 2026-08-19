@@ -453,6 +453,14 @@ export function validateMutation(
           if (typeof item === "object" && item !== null) {
             const allowedMetaKeys = new Set(relDef.metadata?.map((m) => m.name) || []);
             allowedMetaKeys.add("$ref"); // $ref is always allowed
+            const fromResources = Array.isArray(relDef.from) ? relDef.from : [relDef.from];
+            const toResources = Array.isArray(relDef.to) ? relDef.to : [relDef.to];
+            if (relDef.type === "many-many" && fromResources.length > 1) {
+              allowedMetaKeys.add("fromResource");
+            }
+            if (relDef.type === "many-many" && toResources.length > 1) {
+              allowedMetaKeys.add("toResource");
+            }
             
             for (const key of Object.keys(item as Record<string, unknown>)) {
               if (!allowedMetaKeys.has(key)) {

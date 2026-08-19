@@ -1,0 +1,143 @@
+---
+title: "Temporal"
+description: "Timezone-aware temporal types, builders, and resolution helpers from @datafn/core."
+audience: reference
+applies_to: both
+---
+
+`@datafn/core` exports the temporal type system, the `time` clause builder, and a set of resolution helpers. These are isomorphic — the client and server import the same functions. For the conceptual guide, see [DFQL Temporal](/docs/dfql/temporal).
+
+## Types
+
+```typescript
+type DatafnTemporalScale = "hour" | "day" | "week" | "month" | "quarter" | "year";
+type DatafnTemporalStorage = "unix-ms" | "unix-s" | "date" | "iso";
+
+type DatafnTemporalRangeInput = { start: string | number | Date; end: string | number | Date };
+type DatafnTemporalPeriodInput = { scale: DatafnTemporalScale; at?: string | number | Date };
+type DatafnTemporalGroupInput = {
+  scale: DatafnTemporalScale;
+  alias?: string;
+  output?: DatafnTemporalStorage;
+  weekStartsOn?: number;
+};
+
+type DatafnTemporalClause = {
+  field: string;
+  timezone?: string;
+  storage?: DatafnTemporalStorage;
+  weekStartsOn?: number;
+  range?: DatafnTemporalRangeInput;
+  period?: DatafnTemporalPeriodInput;
+  groupBy?: DatafnTemporalGroupInput;
+};
+
+type DatafnTemporalConfig = {
+  timezone?: string | (() => string | undefined);
+  timezoneResolver?: DatafnTemporalTimezoneResolver;
+  weekStartsOn?: number;
+};
+
+type DatafnTemporalTimezoneResolver = (input: {
+  instant: number;
+  field: string;
+  resource?: string;
+  record?: Record<string, unknown>;
+  scale?: DatafnTemporalScale;
+}) => string | undefined;
+
+type DatafnTimezoneChangeRecord = {
+  id: string;
+  timezone: string;
+  effectiveFrom: number;
+  recordedAt: number;
+  source?: string;
+};
+```
+
+## `time` / `temporal`
+
+Clause builders. `temporal` is an alias for `time`.
+
+```typescript
+import { time } from "@datafn/core";
+
+time.range(field, { start, end }, options?);
+time.between(field, start, end, options?);
+time.period(field, { scale, at? }, options?);
+time.group(field, scale, options?);            // options: { alias?, output?, timezone?, storage?, weekStartsOn? }
+
+time.hour(field, at?, options?);
+time.day(field, at?, options?);
+time.week(field, at?, options?);
+time.month(field, at?, options?);
+time.quarter(field, at?, options?);
+time.year(field, at?, options?);
+
+time.groupByHour(field, options?);
+time.groupByDay(field, options?);
+time.groupByWeek(field, options?);
+time.groupByMonth(field, options?);
+time.groupByQuarter(field, options?);
+time.groupByYear(field, options?);
+```
+
+`options` accepts the non-`field` members of `DatafnTemporalClause` (`timezone`, `storage`, `weekStartsOn`). Group helpers additionally accept `alias` and `output`.
+
+## Query Normalization
+
+| Function | Signature | Description |
+|---|---|---|
+| `normalizeTemporalQuery` | `<T>(query: T, config?: DatafnTemporalConfig) => T` | Compiles `period`/`range` clauses into `$gte`/`$lte` filters, retains `groupBy` clauses, and merges generated filters with any existing `filters` using `$and`. |
+| `getTemporalClauses` | `(query) => DatafnTemporalClause[]` | Returns the query's temporal clauses as an array. |
+| `hasTemporalGrouping` | `(query) => boolean` | `true` when any clause has a `groupBy`. |
+| `getTemporalGroups` | `(query, config?) => DatafnResolvedTemporalGroup[]` | Resolved grouping descriptors (alias defaults to `${field}_${scale}`, `output` defaults to `"iso"`, `weekStartsOn` defaults to `1`). |
+| `getTemporalGroupAliases` | `(query) => Set<string>` | The set of group aliases (valid as sort/having keys and in authz). |
+
+```typescript
+import { normalizeTemporalQuery, time } from "@datafn/core";
+
+normalizeTemporalQuery({
+  resource: "session",
+  version: 1,
+  filters: { status: "done" },
+  temporal: time.month("startedAt", instant, { timezone: "Asia/Kolkata" }),
+});
+// => { resource, version, filters: { $and: [{ status: "done" }, { startedAt: { $gte, $lte } }] } }
+```
+
+## Value Resolution
+
+| Function | Description |
+|---|---|
+| `resolveTemporalBucketValue(record, group)` | The bucket key for a record under a resolved group. |
+| `resolveTemporalBucketKey(input, config?)` | The bucket key for an explicit `DatafnTemporalBucketInput`. |
+| `resolveTemporalPeriodRange(period, timezone?, weekStartsOn?)` | `{ start, end }` epoch-ms for a calendar period. |
+| `startOfTemporalPeriod(value, scale, timezone?, weekStartsOn?)` | Period start instant (epoch-ms). |
+| `addTemporalPeriod(periodStartMs, scale, timezone?)` | Advance one period. |
+| `resolveTemporalLocalTime(input, timezone?)` | Resolve a `{ year, month, day, ... }` local time to epoch-ms. |
+| `toTemporalStorageValue(ms, storage?)` | Convert epoch-ms to the configured storage format. |
+| `resolveTemporalInputMs(value, storage?)` | Parse a stored value into epoch-ms. |
+
+## Timezone Registry
+
+| Symbol | Description |
+|---|---|
+| `TIMEZONE_CHANGE_RESOURCE_NAME` | `"datafnTimezoneChange"` — the built-in registry resource name. |
+| `TIMEZONE_CHANGE_ID_PREFIX` | `"timezoneChange"` — id prefix for registry records. |
+| `timezoneChangeId(effectiveFrom, timezone, suffix?)` | Build a deterministic registry record id. |
+| `createTimezoneResolver(records, options?)` | Build a `DatafnTemporalTimezoneResolver` from registry records, resolving the most recent zone effective at each instant. |
+| `ensureBuiltinTemporal(schema)` | Append (or validate) the `datafnTimezoneChange` resource. Called automatically by the client, server, and CLI codegen. |
+
+## Plugin
+
+```typescript
+createTemporalPlugin(config?: DatafnTemporalConfig): DatafnPlugin
+```
+
+Returns a `runsOn: ["client", "server"]` plugin whose `beforeQuery` hook runs `normalizeTemporalQuery` over each query (including batch arrays) with the supplied configuration.
+
+## Related
+
+- [DFQL Temporal](/docs/dfql/temporal) — conceptual guide.
+- [`client.temporal` reference](/docs/reference/client/temporal) — user-timezone management.

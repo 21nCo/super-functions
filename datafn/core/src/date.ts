@@ -3,6 +3,7 @@
  */
 
 import type { DatafnFieldSchema } from "./types.js";
+import { isDatafnE2eeEnvelope } from "./e2ee.js";
 
 function dfqlInvalid(msg: string): never {
   throw { code: "DFQL_INVALID", message: msg };
@@ -68,12 +69,13 @@ type FieldLike = Pick<DatafnFieldSchema, "name" | "type">;
  */
 export function coerceDateFieldsToEpoch(
   record: Record<string, unknown>,
-  fields: FieldLike[],
+  fields: readonly FieldLike[],
 ): Record<string, unknown> {
   for (const field of fields) {
     if (field.type !== "date") continue;
     const val = record[field.name];
     if (val === null || val === undefined) continue;
+    if (isDatafnE2eeEnvelope(val)) continue;
     record[field.name] = toEpochMs(val);
   }
   return record;
@@ -88,12 +90,13 @@ export function coerceDateFieldsToEpoch(
  */
 export function parseDateFieldsToDate(
   record: Record<string, unknown>,
-  fields: FieldLike[],
+  fields: readonly FieldLike[],
 ): Record<string, unknown> {
   for (const field of fields) {
     if (field.type !== "date") continue;
     const val = record[field.name];
     if (val === null || val === undefined) continue;
+    if (isDatafnE2eeEnvelope(val)) continue;
     record[field.name] = fromEpochMs(val);
   }
   return record;

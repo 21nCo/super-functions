@@ -8,7 +8,7 @@ import type {
   DatafnHydrationState,
   DatafnChangelogEntry,
 } from "../storage.js";
-import { KV_RESOURCE_NAME } from "@datafn/core";
+import { KV_RESOURCE_NAME, TIMEZONE_CHANGE_RESOURCE_NAME } from "@datafn/core";
 import {
   validateHydrationState,
   validateTransition,
@@ -40,9 +40,11 @@ export class MemoryStorageAdapter implements DatafnStorageAdapter {
       this.validResources = new Set(resources);
       // Ensure built-in KV resource is always valid (KV-001)
       this.validResources.add(KV_RESOURCE_NAME);
+      this.validResources.add(TIMEZONE_CHANGE_RESOURCE_NAME);
     }
     // Always create KV store (KV-001)
     this.records.set("kv", new Map());
+    this.records.set(TIMEZONE_CHANGE_RESOURCE_NAME, new Map());
   }
 
   private validateTableName(table: string) {

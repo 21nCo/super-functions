@@ -1,14 +1,12 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnApiKeyPlugin,
-  authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
-  type AuthFnConfig
-} from '@authfn/core';
+import type { AuthFnRuntimeConfig } from 'authfn';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { authFnMultiRegionEnvironment, authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
 import { createAuthFnClient } from '../index.js';
 
 const TEST_NOW = new Date('2026-03-25T00:00:00.000Z');
@@ -27,98 +25,85 @@ function createClock(start: Date = TEST_NOW) {
   };
 }
 
-function createAccountSettingsConfig(now: () => Date = () => TEST_NOW): AuthFnConfig {
+function createAccountSettingsConfig(now: () => Date = () => TEST_NOW): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
       authFnPasswordPlugin(),
-      authFnApiKeyPlugin({
+      authFnApiKeyPlugin(),
+      authFnTwoFactorPlugin()
+    ],
+    pluginRuntime: {
+      apiKey: {
         now
-      }),
-      authFnTwoFactorPlugin({
+      },
+      twoFactor: {
         issuer: 'authfn-client-tests',
         now,
         recoveryCodeCount: 3,
         encryptionKeyResolver: () => TEST_2FA_KEY
-      })
-    ]
+      }
+    }
   };
 }
 
-function createMultiRegionConfig(): AuthFnConfig {
+function createMultiRegionConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
-    runtime: {
-      resolve(request) {
-        const url = new URL(request.url);
-        return {
-          issuer: url.origin,
-          baseUrl: url.origin,
+    environment: authFnMultiRegionEnvironment({
+      regions: [
+        {
+          regionId: 'us-east-1',
+          authority: 'https://us.account.example.com',
+          hosts: ['us.account.example.com'],
           cookie: {
-            prefix: 'authfn-base',
-            sameSite: 'lax'
+            prefix: 'authfn-us'
           },
           oauth: {
             google: {
-              clientId: 'base-google-client',
-              scopes: ['openid', 'email']
+              clientId: 'us-google-client',
+              scopes: ['openid', 'email', 'profile']
             }
           }
-        };
-      }
-    },
-    plugins: [
-      authFnPasswordPlugin(),
-      authFnMultiRegionPlugin({
-        regions: [
-          {
-            regionId: 'us-east-1',
-            authority: 'https://us.account.example.com',
-            hosts: ['us.account.example.com'],
-            cookie: {
-              prefix: 'authfn-us'
-            },
-            oauth: {
-              google: {
-                clientId: 'us-google-client',
-                scopes: ['openid', 'email', 'profile']
-              }
-            }
+        },
+        {
+          regionId: 'eu-west-1',
+          authority: 'https://eu.account.example.com',
+          hosts: ['eu.account.example.com'],
+          domain: '.example.com',
+          cookie: {
+            prefix: 'authfn-eu',
+            sameSite: 'none'
           },
-          {
-            regionId: 'eu-west-1',
-            authority: 'https://eu.account.example.com',
-            hosts: ['eu.account.example.com'],
-            domain: '.example.com',
-            cookie: {
-              prefix: 'authfn-eu',
-              sameSite: 'none'
-            },
-            oauth: {
-              google: {
-                clientId: 'eu-google-client',
-                scopes: ['openid', 'email', 'profile']
-              }
+          oauth: {
+            google: {
+              clientId: 'eu-google-client',
+              scopes: ['openid', 'email', 'profile']
             }
-          }
-        ],
-        directory: {
-          lookupByIdentifier({ identifier }) {
-            if (identifier === 'ada@example.com') {
-              return {
-                userId: 'user_ada',
-                regionId: 'eu-west-1',
-                authority: 'https://eu.account.example.com',
-                domain: '.example.com'
-              };
-            }
-            return null;
           }
         }
-      })
-    ]
+      ],
+      directory: {
+        lookupByIdentifier({ identifier }) {
+          if (identifier === 'ada@example.com') {
+            return {
+              userId: 'user_ada',
+              regionId: 'eu-west-1',
+              authority: 'https://eu.account.example.com',
+              domain: '.example.com'
+            };
+          }
+          return null;
+        }
+      }
+    }),
+    plugins: [
+      authFnPasswordPlugin(),
+      authFnMultiRegionPlugin()
+    ],
+    pluginRuntime: {}
   };
 }
 
@@ -147,8 +132,8 @@ function createCookieJar() {
   };
 }
 
-function createClient(config: AuthFnConfig, baseUrl: string) {
-  const auth = createAuthFn(config);
+function createClient(config: AuthFnRuntimeConfig, baseUrl: string) {
+  const auth = createTestServer(config);
   const cookieJar = createCookieJar();
 
   const client = createAuthFnClient({
@@ -313,7 +298,7 @@ describe('@authfn/client account-settings flows', () => {
   it('returns typed runtime and region lookup envelopes for multi-region routes', async () => {
     const { client } = createClient(createMultiRegionConfig(), 'https://us.account.example.com/auth');
 
-    const runtime = await client.getRuntime();
+    const runtime = await client.getEnvironment();
     expect(runtime.ok).toBe(true);
     if (runtime.ok) {
       expect(runtime.data.regionId).toBe('us-east-1');

@@ -17,13 +17,18 @@ The following checks are applied to every query:
 |-------|-------------|
 | Resource exists | The `resource` field must reference a resource defined in the schema. |
 | Field names valid | Fields in `select`, `filters`, `sort`, `groupBy`, `having`, and `search.fields` must exist in the schema. |
-| Relation names valid | Relation tokens in `select` and `filters` must reference defined relations. |
-| Select tokens parseable | Each token in `select` is parsed and validated (e.g., `"assignee.*"`, `"tags.#"`). |
+| Relation names valid | Relation tokens in `select` and `filters` must reference defined relations, including [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) and inverse relations. |
+| Select tokens parseable | Each token in `select` is parsed and validated (e.g., `"assignee.*"`, `"tags.#"`, `"items.*#"`). |
+| Temporal clause valid | A [`temporal`](/docs/dfql/temporal) clause must target a readable field and use a valid `scale` (`hour`/`day`/`week`/`month`/`quarter`/`year`) and `storage`. |
 | Filter depth bounded | Filter nesting depth is capped at 10 levels. |
 | Relation depth bounded | Relation expansion depth in select tokens is capped at 5 levels. |
 | Prototype pollution | Filter objects are checked for disallowed keys (`__proto__`, `constructor`, `prototype`). |
 
 Capability-injected fields are included in query field validation based on resolved capabilities for the target resource.
+
+### Hierarchical (htree) and Polymorphic Relations
+
+Htree traversal is validated against the schema rather than hardcoded field names: the token must match an `htree` relation on the resource, and the resource must define the relation's `pathField` (default `parentPath`). A query that uses htree on a resource without a matching relation is rejected with `DFQL_UNKNOWN_RELATION`. Nested select/filter validation through polymorphic inverse relations is checked across every concrete target resource.
 
 ### Query Limits
 
