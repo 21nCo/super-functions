@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DatafnSignal } from "@datafn/core";
 import { combineSignals } from "../signals/derived.js";
 
@@ -94,5 +94,43 @@ describe("combineSignals", () => {
 
     expect(values).toEqual([[1], [2]]);
     unsub();
+  });
+
+  it("tracks equality independently for every subscriber", async () => {
+    const source = createImmediateSignal(1);
+    const firstValues: number[] = [];
+    const secondValues: number[] = [];
+    const combined = combineSignals(
+      [source.signal],
+      () => source.signal.get(),
+      { equals: (previous, next) => previous === next },
+    );
+
+    const unsubscribeFirst = combined.subscribe((value) => firstValues.push(value));
+    const unsubscribeSecond = combined.subscribe((value) => secondValues.push(value));
+    await Promise.resolve();
+    source.emit(2);
+    await Promise.resolve();
+
+    expect(firstValues).toEqual([1, 2]);
+    expect(secondValues).toEqual([1, 2]);
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  it("does not dispose registry-owned source signals", async () => {
+    const source = createImmediateSignal(1);
+    const disposeSource = vi.spyOn(source.signal, "dispose");
+    const combined = combineSignals([source.signal], () => source.signal.get());
+    const values: number[] = [];
+    combined.subscribe((value) => values.push(value));
+    await Promise.resolve();
+
+    combined.dispose();
+    source.emit(2);
+    await Promise.resolve();
+
+    expect(disposeSource).not.toHaveBeenCalled();
+    expect(values).toEqual([1]);
   });
 });

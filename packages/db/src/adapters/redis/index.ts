@@ -63,16 +63,26 @@ export function redisAtomicKVStore(
     async compareAndSet(input) {
       const script = [
         'local current = redis.call("GET", KEYS[1])',
-        'local expected = ARGV[1]',
-        'if expected == "__NULL__" then expected = false end',
+        'local expected = ARGV[2]',
+        'if ARGV[1] == "1" then expected = false end',
         'if current ~= expected then return {0, current} end',
-        'redis.call("SET", KEYS[1], ARGV[2])',
-        'if ARGV[3] ~= "" then redis.call("EXPIRE", KEYS[1], tonumber(ARGV[3])) end',
+        'redis.call("SET", KEYS[1], ARGV[3])',
+        'if ARGV[4] ~= "" then redis.call("EXPIRE", KEYS[1], tonumber(ARGV[4])) end',
         'return {1, current}',
       ].join('\n');
-      const expected = input.expected ?? '__NULL__';
+      const expectedIsNull = input.expected === null ? '1' : '0';
+      const expected = input.expected ?? '';
       const ttl = input.ttlSeconds && input.ttlSeconds > 0 ? String(Math.floor(input.ttlSeconds)) : '';
-      const result = await command(client, ['EVAL', script, '1', toKey(prefix, input.key), expected, input.value, ttl]);
+      const result = await command(client, [
+        'EVAL',
+        script,
+        '1',
+        toKey(prefix, input.key),
+        expectedIsNull,
+        expected,
+        input.value,
+        ttl,
+      ]);
       const values = Array.isArray(result) ? result : [];
       const updated = Number(values[0]) === 1;
       const existing = typeof values[1] === 'string' ? values[1] : null;

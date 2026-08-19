@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DatafnSchema } from "@datafn/core";
+import { time, type DatafnSchema } from "@datafn/core";
 import { executeQuery } from "../query.js";
 import { MemoryStorageAdapter } from "../adapters/memoryStorage.js";
 import type { DatafnRemoteAdapter } from "../client.js";
@@ -94,5 +94,75 @@ describe("Query routing", () => {
       { data: [{ id: "task:remote" }] },
       { data: [{ id: "note:remote" }] },
     ]);
+  });
+
+  it("re-sorts and re-limits local overlays while preserving the remote envelope", async () => {
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord("tasks", { id: "task:local-a", title: "Alpha" });
+    await storage.upsertRecord("tasks", { id: "task:local-b", title: "Bravo" });
+    await storage.setHydrationState("tasks", "hydrating");
+
+    const remote: DatafnRemoteAdapter = {
+      query: vi.fn().mockResolvedValue({
+        ok: true,
+        result: {
+          data: [{ id: "task:remote-z", title: "Zulu" }],
+          nextCursor: "next-page",
+          count: 20,
+        },
+      }),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      clone: vi.fn(),
+      pull: vi.fn(),
+      push: vi.fn(),
+      reconcile: vi.fn(),
+    };
+
+    const result = await executeQuery(
+      remote,
+      { resource: "tasks", select: ["id", "title"], sort: ["title:asc"], limit: 2 },
+      storage,
+      [],
+      schema,
+    );
+
+    expect(result).toEqual({
+      data: [
+        { id: "task:local-a", title: "Alpha" },
+        { id: "task:local-b", title: "Bravo" },
+      ],
+      nextCursor: "next-page",
+      count: 20,
+    });
+  });
+
+  it("returns an aggregate envelope for impossible temporal grouping filters", async () => {
+    const remote: DatafnRemoteAdapter = {
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      clone: vi.fn(),
+      pull: vi.fn(),
+      push: vi.fn(),
+      reconcile: vi.fn(),
+    };
+
+    const result = await executeQuery(
+      remote,
+      {
+        resource: "tasks",
+        filters: { id: { $in: [] } },
+        temporal: time.groupByDay("createdAt", { alias: "day" }),
+      },
+      undefined,
+      [],
+      schema,
+    );
+
+    expect(result).toEqual({ groups: [], nextCursor: null });
+    expect(remote.query).not.toHaveBeenCalled();
   });
 });

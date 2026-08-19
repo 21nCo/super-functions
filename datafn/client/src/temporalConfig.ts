@@ -23,8 +23,8 @@ export function createClientTemporalConfig(
         temporal?.timezoneResolver?.(input),
       );
       return (
-        registryTimezoneResolver(input) ??
         configuredTimezone ??
+        registryTimezoneResolver(input) ??
         resolveConfiguredTimezone(temporal) ??
         resolveDetectedTimezone(temporal) ??
         "UTC"

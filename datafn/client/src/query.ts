@@ -15,7 +15,13 @@ import type {
   DatafnTemporalConfig,
   SchemaIndex,
 } from "@datafn/core";
-import { endpointIncludes, resolveCapabilities } from "@datafn/core";
+import {
+  endpointIncludes,
+  hasTemporalGrouping,
+  parseSortTerms,
+  resolveCapabilities,
+  sortRecords,
+} from "@datafn/core";
 import { createClientError } from "./errors.js";
 import { unwrapRemoteSuccess } from "./remote/unwrap.js";
 import { executeLocalQuery } from "./offline/query.js";
@@ -196,7 +202,7 @@ function hasImpossibleEmptyInFilter(filter: unknown): boolean {
 function resolveEmptyQueryResult(query: unknown): Record<string, unknown> | undefined {
   if (!isPlainRecord(query)) return undefined;
   if (!hasImpossibleEmptyInFilter(query.filters)) return undefined;
-  if (query.groupBy) {
+  if (query.groupBy || hasTemporalGrouping(query)) {
     return { groups: [], nextCursor: null };
   }
   return {
@@ -206,7 +212,11 @@ function resolveEmptyQueryResult(query: unknown): Record<string, unknown> | unde
   };
 }
 
-function mergeQueryDataById(remoteResult: unknown, localResult: unknown): unknown {
+function mergeQueryDataById(
+  remoteResult: unknown,
+  localResult: unknown,
+  query: Record<string, unknown>,
+): unknown {
   const remoteEnvelope =
     remoteResult && typeof remoteResult === "object" && !Array.isArray(remoteResult)
       ? (remoteResult as Record<string, unknown>)
@@ -230,17 +240,41 @@ function mergeQueryDataById(remoteResult: unknown, localResult: unknown): unknow
     return remoteResult;
   }
 
-  const seen = new Set<string>();
-  const merged: unknown[] = [];
+  const localById = new Map<string, unknown>();
+  const localWithoutId: unknown[] = [];
   for (const record of localData) {
     const id = (record as { id?: unknown } | null)?.id;
-    if (typeof id === "string") seen.add(id);
-    merged.push(record);
+    if (typeof id === "string") {
+      localById.set(id, record);
+    } else {
+      localWithoutId.push(record);
+    }
   }
+
+  const seen = new Set<string>();
+  let merged: unknown[] = [];
   for (const record of remoteData) {
     const id = (record as { id?: unknown } | null)?.id;
-    if (typeof id === "string" && seen.has(id)) continue;
-    merged.push(record);
+    if (typeof id === "string") {
+      seen.add(id);
+      merged.push(localById.get(id) ?? record);
+    } else {
+      merged.push(record);
+    }
+  }
+  for (const [id, record] of localById) {
+    if (!seen.has(id)) merged.push(record);
+  }
+  merged.push(...localWithoutId);
+
+  if (Array.isArray(query.sort)) {
+    merged = sortRecords(
+      merged as Record<string, unknown>[],
+      parseSortTerms(query.sort as string[]),
+    );
+  }
+  if (typeof query.limit === "number" && query.limit >= 0) {
+    merged = merged.slice(0, query.limit);
   }
 
   if (remoteEnvelope && Array.isArray(remoteEnvelope.data)) {
@@ -261,7 +295,8 @@ async function overlayLocalQueryResult(
   temporal?: DatafnTemporalConfig,
 ): Promise<unknown> {
   try {
-    const localQuery = injectLocalCapabilityAutoFilters(query, schema);
+    const { limit: _limit, offset: _offset, ...unpaginatedQuery } = query;
+    const localQuery = injectLocalCapabilityAutoFilters(unpaginatedQuery, schema);
     const localResult = await executeLocalQuery(
       storage,
       schema,
@@ -269,7 +304,7 @@ async function overlayLocalQueryResult(
       schemaIndex,
       temporal,
     );
-    return mergeQueryDataById(remoteResult, localResult);
+    return mergeQueryDataById(remoteResult, localResult, query);
   } catch {
     return remoteResult;
   }

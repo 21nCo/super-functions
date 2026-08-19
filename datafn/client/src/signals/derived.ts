@@ -85,22 +85,6 @@ export function combineSignals<TValue>(
   let allUnsubs: Array<() => void> = [];
   let disposed = false;
 
-  const emit = (handler: (value: TValue) => void, force = false) => {
-    try {
-      const nextValue = compute();
-      currentError = null;
-      if (!force && options.equals?.(lastValue, nextValue)) return;
-      lastValue = nextValue;
-      handler(lastValue);
-    } catch (error: any) {
-      currentError = {
-        code: "INTERNAL",
-        message: error?.message ?? "Combined signal computation failed",
-        details: error,
-      };
-    }
-  };
-
   return {
     get(): TValue {
       lastValue = compute();
@@ -110,10 +94,26 @@ export function combineSignals<TValue>(
       if (disposed) return () => {};
       let subscriptionActive = true;
       let pending = false;
+      let hasEmitted = false;
+      let previousValue: TValue | undefined;
       const flush = () => {
         pending = false;
         if (!subscriptionActive || disposed) return;
-        emit(handler);
+        try {
+          const nextValue = compute();
+          currentError = null;
+          if (hasEmitted && options.equals?.(previousValue, nextValue)) return;
+          hasEmitted = true;
+          previousValue = nextValue;
+          lastValue = nextValue;
+          handler(nextValue);
+        } catch (error: any) {
+          currentError = {
+            code: "INTERNAL",
+            message: error?.message ?? "Combined signal computation failed",
+            details: error,
+          };
+        }
       };
       const scheduleEmit = () => {
         if (pending) return;
@@ -146,7 +146,6 @@ export function combineSignals<TValue>(
       disposed = true;
       for (const unsub of allUnsubs) unsub();
       allUnsubs = [];
-      for (const source of sources) source.dispose();
     },
   };
 }
