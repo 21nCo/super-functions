@@ -672,36 +672,18 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
     return true;
   }
 
-  let hasOrClause = false;
-  let orMatched = false;
-  let andMatched = true;
-
-  for (const clause of where) {
-    const value = record[clause.field];
-    const matches = matchesClause(value, clause);
-
-    if (clause.connector === 'OR') {
-      hasOrClause = true;
-      if (matches) orMatched = true;
-    } else {
-      // Default AND - all AND clauses must match
-      if (!matches) {
-        andMatched = false;
-      }
-    }
+  // A connector belongs to the clause it introduces. Evaluate in the same
+  // left-associative order used by the SQL and Prisma adapters so a mixed
+  // `A, OR B, AND C` filter consistently means `(A OR B) AND C`.
+  let matched = matchesClause(record[where[0].field], where[0]);
+  for (let index = 1; index < where.length; index += 1) {
+    const clause = where[index];
+    const clauseMatched = matchesClause(record[clause.field], clause);
+    matched = clause.connector === 'OR'
+      ? matched || clauseMatched
+      : matched && clauseMatched;
   }
-
-  // All AND clauses must match
-  if (!andMatched) {
-    return false;
-  }
-
-  // If we had OR clauses, at least one must have matched
-  if (hasOrClause && !orMatched) {
-    return false;
-  }
-
-  return true;
+  return matched;
 }
 
 /**

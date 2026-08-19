@@ -27,6 +27,8 @@ interface ResponseLike {
   status: number;
   headers: HeadersLike;
   text(): Promise<string>;
+  /** Release an unread response body and any request timeout resources. */
+  discard?(): Promise<void>;
 }
 
 export interface RequestInitLike {
@@ -125,6 +127,10 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     const endpointRequest = createRevokeRequest(input, credentials);
     const response = await this.executeWithRetry(revocationUrl, endpointRequest);
     if (response.ok) {
+      // RFC 7009 success responses do not require a body. Do not let a
+      // provider that has already returned successful headers delay local
+      // disconnect cleanup with a body that never terminates.
+      await response.discard?.().catch(() => undefined);
       return;
     }
 
@@ -195,6 +201,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         return response;
       }
 
+      await response.discard?.().catch(() => undefined);
       await this.sleep(decision.delayMs);
       attempt += 1;
     }
@@ -631,6 +638,13 @@ function ensureOAuthHttpError(error: unknown): OAuthHttpError {
 }
 
 function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new OAuthHttpError("OAuth HTTP timeout must be a finite non-negative number", {
+      code: "VALIDATION_ERROR",
+      status: 400,
+      retryable: false
+    });
+  }
   const fetcher = globalThis.fetch;
   if (!fetcher) {
     throw new OAuthHttpError("global fetch is not available", {
@@ -647,7 +661,6 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
       controller !== undefined ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
 
     let response: Response;
-    let rawBodyText: string;
     try {
       response = await fetcher(url, {
         method: init.method,
@@ -655,11 +668,10 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
         body: init.body,
         signal: controller?.signal
       });
-      // Consume the body while the same abort timer remains active. Fetch can
-      // resolve after headers even while an attacker-controlled provider
-      // stalls the response body indefinitely.
-      rawBodyText = await response.text();
     } catch (error) {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
       if (controller?.signal.aborted) {
         throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
           code: "INTERNAL_ERROR",
@@ -669,11 +681,32 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
         });
       }
       throw error;
-    } finally {
-      if (timeoutId !== undefined) {
+    }
+
+    let timeoutCleared = false;
+    const clearRequestTimeout = () => {
+      if (!timeoutCleared && timeoutId !== undefined) {
+        timeoutCleared = true;
         clearTimeout(timeoutId);
       }
-    }
+    };
+    let bodyText: Promise<string> | undefined;
+    const readBody = () => {
+      bodyText ??= response.text()
+        .catch((error) => {
+          if (controller?.signal.aborted) {
+            throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
+              code: "INTERNAL_ERROR",
+              status: 504,
+              retryable: true,
+              cause: error
+            });
+          }
+          throw error;
+        })
+        .finally(clearRequestTimeout);
+      return bodyText;
+    };
 
     return {
       ok: response.ok,
@@ -683,7 +716,16 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
           return response.headers.get(name);
         }
       },
-      text: async () => rawBodyText
+      // Keep the abort timer active through response consumption. Fetch may
+      // resolve after headers while an attacker-controlled body stalls.
+      text: readBody,
+      discard: async () => {
+        try {
+          await response.body?.cancel();
+        } finally {
+          clearRequestTimeout();
+        }
+      }
     };
   };
 }

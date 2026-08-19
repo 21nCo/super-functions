@@ -19,12 +19,17 @@ export class DbIdempotencyStore implements IdempotencyStore {
     private db: Adapter,
     private namespace: string = "datafn",
     logger?: DatafnLogger,
+    ensured = false,
   ) {
     this.logger = logger;
+    this.ensured = ensured;
   }
 
   withDb(db: Adapter): IdempotencyStore {
-    return new DbIdempotencyStore(db, this.namespace, this.logger);
+    // The outer store performs initialization before transactional mutation
+    // execution. Preserve that state so rebinding does not issue DDL inside a
+    // transaction (which implicitly commits on MySQL).
+    return new DbIdempotencyStore(db, this.namespace, this.logger, this.ensured);
   }
 
   async get(

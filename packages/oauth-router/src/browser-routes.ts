@@ -54,6 +54,7 @@ export interface OAuthBrowserRouteConfig {
 }
 
 export function createOAuthBrowserRoutes(config: OAuthBrowserRouteConfig): Route[] {
+  assertValidRedirectOrigins(config.allowedRedirectOrigins);
   const requestIdHeader = (config.requestIdHeader ?? "x-request-id").toLowerCase();
 
   return [
@@ -123,6 +124,20 @@ export function createOAuthBrowserRoutes(config: OAuthBrowserRouteConfig): Route
       }
     }
   ];
+}
+
+function assertValidRedirectOrigins(origins: readonly string[] | undefined): void {
+  for (const origin of origins ?? []) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
+  }
 }
 
 function resolveRouteMeta(defaultMeta: HttpRouteMeta, overrideMeta: HttpRouteMeta | undefined): HttpRouteMeta {

@@ -90,7 +90,7 @@ export class ActionExecutor {
   ): Promise<ActionResult<T>> {
     const startTime = Date.now();
     let retries = 0;
-    let cached = false;
+    const cached = false;
 
     try {
       // Get provider

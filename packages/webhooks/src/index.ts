@@ -129,7 +129,14 @@ export type WebhookDeliveryResult = {
 };
 
 export type WebhookDeliveryOptions = {
+  /**
+   * Custom transport used for delivery. Because DNS-rebinding protection
+   * relies on Undici's `dispatcher`, custom transports must explicitly attest
+   * that they honor that option; ordinary standards-only fetch functions are
+   * rejected instead of silently bypassing address pinning.
+   */
   fetch?: typeof globalThis.fetch;
+  fetchSupportsPinnedDispatcher?: boolean;
   resolveHostname?: (hostname: string) => Promise<readonly string[]>;
   maxRetries?: number;
   initialDelayMs?: number;
@@ -470,6 +477,9 @@ export async function deliverWebhook(
   );
   if (validatedTarget.error) {
     return failedDelivery(validatedTarget.error);
+  }
+  if (options.fetch && options.fetchSupportsPinnedDispatcher !== true) {
+    return failedDelivery('Custom webhook fetch must honor the pinned dispatcher');
   }
 
   // Keep the TLS/HTTP hostname unchanged, but force the connection lookup to

@@ -610,6 +610,29 @@ describe('wrapWithRowLevelNamespace', () => {
       });
       expect(found).toEqual([{ id: 'optional-hidden', title: 'Hidden namespace' }]);
     });
+
+    it('rejects singular mutations whose only filter is the hidden namespace column', async () => {
+      await optionalDb.create({
+        model: 'task',
+        data: { id: 'optional-safe', title: 'Safe' },
+      });
+      const namespaceOnlyWhere = [{ field: '__ns', operator: 'eq' as const, value: 'forged' }];
+
+      await expect(optionalDb.update({
+        model: 'task',
+        where: namespaceOnlyWhere,
+        data: { title: 'Changed' },
+      })).rejects.toThrow('update requires a non-empty where clause');
+      await expect(optionalDb.delete({
+        model: 'task',
+        where: namespaceOnlyWhere,
+      })).rejects.toThrow('delete requires a non-empty where clause');
+
+      await expect(optionalBase.findOne({
+        model: 'task',
+        where: [{ field: 'id', operator: 'eq', value: 'optional-safe' }],
+      })).resolves.toMatchObject({ title: 'Safe' });
+    });
   });
 
   // -----------------------------------------------------------------------

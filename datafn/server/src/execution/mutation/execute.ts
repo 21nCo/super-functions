@@ -238,7 +238,7 @@ async function executeMutationCore(
                 data: mergeData,
                 namespace,
               });
-              if (strictUpdateNotFound && updated === undefined) {
+              if (strictUpdateNotFound && !updated) {
                 throw { name: "NotFoundError", message: "Record not found after update" };
               }
             },

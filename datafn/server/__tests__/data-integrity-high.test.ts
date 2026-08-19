@@ -9,8 +9,12 @@ import {
   DatabaseSequenceStore,
 } from "../src/execution/sync/sequence-store.js";
 import { ChangeTrackingService } from "../src/execution/sync/change-tracking.js";
+import { executePush } from "../src/execution/sync/push.js";
+import { DbIdempotencyStore } from "../src/execution/idempotency-db.js";
+import { MemoryIdempotencyStore } from "../src/execution/idempotency.js";
 import { executeModifyRelation } from "../src/execution/mutation/relations.js";
 import { RedisRateLimiter } from "../src/middleware/rate-limit.js";
+import { memoryAdapter } from "@superfunctions/db/adapters";
 import type { DatafnSchema } from "@datafn/core";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -227,6 +231,139 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
       ],
       { next_server_seq: 11 },
     );
+  });
+
+  it("TV-DI-003e: transaction rebinding preserves the primary high-water mark", async () => {
+    let primaryCalls = 0;
+    const primary = {
+      getNext: vi.fn(),
+      getNextN: vi.fn(async () => {
+        primaryCalls += 1;
+        if (primaryCalls === 1) return [100];
+        throw new Error("Redis unavailable");
+      }),
+      getCurrent: vi.fn(async () => 100),
+      isHealthy: vi.fn(async () => true),
+    };
+    const outerDb = { internal: makeInternalApi() } as any;
+    const txDb = { internal: makeInternalApi() } as any;
+    const ensureMinSeq = vi
+      .spyOn(DatabaseSequenceStore.prototype, "ensureMinSeq")
+      .mockResolvedValue();
+    vi.spyOn(DatabaseSequenceStore.prototype, "getNextN").mockResolvedValue([101]);
+    const store = new ChainedSequenceStore(primary, new DatabaseSequenceStore(outerDb));
+
+    await store.getNextN("default", 1);
+    await store.withDb(txDb).getNextN("default", 1);
+
+    expect(ensureMinSeq).toHaveBeenCalledWith("default", 100);
+    vi.restoreAllMocks();
+  });
+});
+
+describe("transaction-bound runtime state", () => {
+  it("does not re-run idempotency table DDL after rebinding an initialized store", async () => {
+    const outerInternal = makeInternalApi();
+    const txInternal = makeInternalApi();
+    const store = new DbIdempotencyStore({ internal: outerInternal } as any, "tenant");
+
+    await store.get("client", "mutation");
+    await store.withDb({ internal: txInternal } as any).get("client", "mutation");
+
+    expect(outerInternal.ensureTable).toHaveBeenCalledOnce();
+    expect(txInternal.ensureTable).not.toHaveBeenCalled();
+  });
+
+  it("discards sequence-pool state when a mutation transaction rolls back", async () => {
+    const db = memoryAdapter() as any;
+    await db.initialize();
+    const originalTransaction = db.transaction.bind(db);
+    let changeWriteFailures = 0;
+    const transaction = (callback: (tx: any) => Promise<unknown>) =>
+      originalTransaction(async (tx: any) => {
+        const internal = new Proxy(tx.internal, {
+          get(target, property, receiver) {
+            if (property === "create" || property === "createMany") {
+              return async (table: string, data: Record<string, unknown> | Record<string, unknown>[]) => {
+                if (table === "__datafn_changes" && changeWriteFailures < 3) {
+                  changeWriteFailures += 1;
+                  throw new Error("forced change-write failure");
+                }
+                return property === "createMany"
+                  ? target.createMany(table, data as Record<string, unknown>[])
+                  : target.create(table, data as Record<string, unknown>);
+              };
+            }
+            const value = Reflect.get(target, property, receiver);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+        const txProxy = new Proxy(tx, {
+          get(target, property, receiver) {
+            if (property === "internal") return internal;
+            const value = Reflect.get(target, property, receiver);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+        return callback(txProxy);
+      });
+    const transactionalDb = new Proxy(db, {
+      get(target, property, receiver) {
+        if (property === "capabilities") {
+          return {
+            ...target.capabilities,
+            transactions: { ...target.capabilities.transactions, supported: true },
+          };
+        }
+        if (property === "transaction") return transaction;
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    const boundAllocations: number[][] = [];
+    const sequenceStore = {
+      getNext: vi.fn(async () => 1),
+      getNextN: vi.fn(async () => { throw new Error("outer allocation is unexpected"); }),
+      getCurrent: vi.fn(async () => 0),
+      withDb: vi.fn(() => ({
+        getNext: vi.fn(async () => 1),
+        getNextN: vi.fn(async (_namespace: string, count: number) => {
+          const allocation = Array.from({ length: count }, (_, index) => index + 1);
+          boundAllocations.push([...allocation]);
+          return allocation;
+        }),
+        getCurrent: vi.fn(async () => 0),
+      })),
+    };
+    const schema: DatafnSchema = {
+      resources: [{
+        name: "tasks",
+        version: 1,
+        fields: [{ name: "title", type: "string", required: true }],
+      }],
+      relations: [],
+    };
+    const result = await executePush({
+      clientId: "client",
+      mutations: [
+        {
+          resource: "tasks", version: 1, operation: "insert", id: "task:rolled-back",
+          clientId: "client", mutationId: "m1", record: { title: "first" },
+        },
+        {
+          resource: "tasks", version: 1, operation: "insert", id: "task:committed",
+          clientId: "client", mutationId: "m2", record: { title: "second" },
+        },
+      ],
+    }, schema, transactionalDb, new MemoryIdempotencyStore(), "default", sequenceStore as any);
+
+    expect(result.applied).toEqual(["m2"]);
+    expect(boundAllocations).toEqual([[1, 2], [1, 2]]);
+    const changes = await db.internal.findMany("__datafn_changes", []);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ record_id: "task:committed", server_seq: 1 });
+    await db.close();
   });
 });
 

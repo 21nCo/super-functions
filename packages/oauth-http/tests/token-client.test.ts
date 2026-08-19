@@ -524,6 +524,38 @@ describe("oauth-http token client", () => {
     })).rejects.toMatchObject({ status: 504, retryable: true });
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+    "rejects invalid default-fetch timeout configuration: %s",
+    (timeoutMs) => {
+      expect(() => new DefaultOAuthTokenHttpClient({ timeoutMs })).toThrow(
+        expect.objectContaining({ code: "VALIDATION_ERROR", status: 400 })
+      );
+    }
+  );
+
+  it("does not wait for a successful revocation response body", async () => {
+    const cancel = vi.fn(async () => undefined);
+    const text = vi.fn(() => new Promise<string>(() => undefined));
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: { cancel },
+      text,
+    })));
+    const client = new DefaultOAuthTokenHttpClient({ timeoutMs: 50 });
+
+    await client.revokeToken({
+      provider: googleProvider,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      token: "token-to-revoke",
+    });
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(text).not.toHaveBeenCalled();
+  });
+
   it("calls provider revocation endpoint when supported", async () => {
     const calledUrls: string[] = [];
     let capturedInit: RequestInitLike | null = null;

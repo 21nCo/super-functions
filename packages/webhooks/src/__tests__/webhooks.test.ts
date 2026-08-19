@@ -111,6 +111,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
@@ -153,6 +154,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
@@ -180,6 +182,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 1,
         perAttemptTimeoutMs: 5,
@@ -218,6 +221,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -253,6 +257,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -280,6 +285,7 @@ describe('webhooks package exports', () => {
       },
       {
         fetch: fetchMock as unknown as typeof globalThis.fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -365,7 +371,7 @@ describe('webhooks package exports', () => {
     const fetchMock = vi.fn();
     const result = await deliverWebhook(
       { url: 'file:///etc/passwd', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch }
+      { fetch: fetchMock as unknown as typeof fetch, fetchSupportsPinnedDispatcher: true }
     );
 
     expect(result.ok).toBe(false);
@@ -377,7 +383,7 @@ describe('webhooks package exports', () => {
     const fetchMock = vi.fn();
     const result = await deliverWebhook(
       { url: 'not a url', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch }
+      { fetch: fetchMock as unknown as typeof fetch, fetchSupportsPinnedDispatcher: true }
     );
 
     expect(result.ok).toBe(false);
@@ -401,6 +407,7 @@ describe('webhooks package exports', () => {
       { url, payload: { hello: 'world' } },
       {
         fetch: fetchMock as unknown as typeof fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolver,
       }
     );
@@ -421,7 +428,11 @@ describe('webhooks package exports', () => {
 
     const result = await deliverWebhook(
       { url, payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolver }
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        fetchSupportsPinnedDispatcher: true,
+        resolveHostname: resolver,
+      }
     );
 
     expect(result.ok).toBe(false);
@@ -438,7 +449,11 @@ describe('webhooks package exports', () => {
 
     const result = await deliverWebhook(
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, resolveHostname }
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        fetchSupportsPinnedDispatcher: true,
+        resolveHostname,
+      }
     );
 
     expect(result.ok).toBe(false);
@@ -451,11 +466,28 @@ describe('webhooks package exports', () => {
 
     const result = await deliverWebhook(
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolvePublicHostname }
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        fetchSupportsPinnedDispatcher: true,
+        resolveHostname: resolvePublicHostname,
+      }
     );
 
     expect(result.ok).toBe(true);
     expect(fetchMock.mock.calls[0]?.[1]).toHaveProperty('dispatcher');
+  });
+
+  it('rejects a custom fetch that does not attest to pinned-dispatcher support', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolvePublicHostname }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('must honor the pinned dispatcher');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('resolves hostnames and refuses delivery when any address is non-public', async () => {
@@ -466,6 +498,7 @@ describe('webhooks package exports', () => {
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
       {
         fetch: fetchMock as unknown as typeof fetch,
+        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolver,
       }
     );

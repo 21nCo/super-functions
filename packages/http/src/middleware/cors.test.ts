@@ -35,6 +35,9 @@ describe('corsMiddleware', () => {
     expect(() => corsMiddleware({ credentials: true })).toThrow(
       'CORS_CREDENTIALS_WILDCARD_ORIGIN'
     );
+    expect(() => corsMiddleware({ origin: ['https://app.example', '*'], credentials: true })).toThrow(
+      'CORS_CREDENTIALS_WILDCARD_ORIGIN'
+    );
   });
 
   it('uses a static wildcard origin without Vary when credentials are disabled', async () => {

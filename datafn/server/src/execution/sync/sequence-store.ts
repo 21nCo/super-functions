@@ -118,10 +118,16 @@ export class KVSequenceStore implements SequenceStore {
 export class DatabaseSequenceStore implements SequenceStore {
   private ensured = false;
 
-  constructor(private db: Adapter, private logger?: DatafnLogger) {}
+  constructor(
+    private db: Adapter,
+    private logger?: DatafnLogger,
+    ensured = false,
+  ) {
+    this.ensured = ensured;
+  }
 
   withDb(db: Adapter): SequenceStore {
-    return new DatabaseSequenceStore(db, this.logger);
+    return new DatabaseSequenceStore(db, this.logger, this.ensured);
   }
 
   /**
@@ -299,12 +305,11 @@ export class DatabaseSequenceStore implements SequenceStore {
  */
 export class ChainedSequenceStore implements SequenceStore {
   /** DI-003: Track last-issued seq per namespace from the primary store */
-  private lastKnownPrimarySeq = new Map<string, number>();
-
   constructor(
     private primary: SequenceStore,
     private secondary: SequenceStore,
     private logger?: DatafnLogger,
+    private lastKnownPrimarySeq = new Map<string, number>(),
   ) {}
 
   withDb(db: Adapter): SequenceStore {
@@ -312,6 +317,10 @@ export class ChainedSequenceStore implements SequenceStore {
       this.primary,
       this.secondary.withDb?.(db) ?? this.secondary,
       this.logger,
+      // Primary allocations are external to the database transaction. Share
+      // their high-water marks so a transaction-bound fallback can never
+      // allocate an already-issued sequence.
+      this.lastKnownPrimarySeq,
     );
   }
 

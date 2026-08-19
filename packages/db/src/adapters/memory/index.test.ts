@@ -137,3 +137,28 @@ describe('memoryAdapter transactions', () => {
     ).resolves.toBeNull();
   });
 });
+
+describe('memoryAdapter filter semantics', () => {
+  it('evaluates mixed connectors left-associatively like SQL adapters', async () => {
+    const adapter = memoryAdapter({ debug: false });
+    await adapter.createMany({
+      model: 'records',
+      data: [
+        { id: 'a', first: true, second: false, third: true },
+        { id: 'b', first: false, second: true, third: true },
+        { id: 'c', first: true, second: false, third: false },
+      ],
+    });
+
+    const rows = await adapter.findMany({
+      model: 'records',
+      where: [
+        { field: 'first', operator: 'eq', value: true },
+        { field: 'second', operator: 'eq', value: true, connector: 'OR' },
+        { field: 'third', operator: 'eq', value: true, connector: 'AND' },
+      ],
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(['a', 'b']);
+  });
+});
