@@ -22,7 +22,7 @@ export function corsMiddleware<TContext = any>(
   // Reflecting an arbitrary request Origin here would turn the wildcard into
   // an allow-all credentialed policy. Require callers to name trusted origins
   // explicitly (or supply a predicate) instead.
-  if (credentials && origin === '*') {
+  if (credentials && (origin === '*' || (Array.isArray(origin) && origin.includes('*')))) {
     throw new Error('CORS_CREDENTIALS_WILDCARD_ORIGIN');
   }
 
@@ -37,9 +37,13 @@ export function corsMiddleware<TContext = any>(
     if (typeof origin === 'string') {
       allowedOrigin = origin;
     } else if (Array.isArray(origin)) {
-      varyOnOrigin = true;
-      if (origin.includes(requestOrigin)) {
-        allowedOrigin = requestOrigin;
+      if (origin.includes('*')) {
+        allowedOrigin = '*';
+      } else {
+        varyOnOrigin = true;
+        if (origin.includes(requestOrigin)) {
+          allowedOrigin = requestOrigin;
+        }
       }
     } else if (typeof origin === 'function') {
       varyOnOrigin = true;

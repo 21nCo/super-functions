@@ -16,6 +16,9 @@ export interface MutationResult {
 }
 
 export interface IdempotencyStore {
+  /** Initialize backing storage before an enclosing transaction begins. */
+  ensureReady?(): Promise<void>;
+
   /**
    * Get a previously stored mutation result
    */

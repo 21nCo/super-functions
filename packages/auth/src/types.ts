@@ -154,6 +154,9 @@ export interface AuthContextProvider<TContext extends AuthContext = AuthContext>
 // ============================================================================
 
 export class AuthError extends Error {
+  /** Explicit opt-in for HTTP routers that safely expose cross-package errors. */
+  public readonly isHttpError = true;
+
   constructor(message: string, public code: string, public statusCode: number = 401) {
     super(message);
     this.name = 'AuthError';

@@ -323,21 +323,27 @@ describe("oauth-router route factories", () => {
     expect(response.headers.get("location")).toBe("http://localhost/");
   });
 
-  it("ignores invalid allowedRedirectOrigins while honoring valid entries", async () => {
+  it("rejects invalid allowedRedirectOrigins during route construction", () => {
     const browser = createFlowServiceMocks();
-    const browserRoutes = createOAuthBrowserRoutes({
-      basePath: "/auth/social",
-      flowService: browser.service,
-      resolveStartInput: async (request) => (await request.json()) as never,
-      callbackMode: "redirect",
-      allowedRedirectOrigins: ["not a URL", "https://app.example"]
-    });
+    const createRoutes = (allowedRedirectOrigins: string[]) => createOAuthBrowserRoutes({
+        basePath: "/auth/social",
+        flowService: browser.service,
+        resolveStartInput: async (request) => (await request.json()) as never,
+        callbackMode: "redirect",
+        allowedRedirectOrigins
+      });
 
-    const response = await createRouter({ routes: browserRoutes }).handle(
-      new Request("http://localhost/auth/social/callback/google?code=code_02&state=st_01")
-    );
-
-    expect(response.headers.get("location")).toBe("https://app.example/post-auth");
+    for (const invalidOrigin of [
+      "not a URL",
+      "https://app.example/callback",
+      "https://app.example?tenant=one",
+      "https://app.example#callback",
+      "https://user:secret@app.example"
+    ]) {
+      expect(() => createRoutes([invalidOrigin])).toThrow(
+        `OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${invalidOrigin}`
+      );
+    }
   });
 
   it("preserves resolver-provided requestId when the start header is absent", async () => {

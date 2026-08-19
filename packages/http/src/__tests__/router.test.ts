@@ -406,6 +406,63 @@ describe('createRouter', () => {
     expect(res.headers.get('Allow')).toBe('GET');
   });
 
+  it('preserves immutable onError responses when adding the Allow header', async () => {
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+      onError: async () => Response.redirect('https://example.com/method-error', 302),
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users', { method: 'POST' })
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://example.com/method-error');
+    expect(res.headers.get('Allow')).toBe('GET');
+  });
+
+  it('maps HTTP-shaped handler errors without exposing unknown exceptions', async () => {
+    const router = createRouter({
+      routes: [{
+        method: 'GET',
+        path: '/protected',
+        handler: async () => {
+          throw Object.assign(new Error('Authentication required'), {
+            isHttpError: true,
+            code: 'AUTHENTICATION_FAILED',
+            statusCode: 401,
+          });
+        },
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/protected'));
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Authentication required',
+      code: 'AUTHENTICATION_FAILED',
+    });
+  });
+
+  it('redacts arbitrary errors even when they contain HTTP-shaped metadata', async () => {
+    const router = createRouter({
+      routes: [{
+        method: 'GET',
+        path: '/upstream',
+        handler: async () => {
+          throw Object.assign(new Error('private upstream details'), {
+            code: 'UPSTREAM_FAILURE',
+            statusCode: 500,
+          });
+        },
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/upstream'));
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'Internal Server Error' });
+  });
+
   it('still returns 404 for a genuinely unknown path', async () => {
     const router = createRouter({
       routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],

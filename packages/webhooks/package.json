@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "undici": "^5.29.0"
+    "undici": "^6.28.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

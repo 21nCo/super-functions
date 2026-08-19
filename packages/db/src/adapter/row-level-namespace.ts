@@ -219,13 +219,14 @@ function createNamespaceWrappedBase(
 
     async update(params) {
       const namespace = resolveNamespace(params.namespace, mandatory);
-      if (!params.where || params.where.length === 0) {
+      const visibleWhere = removeNamespaceWhere(params.where, col);
+      if (!visibleWhere || visibleWhere.length === 0) {
         throw new Error('update requires a non-empty where clause; use updateMany to update all rows');
       }
       const data = removeColumnFromData(params.data, col);
       const result = await adapter.update({
         ...params,
-        where: buildScopedWhere(params.where, col, namespace),
+        where: withNamespaceWhere(visibleWhere, col, namespace) ?? [],
         data,
       });
       return stripColumn(result, col);
@@ -243,12 +244,13 @@ function createNamespaceWrappedBase(
 
     async delete(params) {
       const namespace = resolveNamespace(params.namespace, mandatory);
-      if (!params.where || params.where.length === 0) {
+      const visibleWhere = removeNamespaceWhere(params.where, col);
+      if (!visibleWhere || visibleWhere.length === 0) {
         throw new Error('delete requires a non-empty where clause; use deleteMany to delete all rows');
       }
       return adapter.delete({
         ...params,
-        where: buildScopedWhere(params.where, col, namespace),
+        where: withNamespaceWhere(visibleWhere, col, namespace) ?? [],
       });
     },
 

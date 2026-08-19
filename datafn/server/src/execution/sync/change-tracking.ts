@@ -115,16 +115,47 @@ export class ChangeTrackingService {
     private sequenceStore?: SequenceStore,
     private onChange?: (seq: number, namespace: string) => void,
     private logger?: DatafnLogger,
-  ) {}
+    metaEnsured = false,
+    changesEnsured = false,
+  ) {
+    this.metaEnsured = metaEnsured;
+    this.changesEnsured = changesEnsured;
+  }
+
+  /** Initialize every durable table before an enclosing transaction begins. */
+  async ensureReady(): Promise<void> {
+    if (!this.changesEnsured) {
+      await ensureInternalTable(this.db, "__datafn_changes");
+      this.changesEnsured = true;
+    }
+
+    if (this.sequenceStore) {
+      await this.sequenceStore.ensureReady?.();
+    }
+    // The service can fall back to its database sequence path if an external
+    // store fails, so its own metadata table must also exist before rebinding.
+    if (!this.metaEnsured) {
+      await ensureInternalTable(this.db, "__datafn_meta");
+      this.metaEnsured = true;
+    }
+  }
 
   /**
    * REL-011: Create a new ChangeTrackingService with a different db adapter.
    * Used to run change tracking within a transaction (pass tx db here).
    * The namespace and sequenceStore are inherited from the original instance.
    */
-  withDb(txDb: Adapter): ChangeTrackingService {
+  withDb(txDb: Adapter, emitChanges = true): ChangeTrackingService {
     const sequenceStore = this.sequenceStore?.withDb?.(txDb) ?? this.sequenceStore;
-    return new ChangeTrackingService(txDb, this.namespace, sequenceStore, this.onChange, this.logger);
+    return new ChangeTrackingService(
+      txDb,
+      this.namespace,
+      sequenceStore,
+      emitChanges ? this.onChange : undefined,
+      this.logger,
+      this.metaEnsured,
+      this.changesEnsured,
+    );
   }
 
   /**

@@ -23,12 +23,24 @@ export class DbIdempotencyStore implements IdempotencyStore {
     private db: Adapter,
     private namespace: string = "datafn",
     logger?: DatafnLogger,
+    ensured = false,
   ) {
     this.logger = logger;
+    this.ensured = ensured;
   }
 
   withDb(db: Adapter): IdempotencyStore {
-    return new DbIdempotencyStore(db, this.namespace, this.logger);
+    // The outer store performs initialization before transactional mutation
+    // execution. Preserve that state so rebinding does not issue DDL inside a
+    // transaction (which implicitly commits on MySQL).
+    return new DbIdempotencyStore(db, this.namespace, this.logger, this.ensured);
+  }
+
+  async ensureReady(): Promise<void> {
+    if (!this.ensured) {
+      await ensureInternalTable(this.db, "__datafn_idempotency");
+      this.ensured = true;
+    }
   }
 
   async get(
@@ -36,10 +48,7 @@ export class DbIdempotencyStore implements IdempotencyStore {
     mutationId: string,
   ): Promise<MutationResult | null> {
     // EXE-007: DB errors propagate; only swallow JSON parse errors (SyntaxError)
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_idempotency");
-      this.ensured = true;
-    }
+    await this.ensureReady();
 
     const record = await this.db.internal.findOne("__datafn_idempotency", [
       { field: "namespace", op: "eq", value: this.namespace },
@@ -70,10 +79,7 @@ export class DbIdempotencyStore implements IdempotencyStore {
    * Returns the number of rows deleted.
    */
   async pruneIdempotency(retentionDays: number): Promise<number> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_idempotency");
-      this.ensured = true;
-    }
+    await this.ensureReady();
     const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
     return await this.db.internal.delete("__datafn_idempotency", [
       { field: "namespace", op: "eq", value: this.namespace },
@@ -87,10 +93,7 @@ export class DbIdempotencyStore implements IdempotencyStore {
     result: MutationResult,
   ): Promise<void> {
     try {
-      if (!this.ensured) {
-        await ensureInternalTable(this.db, "__datafn_idempotency");
-        this.ensured = true;
-      }
+      await this.ensureReady();
 
       const where = [
         { field: "namespace", op: "eq" as const, value: this.namespace },

@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
+import { Resolver } from 'node:dns/promises';
 import { isIP, type LookupFunction } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
 
@@ -129,8 +129,7 @@ export type WebhookDeliveryResult = {
 };
 
 export type WebhookDeliveryOptions = {
-  fetch?: typeof globalThis.fetch;
-  resolveHostname?: (hostname: string) => Promise<readonly string[]>;
+  resolveHostname?: (hostname: string, signal: AbortSignal) => Promise<readonly string[]>;
   maxRetries?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
@@ -171,9 +170,38 @@ function normalizeNonNegativeDuration(
   return Math.max(0, value);
 }
 
-async function defaultResolveHostname(hostname: string): Promise<readonly string[]> {
-  const addresses = await lookup(hostname, { all: true, verbatim: true });
-  return addresses.map(({ address }) => address);
+async function defaultResolveHostname(
+  hostname: string,
+  signal: AbortSignal
+): Promise<readonly string[]> {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+
+  // Resolver.cancel() actively releases outstanding c-ares requests when the
+  // delivery deadline fires; a Promise.race alone would leave DNS work alive.
+  const resolver = new Resolver();
+  const cancel = () => resolver.cancel();
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const results = await Promise.allSettled([
+      resolver.resolve4(hostname),
+      resolver.resolve6(hostname),
+    ]);
+    if (signal.aborted) {
+      throw signal.reason;
+    }
+    const addresses = results.flatMap((result) =>
+      result.status === 'fulfilled' ? result.value : []
+    );
+    if (addresses.length === 0) {
+      const failure = results.find((result) => result.status === 'rejected');
+      throw failure?.reason ?? new Error(`DNS lookup returned no addresses for ${hostname}`);
+    }
+    return addresses;
+  } finally {
+    signal.removeEventListener('abort', cancel);
+  }
 }
 
 function failedDelivery(error: string): WebhookDeliveryResult {
@@ -185,7 +213,8 @@ function failedDelivery(error: string): WebhookDeliveryResult {
 
 async function validateWebhookTarget(
   url: URL,
-  resolveHostname: (hostname: string) => Promise<readonly string[]>
+  resolveHostname: (hostname: string, signal: AbortSignal) => Promise<readonly string[]>,
+  signal: AbortSignal
 ): Promise<{ error: string | null; hostname: string; addresses: readonly string[] }> {
   const hostname = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
@@ -202,7 +231,7 @@ async function validateWebhookTarget(
     addresses = [hostname];
   } else {
     try {
-      addresses = await resolveHostname(hostname);
+      addresses = await resolveHostname(hostname, signal);
     } catch {
       return {
         error: `Webhook target hostname could not be resolved: ${hostname}`,
@@ -300,6 +329,20 @@ function isNonPublicAddress(address: string): boolean {
       return isNonPublicIpv4(bytes.slice(12).join('.'));
     }
 
+    // RFC 8215 reserves 64:ff9b:1::/48 for local-use NAT64. Its translation
+    // policy is network-specific and can reach private IPv4 services, so the
+    // entire local-use prefix is non-public regardless of its embedded bits.
+    if (
+      bytes[0] === 0x00 &&
+      bytes[1] === 0x64 &&
+      bytes[2] === 0xff &&
+      bytes[3] === 0x9b &&
+      bytes[4] === 0x00 &&
+      bytes[5] === 0x01
+    ) {
+      return true;
+    }
+
     const unspecified = bytes.every((byte) => byte === 0);
     const loopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
     const uniqueLocal = (bytes[0]! & 0xfe) === 0xfc; // fc00::/7
@@ -376,7 +419,6 @@ export async function deliverWebhook(
   input: WebhookDeliveryInput,
   options: WebhookDeliveryOptions = {}
 ): Promise<WebhookDeliveryResult> {
-  const fetchFn = options.fetch ?? (undiciFetch as unknown as typeof globalThis.fetch);
   const maxRetries = normalizeRetryCount(options.maxRetries);
   const initialDelayMs = normalizeNonNegativeDuration(
     options.initialDelayMs,
@@ -464,14 +506,25 @@ export async function deliverWebhook(
     );
   }
 
-  const validatedTarget = await validateWebhookTarget(
-    parsedUrl,
-    options.resolveHostname ?? defaultResolveHostname
-  );
+  let validatedTarget: Awaited<ReturnType<typeof validateWebhookTarget>>;
+  const validationController = new AbortController();
+  try {
+    validatedTarget = await withTimeout(
+      validateWebhookTarget(
+        parsedUrl,
+        options.resolveHostname ?? defaultResolveHostname,
+        validationController.signal
+      ),
+      perAttemptTimeoutMs,
+      `Webhook target validation timed out after ${perAttemptTimeoutMs}ms`,
+      () => validationController.abort()
+    );
+  } catch (error) {
+    return failedDelivery(error instanceof Error ? error.message : String(error));
+  }
   if (validatedTarget.error) {
     return failedDelivery(validatedTarget.error);
   }
-
   // Keep the TLS/HTTP hostname unchanged, but force the connection lookup to
   // use only addresses that passed the public-address checks. This closes the
   // DNS-rebinding gap between validation and the actual socket connection.
@@ -490,7 +543,9 @@ export async function deliverWebhook(
         timeoutId = setTimeout(() => controller.abort(), perAttemptTimeoutMs);
       }
       try {
-        const response = await fetchFn(input.url, {
+        // Delivery always uses Undici so callers cannot bypass the validated,
+        // pinned dispatcher with a fetch implementation that ignores it.
+        const response = await undiciFetch(input.url, {
           method: input.method ?? 'POST',
           headers,
           body: payloadString,
@@ -499,7 +554,7 @@ export async function deliverWebhook(
           // unchecked internal address.
           redirect: 'manual',
           dispatcher: pinnedDispatcher,
-        } as RequestInit & { dispatcher: Agent });
+        } as Parameters<typeof undiciFetch>[1]);
         if (timeoutId) {
           clearTimeout(timeoutId);
         }
@@ -608,6 +663,32 @@ function decodeSignature(value: string, encoding: SignatureEncoding): Buffer | n
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void
+): Promise<T> {
+  if (timeoutMs <= 0) {
+    return operation;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(message));
+      onTimeout?.();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function shouldRetryWebhookStatus(status: number): boolean {

@@ -18,6 +18,15 @@ describe('s3-compatible shared core', () => {
     }
   });
 
+  it('never lets a custom expiry limit exceed the hard seven-day maximum', () => {
+    expect(() => assertValidSignedUrlExpiry(604801, 999999)).toThrow(
+      expect.objectContaining({ code: 'STORAGE_SIGNED_URL_EXPIRY_INVALID' })
+    );
+    expect(() => assertValidSignedUrlExpiry(60, Number.POSITIVE_INFINITY)).toThrow(
+      expect.objectContaining({ code: 'STORAGE_SIGNED_URL_EXPIRY_INVALID' })
+    );
+  });
+
   it('maps configured not-found errors to STORAGE_NOT_FOUND', async () => {
     const adapter = createS3CompatibleStorageAdapter({
       name: 'test',

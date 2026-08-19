@@ -156,7 +156,13 @@ export function createRouter<TContext = any>(
         try {
           const response = await onError(error as Error, request);
           if (error instanceof MethodNotAllowedError && error.allowedMethods.length > 0) {
-            response.headers.set('Allow', error.allowedMethods.join(', '));
+            const headers = new Headers(response.headers);
+            headers.set('Allow', error.allowedMethods.join(', '));
+            return new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+            });
           }
           return response;
         } catch (handlerError) {
@@ -171,6 +177,30 @@ export function createRouter<TContext = any>(
       // Default error handling
       if (error instanceof RouterError) {
         return error.toResponse();
+      }
+
+      // Shared middleware packages expose HTTP-shaped errors without taking a
+      // dependency on this package's RouterError class. Honor only explicit,
+      // valid error status metadata; arbitrary exceptions remain generic 500s.
+      const httpError = error as {
+        isHttpError?: unknown;
+        message?: unknown;
+        code?: unknown;
+        statusCode?: unknown;
+      };
+      if (
+        httpError?.isHttpError === true &&
+        Number.isInteger(httpError?.statusCode) &&
+        (httpError.statusCode as number) >= 400 &&
+        (httpError.statusCode as number) <= 599
+      ) {
+        return Response.json(
+          {
+            error: typeof httpError.message === 'string' ? httpError.message : 'Request failed',
+            ...(typeof httpError.code === 'string' ? { code: httpError.code } : {}),
+          },
+          { status: httpError.statusCode as number },
+        );
       }
 
       // Unknown error - don't expose details

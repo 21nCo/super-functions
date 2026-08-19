@@ -16,6 +16,9 @@ import { withAdapterNamespaceLock } from "./namespace-lock.js";
  * Interface for sequence generation stores
  */
 export interface SequenceStore {
+  /** Initialize durable backing storage before an enclosing transaction. */
+  ensureReady?(): Promise<void>;
+
   /** Get and increment sequence atomically, returns the next value */
   getNext(namespace: string): Promise<number>;
 
@@ -25,7 +28,7 @@ export interface SequenceStore {
   /** Get current sequence value (without incrementing) */
   getCurrent(namespace: string): Promise<number>;
 
-  /** Ensure the current sequence is at least minSeq */
+  /** Ensure the current sequence is at least minSeq. */
   ensureMinSeq?(namespace: string, minSeq: number): Promise<void>;
 
   /** Return an equivalent store bound to a transaction-scoped adapter. */
@@ -89,10 +92,23 @@ export class AtomicSequenceStore implements SequenceStore {
 export class DatabaseSequenceStore implements SequenceStore {
   private ensured = false;
 
-  constructor(private db: Adapter, private logger?: DatafnLogger) {}
+  constructor(
+    private db: Adapter,
+    private logger?: DatafnLogger,
+    ensured = false,
+  ) {
+    this.ensured = ensured;
+  }
 
   withDb(db: Adapter): SequenceStore {
-    return new DatabaseSequenceStore(db, this.logger);
+    return new DatabaseSequenceStore(db, this.logger, this.ensured);
+  }
+
+  async ensureReady(): Promise<void> {
+    if (!this.ensured) {
+      await ensureInternalTable(this.db, "__datafn_meta");
+      this.ensured = true;
+    }
   }
 
   /**
@@ -100,10 +116,7 @@ export class DatabaseSequenceStore implements SequenceStore {
    * Called by ChainedSequenceStore during primary→database failover to prevent duplicate sequences.
    */
   async ensureMinSeq(namespace: string, minSeq: number): Promise<void> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_meta");
-      this.ensured = true;
-    }
+    await this.ensureReady();
     const needed = minSeq + 1;
     try {
       await withAdapterNamespaceLock(this.db, namespace, async () => {
@@ -165,10 +178,7 @@ export class DatabaseSequenceStore implements SequenceStore {
     }
 
     return await withAdapterNamespaceLock(this.db, namespace, async () => {
-      if (!this.ensured) {
-        await ensureInternalTable(this.db, "__datafn_meta");
-        this.ensured = true;
-      }
+      await this.ensureReady();
 
       const MAX_RETRIES = 10;
 
@@ -238,10 +248,7 @@ export class DatabaseSequenceStore implements SequenceStore {
   }
 
   async getCurrent(namespace: string): Promise<number> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_meta");
-      this.ensured = true;
-    }
+    await this.ensureReady();
 
     try {
       const meta = await this.db.internal.findOne("__datafn_meta", [
@@ -270,12 +277,11 @@ export class DatabaseSequenceStore implements SequenceStore {
  */
 export class ChainedSequenceStore implements SequenceStore {
   /** DI-003: Track last-issued seq per namespace from the primary store */
-  private lastKnownPrimarySeq = new Map<string, number>();
-
   constructor(
     private primary: SequenceStore,
     private secondary: SequenceStore,
     private logger?: DatafnLogger,
+    private lastKnownPrimarySeq = new Map<string, number>(),
   ) {}
 
   withDb(db: Adapter): SequenceStore {
@@ -283,7 +289,15 @@ export class ChainedSequenceStore implements SequenceStore {
       this.primary,
       this.secondary.withDb?.(db) ?? this.secondary,
       this.logger,
+      // Primary allocations are external to the database transaction. Share
+      // their high-water marks so a transaction-bound fallback can never
+      // allocate an already-issued sequence.
+      this.lastKnownPrimarySeq,
     );
+  }
+
+  async ensureReady(): Promise<void> {
+    await this.secondary.ensureReady?.();
   }
 
   async getNext(namespace: string): Promise<number> {

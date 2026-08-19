@@ -302,24 +302,33 @@ export async function executePush(
       operation: "push",
       namespace,
     });
+  } else {
+    await changeTracking.ensureReady();
   }
 
-  let initialSeqBatchAllocated = false;
-  let seqPool: number[] = [];
+  type SequenceAllocationState = {
+    initialBatchAllocated: boolean;
+    pool: number[];
+  };
+  const sequenceAllocation: SequenceAllocationState = {
+    initialBatchAllocated: false,
+    pool: [],
+  };
   async function takeNextServerSeq(
+    allocation: SequenceAllocationState,
     targetChangeTracking = changeTracking,
   ): Promise<number> {
-    if (seqPool.length === 0) {
-      if (!initialSeqBatchAllocated) {
-        initialSeqBatchAllocated = true;
-        seqPool = await targetChangeTracking.getNextServerSeqBatch(
+    if (allocation.pool.length === 0) {
+      if (!allocation.initialBatchAllocated) {
+        allocation.initialBatchAllocated = true;
+        allocation.pool = await targetChangeTracking.getNextServerSeqBatch(
           Math.max(1, request.mutations.length),
         );
       } else {
-        seqPool = await targetChangeTracking.getNextServerSeqBatch(1);
+        allocation.pool = await targetChangeTracking.getNextServerSeqBatch(1);
       }
     }
-    return seqPool.shift()!;
+    return allocation.pool.shift()!;
   }
 
   // Pending change entries for a mutation that executed successfully
@@ -963,6 +972,18 @@ export async function executePush(
     // FIX-REL-011: When transactions are supported, wrap operation + change tracking atomically
     if (hasTransaction) {
       let mutationSucceeded = false;
+      // Sequence reservations made through a transaction-bound database store
+      // are valid only if that transaction commits. Work on a copy and publish
+      // the remaining pool after commit; rollback leaves the shared state
+      // untouched. External primary stores may leave harmless gaps, but no
+      // rolled-back reservation can leak into a later transaction.
+      const txSequenceAllocation: SequenceAllocationState = {
+        initialBatchAllocated: sequenceAllocation.initialBatchAllocated,
+        pool: [...sequenceAllocation.pool],
+      };
+      let mutationLatestSeq = 0;
+      const mutationResourceSeqs: Record<string, number> = {};
+      const pendingChangeEvents: number[] = [];
       try {
         await (db as any).transaction(async (txDb: Adapter) => {
           // Execute operation inside transaction
@@ -974,16 +995,42 @@ export async function executePush(
 
           // Build and record changes inside the same transaction
           const changes = opResult.changes;
-          const txChangeTracking = changeTracking.withDb(txDb);
+          // Change notifications describe committed state, so suppress the
+          // transaction-bound service callback and publish only after commit.
+          const txChangeTracking = changeTracking.withDb(txDb, false);
           for (const change of changes) {
-            const seq = await takeNextServerSeq(txChangeTracking);
-            latestSeq = Math.max(latestSeq, seq);
-            resourceSeqs[change.resource] = Math.max(resourceSeqs[change.resource] || 0, seq);
+            const seq = await takeNextServerSeq(txSequenceAllocation, txChangeTracking);
+            mutationLatestSeq = Math.max(mutationLatestSeq, seq);
+            mutationResourceSeqs[change.resource] = Math.max(
+              mutationResourceSeqs[change.resource] || 0,
+              seq,
+            );
+            // FIX-REL-002: retry within transaction
             await recordChangeWithRetry(txChangeTracking, {
               serverSeq: seq, resource: change.resource, id: change.id, op: change.op, record: change.record,
-            }, 0, logger);
+            }, 2, logger);
+            pendingChangeEvents.push(seq);
           }
         });
+        sequenceAllocation.initialBatchAllocated = txSequenceAllocation.initialBatchAllocated;
+        sequenceAllocation.pool = txSequenceAllocation.pool;
+        latestSeq = Math.max(latestSeq, mutationLatestSeq);
+        for (const [resource, seq] of Object.entries(mutationResourceSeqs)) {
+          resourceSeqs[resource] = Math.max(resourceSeqs[resource] || 0, seq);
+        }
+        for (const seq of pendingChangeEvents) {
+          try {
+            onChange?.(seq, namespace);
+          } catch (error) {
+            // The transaction has already committed; notification failures
+            // must not report the durable mutation as rolled back.
+            logger?.error("Push change notification failed", {
+              error: String(error),
+              operation: "push.onChange",
+              resource: mut.resource,
+            });
+          }
+        }
         mutationSucceeded = true;
       } catch (err: any) {
         if (err?.__opFailed) {
@@ -1018,7 +1065,7 @@ export async function executePush(
         let changeTrackingFailed = false;
         try {
           for (const change of changes) {
-            const seq = await takeNextServerSeq();
+            const seq = await takeNextServerSeq(sequenceAllocation);
             latestSeq = Math.max(latestSeq, seq);
             resourceSeqs[change.resource] = Math.max(resourceSeqs[change.resource] || 0, seq);
             await recordChangeWithRetry(changeTracking, {
