@@ -29,6 +29,9 @@ export interface IdempotencyStore {
     mutationId: string,
     result: MutationResult
   ): Promise<void>;
+
+  /** Return an equivalent store bound to a transaction-scoped adapter. */
+  withDb?(db: import("@superfunctions/db").Adapter): IdempotencyStore;
 }
 
 export function isRetryableMutationResult(

@@ -27,14 +27,14 @@ async function seedChangesWithAge(
   count: number,
   daysOld: number,
 ): Promise<void> {
-  const ct = new ChangeTrackingService(db, namespace);
+  const ct = new ChangeTrackingService(database, namespace);
   const past = new Date(Date.now() - daysOld * 86400000).toISOString();
 
   for (let i = 1; i <= count; i++) {
     const seq = await ct.getNextServerSeq();
     // Record change first (ensures table exists), then we won't be overriding created_at here.
     // Instead: directly insert into internal table with backdated created_at.
-    await db.internal.create("__datafn_changes", {
+    await database.internal.create("__datafn_changes", {
       id: `change:${namespace}:${seq}:task:item${i}-old`,
       namespace,
       server_seq: seq,
@@ -56,7 +56,7 @@ async function seedChangesNow(
 ): Promise<void> {
   const now = new Date().toISOString();
   for (let i = 1; i <= count; i++) {
-    await db.internal.create("__datafn_changes", {
+    await database.internal.create("__datafn_changes", {
       id: `change:${namespace}:${seqOffset + i}:task:item${i}-new`,
       namespace,
       server_seq: seqOffset + i,
@@ -78,7 +78,7 @@ async function seedIdempotencyWithAge(
 ): Promise<void> {
   const past = new Date(Date.now() - daysOld * 86400000).toISOString();
   for (let i = 1; i <= count; i++) {
-    await db.internal.create("__datafn_idempotency", {
+    await database.internal.create("__datafn_idempotency", {
       id: `${namespace}:client${i}:mut${i}`,
       namespace,
       client_id: `client${i}`,
@@ -98,7 +98,7 @@ async function seedIdempotencyNow(
 ): Promise<void> {
   const now = new Date().toISOString();
   for (let i = 1; i <= count; i++) {
-    await db.internal.create("__datafn_idempotency", {
+    await database.internal.create("__datafn_idempotency", {
       id: `${namespace}:client${idOffset + i}:mutnew${idOffset + i}`,
       namespace,
       client_id: `client${idOffset + i}`,

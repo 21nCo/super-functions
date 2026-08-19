@@ -76,12 +76,14 @@ export async function executeTransaction(
       const queryResult = executeQuery(step.query, schema, store);
       return queryResult;
     } else if (step.mutation) {
+      const stepIdempotencyStore =
+        idempotencyStore.withDb?.(stepDb) ?? idempotencyStore;
       // Execute mutation
       const mutationResult = await executeMutation(
         step.mutation,
         schema,
         stepDb,
-        idempotencyStore,
+        stepIdempotencyStore,
         changeTracking,
         plugins,
         namespace,

@@ -1,15 +1,14 @@
 /**
  * Secondary Database Support Tests
- * Tests for Redis/KV store support for serverSeq and future features
+ * Tests for the shared atomic store used by serverSeq and future features
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDatafnServer } from "../src/server.js";
 import { memoryAdapter } from "@superfunctions/db/adapters";
-import type { RedisAdapter, KVStoreAdapter } from "@superfunctions/db";
+import type { AtomicKVStoreAdapter } from "@superfunctions/db";
 import {
-  RedisSequenceStore,
-  KVSequenceStore,
+  AtomicSequenceStore,
   DatabaseSequenceStore,
   ChainedSequenceStore,
   createSequenceStore,
@@ -25,78 +24,50 @@ const testSchema = {
   ],
 };
 
-// Mock Redis adapter for testing
-function createMockRedisAdapter(): RedisAdapter & { values: Map<string, number> } {
-  const values = new Map<string, number>();
+// Mock atomic store for testing
+function createMockAtomicStore(): AtomicKVStoreAdapter & { values: Map<string, string> } {
+  const values = new Map<string, string>();
   return {
     values,
-    incr: vi.fn(async (key: string, by = 1) => {
-      const current = values.get(key) || 0;
+    incr: vi.fn(async ({ key, by = 1 }) => {
+      const current = Number(values.get(key) ?? "0");
       const next = current + by;
-      values.set(key, next);
-      return next;
+      values.set(key, String(next));
+      return { value: next };
     }),
-    get: vi.fn(async (key: string) => {
-      const value = values.get(key);
-      return value !== undefined ? String(value) : null;
+    get: vi.fn(async (key: string) => values.get(key) ?? null),
+    set: vi.fn(async ({ key, value }) => {
+      values.set(key, value);
     }),
-    set: vi.fn(async (key: string, value: string) => {
-      values.set(key, parseInt(value, 10));
-    }),
-    del: vi.fn(async (key: string) => {
+    delete: vi.fn(async (key: string) => {
       values.delete(key);
+    }),
+    setIfAbsent: vi.fn(async ({ key, value }) => {
+      const existing = values.get(key);
+      if (existing !== undefined) return { inserted: false, existing };
+      values.set(key, value);
+      return { inserted: true };
+    }),
+    compareAndSet: vi.fn(async ({ key, expected, value }) => {
+      const existing = values.get(key) ?? null;
+      if (existing !== expected) return { updated: false, existing: existing ?? undefined };
+      values.set(key, value);
+      return { updated: true };
     }),
     isHealthy: vi.fn(async () => true),
     close: vi.fn(async () => {}),
   };
 }
 
-// Mock KV store adapter for testing
-function createMockKVAdapter(): KVStoreAdapter & { values: Map<string, string> } {
-  const values = new Map<string, string>();
-  return {
-    values,
-    get: vi.fn(async (key: string) => values.get(key) || null),
-    set: vi.fn(async ({ key, value }) => {
-      values.set(key, value);
-    }),
-    delete: vi.fn(async (key: string) => {
-      values.delete(key);
-    }),
-    incr: vi.fn(async ({ key, by = 1 }) => {
-      const current = parseInt(values.get(key) || "0", 10);
-      const next = current + by;
-      values.set(key, String(next));
-      return { value: next };
-    }),
-  };
-}
-
-// Mock KV store WITHOUT incr support
-function createMockKVAdapterNoIncr(): KVStoreAdapter & { values: Map<string, string> } {
-  const values = new Map<string, string>();
-  return {
-    values,
-    get: vi.fn(async (key: string) => values.get(key) || null),
-    set: vi.fn(async ({ key, value }) => {
-      values.set(key, value);
-    }),
-    delete: vi.fn(async (key: string) => {
-      values.delete(key);
-    }),
-    // No incr method
-  };
-}
-
 describe("SequenceStore implementations", () => {
-  describe("RedisSequenceStore", () => {
+  describe("AtomicSequenceStore", () => {
     it("uses atomic INCR for getNext", async () => {
-      const redis = createMockRedisAdapter();
-      const store = new RedisSequenceStore(redis);
+      const atomicStore = createMockAtomicStore();
+      const store = new AtomicSequenceStore(atomicStore);
 
       const seq1 = await store.getNext("test-namespace");
       expect(seq1).toBe(1);
-      expect(redis.incr).toHaveBeenCalledWith("serverSeq:test-namespace", 1);
+      expect(atomicStore.incr).toHaveBeenCalledWith({ key: "serverSeq:test-namespace", by: 1 });
 
       const seq2 = await store.getNext("test-namespace");
       expect(seq2).toBe(2);
@@ -107,8 +78,8 @@ describe("SequenceStore implementations", () => {
     });
 
     it("returns current value with getCurrent", async () => {
-      const redis = createMockRedisAdapter();
-      const store = new RedisSequenceStore(redis);
+      const atomicStore = createMockAtomicStore();
+      const store = new AtomicSequenceStore(atomicStore);
 
       // Initially 0 (null value)
       const current1 = await store.getCurrent("test-namespace");
@@ -122,29 +93,10 @@ describe("SequenceStore implementations", () => {
     });
 
     it("reports health status", async () => {
-      const redis = createMockRedisAdapter();
-      const store = new RedisSequenceStore(redis);
+      const atomicStore = createMockAtomicStore();
+      const store = new AtomicSequenceStore(atomicStore);
 
       expect(await store.isHealthy()).toBe(true);
-    });
-  });
-
-  describe("KVSequenceStore", () => {
-    it("uses incr for getNext", async () => {
-      const kv = createMockKVAdapter();
-      const store = new KVSequenceStore(kv);
-
-      const seq1 = await store.getNext("test-namespace");
-      expect(seq1).toBe(1);
-      expect(kv.incr).toHaveBeenCalledWith({ key: "serverSeq:test-namespace", by: 1 });
-
-      const seq2 = await store.getNext("test-namespace");
-      expect(seq2).toBe(2);
-    });
-
-    it("throws if KV store does not support incr", () => {
-      const kv = createMockKVAdapterNoIncr();
-      expect(() => new KVSequenceStore(kv)).toThrow("KV store does not support incr()");
     });
   });
 
@@ -180,24 +132,24 @@ describe("SequenceStore implementations", () => {
 
   describe("ChainedSequenceStore", () => {
     it("uses primary when healthy", async () => {
-      const redis = createMockRedisAdapter();
+      const atomicStore = createMockAtomicStore();
       const db = memoryAdapter({ libraryNamespace: "datafn" });
 
-      const primary = new RedisSequenceStore(redis);
+      const primary = new AtomicSequenceStore(atomicStore);
       const fallback = new DatabaseSequenceStore(db);
       const store = new ChainedSequenceStore(primary, fallback);
 
       const seq = await store.getNext("test-namespace");
       expect(seq).toBe(1);
-      expect(redis.incr).toHaveBeenCalled();
+      expect(atomicStore.incr).toHaveBeenCalled();
     });
 
     it("falls back to database when primary fails", async () => {
-      const redis = createMockRedisAdapter();
-      redis.incr = vi.fn().mockRejectedValue(new Error("Redis unavailable"));
+      const atomicStore = createMockAtomicStore();
+      atomicStore.incr = vi.fn().mockRejectedValue(new Error("Atomic store unavailable"));
       const db = memoryAdapter({ libraryNamespace: "datafn" });
 
-      const primary = new RedisSequenceStore(redis);
+      const primary = new AtomicSequenceStore(atomicStore);
       const fallback = new DatabaseSequenceStore(db);
       const store = new ChainedSequenceStore(primary, fallback);
 
@@ -206,11 +158,11 @@ describe("SequenceStore implementations", () => {
     });
 
     it("falls back when primary is unhealthy", async () => {
-      const redis = createMockRedisAdapter();
-      redis.isHealthy = vi.fn().mockResolvedValue(false);
+      const atomicStore = createMockAtomicStore();
+      atomicStore.isHealthy = vi.fn().mockResolvedValue(false);
       const db = memoryAdapter({ libraryNamespace: "datafn" });
 
-      const primary = new RedisSequenceStore(redis);
+      const primary = new AtomicSequenceStore(atomicStore);
       const fallback = new DatabaseSequenceStore(db);
       const store = new ChainedSequenceStore(primary, fallback);
 
@@ -220,27 +172,14 @@ describe("SequenceStore implementations", () => {
   });
 
   describe("createSequenceStore", () => {
-    it("creates RedisSequenceStore when redis is configured", () => {
-      const redis = createMockRedisAdapter();
+    it("creates a chained store when an atomic store is configured", () => {
+      const atomicStore = createMockAtomicStore();
       const db = memoryAdapter({ libraryNamespace: "datafn" });
 
       const store = createSequenceStore({
         db,
-        redis,
-        dbMapping: { serverseq: "redis" },
-      });
-
-      expect(store).toBeInstanceOf(ChainedSequenceStore);
-    });
-
-    it("creates KVSequenceStore when kv is configured", () => {
-      const kv = createMockKVAdapter();
-      const db = memoryAdapter({ libraryNamespace: "datafn" });
-
-      const store = createSequenceStore({
-        db,
-        kvStore: kv,
-        dbMapping: { serverseq: "kv" },
+        stores: { atomicKv: atomicStore },
+        policy: { mode: "strict" },
       });
 
       expect(store).toBeInstanceOf(ChainedSequenceStore);
@@ -251,23 +190,19 @@ describe("SequenceStore implementations", () => {
 
       const store = createSequenceStore({
         db,
-        dbMapping: { serverseq: "db" },
+        policy: { mode: "db" },
       });
 
       expect(store).toBeInstanceOf(DatabaseSequenceStore);
     });
 
-    it("falls back to database when kv store does not support incr", () => {
-      const kv = createMockKVAdapterNoIncr();
+    it("rejects strict mode when no atomic store is configured", () => {
       const db = memoryAdapter({ libraryNamespace: "datafn" });
 
-      const store = createSequenceStore({
+      expect(() => createSequenceStore({
         db,
-        kvStore: kv,
-        dbMapping: { serverseq: "kv" },
-      });
-
-      expect(store).toBeInstanceOf(DatabaseSequenceStore);
+        policy: { mode: "strict" },
+      })).toThrow("DATAFN_ATOMIC_STORE_REQUIRED");
     });
 
     it("returns undefined when no db is provided", () => {
@@ -277,30 +212,30 @@ describe("SequenceStore implementations", () => {
   });
 });
 
-describe("DatafnServerConfig with secondary databases", () => {
-  it("accepts redis, kvStore, and dbMapping in config", async () => {
+describe("DatafnServerConfig with runtime stores", () => {
+  it("accepts stores and serverSeq policy in config", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      dbMapping: { serverseq: "redis" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
     });
 
     expect(server.router).toBeDefined();
   });
 
-  it("uses Redis for serverSeq when configured", async () => {
+  it("uses the atomic store for serverSeq when configured", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      dbMapping: { serverseq: "redis" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
     });
 
     // Make a push request
@@ -328,19 +263,19 @@ describe("DatafnServerConfig with secondary databases", () => {
     expect(body.ok).toBe(true);
     expect(body.result.cursor).toBe("1");
 
-    // Verify Redis was used (incr was called)
-    expect(redis.incr).toHaveBeenCalled();
+    // Verify the atomic store was used (incr was called)
+    expect(atomicStore.incr).toHaveBeenCalled();
   });
 
-  it("uses KV store for serverSeq when configured", async () => {
+  it("supports another atomic KV implementation", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const kv = createMockKVAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      kvStore: kv,
-      dbMapping: { serverseq: "kv" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
     });
 
     const req = new Request("http://localhost/datafn/push", {
@@ -367,19 +302,18 @@ describe("DatafnServerConfig with secondary databases", () => {
     expect(body.ok).toBe(true);
     expect(body.result.cursor).toBe("1");
 
-    // Verify KV store was used
-    expect(kv.incr).toHaveBeenCalled();
+    expect(atomicStore.incr).toHaveBeenCalled();
   });
 
-  it("falls back to database when redis is configured but dbMapping is not set", async () => {
+  it("uses the database when serverSeq mode is db", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      // No dbMapping - defaults to "db"
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "db" },
     });
 
     const req = new Request("http://localhost/datafn/push", {
@@ -402,19 +336,18 @@ describe("DatafnServerConfig with secondary databases", () => {
     const res = await server.router.handle(req);
     expect(res.status).toBe(200);
 
-    // Redis was NOT used because dbMapping was not set
-    expect(redis.incr).not.toHaveBeenCalled();
+    expect(atomicStore.incr).not.toHaveBeenCalled();
   });
 
   it("works with all endpoints (push, pull, clone, mutation, transact)", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      dbMapping: { serverseq: "redis" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
     });
 
     // Push
@@ -475,15 +408,14 @@ describe("DatafnServerConfig with secondary databases", () => {
 
     // Transact - Note: Memory adapter doesn't support transactions, so we skip this test
     // The transact handler itself does use the sequenceStore correctly (verified in other tests)
-    // This test just verifies that the main endpoints (push, pull, clone, mutation) work with Redis
+    // This test verifies that the main endpoints work with the atomic sequence store.
 
-    // Verify Redis was used for operations
-    expect(redis.incr).toHaveBeenCalled();
+    expect(atomicStore.incr).toHaveBeenCalled();
   });
 
   it("maintains namespace isolation with secondary databases", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
 
     const namespaceProvider = {
       getNamespace: (ctx: any) => {
@@ -497,8 +429,8 @@ describe("DatafnServerConfig with secondary databases", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      dbMapping: { serverseq: "redis" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
       namespaceProvider,
     });
 
@@ -546,34 +478,33 @@ describe("DatafnServerConfig with secondary databases", () => {
     const body2 = await res2.json();
     expect(body2.result.cursor).toBe("1"); // Independent namespace
 
-    // Verify Redis was called with different namespace keys
-    const incrCalls = (redis.incr as any).mock.calls;
-    expect(incrCalls.some((call: any) => call[0].includes("user:user-1"))).toBe(true);
-    expect(incrCalls.some((call: any) => call[0].includes("user:user-2"))).toBe(true);
+    const incrCalls = (atomicStore.incr as any).mock.calls;
+    expect(incrCalls.some((call: any) => call[0].key.includes("user:user-1"))).toBe(true);
+    expect(incrCalls.some((call: any) => call[0].key.includes("user:user-2"))).toBe(true);
   });
 
-  it("continues working when Redis becomes unavailable", async () => {
+  it("continues working when the atomic store becomes unavailable", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const redis = createMockRedisAdapter();
+    const atomicStore = createMockAtomicStore();
     
-    // Make Redis fail after first call
+    // Make the atomic store fail after the first allocation.
     let callCount = 0;
-    redis.incr = vi.fn(async () => {
+    atomicStore.incr = vi.fn(async () => {
       callCount++;
       if (callCount > 1) {
-        throw new Error("Redis unavailable");
+        throw new Error("Atomic store unavailable");
       }
-      return callCount;
+      return { value: callCount };
     });
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
       database: db,
-      redis,
-      dbMapping: { serverseq: "redis" },
+      stores: { atomicKv: atomicStore },
+      serverSeq: { mode: "strict" },
     });
 
-    // First request - Redis works
+    // First request - atomic store works
     const req1 = new Request("http://localhost/datafn/push", {
       method: "POST",
       body: JSON.stringify({
@@ -593,7 +524,7 @@ describe("DatafnServerConfig with secondary databases", () => {
     const res1 = await server.router.handle(req1);
     expect(res1.status).toBe(200);
 
-    // Second request - Redis fails, should fallback to database
+    // Second request - atomic store fails, so the database fallback is used
     const req2 = new Request("http://localhost/datafn/push", {
       method: "POST",
       body: JSON.stringify({

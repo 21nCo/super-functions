@@ -123,7 +123,8 @@ export class ChangeTrackingService {
    * The namespace and sequenceStore are inherited from the original instance.
    */
   withDb(txDb: Adapter): ChangeTrackingService {
-    return new ChangeTrackingService(txDb, this.namespace, this.sequenceStore, this.onChange, this.logger);
+    const sequenceStore = this.sequenceStore?.withDb?.(txDb) ?? this.sequenceStore;
+    return new ChangeTrackingService(txDb, this.namespace, sequenceStore, this.onChange, this.logger);
   }
 
   /**

@@ -1311,15 +1311,15 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const idOnlyStub = taskRecords.find((r: any) => r.id === "task:10" && Object.keys(r).length === 1);
     expect(idOnlyStub).toBeUndefined();
 
-    // The FK change SHOULD appear in merged[] as a partial { id, goalId: "goal:2" }
+    // The FK change SHOULD appear in merged[] with the persisted record so clients
+    // do not lose unrelated fields while applying the relation update.
     expect(pullBody.result.merged).toBeDefined();
     expect(pullBody.result.merged.task).toBeDefined();
     const fkDelta = pullBody.result.merged.task.find((r: any) => r.id === "task:10");
     expect(fkDelta).toBeDefined();
     expect(fkDelta.goalId).toBe("goal:2"); // FK was updated
-    // Merge delta must NOT contain other fields (it is partial — only the FK)
-    expect(fkDelta.label).toBeUndefined();
-    expect(fkDelta.priority).toBeUndefined();
+    expect(fkDelta.label).toBe("My task");
+    expect(fkDelta.priority).toBe(5);
   });
 
   it("TV-REL-MANYOONE-UNRELATE-001: many-one unrelate clears FK via merge delta (no id-only stub)", async () => {
@@ -1758,7 +1758,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -1839,7 +1839,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -1875,7 +1875,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -1922,7 +1922,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -2032,6 +2032,7 @@ describe("MRG-003: push merge race retry behavior", () => {
   it("retries update once after create conflict and succeeds", async () => {
     const baseDb = memoryAdapter();
     await baseDb.initialize();
+    baseDb.capabilities.transactions.supported = false;
     const baseCreate = baseDb.create.bind(baseDb);
     const baseUpdate = baseDb.update.bind(baseDb);
     let updateCalls = 0;
@@ -2107,6 +2108,7 @@ describe("MRG-003: push merge race retry behavior", () => {
   it("returns NOT_FOUND when retry update still fails after create conflict", async () => {
     const baseDb = memoryAdapter();
     await baseDb.initialize();
+    baseDb.capabilities.transactions.supported = false;
     const baseCreate = baseDb.create.bind(baseDb);
 
     const db = new Proxy(baseDb, {
@@ -2164,8 +2166,9 @@ describe("MRG-003: push merge race retry behavior", () => {
     );
 
     const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.result.ok).toBe(true);
+    expect(res.status).toBe(400);
+    expect(body.ok).toBe(false);
+    expect(body.result.ok).toBe(false);
     expect(body.result.applied).not.toContain("m-race-fail");
     expect(body.result.errors).toEqual(
       expect.arrayContaining([

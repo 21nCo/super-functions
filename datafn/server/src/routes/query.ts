@@ -75,6 +75,8 @@ export function createQueryHandler(
   timingEmitter?: TimingEmitter | null,
   handlerOpts?: QueryHandlerOpts,
   logger?: DatafnLogger,
+  /** Unwrapped adapter used only to discover grants in explicitly requested source namespaces. */
+  crossNamespaceDb?: Adapter,
 ) {
   // Build schema index once for efficient validation
   const schemaIndex = buildSchemaIndex(validatedSchema);
@@ -328,18 +330,23 @@ export function createQueryHandler(
         );
       } catch {
       }
-      rows.push(
-        ...(
-          await db.findMany({
-            model: globalPermissionsTable,
-            where: [
-              { field: "resourceType", operator: "eq", value: resource },
-              { field: "principalId", operator: "eq", value: principalId },
-            ],
-            namespace,
-          })
-        ).map((row) => normalizePermissionGrantRow(row as Record<string, unknown>)),
-      );
+      const permissionDb = crossNamespaceDb ?? db;
+      const candidateNamespaces = namespaceFilterSet ?? new Set([namespace]);
+      for (const sourceNamespace of candidateNamespaces) {
+        rows.push(
+          ...(
+            await permissionDb.findMany({
+              model: globalPermissionsTable,
+              where: [
+                { field: "resourceType", operator: "eq", value: resource },
+                { field: "principalId", operator: "eq", value: principalId },
+                { field: "resourceNs", operator: "eq", value: sourceNamespace },
+              ],
+              namespace: sourceNamespace,
+            })
+          ).map((row) => normalizePermissionGrantRow(row as Record<string, unknown>)),
+        );
+      }
       return rows;
     };
     const seenGrantIds = new Set<string>();

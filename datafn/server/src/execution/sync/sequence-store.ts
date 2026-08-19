@@ -28,6 +28,9 @@ export interface SequenceStore {
   /** Ensure the current sequence is at least minSeq */
   ensureMinSeq?(namespace: string, minSeq: number): Promise<void>;
 
+  /** Return an equivalent store bound to a transaction-scoped adapter. */
+  withDb?(db: Adapter): SequenceStore;
+
   /** Check if the store is healthy/available */
   isHealthy?(): Promise<boolean>;
 }
@@ -87,6 +90,10 @@ export class DatabaseSequenceStore implements SequenceStore {
   private ensured = false;
 
   constructor(private db: Adapter, private logger?: DatafnLogger) {}
+
+  withDb(db: Adapter): SequenceStore {
+    return new DatabaseSequenceStore(db, this.logger);
+  }
 
   /**
    * DI-003: Ensure next_server_seq in meta is at least (minSeq + 1).
@@ -270,6 +277,14 @@ export class ChainedSequenceStore implements SequenceStore {
     private secondary: SequenceStore,
     private logger?: DatafnLogger,
   ) {}
+
+  withDb(db: Adapter): SequenceStore {
+    return new ChainedSequenceStore(
+      this.primary,
+      this.secondary.withDb?.(db) ?? this.secondary,
+      this.logger,
+    );
+  }
 
   async getNext(namespace: string): Promise<number> {
     return (await this.getNextN(namespace, 1))[0];

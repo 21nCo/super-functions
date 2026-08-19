@@ -10,7 +10,7 @@ import {
 } from "../src/execution/sync/sequence-store.js";
 import { ChangeTrackingService } from "../src/execution/sync/change-tracking.js";
 import { executeModifyRelation } from "../src/execution/mutation/relations.js";
-import { RedisRateLimiter } from "../src/middleware/rate-limit.js";
+import { AtomicRateLimiter } from "../src/middleware/rate-limit.js";
 import type { DatafnSchema } from "@datafn/core";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -273,68 +273,42 @@ describe("DI-003: ChainedSequenceStore prevents duplicate sequences on Redis→D
   });
 });
 
-// ─── REL-008: Redis rate limiter uses Lua eval for atomic TTL ─────────────
+// ─── REL-008: atomic rate limiter uses INCR with TTL ─────────────────────
 
-describe("REL-008: RedisRateLimiter uses Lua eval for atomic TTL on first request", () => {
-  it("TV-REL-011: eval() used when Redis client supports it — no separate incr+set", async () => {
-    const evalFn = vi.fn(async () => 1);
-    const incrFn = vi.fn(async () => 1);
-    const setFn = vi.fn(async () => {});
+describe("REL-008: AtomicRateLimiter increments with an atomic TTL", () => {
+  it("TV-REL-011: one atomic increment records the request", async () => {
+    const incrFn = vi.fn(async () => ({ value: 1 }));
+    const atomicStore = { incr: incrFn } as any;
 
-    const mockRedis = { incr: incrFn, set: setFn, get: vi.fn(), isHealthy: vi.fn(), eval: evalFn } as any;
-
-    const limiter = new RedisRateLimiter(mockRedis);
+    const limiter = new AtomicRateLimiter(atomicStore);
     const result = await limiter.check("endpoint:client1", 10, 60);
 
-    expect(evalFn).toHaveBeenCalledTimes(1);
-    // The Lua script handles both incr and expire atomically
-    expect(incrFn).not.toHaveBeenCalled();
-    expect(setFn).not.toHaveBeenCalled();
+    expect(incrFn).toHaveBeenCalledTimes(1);
+    expect(incrFn).toHaveBeenCalledWith(expect.objectContaining({ by: 1, ttlSeconds: 60 }));
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(9);
   });
 
-  it("TV-REL-011b: Lua script includes EXPIRE logic (key + argv shape)", async () => {
-    let capturedScript = "";
-    let capturedKeys = 0;
-    let capturedArgv = "";
-
-    const mockRedis = {
-      incr: vi.fn(),
-      set: vi.fn(),
-      get: vi.fn(),
-      isHealthy: vi.fn(),
-      eval: vi.fn(async (script: string, keys: number, key: string, windowArg: string) => {
-        capturedScript = script;
-        capturedKeys = keys;
-        capturedArgv = windowArg;
-        return 1;
-      }),
-    } as any;
-
-    const limiter = new RedisRateLimiter(mockRedis);
+  it("TV-REL-011b: the atomic key includes the logical key and time window", async () => {
+    const incrFn = vi.fn(async () => ({ value: 1 }));
+    const limiter = new AtomicRateLimiter({ incr: incrFn } as any);
     await limiter.check("test", 5, 30);
 
-    // Script must contain redis.call('incr') and redis.call('expire')
-    expect(capturedScript).toContain("incr");
-    expect(capturedScript).toContain("expire");
-    expect(capturedKeys).toBe(1);
-    expect(capturedArgv).toBe("30");
+    expect(incrFn).toHaveBeenCalledWith({
+      key: expect.stringMatching(/^ratelimit:test:\d+$/),
+      by: 1,
+      ttlSeconds: 30,
+    });
   });
 
-  it("TV-REL-011c: falls back to incr+set when eval not available", async () => {
-    const incrFn = vi.fn(async () => 1);
-    const setFn = vi.fn(async () => {});
-
-    const mockRedis = { incr: incrFn, set: setFn, get: vi.fn(), isHealthy: vi.fn() } as any;
-    // No eval method
-
-    const limiter = new RedisRateLimiter(mockRedis);
+  it("TV-REL-011c: requests above the limit are rejected", async () => {
+    const incrFn = vi.fn(async () => ({ value: 11 }));
+    const limiter = new AtomicRateLimiter({ incr: incrFn } as any);
     const result = await limiter.check("test", 10, 60);
 
     expect(incrFn).toHaveBeenCalledTimes(1);
-    expect(setFn).toHaveBeenCalledTimes(1);
-    expect(result.allowed).toBe(true);
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
   });
 });
 

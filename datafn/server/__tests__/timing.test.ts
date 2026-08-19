@@ -294,6 +294,7 @@ describe("Timing integration", () => {
           clientId: "c1",
           mutations: [
             {
+              clientId: "c1",
               mutationId: "m1",
               operation: "insert",
               resource: "task",

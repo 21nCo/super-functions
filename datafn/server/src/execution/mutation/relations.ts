@@ -245,6 +245,9 @@ export async function applyInactivePropagation(
   seeds: Array<{ resource: string; id: string }>,
   namespace: string,
 ): Promise<RelationMutationChange[]> {
+  if (!(schema.relations ?? []).some((relation) => relation.inheritsInactive === true)) {
+    return [];
+  }
   const changes: RelationMutationChange[] = [];
   const queue = [...seeds];
   const processed = new Set<string>();

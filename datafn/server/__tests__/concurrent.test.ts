@@ -480,9 +480,9 @@ describe("TST-005d: executePush direct — concurrent with shared idempotency st
 
     // Run 3 concurrent pushes with the same idempotency store
     const [r1, r2, r3] = await Promise.all([
-      executePush(pushReqPayload, schema, database: db, idempotencyStore, "default"),
-      executePush(pushReqPayload, schema, database: db, idempotencyStore, "default"),
-      executePush(pushReqPayload, schema, database: db, idempotencyStore, "default"),
+      executePush(pushReqPayload, schema, db, idempotencyStore, "default"),
+      executePush(pushReqPayload, schema, db, idempotencyStore, "default"),
+      executePush(pushReqPayload, schema, db, idempotencyStore, "default"),
     ]);
 
     // All must succeed
@@ -522,7 +522,7 @@ describe("TST-005d: executePush direct — concurrent with shared idempotency st
           ],
         },
         schema,
-        database: db,
+        db,
         idempotencyStore,
         "default",
       ),

@@ -200,8 +200,11 @@ describe("sync push capability injection", () => {
           ],
         }),
       });
-      const res = await wrappedServer.router.handle(req, {});
-      const body = await res.json();
+      const res = await wrappedServer.router.handle(req);
+      const body = await res.json() as {
+        result: { ok: boolean; applied: string[]; errors: unknown[] };
+        error: { code: string };
+      };
       return { res, body };
     };
 
@@ -259,7 +262,11 @@ describe("sync push capability injection", () => {
                 message:
                   'duplicate key value violates unique constraint "todos_pkey"',
               };
-              throw new Error('Failed query: insert into "todos"', { cause });
+              const error = new Error('Failed query: insert into "todos"') as Error & {
+                cause?: unknown;
+              };
+              error.cause = cause;
+              throw error;
             }
             return target.create(params);
           };
@@ -268,6 +275,7 @@ describe("sync push capability injection", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
+    raceDb.capabilities.transactions.supported = false;
     const raceServer = await createDatafnServer({
       schema,
       database: raceDb,
@@ -297,7 +305,7 @@ describe("sync push capability injection", () => {
           ],
         }),
       });
-      const res = await raceServer.router.handle(req, {});
+      const res = await raceServer.router.handle(req);
       const body = (await res.json()) as any;
 
       expect(res.status).toBe(400);
@@ -681,6 +689,7 @@ describe("sync push capability injection", () => {
   });
 
   it("retries a cached mutation execution failure", async () => {
+    db.capabilities.transactions.supported = false;
     const originalCreate = db.create.bind(db);
     let shouldFail = true;
     db.create = async (params: any) => {

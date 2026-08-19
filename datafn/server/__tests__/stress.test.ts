@@ -55,7 +55,7 @@ async function seedItems(
     await Promise.all(
       Array.from({ length: end - start }, (_, j) => {
         const i = start + j;
-        return db.create({
+        return database.create({
           model: "item",
           data: {
             id: `item:${String(i).padStart(6, "0")}`,
@@ -248,7 +248,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10_000, // maxCloneRecords: 10,000 — triggers pagination
@@ -274,7 +274,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10_000,
@@ -300,7 +300,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const page1 = await executeClone(
       { clientId: "c1", tables: ["item"] },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10,
@@ -329,7 +329,7 @@ describe("TST-007: Clone pagination boundaries", () => {
         },
       },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10,
@@ -362,7 +362,7 @@ describe("TST-007: Clone pagination boundaries", () => {
           },
         },
         schema,
-        database: db,
+        db,
         "datafn",
         undefined,
         10,
@@ -397,7 +397,7 @@ describe("TST-007: Clone pagination boundaries", () => {
         },
       },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10,
@@ -413,7 +413,7 @@ describe("TST-007: Clone pagination boundaries", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["phantom"] },
       schema,
-      database: db,
+      db,
       "datafn",
       undefined,
       10_000,
@@ -446,7 +446,7 @@ describe("TST-007: Clone pagination boundaries", () => {
           },
         },
         schema,
-        database: db,
+        db,
         "datafn",
         undefined,
         10_000,

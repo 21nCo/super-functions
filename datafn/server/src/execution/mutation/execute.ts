@@ -263,18 +263,23 @@ async function executeMutationCore(
             resolvedCapabilities,
             actorId,
           );
+          const strictUpdateNotFound =
+            db.capabilities?.operations?.strictUpdateNotFound === true;
           const mergeResult = await executeSchemaAwareMerge({
             schema,
             resource: mutation.resource,
             id: mutation.id,
             delta: mergeData,
             update: async () => {
-              await db.update({
+              const updated = await db.update({
                 model: mutation.resource,
                 where: [{ field: "id", operator: "eq", value: mutation.id }],
                 data: mergeData,
                 namespace,
               });
+              if (strictUpdateNotFound && updated === undefined) {
+                throw { name: "NotFoundError", message: "Record not found after update" };
+              }
             },
             create: async (record) => {
               await db.create({
@@ -283,12 +288,16 @@ async function executeMutationCore(
                 namespace,
               });
             },
-            findOne: async () =>
-              db.findOne({
-                model: mutation.resource,
-                where: [{ field: "id", operator: "eq", value: mutation.id }],
-                namespace,
-              }),
+            ...(strictUpdateNotFound
+              ? {}
+              : {
+                  findOne: async () =>
+                    db.findOne({
+                      model: mutation.resource,
+                      where: [{ field: "id", operator: "eq", value: mutation.id }],
+                      namespace,
+                    }),
+                }),
           });
 
           if (mergeResult.ok) {

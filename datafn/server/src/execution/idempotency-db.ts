@@ -27,6 +27,10 @@ export class DbIdempotencyStore implements IdempotencyStore {
     this.logger = logger;
   }
 
+  withDb(db: Adapter): IdempotencyStore {
+    return new DbIdempotencyStore(db, this.namespace, this.logger);
+  }
+
   async get(
     clientId: string,
     mutationId: string,

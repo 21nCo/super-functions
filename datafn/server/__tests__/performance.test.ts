@@ -86,7 +86,7 @@ describe("PER-001: Batch serverSeq allocation", () => {
     const result = await executePush(
       { clientId: "client-perf", mutations },
       oneManySchema,
-      database: db,
+      db,
       idempotencyStore,
       "datafn",
     );
@@ -114,7 +114,7 @@ describe("PER-001: Batch serverSeq allocation", () => {
     const result = await executePush(
       { clientId: "client-perf", mutations: [] },
       oneManySchema,
-      database: db,
+      db,
       idempotencyStore,
       "datafn",
     );
@@ -354,6 +354,13 @@ describe("PER-005: Targeted relation filter (findRecords)", () => {
 // TV-EXE-018: Batched change-tracking writes
 // ---------------------------------------------------------------------------
 describe("EXE-018: Batched change-tracking writes", () => {
+  const withInternalOverrides = (db: any, overrides: Record<string, unknown>) => {
+    const wrapped = Object.create(db);
+    const internal = Object.assign(Object.create(db.internal), overrides);
+    Object.defineProperty(wrapped, "internal", { value: internal });
+    return wrapped;
+  };
+
   it("TV-EXE-018-P1: batch insert path is used when createMany capability exists", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     await db.initialize();
@@ -364,7 +371,7 @@ describe("EXE-018: Batched change-tracking writes", () => {
     let singleInsertCalls = 0;
 
     const originalCreateMany = db.internal.createMany!.bind(db.internal);
-    (db.internal as any).createMany = async (table: string, data: Record<string, unknown>[]) => {
+    const createMany = async (table: string, data: Record<string, unknown>[]) => {
       if (table === "__datafn_changes") {
         batchInsertCalls++;
         batchInsertRows += data.length;
@@ -373,14 +380,17 @@ describe("EXE-018: Batched change-tracking writes", () => {
     };
 
     const originalCreate = db.internal.create.bind(db.internal);
-    db.internal.create = async (table: string, data: Record<string, unknown>) => {
+    const create = async (table: string, data: Record<string, unknown>) => {
       if (table === "__datafn_changes") {
         singleInsertCalls++;
       }
       return originalCreate(table, data);
     };
 
-    const ct = new ChangeTrackingService(db, "datafn");
+    const ct = new ChangeTrackingService(
+      withInternalOverrides(db, { createMany, create }),
+      "datafn",
+    );
 
     const entries = Array.from({ length: 500 }, (_, i) => ({
       serverSeq: i + 1,
@@ -451,14 +461,9 @@ describe("EXE-018: Batched change-tracking writes", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     await db.initialize();
 
-    // Remove createMany to use sequential path, then make 3rd create fail
-    delete (db.internal as any).createMany;
-
-    const ct = new ChangeTrackingService(db, "datafn");
-
     let callCount = 0;
     const originalCreate = db.internal.create.bind(db.internal);
-    db.internal.create = async (table: string, data: Record<string, unknown>) => {
+    const create = async (table: string, data: Record<string, unknown>) => {
       if (table === "__datafn_changes") {
         callCount++;
         if (callCount === 3) {
@@ -467,6 +472,10 @@ describe("EXE-018: Batched change-tracking writes", () => {
       }
       return originalCreate(table, data);
     };
+    const ct = new ChangeTrackingService(
+      withInternalOverrides(db, { createMany: undefined, create }),
+      "datafn",
+    );
 
     const entries = Array.from({ length: 5 }, (_, i) => ({
       serverSeq: i + 1,

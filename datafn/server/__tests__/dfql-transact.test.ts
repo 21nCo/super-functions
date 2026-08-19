@@ -146,7 +146,8 @@ describe("DFQL Transactions", () => {
     expect(result.ok).toBe(false);
 
     expect(result.results).toHaveLength(2);
-    expect(result.results[0].ok).toBe(true);
+    expect(result.results[0].ok).toBe(false);
+    expect(result.results[0].rolledBack).toBe(true);
     expect(result.results[1].ok).toBe(false);
     expect(result.results[1].error.code).toBe("DFQL_UNSUPPORTED");
 
@@ -163,7 +164,7 @@ describe("DFQL Transactions", () => {
     const queryJson = await queryRes.json();
     expect(queryJson.ok).toBe(true);
     const ids = queryJson.result.data.map((row: { id: string }) => row.id);
-    expect(ids).toContain("t:2");
+    expect(ids).not.toContain("t:2");
     expect(ids).not.toContain("t:3");
   });
 

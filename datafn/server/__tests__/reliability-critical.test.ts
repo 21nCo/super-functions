@@ -64,7 +64,7 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -124,7 +124,7 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -180,7 +180,7 @@ describe("REL-003: Rolled-back step annotation", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -227,7 +227,7 @@ describe("REL-003: Rolled-back step annotation", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       undefined,
       "default",
@@ -249,6 +249,7 @@ describe("REL-003: Rolled-back step annotation", () => {
 describe("REL-002: Push change tracking failure propagation", () => {
   it("TV-REL-003: Change tracking failure makes mutation end up in errors", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
+    db.capabilities.transactions.supported = false;
     // Spy on change tracking: make recordChange always fail
     const recordChangeSpy = vi.spyOn(ChangeTrackingService.prototype, "recordChange")
       .mockRejectedValue(new Error("CAS failure"));
@@ -265,7 +266,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       "default",
     );
@@ -282,6 +283,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
 
   it("TV-REL-004: Change tracking retry succeeds transparently", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
+    db.capabilities.transactions.supported = false;
     let callCount = 0;
     const recordChangeSpy = vi.spyOn(ChangeTrackingService.prototype, "recordChange")
       .mockImplementation(async () => {
@@ -302,7 +304,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       testSchema,
-      database: db,
+      db,
       idempotencyStore,
       "default",
     );
@@ -339,7 +341,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       capabilitySchema,
-      database: db,
+      db,
       idempotencyStore,
       "default",
       undefined,

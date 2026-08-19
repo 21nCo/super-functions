@@ -518,8 +518,9 @@ describe("Phase 09: Server Sync Semantics", () => {
         }),
       );
       const pushBody = await pushRes.json();
-      expect(pushBody.ok).toBe(true);
-      expect(pushBody.result.ok).toBe(true);
+      expect(pushRes.status).toBe(400);
+      expect(pushBody.ok).toBe(false);
+      expect(pushBody.result.ok).toBe(false);
       expect(pushBody.result.applied).not.toContain("m-missing-task");
       expect(pushBody.result.errors).toEqual(
         expect.arrayContaining([

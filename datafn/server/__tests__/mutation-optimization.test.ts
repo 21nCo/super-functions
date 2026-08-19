@@ -254,9 +254,9 @@ describe("Phase 05: Mutation Optimization", () => {
       const res = await server.router.handle(req, {});
       const body = await res.json();
 
-      expect(res.status).toBe(200);
-      expect(body.ok).toBe(true);
-      expect(body.result.ok).toBe(true);
+      expect(res.status).toBe(400);
+      expect(body.ok).toBe(false);
+      expect(body.result.ok).toBe(false);
       // Merge on non-existent record returns NOT_FOUND error
       expect(body.result.applied).toContain("mut-push-merge-exist");
       expect(body.result.applied).not.toContain("mut-push-merge-new");

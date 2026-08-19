@@ -479,6 +479,7 @@ export async function createDatafnServer<TContext = any>(
   // namespace is used. For in-memory adapters (no schema constraints), wrapping is only
   // applied when a namespace/auth provider is present (explicit namespace isolation).
   let db = config.database;
+  const crossNamespaceDb = config.database;
   const schemaIsNamespaced = isNamespaced(validatedSchema);
   const adapterHasSchemaConstraints = db?.capabilities?.schema?.constraints === true;
   const hasNamespaceProvider = !!config.namespaceProvider;
@@ -776,6 +777,7 @@ export async function createDatafnServer<TContext = any>(
       hasSearchProviderFallback: hasDbNativeSearchSupport(db),
     },
     logger,
+    crossNamespaceDb,
   );
 
   // Create mutation handler and idempotency store
