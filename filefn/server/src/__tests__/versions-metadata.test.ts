@@ -165,7 +165,7 @@ describe('@filefn/server version metadata', () => {
     });
 
     fileFn = createFileFn({
-      db,
+      database: db,
       storage,
       policies: [
         {
@@ -182,7 +182,7 @@ describe('@filefn/server version metadata', () => {
   describe('TV-VERSION-GET-001: Get version metadata', () => {
     it('should return version metadata when versionId belongs to fileId', async () => {
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -279,7 +279,7 @@ describe('@filefn/server version metadata', () => {
   describe('TV-VERSION-DOWNLOAD-BINDING-NEG-001: Version binding check', () => {
     it('should reject download when versionId does not belong to fileId', async () => {
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -319,7 +319,7 @@ describe('@filefn/server version metadata', () => {
 
     it('should reject version metadata when versionId does not belong to fileId', async () => {
       const fileFnWithAuth = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -366,7 +366,7 @@ describe('@filefn/server missing routes', () => {
   describe('TV-POLICY-LIST-001: GET /policies', () => {
     it('should list policy constraints', async () => {
       const fileFn = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,
@@ -431,7 +431,7 @@ describe('@filefn/server missing routes', () => {
       };
 
       const fileFn = createFileFn({
-        db,
+        database: db,
         storage: createFakeStorageAdapter({
           capabilities: {
             signedUploadUrls: true,

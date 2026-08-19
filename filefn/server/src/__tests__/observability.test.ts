@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createLogger, redactSecrets, type LogContext, createFileFn, type FileFn, type Logger } from '../index.js';
 import { createFakeStorageAdapter } from '@superfunctions/storage';
 import type { Adapter, AdapterCapabilities } from '@superfunctions/db';
-import { createUploadStartedEvent, type FileUploadedEvent, type FileDeletedEvent } from '../events.js';
+import {
+  createUploadStartedEvent,
+  type FileDeletedEvent,
+  type FileFnObservationEvent,
+  type FileUploadedEvent,
+} from '../events.js';
 
 const FAKE_CAPABILITIES: AdapterCapabilities = {
   types: { json: true, dates: true, booleans: true, bigint: false, uuid: false, enum: false },
@@ -523,7 +528,7 @@ describe('@filefn/server observability', () => {
         });
 
         fileFn = createFileFn({
-            db: createFakeDbAdapter(),
+            database: createFakeDbAdapter(),
             storage: createFakeStorageAdapter({
                 capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
                 // Mock statObject for size validation
@@ -531,7 +536,9 @@ describe('@filefn/server observability', () => {
             }),
             policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 10485760 }],
             auth: { required: false },
-            logger
+            observability: {
+                logger,
+            },
         });
 
         // Listen for events
@@ -559,6 +566,51 @@ describe('@filefn/server observability', () => {
         expect(uploadedEvent).toBeDefined();
         expect(uploadedEvent.requestId).toBe('req_001');
         expect(uploadedEvent.fileId).toBeDefined();
+    });
+
+    it('should mirror file events into observability events', async () => {
+        const observationEvents: FileFnObservationEvent[] = [];
+        const observedFileFn = createFileFn({
+            database: createFakeDbAdapter(),
+            storage: createFakeStorageAdapter({
+                capabilities: { signedUploadUrls: true, signedDownloadUrls: true, multipart: true, proxyStreamingUpload: false, proxyStreamingDownload: true },
+                async statObject(input) { return { key: input.key, size: 100 }; }
+            }),
+            policies: [{ name: 'user-avatar', contentTypes: ['image/png'], maxSizeBytes: 10485760 }],
+            auth: { required: false },
+            observability: {
+                logger,
+                events: (event) => {
+                    observationEvents.push(event);
+                },
+            },
+        });
+
+        const { uploadSessionId } = await observedFileFn.createUploadSession(
+            { policy: 'user-avatar', fileName: 'observed.png', size: 100, mimeType: 'image/png' },
+            { principalId: 'user_123', requestId: 'req_observed' }
+        );
+
+        await observedFileFn.completeUploadPart(
+            { uploadSessionId, partNumber: 1, etag: 'etag1', size: 100 },
+            { principalId: 'user_123', requestId: 'req_observed' }
+        );
+
+        await observedFileFn.completeUploadSession(
+            { uploadSessionId },
+            { principalId: 'user_123', requestId: 'req_observed' }
+        );
+
+        const uploadedEvent = observationEvents.find((event) => event.type === 'file:uploaded');
+        expect(uploadedEvent).toBeDefined();
+        expect(uploadedEvent?.domain).toBe('filefn');
+        expect(uploadedEvent?.requestId).toBe('req_observed');
+        if (uploadedEvent?.type === 'file:uploaded') {
+            expect(uploadedEvent.metadata?.fileName).toBe('observed.png');
+            expect(uploadedEvent.metadata?.ownerId).toBe('user_123');
+            expect(uploadedEvent.metadata?.fileId).toBeDefined();
+            expect(uploadedEvent.metadata?.versionId).toBeDefined();
+        }
     });
 
     it('should emit file:deleted with requestId', async () => {

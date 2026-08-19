@@ -1,11 +1,16 @@
-import type { Adapter } from '@superfunctions/db';
-import { wrapWithSchema } from '@superfunctions/db';
-import type { StorageAdapter } from '@superfunctions/storage';
+import { instrumentAdapter, wrapWithSchema, type Adapter, type RuntimeStores } from '@superfunctions/db';
+import { instrumentStorageAdapter, type StorageAdapter } from '@superfunctions/storage';
 import type { FileProvider } from '@superfunctions/files';
 import { type RateLimiter, createRateLimiter } from '@superfunctions/middleware';
+import { applyObservationHeaders } from '@superfunctions/http';
+import {
+  normalizeObservability,
+  type ObservabilityInput,
+  type ObservationLogger
+} from '@superfunctions/observability';
 import { getSchema } from './schema.js';
 import { createNucleusPolicies, createPolicyRegistry, type Policy } from './policies.js';
-import { createEventEmitter, type FileFnEventEmitter } from './events.js';
+import { createEventEmitter, type FileFnEventEmitter, type FileFnObservationEvent } from './events.js';
 import { createUploadSessionService, type QuotaProvider } from './upload-sessions/service.js';
 import { createUploadSessionRoutes } from './upload-sessions/routes.js';
 import { createFileService, type Authorizer } from './files/service.js';
@@ -37,19 +42,24 @@ export interface FileFnRouteRateLimits {
   artifactDownload?: RateLimitCategory;
 }
 
+export type FileFnRateLimitMode = 'strict' | 'best-effort' | 'local';
+
 export interface FileFnConfig {
-  db: Adapter;
+  database?: Adapter;
+  /** @deprecated Use `database`. */
+  db?: Adapter;
   storage: StorageAdapter;
+  stores?: RuntimeStores;
   policies?: Policy[];
   auth?: AuthConfig;
   quota?: QuotaProvider;
   rateLimiter?: RateLimiter;
   rateLimit?: {
-    persistence?: any;
+    mode?: FileFnRateLimitMode;
     algorithm?: 'fixed-window' | 'sliding-window' | 'token-bucket';
     limits?: FileFnRouteRateLimits;
   };
-  logger?: Logger;
+  observability?: ObservabilityInput<FileFnObservationEvent>;
   authorizer?: Authorizer;
   namespace?: string;
   defaultChunkSizeBytes?: number;
@@ -86,14 +96,15 @@ function hasConfiguredRouteRateLimits(limits?: FileFnRouteRateLimits): boolean {
 
 export function createFileFn(config: FileFnConfig): FileFn {
   const {
-    db: inputDb,
+    database,
     storage,
+    stores,
     policies: initialPolicies = [],
     auth = {},
     quota,
     rateLimiter,
     rateLimit,
-    logger,
+    observability,
     authorizer,
     namespace = 'filefn',
     defaultChunkSizeBytes,
@@ -102,12 +113,26 @@ export function createFileFn(config: FileFnConfig): FileFn {
     dedup,
     processing: processingConfig,
   } = config;
-  const db = wrapWithSchema(inputDb, getSchema({ namespace }));
+  const inputDatabase = database ?? config.db;
+  if (!inputDatabase) {
+    throw new Error('FILEFN_DATABASE_REQUIRED: database is required');
+  }
+  const observabilityScope = normalizeObservability<FileFnObservationEvent>(observability)?.child({ component: 'filefn' });
+  const logger = fileFnLoggerFromObservability(observabilityScope?.logger);
+  const db = wrapWithSchema(inputDatabase, getSchema({ namespace }));
+  const observedDb = instrumentAdapter(db, {
+    observability: observabilityScope?.child({ component: 'filefn.db' }),
+    kind: 'db',
+  });
+  const observedStorage = instrumentStorageAdapter(storage, {
+    observability: observabilityScope?.child({ component: 'filefn.storage' }),
+    kind: 'storage',
+  });
 
   const policyRegistry = createPolicyRegistry(initialPolicies);
-  const events = createEventEmitter();
+  const events = createEventEmitter(observabilityScope);
   const deduplication = createDeduplicationService({
-    db,
+    db: observedDb,
     policies: policyRegistry,
     namespace,
     enabled: dedup?.enabled ?? false,
@@ -130,10 +155,15 @@ export function createFileFn(config: FileFnConfig): FileFn {
       routeRateLimits.shareDownload ||
       routeRateLimits.artifactDownload;
 
+    const mode = rateLimit.mode ?? (stores?.atomicKv ? 'strict' : stores?.kv ? 'best-effort' : 'local');
+    if (mode === 'strict' && !stores?.atomicKv) {
+      throw new Error('FILEFN_ATOMIC_STORE_REQUIRED: rateLimit strict mode requires stores.atomicKv');
+    }
     finalRateLimiter = createRateLimiter({
       windowMs: (seedLimit?.windowSeconds || 60) * 1000,
       maxRequests: seedLimit?.maxRequests || 100,
-      persistence: rateLimit.persistence,
+      atomicStore: mode === 'strict' ? stores?.atomicKv : undefined,
+      persistence: mode === 'best-effort' ? stores?.kv : undefined,
       algorithm: rateLimit.algorithm,
     });
   }
@@ -142,8 +172,8 @@ export function createFileFn(config: FileFnConfig): FileFn {
 
   // Create file service first so we can use it for authorization checks
   const fileService = createFileService({
-    db,
-    storage,
+    db: observedDb,
+    storage: observedStorage,
     policies: policyRegistry,
     events,
     logger,
@@ -154,8 +184,8 @@ export function createFileFn(config: FileFnConfig): FileFn {
   });
 
   const processingService = createProcessingService({
-    db,
-    storage,
+    db: observedDb,
+    storage: observedStorage,
     policies: policyRegistry,
     events,
     processors: processingConfig?.processors,
@@ -166,8 +196,8 @@ export function createFileFn(config: FileFnConfig): FileFn {
   });
 
   const uploadService = createUploadSessionService({
-    db,
-    storage,
+    db: observedDb,
+    storage: observedStorage,
     policies: policyRegistry,
     events,
     logger,
@@ -204,7 +234,7 @@ export function createFileFn(config: FileFnConfig): FileFn {
   });
 
   const grantsService = createGrantsService({
-    db,
+    db: observedDb,
     namespace,
   });
 
@@ -214,8 +244,8 @@ export function createFileFn(config: FileFnConfig): FileFn {
   });
 
   const sharesService = createSharesService({
-    db,
-    storage,
+    db: observedDb,
+    storage: observedStorage,
     policies: policyRegistry,
     namespace,
     signedUrlTtlSeconds,
@@ -249,7 +279,38 @@ export function createFileFn(config: FileFnConfig): FileFn {
     auth,
   });
 
-  const router = createRouter({ uploadRoutes, fileRoutes, grantsRoutes, sharesRoutes, processingRoutes, policyRoutes, quotaRoutes });
+  const baseRouter = createRouter({ uploadRoutes, fileRoutes, grantsRoutes, sharesRoutes, processingRoutes, policyRoutes, quotaRoutes });
+  const router: FileFnRouter = observabilityScope
+    ? {
+        async handle(request) {
+          const existing = observabilityScope.getCurrentRequest();
+          if (existing) {
+            return baseRouter.handle(request);
+          }
+          const observation = observabilityScope.startRequest({ request });
+          const response = await observabilityScope.runWithRequest(
+            observation,
+            () => baseRouter.handle(request),
+          );
+          const snapshot = observation.finish({
+            status: response?.status ?? 404,
+          });
+          if (!response) {
+            return response;
+          }
+          const headers = new Headers(response.headers);
+          applyObservationHeaders(headers, snapshot, {
+            serverTiming: true,
+            headers: { prefix: 'x-filefn' },
+          });
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+        },
+      }
+    : baseRouter;
 
   return {
     router,
@@ -323,7 +384,22 @@ export {
 } from './policies.js';
 export type { Policy, PolicyRegistry, Visibility } from './policies.js';
 export { createEventEmitter } from './events.js';
-export type { FileFnEvent, FileFnEventTypes, FileFnEventEmitter } from './events.js';
+export type {
+  FileDeletedEvent,
+  FileFnEvent,
+  FileFnEventEmitter,
+  FileFnEventType,
+  FileFnEventTypes,
+  FileFnObservationEvent,
+  FileFnObservationEventMap,
+  FileFnObservationMetadata,
+  FileUploadedEvent,
+  PartRecordedEvent,
+  ProcessingCompletedEvent,
+  ProcessingFailedEvent,
+  ProcessingStartedEvent,
+  UploadStartedEvent,
+} from './events.js';
 export { resolvePrincipal } from './auth.js';
 export type { AuthConfig, AuthProvider, FileFnPrincipal } from './auth.js';
 export type { QuotaProvider } from './upload-sessions/service.js';
@@ -364,3 +440,15 @@ export type {
 } from './processing/service.js';
 export { createProcessingRoutes } from './processing/routes.js';
 export type { ProcessingRoutes, ProcessingRoutesConfig } from './processing/routes.js';
+
+function fileFnLoggerFromObservability(logger: ObservationLogger | undefined): Logger | undefined {
+  if (!logger) {
+    return undefined;
+  }
+  return {
+    info: (message, context) => logger.info?.(message, context),
+    warn: (message, context) => logger.warn?.(message, context),
+    error: (message, context) => logger.error?.(message, context),
+    debug: (message, context) => logger.debug?.(message, context),
+  };
+}
