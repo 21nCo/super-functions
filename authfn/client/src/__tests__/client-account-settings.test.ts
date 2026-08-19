@@ -85,17 +85,27 @@ function createMultiRegionConfig(): AuthFnRuntimeConfig {
           }
         }
       ],
-      directory: {
-        lookupByIdentifier({ identifier }) {
-          if (identifier === 'ada@example.com') {
-            return {
-              userId: 'user_ada',
-              regionId: 'eu-west-1',
-              authority: 'https://eu.account.example.com',
-              domain: '.example.com'
-            };
+      lookupStore: {
+        async get(key) {
+          if (key !== 'authfn:region:ada@example.com') {
+            return null;
           }
-          return null;
+          return JSON.stringify({
+            identifier: 'ada@example.com',
+            userId: 'user_ada',
+            regionId: 'eu-west-1',
+            authority: 'https://eu.account.example.com',
+            domain: '.example.com',
+            createdAt: TEST_NOW.toISOString(),
+            updatedAt: TEST_NOW.toISOString()
+          });
+        },
+        async set() {
+        },
+        async setIfAbsent() {
+          return { inserted: true };
+        },
+        async delete() {
         }
       }
     }),
