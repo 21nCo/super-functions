@@ -39,7 +39,7 @@ export class RateLimiter {
     const limiter = this.getSharedLimiter(config);
     const start = this.now();
 
-    while (true) {
+    for (;;) {
       if (this.destroyed) {
         throw new Error('Rate limiter destroyed');
       }
@@ -66,7 +66,7 @@ export class RateLimiter {
     const start = this.now();
     let waited = false;
 
-    while (true) {
+    for (;;) {
       if (this.destroyed) {
         throw new Error('Rate limiter destroyed');
       }

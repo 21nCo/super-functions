@@ -375,7 +375,6 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   // Event handlers
   const eventHandlers = new Map<string, Set<(event: any) => void>>();
   const persistenceSinks = new Map<string, PlugFnPersistenceSink>();
-  let proxyApi!: PlugFn;
 
   // Create the main API
   const api: PlugFn = {
@@ -967,7 +966,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   }
 
   // Create dynamic provider proxies
-  proxyApi = new Proxy(api, {
+  const proxyApi = new Proxy(api, {
     get(target, prop: string) {
       // If property exists on target, return it
       if (prop in target) {
@@ -988,7 +987,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       };
 
       // Add all actions
-      for (const [actionName, _action] of Object.entries(provider.actions)) {
+      for (const actionName of Object.keys(provider.actions)) {
         providerProxy[actionName] = async (options: ActionOptions) => {
           const result = await actionExecutor.execute(prop, actionName, options);
           if (!result.success) {
