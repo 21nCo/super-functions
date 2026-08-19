@@ -104,4 +104,3 @@ export function relationKeyFor(
 ): string {
   return `${fromResource}.${relation.relation}`;
 }
-
