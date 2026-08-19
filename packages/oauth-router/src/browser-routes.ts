@@ -137,6 +137,15 @@ function assertValidRedirectOrigins(origins: readonly string[] | undefined): voi
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
     }
+    if (
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      (parsed.pathname !== "" && parsed.pathname !== "/") ||
+      parsed.search !== "" ||
+      parsed.hash !== ""
+    ) {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
   }
 }
 

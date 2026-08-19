@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   deliverWebhook,
   signWebhookPayload,
@@ -7,7 +7,18 @@ import {
   verifyWebhookSignature
 } from '../index.js';
 
+const { undiciFetchMock } = vi.hoisted(() => ({ undiciFetchMock: vi.fn() }));
+
+vi.mock('undici', async () => {
+  const actual = await vi.importActual<typeof import('undici')>('undici');
+  return { ...actual, fetch: undiciFetchMock };
+});
+
 const resolvePublicHostname = async () => ['93.184.216.34'] as const;
+
+beforeEach(() => {
+  undiciFetchMock.mockReset();
+});
 
 describe('webhooks package exports', () => {
   it('signs and verifies webhook payload using timing-safe verification path', () => {
@@ -93,7 +104,7 @@ describe('webhooks package exports', () => {
 
   it('delivers payload with bounded retries and returns structured attempts', async () => {
     let attempt = 0;
-    const fetchMock = vi.fn().mockImplementation(async () => {
+    const fetchMock = undiciFetchMock.mockImplementation(async () => {
       attempt += 1;
       if (attempt < 3) {
         return { ok: false, status: 500 };
@@ -110,8 +121,6 @@ describe('webhooks package exports', () => {
         signatureHeader: 'X-Test-Signature',
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
@@ -145,7 +154,7 @@ describe('webhooks package exports', () => {
   });
 
   it('does not retry non-transient HTTP failures', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: false, status: 400 }));
+    const fetchMock = undiciFetchMock.mockImplementation(async () => ({ ok: false, status: 400 }));
 
     const result = await deliverWebhook(
       {
@@ -153,8 +162,6 @@ describe('webhooks package exports', () => {
         payload: { hello: 'world' },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
@@ -167,7 +174,7 @@ describe('webhooks package exports', () => {
   });
 
   it('aborts a hanging attempt using the configured per-attempt timeout', async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation((_url: string, init?: RequestInit) => {
       return new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
           reject(new DOMException('The operation was aborted.', 'AbortError'));
@@ -181,8 +188,6 @@ describe('webhooks package exports', () => {
         payload: { hello: 'world' },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
         maxRetries: 1,
         perAttemptTimeoutMs: 5,
@@ -198,7 +203,7 @@ describe('webhooks package exports', () => {
   });
 
   it('canonicalizes content-type and signature headers before delivery', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -220,8 +225,6 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -238,7 +241,7 @@ describe('webhooks package exports', () => {
   });
 
   it('prefers the latest content-type variant when canonicalizing headers', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -256,8 +259,6 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -267,7 +268,7 @@ describe('webhooks package exports', () => {
   });
 
   it('forces application/json when caller supplies a non-json content type', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -284,8 +285,6 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -368,11 +367,8 @@ describe('webhooks package exports', () => {
   });
 
   it('refuses to deliver to non-http(s) URL schemes (SSRF guard)', async () => {
-    const fetchMock = vi.fn();
-    const result = await deliverWebhook(
-      { url: 'file:///etc/passwd', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, fetchSupportsPinnedDispatcher: true }
-    );
+    const fetchMock = undiciFetchMock;
+    const result = await deliverWebhook({ url: 'file:///etc/passwd', payload: { hello: 'world' } });
 
     expect(result.ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -380,11 +376,8 @@ describe('webhooks package exports', () => {
   });
 
   it('refuses to deliver to a malformed URL', async () => {
-    const fetchMock = vi.fn();
-    const result = await deliverWebhook(
-      { url: 'not a url', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, fetchSupportsPinnedDispatcher: true }
-    );
+    const fetchMock = undiciFetchMock;
+    const result = await deliverWebhook({ url: 'not a url', payload: { hello: 'world' } });
 
     expect(result.ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -400,14 +393,12 @@ describe('webhooks package exports', () => {
     'http://[fd00::1]/hook',
     'http://[fe80::1]/hook',
   ])('refuses to deliver to a non-public literal address: %s', async (url) => {
-    const fetchMock = vi.fn();
+    const fetchMock = undiciFetchMock;
     const resolver = vi.fn(resolvePublicHostname);
 
     const result = await deliverWebhook(
       { url, payload: { hello: 'world' } },
       {
-        fetch: fetchMock as unknown as typeof fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolver,
       }
     );
@@ -423,14 +414,12 @@ describe('webhooks package exports', () => {
     'http://api.localhost/hook',
     'http://foo.localhost./hook',
   ])('refuses to deliver to a localhost-style hostname: %s', async (url) => {
-    const fetchMock = vi.fn();
+    const fetchMock = undiciFetchMock;
     const resolver = vi.fn(resolvePublicHostname);
 
     const result = await deliverWebhook(
       { url, payload: { hello: 'world' } },
       {
-        fetch: fetchMock as unknown as typeof fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolver,
       }
     );
@@ -445,13 +434,11 @@ describe('webhooks package exports', () => {
     ['resolver error', async () => { throw new Error('dns unavailable'); }],
     ['empty result', async () => []],
   ] as const)('refuses delivery after a DNS %s', async (_label, resolveHostname) => {
-    const fetchMock = vi.fn();
+    const fetchMock = undiciFetchMock;
 
     const result = await deliverWebhook(
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
       {
-        fetch: fetchMock as unknown as typeof fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname,
       }
     );
@@ -462,13 +449,13 @@ describe('webhooks package exports', () => {
   });
 
   it('passes a pinned dispatcher to the actual webhook request', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    const fetchMock = undiciFetchMock.mockImplementation(
+      async () => ({ ok: true, status: 200 }) as Response
+    );
 
     const result = await deliverWebhook(
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
       {
-        fetch: fetchMock as unknown as typeof fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolvePublicHostname,
       }
     );
@@ -477,28 +464,13 @@ describe('webhooks package exports', () => {
     expect(fetchMock.mock.calls[0]?.[1]).toHaveProperty('dispatcher');
   });
 
-  it('rejects a custom fetch that does not attest to pinned-dispatcher support', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
-
-    const result = await deliverWebhook(
-      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
-      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolvePublicHostname }
-    );
-
-    expect(result.ok).toBe(false);
-    expect(result.attempts[0]?.error).toContain('must honor the pinned dispatcher');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('resolves hostnames and refuses delivery when any address is non-public', async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = undiciFetchMock;
     const resolver = vi.fn(async () => ['93.184.216.34', '10.0.0.5']);
 
     const result = await deliverWebhook(
       { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
       {
-        fetch: fetchMock as unknown as typeof fetch,
-        fetchSupportsPinnedDispatcher: true,
         resolveHostname: resolver,
       }
     );

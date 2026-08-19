@@ -107,6 +107,10 @@ export async function executeTransaction(
   if (isAtomic && typeof (db as any).transaction === "function") {
     // REL-001: Atomic execution with DB transaction support
     try {
+      // Initialize durable idempotency storage on the outer adapter. Some
+      // databases implicitly commit DDL, so table creation must never occur
+      // after the atomic transaction has begun.
+      await idempotencyStore.ensureReady?.();
       await (db as any).transaction(async (tx: Adapter) => {
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];

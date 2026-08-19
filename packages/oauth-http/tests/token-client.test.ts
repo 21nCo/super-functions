@@ -385,6 +385,44 @@ describe("oauth-http token client", () => {
     expect(response.accessToken).toBe("at_after_retry");
   });
 
+  it("retries response-body failures inside the token request boundary", async () => {
+    const sleep = vi.fn(async () => undefined);
+    let calls = 0;
+    const fetcher: OAuthFetchLike = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => "application/json" },
+          text: async () => {
+            throw new Error("response body disconnected");
+          }
+        };
+      }
+
+      return createResponse({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ access_token: "at_after_body_retry", token_type: "bearer" })
+      });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher, sleep });
+    const response = await client.exchangeToken({
+      provider: googleProvider,
+      grantType: "authorization_code",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code-body-retry",
+      redirectUri: "https://app/callback"
+    });
+
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(response.accessToken).toBe("at_after_body_retry");
+  });
+
   it("wraps exhausted fetch exceptions in OAuthHttpError after retry attempts are spent", async () => {
     const sleep = vi.fn(async () => undefined);
     const client = new DefaultOAuthTokenHttpClient({

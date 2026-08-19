@@ -421,7 +421,7 @@ describe('createRouter', () => {
     expect(res.headers.get('Allow')).toBe('GET');
   });
 
-  it('maps HTTP-shaped middleware errors without exposing unknown exceptions', async () => {
+  it('maps HTTP-shaped handler errors without exposing unknown exceptions', async () => {
     const router = createRouter({
       routes: [{
         method: 'GET',

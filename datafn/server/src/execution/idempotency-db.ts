@@ -32,15 +32,19 @@ export class DbIdempotencyStore implements IdempotencyStore {
     return new DbIdempotencyStore(db, this.namespace, this.logger, this.ensured);
   }
 
+  async ensureReady(): Promise<void> {
+    if (!this.ensured) {
+      await ensureInternalTable(this.db, "__datafn_idempotency");
+      this.ensured = true;
+    }
+  }
+
   async get(
     clientId: string,
     mutationId: string,
   ): Promise<MutationResult | null> {
     // EXE-007: DB errors propagate; only swallow JSON parse errors (SyntaxError)
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_idempotency");
-      this.ensured = true;
-    }
+    await this.ensureReady();
 
     const record = await this.db.internal.findOne("__datafn_idempotency", [
       { field: "namespace", op: "eq", value: this.namespace },
@@ -71,10 +75,7 @@ export class DbIdempotencyStore implements IdempotencyStore {
    * Returns the number of rows deleted.
    */
   async pruneIdempotency(retentionDays: number): Promise<number> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_idempotency");
-      this.ensured = true;
-    }
+    await this.ensureReady();
     const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
     return await this.db.internal.delete("__datafn_idempotency", [
       { field: "namespace", op: "eq", value: this.namespace },
@@ -88,10 +89,7 @@ export class DbIdempotencyStore implements IdempotencyStore {
     result: MutationResult,
   ): Promise<void> {
     try {
-      if (!this.ensured) {
-        await ensureInternalTable(this.db, "__datafn_idempotency");
-        this.ensured = true;
-      }
+      await this.ensureReady();
 
       await this.db.internal.create("__datafn_idempotency", {
         id: `${this.namespace}:${clientId}:${mutationId}`,

@@ -129,14 +129,6 @@ export type WebhookDeliveryResult = {
 };
 
 export type WebhookDeliveryOptions = {
-  /**
-   * Custom transport used for delivery. Because DNS-rebinding protection
-   * relies on Undici's `dispatcher`, custom transports must explicitly attest
-   * that they honor that option; ordinary standards-only fetch functions are
-   * rejected instead of silently bypassing address pinning.
-   */
-  fetch?: typeof globalThis.fetch;
-  fetchSupportsPinnedDispatcher?: boolean;
   resolveHostname?: (hostname: string) => Promise<readonly string[]>;
   maxRetries?: number;
   initialDelayMs?: number;
@@ -383,7 +375,6 @@ export async function deliverWebhook(
   input: WebhookDeliveryInput,
   options: WebhookDeliveryOptions = {}
 ): Promise<WebhookDeliveryResult> {
-  const fetchFn = options.fetch ?? (undiciFetch as unknown as typeof globalThis.fetch);
   const maxRetries = normalizeRetryCount(options.maxRetries);
   const initialDelayMs = normalizeNonNegativeDuration(
     options.initialDelayMs,
@@ -478,10 +469,6 @@ export async function deliverWebhook(
   if (validatedTarget.error) {
     return failedDelivery(validatedTarget.error);
   }
-  if (options.fetch && options.fetchSupportsPinnedDispatcher !== true) {
-    return failedDelivery('Custom webhook fetch must honor the pinned dispatcher');
-  }
-
   // Keep the TLS/HTTP hostname unchanged, but force the connection lookup to
   // use only addresses that passed the public-address checks. This closes the
   // DNS-rebinding gap between validation and the actual socket connection.
@@ -500,7 +487,9 @@ export async function deliverWebhook(
         timeoutId = setTimeout(() => controller.abort(), perAttemptTimeoutMs);
       }
       try {
-        const response = await fetchFn(input.url, {
+        // Delivery always uses Undici so callers cannot bypass the validated,
+        // pinned dispatcher with a fetch implementation that ignores it.
+        const response = await undiciFetch(input.url, {
           method: input.method ?? 'POST',
           headers,
           body: payloadString,
@@ -509,7 +498,7 @@ export async function deliverWebhook(
           // unchecked internal address.
           redirect: 'manual',
           dispatcher: pinnedDispatcher,
-        } as RequestInit & { dispatcher: Agent });
+        } as Parameters<typeof undiciFetch>[1]);
         if (timeoutId) {
           clearTimeout(timeoutId);
         }

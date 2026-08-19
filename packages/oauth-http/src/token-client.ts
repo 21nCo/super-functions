@@ -95,7 +95,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       scopes: input.scopes
     });
     const endpointRequest = createTokenRequest(input, credentials);
-    const response = await this.executeWithRetry(input.provider.tokenUrl, endpointRequest);
+    const response = await this.executeWithRetry(input.provider.tokenUrl, endpointRequest, "always");
     const contentType = response.headers.get("content-type");
     const rawBodyText = await response.text();
     const parsedBody = parseResponseBody(rawBodyText, contentType);
@@ -125,12 +125,8 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     });
     const revocationUrl = resolveRevocationUrl(input.provider.revocationUrl, credentials.clientId);
     const endpointRequest = createRevokeRequest(input, credentials);
-    const response = await this.executeWithRetry(revocationUrl, endpointRequest);
+    const response = await this.executeWithRetry(revocationUrl, endpointRequest, "errors-only");
     if (response.ok) {
-      // RFC 7009 success responses do not require a body. Do not let a
-      // provider that has already returned successful headers delay local
-      // disconnect cleanup with a body that never terminates.
-      await response.discard?.().catch(() => undefined);
       return;
     }
 
@@ -151,44 +147,23 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     });
   }
 
-  private async executeWithRetry(url: string, init: RequestInitLike): Promise<ResponseLike> {
+  private async executeWithRetry(
+    url: string,
+    init: RequestInitLike,
+    bodyMode: "always" | "errors-only"
+  ): Promise<ResponseLike> {
     let attempt = 1;
     while (true) {
       let response: ResponseLike;
       try {
         response = await this.fetcher(url, init);
       } catch (error) {
-        const timeoutError =
-          error instanceof OAuthHttpError && error.status === 504 && error.retryable;
-        const decision = decideRetry(
-          {
-            attempt,
-            status: timeoutError ? 504 : 503
-          },
-          this.retryPolicy
-        );
-
-        if (!decision.retry) {
-          if (timeoutError) {
-            throw error;
-          }
-          throw new OAuthHttpError("OAuth provider request failed", {
-            code: "OAUTH_TOKEN_EXCHANGE_FAILED",
-            status: 502,
-            retryable: false,
-            cause: error,
-            details: {
-              transportFailure: true
-            }
-          });
-        }
-
-        await this.sleep(decision.delayMs);
+        await this.retryTransportFailure(error, attempt);
         attempt += 1;
         continue;
       }
 
-      const decision = decideRetry(
+      const statusDecision = decideRetry(
         {
           attempt,
           status: response.status,
@@ -197,14 +172,68 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         this.retryPolicy
       );
 
-      if (!decision.retry) {
+      if (statusDecision.retry) {
+        await response.discard?.().catch(() => undefined);
+        await this.sleep(statusDecision.delayMs);
+        attempt += 1;
+        continue;
+      }
+
+      if (bodyMode === "errors-only" && response.ok) {
+        // RFC 7009 success responses do not require a body. Do not let a
+        // provider that returned successful headers delay local cleanup.
+        await response.discard?.().catch(() => undefined);
         return response;
       }
 
-      await response.discard?.().catch(() => undefined);
-      await this.sleep(decision.delayMs);
-      attempt += 1;
+      let body: string;
+      try {
+        // Read before leaving the retry boundary. Response bodies can fail or
+        // time out after headers have arrived and must receive the same retry
+        // and error normalization as the initial fetch.
+        body = await response.text();
+      } catch (error) {
+        await response.discard?.().catch(() => undefined);
+        await this.retryTransportFailure(error, attempt);
+        attempt += 1;
+        continue;
+      }
+
+      return {
+        ...response,
+        text: async () => body,
+        discard: async () => undefined
+      };
     }
+  }
+
+  private async retryTransportFailure(error: unknown, attempt: number): Promise<void> {
+    const timeoutError =
+      error instanceof OAuthHttpError && error.status === 504 && error.retryable;
+    const decision = decideRetry(
+      {
+        attempt,
+        status: timeoutError ? 504 : 503
+      },
+      this.retryPolicy
+    );
+
+    if (!decision.retry) {
+      if (timeoutError) {
+        throw error;
+      }
+      throw new OAuthHttpError("OAuth provider request failed", {
+        code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+        status: 502,
+        retryable: false,
+        cause: error,
+        details: {
+          transportFailure: true
+        }
+      });
+    }
+
+    await this.sleep(decision.delayMs);
   }
 }
 

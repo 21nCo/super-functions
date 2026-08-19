@@ -325,13 +325,25 @@ describe("oauth-router route factories", () => {
 
   it("rejects invalid allowedRedirectOrigins during route construction", () => {
     const browser = createFlowServiceMocks();
-    expect(() => createOAuthBrowserRoutes({
+    const createRoutes = (allowedRedirectOrigins: string[]) => createOAuthBrowserRoutes({
         basePath: "/auth/social",
         flowService: browser.service,
         resolveStartInput: async (request) => (await request.json()) as never,
         callbackMode: "redirect",
-        allowedRedirectOrigins: ["not a URL", "https://app.example"]
-      })).toThrow("OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: not a URL");
+        allowedRedirectOrigins
+      });
+
+    for (const invalidOrigin of [
+      "not a URL",
+      "https://app.example/callback",
+      "https://app.example?tenant=one",
+      "https://app.example#callback",
+      "https://user:secret@app.example"
+    ]) {
+      expect(() => createRoutes([invalidOrigin])).toThrow(
+        `OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${invalidOrigin}`
+      );
+    }
   });
 
   it("preserves resolver-provided requestId when the start header is absent", async () => {
