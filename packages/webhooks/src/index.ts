@@ -299,6 +299,20 @@ function isNonPublicAddress(address: string): boolean {
       return isNonPublicIpv4(bytes.slice(12).join('.'));
     }
 
+    // RFC 8215 reserves 64:ff9b:1::/48 for local-use NAT64. Its translation
+    // policy is network-specific and can reach private IPv4 services, so the
+    // entire local-use prefix is non-public regardless of its embedded bits.
+    if (
+      bytes[0] === 0x00 &&
+      bytes[1] === 0x64 &&
+      bytes[2] === 0xff &&
+      bytes[3] === 0x9b &&
+      bytes[4] === 0x00 &&
+      bytes[5] === 0x01
+    ) {
+      return true;
+    }
+
     const unspecified = bytes.every((byte) => byte === 0);
     const loopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
     const uniqueLocal = (bytes[0]! & 0xfe) === 0xfc; // fc00::/7

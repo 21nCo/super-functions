@@ -390,6 +390,7 @@ describe('webhooks package exports', () => {
     'http://[::1]/hook',
     'http://[::10.0.0.5]/hook',
     'http://[64:ff9b::10.0.0.5]/hook',
+    'http://[64:ff9b:1::a00:1]/hook',
     'http://[fd00::1]/hook',
     'http://[fe80::1]/hook',
   ])('refuses to deliver to a non-public literal address: %s', async (url) => {
