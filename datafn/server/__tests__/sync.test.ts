@@ -16,7 +16,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureF1Schema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 
@@ -324,7 +324,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: relSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Seed initial records
@@ -456,7 +456,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: relSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     // Seed
@@ -781,7 +781,7 @@ describe("/datafn/sync endpoints (Phase 04)", () => {
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: schemaWithRemoteOnly as any,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
 
     const res = await server.router.handle(
@@ -1614,7 +1614,7 @@ describe("hasMore field in canonical pull response (CLIENT-PULL-001)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: simpleSchema as any,
       limits: { maxLimit: 500, maxPullLimit: 200 },
-      db,
+      database: db,
     });
   }
 
@@ -1758,7 +1758,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -1788,7 +1788,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     let insertCount = 0;
@@ -1839,7 +1839,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -1875,7 +1875,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -1922,7 +1922,7 @@ describe("TST-003: Transaction rollback assertions (unconditional)", () => {
         ],
       },
       taskSchema as any,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -1945,7 +1945,7 @@ describe("TST-005 (sync): Concurrent push produces correct ordering", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     const makePushReq = (clientId: string, mutations: any[]) =>
@@ -1994,7 +1994,7 @@ describe("TST-005 (sync): Concurrent push produces correct ordering", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db,
+      database: db,
     });
 
     const mutation = {
@@ -2072,7 +2072,7 @@ describe("MRG-003: push merge race retry behavior", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db: db as any,
+      database: db as any,
     });
 
     const res = await server.router.handle(
@@ -2139,7 +2139,7 @@ describe("MRG-003: push merge race retry behavior", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: taskSchema as any,
-      db: db as any,
+      database: db as any,
     });
 
     const res = await server.router.handle(

@@ -35,9 +35,14 @@ type DatafnSchema = {
   capabilities?: SchemaCapabilities;
   resources: DatafnResourceSchema[];
   relations?: DatafnRelationSchema[];
+  relationIntegrity?: DatafnRelationIntegrityMode;
   namespaced?: boolean;
 };
+
+type DatafnRelationIntegrityMode = "application" | "database";
 ```
+
+`relationIntegrity` defaults to `"application"`. The removed `"hybrid"` mode is rejected by `validateSchema`.
 
 ## DatafnResourceSchema
 
@@ -82,8 +87,8 @@ type DatafnFieldSchema = {
 
 ```typescript
 type DatafnRelationSchema = {
-  from: string | string[];
-  to: string | string[];
+  from: string | readonly string[];
+  to: string | readonly string[];
   type: "one-many" | "many-one" | "many-many" | "htree";
   relation?: string;
   inverse?: string;
@@ -93,12 +98,22 @@ type DatafnRelationSchema = {
     type: "string" | "number" | "boolean" | "date" | "object" | "json";
   }>;
   fkField?: string;
+  fkResourceField?: string;
   pathField?: string;
   joinTable?: string;
   joinColumns?: { from: string; to: string };
   capabilities?: RelationSimpleCapability[];
+  integrity?: DatafnRelationIntegrityMode;
+  onDelete?: DatafnRelationDeletePolicies;
 };
+
+type DatafnRelationDeletePolicy = "restrict" | "cascade" | "setNull" | "detach";
+type DatafnRelationDeletePolicies =
+  | DatafnRelationDeletePolicy
+  | { from?: DatafnRelationDeletePolicy; to?: DatafnRelationDeletePolicy };
 ```
+
+An array `from`/`to` declares a [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) endpoint; `fkResourceField` names the discriminator column for polymorphic FK sides. See [Relations](/docs/dfql/schema/relations) for `integrity` and `onDelete` semantics.
 
 ## DatafnEvent
 

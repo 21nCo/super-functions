@@ -57,7 +57,7 @@ describe("capabilities end-to-end lifecycle", () => {
     await db.initialize();
     server = await createDatafnServer({
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "ns:1",
         getActorId: () => actorId as any,

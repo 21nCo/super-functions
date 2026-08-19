@@ -65,6 +65,21 @@ const normalized = normalizeFilterOps({ priority: { gte: 3 } });
 // { priority: { $gte: 3 } }
 ```
 
+### Undefined Stripping
+
+`normalizeFilterOps` strips `undefined` at every level so optional UI filters can be passed through without affecting results:
+
+```typescript
+normalizeFilterOps({
+  isArchived: undefined,
+  status: { eq: "active", ne: undefined },
+  dueAt: undefined,
+});
+// { status: { $eq: "active" } }
+```
+
+Top-level keys whose value is `undefined` are omitted, `undefined` operator values are dropped, and a field operator object that becomes empty after stripping is removed entirely. `null` is preserved (use it with `$is_null` / `$eq` to match null values).
+
 ## Comparison Operators
 
 | Operator | Description | Example |

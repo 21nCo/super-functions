@@ -59,7 +59,7 @@ describe("TV-HTTP-001: POST /datafn/search — basic routing", () => {
       searchAll: vi.fn().mockResolvedValue([{ resource: "tasks", id: "t1", score: 0.9 }]),
     });
 
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
   });
 
   it("returns results for valid search request", async () => {
@@ -105,7 +105,7 @@ describe("TV-HTTP-003: POST /datafn/search — no search provider configured", (
   it("returns DFQL_UNSUPPORTED when no searchProvider and no DB-native support", async () => {
     const db = memoryAdapter();
     await db.initialize();
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -132,7 +132,7 @@ describe("TV-HTTP-002: POST /datafn/search — DB-native fallback without search
       data: { id: "t-native", title: "Quarterly report", status: "active" },
       namespace: "datafn",
     });
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -158,7 +158,7 @@ describe("TV-HTTP-004: POST /datafn/search — authorization", () => {
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
     const authFn = vi.fn().mockResolvedValue(true);
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider, authorize: authFn });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider, authorize: authFn });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -182,7 +182,7 @@ describe("TV-HTTP-004: POST /datafn/search — authorization", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider,
       authorize: async () => false,
     });
@@ -209,7 +209,7 @@ describe("TV-VLIM-001: query validation", () => {
     db = memoryAdapter();
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
   });
 
   it("rejects missing query field", async () => {
@@ -265,7 +265,7 @@ describe("TV-VLIM-003: resources validation", () => {
     const db = memoryAdapter();
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
   });
 
   it("rejects resources that is not an array", async () => {
@@ -308,14 +308,14 @@ describe("TV-VLIM-005: limitPerResource validation", () => {
     const db = memoryAdapter();
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
   });
 
   it("clamps limitPerResource greater than 1000", async () => {
     const provider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
     const db = memoryAdapter();
     await db.initialize();
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -362,7 +362,7 @@ describe("TV-VLIM-005: limitPerResource validation", () => {
     const provider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
     const db = memoryAdapter();
     await db.initialize();
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -383,7 +383,7 @@ describe("TV-VLIM-006: filter complexity caps", () => {
     const db = memoryAdapter();
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
 
     const req = new Request("http://localhost/datafn/search", {
       method: "POST",
@@ -410,7 +410,7 @@ describe("TV-VLIM-006: filter complexity caps", () => {
     const db = memoryAdapter();
     await db.initialize();
     const searchProvider = makeSearchProvider({ searchAll: vi.fn().mockResolvedValue([]) });
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider });
 
     const conditions = Array.from({ length: 201 }, (_, i) => ({ [`f${i}`]: { eq: i } }));
     const req = new Request("http://localhost/datafn/search", {
@@ -446,7 +446,7 @@ describe("TV-SRV-002: search option validation and forwarding", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider: provider,
     });
 
@@ -478,7 +478,7 @@ describe("TV-SRV-002: search option validation and forwarding", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider: makeSearchProvider(),
     });
 
@@ -503,7 +503,7 @@ describe("TV-SRV-002: search option validation and forwarding", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       searchProvider: makeSearchProvider(),
     });
 

@@ -110,6 +110,8 @@ Resources marked as `isRemoteOnly` in the schema are excluded from clone operati
 
 When `includeJoins: true` (the default), clone also downloads join rows for many-many relations. Join store keys follow the format `fromResource.relationName.toResource`, such as `todos.tags.tags`.
 
+For [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) many-many relations, join rows are returned per concrete `(from, to)` pair (each under its own store key) and filtered by the `fromResource` / `toResource` discriminators, so each endpoint resource receives only the rows that apply to it.
+
 ## Events
 
 Clone emits a `sync_applied` event on success:

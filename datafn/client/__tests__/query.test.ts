@@ -66,6 +66,41 @@ describe("@datafn/client query", () => {
     expect(result).toEqual({ data: [], nextCursor: null });
   });
 
+  it("DatafnTable.relation.query merges resource/version and relation anchor", async () => {
+    const remoteCalls: Array<{ method: string; arg: unknown }> = [];
+
+    vi.spyOn(DefaultHttpTransport.prototype, "query").mockImplementation(
+      async (q: unknown) => {
+        remoteCalls.push({ method: "query", arg: q });
+        return { ok: true, result: { data: [], nextCursor: null } };
+      },
+    );
+
+    const client = createDatafnClient({
+      schema: defaultSchema,
+      sync: { remote: "http://example.com" },
+      getTimestamp: () => 0,
+    });
+
+    const result = await client.task.relation("backlinks").query("task:1", {
+      resource: "goal",
+      version: 999,
+      relation: "ignored",
+      id: "task:other",
+      select: ["#"],
+    });
+
+    expect(remoteCalls).toHaveLength(1);
+    expect(remoteCalls[0].arg).toEqual({
+      resource: "task",
+      version: 1,
+      relation: "backlinks",
+      id: "task:1",
+      select: ["#"],
+    });
+    expect(result).toEqual({ data: [], nextCursor: null });
+  });
+
   it("TV-QUERY-002: Remote ok:false errors become thrown DatafnClientError", async () => {
     vi.spyOn(DefaultHttpTransport.prototype, "query").mockResolvedValue({
       ok: false,
@@ -340,4 +375,3 @@ describe("@datafn/client AbortSignal (PHASE_12: QRY-001)", () => {
     );
   });
 });
-

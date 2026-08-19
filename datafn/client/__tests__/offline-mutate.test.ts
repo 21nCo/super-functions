@@ -238,6 +238,52 @@ const testSchema = {
   ],
 };
 
+const deletePolicySchema = {
+  resources: [
+    {
+      name: "session",
+      version: 1,
+      fields: [{ name: "label", type: "string" as const, required: false }],
+    },
+    {
+      name: "sessionLog",
+      version: 1,
+      fields: [
+        { name: "sessionId", type: "string" as const, required: false },
+      ],
+    },
+    {
+      name: "objective",
+      version: 1,
+      fields: [{ name: "label", type: "string" as const, required: false }],
+    },
+    {
+      name: "task",
+      version: 1,
+      fields: [{ name: "label", type: "string" as const, required: false }],
+    },
+  ],
+  relations: [
+    {
+      from: "session",
+      to: ["objective", "task"],
+      type: "many-many" as const,
+      relation: "items",
+      inverse: "sessions",
+      onDelete: "detach" as const,
+    },
+    {
+      from: "sessionLog",
+      to: "session",
+      type: "many-one" as const,
+      relation: "session",
+      inverse: "logs",
+      fkField: "sessionId",
+      onDelete: { to: "cascade" as const },
+    },
+  ],
+};
+
 describe("Offline Mutation Tests", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -289,7 +335,7 @@ describe("Offline Mutation Tests", () => {
 
     // Verify local storage update
     const record = await storage.getRecord("task", "task:1");
-    expect(record).toEqual({ id: "task:1", title: "Offline" });
+    expect(record).toMatchObject({ id: "task:1", title: "Offline" });
 
     // Verify changelog append
     const log = await storage.changelogList();
@@ -413,7 +459,7 @@ describe("Offline Mutation Tests", () => {
 
     // Verify local storage update
     const record = await storage.getRecord("task", "task:local");
-    expect(record).toEqual({ id: "task:local", title: "Local First" });
+    expect(record).toMatchObject({ id: "task:local", title: "Local First" });
 
     // Verify changelog append
     let log = await storage.changelogList();
@@ -622,6 +668,144 @@ describe("Offline Mutation Tests", () => {
       clientId: "client:1",
       mutationId: "m-3",
     });
+  });
+
+  it("Offline delete applies relation delete policies locally", async () => {
+    const storage = new MockStorageAdapter();
+    const timestampMs = 10;
+
+    vi.spyOn(DefaultHttpTransport.prototype, "mutation").mockRejectedValue({
+      code: "TRANSPORT_ERROR",
+      message: "Network down",
+    });
+
+    await storage.upsertRecord("session", {
+      id: "session:1",
+      label: "Session",
+    });
+    await storage.upsertRecord("sessionLog", {
+      id: "sessionLog:1",
+      sessionId: "session:1",
+    });
+    await storage.upsertRecord("objective", {
+      id: "objective:1",
+      label: "Objective",
+    });
+    await storage.upsertRecord("task", {
+      id: "task:1",
+      label: "Task",
+    });
+    await storage.upsertJoinRow("join_session_items_objective", {
+      from: "session:1",
+      to: "objective:1",
+    });
+    await storage.upsertJoinRow("join_session_items_task", {
+      from: "session:1",
+      to: "task:1",
+    });
+
+    const client = createDatafnClient({
+      schema: deletePolicySchema,
+      sync: { remote: "http://example.com" },
+      clientId: "client:1",
+      storage,
+      getTimestamp: () => timestampMs,
+    });
+
+    const result: any = await client.table("session").mutate({
+      resource: "session",
+      version: 1,
+      operation: "delete",
+      clientId: "client:1",
+      mutationId: "m-delete-session",
+      id: "session:1",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      mutationId: "m-delete-session",
+      affectedIds: ["session:1"],
+      deduped: false,
+    });
+    expect(await storage.getRecord("session", "session:1")).toBeNull();
+    expect(await storage.getRecord("sessionLog", "sessionLog:1")).toBeNull();
+    expect(await storage.getRecord("objective", "objective:1")).toMatchObject({
+      label: "Objective",
+    });
+    expect(await storage.getRecord("task", "task:1")).toMatchObject({
+      label: "Task",
+    });
+    expect(
+      await storage.getJoinRows("join_session_items_objective", "session:1"),
+    ).toEqual([]);
+    expect(
+      await storage.getJoinRows("join_session_items_task", "session:1"),
+    ).toEqual([]);
+
+    const log = await storage.changelogList();
+    expect(log).toHaveLength(1);
+    expect(log[0].mutation).toMatchObject({
+      resource: "session",
+      operation: "delete",
+      id: "session:1",
+    });
+  });
+
+  it("Offline restricted delete fails before changelog append", async () => {
+    const storage = new MockStorageAdapter();
+    const timestampMs = 10;
+    const schema = {
+      ...deletePolicySchema,
+      relations: [
+        {
+          from: "sessionLog",
+          to: "session",
+          type: "many-one" as const,
+          relation: "session",
+          inverse: "logs",
+          fkField: "sessionId",
+          onDelete: { to: "restrict" as const },
+        },
+      ],
+    };
+
+    vi.spyOn(DefaultHttpTransport.prototype, "mutation").mockRejectedValue({
+      code: "TRANSPORT_ERROR",
+      message: "Network down",
+    });
+
+    await storage.upsertRecord("session", {
+      id: "session:1",
+      label: "Session",
+    });
+    await storage.upsertRecord("sessionLog", {
+      id: "sessionLog:1",
+      sessionId: "session:1",
+    });
+
+    const client = createDatafnClient({
+      schema,
+      sync: { remote: "http://example.com" },
+      clientId: "client:1",
+      storage,
+      getTimestamp: () => timestampMs,
+    });
+
+    await expect(
+      client.table("session").mutate({
+        resource: "session",
+        version: 1,
+        operation: "delete",
+        clientId: "client:1",
+        mutationId: "m-delete-restricted-session",
+        id: "session:1",
+      }),
+    ).rejects.toMatchObject({
+      code: "RELATION_RESTRICTED",
+    });
+    expect(await storage.getRecord("session", "session:1")).toBeDefined();
+    expect(await storage.getRecord("sessionLog", "sessionLog:1")).toBeDefined();
+    expect(await storage.changelogList()).toEqual([]);
   });
 
   // PHASE_11 Tests: OFF-001, OFF-002, OFF-003

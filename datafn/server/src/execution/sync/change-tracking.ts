@@ -8,7 +8,7 @@
  * - __datafn_meta: stores next_server_seq per namespace
  * - __datafn_changes: stores change entries with (namespace, resource, server_seq) index
  *
- * Supports pluggable sequence stores (Redis, KV, or database sequence path) for
+ * Supports pluggable sequence stores (atomic store or database sequence path) for
  * high-performance serverSeq generation.
  */
 
@@ -102,7 +102,7 @@ export interface ChangeEntryInput {
  * Service for managing serverSeq and change tracking
  *
  * When a sequenceStore is provided, serverSeq generation uses that store
- * (e.g., Redis for atomic INCR). Otherwise, uses the database
+   * (e.g., a distributed atomic store). Otherwise, uses the database
  * with CAS retry loop.
  */
 export class ChangeTrackingService {
@@ -132,7 +132,7 @@ export class ChangeTrackingService {
    *
    * Implements SERVER-SEQ-001: atomic monotonic increment per namespace
    *
-   * When a sequenceStore is configured (Redis/KV), uses that for atomic increment.
+   * When a sequenceStore is configured, uses that for atomic increment.
    * Otherwise, uses compare-and-swap retry loop with the database.
    */
   async getNextServerSeq(): Promise<number> {
@@ -151,7 +151,7 @@ export class ChangeTrackingService {
 
   /**
    * Database-based sequence generation using CAS retry loop
-   * Used when no secondary database (Redis/KV) is configured
+   * Used when no atomic sequence store is configured
    */
   private async getNextServerSeqFromDb(): Promise<number> {
     return (await this.getNextServerSeqBatchFromDb(1))[0];

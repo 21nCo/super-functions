@@ -8,4 +8,7 @@ export default defineConfig({
   clean: true,
   target: "es2021",
   outDir: "dist",
+  banner: {
+    js: "// @ts-nocheck",
+  },
 });

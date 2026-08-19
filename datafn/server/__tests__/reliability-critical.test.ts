@@ -64,7 +64,7 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -84,7 +84,7 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     const res = await server.router.handle(
@@ -124,7 +124,7 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -180,7 +180,7 @@ describe("REL-003: Rolled-back step annotation", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -227,7 +227,7 @@ describe("REL-003: Rolled-back step annotation", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       undefined,
       "default",
@@ -265,7 +265,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       "default",
     );
@@ -302,7 +302,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       testSchema,
-      db,
+      database: db,
       idempotencyStore,
       "default",
     );
@@ -339,7 +339,7 @@ describe("REL-002: Push change tracking failure propagation", () => {
         ],
       },
       capabilitySchema,
-      db,
+      database: db,
       idempotencyStore,
       "default",
       undefined,

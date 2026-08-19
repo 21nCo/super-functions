@@ -1,4 +1,22 @@
 import type { DatafnRemoteAdapter } from "../client.js";
+import type {
+  HttpTransportAuthProvider,
+  HttpTransportErrorEvent
+} from "@superfunctions/http";
+
+export type DatafnHttpHeaders =
+  | HeadersInit
+  | null
+  | undefined
+  | (() => HeadersInit | null | undefined | Promise<HeadersInit | null | undefined>);
+
+export interface DatafnHttpTransportOptions {
+  fetch?: typeof fetch;
+  headers?: DatafnHttpHeaders;
+  credentials?: RequestCredentials;
+  auth?: HttpTransportAuthProvider;
+  onError?(event: HttpTransportErrorEvent): void;
+}
 
 /**
  * Default HTTP Transport for DataFn
@@ -9,7 +27,7 @@ export class DefaultHttpTransport implements DatafnRemoteAdapter {
 
   constructor(
     private readonly baseUrl: string,
-    options?: { fetch?: typeof fetch },
+    private readonly options: DatafnHttpTransportOptions = {},
   ) {
     if (baseUrl.endsWith("/")) {
       this.baseUrl = baseUrl.slice(0, -1);
@@ -62,38 +80,52 @@ export class DefaultHttpTransport implements DatafnRemoteAdapter {
     return this.post("search", payload, signal);
   }
 
-  private async post(endpoint: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
+  async publicLinks(endpoint: string, payload: unknown): Promise<unknown> {
+    return this.post(endpoint, payload);
+  }
+
+  private async post(
+    endpoint: string,
+    body: unknown,
+    signal?: AbortSignal,
+    canRetryAuth = true,
+  ): Promise<unknown> {
     try {
-      const response = await this.customFetch(`${this.baseUrl}/${endpoint}`, {
+      const url = `${this.baseUrl}/${endpoint}`;
+      const response = await this.customFetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal, // QRY-001: Pass signal to fetch
+        headers: await this.resolveHeaders(),
+        credentials: await this.resolveCredentials(),
+        body: this.serializeBody(body),
+        signal,
       });
+      const result = await response.json().catch(() => null);
 
       if (!response.ok) {
-        // Try to parse error envelope if available
-        try {
-          const errorBody = await response.json();
-          // If it looks like a DataFn envelope, return it (it will be unwrapped/checked by caller)
-          if (
-            errorBody &&
-            typeof errorBody === "object" &&
-            (errorBody.error || errorBody.ok === false)
-          ) {
-            return errorBody;
+        const event = { endpoint, url, status: response.status, result };
+        if (
+          canRetryAuth &&
+          (response.status === 401 || response.status === 403) &&
+          this.options.auth?.onUnauthorized
+        ) {
+          const decision = await this.options.auth.onUnauthorized(event);
+          if (decision === "retry") {
+            return this.post(endpoint, body, signal, false);
           }
-        } catch {
-          // ignore JSON parse error
+        }
+        this.options.onError?.(event);
+        if (
+          result &&
+          typeof result === "object" &&
+          ("error" in result || (result as { ok?: unknown }).ok === false)
+        ) {
+          return result;
         }
         throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
       }
 
-      return response.json();
+      return result;
     } catch (err: any) {
-      // QRY-001: Convert AbortError to DFQL_ABORTED
       if (err.name === "AbortError") {
         return {
           ok: false,
@@ -106,5 +138,34 @@ export class DefaultHttpTransport implements DatafnRemoteAdapter {
       }
       throw err;
     }
+  }
+
+  private serializeBody(body: unknown): string {
+    return JSON.stringify(body) ?? "null";
+  }
+
+  private async resolveHeaders(): Promise<Headers> {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    this.mergeHeaders(headers, await this.resolveConfiguredHeaders());
+    this.mergeHeaders(headers, await this.options.auth?.getRequestHeaders?.());
+    return headers;
+  }
+
+  private async resolveConfiguredHeaders(): Promise<HeadersInit | null | undefined> {
+    const configuredHeaders = this.options.headers;
+    return typeof configuredHeaders === "function"
+      ? await configuredHeaders()
+      : configuredHeaders;
+  }
+
+  private async resolveCredentials(): Promise<RequestCredentials | undefined> {
+    return this.options.credentials ?? (await this.options.auth?.getCredentials?.());
+  }
+
+  private mergeHeaders(headers: Headers, input: HeadersInit | null | undefined) {
+    if (!input) return;
+    new Headers(input).forEach((value, key) => {
+      headers.set(key, value);
+    });
   }
 }

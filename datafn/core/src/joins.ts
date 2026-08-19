@@ -6,6 +6,7 @@
  */
 
 import type { DatafnRelationSchema } from "./types.js";
+import { endpointList, firstEndpoint } from "./relation-endpoints.js";
 
 function getRelationKeyName(relation: DatafnRelationSchema, to: string): string {
   return relation.relation ?? relation.inverse ?? relation.joinTable ?? `to_${to}`;
@@ -36,6 +37,22 @@ export function getJoinTableName(
   return joinTable || `__datafn_join_${from}_${relation}`;
 }
 
+export function getRelationName(relation: DatafnRelationSchema): string {
+  return relation.relation ?? relation.inverse ?? relation.joinTable ?? `to_${firstEndpoint(relation.to)}`;
+}
+
+export function getRelationJoinTableName(
+  relation: DatafnRelationSchema,
+  fromResource?: string,
+): string {
+  if (relation.joinTable) return relation.joinTable;
+  const relationName = getRelationName(relation);
+  const from = endpointList(relation.from).length > 1
+    ? firstEndpoint(relation.from)
+    : (fromResource ?? firstEndpoint(relation.from));
+  return getJoinTableName(from, relationName);
+}
+
 /**
  * Enumerate all logical join store keys for a schema's many-many relations.
  * Handles multi-resource from/to arrays.
@@ -46,7 +63,7 @@ export function getJoinTableName(
  *   joins whose `from` resource is in this set are included.
  */
 export function enumerateJoinStoreKeys(
-  relations: DatafnRelationSchema[],
+  relations: readonly DatafnRelationSchema[],
   resourceFilter?: Set<string>,
 ): string[] {
   const keys: string[] = [];

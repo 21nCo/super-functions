@@ -4,6 +4,9 @@ import type { SearchProvider } from "../../search-provider.js";
 import type { DatafnLogger } from "../../logger.js";
 import { DatafnExecutionError } from "../errors.js";
 import { evaluateFilter } from "../query/filters.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
+import { queryDatafnPermissionGrants } from "../../plugins/multi-region.js";
+import { canonicalizePrincipalFromLegacyUserId } from "../migration/spv2.js";
 
 export interface SearchResultItem {
   id: string;
@@ -27,6 +30,7 @@ export interface CrossResourceSearchParams {
   fieldBoosts?: Record<string, number>;
   filters?: Record<string, Record<string, unknown>>;
   select?: string[];
+  actorId?: string;
   signal?: AbortSignal;
 }
 
@@ -99,8 +103,23 @@ export async function executeCrossResourceSearch(
     params.limitPerResource !== undefined
       ? Math.min(params.limitPerResource, 1000)
       : undefined;
+  const runtime = getDatafnMultiRegionRuntimeConfig();
+  const sharedAccess = await resolveSharedSearchAccess({
+    actorId: params.actorId,
+    namespace,
+    resources: params.resources,
+    schema,
+    regionId: runtime?.regionId,
+  });
+  const namespaceFilter = [
+    namespace,
+    ...Array.from(sharedAccess.namespaces).sort((a, b) => a.localeCompare(b)),
+  ];
 
-  const candidates = await searchProvider.searchAll({
+  const requestedResources = params.resources
+    ? new Set(params.resources)
+    : undefined;
+  const candidates = (await searchProvider.searchAll({
     query: params.query,
     resources: params.resources,
     fields: params.fields,
@@ -109,8 +128,10 @@ export async function executeCrossResourceSearch(
     prefix: params.prefix,
     fuzzy: params.fuzzy,
     fieldBoosts: params.fieldBoosts,
+    namespaceFilter,
+    ...(runtime?.regionId ? { regionFilter: [runtime.regionId] } : {}),
     signal: params.signal,
-  });
+  })).filter((candidate) => !requestedResources || requestedResources.has(candidate.resource));
 
   assertNotAborted(params.signal);
   if (candidates.length === 0) {
@@ -131,13 +152,13 @@ export async function executeCrossResourceSearch(
       const resourceSchema = schema.resources.find((r: DatafnSchema["resources"][number]) => r.name === resource);
       if (!resourceSchema) return;
       const ids = resourceCandidates.map((c) => c.id);
+      const rows: Record<string, unknown>[] = [];
       try {
-        const rows = await db.findMany({
+        rows.push(...await db.findMany({
           model: resource,
           where: [{ field: "id", operator: "in", value: ids }],
           namespace,
-        });
-        fetchedByResource.set(resource, rows as Record<string, unknown>[]);
+        }) as Record<string, unknown>[]);
       } catch (err) {
         logger?.warn("Cross-resource search: failed to fetch records", {
           resource,
@@ -145,6 +166,33 @@ export async function executeCrossResourceSearch(
           operation: "search",
         });
       }
+      const resourceAccess = sharedAccess.byResource.get(resource);
+      if (resourceAccess) {
+        await Promise.all(
+          Array.from(resourceAccess.entries()).map(async ([sourceNamespace, access]) => {
+            if (sourceNamespace === namespace) return;
+            const allowedIds = access.scope
+              ? ids
+              : ids.filter((id) => access.recordIds.has(id));
+            if (allowedIds.length === 0) return;
+            try {
+              rows.push(...await db.findMany({
+                model: resource,
+                where: [{ field: "id", operator: "in", value: allowedIds }],
+                namespace: sourceNamespace,
+              }) as Record<string, unknown>[]);
+            } catch (err) {
+              logger?.warn("Cross-resource search: failed to fetch shared records", {
+                resource,
+                namespace: sourceNamespace,
+                error: String(err),
+                operation: "search",
+              });
+            }
+          }),
+        );
+      }
+      fetchedByResource.set(resource, rows);
     }),
   );
 
@@ -184,4 +232,57 @@ export async function executeCrossResourceSearch(
   });
 
   return { results: allResults.slice(0, limit) };
+}
+
+async function resolveSharedSearchAccess(input: {
+  actorId: string | undefined;
+  namespace: string;
+  resources: string[] | undefined;
+  schema: DatafnSchema;
+  regionId?: string;
+}): Promise<{
+  namespaces: Set<string>;
+  byResource: Map<string, Map<string, { scope: boolean; recordIds: Set<string> }>>;
+}> {
+  const namespaces = new Set<string>();
+  const byResource = new Map<string, Map<string, { scope: boolean; recordIds: Set<string> }>>();
+  if (!input.actorId) {
+    return { namespaces, byResource };
+  }
+  const resources = input.resources && input.resources.length > 0
+    ? input.resources
+    : input.schema.resources.map((resource) => resource.name);
+  const principals = Array.from(new Set([
+    input.actorId,
+    canonicalizePrincipalFromLegacyUserId(input.actorId),
+  ]));
+
+  for (const resource of resources) {
+    for (const principalId of principals) {
+      const grants = await queryDatafnPermissionGrants({
+        principalId,
+        resourceType: resource,
+      });
+      for (const grant of grants) {
+        if (grant.revokedAt !== null && grant.revokedAt !== undefined) continue;
+        if (!grant.resourceNs || grant.resourceNs === input.namespace) continue;
+        if (input.regionId && grant.resourceRegion && grant.resourceRegion !== input.regionId) continue;
+        const resourceAccess = byResource.get(resource) ?? new Map();
+        const entry = resourceAccess.get(grant.resourceNs) ?? {
+          scope: false,
+          recordIds: new Set<string>(),
+        };
+        if (grant.grantKind === "scope" || grant.resourceId === null) {
+          entry.scope = true;
+        } else {
+          entry.recordIds.add(grant.resourceId);
+        }
+        resourceAccess.set(grant.resourceNs, entry);
+        byResource.set(resource, resourceAccess);
+        namespaces.add(grant.resourceNs);
+      }
+    }
+  }
+
+  return { namespaces, byResource };
 }

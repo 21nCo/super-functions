@@ -150,6 +150,40 @@ Aggregation results support the same pagination as regular queries. Use `limit`,
 }
 ```
 
+## Temporal Grouping
+
+In addition to grouping by raw field values, you can group by **calendar periods** (day, week, month, …) in a specific timezone using a [`temporal`](/docs/dfql/temporal) clause with `groupBy`. This is the time-series equivalent of `groupBy`.
+
+```typescript
+import { time } from "@datafn/core";
+
+{
+  resource: "sessions",
+  version: 1,
+  temporal: time.groupByDay("startedAt", { alias: "day", timezone: "user" }),
+  aggregations: {
+    count: { op: "count", field: "*" },
+    minutes: { op: "sum", field: "minutes" },
+  },
+}
+// Result groups, keyed by the start of each day in the user's timezone:
+// {
+//   groups: [
+//     { day: "2026-05-17T18:30:00.000Z", count: 2, minutes: 30 },
+//     { day: "2026-05-18T18:30:00.000Z", count: 1, minutes: 30 },
+//   ]
+// }
+```
+
+Notes:
+
+- The temporal group **alias** (`day` above) becomes a group key and can be used in `sort` and `having`, exactly like a `groupBy` field.
+- When no `sort` is provided, results are ordered by temporal aliases ascending.
+- A query with a temporal `groupBy` is routed to aggregate execution even without an explicit `groupBy` array.
+- Temporal grouping can be combined with regular `groupBy` fields and `aggregations`.
+
+See [Temporal](/docs/dfql/temporal) for the full clause reference, timezone resolution, and the `time` builder.
+
 ## Programmatic Aggregation
 
 The `calculateAggregation` function computes a single aggregation over an array of records:

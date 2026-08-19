@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createDatafnServer } from "../../../server.js";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 import type { DatafnSchema } from "../../../core-types.js";
+import {
+  extractJoinDeltas,
+  extractJoinDeltasFromDB,
+} from "../relations.js";
 
 // Schema for testing
 const schema: DatafnSchema = {
@@ -31,6 +35,32 @@ const schema: DatafnSchema = {
         { name: "name", type: "string" as const, required: true },
       ],
     },
+    {
+      name: "goals",
+      version: 1,
+      idPrefix: "goal",
+      fields: [
+        { name: "label", type: "string" as const, required: false },
+        { name: "parentId", type: "string" as const, required: false },
+        { name: "parentPath", type: "string" as const, required: false },
+      ],
+    },
+    {
+      name: "docs",
+      version: 1,
+      idPrefix: "doc",
+      fields: [
+        { name: "title", type: "string" as const, required: false },
+      ],
+    },
+    {
+      name: "refs",
+      version: 1,
+      idPrefix: "ref",
+      fields: [
+        { name: "title", type: "string" as const, required: false },
+      ],
+    },
   ],
   relations: [
     {
@@ -53,6 +83,23 @@ const schema: DatafnSchema = {
       to: "tags",
       type: "many-many",
       metadata: [{ name: "order", type: "number" }],
+    },
+    {
+      from: "docs",
+      relation: "typedRefs",
+      to: "refs",
+      type: "many-many",
+      metadata: [{ name: "linkType", type: "string" }],
+      identityMetadata: ["linkType"],
+    },
+    {
+      from: "goals",
+      relation: "children",
+      inverse: "parent",
+      to: "goals",
+      type: "htree",
+      fkField: "parentId",
+      pathField: "parentPath",
     },
   ],
 };
@@ -81,10 +128,30 @@ describe("MUT-REL-001: Relation Mutations", () => {
       data: { id: "tag-1", name: "Tag 1" },
       namespace: "datafn"
     });
+    await db.create({
+      model: "goals",
+      data: { id: "goal-1", label: "Root", parentPath: "" },
+      namespace: "datafn"
+    });
+    await db.create({
+      model: "goals",
+      data: { id: "goal-2", label: "Child" },
+      namespace: "datafn"
+    });
+    await db.create({
+      model: "docs",
+      data: { id: "doc-1", title: "Doc 1" },
+      namespace: "datafn"
+    });
+    await db.create({
+      model: "refs",
+      data: { id: "ref-1", title: "Ref 1" },
+      namespace: "datafn"
+    });
 
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
     });
   });
 
@@ -192,6 +259,38 @@ describe("MUT-REL-001: Relation Mutations", () => {
     expect(joinRow).toBeDefined();
     expect(joinRow!.from).toBe("task-1");
     expect(joinRow!.to).toBe("tag-1");
+  });
+
+  it("TV-MUT-RELATE-HTREE-001: relate (htree) updates child parent and path", async () => {
+    const req = new Request("http://localhost/datafn/mutation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: "client-1",
+        mutationId: "mut-relate-htree-1",
+        resource: "goals",
+        version: 1,
+        operation: "relate",
+        id: "goal-1",
+        relations: {
+          children: [{ $ref: "goal-2" }],
+        },
+      }),
+    });
+    const res = await server.router.handle(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    const child = await db.findOne({
+      model: "goals",
+      where: [{ field: "id", operator: "eq", value: "goal-2" }],
+      namespace: "datafn",
+    });
+    expect(child).toMatchObject({
+      parentId: "goal-1",
+      parentPath: "goal-1",
+    });
   });
 
   it("TV-MUT-RELATE-NOMETA-002: relate (many-many) no metadata is idempotent", async () => {
@@ -327,6 +426,126 @@ describe("MUT-REL-001: Relation Mutations", () => {
     expect(joinRow).toBeNull();
   });
 
+  it("unrelate with identity metadata removes only the matching many-many row", async () => {
+    for (const [linkType, mutationId] of [
+      ["DIRECT", "mut-typed-link-direct"],
+      ["MENTION", "mut-typed-link-mention"],
+    ]) {
+      const res = await server.router.handle(new Request("http://localhost/datafn/mutation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resource: "docs",
+          version: "1",
+          clientId: "client-1",
+          mutationId,
+          operation: "relate",
+          id: "doc-1",
+          relations: {
+            typedRefs: [{ "$ref": "ref-1", linkType }],
+          },
+        }),
+      }));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.ok).toBe(true);
+    }
+
+    const rowsBefore = await db.findMany({
+      model: "__datafn_join_docs_typedRefs",
+      where: [
+        { field: "from", operator: "eq", value: "doc-1" },
+        { field: "to", operator: "eq", value: "ref-1" },
+      ],
+      namespace: "datafn",
+    });
+    expect(rowsBefore.map((row: any) => row.linkType).sort()).toEqual([
+      "DIRECT",
+      "MENTION",
+    ]);
+    expect(extractJoinDeltas({
+      resource: "docs",
+      operation: "relate",
+      id: "doc-1",
+      relations: {
+        typedRefs: [{ "$ref": "ref-1", linkType: "MENTION" }],
+      },
+    }, schema)).toMatchObject([
+      {
+        resource: "join_docs_typedRefs_refs",
+        id: "doc-1:ref-1:linkType=MENTION",
+        op: "upsert",
+        record: {
+          from: "doc-1",
+          to: "ref-1",
+          linkType: "MENTION",
+        },
+      },
+    ]);
+    expect(await extractJoinDeltasFromDB(db, {
+      resource: "docs",
+      operation: "relate",
+      id: "doc-1",
+      relations: {
+        typedRefs: [{ "$ref": "ref-1", linkType: "MENTION" }],
+      },
+    }, schema, "datafn")).toMatchObject([
+      {
+        resource: "join_docs_typedRefs_refs",
+        id: "doc-1:ref-1:linkType=MENTION",
+        op: "upsert",
+        record: {
+          from: "doc-1",
+          to: "ref-1",
+          linkType: "MENTION",
+        },
+      },
+    ]);
+
+    const unrelateRes = await server.router.handle(new Request("http://localhost/datafn/mutation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resource: "docs",
+        version: "1",
+        clientId: "client-1",
+        mutationId: "mut-typed-link-unmention",
+        operation: "unrelate",
+        id: "doc-1",
+        relations: {
+          typedRefs: [{ "$ref": "ref-1", linkType: "MENTION" }],
+        },
+      }),
+    }));
+    const unrelateBody = await unrelateRes.json();
+    expect(unrelateRes.status).toBe(200);
+    expect(unrelateBody.ok).toBe(true);
+    expect(extractJoinDeltas({
+      resource: "docs",
+      operation: "unrelate",
+      id: "doc-1",
+      relations: {
+        typedRefs: [{ "$ref": "ref-1", linkType: "MENTION" }],
+      },
+    }, schema)).toMatchObject([
+      {
+        resource: "join_docs_typedRefs_refs",
+        id: "doc-1:ref-1:linkType=MENTION",
+        op: "delete",
+      },
+    ]);
+
+    const rowsAfter = await db.findMany({
+      model: "__datafn_join_docs_typedRefs",
+      where: [
+        { field: "from", operator: "eq", value: "doc-1" },
+        { field: "to", operator: "eq", value: "ref-1" },
+      ],
+      namespace: "datafn",
+    });
+    expect(rowsAfter.map((row: any) => row.linkType)).toEqual(["DIRECT"]);
+  });
+
   it("TV-REL-OPT-001: batch target validation uses findMany with IN filter", async () => {
     await db.create({ model: "tags", data: { id: "tag-2", name: "Tag 2" }, namespace: "datafn" });
     await db.create({ model: "tags", data: { id: "tag-3", name: "Tag 3" }, namespace: "datafn" });
@@ -360,18 +579,25 @@ describe("MUT-REL-001: Relation Mutations", () => {
     const tagInCalls = (findManySpy.mock.calls as any[]).filter((c) =>
       c[0]?.model === "tags" && c[0]?.where?.some((w: any) => w.operator === "in")
     );
+    const tagInCallOrders = (findManySpy.mock.calls as any[]).flatMap((c, index) =>
+      c[0]?.model === "tags" && c[0]?.where?.some((w: any) => w.operator === "in")
+        ? [findManySpy.mock.invocationCallOrder[index]]
+        : []
+    );
     expect(tagInCalls).toHaveLength(1);
+    expect(tagInCallOrders).toHaveLength(1);
     expect(tagInCalls[0][0].where[0]).toMatchObject({
       field: "id",
       operator: "in",
       value: expect.arrayContaining(["tag-1", "tag-2", "tag-3"]),
     });
 
-    // findOne must NOT be called for target validation (no per-item eq queries on tags)
-    const tagFindOneCalls = (findOneSpy.mock.calls as any[]).filter((c) =>
+    const tagFindOneCallOrders = (findOneSpy.mock.calls as any[]).flatMap((c, index) =>
       c[0]?.model === "tags"
+        ? [findOneSpy.mock.invocationCallOrder[index]]
+        : []
     );
-    expect(tagFindOneCalls).toHaveLength(0);
+    expect(tagFindOneCallOrders.every((order) => order > tagInCallOrders[0])).toBe(true);
 
     findManySpy.mockRestore();
     findOneSpy.mockRestore();

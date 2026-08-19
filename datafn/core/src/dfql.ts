@@ -1,4 +1,7 @@
-export type DfqlSort = string[];
+import type { DatafnTemporalClause } from "./temporal.js";
+import type { SortInputTerm } from "./sort.js";
+
+export type DfqlSort = SortInputTerm[];
 
 export type DfqlCursor = {
   after?: Record<string, unknown>;
@@ -8,6 +11,8 @@ export type DfqlCursor = {
 export type DfqlQuery = {
   resource: string;
   version: number;
+  relation?: string;
+  id?: string;
   select?: string[];
   omit?: string[];
   filters?: Record<string, unknown>;
@@ -20,6 +25,8 @@ export type DfqlQuery = {
   groupBy?: string[];
   aggregations?: Record<string, unknown>;
   having?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  temporal?: DatafnTemporalClause | readonly DatafnTemporalClause[];
   // QRY-001: AbortSignal for cancellable queries
   signal?: AbortSignal;
 };
@@ -31,14 +38,13 @@ export type DfqlMutation = {
   version: number;
   operation: string;
   id?: string | string[];
-  record?: Record<string, unknown>;
+  record?: object;
   records?: Array<Record<string, unknown>>;
   clientId?: string;
   mutationId?: string;
   timestamp?: number | string;
   context?: unknown;
-  // Relations and other advanced fields are allowed structurally.
-  relations?: Record<string, unknown>;
+  relations?: DfqlRelations;
   if?: Record<string, unknown>;
   cascade?: unknown;
   // MUT-001: When true, suppress event emission and signal refresh
@@ -52,6 +58,19 @@ export type DfqlMutation = {
 };
 
 export type DfqlMutationFragment = Omit<DfqlMutation, "resource" | "version">;
+
+export type DfqlRelationRef =
+  | string
+  | {
+      $ref: string;
+      [metadata: string]: unknown;
+    };
+
+export type DfqlRelationPayload =
+  | DfqlRelationRef
+  | readonly DfqlRelationRef[];
+
+export type DfqlRelations = Record<string, DfqlRelationPayload>;
 
 export type DfqlTransactStep =
   | { query: DfqlQuery; mutation?: never }

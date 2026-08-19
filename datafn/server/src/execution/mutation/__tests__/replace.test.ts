@@ -49,7 +49,7 @@ describe("MUT-REPLACE-001: Replace Operation Semantics", () => {
 
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
     });
   });
 

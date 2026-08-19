@@ -81,7 +81,7 @@ describe("share SPV2 mutation semantics", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => namespace,
         getActorId: () => actorId as any,

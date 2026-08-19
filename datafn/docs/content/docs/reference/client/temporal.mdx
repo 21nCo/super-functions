@@ -1,0 +1,134 @@
+---
+title: "Temporal API"
+description: "Manage user timezones and resolve temporal values from the client."
+audience: reference
+applies_to: typescript
+---
+
+`client.temporal` is the client-side entry point for managing the actor's timezone history and resolving temporal values. It reads and writes the built-in [`datafnTimezoneChange` registry](/docs/dfql/temporal#timezone-change-registry) and powers `timezone: "user"` resolution in queries and search.
+
+For the query-time builders (`time.day`, `time.groupByDay`, …) see [DFQL Temporal](/docs/dfql/temporal).
+
+## Configuration
+
+Provide defaults through the `temporal` client config option:
+
+```typescript
+const client = createDatafnClient({
+  schema,
+  clientId,
+  storage,
+  temporal: {
+    timezone: "UTC",                       // static or () => string | undefined
+    detectTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    weekStartsOn: 1,                       // 0=Sunday … 6=Saturday
+    // timezoneResolver?: custom resolver
+  },
+});
+```
+
+| Option | Type | Description |
+|---|---|---|
+| `timezone` | `string \| (() => string \| undefined)` | Default timezone for `"user"` resolution when no registry record applies. |
+| `detectTimezone` | `() => string \| undefined` | Detects the device timezone (e.g. via `Intl`). Used by `detectTimezone()` and `setTimezone` change detection. |
+| `weekStartsOn` | `number` | Default first day of week for `week`-scale buckets. |
+| `timezoneResolver` | `DatafnTemporalTimezoneResolver` | Custom resolver, consulted before the registry. |
+
+## `DatafnTemporalApi`
+
+```typescript
+interface DatafnTemporalApi {
+  detectTimezone(): string | undefined;
+  listTimezoneChanges(): Promise<DatafnTimezoneChangeRecord[]>;
+  currentTimezone(instant?: number | string | Date): Promise<string>;
+  resolveTimezone(instant?: number | string | Date): Promise<string>;
+
+  recordTimezoneChange(input: RecordTimezoneChangeInput): Promise<
+    | { ok: true; record: DatafnTimezoneChangeRecord }
+    | { ok: false; error: unknown }
+  >;
+  setTimezone(
+    timezone: string,
+    options?: Omit<RecordTimezoneChangeInput, "timezone">,
+  ): Promise<
+    | { ok: true; changed: boolean; record?: DatafnTimezoneChangeRecord }
+    | { ok: false; error: unknown }
+  >;
+
+  resolveRange(
+    period: DatafnTemporalPeriodInput,
+    options?: { timezone?: string; instant?: number | string | Date },
+  ): Promise<{ start: number; end: number; timezone: string }>;
+  resolveRangeSync(period, options?): { start: number; end: number; timezone: string };
+
+  resolveBucket(input: DatafnTemporalBucketInput): Promise<number | string | Date | null>;
+  resolveBucketSync(input): number | string | Date | null;
+
+  resolveLocalTime(
+    value: number | string | Date,
+    options?: { timezone?: string; instant?: number | string | Date },
+  ): Promise<number>;
+  resolveLocalTimeSync(value, options?): number;
+}
+
+type RecordTimezoneChangeInput = {
+  timezone: string;
+  effectiveFrom?: number | string | Date;
+  recordedAt?: number | string | Date;
+  source?: "manual" | "browser" | "system" | "import" | string;
+};
+```
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `detectTimezone()` | Synchronous device timezone from the configured `detectTimezone`. |
+| `listTimezoneChanges()` | All `datafnTimezoneChange` records, ascending by `effectiveFrom`. |
+| `currentTimezone(instant?)` / `resolveTimezone(instant?)` | The timezone effective at `instant` (default now), resolved against the registry and config. |
+| `recordTimezoneChange(input)` | Append a timezone-change record. |
+| `setTimezone(tz, options?)` | Record a change only if the timezone differs from the currently effective one; `changed` reports whether a record was written. |
+| `resolveRange(period, options?)` | Resolve a calendar period to `{ start, end }` epoch-ms in the effective (or overridden) timezone. |
+| `resolveBucket(input)` | Resolve the bucket key for a value/scale. |
+| `resolveLocalTime(value, options?)` | Resolve a wall-clock value to epoch-ms in the effective timezone. |
+
+`*Sync` variants resolve against an in-memory cache of timezone-change records, populated on the first async call. Use the async variants when correctness for historical instants matters and the cache may be cold.
+
+## Examples
+
+### Record and resolve a timezone change
+
+```typescript
+await client.temporal.recordTimezoneChange({
+  timezone: "America/New_York",
+  effectiveFrom: Date.parse("2026-01-01T00:00:00.000Z"),
+  source: "manual",
+});
+
+await client.temporal.resolveTimezone(Date.parse("2026-04-15T12:00:00.000Z"));
+// => "America/New_York"
+```
+
+### Set the timezone if it changed
+
+```typescript
+const result = await client.temporal.setTimezone("Asia/Kolkata", { source: "browser" });
+if (result.ok && result.changed) {
+  console.log("Timezone updated to", result.record?.timezone);
+}
+```
+
+### Resolve a period range for a chart
+
+```typescript
+const { start, end, timezone } = await client.temporal.resolveRange({
+  scale: "day",
+  at: Date.parse("2026-05-18T12:00:00.000Z"),
+});
+```
+
+## Related
+
+- [DFQL Temporal](/docs/dfql/temporal) — temporal clauses and the `time` builder.
+- [Client Configuration](/docs/reference/client/config#temporal) — the `temporal` config option.
+- [`@datafn/core` temporal reference](/docs/reference/core/temporal) — underlying helpers and types.

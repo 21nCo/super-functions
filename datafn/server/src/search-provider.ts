@@ -14,6 +14,8 @@ export interface SearchProvider {
     prefix?: boolean;
     fuzzy?: boolean | number;
     fieldBoosts?: Record<string, number>;
+    namespaceFilter?: string[];
+    regionFilter?: string[];
     signal?: AbortSignal;
   }): Promise<string[]>;
   searchAll?(params: {
@@ -25,6 +27,8 @@ export interface SearchProvider {
     prefix?: boolean;
     fuzzy?: boolean | number;
     fieldBoosts?: Record<string, number>;
+    namespaceFilter?: string[];
+    regionFilter?: string[];
     signal?: AbortSignal;
   }): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: {

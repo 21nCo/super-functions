@@ -235,7 +235,7 @@ async function createHarness(options?: { transactionShim?: boolean }): Promise<H
 
   const server = await createDatafnServer({
     schema,
-    db,
+    database: db,
     allowUnknownResources: true,
     plugins: [
       {

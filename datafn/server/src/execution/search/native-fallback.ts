@@ -16,6 +16,12 @@ export function hasDbNativeSearchSupport(db?: Adapter): boolean {
   return db?.capabilities?.operations?.fulltext === true;
 }
 
+type IndexConfig = { search?: readonly string[] };
+
+function isIndexConfig(value: unknown): value is IndexConfig {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new DatafnExecutionError(
@@ -30,12 +36,12 @@ function resolveSearchFields(
   resource: DatafnSchema["resources"][number],
   requestedFields?: string[],
 ): string[] {
-  const configuredSearchFields = !Array.isArray(resource.indices)
-    ? (resource.indices?.search ?? [])
+  const configuredSearchFields = isIndexConfig(resource.indices)
+    ? (resource.indices.search ?? [])
     : [];
   const searchable =
     configuredSearchFields.length > 0
-      ? configuredSearchFields
+      ? [...configuredSearchFields]
       : resource.fields
           .filter((field) => field.type === "string")
           .map((field) => field.name);
@@ -45,7 +51,7 @@ function resolveSearchFields(
   }
 
   const requested = new Set(requestedFields);
-  const intersected = searchable.filter((field) => requested.has(field));
+  const intersected = searchable.filter((field: string) => requested.has(field));
   return intersected.length > 0 ? intersected : searchable;
 }
 

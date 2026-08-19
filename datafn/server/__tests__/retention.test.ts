@@ -22,7 +22,7 @@ const testSchema = {
 
 /** Insert change entries with an explicit created_at override via direct internal.create */
 async function seedChangesWithAge(
-  db: ReturnType<typeof memoryAdapter>,
+  database: ReturnType<typeof memoryAdapter>,
   namespace: string,
   count: number,
   daysOld: number,
@@ -49,7 +49,7 @@ async function seedChangesWithAge(
 
 /** Insert change entries created "now" */
 async function seedChangesNow(
-  db: ReturnType<typeof memoryAdapter>,
+  database: ReturnType<typeof memoryAdapter>,
   namespace: string,
   count: number,
   seqOffset: number,
@@ -71,7 +71,7 @@ async function seedChangesNow(
 
 /** Insert idempotency records with backdated created_at */
 async function seedIdempotencyWithAge(
-  db: ReturnType<typeof memoryAdapter>,
+  database: ReturnType<typeof memoryAdapter>,
   namespace: string,
   count: number,
   daysOld: number,
@@ -91,7 +91,7 @@ async function seedIdempotencyWithAge(
 
 /** Insert idempotency records created "now" */
 async function seedIdempotencyNow(
-  db: ReturnType<typeof memoryAdapter>,
+  database: ReturnType<typeof memoryAdapter>,
   namespace: string,
   count: number,
   idOffset: number,
@@ -199,7 +199,7 @@ describe("Phase 06: Data Retention", () => {
       await seedChangesWithAge(db, "datafn", 5, 60);
 
       // Create server without retention config
-      const server = await createDatafnServer({ allowUnknownResources: true, schema: testSchema, db });
+      const server = await createDatafnServer({ allowUnknownResources: true, schema: testSchema, database: db });
 
       // No pruning should have happened
       const changes = await db.internal.findMany("__datafn_changes", [
@@ -222,7 +222,7 @@ describe("Phase 06: Data Retention", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
         retention: {
           changeLogDays: 30,
           idempotencyDays: 7,
@@ -257,7 +257,7 @@ describe("Phase 06: Data Retention", () => {
       // Server should still be created without throwing
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
         retention: {
           changeLogDays: 30,
           pruneOnStartup: true,
@@ -289,7 +289,7 @@ describe("Phase 06: Data Retention", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
         retention: {
           changeLogDays: 30,
           pruneIntervalMs: 3600000,
@@ -320,7 +320,7 @@ describe("Phase 06: Data Retention", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
         retention: {
           changeLogDays: 30,
           pruneIntervalMs: 1000, // Below minimum
@@ -347,7 +347,7 @@ describe("Phase 06: Data Retention", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
         retention: {
           changeLogDays: 30,
           // pruneIntervalMs omitted

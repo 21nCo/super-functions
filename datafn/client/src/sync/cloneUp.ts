@@ -7,6 +7,11 @@ import { createClientError, isTransportError } from "../errors.js";
 import { computeMutationHash } from "./cloneUp/hash.js";
 import { sortRecordsById, sortJoinRows } from "./cloneUp/order.js";
 import { batchMutations } from "./cloneUp/batch.js";
+import {
+  decryptPullResultForE2ee,
+  encryptMutationPayloadForE2ee,
+  type DatafnE2eeConfig,
+} from "../e2ee.js";
 
 export type CloneUpOptions = {
   resources?: string[];
@@ -47,6 +52,7 @@ export type CloneUpDeps = {
   syncConfig: { pushBatchSize?: number; pushMaxRetries?: number } | undefined;
   eventBus: EventBus;
   getTimestamp: () => number;
+  e2ee?: DatafnE2eeConfig;
 };
 
 export async function cloneUp(
@@ -185,10 +191,15 @@ export async function cloneUp(
 
     const batches = batchMutations(mutations, batchSize);
     for (const batch of batches) {
+      const payloadBatch = await encryptMutationPayloadForE2ee(
+        schema,
+        deps.e2ee,
+        batch,
+      ) as Record<string, unknown>[];
       const pushResult = await pushBatchWithRetry(
         remote,
         deps.clientId,
-        batch,
+        payloadBatch,
         maxRetries,
       );
 
@@ -307,10 +318,15 @@ export async function cloneUp(
 
       const batches = batchMutations(mutations, batchSize);
       for (const batch of batches) {
+        const payloadBatch = await encryptMutationPayloadForE2ee(
+          schema,
+          deps.e2ee,
+          batch,
+        ) as Record<string, unknown>[];
         const pushResult = await pushBatchWithRetry(
           remote,
           deps.clientId,
-          batch,
+          payloadBatch,
           maxRetries,
         );
 
@@ -377,8 +393,13 @@ export async function cloneUp(
       }
 
       const pullResult = pullResponse?.result ?? pullResponse;
-      const changes: any[] = pullResult?.changes ?? [];
-      const nextCursor: string | null = pullResult?.nextCursor ?? null;
+      const decryptedPullResult = await decryptPullResultForE2ee(
+        schema,
+        deps.e2ee,
+        pullResult,
+      ) as any;
+      const changes: any[] = decryptedPullResult?.changes ?? [];
+      const nextCursor: string | null = decryptedPullResult?.nextCursor ?? null;
 
       for (const change of changes) {
         if (change.op === "upsert" && change.record) {
@@ -492,7 +513,7 @@ type JoinStoreEntry = {
 };
 
 function enumerateJoinStores(
-  relations: DatafnRelationSchema[],
+  relations: readonly DatafnRelationSchema[],
   resolvedResourceSet: Set<string>,
 ): JoinStoreEntry[] {
   const entries: JoinStoreEntry[] = [];

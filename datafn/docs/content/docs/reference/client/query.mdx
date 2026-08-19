@@ -17,11 +17,21 @@ When you call `client.todos.query(...)` or `client.query(...)`, the client execu
 
 3. **Hydration state routing** -- the client checks the hydration state of the target resource:
    - `"ready"` -- query executes locally against storage.
-   - `"hydrating"` or `"notStarted"` -- query is sent to the remote server.
+   - `"hydrating"` -- query runs on the remote server, then the local result is overlaid.
+   - `"notStarted"` -- query is sent to the remote server.
+   - **Batch queries** execute locally only when every resource in the batch is `ready` (and none is remote-only); otherwise they run remotely.
 
-4. **Date codec** -- date-typed fields in the response are converted from epoch milliseconds to the appropriate format based on the schema.
+4. **Temporal normalization** -- if the query has a [`temporal`](/docs/dfql/temporal) clause, it is resolved (including `timezone: "user"`) using the client `temporal` config and timezone-change registry, compiling period/range clauses into filters.
 
-5. **afterQuery hooks** -- all client-side plugins with `afterQuery` are called. Errors are logged but do not fail the query (fail-open).
+5. **Capability auto-filters** -- for local queries, `trash`/`archivable` resources have trashed/archived records excluded unless `metadata.includeTrashed` / `metadata.includeArchived` is set.
+
+6. **Date codec** -- date-typed fields in the response are converted from epoch milliseconds to the appropriate format based on the schema.
+
+7. **afterQuery hooks** -- all client-side plugins with `afterQuery` are called. Errors are logged but do not fail the query (fail-open).
+
+## Selecting a Single Record
+
+`table.select(id, options?)` fetches a single record by ID, returning it or `undefined`. It is sugar over `query({ filters: { id }, limit: 1, ... })` and follows the same routing, temporal, and capability-auto-filter behavior. `options` accepts `select`, `metadata` (`includeTrashed` / `includeArchived`), and an `AbortSignal`.
 
 ## Offline Query Execution
 

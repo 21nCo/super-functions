@@ -1,13 +1,13 @@
 /**
  * Phase 07: Rate Limiting tests
- * Tests TV-RATE-001, TV-RATE-002, TV-RATE-REDIS-001, TV-RATE-MEMORY-001,
+ * Tests TV-RATE-001, TV-RATE-002, TV-RATE-ATOMIC-001, TV-RATE-MEMORY-001,
  *       TV-RATE-OVERRIDE-001, TV-RATE-CONFIG-001
  */
 
 import { describe, it, expect, vi } from "vitest";
 import {
   MemoryRateLimiter,
-  RedisRateLimiter,
+  AtomicRateLimiter,
   createRateLimitMiddleware,
   type RateLimiter,
 } from "../src/middleware/rate-limit.js";
@@ -71,62 +71,45 @@ describe("MemoryRateLimiter", () => {
   });
 });
 
-// --- Unit tests for RedisRateLimiter ---
+// --- Unit tests for AtomicRateLimiter ---
 
-describe("RedisRateLimiter", () => {
-  it("calls Redis INCR and set (TV-RATE-REDIS-001)", async () => {
-    const mockRedis = {
-      incr: vi.fn().mockResolvedValue(1),
+describe("AtomicRateLimiter", () => {
+  it("calls atomic INCR with TTL (TV-RATE-ATOMIC-001)", async () => {
+    const mockStore = {
+      incr: vi.fn().mockResolvedValue({ value: 1 }),
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
-      del: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
       isHealthy: vi.fn().mockResolvedValue(true),
       close: vi.fn().mockResolvedValue(undefined),
     };
 
-    const limiter = new RedisRateLimiter(mockRedis);
+    const limiter = new AtomicRateLimiter(mockStore);
     const result = await limiter.check("query:user:1", 100, 60);
 
     expect(result.allowed).toBe(true);
-    expect(mockRedis.incr).toHaveBeenCalledTimes(1);
-    // First call (count=1) should also set TTL
-    expect(mockRedis.set).toHaveBeenCalledTimes(1);
-    // Verify key format includes ratelimit: prefix and windowId
-    const incrKey = mockRedis.incr.mock.calls[0][0];
-    expect(incrKey).toMatch(/^ratelimit:query:user:1:\d+$/);
+    expect(mockStore.incr).toHaveBeenCalledTimes(1);
+    const input = mockStore.incr.mock.calls[0][0];
+    expect(input.key).toMatch(/^ratelimit:query:user:1:\d+$/);
+    expect(input.by).toBe(1);
+    expect(input.ttlSeconds).toBe(60);
   });
 
-  it("rejects when Redis count exceeds max", async () => {
-    const mockRedis = {
-      incr: vi.fn().mockResolvedValue(101),
+  it("rejects when atomic count exceeds max", async () => {
+    const mockStore = {
+      incr: vi.fn().mockResolvedValue({ value: 101 }),
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
-      del: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
       isHealthy: vi.fn().mockResolvedValue(true),
       close: vi.fn().mockResolvedValue(undefined),
     };
 
-    const limiter = new RedisRateLimiter(mockRedis);
+    const limiter = new AtomicRateLimiter(mockStore);
     const result = await limiter.check("query:user:1", 100, 60);
 
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
-  });
-
-  it("does not call set when count > 1 (TTL already set)", async () => {
-    const mockRedis = {
-      incr: vi.fn().mockResolvedValue(5),
-      get: vi.fn().mockResolvedValue(null),
-      set: vi.fn().mockResolvedValue(undefined),
-      del: vi.fn().mockResolvedValue(undefined),
-      isHealthy: vi.fn().mockResolvedValue(true),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const limiter = new RedisRateLimiter(mockRedis);
-    await limiter.check("query:user:1", 100, 60);
-
-    expect(mockRedis.set).not.toHaveBeenCalled();
   });
 });
 
@@ -232,7 +215,7 @@ describe("Rate limiting integration", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       rateLimit: { enabled: false },
     });
 
@@ -256,7 +239,7 @@ describe("Rate limiting integration", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     for (let i = 0; i < 50; i++) {
@@ -278,7 +261,7 @@ describe("Rate limiting integration", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       rateLimit: {
         enabled: true,
         maxRequests: 5,
@@ -342,7 +325,7 @@ describe("Rate limiting integration", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       rateLimit: {
         enabled: true,
         maxRequests: 2,
@@ -382,7 +365,7 @@ describe("Rate limiting integration", () => {
     const windowSeconds = 30;
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       rateLimit: {
         enabled: true,
         maxRequests: 1,

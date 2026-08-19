@@ -36,7 +36,7 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     const result = await executeReconcile(
       { clientId: "c1", resources: ["tasks"] },
       testSchema,
-      db,
+      database: db,
       "default",
     );
 
@@ -61,7 +61,7 @@ describe("SCA-002: Clone auto-pagination", () => {
     const result = await executeClone(
       { clientId: "c1" },
       testSchema,
-      db,
+      database: db,
       "default",
       undefined,
       10_000, // maxCloneRecords
@@ -86,7 +86,7 @@ describe("SCA-002: Clone auto-pagination", () => {
     const result = await executeClone(
       { clientId: "c1", tables: ["tasks"] },
       testSchema,
-      db,
+      database: db,
       "default",
       undefined,
       10, // maxCloneRecords = 10 (less than 15)

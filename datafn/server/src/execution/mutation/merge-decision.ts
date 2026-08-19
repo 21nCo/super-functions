@@ -30,6 +30,20 @@ function isConflictError(error: any): boolean {
   );
 }
 
+function cloneDefaultValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneDefaultValue(item));
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, cloneDefaultValue(child)]),
+    );
+  }
+
+  return value;
+}
+
 export function decideMergeMode(
   schema: DatafnSchema,
   resource: string,
@@ -54,9 +68,19 @@ export function decideMergeMode(
     if (!hasProvided && !hasDefault) return { mode: "not_found" };
   }
 
+  const createRecord: Record<string, unknown> = { id, ...(delta as Record<string, unknown>) };
+  for (const field of resourceDef.fields) {
+    if (
+      field.default !== undefined &&
+      !Object.prototype.hasOwnProperty.call(createRecord, field.name)
+    ) {
+      createRecord[field.name] = cloneDefaultValue(field.default);
+    }
+  }
+
   return {
     mode: "create",
-    createRecord: { id, ...(delta as Record<string, unknown>) },
+    createRecord,
   };
 }
 

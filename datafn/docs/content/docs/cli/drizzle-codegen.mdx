@@ -7,7 +7,7 @@ applies_to: typescript
 
 ## Overview
 
-The `generateDrizzleSchema(schema, dialect)` function produces a complete Drizzle ORM schema file from a DataFn schema. It validates the schema, ensures the built-in KV resource exists, and generates table definitions with column types, indices, and join tables.
+The `generateDrizzleSchema(schema, dialect)` function produces a complete Drizzle ORM schema file from a DataFn schema. It validates the schema, ensures the built-in `kv` and [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) resources exist, and generates table definitions with column types, indices, foreign keys, and join tables.
 
 ```typescript
 import { generateDrizzleSchema } from "@datafn/cli";
@@ -60,7 +60,9 @@ Each table may include:
 
 - **Namespace index** -- `idx_{table}___ns` when namespace isolation is enabled.
 - **Base indices** -- one index per field listed in `indices.base`.
+- **Relation FK indices** -- `{table}_{fk_column}_rel_idx` for each generated foreign-key column (see below). Htree relations also index the path column.
 - **Join table unique index** -- `{joinTable}_{from}_{to}_idx` for many-many relations.
+- **Join table directional indices** -- `{joinTable}_{from}_idx` and `{joinTable}_{to}_idx` for efficient traversal in either direction.
 
 ## Join Tables
 
@@ -70,8 +72,54 @@ For `many-many` relations, a join table is generated with:
 - An `id` column as the primary key.
 - Any `metadata` fields from the relation schema.
 - A unique index on `(from, to)`.
+- Directional indices on `from` and on `to`.
 
 The join table name defaults to `__datafn_join_{from}_{relation}` unless `joinTable` is specified.
+
+For [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) many-many relations (array `from`/`to`), the join table also gets `fromResource` / `toResource` discriminator columns, and the unique and directional indices include them:
+
+```typescript
+fromResource: text("from_resource").notNull(),
+toResource: text("to_resource").notNull(),
+// uniqueIndex("resource_items_from_to_idx").on(fromResource, from, toResource, to)
+// index("resource_items_from_idx").on(fromResource, from)
+// index("resource_items_to_idx").on(toResource, to)
+```
+
+## Relation Foreign Keys
+
+When a relation (or the schema) uses [`integrity: "database"`](/docs/dfql/schema/relations#relation-integrity), codegen emits real foreign-key columns, indices, and constraints for FK-backed relations (`many-one`, `one-many`, `htree`). The FK column is generated on the holding resource if it is not already declared:
+
+| Relation type | Default FK column | Extra columns |
+| --- | --- | --- |
+| `many-one` | `fkField` or `{relation}Id` | `{relation}Resource` when `to` is polymorphic |
+| `one-many` | `fkField` or `inverse` or `{from}Id` | `{...}Resource` when `from` is polymorphic |
+| `htree` | `fkField` or `inverse` or `parentId` | `pathField` (default `parentPath`); `{parent}Resource` when polymorphic |
+
+`onDelete` policies map to Drizzle `ON DELETE` actions on resource foreign keys:
+
+| `onDelete` policy | Drizzle action |
+| --- | --- |
+| `cascade` | `.onDelete("cascade")` |
+| `restrict` | `.onDelete("restrict")` |
+| `setNull` / `detach` | `.onDelete("set null")` |
+| _(absent)_ | no `.onDelete` clause |
+
+Example (namespaced, `onDelete: { to: "setNull" }`):
+
+```typescript
+index("task_project_id_rel_idx").on(table.__ns, table.projectId),
+foreignKey({
+  columns: [table.__ns, table.projectId],
+  foreignColumns: [project.__ns, project.id],
+}).onDelete("set null"),
+```
+
+Foreign-key **constraints** are not emitted for polymorphic join tables (which use discriminator columns instead). Join-table FKs are emitted only when integrity is `"database"` and the endpoint is non-polymorphic; their `onDelete` mapping is `restrict` → `restrict`, and `cascade`/`detach`/`setNull` → `cascade`.
+
+## Built-in Resources
+
+Generated schemas always include the internal `__datafn_*` tables, the built-in `kv` table, and the [`datafnTimezoneChange`](/docs/dfql/temporal#timezone-change-registry) table (injected via `ensureBuiltinTemporal`). The temporal table's `number` columns mean minimal Postgres schemas now also import `numeric`.
 
 ## Example Output
 

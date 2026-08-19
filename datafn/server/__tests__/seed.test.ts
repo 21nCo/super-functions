@@ -69,7 +69,7 @@ describe("@datafn/server seed endpoint", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: defaultSchema,
-      db,
+      database: db,
       namespaceProvider,
       rowLevelNamespace: false, // Disable RLN to avoid pre-existing wrapWithRowLevelNamespace issue
     });
@@ -134,7 +134,7 @@ describe("@datafn/server seed endpoint", () => {
     const server = await createDatafnServer({
       allowUnknownResources: true,
       schema: defaultSchema,
-      db: faultyDb as any,
+      database: faultyDb as any,
     });
 
     const request = new Request("http://localhost/datafn/seed", {

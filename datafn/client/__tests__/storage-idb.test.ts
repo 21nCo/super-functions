@@ -51,6 +51,24 @@ describe("IndexedDbStorageAdapter", () => {
       // Note: v2 stores records in separate object stores per resource, 
       // so the 'resource' field is not included in the returned record
     });
+
+    it("stores proxied record values as plain IndexedDB data", async () => {
+      const proxiedTags = new Proxy(["alpha", "beta"], {});
+      const proxiedMeta = new Proxy({ nested: proxiedTags }, {});
+
+      await storage.upsertRecord("task", {
+        id: "task:proxied",
+        title: "Proxied",
+        meta: proxiedMeta,
+      });
+
+      const record = await storage.getRecord("task", "task:proxied");
+      expect(record).toMatchObject({
+        id: "task:proxied",
+        title: "Proxied",
+        meta: { nested: ["alpha", "beta"] },
+      });
+    });
   });
 
   describe("Changelog", () => {
@@ -70,6 +88,34 @@ describe("IndexedDbStorageAdapter", () => {
 
       const list = await storage.changelogList();
       expect(list).toHaveLength(1);
+    });
+
+    it("stores proxied mutation payloads as plain IndexedDB data", async () => {
+      const proxiedChildren = new Proxy(["node:child"], {});
+      const proxiedMutation = new Proxy({
+        resource: "task",
+        operation: "insert",
+        record: {
+          id: "task:proxied",
+          children: proxiedChildren,
+        },
+      }, {});
+
+      const result = await storage.changelogAppend({
+        clientId: "c-proxy",
+        mutationId: "m-proxy",
+        mutation: proxiedMutation,
+        timestampMs: 100,
+      });
+
+      expect(result.mutation).toEqual({
+        resource: "task",
+        operation: "insert",
+        record: {
+          id: "task:proxied",
+          children: ["node:child"],
+        },
+      });
     });
   });
 });

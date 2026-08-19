@@ -164,7 +164,7 @@ describe("relation inheritance query semantics", () => {
     server = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => NAMESPACE,
         getActorId: () => actorId as any,

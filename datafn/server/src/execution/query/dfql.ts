@@ -2,6 +2,8 @@
  * DFQL type definitions
  */
 
+import type { DatafnTemporalClause } from "@datafn/core";
+
 export interface DFQLQuery {
   resource: string;
   version: number;
@@ -19,6 +21,8 @@ export interface DFQLQuery {
   groupBy?: string[];
   aggregations?: Record<string, unknown>;
   having?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  temporal?: DatafnTemporalClause | readonly DatafnTemporalClause[];
   search?: {
     query: string;
     type?: "fullText" | "semantic";

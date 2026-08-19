@@ -4,7 +4,11 @@
  */
 
 import type { Adapter } from "@superfunctions/db";
-import type { IdempotencyStore, MutationResult } from "./idempotency.js";
+import {
+  isRetryableMutationResult,
+  type IdempotencyStore,
+  type MutationResult,
+} from "./idempotency.js";
 import { ensureInternalTable } from "./internal-tables.js";
 import type { DatafnLogger } from "../logger.js";
 
@@ -82,6 +86,30 @@ export class DbIdempotencyStore implements IdempotencyStore {
       if (!this.ensured) {
         await ensureInternalTable(this.db, "__datafn_idempotency");
         this.ensured = true;
+      }
+
+      const where = [
+        { field: "namespace", op: "eq" as const, value: this.namespace },
+        { field: "client_id", op: "eq" as const, value: clientId },
+        { field: "mutation_id", op: "eq" as const, value: mutationId },
+      ];
+      const existing = await this.db.internal.findOne(
+        "__datafn_idempotency",
+        where,
+      );
+      if (existing) {
+        let existingResult: MutationResult | null = null;
+        try {
+          existingResult = JSON.parse(existing.result as string);
+        } catch {
+          existingResult = null;
+        }
+        if (!isRetryableMutationResult(existingResult)) return;
+        await this.db.internal.update("__datafn_idempotency", where, {
+          result: JSON.stringify(result),
+          created_at: new Date().toISOString(),
+        });
+        return;
       }
 
       await this.db.internal.create("__datafn_idempotency", {

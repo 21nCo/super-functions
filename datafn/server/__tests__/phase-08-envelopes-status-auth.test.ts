@@ -25,7 +25,7 @@ describe("Phase 8: Server Status & Auth", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db,
+        database: db,
       });
 
       const res = await server.router.handle(
@@ -61,7 +61,7 @@ describe("Phase 8: Server Status & Auth", () => {
 
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db: unhealthyDb as any,
+        database: unhealthyDb as any,
       });
 
       const res = await server.router.handle(

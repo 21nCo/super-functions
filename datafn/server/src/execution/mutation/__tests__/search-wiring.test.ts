@@ -48,7 +48,7 @@ describe("TV-HOOK-001: search index updated on successful insert mutation", () =
     db = memoryAdapter();
     await db.initialize();
     provider = makeProvider();
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
   });
 
   it("calls updateIndices with upsert on successful insert", async () => {
@@ -96,7 +96,7 @@ describe("TV-HOOK-002: search index updated on successful delete mutation", () =
     await db.initialize();
     await db.create({ model: "tasks", data: { id: "task-del", title: "To Delete" }, namespace: "datafn" });
     provider = makeProvider();
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
   });
 
   it("calls updateIndices with delete on successful delete mutation", async () => {
@@ -122,7 +122,7 @@ describe("fail-soft: search index errors do not fail mutations", () => {
     const provider = makeProvider({
       updateIndices: vi.fn().mockRejectedValue(new Error("Search provider down")),
     });
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
 
     const body = await postMutation(server, {
       resource: "tasks",
@@ -150,7 +150,7 @@ describe("TV-NOPROV-001: no searchProvider configured — mutations work normall
   it("insert works without search provider", async () => {
     const db = memoryAdapter();
     await db.initialize();
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
 
     const body = await postMutation(server, {
       resource: "tasks",
@@ -183,7 +183,7 @@ describe("TV-INIT-001: searchProvider.initialize is called on server startup", (
     await createDatafnServer({
       allowUnknownResources: true,
       schema: schemaWithIndices,
-      db,
+      database: db,
       searchProvider: provider,
     });
 
@@ -202,7 +202,7 @@ describe("TV-INIT-001: searchProvider.initialize is called on server startup", (
     const provider = makeProvider({ initialize: vi.fn().mockRejectedValue(new Error("Init error")) });
 
     await expect(
-      createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider }),
+      createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider }),
     ).rejects.toThrow("Search provider initialization failed");
   });
 
@@ -232,7 +232,7 @@ describe("TV-INIT-001: searchProvider.initialize is called on server startup", (
     await createDatafnServer({
       allowUnknownResources: true,
       schema: schemaWithIndices,
-      db,
+      database: db,
       searchProvider: provider,
     });
 
@@ -247,7 +247,7 @@ describe("TV-DISP-001: searchProvider.dispose is called on server.close()", () =
     const db = memoryAdapter();
     await db.initialize();
     const provider = makeProvider({ dispose: vi.fn().mockResolvedValue(undefined) });
-    const server = await createDatafnServer({ allowUnknownResources: true, schema, db, searchProvider: provider });
+    const server = await createDatafnServer({ allowUnknownResources: true, schema, database: db, searchProvider: provider });
 
     await server.close();
 

@@ -28,7 +28,7 @@ describe("Phase 15 Completeness", () => {
     db = memoryAdapter({ namespace: { enabled: true, prefix: "datafn" } });
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
       limits: { maxPayloadBytes: 1024 * 1024, maxLimit: 100 },
     });
 
@@ -196,9 +196,11 @@ describe("Phase 15 Completeness", () => {
       const logServer = await createDatafnServer({
         allowUnknownResources: true,
         schema,
-        db,
+        database: db,
         limits: { maxPayloadBytes: 1024 * 1024, maxLimit: 100 },
-        logger: customLogger,
+        observability: {
+          logger: customLogger,
+        },
       });
 
       await logServer.router.handle(

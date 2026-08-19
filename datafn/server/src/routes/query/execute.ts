@@ -11,14 +11,203 @@ import { executeQuery } from "../../execution/query/execute.js";
 import { DbDataStore } from "../../execution/db-store.js";
 import { classifyQuery, extractPushableFilters } from "../../execution/query/planner.js";
 import { executePushdownQuery, executePartialPushdownQuery } from "../../execution/query/pushdown.js";
+import { materializeSelect } from "../../execution/query/select.js";
+import { parseSortTerms, sortRecords } from "../../execution/query/sort.js";
 import { executeSearchQuery } from "../../execution/query/search.js";
 import { DatafnExecutionError } from "../../execution/errors.js";
+import {
+  findRelationMatch,
+  relationTargetEndpoint,
+  resolveEndpointResource,
+  resourceNameFromId,
+} from "@datafn/core";
 import {
   executeDbNativeResourceSearch,
   hasDbNativeSearchSupport,
   NO_PROVIDER_NATIVE_UNSUPPORTED_MESSAGE,
 } from "../../execution/search/native-fallback.js";
 import type { ExecutionTimer } from "../../middleware/timing.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
+
+function mergeAnchorFilter(
+  filters: Record<string, unknown> | undefined,
+  id: string,
+): Record<string, unknown> {
+  const idFilter = { id };
+  if (!filters || Object.keys(filters).length === 0) {
+    return idFilter;
+  }
+  if (Array.isArray(filters.$and) && Object.keys(filters).length === 1) {
+    return { $and: [...filters.$and as Record<string, unknown>[], idFilter] };
+  }
+  return { $and: [filters, idFilter] };
+}
+
+function relationQuerySelectTokens(relationName: string, select: unknown): string[] {
+  const tokens = Array.isArray(select) && select.length > 0 ? select : ["*"];
+  return tokens
+    .filter((token): token is string => typeof token === "string")
+    .map((token) => `${relationName}.${token}`);
+}
+
+function normalizeRelationQueryValue(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null && !Array.isArray(item),
+    );
+  }
+  if (typeof value === "object" && value !== null) {
+    return [value as Record<string, unknown>];
+  }
+  return [];
+}
+
+function isMetadataOnlyRelationSelect(select: unknown): boolean {
+  return Array.isArray(select) && select.length === 1 && select[0] === "#";
+}
+
+function relatedResourceForRow(
+  row: Record<string, unknown>,
+  match: NonNullable<ReturnType<typeof findRelationMatch>>,
+): string | undefined {
+  const targetEndpoint = relationTargetEndpoint(match.relation, match.direction);
+  const relatedId = match.direction === "forward" ? row.to : row.from;
+  return resolveEndpointResource(targetEndpoint, relatedId) ?? resourceNameFromId(relatedId);
+}
+
+function filterVisibleRelationRows(
+  rows: Record<string, unknown>[],
+  match: NonNullable<ReturnType<typeof findRelationMatch>>,
+  store: DbDataStore,
+): Record<string, unknown>[] {
+  return rows.filter((row) => {
+    const relatedId = match.direction === "forward" ? row.to : row.from;
+    if (typeof relatedId !== "string") {
+      return false;
+    }
+    const relatedResource = relatedResourceForRow(row, match);
+    if (!relatedResource) {
+      return false;
+    }
+    return Boolean(store.getRecord(relatedResource, relatedId));
+  });
+}
+
+async function executeRelationQuery(
+  query: Record<string, unknown>,
+  schema: DatafnSchema,
+  db: Adapter,
+  namespace: string,
+  actorId: string | undefined,
+  searchProvider: SearchProvider | undefined,
+  logger?: DatafnLogger,
+  timer?: ExecutionTimer | null,
+): Promise<unknown> {
+  const resource = query.resource as string;
+  const relationName = query.relation as string;
+  const id = query.id as string;
+  const match = findRelationMatch(schema as any, resource, relationName);
+  if (!match) {
+    throw new DatafnExecutionError(
+      "DFQL_UNKNOWN_RELATION",
+      `Unknown relation: ${relationName}`,
+      "relation",
+    );
+  }
+
+  const {
+    relation: _relation,
+    id: _id,
+    sort: _sort,
+    limit: _limit,
+    offset: _offset,
+    cursor: _cursor,
+    count: _count,
+    groupBy: _groupBy,
+    aggregations: _aggregations,
+    having: _having,
+    search: _search,
+    temporal: _temporal,
+    select: _select,
+    omit: _omit,
+    ...anchorQueryBase
+  } = query;
+  const existingFilters =
+    query.filters &&
+    typeof query.filters === "object" &&
+    !Array.isArray(query.filters)
+      ? (query.filters as Record<string, unknown>)
+      : undefined;
+  const anchorResult = await executeSingleQuery(
+    {
+      ...anchorQueryBase,
+      resource,
+      select: ["*"],
+      filters: mergeAnchorFilter(existingFilters, id),
+      limit: 1,
+    },
+    schema,
+    db,
+    namespace,
+    actorId,
+    searchProvider,
+    logger,
+    timer,
+  );
+  const anchorData =
+    anchorResult &&
+    typeof anchorResult === "object" &&
+    Array.isArray((anchorResult as { data?: unknown }).data)
+      ? ((anchorResult as { data: Record<string, unknown>[] }).data)
+      : [];
+  if (anchorData.length === 0) {
+    return {
+      data: [],
+      nextCursor: null,
+      ...(query.count === true ? { count: 0 } : {}),
+    };
+  }
+
+  const store = await DbDataStore.forPushdownResult(
+    db,
+    anchorData.slice(0, 1),
+    resource,
+    { select: relationQuerySelectTokens(relationName, query.select) },
+    schema,
+    namespace,
+    logger,
+    actorId,
+  );
+  const materialized = materializeSelect(
+    anchorData[0],
+    resource,
+    relationQuerySelectTokens(relationName, query.select),
+    schema,
+    store,
+    Array.isArray(query.omit) ? (query.omit as string[]) : undefined,
+    query.metadata as Record<string, unknown> | undefined,
+  );
+  const relationValue = materialized[relationName];
+  let data = normalizeRelationQueryValue(relationValue);
+  if (match.relation.type === "many-many" && isMetadataOnlyRelationSelect(query.select)) {
+    data = filterVisibleRelationRows(data, match, store);
+  }
+  if (Array.isArray(query.sort)) {
+    data = sortRecords(data, parseSortTerms(query.sort as string[]));
+  }
+
+  const count = query.count === true ? data.length : undefined;
+  const offset = typeof query.offset === "number" && query.offset > 0 ? query.offset : 0;
+  const limit = typeof query.limit === "number" && query.limit >= 0 ? query.limit : undefined;
+  const paged = typeof limit === "number" ? data.slice(offset, offset + limit) : data.slice(offset);
+
+  return {
+    data: paged,
+    nextCursor: null,
+    ...(count !== undefined ? { count } : {}),
+  };
+}
 
 /**
  * Execute a single DFQL query using the optimal strategy.
@@ -34,6 +223,19 @@ export async function executeSingleQuery(
   logger?: DatafnLogger,
   timer?: ExecutionTimer | null,
 ): Promise<unknown> {
+  if (typeof query.relation === "string" && typeof query.id === "string") {
+    return executeRelationQuery(
+      query,
+      schema,
+      db,
+      namespace,
+      actorId,
+      searchProvider,
+      logger,
+      timer,
+    );
+  }
+
   const strategy = classifyQuery(query, schema);
 
   timer?.startPhase("fetch");
@@ -85,8 +287,22 @@ export async function executeSingleQuery(
 
   // Execute search query or regular query
   if (query.search) {
+    const metadata = query.metadata && typeof query.metadata === "object" && !Array.isArray(query.metadata)
+      ? query.metadata as Record<string, unknown>
+      : {};
+    const runtime = getDatafnMultiRegionRuntimeConfig();
+    const scopedQuery = {
+      ...query,
+      metadata: {
+        ...metadata,
+        searchNamespaceFilter: Array.isArray(metadata.namespaceFilter)
+          ? metadata.namespaceFilter
+          : [namespace],
+        ...(runtime?.regionId ? { searchRegionFilter: [runtime.regionId] } : {}),
+      },
+    };
     if (searchProvider) {
-      return executeSearchQuery(query as any, schema, store, searchProvider, undefined, logger);
+      return executeSearchQuery(scopedQuery as any, schema, store, searchProvider, undefined, logger);
     }
     if (!hasDbNativeSearchSupport(db)) {
       throw new DatafnExecutionError(
@@ -96,7 +312,7 @@ export async function executeSingleQuery(
       );
     }
     return executeSearchQuery(
-      query as any,
+      scopedQuery as any,
       schema,
       store,
       undefined,

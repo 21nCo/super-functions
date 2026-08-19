@@ -40,21 +40,8 @@ function makeRemoteCloneAdapter(records: Array<Record<string, unknown>>) {
   };
 }
 
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 3000,
-): Promise<void> {
-  const start = Date.now();
-  while (!predicate()) {
-    if (Date.now() - start > timeoutMs) {
-      throw new Error("Timed out waiting for condition");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
-
-describe("PROV-012: deferred clone indexing and rebuild lifecycle", () => {
-  it("defers clone indexing and emits rebuild progress to completion", async () => {
+describe("PROV-012: search index lifecycle", () => {
+  it("defers clone indexing and hydrates the searched resource lazily once", async () => {
     const storage = new MemoryStorageAdapter();
     const remote = makeRemoteCloneAdapter([
       { id: "t1", title: "Quarterly report" },
@@ -62,7 +49,6 @@ describe("PROV-012: deferred clone indexing and rebuild lifecycle", () => {
     ]);
 
     const updateIndices = vi.fn().mockResolvedValue(undefined);
-    const events: any[] = [];
     const client = createDatafnClient({
       schema,
       clientId: "rebuild-client",
@@ -81,43 +67,106 @@ describe("PROV-012: deferred clone indexing and rebuild lifecycle", () => {
       },
     });
 
-    client.subscribe((event: any) => {
-      if (event.type === "sync_applied" || event.type === "sync_failed") {
-        events.push(event);
-      }
-    });
-
     await client.sync.start();
     expect(updateIndices).toHaveBeenCalledTimes(0);
 
-    await waitFor(() =>
-      events.some(
-        (event) =>
-          event.type === "sync_applied" &&
-          event.context?.phase === "search-rebuild" &&
-          event.context?.stage === "completed" &&
-          event.context?.percent === 100,
-      ),
+    await client.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    expect(updateIndices).toHaveBeenCalledTimes(1);
+    expect(updateIndices).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: "tasks",
+        records: expect.arrayContaining([
+          expect.objectContaining({ id: "t1" }),
+          expect.objectContaining({ id: "t2" }),
+        ]),
+        operation: "upsert",
+      }),
     );
-    expect(updateIndices).toHaveBeenCalled();
+
+    await client.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    expect(updateIndices).toHaveBeenCalledTimes(1);
 
     await client.destroy();
   });
 
-  it("retries rebuild after failure and completes", async () => {
+  it("uses a persistent index marker to avoid rehydrating records in a new client", async () => {
     const storage = new MemoryStorageAdapter();
-    const remote = makeRemoteCloneAdapter([{ id: "t1", title: "Retry report" }]);
+    await storage.upsertRecord("tasks", { id: "t1", title: "Marked report" });
+    await storage.setHydrationState("tasks", "hydrating");
+    await storage.setHydrationState("tasks", "ready");
 
-    const updateIndices = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("temporary failure"))
-      .mockResolvedValue(undefined);
-    const events: any[] = [];
+    const updateIndices = vi.fn().mockResolvedValue(undefined);
 
-    const client = createDatafnClient({
+    const firstClient = createDatafnClient({
       schema,
-      clientId: "rebuild-retry-client",
+      clientId: "search-marker-client-1",
       storage,
+      searchIndexVersion: "test-search-v1",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices,
+      },
+      sync: { mode: "local-only" },
+    });
+
+    await firstClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    expect(updateIndices).toHaveBeenCalledTimes(1);
+    await firstClient.destroy();
+
+    const listRecords = vi.spyOn(storage, "listRecords");
+    const secondUpdateIndices = vi.fn().mockResolvedValue(undefined);
+    const secondClient = createDatafnClient({
+      schema,
+      clientId: "search-marker-client-2",
+      storage,
+      searchIndexVersion: "test-search-v1",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices: secondUpdateIndices,
+      },
+      sync: { mode: "local-only" },
+    });
+
+    await secondClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    expect(secondUpdateIndices).toHaveBeenCalledTimes(0);
+    expect(listRecords).not.toHaveBeenCalledWith("tasks");
+
+    await secondClient.destroy();
+  });
+
+  it("marks clone-indexed resources current so first search after reload does not rehydrate", async () => {
+    const storage = new MemoryStorageAdapter();
+    const remote = makeRemoteCloneAdapter([
+      { id: "t1", title: "Cloned report" },
+      { id: "t2", title: "Synced report" },
+    ]);
+    const updateIndices = vi.fn().mockResolvedValue(undefined);
+
+    const firstClient = createDatafnClient({
+      schema,
+      clientId: "search-clone-marker-client-1",
+      storage,
+      searchIndexVersion: "test-search-v1",
       searchProvider: {
         name: "provider",
         search: vi.fn().mockResolvedValue([]),
@@ -128,38 +177,38 @@ describe("PROV-012: deferred clone indexing and rebuild lifecycle", () => {
         mode: "sync",
         remoteAdapter: remote,
         offlinability: true,
-        skipCloneIndexing: true,
       },
     });
 
-    client.subscribe((event: any) => {
-      if (event.type === "sync_applied" || event.type === "sync_failed") {
-        events.push(event);
-      }
+    await firstClient.sync.start();
+    expect(updateIndices).toHaveBeenCalledTimes(1);
+    await firstClient.destroy();
+
+    const listRecords = vi.spyOn(storage, "listRecords");
+    const secondUpdateIndices = vi.fn().mockResolvedValue(undefined);
+    const secondClient = createDatafnClient({
+      schema,
+      clientId: "search-clone-marker-client-2",
+      storage,
+      searchIndexVersion: "test-search-v1",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices: secondUpdateIndices,
+      },
+      sync: { mode: "local-only" },
     });
 
-    await client.sync.start();
+    await secondClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    expect(secondUpdateIndices).toHaveBeenCalledTimes(0);
+    expect(listRecords).not.toHaveBeenCalledWith("tasks");
 
-    await waitFor(() =>
-      events.some(
-        (event) =>
-          event.type === "sync_failed" &&
-          event.context?.phase === "search-rebuild" &&
-          event.context?.stage === "failed",
-      ),
-    );
-    await waitFor(() =>
-      events.some(
-        (event) =>
-          event.type === "sync_applied" &&
-          event.context?.phase === "search-rebuild" &&
-          event.context?.stage === "completed" &&
-          event.context?.percent === 100,
-      ),
-    );
-    expect(updateIndices.mock.calls.length).toBeGreaterThanOrEqual(2);
-
-    await client.destroy();
+    await secondClient.destroy();
   });
 
   it("applies local mutation index update while deferred clone indexing is enabled", async () => {

@@ -25,7 +25,7 @@ describe("REST Wrappers", () => {
     const db = memoryAdapter();
     const { router } = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       rest: true,
     });
 
@@ -90,7 +90,7 @@ describe("REST Wrappers", () => {
     it("TV-SEC-031: encoded slash %2F in resource returns 400", async () => {
       const { router } = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         rest: true,
       });
 
@@ -109,7 +109,7 @@ describe("REST Wrappers", () => {
     it("TV-SEC-032: dot-dot in resource returns 400", async () => {
       const { router } = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         rest: true,
       });
 
@@ -130,7 +130,7 @@ describe("REST Wrappers", () => {
     it("SEC-010: null byte in resource returns 400", async () => {
       const { router } = await createDatafnServer({ allowUnknownResources: true,
         schema: testSchema,
-        db: memoryAdapter(),
+        database: memoryAdapter(),
         rest: true,
       });
 
@@ -150,7 +150,7 @@ describe("REST Wrappers", () => {
   it("TV-REST-002: Unknown resource rejection", async () => {
     const { router } = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db: memoryAdapter(),
+      database: memoryAdapter(),
       rest: true,
     });
 
@@ -189,7 +189,7 @@ describe("REST Wrappers", () => {
           },
         ],
       } as DatafnSchema,
-      db,
+      database: db,
       rest: true,
       namespaceProvider: {
         getNamespace: (ctx: { tenant: string }) => `ns:${ctx.tenant}`,

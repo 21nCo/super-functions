@@ -14,9 +14,12 @@ function defineSchema<const T extends {
   readonly capabilities?: readonly CapabilityEntry[];
   readonly resources: readonly DatafnResourceBase[];
   readonly relations?: readonly DatafnRelationSchema[];
+  readonly relationIntegrity?: DatafnRelationIntegrityMode;
   readonly namespaced?: boolean;
-}>(schema: T): T & DatafnSchema;
+}>(schema: T): DatafnDefinedSchema<T>;
 ```
+
+The return type `DatafnDefinedSchema<T>` preserves the literal schema shape (via a hidden symbol) so downstream helpers and codegen can infer exact resource/field/relation types. Use `DatafnSchemaLiteral<S>` to extract the literal type back out when needed.
 
 ## validateSchema
 
@@ -111,6 +114,49 @@ function findRelationBidirectional(
   resource: string,
   relationName: string,
 ): DatafnRelationSchema | undefined;
+```
+
+## Relation Endpoint Helpers
+
+Utilities for working with [polymorphic](/docs/dfql/schema/relations#polymorphic-relations) relation endpoints (`from`/`to` that may be a single name or an array):
+
+```typescript
+type DatafnRelationDirection = "forward" | "inverse";
+
+function endpointList(endpoint: string | readonly string[]): string[];
+function endpointIncludes(endpoint: string | readonly string[], resource: string): boolean;
+function firstEndpoint(endpoint: string | readonly string[]): string;
+function resourceNameFromId(id: unknown): string | undefined;            // "task:1" -> "task"
+function resolveEndpointResource(endpoint, id: unknown): string | undefined;
+
+// Direction-aware relation lookup (forward or inverse name match)
+function findRelationMatch(
+  schema: DatafnSchema,
+  resource: string,
+  relationName: string,
+): { relation: DatafnRelationSchema; direction: DatafnRelationDirection } | undefined;
+
+function relationKeyFor(fromResource: string, relation: DatafnRelationSchema): string; // "task.tags"
+```
+
+## Relation Foreign Key Helpers
+
+Derive and normalize foreign-key fields implied by relations:
+
+```typescript
+type DatafnRelationFkField = { field: string; resourceField?: string; optional: boolean };
+
+function getRelationFkFieldsForResource(
+  schema: DatafnSchema,
+  resourceName: string,
+): DatafnRelationFkField[];
+
+// Empty-string optional FK values (and paired *Resource discriminators) become null.
+function normalizeRelationFkRecord(
+  schema: DatafnSchema,
+  resourceName: string,
+  record: Record<string, unknown>,
+): Record<string, unknown>;
 ```
 
 ## Related

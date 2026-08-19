@@ -6,6 +6,10 @@ import {
   mirrorGrantToLegacyV1,
   removeLegacyV1Grant,
 } from "../migration/spv2.js";
+import {
+  deleteDatafnPermissionGrant,
+  indexDatafnPermissionGrant,
+} from "../../plugins/multi-region.js";
 
 type ShareableConfig = {
   levels: string[];
@@ -402,6 +406,8 @@ export async function executeShare(
     });
   }
 
+  await indexDatafnPermissionGrant(permissionRecord);
+
   return { ok: true, permissionRecord };
 }
 
@@ -536,6 +542,13 @@ export async function executeUnshare(
     db,
     namespace,
     resource: mutation.resource,
+    resourceId,
+    principalId: unsharePrincipalId,
+  });
+  await deleteDatafnPermissionGrant({
+    id: changeId,
+    resourceType: mutation.resource,
+    resourceNs: namespace,
     resourceId,
     principalId: unsharePrincipalId,
   });

@@ -28,6 +28,11 @@ interface DatafnTable<S, Name, TRecord> {
   version: number;
 
   query(q: DfqlQueryFragment): Promise<unknown>;
+  select(id: string, options?: {
+    select?: readonly string[];
+    metadata?: { includeTrashed?: boolean; includeArchived?: boolean };
+    signal?: AbortSignal;
+  }): Promise<unknown | undefined>;
   mutate(m: DfqlMutationFragment | DfqlMutationFragment[]): Promise<unknown>;
   delete(id: string): Promise<unknown>;
 
@@ -52,10 +57,12 @@ interface DatafnTable<S, Name, TRecord> {
   }>>;
 
   transact(payload: DfqlTransact): Promise<unknown>;
-  signal(q: DfqlQueryFragment, options?: { disableOptimistic?: boolean }): DatafnSignal<unknown>;
+  signal(q: DfqlQueryFragment, options?: DatafnSignalOptions): DatafnSignal<unknown>;
   subscribe(handler: EventHandler, filter?: EventFilter): () => void;
 }
 ```
+
+The `signal` `options` is a [`DatafnSignalOptions`](/docs/reference/client/signal#datafnsignaloptions) object (`disableOptimistic` and `cache` tuning).
 
 ## Capability-Gated Method Exposure
 
@@ -94,6 +101,19 @@ Same behavior applies to `mutate()`.
 ## Auto-Generated IDs
 
 For `insert` without `id`, table handles generate IDs using resource `idPrefix` + random suffix. You can override generation via `createDatafnClient({ generateId })`.
+
+## Selecting a Single Record
+
+`select(id, options?)` is a convenience for fetching one record by ID. It returns the record or `undefined` if not found, and respects the same routing and capability auto-filters as `query`.
+
+```typescript
+const todo = await client.table("todos").select("td:1", {
+  select: ["id", "title"],
+});
+// { id: "td:1", title: "..." } | undefined
+```
+
+It is equivalent to `query({ filters: { id }, limit: 1, ... })` returning the first row.
 
 ## Query Metadata for Capability Filters
 

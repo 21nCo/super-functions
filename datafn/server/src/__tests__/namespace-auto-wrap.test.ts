@@ -33,7 +33,7 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "user:alice",
       },
@@ -66,7 +66,7 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     const req = new Request("http://localhost/datafn/query", {
@@ -96,7 +96,7 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "user:alice",
       },
@@ -130,7 +130,7 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider: {
         getNamespace: () => "user:alice",
       },
@@ -161,7 +161,7 @@ describe("DFN-001: Server auto-wrapping on namespaceProvider", () => {
     const server = await createDatafnServer<{ actorId: string }>({
       allowUnknownResources: true,
       schema: testSchema,
-      db: memoryAdapter({ debug: false }),
+      database: memoryAdapter({ debug: false }),
       context: (request) => ({
         actorId: request.headers.get("x-actor-id") ?? "anonymous",
       }),

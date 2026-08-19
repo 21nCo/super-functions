@@ -30,7 +30,7 @@ describe("Phase 05: Mutation Optimization", () => {
   beforeEach(async () => {
     db = memoryAdapter();
     await db.initialize();
-    server = await createDatafnServer({ allowUnknownResources: true, schema, db });
+    server = await createDatafnServer({ allowUnknownResources: true, schema, database: db });
   });
 
   describe("MUT-001: Merge uses update (not upsert)", () => {
@@ -359,7 +359,7 @@ describe("Phase 05: Mutation Optimization", () => {
       await relDb.create({ model: "tasks", data: { id: "task-1", title: "Task 1" }, namespace: "datafn" });
       await relDb.create({ model: "tags", data: { id: "tag-1", name: "Tag 1" }, namespace: "datafn" });
       await relDb.create({ model: "tags", data: { id: "tag-2", name: "Tag 2" }, namespace: "datafn" });
-      relServer = await createDatafnServer({ allowUnknownResources: true, schema: relSchema, db: relDb });
+      relServer = await createDatafnServer({ allowUnknownResources: true, schema: relSchema, database: relDb });
     });
 
     it("TV-BATCH-CHG-003: batch seq allocation for relation mutations (1 meta update for 2 join deltas)", async () => {

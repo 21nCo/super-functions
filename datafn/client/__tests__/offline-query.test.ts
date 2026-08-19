@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createDatafnClient } from "../src/index.js";
 import { DefaultHttpTransport } from "../src/transport/http.js";
+import { getJoinStoreKey } from "@datafn/core";
 import type {
   DatafnStorageAdapter,
   DatafnHydrationState,
@@ -361,6 +362,78 @@ describe("Offline Query Tests", () => {
       const rec = res.data[0];
       expect(Object.keys(rec).sort()).toEqual(["id", "title"]);
       expect(rec.prio).toBeUndefined();
+    });
+  });
+
+  describe("Relation query routing", () => {
+    it("queries inverse many-many relations through the join inverse index", async () => {
+      const schema = {
+        resources: [
+          {
+            name: "node",
+            version: 1,
+            fields: [
+              { name: "id", type: "string" as const, required: true },
+              { name: "title", type: "string" as const, required: false },
+            ],
+          },
+        ],
+        relations: [
+          {
+            from: "node",
+            to: "node",
+            type: "many-many" as const,
+            relation: "links",
+            inverse: "backlinks",
+            metadata: [{ name: "linkType", type: "string" as const }],
+          },
+        ],
+      };
+      const storage = new MemoryStorageAdapter();
+      await storage.upsertRecord("node", { id: "node:target", title: "Target" });
+      await storage.upsertRecord("node", { id: "node:source-a", title: "Source A" });
+      await storage.upsertRecord("node", { id: "node:source-b", title: "Source B" });
+      await storage.upsertJoinRow(getJoinStoreKey("node", "links", "node"), {
+        from: "node:source-a",
+        to: "node:target",
+        linkType: "direct",
+      });
+      await storage.upsertJoinRow(getJoinStoreKey("node", "links", "node"), {
+        from: "node:source-b",
+        to: "node:target",
+        linkType: "reference",
+      });
+      await storage.setHydrationState("node", "hydrating");
+      await storage.setHydrationState("node", "ready");
+      const listRecordsSpy = vi
+        .spyOn(storage, "listRecords")
+        .mockImplementation(async (resource: string) => {
+          if (resource === "node") {
+            throw new Error("node table scan should not happen");
+          }
+          return [];
+        });
+      const inverseSpy = vi.spyOn(storage, "getJoinRowsInverse");
+      const client = createDatafnClient({
+        schema,
+        sync: { mode: "local-only" as const, offlinability: true },
+        clientId: "client:relation-query",
+        storage,
+      });
+
+      const result = await client.node.relation("backlinks").query("node:target", {
+        select: ["#"],
+      });
+
+      expect(result.data).toEqual([
+        { from: "node:source-a", to: "node:target", linkType: "direct" },
+        { from: "node:source-b", to: "node:target", linkType: "reference" },
+      ]);
+      expect(inverseSpy).toHaveBeenCalledWith(
+        getJoinStoreKey("node", "links", "node"),
+        "node:target",
+      );
+      expect(listRecordsSpy).not.toHaveBeenCalledWith("node");
     });
   });
 

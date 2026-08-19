@@ -5,7 +5,7 @@ audience: reference
 applies_to: both
 ---
 
-The `sort` field in a DFQL query controls the order of returned records. It is an array of string terms, each specifying a field and direction.
+The `sort` field in a DFQL query controls the order of returned records. It is an array of terms, each specifying a field and direction. Terms may be **strings** or **structured objects** — you can mix both in the same array.
 
 ## Sort Term Formats
 
@@ -15,6 +15,23 @@ The `sort` field in a DFQL query controls the order of returned records. It is a
 | `"field:asc"` | Ascending (explicit) | `"createdAt:asc"` |
 | `"field:desc"` | Descending (explicit) | `"priority:desc"` |
 | `"-field"` | Descending (shorthand) | `"-priority"` |
+| `{ field, direction }` | Structured term | `{ field: "priority", direction: "desc" }` |
+
+## Structured Sort Terms
+
+In addition to strings, `sort` accepts structured `{ field, direction }` objects. `direction` defaults to `"asc"` when omitted, and an invalid direction throws:
+
+```typescript
+{
+  resource: "todos",
+  version: 1,
+  sort: [
+    { field: "priority", direction: "desc" },
+    { field: "createdAt" }, // defaults to "asc"
+    "-updatedAt",            // strings still work alongside objects
+  ],
+}
+```
 
 ## Basic Usage
 
@@ -61,12 +78,15 @@ The sort implementation uses a stable sort algorithm. When all specified sort fi
 
 ## Parsing Sort Terms
 
-Use `parseSortTerms` to convert sort strings into structured `SortTerm` objects:
+Use `parseSortTerms` to normalize a sort array into structured `SortTerm` objects. It accepts both string and structured (`SortInputTerm`) inputs:
 
 ```typescript
 import { parseSortTerms, type SortTerm } from "@datafn/core";
 
-const terms: SortTerm[] = parseSortTerms(["priority:desc", "createdAt"]);
+const terms: SortTerm[] = parseSortTerms([
+  "priority:desc",
+  { field: "createdAt" },
+]);
 // [
 //   { field: "priority", direction: "desc" },
 //   { field: "createdAt", direction: "asc" },

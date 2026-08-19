@@ -36,7 +36,7 @@ describe("Server Authorization (AUTH-001)", () => {
     db = memoryAdapter({ libraryNamespace: "datafn" });
     server = await createDatafnServer({
       schema: testSchema,
-      db,
+      database: db,
     });
   });
 
@@ -169,7 +169,7 @@ describe("SEC-009: Relation Authz Enforcement", () => {
 
   it("TV-SEC-029: relate blocked when relation not in write.fields", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const server = await createDatafnServer({ schema: schemaWithRelation, db });
+    const server = await createDatafnServer({ schema: schemaWithRelation, database: db });
 
     const req = new Request("http://localhost/datafn/push", {
       method: "POST",
@@ -215,7 +215,7 @@ describe("SEC-009: Relation Authz Enforcement", () => {
     };
 
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const server = await createDatafnServer({ schema: schemaWithRelationAllowed, db });
+    const server = await createDatafnServer({ schema: schemaWithRelationAllowed, database: db });
 
     const req = new Request("http://localhost/datafn/push", {
       method: "POST",
@@ -258,7 +258,7 @@ describe("Built-in KV resource authz (deny-by-default)", () => {
 
   it("KV push succeeds without allowUnknownResources (built-in has permissions)", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const server = await createDatafnServer({ schema: schemaWithNoKv, db });
+    const server = await createDatafnServer({ schema: schemaWithNoKv, database: db });
 
     const req = new Request("http://localhost/datafn/push", {
       method: "POST",
@@ -286,7 +286,7 @@ describe("Built-in KV resource authz (deny-by-default)", () => {
 
   it("KV query succeeds without allowUnknownResources", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const server = await createDatafnServer({ schema: schemaWithNoKv, db });
+    const server = await createDatafnServer({ schema: schemaWithNoKv, database: db });
 
     const req = new Request("http://localhost/datafn/query", {
       method: "POST",
@@ -305,7 +305,7 @@ describe("Built-in KV resource authz (deny-by-default)", () => {
 
   it("User-defined resource without permissions still returns 403", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
-    const server = await createDatafnServer({ schema: schemaWithNoKv, db });
+    const server = await createDatafnServer({ schema: schemaWithNoKv, database: db });
 
     const req = new Request("http://localhost/datafn/push", {
       method: "POST",
@@ -363,7 +363,7 @@ describe("Namespace Isolation (AUTH-002)", () => {
 
     const server = await createDatafnServer({
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider,
     });
 
@@ -434,7 +434,7 @@ describe("Namespace Isolation (AUTH-002)", () => {
 
     const server = await createDatafnServer({
       schema: testSchema,
-      db,
+      database: db,
       namespaceProvider,
     });
 

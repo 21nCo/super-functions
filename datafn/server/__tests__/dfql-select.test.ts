@@ -18,7 +18,7 @@ describe("DFQL select extensions (Phase 11)", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureDfqlSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 
@@ -388,7 +388,7 @@ describe("DFQL bare * wildcard in select", () => {
     return await createDatafnServer({ allowUnknownResources: true,
       schema: fixtureDfqlSchema,
       limits: { maxLimit: 100 },
-      db,
+      database: db,
     });
   }
 

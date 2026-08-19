@@ -40,11 +40,11 @@ describe("SQL regression: merge persistence and false-success gating", () => {
     `);
 
     const db = drizzle(sqlite, { schema: { kv: kvTable, task: taskTable } });
-    adapter = drizzleAdapter({ db, dialect: "sqlite", debug: false });
+    adapter = drizzleAdapter({ database: db, dialect: "sqlite", debug: false });
 
     server = await createDatafnServer({
       allowUnknownResources: true,
-      db: adapter,
+      database: adapter,
       schema: {
         resources: [
           {

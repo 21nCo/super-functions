@@ -25,7 +25,7 @@ describe("DB Adapter Integration", () => {
 
     const server = await createDatafnServer({ allowUnknownResources: true,
       schema: testSchema,
-      db,
+      database: db,
     });
 
     // Insert a record via mutation

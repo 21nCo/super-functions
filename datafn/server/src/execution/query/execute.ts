@@ -15,6 +15,12 @@ import { executeAggregateQuery } from "./aggregate.js";
 import { DatafnExecutionError } from "../errors.js";
 import { classifyQuery } from "./planner.js";
 import { executePushdownQuery } from "./pushdown.js";
+import {
+  TIMEZONE_CHANGE_RESOURCE_NAME,
+  createTimezoneResolver,
+  hasTemporalGrouping,
+  normalizeTemporalQuery,
+} from "@datafn/core";
 
 /**
  * Execute a DFQL query against a data store
@@ -24,11 +30,17 @@ export function executeQuery(
   schema: DatafnSchema,
   store: DataStore,
 ): QueryResult | AggregateResult {
+  const temporalConfig = {
+    timezoneResolver: createTimezoneResolver(
+      store.getRecords(TIMEZONE_CHANGE_RESOURCE_NAME),
+    ),
+  };
+  query = normalizeTemporalQuery(query as unknown as Record<string, unknown>, temporalConfig) as unknown as DFQLQuery;
   // Phase 15: Aggregate queries
-  if (query.groupBy) {
+  if (query.groupBy || hasTemporalGrouping(query as any)) {
     const resourceName = query.resource as string;
     const records = store.getRecords(resourceName);
-    return executeAggregateQuery(query as any, records, schema, store);
+    return executeAggregateQuery(query as any, records, schema, store, temporalConfig);
   }
 
   // Get all records for the resource
@@ -243,6 +255,7 @@ export function executeQuery(
       schema,
       store,
       query.omit,
+      (query as unknown as { metadata?: Record<string, unknown> }).metadata,
     ),
   );
 

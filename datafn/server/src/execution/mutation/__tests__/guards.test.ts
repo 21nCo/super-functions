@@ -36,7 +36,7 @@ describe("MUT-GUARD-001: Optimistic Concurrency Guards", () => {
 
     server = await createDatafnServer({ allowUnknownResources: true,
       schema,
-      db,
+      database: db,
     });
   });
 

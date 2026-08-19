@@ -11,13 +11,24 @@ export type { HookError };
 
 export async function runBeforeQuery(
   query: unknown,
-  ctx: { plugins: DatafnPlugin[]; schema: any },
+  ctx: { plugins: DatafnPlugin[]; schema: any; context?: unknown },
   plugins: DatafnPlugin[],
 ): Promise<{ ok: true; query: unknown } | { ok: false; error: HookError }> {
-  const hookCtx: DatafnHookContext = { env: "server", schema: ctx.schema };
+  const hookCtx: DatafnHookContext = { env: "server", schema: ctx.schema, context: ctx.context };
   const result = await runBeforeHook(plugins, "server", "beforeQuery", hookCtx, query);
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true, query: result.value };
+}
+
+export async function runBeforeSearch(
+  search: unknown,
+  ctx: { plugins: DatafnPlugin[]; schema: any; context?: unknown },
+  plugins: DatafnPlugin[],
+): Promise<{ ok: true; search: unknown } | { ok: false; error: HookError }> {
+  const hookCtx: DatafnHookContext = { env: "server", schema: ctx.schema, context: ctx.context };
+  const result = await runBeforeHook(plugins, "server", "beforeSearch", hookCtx, search);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, search: result.value };
 }
 
 export async function runAfterQuery(

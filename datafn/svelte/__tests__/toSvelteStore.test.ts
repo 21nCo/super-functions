@@ -45,6 +45,17 @@ function createMockSignal<T>(initialValue: T) {
   return { signal, controls };
 }
 
+function createImmediateMockSignal<T>(initialValue: T) {
+  const created = createMockSignal(initialValue);
+  const originalSubscribe = created.signal.subscribe;
+  created.signal.subscribe = (handler: (val: T) => void) => {
+    const unsub = originalSubscribe(handler);
+    handler(created.signal.get());
+    return unsub;
+  };
+  return created;
+}
+
 describe("@datafn/svelte toSvelteStore — direct overload", () => {
   it("TV-SVELTE-001a: creates a store with { data, loading, error, refreshing } shape", () => {
     const { signal } = createMockSignal(10);
@@ -191,6 +202,51 @@ describe("@datafn/svelte toSvelteStore — direct overload", () => {
     // Signal must NOT be disposed — it may be shared by multiple stores
     expect(controls.isDisposed()).toBe(false);
   });
+
+  it("suppresses a duplicate synchronous signal emission", () => {
+    const { signal } = createImmediateMockSignal(42);
+    const store = toSvelteStore(signal);
+
+    const received: any[] = [];
+    const unsub = store.subscribe((val) => received.push(val));
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual({
+      data: 42,
+      loading: false,
+      error: null,
+      refreshing: false,
+      nextCursor: null,
+    });
+
+    unsub();
+  });
+
+  it("uses the optional data equality hook for normalized array data", () => {
+    const { signal } = createImmediateMockSignal([1, 2]);
+    const store = toSvelteStore(signal, {
+      initialData: [],
+      equals: (previous, next) =>
+        Array.isArray(previous) &&
+        Array.isArray(next) &&
+        previous.length === next.length &&
+        previous.every((value, index) => value === next[index]),
+    });
+
+    const received: any[] = [];
+    const unsub = store.subscribe((val) => received.push(val));
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual({
+      data: [1, 2],
+      loading: false,
+      error: null,
+      refreshing: false,
+      nextCursor: null,
+    });
+
+    unsub();
+  });
 });
 
 describe("@datafn/svelte toSvelteStore — factory overload (deprecated)", () => {
@@ -243,5 +299,62 @@ describe("@datafn/svelte toSvelteStore — factory overload (deprecated)", () =>
 
     expect(first.controls.isDisposed()).toBe(false);
     expect(second.controls.isDisposed()).toBe(false);
+  });
+});
+
+describe("@datafn/svelte toSvelteStore — deferred signal factory", () => {
+  it("delays signal creation when defer is set", () => {
+    vi.useFakeTimers();
+    try {
+      const { signal } = createMockSignal(["loaded"]);
+      const factory = vi.fn(() => signal);
+      const store = toSvelteStore(factory, { initialData: [], defer: 150 });
+      const received: any[] = [];
+
+      const unsub = store.subscribe((value) => received.push(value));
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(received[0]).toEqual({
+        data: [],
+        loading: false,
+        error: null,
+        refreshing: false,
+        nextCursor: null,
+      });
+
+      vi.advanceTimersByTime(149);
+      expect(factory).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(received[1]).toEqual({
+        data: ["loaded"],
+        loading: false,
+        error: null,
+        refreshing: false,
+        nextCursor: null,
+      });
+
+      unsub();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels deferred signal creation when the store unsubscribes first", () => {
+    vi.useFakeTimers();
+    try {
+      const { signal } = createMockSignal(["loaded"]);
+      const factory = vi.fn(() => signal);
+      const store = toSvelteStore(factory, { initialData: [], defer: 150 });
+
+      const unsub = store.subscribe(() => {});
+      unsub();
+
+      vi.advanceTimersByTime(150);
+      expect(factory).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

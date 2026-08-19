@@ -10,7 +10,7 @@
  */
 
 import type { DatafnSchema } from "../../core-types.js";
-import { resolveCapabilities, getCapabilityFields } from "@datafn/core";
+import { endpointIncludes, resolveCapabilities, getCapabilityFields } from "@datafn/core";
 import type { CapabilityEntry, ShareableCapability } from "@datafn/core";
 import type { Adapter, WhereClause } from "@superfunctions/db";
 import type { DFQLQuery, QueryResult } from "./dfql.js";
@@ -24,6 +24,7 @@ import { DatafnExecutionError } from "../errors.js";
 export interface QueryMetadata {
   includeTrashed?: boolean;
   includeArchived?: boolean;
+  includeAncestorInactive?: boolean;
   shareableAccessIds?: string[];
   hasShareableScopeAccess?: boolean;
   accessMode?: "namespace" | "sharedWithMe";
@@ -147,7 +148,7 @@ export function injectCapabilityAutoFilters(
     resolvedCapabilities.some((capability: unknown) => capability === "trash") &&
     metadata.includeTrashed !== true
   ) {
-    autoFilters.push({ trashedAt: { $in: [null, undefined] } });
+    autoFilters.push({ trashedAt: { $is_null: true } });
   }
 
   if (
@@ -155,6 +156,17 @@ export function injectCapabilityAutoFilters(
     metadata.includeArchived !== true
   ) {
     autoFilters.push({ isArchived: { $ne: true } });
+  }
+
+  if (
+    metadata.includeAncestorInactive !== true &&
+    schema.relations?.some((relation) => {
+      if (relation.inheritsInactive !== true) return false;
+      const dependentEndpoint = relation.type === "many-one" ? relation.from : relation.to;
+      return endpointIncludes(dependentEndpoint, query.resource);
+    })
+  ) {
+    autoFilters.push({ isAncestorInactive: { $ne: true } });
   }
 
   const shareableCapability = resolvedCapabilities.find(isShareableCapability);
@@ -282,6 +294,7 @@ export async function executePartialPushdownQuery(
       schema,
       store,
       query.omit,
+      query.metadata,
     ),
   );
 
