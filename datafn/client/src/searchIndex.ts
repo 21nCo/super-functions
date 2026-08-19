@@ -92,19 +92,31 @@ export async function isSearchIndexMarkedCurrent(input: {
   resource: string;
   fingerprint: string;
 }): Promise<boolean> {
+  const marker = await getSearchIndexMarkerState(input);
+  return marker.fingerprint === input.fingerprint;
+}
+
+/** Reads the persisted marker so rebuilds can distinguish first use from a version change. */
+export async function getSearchIndexMarkerState(input: {
+  storage: DatafnStorageAdapter;
+  resource: string;
+}): Promise<{ exists: boolean; fingerprint?: string }> {
   try {
     const marker = await input.storage.getRecord(
       KV_RESOURCE_NAME,
       searchIndexMarkerId(input.resource),
     );
+    if (!marker) return { exists: false };
     const value = marker?.value;
-    return (
-      typeof value === "object" &&
-      value !== null &&
-      (value as Record<string, unknown>).fingerprint === input.fingerprint
-    );
+    const fingerprint = typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>).fingerprint
+      : undefined;
+    return {
+      exists: true,
+      ...(typeof fingerprint === "string" ? { fingerprint } : {}),
+    };
   } catch {
-    return false;
+    return { exists: false };
   }
 }
 

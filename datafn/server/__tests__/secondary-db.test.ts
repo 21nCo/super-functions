@@ -169,6 +169,27 @@ describe("SequenceStore implementations", () => {
       const seq = await store.getNext("test-namespace");
       expect(seq).toBe(1); // Falls back to database
     });
+
+    it("does not return an atomic sequence when its durable high-water mark cannot be persisted", async () => {
+      const atomicStore = createMockAtomicStore();
+      const db = memoryAdapter({ libraryNamespace: "datafn" });
+      const fallback = new DatabaseSequenceStore(db);
+      await fallback.ensureReady();
+      await fallback.ensureMinSeq("test-namespace", 0);
+      vi.spyOn(db.internal, "update").mockRejectedValue(
+        new Error("database high-water unavailable"),
+      );
+
+      const store = new ChainedSequenceStore(
+        new AtomicSequenceStore(atomicStore),
+        fallback,
+      );
+
+      await expect(store.getNext("test-namespace")).rejects.toThrow(
+        "database high-water unavailable",
+      );
+      expect(atomicStore.incr).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("createSequenceStore", () => {

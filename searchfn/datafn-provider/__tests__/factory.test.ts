@@ -22,6 +22,7 @@ describe("createSearchProvider — factory creates valid SearchProvider", () => 
     expect(typeof provider.name).toBe("string");
     expect(typeof provider.search).toBe("function");
     expect(typeof provider.updateIndices).toBe("function");
+    expect(typeof provider.clearIndices).toBe("function");
     expect(typeof provider.searchAll).toBe("function");
     expect(typeof provider.initialize).toBe("function");
     expect(typeof provider.dispose).toBe("function");
@@ -114,6 +115,15 @@ describe("createSearchProvider — search delegates to adapter.search", () => {
 });
 
 describe("createSearchProvider — updateIndices", () => {
+  it("clears a resource through the adapter before a full rebuild", async () => {
+    const adapter = makeAdapter();
+    const provider = createSearchProvider(adapter);
+
+    await provider.clearIndices?.("tasks");
+
+    expect(adapter.clear).toHaveBeenCalledWith("tasks");
+  });
+
   it("calls adapter.remove on delete operation", async () => {
     const adapter = makeAdapter();
     const provider = createSearchProvider(adapter);

@@ -50,7 +50,7 @@ import { createKvApi, type DatafnKvApi, KV_RESOURCE_NAME } from "./kv.js";
 import {
   buildSearchIndexFingerprint,
   deriveSearchProviderResources,
-  isSearchIndexMarkedCurrent,
+  getSearchIndexMarkerState,
   markSearchIndexCurrent,
 } from "./searchIndex.js";
 import {
@@ -1000,16 +1000,25 @@ function _buildRawClient<S extends DatafnSchema>(
             resource: resourceConfig,
             version: config.searchIndexVersion,
           });
-          if (
-            await isSearchIndexMarkedCurrent({
-              storage: resolvedStorage,
-              resource,
-              fingerprint,
-            })
-          ) {
+          const marker = await getSearchIndexMarkerState({
+            storage: resolvedStorage,
+            resource,
+          });
+          if (marker.fingerprint === fingerprint) {
             hydratedSearchResources.add(resource);
             return;
           }
+          // A fingerprint mismatch is a full rebuild, not an upsert pass.
+          // Clear provider-owned state first so documents removed from local
+          // storage cannot remain searchable and crowd out live results.
+          if (marker.exists && !config.searchProvider?.clearIndices) {
+            throw createClientError(
+              "DFQL_UNSUPPORTED",
+              "Search provider must implement clearIndices to rebuild a changed index",
+              { path: "searchProvider.clearIndices", resource },
+            );
+          }
+          await config.searchProvider?.clearIndices?.(resource);
           const records = await resolvedStorage.listRecords(resource);
           if (records.length > 0) {
             await config.searchProvider!.updateIndices({

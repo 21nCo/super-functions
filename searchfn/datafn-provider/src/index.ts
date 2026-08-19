@@ -117,6 +117,10 @@ export function createSearchProvider(
       }
     },
 
+    async clearIndices(resource: string) {
+      await adapter.clear(resource);
+    },
+
     async searchAll(params: SearchProviderSearchAllParams) {
       if (adapter.searchAll) {
         const results = await adapter.searchAll({

@@ -154,6 +154,111 @@ describe("PROV-012: search index lifecycle", () => {
     await secondClient.destroy();
   });
 
+  it("clears provider-owned documents before rebuilding a changed fingerprint", async () => {
+    const storage = new MemoryStorageAdapter();
+    await storage.upsertRecord("tasks", { id: "t1", title: "Current report" });
+    await storage.setHydrationState("tasks", "hydrating");
+    await storage.setHydrationState("tasks", "ready");
+
+    const firstClient = createDatafnClient({
+      schema,
+      clientId: "search-rebuild-clear-client-1",
+      storage,
+      searchIndexVersion: "test-search-v1",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices: vi.fn().mockResolvedValue(undefined),
+        clearIndices: vi.fn().mockResolvedValue(undefined),
+      },
+      sync: { mode: "local-only" },
+    });
+    await firstClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    await firstClient.destroy();
+
+    const calls: string[] = [];
+    const secondClient = createDatafnClient({
+      schema,
+      clientId: "search-rebuild-clear-client-2",
+      storage,
+      searchIndexVersion: "test-search-v2",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        clearIndices: vi.fn(async () => {
+          calls.push("clear");
+        }),
+        updateIndices: vi.fn(async () => {
+          calls.push("upsert");
+        }),
+      },
+      sync: { mode: "local-only" },
+    });
+
+    await secondClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+
+    expect(calls).toEqual(["clear", "upsert"]);
+    await secondClient.destroy();
+  });
+
+  it("refuses a changed-fingerprint rebuild when the provider cannot clear stale documents", async () => {
+    const storage = new MemoryStorageAdapter();
+    await storage.upsertRecord("tasks", { id: "t1", title: "Current report" });
+    await storage.setHydrationState("tasks", "hydrating");
+    await storage.setHydrationState("tasks", "ready");
+
+    const firstClient = createDatafnClient({
+      schema,
+      clientId: "search-rebuild-required-clear-client-1",
+      storage,
+      searchIndexVersion: "test-search-v1",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices: vi.fn().mockResolvedValue(undefined),
+      },
+      sync: { mode: "local-only" },
+    });
+    await firstClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    });
+    await firstClient.destroy();
+
+    const secondClient = createDatafnClient({
+      schema,
+      clientId: "search-rebuild-required-clear-client-2",
+      storage,
+      searchIndexVersion: "test-search-v2",
+      searchProvider: {
+        name: "provider",
+        search: vi.fn().mockResolvedValue([]),
+        searchAll: vi.fn().mockResolvedValue([]),
+        updateIndices: vi.fn().mockResolvedValue(undefined),
+      },
+      sync: { mode: "local-only" },
+    });
+
+    await expect(secondClient.search({
+      query: "report",
+      resources: ["tasks"],
+      source: "local",
+    })).rejects.toThrow("must implement clearIndices");
+    await secondClient.destroy();
+  });
+
   it("marks clone-indexed resources current so first search after reload does not rehydrate", async () => {
     const storage = new MemoryStorageAdapter();
     const remote = makeRemoteCloneAdapter([

@@ -31,6 +31,8 @@ export interface SearchProvider {
     records: Record<string, unknown>[];
     operation: "upsert" | "delete";
   }): Promise<void>;
+  /** Clear one resource before a full rebuild so removed documents cannot survive. */
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: {
     resources: Array<{ name: string; searchFields: string[] }>;
   }): Promise<void>;

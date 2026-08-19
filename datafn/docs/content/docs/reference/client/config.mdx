@@ -260,12 +260,13 @@ interface SearchProvider {
   search(params: SearchParams): Promise<string[]>;
   searchAll?(params: SearchAllParams): Promise<Array<{ resource: string; id: string; score: number }>>;
   updateIndices(params: UpdateIndicesParams): Promise<void>;
+  clearIndices?(resource: string): Promise<void>;
   initialize?(config: { resources: Array<{ name: string; searchFields: string[] }> }): Promise<void>;
   dispose?(): Promise<void>;
 }
 ```
 
-At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
+At client initialization, `searchProvider.initialize()` is called with resource/searchFields mappings from the schema. During mutations, `searchProvider.updateIndices()` keeps the local index current. When a persisted index fingerprint changes, DataFn calls `searchProvider.clearIndices()` before rebuilding; custom persistent providers must implement it. At query time, `searchProvider.search()` resolves candidate IDs that are injected into the DFQL filter pipeline.
 
 Two common setups are supported:
 

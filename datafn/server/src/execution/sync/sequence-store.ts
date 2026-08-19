@@ -165,6 +165,7 @@ export class DatabaseSequenceStore implements SequenceStore {
         error: String(error),
         operation: "ensureMinSeq",
       });
+      throw error;
     }
   }
 
@@ -358,6 +359,7 @@ export class ChainedSequenceStore implements SequenceStore {
         namespace,
         seq,
       });
+      throw error;
     }
   }
 
