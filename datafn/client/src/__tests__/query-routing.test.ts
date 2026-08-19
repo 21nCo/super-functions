@@ -138,6 +138,71 @@ describe("Query routing", () => {
     });
   });
 
+  it("masks remotely stale rows changed by pending local mutations", async () => {
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord("tasks", { id: "task:changed", title: "Done" });
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mutation:changed",
+      timestampMs: 1,
+      mutation: {
+        operation: "merge",
+        resource: "tasks",
+        id: "task:changed",
+        record: { title: "Done" },
+      },
+    });
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mutation:deleted",
+      timestampMs: 2,
+      mutation: {
+        operation: "delete",
+        resource: "tasks",
+        id: "task:deleted",
+      },
+    });
+    await storage.setHydrationState("tasks", "hydrating");
+
+    const remote: DatafnRemoteAdapter = {
+      query: vi.fn().mockResolvedValue({
+        ok: true,
+        result: {
+          data: [
+            { id: "task:changed", title: "Open" },
+            { id: "task:deleted", title: "Open" },
+            { id: "task:untouched", title: "Open" },
+          ],
+          nextCursor: null,
+        },
+      }),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      clone: vi.fn(),
+      pull: vi.fn(),
+      push: vi.fn(),
+      reconcile: vi.fn(),
+    };
+
+    const result = await executeQuery(
+      remote,
+      {
+        resource: "tasks",
+        select: ["id", "title"],
+        filters: { title: "Open" },
+      },
+      storage,
+      [],
+      schema,
+    );
+
+    expect(result).toEqual({
+      data: [{ id: "task:untouched", title: "Open" }],
+      nextCursor: null,
+    });
+  });
+
   it("returns an aggregate envelope for impossible temporal grouping filters", async () => {
     const remote: DatafnRemoteAdapter = {
       query: vi.fn(),

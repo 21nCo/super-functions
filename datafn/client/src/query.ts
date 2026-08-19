@@ -216,6 +216,7 @@ function mergeQueryDataById(
   remoteResult: unknown,
   localResult: unknown,
   query: Record<string, unknown>,
+  pendingLocalIds: ReadonlySet<string>,
 ): unknown {
   const remoteEnvelope =
     remoteResult && typeof remoteResult === "object" && !Array.isArray(remoteResult)
@@ -236,7 +237,7 @@ function mergeQueryDataById(
       ? localResult
       : null;
 
-  if (!remoteData || !localData || localData.length === 0) {
+  if (!remoteData || !localData || (localData.length === 0 && pendingLocalIds.size === 0)) {
     return remoteResult;
   }
 
@@ -257,7 +258,12 @@ function mergeQueryDataById(
     const id = (record as { id?: unknown } | null)?.id;
     if (typeof id === "string") {
       seen.add(id);
-      merged.push(localById.get(id) ?? record);
+      const localRecord = localById.get(id);
+      if (localRecord !== undefined) {
+        merged.push(localRecord);
+      } else if (!pendingLocalIds.has(id)) {
+        merged.push(record);
+      }
     } else {
       merged.push(record);
     }
@@ -297,14 +303,27 @@ async function overlayLocalQueryResult(
   try {
     const { limit: _limit, offset: _offset, ...unpaginatedQuery } = query;
     const localQuery = injectLocalCapabilityAutoFilters(unpaginatedQuery, schema);
-    const localResult = await executeLocalQuery(
-      storage,
-      schema,
-      localQuery,
-      schemaIndex,
-      temporal,
-    );
-    return mergeQueryDataById(remoteResult, localResult, query);
+    const [localResult, pendingChanges] = await Promise.all([
+      executeLocalQuery(
+        storage,
+        schema,
+        localQuery,
+        schemaIndex,
+        temporal,
+      ),
+      storage.changelogList(),
+    ]);
+    const pendingLocalIds = new Set<string>();
+    for (const change of pendingChanges) {
+      const mutation = change.mutation;
+      if (
+        mutation.resource === query.resource
+        && typeof mutation.id === "string"
+      ) {
+        pendingLocalIds.add(mutation.id);
+      }
+    }
+    return mergeQueryDataById(remoteResult, localResult, query, pendingLocalIds);
   } catch {
     return remoteResult;
   }

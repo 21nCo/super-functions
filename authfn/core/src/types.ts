@@ -544,6 +544,11 @@ export interface AuthFnRateLimitConfig {
   /** Enables request rate limiting for AuthFn HTTP routes. */
   enabled: boolean;
   /**
+   * Resolves the client IP from trusted platform or proxy context.
+   * Forwarding headers are ignored unless this explicit trust boundary reads them.
+   */
+  resolveClientIp?: (request: Request) => string | undefined | Promise<string | undefined>;
+  /**
    * Storage consistency used for counters.
    * Use strict with an atomic store, best-effort with a shared cache, or local for process-local protection.
    */

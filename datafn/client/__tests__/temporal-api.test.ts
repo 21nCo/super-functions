@@ -90,4 +90,31 @@ describe("@datafn/client temporal api", () => {
 
     await client.destroy();
   });
+
+  it("rejects unsupported timezone identifiers before persisting them", async () => {
+    const client = createDatafnClient({
+      schema,
+      clientId: "client-invalid-timezone",
+      storage: new MemoryStorageAdapter(["session"]),
+      sync: { mode: "local-only" },
+      temporal: {
+        timezone: "UTC",
+        detectTimezone: () => "UTC",
+      },
+    });
+
+    await expect(client.temporal.recordTimezoneChange({
+      timezone: "Mars/Base",
+    })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "DFQL_INVALID",
+        message: "Timezone must be a supported IANA timezone identifier",
+        details: { path: "timezone" },
+      },
+    });
+    await expect(client.temporal.listTimezoneChanges()).resolves.toEqual([]);
+
+    await client.destroy();
+  });
 });

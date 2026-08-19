@@ -13,6 +13,7 @@ function createConfig(namespace: string): AuthFnRuntimeConfig {
       mode: 'local',
       policies: {
         password: { ipLimit: 1, windowSeconds: 60 },
+        'password-reset': { ipLimit: 1, windowSeconds: 60 },
         'social-start': { ipLimit: 1, windowSeconds: 60 }
       }
     }
@@ -21,7 +22,8 @@ function createConfig(namespace: string): AuthFnRuntimeConfig {
 
 async function callRateLimitedRoute(
   config: AuthFnRuntimeConfig,
-  path: string
+  path: string,
+  headers: Record<string, string> = { 'cf-connecting-ip': '203.0.113.10' }
 ): Promise<Response> {
   const middleware = createAuthFnRateLimitMiddleware(config);
   if (!middleware) {
@@ -29,9 +31,7 @@ async function callRateLimitedRoute(
   }
   return middleware(
     new Request(`https://account.example.com${path}`, {
-      headers: {
-        'cf-connecting-ip': '203.0.113.10'
-      }
+      headers
     }),
     {} as never,
     async () => new Response('ok')
@@ -68,5 +68,43 @@ describe('authfn rate limiting', () => {
         scope: 'password'
       }
     });
+  });
+
+  it('applies the password-reset policy to reset completion', async () => {
+    const config = createConfig('rate-limit-reset-complete-test');
+
+    await expect(callRateLimitedRoute(config, '/auth/password/reset/start')).resolves.toHaveProperty('status', 200);
+    await expect(callRateLimitedRoute(config, '/auth/password/reset/complete')).rejects.toMatchObject({
+      name: 'AuthFnRateLimitedError',
+      details: {
+        scope: 'password-reset'
+      }
+    });
+  });
+
+  it('does not trust forwarding headers without an explicit resolver', async () => {
+    const config = createConfig('rate-limit-untrusted-forwarding-test');
+
+    await expect(callRateLimitedRoute(config, '/auth/social/start', {
+      'x-forwarded-for': '203.0.113.1'
+    })).resolves.toHaveProperty('status', 200);
+    await expect(callRateLimitedRoute(config, '/auth/social/start', {
+      'x-forwarded-for': '203.0.113.2'
+    })).rejects.toMatchObject({
+      name: 'AuthFnRateLimitedError',
+      details: { scope: 'social-start', dimension: 'ip' }
+    });
+  });
+
+  it('uses a configured trusted client-IP resolver', async () => {
+    const config = createConfig('rate-limit-trusted-resolver-test');
+    config.rateLimit!.resolveClientIp = (request) => request.headers.get('x-test-client-ip') ?? undefined;
+
+    await expect(callRateLimitedRoute(config, '/auth/social/start', {
+      'x-test-client-ip': '203.0.113.1'
+    })).resolves.toHaveProperty('status', 200);
+    await expect(callRateLimitedRoute(config, '/auth/social/start', {
+      'x-test-client-ip': '203.0.113.2'
+    })).resolves.toHaveProperty('status', 200);
   });
 });

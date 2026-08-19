@@ -44,9 +44,7 @@ export function createAuthFnRateLimitMiddleware(config: AuthFnRuntimeConfig): Mi
     const scope = scopeForPath(path);
     const policy = policyForScope(config, scope);
     const identifier = await readIdentifier(request.clone());
-    const ip = request.headers.get('cf-connecting-ip')
-      ?? request.headers.get('x-forwarded-for')
-      ?? 'unknown';
+    const ip = (await rateLimit.resolveClientIp?.(request))?.trim() || 'unknown';
     const checks = await buildChecks(scope, policy, ip, identifier);
 
     for (const check of checks) {
@@ -87,7 +85,10 @@ function scopeForPath(path: string): AuthFnRateLimitScope {
   if (path.endsWith('/sign-in/password') || path.endsWith('/sign-up/password')) return 'password';
   if (path.endsWith('/otp/send')) return 'otp-send';
   if (path.endsWith('/otp/verify')) return 'otp-verify';
-  if (path.endsWith('/password/reset/start')) return 'password-reset';
+  if (
+    path.endsWith('/password/reset/start')
+    || path.endsWith('/password/reset/complete')
+  ) return 'password-reset';
   if (path.endsWith('/social/start')) return 'social-start';
   if (path.includes('/handoff/')) return 'handoff';
   if (path.endsWith('/regions/lookup')) return 'region-lookup';

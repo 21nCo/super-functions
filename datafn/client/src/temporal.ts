@@ -98,6 +98,17 @@ export function createTemporalApi(deps: TemporalApiDeps): DatafnTemporalApi {
       : deps.defaultTimezone) ??
     "UTC";
 
+  const normalizeTimezone = (timezone: string): string | undefined => {
+    const normalized = timezone.trim();
+    if (!normalized) return undefined;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: normalized }).format(0);
+      return normalized;
+    } catch {
+      return undefined;
+    }
+  };
+
   const loadChanges = async (): Promise<DatafnTimezoneChangeRecord[]> => {
     let changes: DatafnTimezoneChangeRecord[];
     if (deps.storage) {
@@ -191,12 +202,15 @@ export function createTemporalApi(deps: TemporalApiDeps): DatafnTemporalApi {
     },
 
     async recordTimezoneChange(input: RecordTimezoneChangeInput) {
-      if (!input.timezone || typeof input.timezone !== "string") {
+      const timezone = typeof input.timezone === "string"
+        ? normalizeTimezone(input.timezone)
+        : undefined;
+      if (!timezone) {
         return {
           ok: false as const,
           error: {
             code: "DFQL_INVALID",
-            message: "Timezone must be a non-empty string",
+            message: "Timezone must be a supported IANA timezone identifier",
             details: { path: "timezone" },
           },
         };
@@ -207,10 +221,10 @@ export function createTemporalApi(deps: TemporalApiDeps): DatafnTemporalApi {
       const record: DatafnTimezoneChangeRecord = {
         id: timezoneChangeId(
           effectiveFrom,
-          input.timezone,
+          timezone,
           `${recordedAt}:${deps.clientId}`,
         ),
-        timezone: input.timezone,
+        timezone,
         effectiveFrom,
         recordedAt,
         source: input.source ?? "manual",
