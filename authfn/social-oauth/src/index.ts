@@ -3,59 +3,52 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { Adapter, TableSchema } from '@superfunctions/db';
 import type { Route } from '@superfunctions/http';
 import {
-  createOAuthFlowService,
-  type OAuthFlowCallbackResult,
-  type OAuthFlowResolvedIdentity,
-  type OAuthFlowSubject,
-  type OAuthFlowService,
-  type OAuthProviderRuntimeConfig
+  createOAuthFlowService, type OAuthFlowCallbackResult, type OAuthFlowResolvedIdentity, type OAuthFlowSubject, type OAuthFlowService, type OAuthProviderRuntimeConfig
 } from '@superfunctions/oauth-flow';
 import {
-  assertCallbackStateMatches,
-  consumeStateOrThrow,
-  generateNonce,
-  generateStateId
+  assertCallbackStateMatches, consumeStateOrThrow, generateNonce, generateStateId
 } from '@superfunctions/oauth-core';
 import { DefaultOAuthTokenHttpClient, type OAuthFetchLike } from '@superfunctions/oauth-http';
 import {
-  DbAdapterOAuthStateStore,
-  DbAdapterTokenVault,
-  getOAuthStorageTableDefinitions
+  DbAdapterOAuthStateStore, DbAdapterTokenVault, getOAuthStorageTableDefinitions
 } from '@superfunctions/oauth-storage';
 import {
-  createDefaultProviderPolicyRegistry,
-  getOAuthProviderDescriptor
+  createDefaultProviderPolicyRegistry, getOAuthProviderDescriptor
 } from '@superfunctions/oauth-providers';
-import type { SocialOAuthPluginConfig } from '../plugin-types.js';
 import type {
-  AuthFnConfig,
+  SocialOAuthPluginConfig,
+  AuthFnSocialOAuthEnvironment,
+  AuthFnSocialHandoffMode,
+  SocialOAuthPluginRuntimeConfig,
+  AuthFnSocialProviderConfig,
+  AuthFnSocialProfileResolver,
+  AuthFnSocialProfile,
+  AuthFnSocialProviderId
+} from './types.js';
+import type {
+  AuthFnRuntimeConfig,
   AuthFnHookContext,
   AuthFnHooks,
   AuthFnPlugin,
   AuthFnPluginRuntimeContext,
-  AuthFnRuntimeResolution,
   AuthFnSchemaDefinition,
-  AuthFnSocialHandoffMode,
-  AuthFnSocialProfile,
-  AuthFnSocialProfileResolver,
-  AuthFnSocialProviderConfig,
-  AuthFnSocialProviderId,
   AuthFnUserRecord
-} from '../types.js';
-import { assertValidCsrf, issueSession, requireCookieSession } from '../core/sessions.js';
-import { issueSessionCookies, resolveRuntime } from '../core/cookies.js';
+} from 'authfn';
+import { assertValidCsrf, issueSession, requireCookieSession } from 'authfn/core/sessions';
+import { issueSessionCookies } from 'authfn/core/cookies';
+import { resolveEnvironment } from 'authfn/core/environment';
 import {
   beginTwoFactorChallenge,
   createPendingTwoFactorResponse,
   getTwoFactorPluginConfig
-} from '../core/two-factor.js';
+} from 'authfn/core/two-factor';
 import {
   buildOAuthAccountProfile,
   deleteOAuthAccountByConnectionId,
   findOAuthAccountByProviderAccountId,
   requireOAuthAccountForUser,
   upsertOAuthAccount
-} from '../core/oauth-accounts.js';
+} from 'authfn/core/oauth-accounts';
 import {
   AuthFnConflictError,
   AuthFnError,
@@ -65,20 +58,31 @@ import {
   AuthFnRedirectUriDisallowedError,
   AuthFnValidationError,
   toAuthFnError
-} from '../core/errors.js';
-import { createUser, findUserById, findUserByPrimaryEmail } from '../core/users.js';
-import { createAuthFnRouteMeta } from '../http/router.js';
-import { jsonSuccess, resolveRequestId } from '../http/envelopes.js';
-import { emitAuthEvent } from '../core/observability.js';
+} from 'authfn/core/errors';
+import { createUser, findUserById, findUserByPrimaryEmail } from 'authfn/core/users';
+import { createAuthFnRouteMeta } from 'authfn/http/router';
+import { jsonSuccess, resolveRequestId } from 'authfn/http/envelopes';
+import { emitAuthEvent } from 'authfn/core/observability';
+import { createOAuthTokenDiagnosticFetcher } from './oauth-support.js';
 import {
   allowsOAuthLinkByVerifiedEmail,
   emitAccountLinkedEvent,
   emitAccountLinkingConflictEvent
-} from '../core/account-linking.js';
+} from 'authfn/core/account-linking';
 import {
   getMultiRegionPluginConfig,
   unregisterRegionLookupForIdentifier
-} from '../core/regions.js';
+} from 'authfn/core/regions';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
+
+type ResolvedSocialOAuthPluginConfig = SocialOAuthPluginConfig & SocialOAuthPluginRuntimeConfig;
+export type * from './types.js';
+export {
+  createAppleClientSecretResolver,
+  createOAuthTokenDiagnosticFetcher,
+  type AppleClientSecretResolverInput,
+  type OAuthTokenDiagnosticFetcherInput
+} from './oauth-support.js';
 
 const SOCIAL_PROVIDER_METHODS = {
   google: 'oauth-google',
@@ -151,7 +155,9 @@ interface ResolvedProviderSettings {
   profileResolver?: AuthFnSocialProfileResolver;
 }
 
-export function authFnSocialOAuthPlugin(config: SocialOAuthPluginConfig = {}): AuthFnPlugin {
+export function authFnSocialOAuthPlugin(
+  config: SocialOAuthPluginConfig = {}
+): AuthFnPlugin<'socialOAuth', SocialOAuthPluginRuntimeConfig, true> {
   return {
     name: 'socialOAuth',
     schema: () => createSocialSchema(config),
@@ -168,8 +174,13 @@ function createSocialSchema(config: SocialOAuthPluginConfig): AuthFnSchemaDefini
 
 function createSocialRoutes(
   ctx: AuthFnPluginRuntimeContext,
-  config: SocialOAuthPluginConfig
+  schemaConfig: SocialOAuthPluginConfig
 ): Route[] {
+  const config: ResolvedSocialOAuthPluginConfig = {
+    defaultHandoffMode: schemaConfig.defaultHandoffMode,
+    providers: {},
+    ...readPluginRuntimeConfig<SocialOAuthPluginRuntimeConfig>(ctx, 'socialOAuth')
+  };
   const routes: Route[] = [
     {
       method: 'POST',
@@ -178,7 +189,7 @@ function createSocialRoutes(
         mode: 'none'
       }),
       handler: async (request) => {
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const body = await request.json() as SocialStartBody;
         const providerId = normalizeProviderId(body.provider);
         const callbackUri = buildCallbackUri(runtime.baseUrl, ctx.basePath, providerId);
@@ -255,7 +266,7 @@ function createSocialRoutes(
       }),
       handler: async (request, context) => {
         const providerId = normalizeProviderId(context.params.provider);
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const callbackUri = buildCallbackUri(runtime.baseUrl, ctx.basePath, providerId);
         const providerSettings = resolveProviderSettings(ctx.config, config, runtime, providerId, callbackUri);
         const url = new URL(request.url);
@@ -510,7 +521,7 @@ function createSocialRoutes(
         mode: 'none'
       }),
       handler: async (request) => {
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const body = await request.json().catch(() => ({})) as NativeAppleStartBody;
         const providerId = 'apple';
         const callbackUri = buildCallbackUri(runtime.baseUrl, ctx.basePath, providerId);
@@ -579,7 +590,7 @@ function createSocialRoutes(
         mode: 'none'
       }),
       handler: async (request) => {
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const body = await request.json() as NativeAppleCompleteBody;
         const requestId = resolveRequestId(request);
         const stateId = readRequiredString(body.stateId, 'stateId');
@@ -719,7 +730,7 @@ function createSocialRoutes(
       }),
       handler: async (request, context) => {
         const providerId = normalizeProviderId(context.params.provider);
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const state = await requireCookieSession(ctx.config, request);
         assertValidCsrf(request, state);
         const callbackUri = buildCallbackUri(runtime.baseUrl, ctx.basePath, providerId);
@@ -745,11 +756,11 @@ function createSocialRoutes(
 }
 
 function createSocialFlowService(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
-  pluginConfig: SocialOAuthPluginConfig,
+  pluginConfig: ResolvedSocialOAuthPluginConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   activeProviderId: AuthFnSocialProviderId
 ): OAuthFlowService {
   const providers = {
@@ -767,7 +778,7 @@ function createSocialFlowService(
   };
   const namespacedAdapter = withNamespace(config.database, config.namespace ?? 'authfn');
   const tokenHttpClient = pluginConfig.tokenHttpClient ?? new DefaultOAuthTokenHttpClient({
-    fetcher: pluginConfig.fetcher
+    fetcher: resolveTokenExchangeFetcher(config, pluginConfig, request)
   });
 
   return createOAuthFlowService({
@@ -828,11 +839,11 @@ function createSocialFlowService(
 }
 
 async function handleAppleFormPostIdentityCallback(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
-  pluginConfig: SocialOAuthPluginConfig,
+  pluginConfig: ResolvedSocialOAuthPluginConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   callbackUri: string,
   stateId: string,
   idToken: string,
@@ -901,11 +912,11 @@ async function handleAppleFormPostIdentityCallback(
 }
 
 async function resolveLocalIdentity(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
-  pluginConfig: SocialOAuthPluginConfig,
+  pluginConfig: ResolvedSocialOAuthPluginConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   providerId: AuthFnSocialProviderId,
   tokenSet: SocialTokenSet
 ): Promise<ResolvedSocialIdentity> {
@@ -929,10 +940,10 @@ async function resolveLocalIdentity(
 }
 
 async function resolveLocalIdentityFromProfile(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   providerId: AuthFnSocialProviderId,
   providerSettings: ResolvedProviderSettings,
   profile: AuthFnSocialProfile
@@ -1016,9 +1027,9 @@ async function resolveLocalIdentityFromProfile(
 }
 
 async function createSocialUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   providerId: AuthFnSocialProviderId,
   profile: AuthFnSocialProfile,
   hooks: Partial<AuthFnHooks>
@@ -1068,7 +1079,7 @@ async function createSocialUser(
 }
 
 async function rollbackSocialUser(
-  config: Pick<AuthFnConfig, 'cacheStore' | 'database' | 'namespace' | 'plugins'>,
+  config: Pick<AuthFnRuntimeConfig, 'stores' | 'database' | 'namespace' | 'plugins' | 'pluginRuntime'>,
   userId: string,
   primaryEmail?: string | null
 ): Promise<void> {
@@ -1091,9 +1102,9 @@ async function rollbackSocialUser(
 }
 
 function resolveProviderSettings(
-  authConfig: Pick<AuthFnConfig, 'accountLinking'>,
-  pluginConfig: SocialOAuthPluginConfig,
-  runtime: AuthFnRuntimeResolution,
+  authConfig: Pick<AuthFnRuntimeConfig, 'accountLinking'>,
+  pluginConfig: ResolvedSocialOAuthPluginConfig,
+  runtime: AuthFnSocialOAuthEnvironment,
   providerId: AuthFnSocialProviderId,
   callbackUri: string
 ): ResolvedProviderSettings {
@@ -1136,6 +1147,25 @@ function resolveProviderSettings(
   };
 }
 
+function resolveTokenExchangeFetcher(
+  config: AuthFnRuntimeConfig,
+  pluginConfig: ResolvedSocialOAuthPluginConfig,
+  request: Request
+): OAuthFetchLike | undefined {
+  const tokenExchangeDiagnostics = pluginConfig.diagnostics === false
+    ? false
+    : pluginConfig.diagnostics?.tokenExchange;
+  if (!tokenExchangeDiagnostics) {
+    return pluginConfig.fetcher;
+  }
+  return createOAuthTokenDiagnosticFetcher({
+    fetcher: pluginConfig.fetcher,
+    observability: config.observability,
+    requestId: resolveRequestId(request),
+    diagnostics: tokenExchangeDiagnostics
+  });
+}
+
 async function authorizeScopes(
   settings: ResolvedProviderSettings,
   requestId: string
@@ -1162,7 +1192,7 @@ async function resolveProviderProfile(
   providerId: AuthFnSocialProviderId,
   tokenSet: SocialTokenSet,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   settings: ResolvedProviderSettings,
   fetcher: OAuthFetchLike | undefined
 ): Promise<AuthFnSocialProfile> {
@@ -1171,7 +1201,7 @@ async function resolveProviderProfile(
       providerId,
       tokenSet,
       request,
-      runtime,
+      environment: runtime,
       fetcher
     });
   }
@@ -1590,7 +1620,7 @@ function redirectWithCookies(
 }
 
 async function resolveOAuthCallbackErrorRedirectTarget(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   settings: ResolvedProviderSettings,
   stateId: string
 ): Promise<string | undefined> {
@@ -1977,16 +2007,16 @@ function createIdentifier(prefix: string): string {
 }
 
 function buildHookContext(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   actorId?: string,
   session?: SocialCallbackCompletion['session']
 ): AuthFnHookContext {
   return {
     config,
     request,
-    runtime,
+    environment: runtime,
     actorId,
     session
   };
@@ -1995,7 +2025,7 @@ function buildHookContext(
 async function runBeforeOAuthStart(
   ctx: AuthFnPluginRuntimeContext,
   request: Request,
-  runtime: AuthFnRuntimeResolution,
+  runtime: AuthFnSocialOAuthEnvironment,
   input: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   try {

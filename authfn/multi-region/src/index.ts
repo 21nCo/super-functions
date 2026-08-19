@@ -1,28 +1,38 @@
 import type { Route } from '@superfunctions/http';
-import type { MultiRegionPluginConfig } from '../plugin-types.js';
+import type { MultiRegionPluginConfig } from 'authfn/plugin-types';
 import type {
   AuthFnPlugin,
   AuthFnPluginRuntimeContext,
-  AuthFnRuntimeResolution,
+  AuthFnEnvironment,
   AuthFnSchemaDefinition
-} from '../types.js';
-import { resolveCookiePolicy } from '../core/cookies.js';
+} from 'authfn';
+import { resolveCookiePolicy } from 'authfn/core/cookies';
 import {
   buildLookupResult,
   ensureRegionAlignmentForIdentifier,
   ensureRegionAlignmentForUser,
   getMultiRegionPluginConfig,
-  rememberMultiRegionPluginConfig,
   registerUserRegion,
   unregisterRegionLookupForIdentifier
-} from '../core/regions.js';
-import { resolveRuntime } from '../core/runtime.js';
-import { createAuthFnRouteMeta } from '../http/router.js';
-import { jsonSuccess } from '../http/envelopes.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
+} from 'authfn/core/regions';
+import { resolveEnvironment } from 'authfn/core/environment';
+import { createAuthFnRouteMeta } from 'authfn/http/router';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
 
-export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): AuthFnPlugin {
-  const plugin: AuthFnPlugin = {
+export type {
+  AuthFnMultiRegionLookupInput,
+  AuthFnMultiRegionLookupResult,
+  AuthFnMultiRegionRegionConfig,
+  AuthFnMultiRegionRegistrationInput,
+  AuthFnRegionLookupRecord,
+  MultiRegionPluginConfig,
+  MultiRegionPluginRuntimeConfig
+} from 'authfn/plugin-types';
+export { authFnMultiRegionEnvironment } from 'authfn/core/regions';
+
+export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): AuthFnPlugin<'multiRegion'> {
+  const plugin: AuthFnPlugin<'multiRegion'> = {
     name: 'multiRegion',
     schema: () => config.schema ?? createMultiRegionSchema(),
     routes: (ctx) => createMultiRegionRoutes(ctx),
@@ -32,15 +42,16 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
     hooks: {
       beforeUserCreate: async (ctx, input) => {
         const authConfig = ctx.config;
-        const runtime = ctx.runtime;
+        const runtime = ctx.environment;
         const primaryEmail = readOptionalString(input.primaryEmail);
         if (!authConfig || !runtime || !primaryEmail) {
           return input;
         }
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
-        await ensureRegionAlignmentForIdentifier(authConfig, config, {
+        await ensureRegionAlignmentForIdentifier(authConfig, pluginConfig, {
           identifier: primaryEmail,
-          runtime,
+          environment: runtime,
           request: ctx.request
         });
         return input;
@@ -48,29 +59,31 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
       afterUserCreate: async (ctx, payload) => {
         const authConfig = ctx.config;
         const userId = readRequiredString(payload.id);
-        const runtime = ctx.runtime;
+        const runtime = ctx.environment;
         if (!authConfig || !runtime) {
           return;
         }
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
-        await registerUserRegion(authConfig, config, {
+        await registerUserRegion(authConfig, pluginConfig, {
           user: {
             id: userId,
             primaryEmail: readOptionalString(payload.primaryEmail)
           },
-          runtime,
+          environment: runtime,
           request: ctx.request
         });
       },
       beforeSessionIssue: async (ctx, input) => {
         const authConfig = ctx.config;
-        if (!authConfig || !ctx.actorId || !ctx.runtime) {
+        if (!authConfig || !ctx.actorId || !ctx.environment) {
           return input;
         }
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
-        const alignment = await ensureRegionAlignmentForUser(authConfig, config, {
+        const alignment = await ensureRegionAlignmentForUser(authConfig, pluginConfig, {
           userId: ctx.actorId,
-          runtime: ctx.runtime,
+          environment: ctx.environment,
           request: ctx.request
         });
 
@@ -85,13 +98,12 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
         if (!authConfig || !primaryEmail) {
           return;
         }
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
-        await unregisterRegionLookupForIdentifier(authConfig, config, primaryEmail);
+        await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
       }
     }
   };
-
-  rememberMultiRegionPluginConfig(plugin, config);
   return plugin;
 }
 
@@ -132,7 +144,7 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
         mode: 'none'
       }),
       handler: async (request) => {
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const body = await request.json() as {
           identifier?: string;
         };
@@ -140,7 +152,7 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
         const lookup = await buildLookupResult(ctx.config, pluginConfig, {
           identifier: body.identifier ?? '',
           request,
-          runtime
+          environment: runtime
         });
 
         await emitAuthEvent(ctx.config, {
@@ -161,12 +173,12 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
     },
     {
       method: 'GET',
-      path: '/runtime',
-      meta: createAuthFnRouteMeta('getRuntime', 'Get resolved runtime and cookie/provider overrides', {
+      path: '/environment',
+      meta: createAuthFnRouteMeta('getEnvironment', 'Get resolved environment and cookie/provider overrides', {
         mode: 'none'
       }),
       handler: async (request) => {
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const cookiePolicy = resolveCookiePolicy(ctx.config, request, runtime);
 
         return jsonSuccess(request, {
@@ -189,20 +201,31 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
   ];
 }
 
-function sanitizeRuntimeOAuth(runtime: AuthFnRuntimeResolution): Record<string, unknown> {
+function sanitizeRuntimeOAuth(runtime: AuthFnEnvironment): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(runtime.oauth ?? {}).map(([providerId, config]) => [
-      providerId,
-      {
-        clientId: config?.clientId ?? null,
-        hasClientSecret: Boolean(config?.clientSecret),
-        hasClientSecretResolver: Boolean(config?.clientSecretResolver),
-        allowlistedRedirectUris: config?.allowlistedRedirectUris ?? [],
-        allowlistedReturnTo: config?.allowlistedReturnTo ?? [],
-        scopes: config?.scopes ?? []
-      }
-    ])
+    Object.entries(runtime.oauth ?? {}).map(([providerId, config]) => {
+      const record = isRecord(config) ? config : {};
+      return [
+        providerId,
+        {
+          clientId: typeof record.clientId === 'string' ? record.clientId : null,
+          hasClientSecret: typeof record.clientSecret === 'string',
+          hasClientSecretResolver: typeof record.clientSecretResolver === 'function',
+          allowlistedRedirectUris: readStringArray(record.allowlistedRedirectUris),
+          allowlistedReturnTo: readStringArray(record.allowlistedReturnTo),
+          scopes: readStringArray(record.scopes)
+        }
+      ];
+    })
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
 function readRequiredString(value: unknown): string {

@@ -1,30 +1,33 @@
 import type { Route } from '@superfunctions/http';
-import type { PasswordPluginConfig } from '../plugin-types.js';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from '../types.js';
-import { createAuthFnRouteMeta, readOptionalJson } from '../http/router.js';
-import { authenticateRequest, issueSession } from '../core/sessions.js';
-import { resolveRuntime } from '../core/runtime.js';
-import { signInWithPassword, signUpWithPassword } from '../core/passwords.js';
-import { jsonSuccess } from '../http/envelopes.js';
-import { completeResetPassword, sendOtpChallenge } from '../core/verifications.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
-import { emitAccountLinkedEvent } from '../core/account-linking.js';
-import { buildSessionResponse, type AuthFnSessionResponseMode } from '../core/session-responses.js';
+import type {
+  PasswordPluginConfig,
+  PasswordPluginRuntimeConfig
+} from 'authfn/plugin-types';
+import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import { createAuthFnRouteMeta, readOptionalJson } from 'authfn/http/router';
+import { authenticateRequest, issueSession } from 'authfn/core/sessions';
+import { resolveEnvironment } from 'authfn/core/environment';
+import { signInWithPassword, signUpWithPassword } from 'authfn/core/passwords';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { completeResetPassword, sendOtpChallenge } from 'authfn/core/verifications';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { emitAccountLinkedEvent } from 'authfn/core/account-linking';
+import { buildSessionResponse, type AuthFnSessionResponseMode } from 'authfn/core/session-responses';
 import {
   beginTwoFactorChallenge,
   createPendingTwoFactorResponse,
   getTwoFactorPluginConfig
-} from '../core/two-factor.js';
+} from 'authfn/core/two-factor';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
 
-export function authFnPasswordPlugin(config: PasswordPluginConfig & {
-  otp?: {
-    delivery?: import('../types.js').AuthFnDeliveryProvider;
-    codeGenerator?: () => string;
-    now?: () => Date;
-    challengeTtlSeconds?: number;
-    maxAttempts?: number;
-  };
-} = {}): AuthFnPlugin {
+export type {
+  PasswordPluginConfig,
+  PasswordPluginRuntimeConfig
+} from 'authfn/plugin-types';
+
+export function authFnPasswordPlugin(
+  config: PasswordPluginConfig = {}
+): AuthFnPlugin<'password', PasswordPluginRuntimeConfig, false> {
   return {
     name: 'password',
     schema: () => config.schema ?? createPasswordSchema(),
@@ -56,16 +59,11 @@ function createPasswordSchema(): AuthFnSchemaDefinition['schemas'] {
 
 function createPasswordRoutes(
   ctx: AuthFnPluginRuntimeContext,
-  config: PasswordPluginConfig & {
-    otp?: {
-      delivery?: import('../types.js').AuthFnDeliveryProvider;
-      codeGenerator?: () => string;
-      now?: () => Date;
-      challengeTtlSeconds?: number;
-      maxAttempts?: number;
-    };
-  }
+  config: PasswordPluginConfig
 ): Route[] {
+  const runtimeConfig = readPluginRuntimeConfig<PasswordPluginRuntimeConfig>(ctx, 'password');
+  const otpConfig = runtimeConfig.otp ?? {};
+
   return [
     {
       method: 'POST',
@@ -80,7 +78,7 @@ function createPasswordRoutes(
           profile?: Record<string, unknown>;
           sessionMode?: AuthFnSessionResponseMode;
         }>(request);
-        const runtime = await resolveRuntime(ctx.config, request);
+        const runtime = await resolveEnvironment(ctx.config, request);
         const authenticatedSession = await authenticateRequest(ctx.config, request);
         const result = await signUpWithPassword(ctx.config, ctx.hooks, {
           email: body.email ?? '',
@@ -88,7 +86,7 @@ function createPasswordRoutes(
           profile: body.profile
         }, {
           request,
-          runtime,
+          environment: runtime,
           authenticatedSession,
           policy: {
             compromisedPasswordChecker: config.compromisedPasswordChecker
@@ -137,7 +135,7 @@ function createPasswordRoutes(
         const body = await readOptionalJson<{
           email?: string;
         }>(request);
-        const result = await sendOtpChallenge(ctx.config, ctx.hooks, config.otp ?? {}, {
+        const result = await sendOtpChallenge(ctx.config, ctx.hooks, otpConfig, {
           request,
           purpose: 'reset-password',
           email: body.email ?? ''
@@ -162,7 +160,7 @@ function createPasswordRoutes(
           newPassword?: string;
         };
         const result = await completeResetPassword(ctx.config, {
-          ...(config.otp ?? {}),
+          ...otpConfig,
           passwordPolicy: {
             compromisedPasswordChecker: config.compromisedPasswordChecker
           }

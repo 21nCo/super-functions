@@ -1,12 +1,12 @@
 import type {
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnSocialProviderId,
   AuthFnUserRecord
 } from '../types.js';
 import { emitAuthEvent, eventRequestId } from './observability.js';
 
 export function allowsOAuthLinkByVerifiedEmail(
-  config: Pick<AuthFnConfig, 'accountLinking'>,
+  config: Pick<AuthFnRuntimeConfig, 'accountLinking'>,
   providerId: AuthFnSocialProviderId
 ): {
   allowed: boolean;
@@ -39,13 +39,13 @@ export function allowsOAuthLinkByVerifiedEmail(
 }
 
 export function allowsOtpSignUpExistingUser(
-  config: Pick<AuthFnConfig, 'accountLinking'>
+  config: Pick<AuthFnRuntimeConfig, 'accountLinking'>
 ): boolean {
   return config.accountLinking?.otpSignUpExistingUser ?? false;
 }
 
 export function allowsPasswordForAuthenticatedUser(
-  config: Pick<AuthFnConfig, 'accountLinking'>
+  config: Pick<AuthFnRuntimeConfig, 'accountLinking'>
 ): {
   allowed: boolean;
   requireExistingEmailVerified: boolean;
@@ -72,7 +72,7 @@ export function allowsPasswordForAuthenticatedUser(
 }
 
 export async function emitAccountLinkedEvent(
-  config: Pick<AuthFnConfig, 'observability'>,
+  config: Pick<AuthFnRuntimeConfig, 'observability'>,
   input: {
     request?: Request;
     user: AuthFnUserRecord;
@@ -99,7 +99,7 @@ export async function emitAccountLinkedEvent(
 }
 
 export async function emitAccountLinkingConflictEvent(
-  config: Pick<AuthFnConfig, 'observability'>,
+  config: Pick<AuthFnRuntimeConfig, 'observability'>,
   input: {
     request?: Request;
     user?: AuthFnUserRecord;

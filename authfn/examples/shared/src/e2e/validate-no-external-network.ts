@@ -10,7 +10,7 @@ const socialOAuthAuthFile = path.join(examplesRoot, 'social-oauth/server/src/aut
 const allowedLocalUrls = [
   'http://127.0.0.1:4310/auth/session',
   'http://127.0.0.1:4312/demo/fake-oauth/google/authorize',
-  'http://localhost:4316/auth/runtime'
+  'http://localhost:4316/auth/environment'
 ];
 
 const blockedExternalUrls = [

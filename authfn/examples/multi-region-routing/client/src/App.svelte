@@ -3,7 +3,7 @@
   import {
     createAuthFnClient,
     type AuthFnErrorEnvelope,
-    type AuthFnRuntimeResolution,
+    type AuthFnEnvironment,
     type AuthFnSession,
     type AuthFnSuccessEnvelope,
     type AuthFnRegionLookupResult
@@ -11,7 +11,7 @@
   import { EXAMPLE_TEST_IDS } from '@authfn/examples-shared/client/testids';
 
   type SessionEnvelope = AuthFnSuccessEnvelope<{ session: AuthFnSession | null }> | AuthFnErrorEnvelope;
-  type RuntimeEnvelope = AuthFnSuccessEnvelope<AuthFnRuntimeResolution> | AuthFnErrorEnvelope;
+  type RuntimeEnvelope = AuthFnSuccessEnvelope<AuthFnEnvironment> | AuthFnErrorEnvelope;
   type LookupEnvelope = AuthFnSuccessEnvelope<AuthFnRegionLookupResult> | AuthFnErrorEnvelope;
 
   const usAuth = createAuthFnClient({
@@ -26,8 +26,8 @@
 
   let identifier = 'ada@example.com';
   let password = 'Sup3rSecurePassphrase!';
-  let runtimeUs: AuthFnRuntimeResolution | null = null;
-  let runtimeEu: AuthFnRuntimeResolution | null = null;
+  let runtimeUs: AuthFnEnvironment | null = null;
+  let runtimeEu: AuthFnEnvironment | null = null;
   let lookupResult: AuthFnRegionLookupResult | null = null;
   let sessions: { us: AuthFnSession | null; eu: AuthFnSession | null } = { us: null, eu: null };
   let authError: AuthFnErrorEnvelope | null = null;
@@ -43,7 +43,7 @@
 
   async function refreshRuntimes(): Promise<void> {
     await withRequest('Loaded runtime overrides for both authorities.', async () => {
-      const [usRuntime, euRuntime] = await Promise.all([usAuth.getRuntime(), euAuth.getRuntime()]);
+      const [usRuntime, euRuntime] = await Promise.all([usAuth.getEnvironment(), euAuth.getEnvironment()]);
       handleRuntimeEnvelope('us', usRuntime);
       handleRuntimeEnvelope('eu', euRuntime);
     });

@@ -178,6 +178,8 @@ export function createAuthFnRegionalClient(
   };
 
   const regionalClient: AuthFnRegionalClient = {
+    createTransportAuth: (input) =>
+      createAuthFnClient(options.clientOptions ?? {}).createTransportAuth(input),
     getSession: () => clientFor(currentRegionId).getSession(),
     getAccountDetails: () => clientFor(currentRegionId).getAccountDetails(),
     deleteAccount: () => clientFor(currentRegionId).deleteAccount(),
@@ -244,7 +246,7 @@ export function createAuthFnRegionalClient(
     completeTwoFactorChallenge: (input) => clientFor(currentRegionId).completeTwoFactorChallenge(input),
     disableTwoFactor: (input) => clientFor(currentRegionId).disableTwoFactor(input),
     lookupRegion: (input) => lookupCurrentRegion(input.identifier),
-    getRuntime: () => clientFor(currentRegionId).getRuntime(),
+    getEnvironment: () => clientFor(currentRegionId).getEnvironment(),
     prepareEmailAuth,
     resolveRegion,
     clearRegion: async (input) => {

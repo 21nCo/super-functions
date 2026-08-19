@@ -27,7 +27,7 @@ export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/authfn_examples_
 
 ## Auth routes exercised
 
-- `GET /auth/runtime`
+- `GET /auth/environment`
 - `POST /auth/regions/lookup`
 - `POST /auth/sign-in/password`
 - `GET /auth/session`

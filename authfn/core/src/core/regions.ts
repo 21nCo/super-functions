@@ -1,20 +1,23 @@
 import { randomBytes } from 'node:crypto';
+import { instrumentMethods, normalizeObservability } from '@superfunctions/observability';
 import type {
-  MultiRegionPluginConfig,
+  MultiRegionPluginRuntimeConfig,
   AuthFnMultiRegionRegionConfig,
   AuthFnRegionLookupRecord
 } from '../plugin-types.js';
 import type {
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnRegionLookup,
   AuthFnRegionLookupResult,
   AuthFnRegionProfileRecord,
-  AuthFnRuntimeResolution,
+  AuthFnEnvironment,
+  AuthFnEnvironmentResolver,
   AuthFnUserRecord
 } from '../types.js';
 import {
   AUTHFN_CACHE_TTL_SECONDS,
   createAuthFnCacheKey,
+  getAuthFnCacheStore,
   getCachedJson,
   setCachedJson
 } from './cache.js';
@@ -25,105 +28,112 @@ import {
 import { emitAuthEvent, eventRequestId } from './observability.js';
 import { findUserById, findUserByPrimaryEmail } from './users.js';
 
-const multiRegionPluginConfigs = new WeakMap<object, MultiRegionPluginConfig>();
+const multiRegionEnvironmentConfig = Symbol.for('authfn.multiRegionEnvironmentConfig');
 
-export function rememberMultiRegionPluginConfig(
-  plugin: object,
-  config: MultiRegionPluginConfig
-): void {
-  multiRegionPluginConfigs.set(plugin, config);
+export interface AuthFnMultiRegionEnvironmentResolver extends AuthFnEnvironmentResolver {
+  readonly [multiRegionEnvironmentConfig]: MultiRegionPluginRuntimeConfig;
+}
+
+/**
+ * Creates an AuthFn request environment resolver from multi-region routing config.
+ */
+export function authFnMultiRegionEnvironment(
+  config: MultiRegionPluginRuntimeConfig
+): AuthFnMultiRegionEnvironmentResolver {
+  const observability = normalizeObservability(config.observability)?.child({ component: 'authfn.lookup' });
+  const resolvedConfig: MultiRegionPluginRuntimeConfig = {
+    ...config,
+    lookupStore: config.lookupStore
+      ? instrumentMethods({
+          target: config.lookupStore,
+          observability,
+          kind: 'lookup',
+          component: 'authfn.lookup',
+          extract: ({ property, args }) => ({
+            operation: String(property),
+            resource: typeof args[0] === 'string'
+              ? args[0]
+              : readLookupIdentifier(args[0])
+          })
+        })
+      : undefined
+  };
+  const resolver: AuthFnMultiRegionEnvironmentResolver = {
+    [multiRegionEnvironmentConfig]: resolvedConfig,
+    resolve(request) {
+      const url = new URL(request.url);
+      const baseEnvironment: AuthFnEnvironment = {
+        issuer: url.origin,
+        baseUrl: url.origin
+      };
+      const region = resolveRegionForRequest(resolvedConfig, request, baseEnvironment);
+      if (!region) {
+        return baseEnvironment;
+      }
+      return {
+        issuer: region.issuer ?? region.authority,
+        baseUrl: region.baseUrl ?? region.authority,
+        regionId: region.regionId,
+        cookie: {
+          ...(region.cookie ?? {}),
+          ...(region.domain && !region.cookie?.domain ? { domain: region.domain } : {})
+        },
+        oauth: region.oauth
+      };
+    }
+  };
+  return resolver;
 }
 
 export function getMultiRegionPluginConfig(
-  config: Pick<AuthFnConfig, 'plugins'>
-): MultiRegionPluginConfig | null {
-  for (const plugin of config.plugins) {
-    if (plugin.name !== 'multiRegion') {
-      continue;
-    }
-
-    return multiRegionPluginConfigs.get(plugin) ?? {};
+  config: Pick<AuthFnRuntimeConfig, 'plugins' | 'environment'>
+): MultiRegionPluginRuntimeConfig | null {
+  if (!config.plugins.some((plugin) => plugin.name === 'multiRegion')) {
+    return null;
   }
 
-  return null;
+  return readMultiRegionEnvironmentConfig(config.environment);
 }
 
-export function resolveMultiRegionRuntimeOverride(
-  config: Pick<AuthFnConfig, 'plugins'>,
-  request: Request,
-  baseRuntime: AuthFnRuntimeResolution
-): Partial<AuthFnRuntimeResolution> | null {
-  const pluginConfig = getMultiRegionPluginConfig(config);
-  if (!pluginConfig) {
-    return null;
-  }
+function readMultiRegionEnvironmentConfig(
+  environment: AuthFnEnvironmentResolver | undefined
+): MultiRegionPluginRuntimeConfig | null {
+  return isMultiRegionEnvironmentResolver(environment)
+    ? environment[multiRegionEnvironmentConfig]
+    : null;
+}
 
-  const region = resolveRegionForRequest(pluginConfig, request, baseRuntime);
-  if (!region) {
-    return null;
-  }
-
-  return {
-    issuer: region.issuer ?? region.authority,
-    baseUrl: region.baseUrl ?? region.authority,
-    regionId: region.regionId,
-    cookie: {
-      ...(region.cookie ?? {}),
-      ...(region.domain && !region.cookie?.domain ? { domain: region.domain } : {})
-    },
-    oauth: region.oauth
-  };
+function isMultiRegionEnvironmentResolver(
+  environment: AuthFnEnvironmentResolver | undefined
+): environment is AuthFnMultiRegionEnvironmentResolver {
+  return environment !== undefined
+    && multiRegionEnvironmentConfig in environment;
 }
 
 export async function lookupRegionByIdentifier(
-  config: Pick<AuthFnConfig, 'database' | 'cacheStore' | 'namespace' | 'plugins'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'stores' | 'namespace' | 'plugins'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   input: {
     identifier: string;
     request?: Request;
-    runtime: AuthFnRuntimeResolution;
+    environment: AuthFnEnvironment;
     bypassCache?: boolean;
   }
 ): Promise<AuthFnRegionLookup | null> {
   const identifier = normalizeIdentifier(input.identifier);
   const cacheKey = createAuthFnCacheKey(config, 'region', identifier);
   if (!input.bypassCache) {
-    const cached = await getCachedJson<CachedRegionLookup>(config.cacheStore, cacheKey);
+    const cached = await getCachedJson<CachedRegionLookup>(getAuthFnCacheStore(config), cacheKey);
     if (cached) {
       return cached.found ? cached.lookup : null;
     }
   }
 
   if (pluginConfig.lookupStore) {
-    const record = await pluginConfig.lookupStore.getByIdentifier(identifier);
+    const record = parseLookupRecord(await pluginConfig.lookupStore.get(regionLookupStoreKey(identifier)));
     if (record) {
       const lookup = lookupFromRecord(record);
-      await setCachedJson(config.cacheStore, {
-        key: cacheKey,
-        value: {
-          found: true,
-          lookup
-        } satisfies CachedRegionLookup,
-        ttlSeconds: AUTHFN_CACHE_TTL_SECONDS.regionHit
-      });
-      return lookup;
-    }
-  }
-
-  if (pluginConfig.directory) {
-    const external = await pluginConfig.directory.lookupByIdentifier({
-      identifier,
-      request: input.request,
-      runtime: input.runtime
-    });
-    if (external) {
-      const lookup = {
-        userId: external.userId,
-        regionId: external.regionId,
-        authority: normalizeAuthority(external.authority),
-        domain: normalizeOptionalString(external.domain)
-      };
-      await setCachedJson(config.cacheStore, {
+      await setCachedJson(getAuthFnCacheStore(config), {
         key: cacheKey,
         value: {
           found: true,
@@ -137,7 +147,7 @@ export async function lookupRegionByIdentifier(
 
   const user = await findUserByPrimaryEmail(config, identifier);
   if (!user) {
-    await setCachedJson(config.cacheStore, {
+    await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
       value: {
         found: false
@@ -149,7 +159,7 @@ export async function lookupRegionByIdentifier(
 
   const profile = await findRegionProfileByUserId(config, user.id);
   if (!profile) {
-    await setCachedJson(config.cacheStore, {
+    await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
       value: {
         found: false
@@ -165,7 +175,7 @@ export async function lookupRegionByIdentifier(
     authority: profile.authority,
     domain: profile.domain ?? undefined
   };
-  await setCachedJson(config.cacheStore, {
+  await setCachedJson(getAuthFnCacheStore(config), {
     key: cacheKey,
     value: {
       found: true,
@@ -177,12 +187,12 @@ export async function lookupRegionByIdentifier(
 }
 
 export async function buildLookupResult(
-  config: Pick<AuthFnConfig, 'database' | 'cacheStore' | 'namespace' | 'plugins'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'stores' | 'namespace' | 'plugins'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   input: {
     identifier: string;
     request?: Request;
-    runtime: AuthFnRuntimeResolution;
+    environment: AuthFnEnvironment;
   }
 ): Promise<AuthFnRegionLookupResult> {
   const identifier = normalizeIdentifier(input.identifier);
@@ -193,17 +203,17 @@ export async function buildLookupResult(
   if (!lookup) {
     return {
       identifier,
-      regionId: input.runtime.regionId ?? pluginConfig.defaultRegionId ?? 'unknown',
-      authority: normalizeAuthority(input.runtime.baseUrl),
+      regionId: input.environment.regionId ?? pluginConfig.defaultRegionId ?? 'unknown',
+      authority: normalizeAuthority(input.environment.baseUrl),
       domain: undefined,
       continueLocally: true,
       redirectTo: undefined
     };
   }
 
-  const currentRegionId = input.runtime.regionId ?? pluginConfig.defaultRegionId;
-  const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
+  const currentRegionId = input.environment.regionId ?? pluginConfig.defaultRegionId;
+  const currentAuthority = normalizeAuthority(input.environment.baseUrl);
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.environment);
   const continueLocally = lookup.regionId === currentRegionId || currentAuthority === targetAuthority;
 
   return {
@@ -218,36 +228,36 @@ export async function buildLookupResult(
 }
 
 export async function ensureRegionAlignmentForUser(
-  config: Pick<AuthFnConfig, 'database' | 'cacheStore' | 'namespace' | 'plugins'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'stores' | 'namespace' | 'plugins'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   input: {
     userId: string;
-    runtime: AuthFnRuntimeResolution;
+    environment: AuthFnEnvironment;
     request?: Request;
   }
 ): Promise<{ regionId?: string }> {
   const user = await findUserById(config, input.userId);
   if (!user?.primaryEmail) {
     return {
-      regionId: input.runtime.regionId
+      regionId: input.environment.regionId
     };
   }
 
   const lookup = await lookupRegionByIdentifier(config, pluginConfig, {
     identifier: user.primaryEmail,
     request: input.request,
-    runtime: input.runtime,
+    environment: input.environment,
     bypassCache: true
   });
   if (!lookup) {
     return {
-      regionId: input.runtime.regionId
+      regionId: input.environment.regionId
     };
   }
 
-  const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
-  if (lookup.regionId !== input.runtime.regionId && currentAuthority !== targetAuthority) {
+  const currentAuthority = normalizeAuthority(input.environment.baseUrl);
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.environment);
+  if (lookup.regionId !== input.environment.regionId && currentAuthority !== targetAuthority) {
     throw new AuthFnRegionMismatchError('Request must continue on a different region authority', {
       userId: user.id,
       regionId: lookup.regionId,
@@ -263,11 +273,11 @@ export async function ensureRegionAlignmentForUser(
 }
 
 export async function ensureRegionAlignmentForIdentifier(
-  config: Pick<AuthFnConfig, 'database' | 'cacheStore' | 'namespace' | 'plugins'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'stores' | 'namespace' | 'plugins'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   input: {
     identifier: string;
-    runtime: AuthFnRuntimeResolution;
+    environment: AuthFnEnvironment;
     request?: Request;
   }
 ): Promise<{ regionId?: string }> {
@@ -275,18 +285,18 @@ export async function ensureRegionAlignmentForIdentifier(
   const lookup = await lookupRegionByIdentifier(config, pluginConfig, {
     identifier,
     request: input.request,
-    runtime: input.runtime,
+    environment: input.environment,
     bypassCache: true
   });
   if (!lookup) {
     return {
-      regionId: input.runtime.regionId
+      regionId: input.environment.regionId
     };
   }
 
-  const currentAuthority = normalizeAuthority(input.runtime.baseUrl);
-  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.runtime);
-  if (lookup.regionId !== input.runtime.regionId && currentAuthority !== targetAuthority) {
+  const currentAuthority = normalizeAuthority(input.environment.baseUrl);
+  const targetAuthority = resolveLookupAuthorityForRequest(pluginConfig, lookup, input.request, input.environment);
+  if (lookup.regionId !== input.environment.regionId && currentAuthority !== targetAuthority) {
     throw new AuthFnRegionMismatchError('Request must continue on a different region authority', {
       identifier,
       userId: lookup.userId,
@@ -303,15 +313,15 @@ export async function ensureRegionAlignmentForIdentifier(
 }
 
 export async function registerUserRegion(
-  config: Pick<AuthFnConfig, 'database' | 'cacheStore' | 'namespace' | 'observability'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'stores' | 'namespace' | 'observability'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   input: {
     user: Pick<AuthFnUserRecord, 'id' | 'primaryEmail'>;
-    runtime: AuthFnRuntimeResolution;
+    environment: AuthFnEnvironment;
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
-  const currentRegion = deriveCurrentRegion(pluginConfig, input.request, input.runtime);
+  const currentRegion = deriveCurrentRegion(pluginConfig, input.request, input.environment);
   if (!currentRegion) {
     return null;
   }
@@ -343,11 +353,15 @@ export async function registerUserRegion(
     };
 
     if (pluginConfig.lookupStore) {
-      const result = await pluginConfig.lookupStore.putIfAbsent(lookupRecord);
+      const result = await pluginConfig.lookupStore.setIfAbsent({
+        key: regionLookupStoreKey(identifier),
+        value: serializeLookupRecord(lookupRecord)
+      });
+      const existingRecord = parseLookupRecord(result.existing);
       insertedLookup = result.inserted;
-      if (!result.inserted && result.existing && !recordsReferToSameRegionUser(result.existing, lookupRecord)) {
-        const existing = lookupFromRecord(result.existing);
-        await setCachedJson(config.cacheStore, {
+      if (!result.inserted && existingRecord && !recordsReferToSameRegionUser(existingRecord, lookupRecord)) {
+        const existing = lookupFromRecord(existingRecord);
+        await setCachedJson(getAuthFnCacheStore(config), {
           key: cacheKey,
           value: {
             found: true,
@@ -378,8 +392,11 @@ export async function registerUserRegion(
           continueLocally: false
         });
       }
-      if (!result.inserted && result.existing && shouldRefreshExistingLookup(result.existing, lookupRecord)) {
-        await pluginConfig.lookupStore.update(lookupRecord);
+      if (!result.inserted && existingRecord && shouldRefreshExistingLookup(existingRecord, lookupRecord)) {
+        await pluginConfig.lookupStore.set({
+          key: regionLookupStoreKey(identifier),
+          value: serializeLookupRecord(lookupRecord)
+        });
       }
     }
   }
@@ -407,8 +424,8 @@ export async function registerUserRegion(
   } catch (error) {
     if (insertedLookup && input.user.primaryEmail) {
       const identifier = normalizeIdentifier(input.user.primaryEmail);
-      await pluginConfig.lookupStore?.deleteByIdentifier(identifier);
-      await config.cacheStore?.delete(createAuthFnCacheKey(config, 'region', identifier));
+      await pluginConfig.lookupStore?.delete(regionLookupStoreKey(identifier));
+      await getAuthFnCacheStore(config)?.delete(createAuthFnCacheKey(config, 'region', identifier));
     }
     throw error;
   }
@@ -425,18 +442,7 @@ export async function registerUserRegion(
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
     };
-    if (!pluginConfig.lookupStore) {
-      await pluginConfig.directory?.registerUser?.({
-        userId: input.user.id,
-        primaryEmail: input.user.primaryEmail,
-        regionId: record.regionId,
-        authority: record.authority,
-        domain: record.domain ?? undefined,
-        request: input.request,
-        runtime: input.runtime
-      });
-    }
-    await setCachedJson(config.cacheStore, {
+    await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
       value: {
         found: true,
@@ -459,10 +465,10 @@ function recordsReferToSameRegionUser(
 }
 
 function resolveLookupAuthorityForRequest(
-  pluginConfig: MultiRegionPluginConfig,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   lookup: AuthFnRegionLookup,
   request: Request | undefined,
-  runtime: AuthFnRuntimeResolution
+  runtime: AuthFnEnvironment
 ): string {
   const productPeer = request
     ? findRegionPeerForRequest(pluginConfig, lookup.regionId, request, runtime)
@@ -471,10 +477,10 @@ function resolveLookupAuthorityForRequest(
 }
 
 function findRegionPeerForRequest(
-  pluginConfig: MultiRegionPluginConfig,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   targetRegionId: string,
   request: Request,
-  runtime: AuthFnRuntimeResolution
+  runtime: AuthFnEnvironment
 ): AuthFnMultiRegionRegionConfig | undefined {
   const currentRegion = resolveRegionForRequest(pluginConfig, request, runtime);
   if (!currentRegion) {
@@ -500,17 +506,17 @@ function shouldRefreshExistingLookup(
 }
 
 export async function unregisterRegionLookupForIdentifier(
-  config: Pick<AuthFnConfig, 'cacheStore' | 'namespace'>,
-  pluginConfig: MultiRegionPluginConfig,
+  config: Pick<AuthFnRuntimeConfig, 'stores' | 'namespace'>,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   identifier: string
 ): Promise<void> {
   const normalized = normalizeIdentifier(identifier);
-  await pluginConfig.lookupStore?.deleteByIdentifier(normalized);
-  await config.cacheStore?.delete(createAuthFnCacheKey(config, 'region', normalized));
+  await pluginConfig.lookupStore?.delete(regionLookupStoreKey(normalized));
+  await getAuthFnCacheStore(config)?.delete(createAuthFnCacheKey(config, 'region', normalized));
 }
 
 export async function findRegionProfileByUserId(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   userId: string
 ): Promise<AuthFnRegionProfileRecord | null> {
   return config.database.findOne<AuthFnRegionProfileRecord>({
@@ -521,9 +527,9 @@ export async function findRegionProfileByUserId(
 }
 
 export function resolveRegionForRequest(
-  pluginConfig: MultiRegionPluginConfig,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   request: Request,
-  runtime: AuthFnRuntimeResolution
+  runtime: AuthFnEnvironment
 ): AuthFnMultiRegionRegionConfig | null {
   const host = new URL(request.url).hostname.toLowerCase();
   const regionByHost = (pluginConfig.regions ?? []).find((candidate) =>
@@ -548,9 +554,9 @@ export function resolveRegionForRequest(
 }
 
 function deriveCurrentRegion(
-  pluginConfig: MultiRegionPluginConfig,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   request: Request | undefined,
-  runtime: AuthFnRuntimeResolution
+  runtime: AuthFnEnvironment
 ): AuthFnRegionLookup | null {
   const configured = request ? resolveRegionForRequest(pluginConfig, request, runtime) : undefined;
   const regionId = configured?.regionId ?? runtime.regionId;
@@ -567,7 +573,7 @@ function deriveCurrentRegion(
 }
 
 function findConfiguredRegion(
-  pluginConfig: MultiRegionPluginConfig,
+  pluginConfig: MultiRegionPluginRuntimeConfig,
   regionId: string
 ): AuthFnMultiRegionRegionConfig | undefined {
   return (pluginConfig.regions ?? []).find((region) => region.regionId === regionId);
@@ -637,10 +643,50 @@ function lookupFromRecord(record: AuthFnRegionLookupRecord): AuthFnRegionLookup 
   };
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function regionLookupStoreKey(identifier: string): string {
+  return `authfn:region:${identifier}`;
+}
+
+function serializeLookupRecord(record: AuthFnRegionLookupRecord): string {
+  return JSON.stringify(record);
+}
+
+function parseLookupRecord(value: string | undefined | null): AuthFnRegionLookupRecord | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<AuthFnRegionLookupRecord>;
+    return typeof parsed.identifier === 'string'
+      && typeof parsed.regionId === 'string'
+      && typeof parsed.authority === 'string'
+      && typeof parsed.createdAt === 'string'
+      && typeof parsed.updatedAt === 'string'
+      ? {
+          identifier: parsed.identifier,
+          userId: normalizeOptionalString(parsed.userId),
+          regionId: parsed.regionId,
+          authority: parsed.authority,
+          domain: normalizeOptionalString(parsed.domain),
+          createdAt: parsed.createdAt,
+          updatedAt: parsed.updatedAt
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 
 function createIdentifier(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
+}
+
+function readLookupIdentifier(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const identifier = (value as { identifier?: unknown }).identifier;
+  return typeof identifier === 'string' ? identifier : undefined;
 }

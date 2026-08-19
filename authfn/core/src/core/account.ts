@@ -1,6 +1,6 @@
 import type {
   AuthFnAccountDeletionResult,
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnHooks,
   AuthFnSession,
   AuthFnTwoFactorEnrollmentRecord,
@@ -46,7 +46,7 @@ export interface AuthFnAccountDetails {
 }
 
 export async function getAccountDetailsForUser(
-  config: Pick<AuthFnConfig, 'database' | 'namespace' | 'plugins'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace' | 'plugins'>,
   user: AuthFnUserRecord
 ): Promise<AuthFnAccountDetails> {
   const hasPasswordPlugin = hasPlugin(config, 'password');
@@ -84,7 +84,7 @@ export async function getAccountDetailsForUser(
 }
 
 export async function deleteAccountForUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: {
     user: AuthFnUserRecord;
@@ -187,7 +187,7 @@ export async function deleteAccountForUser(
   return result;
 }
 
-function hasPlugin(config: Pick<AuthFnConfig, 'plugins'>, name: string): boolean {
+function hasPlugin(config: Pick<AuthFnRuntimeConfig, 'plugins'>, name: string): boolean {
   return config.plugins.some((plugin) => plugin.name === name);
 }
 
@@ -203,7 +203,7 @@ function sanitizeOAuthAccount(account: AuthFnOAuthAccountRecord): AuthFnAccountO
 }
 
 async function deleteMany(
-  config: Pick<AuthFnConfig, 'database' | 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace'>,
   model: string,
   field: string,
   value: unknown
@@ -215,6 +215,6 @@ async function deleteMany(
   });
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }

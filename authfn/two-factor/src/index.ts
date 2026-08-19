@@ -1,28 +1,33 @@
 import type { Route } from '@superfunctions/http';
-import type { TwoFactorPluginConfig } from '../plugin-types.js';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from '../types.js';
+import type { TwoFactorPluginConfig, TwoFactorPluginRuntimeConfig } from 'authfn/plugin-types';
+import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
 import {
   appendTwoFactorMethodToSession,
   confirmTwoFactorEnrollment,
   createTwoFactorEnrollment,
   disableTwoFactorEnrollment,
-  rememberTwoFactorPluginConfig,
   satisfyTwoFactorChallenge
-} from '../core/two-factor.js';
-import { assertValidCsrf, issueSession, requireCookieSession } from '../core/sessions.js';
-import { issueSessionCookies } from '../core/cookies.js';
-import { createAuthFnRouteMeta } from '../http/router.js';
-import { jsonSuccess } from '../http/envelopes.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
+} from 'authfn/core/two-factor';
+import { assertValidCsrf, issueSession, requireCookieSession } from 'authfn/core/sessions';
+import { issueSessionCookies } from 'authfn/core/cookies';
+import { createAuthFnRouteMeta } from 'authfn/http/router';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
 
-export function authFnTwoFactorPlugin(config: TwoFactorPluginConfig = {}): AuthFnPlugin {
-  const plugin: AuthFnPlugin = {
+export type {
+  TwoFactorPluginConfig,
+  TwoFactorPluginRuntimeConfig
+} from 'authfn/plugin-types';
+
+export function authFnTwoFactorPlugin(
+  config: TwoFactorPluginConfig = {}
+): AuthFnPlugin<'twoFactor', TwoFactorPluginRuntimeConfig, false> {
+  return {
     name: 'twoFactor',
     schema: () => config.schema ?? createTwoFactorSchema(),
-    routes: (ctx) => createTwoFactorRoutes(ctx, config)
+    routes: (ctx) => createTwoFactorRoutes(ctx)
   };
-  rememberTwoFactorPluginConfig(plugin, config);
-  return plugin;
 }
 
 function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
@@ -92,10 +97,9 @@ function createTwoFactorSchema(): AuthFnSchemaDefinition['schemas'] {
   ];
 }
 
-function createTwoFactorRoutes(
-  ctx: AuthFnPluginRuntimeContext,
-  config: TwoFactorPluginConfig
-): Route[] {
+function createTwoFactorRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
+  const config = readPluginRuntimeConfig<TwoFactorPluginRuntimeConfig>(ctx, 'twoFactor');
+
   return [
     {
       method: 'POST',

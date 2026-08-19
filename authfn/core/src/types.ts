@@ -1,7 +1,8 @@
 import type { AuthProvider, AuthSession } from '@superfunctions/auth';
-import type { Adapter, KVStoreAdapter, TableSchema } from '@superfunctions/db';
+import type { DeliveryProvider, DeliveryResult, EmailDeliveryRequest } from '@superfunctions/delivery';
+import type { Adapter, RuntimeStores, TableSchema } from '@superfunctions/db';
 import type { Route, Router } from '@superfunctions/http';
-import type { OAuthClientSecretResolver, OAuthFetchLike, OAuthTokenHttpClient } from '@superfunctions/oauth-http';
+import type { ObservationEvent, ObservabilityInput, SuperfunctionObservability } from '@superfunctions/observability';
 import type { AuthFnErrorCode } from './core/errors.js';
 export {
   AuthFnAdminAmbiguousUserError,
@@ -217,6 +218,7 @@ export type AuthFnEventType =
   | 'authfn.oauth.started'
   | 'authfn.oauth.completed'
   | 'authfn.oauth.failed'
+  | 'authfn.oauth.token_exchange'
   | 'authfn.api_key.created'
   | 'authfn.api_key.revoked'
   | 'authfn.2fa.enabled'
@@ -230,8 +232,7 @@ export type AuthFnEventType =
   | 'authfn.request.failed'
   | 'authfn.plugin.failed';
 
-export interface AuthFnEvent {
-  type: AuthFnEventType;
+export type AuthFnEvent = ObservationEvent<'authfn', AuthFnEventType> & {
   requestId: string;
   actorId?: string;
   sessionId?: string;
@@ -242,30 +243,40 @@ export interface AuthFnEvent {
   hookName?: keyof AuthFnHooks | string;
   outcome?: string;
   metadata?: Record<string, unknown>;
-}
+};
 
-export interface AuthFnObservabilityConfig {
-  emit?(event: AuthFnEvent): Promise<void> | void;
-}
+export type AuthFnEventInput = Omit<AuthFnEvent, 'domain'> & {
+  domain?: 'authfn';
+};
 
-export interface AuthFnDeliveryRequest {
+export interface AuthFnDeliveryRequest extends EmailDeliveryRequest {
   channel: 'email';
+  kind: 'authfn.otp';
   challengeId: string;
   purpose: AuthFnOtpPurpose;
   email: string;
   code: string;
-  metadata?: Record<string, unknown>;
 }
 
-export interface AuthFnDeliveryResult {
-  sent: boolean;
-  metadata?: Record<string, unknown>;
+export interface AuthFnDeliveryResult extends DeliveryResult {
 }
 
-export interface AuthFnDeliveryProvider {
-  send(input: AuthFnDeliveryRequest): Promise<AuthFnDeliveryResult> | AuthFnDeliveryResult;
-  emit?(event: AuthFnOtpChallengeLifecycleEvent): Promise<void> | void;
-}
+export type AuthFnDeliveryMessage = Partial<
+  Pick<
+    EmailDeliveryRequest,
+    'subject' | 'html' | 'text' | 'cc' | 'bcc' | 'attachments' | 'tags' | 'metadata'
+  >
+>;
+
+export type AuthFnDeliveryMessageResolver = (
+  input: AuthFnDeliveryRequest
+) => Promise<AuthFnDeliveryMessage | undefined> | AuthFnDeliveryMessage | undefined;
+
+export type AuthFnDeliveryProvider = DeliveryProvider<
+  AuthFnDeliveryRequest,
+  AuthFnDeliveryResult,
+  AuthFnOtpChallengeLifecycleEvent
+>;
 
 export interface AuthFnSocialProfile {
   providerAccountId: string;
@@ -275,31 +286,12 @@ export interface AuthFnSocialProfile {
   profile?: Record<string, unknown>;
 }
 
-export interface AuthFnSocialProfileResolverInput {
-  providerId: AuthFnSocialProviderId;
-  tokenSet: {
-    accessToken: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    scope?: string;
-    tokenType?: string;
-    idToken?: string;
-  };
-  request?: Request;
-  runtime?: AuthFnRuntimeResolution;
-  fetcher?: OAuthFetchLike;
-}
-
-export type AuthFnSocialProfileResolver = (
-  input: AuthFnSocialProfileResolverInput
-) => Promise<AuthFnSocialProfile> | AuthFnSocialProfile;
-
 export interface AuthFnPasswordCompromiseCheckInput {
   password: string;
   email?: string;
   purpose: 'sign-up' | 'reset-password' | 'update-password';
   request?: Request;
-  runtime?: AuthFnRuntimeResolution;
+  environment?: AuthFnEnvironment;
 }
 
 export type AuthFnPasswordCompromiseCheckResult =
@@ -312,23 +304,6 @@ export type AuthFnPasswordCompromiseCheckResult =
 export type AuthFnPasswordCompromiseChecker = (
   input: AuthFnPasswordCompromiseCheckInput
 ) => Promise<AuthFnPasswordCompromiseCheckResult> | AuthFnPasswordCompromiseCheckResult;
-
-export interface AuthFnSocialProviderRuntimeConfig {
-  clientId: string;
-  clientSecret?: string;
-  clientSecretResolver?: OAuthClientSecretResolver;
-  allowlistedRedirectUris?: string[];
-  allowlistedReturnTo?: string[];
-  scopes?: string[];
-  nativeClientIds?: string[];
-}
-
-export interface AuthFnSocialProviderConfig extends Partial<AuthFnSocialProviderRuntimeConfig> {
-  linkByVerifiedEmail?: boolean;
-  profileResolver?: AuthFnSocialProfileResolver;
-}
-
-export type AuthFnSocialHandoffMode = 'none' | 'session-token';
 
 export interface AuthFnAccountLinkingConfig {
   /**
@@ -382,16 +357,12 @@ export interface AuthFnCookieConfig {
   csrfMaxAgeSeconds?: number;
 }
 
-export interface AuthFnRuntimeResolution {
+export interface AuthFnEnvironment {
   issuer: string;
   baseUrl: string;
   regionId?: string;
   cookie?: Partial<AuthFnCookieConfig>;
-  oauth?: {
-    google?: AuthFnSocialProviderRuntimeConfig;
-    apple?: AuthFnSocialProviderRuntimeConfig;
-    github?: AuthFnSocialProviderRuntimeConfig;
-  };
+  oauth?: Record<string, unknown>;
 }
 
 export interface AuthFnRegionLookup {
@@ -407,14 +378,14 @@ export interface AuthFnRegionLookupResult extends AuthFnRegionLookup {
   redirectTo?: string;
 }
 
-export interface AuthFnRuntimeResolver {
-  resolve(request: Request): Promise<AuthFnRuntimeResolution> | AuthFnRuntimeResolution;
+export interface AuthFnEnvironmentResolver {
+  resolve(request: Request): Promise<AuthFnEnvironment> | AuthFnEnvironment;
 }
 
 export interface AuthFnHookContext {
-  config?: AuthFnConfig;
+  config?: AuthFnRuntimeConfig;
   request?: Request;
-  runtime?: AuthFnRuntimeResolution;
+  environment?: AuthFnEnvironment;
   pluginName?: string;
   session?: AuthFnSession;
   actorId?: string;
@@ -466,55 +437,174 @@ export interface AuthFnHooks {
 export type AuthFnHookFailurePolicy = 'observe' | 'fail';
 
 export interface AuthFnPluginRuntimeContext {
-  config: AuthFnConfig;
+  config: AuthFnRuntimeConfig;
   namespace: string;
   basePath: string;
   hooks: Partial<AuthFnHooks>;
-  runtimeResolver?: AuthFnRuntimeResolver;
+  environment?: AuthFnEnvironmentResolver;
 }
 
-export interface AuthFnPlugin {
-  name: string;
+export interface AuthFnPlugin<
+  TName extends string = string,
+  TRuntimeConfig extends object = never,
+  TRuntimeRequired extends boolean = false
+> {
+  name: TName;
+  readonly __runtimeConfig?: TRuntimeConfig;
+  readonly __runtimeRequired?: TRuntimeRequired;
   schema?: (config: AuthFnConfig) => AuthFnSchemaDefinition['schemas'];
   routes?: (ctx: AuthFnPluginRuntimeContext) => Route[];
   hooks?: Partial<AuthFnHooks>;
   hookFailurePolicy?: Partial<Record<keyof AuthFnHooks, AuthFnHookFailurePolicy>>;
-  validateConfig?: (config: AuthFnConfig) => void;
+  validateConfig?: (config: AuthFnRuntimeConfig) => void;
 }
 
-export interface AuthFnBundledPluginDescriptor<TArgs extends unknown[] = unknown[]> {
-  __functionCall: string;
-  __args?: TArgs;
-}
+export type AuthFnAnyPlugin = AuthFnPlugin<string, object, boolean>;
 
-export type AuthFnSchemaPluginInput = AuthFnPlugin | AuthFnBundledPluginDescriptor;
+export type AuthFnPluginList = readonly AuthFnAnyPlugin[];
 
-export interface AuthFnConfig {
-  database: Adapter;
-  cacheStore?: KVStoreAdapter;
+type AuthFnPluginRuntimeEntry<TPlugin> =
+  TPlugin extends AuthFnPlugin<infer TName, infer TRuntimeConfig, infer TRuntimeRequired>
+    ? [TRuntimeConfig] extends [never]
+      ? {}
+      : TRuntimeRequired extends true
+      ? { [TKey in TName]: TRuntimeConfig }
+      : { [TKey in TName]?: TRuntimeConfig }
+    : {};
+
+type UnionToIntersection<TUnion> = (
+  TUnion extends unknown ? (input: TUnion) => void : never
+) extends (input: infer TIntersection) => void
+  ? TIntersection
+  : never;
+
+type Simplify<TValue> = {
+  [TKey in keyof TValue]: TValue[TKey];
+} & {};
+
+export type AuthFnPluginRuntimeConfigFor<TPlugins extends AuthFnPluginList> = Simplify<
+  UnionToIntersection<AuthFnPluginRuntimeEntry<TPlugins[number]>>
+>;
+
+type RequiredRuntimeKeys<TPlugins extends AuthFnPluginList> = {
+  [TKey in keyof AuthFnPluginRuntimeConfigFor<TPlugins>]-?: undefined extends AuthFnPluginRuntimeConfigFor<TPlugins>[TKey]
+    ? never
+    : TKey;
+}[keyof AuthFnPluginRuntimeConfigFor<TPlugins>];
+
+type AuthFnNoPluginRuntimeConfigInput = {
+  /**
+   * Runtime configuration for AuthFn plugins declared on the app.
+   * Apps with no runtime-configurable plugins must omit this property.
+   */
+  pluginRuntime?: never;
+};
+
+type AuthFnOptionalPluginRuntimeConfigInput<TPlugins extends AuthFnPluginList> = {
+  /**
+   * Runtime configuration for AuthFn plugins declared on the app.
+   * Keys are plugin names and values are the runtime dependencies or policy overrides each plugin consumes.
+   */
+  pluginRuntime?: AuthFnPluginRuntimeConfigFor<TPlugins>;
+};
+
+type AuthFnRequiredPluginRuntimeConfigInput<TPlugins extends AuthFnPluginList> = {
+  /**
+   * Runtime configuration for AuthFn plugins declared on the app.
+   * Required plugin entries must be provided before the server can handle requests.
+   */
+  pluginRuntime: AuthFnPluginRuntimeConfigFor<TPlugins>;
+};
+
+type AuthFnPluginRuntimeConfigInput<TPlugins extends AuthFnPluginList> =
+  keyof AuthFnPluginRuntimeConfigFor<TPlugins> extends never
+    ? AuthFnNoPluginRuntimeConfigInput
+    : RequiredRuntimeKeys<TPlugins> extends never
+      ? AuthFnOptionalPluginRuntimeConfigInput<TPlugins>
+      : AuthFnRequiredPluginRuntimeConfigInput<TPlugins>;
+
+export interface AuthFnConfig<TPlugins extends AuthFnPluginList = AuthFnPluginList> {
   namespace?: string;
   basePath?: string;
   cookie?: AuthFnCookieConfig;
   accountLinking?: AuthFnAccountLinkingConfig;
-  runtime?: AuthFnRuntimeResolver;
-  hooks?: Partial<AuthFnHooks>;
-  plugins: AuthFnPlugin[];
+  plugins: TPlugins;
   openApi?: boolean | { title: string; version: string };
-  observability?: AuthFnObservabilityConfig;
 }
 
-export interface AuthFnSchemaConfig extends Omit<AuthFnConfig, 'plugins'> {
-  plugins: AuthFnSchemaPluginInput[];
+export type AuthFnRateLimitMode = 'strict' | 'best-effort' | 'local';
+
+export interface AuthFnRateLimitCategory {
+  ipLimit: number;
+  identifierLimit?: number;
+  windowSeconds: number;
 }
 
-export interface AuthFnInstance {
+export interface AuthFnRateLimitConfig {
+  /** Enables request rate limiting for AuthFn HTTP routes. */
+  enabled: boolean;
+  /**
+   * Storage consistency used for counters.
+   * Use strict with an atomic store, best-effort with a shared cache, or local for process-local protection.
+   */
+  mode?: AuthFnRateLimitMode;
+  /** Per-category limits for password, OTP, OAuth, handoff, region lookup, and account routes. */
+  policies?: Partial<Record<
+    | 'password'
+    | 'otp-send'
+    | 'otp-verify'
+    | 'password-reset'
+    | 'social-start'
+    | 'handoff'
+    | 'region-lookup'
+    | 'account',
+    AuthFnRateLimitCategory
+  >>;
+}
+
+export interface AuthFnServerConfig {
+  /** Database adapter used to persist AuthFn users, sessions, credentials, OAuth accounts, OTPs, and plugin tables. */
+  database: Adapter;
+  /** Runtime stores used for caching, atomic coordination, rate limiting, and plugin-specific shared state. */
+  stores?: RuntimeStores;
+  /** Rate-limit policy for AuthFn routes; omit to disable rate limiting. */
+  rateLimit?: AuthFnRateLimitConfig;
+  /** Resolves request-specific authority, base URL, region, cookie, and OAuth environment values. */
+  environment?: AuthFnEnvironmentResolver;
+  /** Lifecycle hooks for overriding or observing core AuthFn user, session, account, and plugin behavior. */
+  hooks?: Partial<AuthFnHooks>;
+  /** Runtime dependencies and options for AuthFn plugins when the app is used without typed plugin inference. */
+  pluginRuntime?: AuthFnPluginRuntimeConfigMap;
+  /** Observability sink for AuthFn request, session, OAuth, OTP, 2FA, rate-limit, and plugin events. */
+  observability?: ObservabilityInput<AuthFnEvent>;
+}
+
+export type AuthFnTypedServerConfig<TPlugins extends AuthFnPluginList> = Omit<AuthFnServerConfig, 'pluginRuntime'>
+  & AuthFnPluginRuntimeConfigInput<TPlugins>;
+
+export interface AuthFnRuntimeConfig extends Omit<AuthFnConfig<AuthFnPluginList>, 'plugins'>, Omit<AuthFnServerConfig, 'observability'> {
+  plugins: AuthFnAnyPlugin[];
+  observability?: SuperfunctionObservability<AuthFnEvent>;
+}
+
+export type AuthFnPluginRuntimeConfigMap = Record<string, unknown>;
+
+export interface AuthFnServer {
   router: Router;
   provider: AuthProvider<AuthFnSession>;
   getSchema(): AuthFnSchemaDefinition;
   openApi?(): Record<string, unknown>;
 }
 
-export interface AuthFnSocialPluginInternals {
-  fetcher?: OAuthFetchLike;
-  tokenHttpClient?: OAuthTokenHttpClient;
+/**
+ * Side-effect-free AuthFn app object that can expose schema or create runtime auth.
+ */
+export interface AuthFnApp<TPlugins extends AuthFnPluginList = AuthFnPluginList> {
+  readonly config: AuthFnConfig<TPlugins>;
+  getSchema(): AuthFnSchemaDefinition;
+  /**
+   * Creates an AuthFn server runtime from the side-effect-free app declaration.
+   * The server config supplies persistence, stores, environment resolution, hooks, observability, and plugin runtime dependencies.
+   */
+  createServer(server: AuthFnTypedServerConfig<TPlugins>): AuthFnServer;
 }

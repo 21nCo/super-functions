@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnEmailOtpPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  createAuthFn,
-  createAuthFnOpenApiDocument,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import type { AuthFnRuntimeConfig } from '../index.js';
+import { createAuthFnOpenApiDocument } from '../openapi.js';
 
 function createIdToken(claims: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -15,7 +13,7 @@ function createIdToken(claims: Record<string, unknown>): string {
   return `${header}.${payload}.signature`;
 }
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
@@ -25,15 +23,19 @@ function createConfig(): AuthFnConfig {
     },
     plugins: [
       authFnPasswordPlugin(),
-      authFnEmailOtpPlugin({
+      authFnEmailOtpPlugin(),
+      authFnSocialOAuthPlugin()
+    ],
+    pluginRuntime: {
+      emailOtp: {
         delivery: {
           async send() {
             return { sent: true };
           }
         },
         codeGenerator: () => '731942'
-      }),
-      authFnSocialOAuthPlugin({
+      },
+      socialOAuth: {
         fetcher: async (url) => {
           if (url === 'https://oauth2.googleapis.com/token') {
             return createResponse({
@@ -62,14 +64,14 @@ function createConfig(): AuthFnConfig {
             allowlistedReturnTo: ['https://app.example.com/post-auth']
           }
         }
-      })
-    ]
+      }
+    }
   };
 }
 
-describe('@authfn/core openapi', () => {
+describe('authfn openapi', () => {
   it('uses the shared generator and emits a stable auth-prefixed document', () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const first = auth.openApi?.();
     const second = auth.openApi?.();

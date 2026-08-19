@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { NotFoundError } from '@superfunctions/db';
 import type { Route } from '@superfunctions/http';
-import type { NativeHandoffPluginConfig } from '../plugin-types.js';
+import type {
+  NativeHandoffPluginConfig,
+  NativeHandoffPluginRuntimeConfig
+} from 'authfn/plugin-types';
 import type {
   AuthFnNativeHandoffCodeRecord,
   AuthFnPlugin,
@@ -9,32 +12,41 @@ import type {
   AuthFnSchemaDefinition,
   AuthFnSession,
   AuthFnSessionRecord
-} from '../types.js';
-import { resolveCookiePolicy } from '../core/cookies.js';
+} from 'authfn';
+import { resolveCookiePolicy } from 'authfn/core/cookies';
 import {
   assertValidCsrf,
   authenticateSessionToken,
   hashSecret,
   issueSession,
   requireCookieSession
-} from '../core/sessions.js';
+} from 'authfn/core/sessions';
 import {
   AuthFnConflictError,
   AuthFnRegionMismatchError,
   AuthFnSessionRevokedError,
   AuthFnUnauthenticatedError,
   AuthFnValidationError
-} from '../core/errors.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
-import { resolveRuntime } from '../core/runtime.js';
-import { findUserById } from '../core/users.js';
-import { issueSessionCookies } from '../core/cookies.js';
-import { createAuthFnRouteMeta, readOptionalJson } from '../http/router.js';
-import { jsonSuccess } from '../http/envelopes.js';
+} from 'authfn/core/errors';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { resolveEnvironment } from 'authfn/core/environment';
+import { findUserById } from 'authfn/core/users';
+import { issueSessionCookies } from 'authfn/core/cookies';
+import { createAuthFnRouteMeta, readOptionalJson } from 'authfn/http/router';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
+
+export type {
+  NativeHandoffPluginConfig,
+  NativeHandoffPluginRuntimeConfig
+} from 'authfn/plugin-types';
 
 const DEFAULT_CODE_TTL_SECONDS = 60;
+type ResolvedNativeHandoffPluginConfig = NativeHandoffPluginConfig & NativeHandoffPluginRuntimeConfig;
 
-export function authFnNativeHandoffPlugin(config: NativeHandoffPluginConfig = {}): AuthFnPlugin {
+export function authFnNativeHandoffPlugin(
+  config: NativeHandoffPluginConfig = {}
+): AuthFnPlugin<'nativeHandoff', NativeHandoffPluginRuntimeConfig, false> {
   return {
     name: 'nativeHandoff',
     schema: () => config.schema ?? createNativeHandoffSchema(),
@@ -81,6 +93,11 @@ function createNativeHandoffRoutes(
   ctx: AuthFnPluginRuntimeContext,
   pluginConfig: NativeHandoffPluginConfig
 ): Route[] {
+  const config: ResolvedNativeHandoffPluginConfig = {
+    codeTtlSeconds: pluginConfig.codeTtlSeconds,
+    ...readPluginRuntimeConfig<NativeHandoffPluginRuntimeConfig>(ctx, 'nativeHandoff')
+  };
+
   return [
     {
       method: 'POST',
@@ -91,7 +108,7 @@ function createNativeHandoffRoutes(
       }),
       handler: async (request) => {
         const source = await requireNativeHandoffSource(ctx, request);
-        const code = await createHandoffCode(ctx, pluginConfig, {
+        const code = await createHandoffCode(ctx, config, {
           request,
           sourceSessionId: source.sessionId,
           userId: source.userId,
@@ -162,11 +179,11 @@ function createNativeHandoffRoutes(
         const body = await readOptionalJson<{
           returnTo?: string;
         }>(request);
-        const code = await createHandoffCode(ctx, pluginConfig, {
+        const code = await createHandoffCode(ctx, config, {
           request,
           sourceSessionId: session.record.id,
           userId: session.record.userId,
-          regionId: session.session.regionId ?? (await resolveRuntime(ctx.config, request)).regionId,
+          regionId: session.session.regionId ?? (await resolveEnvironment(ctx.config, request)).regionId,
           target: 'web',
           metadata: {
             source: 'native',
@@ -207,7 +224,7 @@ function createNativeHandoffRoutes(
             handoffTarget: 'web'
           }
         });
-        const runtime = issued.runtime ?? await resolveRuntime(ctx.config, request);
+        const runtime = issued.runtime ?? await resolveEnvironment(ctx.config, request);
         const cookiePolicy = issued.cookiePolicy ?? resolveCookiePolicy(ctx.config, request, runtime);
         const cookies = issueSessionCookies(cookiePolicy, issued.sessionToken, issued.csrfToken);
         const headers = new Headers({
@@ -237,7 +254,7 @@ function createNativeHandoffRoutes(
 
 async function createHandoffCode(
   ctx: AuthFnPluginRuntimeContext,
-  pluginConfig: NativeHandoffPluginConfig,
+  pluginConfig: ResolvedNativeHandoffPluginConfig,
   input: {
     request: Request;
     sourceSessionId: string;
@@ -302,7 +319,7 @@ async function requireNativeHandoffSource(
     return {
       sessionId: bearer.record.id,
       userId: bearer.record.userId,
-      regionId: bearer.session.regionId ?? (await resolveRuntime(ctx.config, request)).regionId,
+      regionId: bearer.session.regionId ?? (await resolveEnvironment(ctx.config, request)).regionId,
       source: 'web-bearer'
     };
   }
@@ -338,7 +355,7 @@ async function consumeHandoffCode(
     throw new AuthFnValidationError('Handoff code is invalid');
   }
 
-  const runtime = await resolveRuntime(ctx.config, request);
+  const runtime = await resolveEnvironment(ctx.config, request);
   if (runtime.regionId && record.regionId !== runtime.regionId) {
     await emitHandoffFailure(ctx, request, target, 'wrong-region', record);
     throw new AuthFnRegionMismatchError('Handoff code belongs to a different region', {

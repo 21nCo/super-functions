@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { KVStoreAdapter } from '@superfunctions/db';
-import type { AuthFnConfig } from '../types.js';
+import type { AuthFnRuntimeConfig } from '../types.js';
 
 export const AUTHFN_CACHE_TTL_SECONDS = {
   regionHit: 60 * 15,
@@ -11,11 +11,17 @@ export const AUTHFN_CACHE_TTL_SECONDS = {
 export type AuthFnCacheScope = 'region' | 'runtime' | 'ratelimit';
 
 export function createAuthFnCacheKey(
-  config: Pick<AuthFnConfig, 'namespace'>,
+  config: Pick<AuthFnRuntimeConfig, 'namespace'>,
   scope: AuthFnCacheScope,
   identifier: string
 ): string {
   return `authfn:${config.namespace ?? 'authfn'}:${scope}:${sha256(identifier)}`;
+}
+
+export function getAuthFnCacheStore(
+  config: Pick<AuthFnRuntimeConfig, 'stores'>
+): KVStoreAdapter | undefined {
+  return config.stores?.kv;
 }
 
 export async function getCachedJson<T>(

@@ -1,28 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
+import type { AuthFnConfig, AuthFnRuntimeConfig, AuthFnUserRecord } from 'authfn';
 import {
+  authFnMultiRegionEnvironment,
   authFnMultiRegionPlugin,
-  authFnPasswordPlugin,
-  type AuthFnConfig,
-  type AuthFnRegionLookupRecord,
-  type AuthFnRegionLookupStore,
-  type AuthFnUserRecord
-} from '@authfn/core';
+} from '@authfn/multi-region';
+import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import { authFnPasswordPlugin } from '@authfn/password';
 import {
   createAuthFnAdmin,
   createStaticAdminKeyAuthorizer
 } from '../index.js';
 
-function createConfig(plugins: AuthFnConfig['plugins'] = []): AuthFnConfig {
+function createConfig(
+  plugins: AuthFnConfig['plugins'] = [],
+  server?: Pick<AuthFnRuntimeConfig, 'environment' | 'pluginRuntime'>
+): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
-    plugins
+    plugins,
+    ...(server ?? {})
   };
 }
 
 async function seedUser(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   input: Partial<AuthFnUserRecord> & { id: string; primaryEmail: string; createdAt: Date }
 ): Promise<AuthFnUserRecord> {
   const user: AuthFnUserRecord = {
@@ -134,24 +137,27 @@ describe('@authfn/admin', () => {
 
   it('hard-deletes a user by id and runs multi-region lookup cleanup hooks', async () => {
     const lookupDeletes: string[] = [];
-    const lookupStore: AuthFnRegionLookupStore = {
-      async getByIdentifier() {
+    const lookupStore: ConditionalKVStoreAdapter = {
+      async get() {
         return null;
       },
-      async putIfAbsent() {
+      async set() {
+      },
+      async setIfAbsent() {
         return { inserted: true };
       },
-      async update(record: AuthFnRegionLookupRecord) {
-        return record;
-      },
-      async deleteByIdentifier(identifier: string) {
-        lookupDeletes.push(identifier);
+      async delete(key) {
+        lookupDeletes.push(key.replace(/^authfn:region:/, ''));
       }
     };
     const config = createConfig([
       authFnPasswordPlugin(),
-      authFnMultiRegionPlugin({ lookupStore })
-    ]);
+      authFnMultiRegionPlugin()
+    ], {
+      environment: authFnMultiRegionEnvironment({
+        lookupStore
+      })
+    });
     await seedUser(config, {
       id: 'user_delete_me',
       primaryEmail: 'DeleteMe@Example.com',

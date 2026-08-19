@@ -1,26 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnEmailOtpPlugin,
-  authFnApiKeyPlugin,
-  authFnMultiRegionPlugin,
-  authFnNativeHandoffPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
-  createPasswordCredential,
-  createUser,
-  hashSecret,
-  hashPassword,
-  issueSession,
-  issueSessionCookies,
-  revokeSessionById,
-  type AuthFnConfig
-} from '../index.js';
-import type { AuthFnRegionLookupRecord, AuthFnRegionLookupStore } from '../plugin-types.js';
+import { authFnApiKeyPlugin } from '@authfn/api-keys';
+import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+import { authFnMultiRegionEnvironment, authFnMultiRegionPlugin } from '@authfn/multi-region';
+import { authFnNativeHandoffPlugin } from '@authfn/native-handoff';
+import { authFnPasswordPlugin } from '@authfn/password';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import { authFnTwoFactorPlugin } from '@authfn/two-factor';
+import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import type { AuthFnRuntimeConfig } from '../index.js';
+import type { AuthFnRegionLookupRecord } from '../plugin-types.js';
+import { issueSessionCookies } from '../core/cookies.js';
+import { createPasswordCredential, hashPassword } from '../core/passwords.js';
+import { hashSecret, issueSession, revokeSessionById } from '../core/sessions.js';
+import { createUser } from '../core/users.js';
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
@@ -34,10 +30,14 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
     .join('; ');
 }
 
-describe('@authfn/core sessions', () => {
+function regionLookupStoreKey(identifier: string): string {
+  return `authfn:region:${identifier}`;
+}
+
+describe('authfn sessions', () => {
   it('authenticates cookie sessions and invalidates them immediately after revocation', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -67,7 +67,7 @@ describe('@authfn/core sessions', () => {
 
   it('authenticates api keys through the shared auth provider contract', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     await config.database.create({
       model: 'api_keys',
@@ -98,7 +98,7 @@ describe('@authfn/core sessions', () => {
 
   it('authenticates bearer-backed user sessions through the shared auth provider contract', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -125,7 +125,7 @@ describe('@authfn/core sessions', () => {
 
   it('returns current session, lists active sessions deterministically, and signs out with csrf enforcement', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -227,7 +227,7 @@ describe('@authfn/core sessions', () => {
   });
 
   it('returns account details with configured sign-in methods for bearer sessions', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
@@ -236,7 +236,7 @@ describe('@authfn/core sessions', () => {
         authFnSocialOAuthPlugin()
       ]
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com',
       emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z')
@@ -311,57 +311,51 @@ describe('@authfn/core sessions', () => {
   });
 
   it('deletes the current account and owned bundled-plugin records', async () => {
-    const lookupRecords = new Map<string, AuthFnRegionLookupRecord>();
-    const lookupStore: AuthFnRegionLookupStore = {
-      async getByIdentifier(identifier) {
-        return lookupRecords.get(identifier) ?? null;
+    const lookupRecords = new Map<string, string>();
+    const lookupStore: ConditionalKVStoreAdapter = {
+      async get(key) {
+        return lookupRecords.get(key) ?? null;
       },
-      async putIfAbsent(record) {
-        const existing = lookupRecords.get(record.identifier);
+      async set(input) {
+        lookupRecords.set(input.key, input.value);
+      },
+      async setIfAbsent(input) {
+        const existing = lookupRecords.get(input.key);
         if (existing) {
           return { inserted: false, existing };
         }
-        lookupRecords.set(record.identifier, record);
+        lookupRecords.set(input.key, input.value);
         return { inserted: true };
       },
-      async update(record) {
-        lookupRecords.set(record.identifier, record);
-        return record;
-      },
-      async deleteByIdentifier(identifier) {
-        lookupRecords.delete(identifier);
+      async delete(key) {
+        lookupRecords.delete(key);
       }
     };
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
-      runtime: {
-        resolve: () => ({
-          issuer: 'https://account.example.com',
-          baseUrl: 'https://account.example.com',
-          regionId: 'insouth'
-        })
-      },
+      environment: authFnMultiRegionEnvironment({
+        defaultRegionId: 'insouth',
+        regions: [
+          {
+            regionId: 'insouth',
+            authority: 'https://account.example.com'
+          }
+        ],
+        lookupStore
+      }),
       plugins: [
         authFnPasswordPlugin(),
         authFnEmailOtpPlugin(),
         authFnSocialOAuthPlugin(),
         authFnApiKeyPlugin(),
         authFnTwoFactorPlugin(),
-        authFnMultiRegionPlugin({
-          defaultRegionId: 'insouth',
-          regions: [
-            {
-              regionId: 'insouth',
-              authority: 'https://account.example.com'
-            }
-          ],
-          lookupStore
-        }),
+        authFnMultiRegionPlugin(),
         authFnNativeHandoffPlugin()
-      ]
+      ],
+      pluginRuntime: {}
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com',
       emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z')
@@ -463,13 +457,16 @@ describe('@authfn/core sessions', () => {
         updatedAt: new Date()
       }
     });
-    await lookupStore.putIfAbsent({
-      identifier: 'ada@example.com',
-      userId: user.id,
-      regionId: 'insouth',
-      authority: 'https://account.example.com',
-      createdAt: new Date(),
-      updatedAt: new Date()
+    await lookupStore.setIfAbsent({
+      key: regionLookupStoreKey('ada@example.com'),
+      value: JSON.stringify({
+        identifier: 'ada@example.com',
+        userId: user.id,
+        regionId: 'insouth',
+        authority: 'https://account.example.com',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } satisfies AuthFnRegionLookupRecord)
     });
 
     const issued = await issueSession(config, {}, {
@@ -529,7 +526,7 @@ describe('@authfn/core sessions', () => {
       twoFactorChallenges: 1
     });
     expect(response.headers.getSetCookie().length).toBe(2);
-    expect(await lookupStore.getByIdentifier('ada@example.com')).toBeNull();
+    expect(await lookupStore.get(regionLookupStoreKey('ada@example.com'))).toBeNull();
     await expect(config.database.count({ model: 'users', namespace: 'authfn' })).resolves.toBe(0);
     await expect(config.database.count({ model: 'sessions', namespace: 'authfn' })).resolves.toBe(0);
     await expect(config.database.count({ model: 'password_credentials', namespace: 'authfn' })).resolves.toBe(0);
@@ -545,7 +542,7 @@ describe('@authfn/core sessions', () => {
 
   it('revokes a sibling session through the route surface', async () => {
     const config = createConfig();
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });

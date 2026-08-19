@@ -56,17 +56,20 @@ authfn/python/
 
 #### Creating an Instance
 
-**TypeScript (`@authfn/core`):**
+**TypeScript (`authfn`):**
 ```typescript
-import { createAuthFn } from '@authfn/core';
+import { authfn } from 'authfn';
 
-const auth = createAuthFn({
-  database: adapter,
+const authApp = authfn({
   namespace: 'authfn',
   enableApi: true,
   apiConfig: {
     adminKey: process.env.ADMIN_KEY,
   },
+});
+
+const auth = authApp.createServer({
+  database: adapter,
 });
 ```
 

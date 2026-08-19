@@ -12,7 +12,7 @@ import {
 import type {
   AuthFnRegionLookupRecord,
   AuthFnRegionLookupStore
-} from '@authfn/core';
+} from '@authfn/multi-region';
 
 const LOOKUP_RECORD_SORT_KEY = 'LOOKUP';
 

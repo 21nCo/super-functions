@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnSocialOAuthPlugin,
-  createAuthFn,
-  type AuthFnConfig
-} from '@authfn/core';
+import type { AuthFnRuntimeConfig } from 'authfn';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
 import { createAuthFnClient } from '../index.js';
 
-function createConfig(): AuthFnConfig {
+function createConfig(): AuthFnRuntimeConfig {
   return {
     database: memoryAdapter({ debug: false }),
     namespace: 'authfn',
     plugins: [
-      authFnSocialOAuthPlugin({
+      authFnSocialOAuthPlugin()
+    ],
+    pluginRuntime: {
+      socialOAuth: {
         providers: {
           google: {
             clientId: 'google-client-id',
@@ -23,14 +24,14 @@ function createConfig(): AuthFnConfig {
         fetcher: async () => {
           throw new Error('social start should not exchange tokens');
         }
-      })
-    ]
+      }
+    }
   };
 }
 
 describe('@authfn/client social flows', () => {
   it('starts social sign-in and returns the redirect envelope', async () => {
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const client = createAuthFnClient({
       baseUrl: 'https://account.example.com/auth',
@@ -64,7 +65,7 @@ describe('@authfn/client social flows', () => {
 
   it('lets the server infer callback mode when none is requested', async () => {
     let receivedCallbackMode: unknown;
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const client = createAuthFnClient({
       baseUrl: 'https://account.example.com/auth',
@@ -117,7 +118,7 @@ describe('@authfn/client social flows', () => {
 
   it('does not force json callback mode when returnTo is provided', async () => {
     let receivedCallbackMode: unknown;
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const client = createAuthFnClient({
       baseUrl: 'https://account.example.com/auth',
@@ -145,7 +146,7 @@ describe('@authfn/client social flows', () => {
 
   it('honors explicit redirect callback mode for browser navigation flows', async () => {
     let receivedCallbackMode: unknown;
-    const auth = createAuthFn(createConfig());
+    const auth = createTestServer(createConfig());
 
     const client = createAuthFnClient({
       baseUrl: 'https://account.example.com/auth',

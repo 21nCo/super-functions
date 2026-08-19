@@ -1,13 +1,24 @@
 import type { Route } from '@superfunctions/http';
-import type { ApiKeyPluginConfig } from '../plugin-types.js';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from '../types.js';
-import { createApiKey, listApiKeysForUser, revokeApiKeyById } from '../core/api-keys.js';
-import { assertValidCsrf, requireCookieSession } from '../core/sessions.js';
-import { createAuthFnRouteMeta } from '../http/router.js';
-import { jsonSuccess } from '../http/envelopes.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
+import type {
+  ApiKeyPluginConfig,
+  ApiKeyPluginRuntimeConfig
+} from 'authfn/plugin-types';
+import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import { createApiKey, listApiKeysForUser, revokeApiKeyById } from 'authfn/core/api-keys';
+import { assertValidCsrf, requireCookieSession } from 'authfn/core/sessions';
+import { createAuthFnRouteMeta } from 'authfn/http/router';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
 
-export function authFnApiKeyPlugin(config: ApiKeyPluginConfig = {}): AuthFnPlugin {
+export type {
+  ApiKeyPluginConfig,
+  ApiKeyPluginRuntimeConfig
+} from 'authfn/plugin-types';
+
+export function authFnApiKeyPlugin(
+  config: ApiKeyPluginConfig = {}
+): AuthFnPlugin<'apiKey', ApiKeyPluginRuntimeConfig, false> {
   return {
     name: 'apiKey',
     schema: () => config.schema ?? createApiKeySchema(),
@@ -51,6 +62,8 @@ function createApiKeyRoutes(
   ctx: AuthFnPluginRuntimeContext,
   config: ApiKeyPluginConfig
 ): Route[] {
+  const runtimeConfig = readPluginRuntimeConfig<ApiKeyPluginRuntimeConfig>(ctx, 'apiKey');
+
   return [
     {
       method: 'POST',
@@ -75,7 +88,7 @@ function createApiKeyRoutes(
           metadata: body.metadata,
           expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined
         }, {
-          now: config.now,
+          now: runtimeConfig.now,
           secretPrefix: config.secretPrefix
         });
 
@@ -126,7 +139,7 @@ function createApiKeyRoutes(
         assertValidCsrf(request, state);
         await revokeApiKeyById(ctx.config, context.params.keyId, {
           userId: state.user.id,
-          now: config.now
+          now: runtimeConfig.now
         });
         await emitAuthEvent(ctx.config, {
           type: 'authfn.api_key.revoked',

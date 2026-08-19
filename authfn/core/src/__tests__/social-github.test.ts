@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { createTestServer } from './test-server.js';
 import { memoryAdapter } from '../../../../packages/db/src/testing/index.js';
-import {
-  authFnSocialOAuthPlugin,
-  createAuthFn,
-  createUser,
-  markUserEmailVerified,
-  type AuthFnConfig
-} from '../index.js';
+import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+import type { AuthFnRuntimeConfig } from '../index.js';
+import { createUser, markUserEmailVerified } from '../core/users.js';
 
 function createGithubFetcher(options?: { failTokenExchange?: boolean; rateLimited?: boolean }) {
   return async (url: string) => {
@@ -69,13 +66,16 @@ function createGithubFetcher(options?: { failTokenExchange?: boolean; rateLimite
   };
 }
 
-describe('@authfn/core github social oauth', () => {
+describe('authfn github social oauth', () => {
   it('links to an existing verified local user by email and can return JSON completion', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           fetcher: createGithubFetcher(),
           providers: {
             github: {
@@ -84,10 +84,10 @@ describe('@authfn/core github social oauth', () => {
               linkByVerifiedEmail: true
             }
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
     const user = await createUser(config, {
       primaryEmail: 'ada@example.com'
     });
@@ -139,11 +139,14 @@ describe('@authfn/core github social oauth', () => {
   });
 
   it('maps token exchange failures to canonical authfn errors without leaking secrets', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           fetcher: createGithubFetcher({ failTokenExchange: true }),
           providers: {
             github: {
@@ -151,10 +154,10 @@ describe('@authfn/core github social oauth', () => {
               clientSecret: 'github-client-secret'
             }
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -181,11 +184,14 @@ describe('@authfn/core github social oauth', () => {
   });
 
   it('maps provider rate limits to the canonical authfn rate-limited error', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           fetcher: createGithubFetcher({ rateLimited: true }),
           providers: {
             github: {
@@ -193,10 +199,10 @@ describe('@authfn/core github social oauth', () => {
               clientSecret: 'github-client-secret'
             }
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {
@@ -221,11 +227,14 @@ describe('@authfn/core github social oauth', () => {
   });
 
   it('supports first-class mobile handoff with a bearer-usable session token artifact', async () => {
-    const config: AuthFnConfig = {
+    const config: AuthFnRuntimeConfig = {
       database: memoryAdapter({ debug: false }),
       namespace: 'authfn',
       plugins: [
-        authFnSocialOAuthPlugin({
+        authFnSocialOAuthPlugin()
+      ],
+      pluginRuntime: {
+        socialOAuth: {
           fetcher: createGithubFetcher(),
           providers: {
             github: {
@@ -234,10 +243,10 @@ describe('@authfn/core github social oauth', () => {
               allowlistedReturnTo: ['memotron://oauthsignembed']
             }
           }
-        })
-      ]
+        }
+      }
     };
-    const auth = createAuthFn(config);
+    const auth = createTestServer(config);
 
     const start = await auth.router.handle(
       new Request('https://account.example.com/auth/social/start', {

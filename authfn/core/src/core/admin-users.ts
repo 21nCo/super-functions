@@ -1,6 +1,6 @@
 import type {
   AuthFnAccountDeletionResult,
-  AuthFnConfig,
+  AuthFnRuntimeConfig,
   AuthFnHooks,
   AuthFnRegionProfileRecord,
   AuthFnUserRecord
@@ -76,7 +76,7 @@ const BATCH_SIZE = 250;
 const MAX_SCANNED_USERS = 10_000;
 
 export async function listAuthFnAdminUsers(
-  config: Pick<AuthFnConfig, 'database' | 'namespace' | 'plugins'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace' | 'plugins'>,
   input: AuthFnAdminListUsersInput = {}
 ): Promise<AuthFnAdminListUsersResult> {
   const limit = normalizeLimit(input.limit);
@@ -142,7 +142,7 @@ export async function listAuthFnAdminUsers(
 }
 
 export async function deleteAuthFnAdminUserById(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: AuthFnAdminDeleteUserInput
 ): Promise<AuthFnAccountDeletionResult> {
@@ -161,7 +161,7 @@ export async function deleteAuthFnAdminUserById(
 }
 
 export async function deleteAuthFnAdminUsersByEmail(
-  config: AuthFnConfig,
+  config: AuthFnRuntimeConfig,
   hooks: Partial<AuthFnHooks>,
   input: AuthFnAdminDeleteUsersByEmailInput
 ): Promise<AuthFnAdminDeleteUsersByEmailResult> {
@@ -277,7 +277,7 @@ function isAfterCursor(
 }
 
 async function findRegionProfilesForUsers(
-  config: Pick<AuthFnConfig, 'database' | 'namespace' | 'plugins'>,
+  config: Pick<AuthFnRuntimeConfig, 'database' | 'namespace' | 'plugins'>,
   users: AuthFnUserRecord[]
 ): Promise<Map<string, AuthFnRegionProfileRecord>> {
   if (!hasPlugin(config, 'multiRegion') || users.length === 0) {
@@ -314,7 +314,7 @@ function toAdminUserSummary(
   };
 }
 
-function hasPlugin(config: Pick<AuthFnConfig, 'plugins'>, name: string): boolean {
+function hasPlugin(config: Pick<AuthFnRuntimeConfig, 'plugins'>, name: string): boolean {
   return config.plugins.some((plugin) => plugin.name === name);
 }
 
@@ -322,7 +322,7 @@ function toIsoDateString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function namespace(config: Pick<AuthFnConfig, 'namespace'>): string {
+function namespace(config: Pick<AuthFnRuntimeConfig, 'namespace'>): string {
   return config.namespace ?? 'authfn';
 }
 

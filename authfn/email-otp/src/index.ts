@@ -1,25 +1,36 @@
 import type { Route } from '@superfunctions/http';
-import type { EmailOtpPluginConfig } from '../plugin-types.js';
-import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from '../types.js';
-import { createAuthFnRouteMeta, readOptionalJson } from '../http/router.js';
-import { issueSession } from '../core/sessions.js';
-import { jsonSuccess } from '../http/envelopes.js';
-import { emitAuthEvent, eventRequestId } from '../core/observability.js';
-import { sendOtpChallenge, verifyOtpChallenge } from '../core/verifications.js';
-import { resolveRuntime } from '../core/runtime.js';
-import { emitAccountLinkedEvent } from '../core/account-linking.js';
-import { buildSessionResponse, type AuthFnSessionResponseMode } from '../core/session-responses.js';
+import type {
+  EmailOtpPluginConfig,
+  EmailOtpPluginRuntimeConfig
+} from 'authfn/plugin-types';
+import type { AuthFnPlugin, AuthFnPluginRuntimeContext, AuthFnSchemaDefinition } from 'authfn';
+import { createAuthFnRouteMeta, readOptionalJson } from 'authfn/http/router';
+import { issueSession } from 'authfn/core/sessions';
+import { jsonSuccess } from 'authfn/http/envelopes';
+import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import { sendOtpChallenge, verifyOtpChallenge } from 'authfn/core/verifications';
+import { resolveEnvironment } from 'authfn/core/environment';
+import { emitAccountLinkedEvent } from 'authfn/core/account-linking';
+import { buildSessionResponse, type AuthFnSessionResponseMode } from 'authfn/core/session-responses';
 import {
   beginTwoFactorChallenge,
   createPendingTwoFactorResponse,
   getTwoFactorPluginConfig
-} from '../core/two-factor.js';
+} from 'authfn/core/two-factor';
+import { readPluginRuntimeConfig } from 'authfn/core/plugin-runtime';
 
-export function authFnEmailOtpPlugin(config: EmailOtpPluginConfig = {}): AuthFnPlugin {
+export type {
+  EmailOtpPluginConfig,
+  EmailOtpPluginRuntimeConfig
+} from 'authfn/plugin-types';
+
+export function authFnEmailOtpPlugin(
+  config: EmailOtpPluginConfig = {}
+): AuthFnPlugin<'emailOtp', EmailOtpPluginRuntimeConfig, true> {
   return {
     name: 'emailOtp',
     schema: () => config.schema ?? createOtpSchema(),
-    routes: (ctx) => createOtpRoutes(ctx, config)
+    routes: (ctx) => createOtpRoutes(ctx)
   };
 }
 
@@ -53,10 +64,9 @@ function createOtpSchema(): AuthFnSchemaDefinition['schemas'] {
   ];
 }
 
-function createOtpRoutes(
-  ctx: AuthFnPluginRuntimeContext,
-  config: EmailOtpPluginConfig
-): Route[] {
+function createOtpRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
+  const runtimeConfig = readPluginRuntimeConfig<EmailOtpPluginRuntimeConfig>(ctx, 'emailOtp');
+
   return [
     {
       method: 'POST',
@@ -70,7 +80,7 @@ function createOtpRoutes(
           email?: string;
           metadata?: Record<string, unknown>;
         }>(request);
-        const result = await sendOtpChallenge(ctx.config, ctx.hooks, config, {
+        const result = await sendOtpChallenge(ctx.config, ctx.hooks, runtimeConfig, {
           request,
           purpose: body.purpose ?? 'verify-email',
           email: body.email ?? '',
@@ -97,7 +107,7 @@ function createOtpRoutes(
           profile?: Record<string, unknown>;
           sessionMode?: AuthFnSessionResponseMode;
         }>(request);
-        const verification = await verifyOtpChallenge(ctx.config, ctx.hooks, config, {
+        const verification = await verifyOtpChallenge(ctx.config, ctx.hooks, runtimeConfig, {
           request,
           purpose: body.purpose ?? 'verify-email',
           email: body.email ?? '',
@@ -107,7 +117,7 @@ function createOtpRoutes(
 
         if ((body.purpose === 'sign-in' || body.purpose === 'sign-up') && verification.user) {
           if (verification.createdUser) {
-            const runtime = await resolveRuntime(ctx.config, request);
+            const runtime = await resolveEnvironment(ctx.config, request);
             await emitAuthEvent(ctx.config, {
               type: 'authfn.user.created',
               requestId: eventRequestId(request),
@@ -121,7 +131,7 @@ function createOtpRoutes(
               }
             });
           } else if (verification.linkedExistingUser) {
-            const runtime = await resolveRuntime(ctx.config, request);
+            const runtime = await resolveEnvironment(ctx.config, request);
             await emitAccountLinkedEvent(ctx.config, {
               request,
               user: verification.user,

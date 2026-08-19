@@ -1,4 +1,4 @@
-import type { AuthFnEvent } from '@authfn/core';
+import type { AuthFnEvent } from 'authfn';
 
 export interface ExampleEventRecord extends AuthFnEvent {
   recordedAt: string;

@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@authfn/core": "0.1.1",
+    "authfn": "0.1.1",
     "@superfunctions/db": "0.1.4",
     "@superfunctions/http": "0.1.3"
   },
