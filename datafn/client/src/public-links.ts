@@ -1,6 +1,7 @@
 import type { DatafnRemoteAdapter } from "./client.js";
 import { createClientError } from "./errors.js";
 import { createDatafnPublicLinkAuthPlugin } from "./auth.js";
+import { isDatafnErrorCode } from "@datafn/core";
 
 type DatafnPublicLinksRemoteAdapter = DatafnRemoteAdapter & {
   publicLinks?(endpoint: string, payload: unknown): Promise<unknown>;
@@ -96,7 +97,9 @@ async function postPublicLink(
     if (envelope.ok === true) return envelope.result;
     if (envelope.ok === false) {
       throw createClientError(
-        "DFQL_INVALID",
+        isDatafnErrorCode(envelope.error?.code)
+          ? envelope.error.code
+          : "DFQL_INVALID",
         envelope.error?.message ?? "DataFn public link request failed",
         normalizeErrorDetails(envelope.error?.details)
       );

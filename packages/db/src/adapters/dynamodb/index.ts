@@ -118,12 +118,31 @@ export function dynamoDbAtomicKVStore(
       }
     },
     async compareAndSet(input) {
-      const existing = await this.get(input.key);
-      if (existing !== input.expected) {
+      const currentEpochSeconds = Math.floor(Date.now() / 1000);
+      const expectingMissing = input.expected === null;
+      try {
+        await client.send(new PutCommand({
+          TableName: options.tableName,
+          Item: kvItem(input.key, input.value, input.ttlSeconds),
+          ConditionExpression: expectingMissing
+            ? '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
+            : '#value = :expected AND (attribute_not_exists(#expiresAt) OR #expiresAt > :now)',
+          ExpressionAttributeNames: {
+            '#pk': 'PK',
+            '#expiresAt': 'expiresAt',
+            ...(expectingMissing ? {} : { '#value': 'value' }),
+          },
+          ExpressionAttributeValues: {
+            ':now': currentEpochSeconds,
+            ...(expectingMissing ? {} : { ':expected': input.expected }),
+          },
+        }));
+        return { updated: true };
+      } catch (error) {
+        if (!isConditionalCheckFailed(error)) throw error;
+        const existing = await this.get(input.key);
         return { updated: false, ...(existing === null ? {} : { existing }) };
       }
-      await this.set(input);
-      return { updated: true };
     },
     async delete(key) {
       await client.send(new DeleteCommand({

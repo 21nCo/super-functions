@@ -4,7 +4,6 @@ import {
   instrumentMethods,
   readObservationGroup,
 } from "./index.js";
-import { createAsyncLocalRequestContext } from "./node.js";
 
 describe("superfunction observability", () => {
   it("records async method metrics into the active request", async () => {
@@ -70,10 +69,9 @@ describe("superfunction observability", () => {
     expect(snapshot.metrics[0]?.component).toBe("child");
   });
 
-  it("keeps overlapping async requests isolated with async local context", async () => {
+  it("keeps overlapping async requests isolated by default in Node", async () => {
     const observability = createObservability({
       service: "test-service",
-      requestContext: createAsyncLocalRequestContext(),
     });
     const firstRequest = observability.startRequest({
       requestId: "req_first",

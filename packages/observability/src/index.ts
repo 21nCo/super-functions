@@ -184,6 +184,15 @@ interface ObservabilityState<TEvent extends ObservationEvent = ObservationEvent>
   requestContext: RequestObservationContext<TEvent>;
 }
 
+interface AsyncLocalStorageLike<TStore> {
+  run<TResult>(store: TStore, callback: () => TResult): TResult;
+  getStore(): TStore | undefined;
+}
+
+type AsyncLocalStorageConstructor = new <TStore>() => AsyncLocalStorageLike<TStore>;
+
+const NodeAsyncLocalStorage = await loadNodeAsyncLocalStorage();
+
 class RequestObservationImpl<TEvent extends ObservationEvent = ObservationEvent> implements RequestObservation<TEvent> {
   readonly requestId: string;
   readonly method?: string;
@@ -301,7 +310,7 @@ class SuperfunctionObservabilityImpl<TEvent extends ObservationEvent = Observati
   ) {
     this.state = state ?? {
       requestContext:
-        config.requestContext ?? createStackRequestContext<TEvent>(),
+        config.requestContext ?? createDefaultRequestContext<TEvent>(),
     };
     this.service = config.service;
     this.component = config.component;
@@ -562,6 +571,41 @@ function createStackRequestContext<TEvent extends ObservationEvent>(): RequestOb
       return stack.at(-1);
     },
   };
+}
+
+function createDefaultRequestContext<
+  TEvent extends ObservationEvent,
+>(): RequestObservationContext<TEvent> {
+  if (!NodeAsyncLocalStorage) {
+    return createStackRequestContext<TEvent>();
+  }
+
+  const storage = new NodeAsyncLocalStorage<RequestObservation<TEvent>>();
+  return {
+    async run<T>(
+      observation: RequestObservation<TEvent>,
+      work: () => T | Promise<T>,
+    ): Promise<T> {
+      return await storage.run(observation, work);
+    },
+    get(): RequestObservation<TEvent> | undefined {
+      return storage.getStore();
+    },
+  };
+}
+
+async function loadNodeAsyncLocalStorage(): Promise<AsyncLocalStorageConstructor | undefined> {
+  try {
+    // Keep the specifier dynamic so browser and edge bundlers can retain the
+    // synchronous fallback without resolving a Node-only built-in.
+    const specifier: string = "node:async_hooks";
+    const module = await import(specifier) as {
+      AsyncLocalStorage?: AsyncLocalStorageConstructor;
+    };
+    return module.AsyncLocalStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function logEvent(logger: ObservationLogger | undefined, event: ObservationEvent): void {

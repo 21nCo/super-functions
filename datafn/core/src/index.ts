@@ -45,7 +45,7 @@ export {
 
 // Re-export error types and helpers
 export type { DatafnErrorCode, DatafnError, DatafnEnvelope } from "./errors.js";
-export { ok, err } from "./errors.js";
+export { DATAFN_ERROR_CODES, isDatafnErrorCode, ok, err } from "./errors.js";
 
 // Re-export schema validation
 export { validateSchema, isNamespaced, resolveRelationCapabilities } from "./schema.js";
