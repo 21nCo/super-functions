@@ -359,7 +359,11 @@ function createRevokeRequest(
   input: OAuthRevocationRequest,
   credentials: ResolvedRequestCredentials
 ): RequestInitLike {
-  if (input.provider.revocationStyle === "github") {
+  if (
+    input.provider.revocationStyle === "github" ||
+    (input.provider.revocationStyle === undefined &&
+      isGitHubApplicationRevokeUrl(input.provider.revocationUrl))
+  ) {
     return createGithubRevokeRequest(input, credentials);
   }
 
@@ -374,6 +378,12 @@ function createRevokeRequest(
     headers: createAuthHeaders(credentials, params),
     body: params.toString()
   };
+}
+
+function isGitHubApplicationRevokeUrl(revocationUrl: string | undefined): boolean {
+  return Boolean(
+    revocationUrl?.includes("/applications/") && revocationUrl.includes("/token")
+  );
 }
 
 /**
