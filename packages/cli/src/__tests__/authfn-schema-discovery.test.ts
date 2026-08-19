@@ -3,6 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSchema } from '../../../../authfn/core/src/index.js';
+import { authFnApiKeyPlugin } from '../../../../authfn/api-keys/src/index.js';
+import { authFnEmailOtpPlugin } from '../../../../authfn/email-otp/src/index.js';
+import { authFnMultiRegionPlugin } from '../../../../authfn/multi-region/src/index.js';
+import { authFnPasswordPlugin } from '../../../../authfn/password/src/index.js';
+import { authFnSocialOAuthPlugin } from '../../../../authfn/social-oauth/src/index.js';
+import { authFnTwoFactorPlugin } from '../../../../authfn/two-factor/src/index.js';
 import { resolveLibraryPackageEntryPoint } from '../commands/generate-schema.js';
 import { discoverSuperfunctionsPackages, getSuperfunctionsRegistry } from '../utils/discover-packages.js';
 import { parseLibraryInitializations } from '../utils/parse-library-init.js';
@@ -16,16 +22,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../../..');
 const authFnPackageJsonPath = path.join(repoRoot, 'authfn', 'core', 'package.json');
 
-describe('authfn scoped schema discovery', () => {
+describe('authfn modular schema discovery', () => {
   let testDir: string;
 
   beforeEach(() => {
     testDir = path.join(__dirname, `authfn-discovery-${Date.now()}`);
-    fs.mkdirSync(path.join(testDir, 'node_modules', '@authfn', 'core'), {
+    fs.mkdirSync(path.join(testDir, 'node_modules', 'authfn'), {
       recursive: true
     });
     fs.writeFileSync(
-      path.join(testDir, 'node_modules', '@authfn', 'core', 'package.json'),
+      path.join(testDir, 'node_modules', 'authfn', 'package.json'),
       fs.readFileSync(authFnPackageJsonPath, 'utf-8')
     );
   });
@@ -36,23 +42,20 @@ describe('authfn scoped schema discovery', () => {
     }
   });
 
-  it('discovers @authfn/core metadata and generates schema from a parsed plugin-rich config', async () => {
+  it('discovers authfn metadata and generates schema for modular plugins', async () => {
     const configPath = path.join(testDir, 'auth.ts');
     fs.writeFileSync(
       configPath,
       `
-      import {
-        createAuthFn,
-        authFnApiKeyPlugin,
-        authFnEmailOtpPlugin,
-        authFnMultiRegionPlugin,
-        authFnPasswordPlugin,
-        authFnSocialOAuthPlugin,
-        authFnTwoFactorPlugin
-      } from '@authfn/core';
+      import { authfn } from 'authfn';
+      import { authFnApiKeyPlugin } from '@authfn/api-keys';
+      import { authFnEmailOtpPlugin } from '@authfn/email-otp';
+      import { authFnMultiRegionPlugin } from '@authfn/multi-region';
+      import { authFnPasswordPlugin } from '@authfn/password';
+      import { authFnSocialOAuthPlugin } from '@authfn/social-oauth';
+      import { authFnTwoFactorPlugin } from '@authfn/two-factor';
 
-      const auth = createAuthFn({
-        database: db,
+      const auth = authfn({
         namespace: 'authfn_pw_demo',
         plugins: [
           authFnPasswordPlugin(),
@@ -85,16 +88,16 @@ describe('authfn scoped schema discovery', () => {
     const discoveredPackages = discoverSuperfunctionsPackages(testDir);
     expect(discoveredPackages).toContainEqual(
       expect.objectContaining({
-        packageName: '@authfn/core',
-        initFunction: 'createAuthFn',
+        packageName: 'authfn',
+        initFunction: 'authfn',
         libraryNames: ['authfn']
       })
     );
 
     const registry = getSuperfunctionsRegistry(testDir);
     expect(registry).toMatchObject({
-      createAuthFn: {
-        packageName: '@authfn/core',
+      authfn: {
+        packageName: 'authfn',
         libraryName: 'authfn'
       }
     });
@@ -103,8 +106,8 @@ describe('authfn scoped schema discovery', () => {
     expect(parsedInitializations).toHaveLength(1);
     expect(parsedInitializations[0]).toMatchObject({
       libraryName: 'authfn',
-      packageName: '@authfn/core',
-      functionName: 'createAuthFn',
+      packageName: 'authfn',
+      functionName: 'authfn',
       config: {
         namespace: 'authfn_pw_demo',
         plugins: [
@@ -139,7 +142,17 @@ describe('authfn scoped schema discovery', () => {
 
     const schema = await generateLibraryAbstractSchema(
       { getSchema },
-      parsedInitializations[0]!.config
+      {
+        namespace: parsedInitializations[0]!.config.namespace,
+        plugins: [
+          authFnPasswordPlugin(),
+          authFnEmailOtpPlugin(),
+          authFnSocialOAuthPlugin(),
+          authFnApiKeyPlugin(),
+          authFnTwoFactorPlugin(),
+          authFnMultiRegionPlugin()
+        ]
+      }
     );
 
     expect(schema.schemas.map((table) => table.modelName)).toEqual([
@@ -173,28 +186,24 @@ describe('authfn scoped schema discovery', () => {
     expect(drizzleSchema).toContain("index('idx_authfn_sessions_user_id_created_at').on(table.userId, table.createdAt)");
   });
 
-  it('resolves the published @authfn/core default export entry point for CLI imports', () => {
+  it('resolves the published authfn default export entry point for CLI imports', () => {
     const packageJson = JSON.parse(fs.readFileSync(authFnPackageJsonPath, 'utf-8'));
 
     expect(resolveLibraryPackageEntryPoint(packageJson)).toBe('./dist/index.js');
   });
 
-  it('fails with a structured invalid-config error for unsupported authfn schema plugin descriptors', async () => {
+  it('fails with a structured invalid-config error when authfn plugins are omitted', async () => {
     await expect(
       generateLibraryAbstractSchema(
         { getSchema },
         {
           database: undefined,
-          namespace: 'authfn_pw_demo',
-          plugins: [{ __functionCall: 'customPlugin', __args: [] }]
+          namespace: 'authfn_pw_demo'
         }
       )
     ).rejects.toMatchObject({
       code: 'AUTHFN_CONFIG_INVALID',
-      message: 'Unsupported authfn schema plugin descriptor',
-      details: {
-        factoryName: 'customPlugin'
-      }
+      message: 'authfn plugins must be provided as an array'
     });
   });
 
