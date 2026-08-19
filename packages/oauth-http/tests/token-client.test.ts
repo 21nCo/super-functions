@@ -385,42 +385,60 @@ describe("oauth-http token client", () => {
     expect(response.accessToken).toBe("at_after_retry");
   });
 
-  it("retries response-body failures inside the token request boundary", async () => {
+  it("does not replay an authorization-code exchange after response headers arrive", async () => {
     const sleep = vi.fn(async () => undefined);
     let calls = 0;
     const fetcher: OAuthFetchLike = async () => {
       calls += 1;
-      if (calls === 1) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: () => "application/json" },
-          text: async () => {
-            throw new Error("response body disconnected");
-          }
-        };
-      }
-
-      return createResponse({
+      return {
+        ok: true,
         status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ access_token: "at_after_body_retry", token_type: "bearer" })
-      });
+        headers: { get: () => "application/json" },
+        text: async () => {
+          throw new Error("response body disconnected");
+        }
+      };
     };
 
     const client = new DefaultOAuthTokenHttpClient({ fetcher, sleep });
+    await expect(client.exchangeToken({
+        provider: googleProvider,
+        grantType: "authorization_code",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        code: "code-body-failure",
+        redirectUri: "https://app/callback"
+      })).rejects.toMatchObject({
+        code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+        retryable: false,
+        details: {
+          transportFailure: true,
+          responseBodyFailure: true
+        }
+      });
+
+    expect(calls).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("preserves prototype-backed fields when a custom fetcher returns Response", async () => {
+    const client = new DefaultOAuthTokenHttpClient({
+      fetcher: async () => new Response(
+        JSON.stringify({ access_token: "at_native", token_type: "bearer" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    });
+
     const response = await client.exchangeToken({
       provider: googleProvider,
       grantType: "authorization_code",
       clientId: "client-id",
       clientSecret: "client-secret",
-      code: "code-body-retry",
+      code: "code-native-response",
       redirectUri: "https://app/callback"
     });
 
-    expect(calls).toBe(2);
-    expect(sleep).toHaveBeenCalledTimes(1);
-    expect(response.accessToken).toBe("at_after_body_retry");
+    expect(response.accessToken).toBe("at_native");
   });
 
   it("wraps exhausted fetch exceptions in OAuthHttpError after retry attempts are spent", async () => {
@@ -559,7 +577,7 @@ describe("oauth-http token client", () => {
       clientSecret: "client-secret",
       code: "code-timeout",
       redirectUri: "https://app/callback"
-    })).rejects.toMatchObject({ status: 504, retryable: true });
+    })).rejects.toMatchObject({ status: 504, retryable: false });
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(

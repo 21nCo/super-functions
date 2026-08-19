@@ -274,6 +274,38 @@ describe("transaction-bound runtime state", () => {
     expect(txInternal.ensureTable).not.toHaveBeenCalled();
   });
 
+  it("does not run sequence-table DDL after rebinding an initialized store", async () => {
+    const outerInternal = makeInternalApi();
+    const txInternal = makeInternalApi();
+    const store = new DatabaseSequenceStore({ internal: outerInternal } as any);
+
+    await store.ensureReady();
+    await store.withDb({ internal: txInternal } as any).getCurrent("default");
+
+    expect(outerInternal.ensureTable).toHaveBeenCalledOnce();
+    expect(txInternal.ensureTable).not.toHaveBeenCalled();
+  });
+
+  it("does not run change-tracking DDL after rebinding an initialized service", async () => {
+    const outerInternal = makeInternalApi();
+    const txInternal = makeInternalApi();
+    const service = new ChangeTrackingService({ internal: outerInternal } as any, "tenant");
+
+    await service.ensureReady();
+    const txService = service.withDb({ internal: txInternal } as any);
+    await txService.recordChange({
+      serverSeq: 1,
+      resource: "tasks",
+      id: "task:1",
+      op: "insert",
+      record: { title: "ready" },
+    });
+    await txService.getCurrentServerSeq();
+
+    expect(outerInternal.ensureTable).toHaveBeenCalledTimes(2);
+    expect(txInternal.ensureTable).not.toHaveBeenCalled();
+  });
+
   it("discards sequence-pool state when a mutation transaction rolls back", async () => {
     const db = memoryAdapter() as any;
     await db.initialize();

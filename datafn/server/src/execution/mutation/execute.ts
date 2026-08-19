@@ -952,6 +952,7 @@ export async function executeMutation(
     let guardFailed = false;
 
     try {
+      await changeTracking.ensureReady();
       await (db as any).transaction(async (txDb: Adapter) => {
         // DI-002: Re-read record inside transaction to prevent TOCTOU
         const guardResult = await evaluateGuard(

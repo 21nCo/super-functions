@@ -48,13 +48,19 @@ function makeMemoryIdempotencyStore() {
 // ─── REL-001: Transaction fallback ────────────────────────────────────
 
 describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
-  it("initializes durable idempotency storage before opening an atomic transaction", async () => {
+  it("initializes all durable runtime tables before opening an atomic transaction", async () => {
     const order: string[] = [];
-    const db = memoryAdapter({ libraryNamespace: "datafn" });
-    (db as any).transaction = async () => {
-      order.push("transaction");
-      throw new Error("serialization failure");
-    };
+    const db = {
+      internal: {
+        ensureTable: vi.fn(async (tableName: string) => {
+          order.push(`table:${tableName}`);
+        })
+      },
+      transaction: async () => {
+        order.push("transaction");
+        throw new Error("serialization failure");
+      }
+    } as any;
     const idempotencyStore = {
       ...makeMemoryIdempotencyStore(),
       ensureReady: vi.fn(async () => {
@@ -72,7 +78,12 @@ describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
       undefined
     );
 
-    expect(order).toEqual(["idempotency-ready", "transaction"]);
+    expect(order).toEqual([
+      "idempotency-ready",
+      "table:__datafn_changes",
+      "table:__datafn_meta",
+      "transaction"
+    ]);
   });
 
   it("TV-REL-001: DB error returns INTERNAL, no sequential fallback", async () => {

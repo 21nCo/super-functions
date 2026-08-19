@@ -111,6 +111,7 @@ export async function executeTransaction(
       // databases implicitly commit DDL, so table creation must never occur
       // after the atomic transaction has begun.
       await idempotencyStore.ensureReady?.();
+      await changeTracking.ensureReady();
       await (db as any).transaction(async (tx: Adapter) => {
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];

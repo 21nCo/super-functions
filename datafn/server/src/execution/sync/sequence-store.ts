@@ -17,6 +17,9 @@ import { withAdapterNamespaceLock } from "./namespace-lock.js";
  * Interface for sequence generation stores
  */
 export interface SequenceStore {
+  /** Initialize durable backing storage before an enclosing transaction. */
+  ensureReady?(): Promise<void>;
+
   /** Get and increment sequence atomically, returns the next value */
   getNext(namespace: string): Promise<number>;
 
@@ -130,15 +133,19 @@ export class DatabaseSequenceStore implements SequenceStore {
     return new DatabaseSequenceStore(db, this.logger, this.ensured);
   }
 
+  async ensureReady(): Promise<void> {
+    if (!this.ensured) {
+      await ensureInternalTable(this.db, "__datafn_meta");
+      this.ensured = true;
+    }
+  }
+
   /**
    * DI-003: Ensure next_server_seq in meta is at least (minSeq + 1).
    * Called by ChainedSequenceStore during primary→database failover to prevent duplicate sequences.
    */
   async ensureMinSeq(namespace: string, minSeq: number): Promise<void> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_meta");
-      this.ensured = true;
-    }
+    await this.ensureReady();
     const needed = minSeq + 1;
     try {
       await withAdapterNamespaceLock(this.db, namespace, async () => {
@@ -200,10 +207,7 @@ export class DatabaseSequenceStore implements SequenceStore {
     }
 
     return await withAdapterNamespaceLock(this.db, namespace, async () => {
-      if (!this.ensured) {
-        await ensureInternalTable(this.db, "__datafn_meta");
-        this.ensured = true;
-      }
+      await this.ensureReady();
 
       const MAX_RETRIES = 10;
 
@@ -273,10 +277,7 @@ export class DatabaseSequenceStore implements SequenceStore {
   }
 
   async getCurrent(namespace: string): Promise<number> {
-    if (!this.ensured) {
-      await ensureInternalTable(this.db, "__datafn_meta");
-      this.ensured = true;
-    }
+    await this.ensureReady();
 
     try {
       const meta = await this.db.internal.findOne("__datafn_meta", [
@@ -322,6 +323,10 @@ export class ChainedSequenceStore implements SequenceStore {
       // allocate an already-issued sequence.
       this.lastKnownPrimarySeq,
     );
+  }
+
+  async ensureReady(): Promise<void> {
+    await this.secondary.ensureReady?.();
   }
 
   async getNext(namespace: string): Promise<number> {

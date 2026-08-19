@@ -194,13 +194,28 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         body = await response.text();
       } catch (error) {
         await response.discard?.().catch(() => undefined);
+        if (bodyMode === "always") {
+          const timedOut = error instanceof OAuthHttpError && error.status === 504;
+          throw new OAuthHttpError("OAuth provider response body failed", {
+            code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+            status: timedOut ? 504 : 502,
+            retryable: false,
+            cause: error,
+            details: {
+              transportFailure: true,
+              responseBodyFailure: true
+            }
+          });
+        }
         await this.retryTransportFailure(error, attempt);
         attempt += 1;
         continue;
       }
 
       return {
-        ...response,
+        ok: response.ok,
+        status: response.status,
+        headers: response.headers,
         text: async () => body,
         discard: async () => undefined
       };

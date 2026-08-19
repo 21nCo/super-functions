@@ -215,6 +215,8 @@ export async function executePush(
       operation: "push",
       namespace,
     });
+  } else {
+    await changeTracking.ensureReady();
   }
 
   type SequenceAllocationState = {

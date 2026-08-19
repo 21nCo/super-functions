@@ -174,7 +174,7 @@ describe('webhooks package exports', () => {
   });
 
   it('aborts a hanging attempt using the configured per-attempt timeout', async () => {
-    const fetchMock = undiciFetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+    undiciFetchMock.mockImplementation((_url: string, init?: RequestInit) => {
       return new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
           reject(new DOMException('The operation was aborted.', 'AbortError'));
