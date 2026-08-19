@@ -759,6 +759,169 @@ async function deleteRecordWithRelationPolicies(options: {
   return { ok: true };
 }
 
+async function validateFkDeletePolicy(options: {
+  adapter: Adapter;
+  schema: DatafnSchema;
+  relation: DatafnRelationSchema;
+  policy: RelationDeletePolicy;
+  resources: string[];
+  fkField: string;
+  deletedId: string;
+  namespace: string;
+  visited: Set<string>;
+  resourceField?: string;
+  deletedResource?: string;
+}): Promise<{ ok: true } | { ok: false; code: string; message: string; path: string }> {
+  const {
+    adapter,
+    schema,
+    relation,
+    policy,
+    resources,
+    fkField,
+    deletedId,
+    namespace,
+    visited,
+    resourceField,
+    deletedResource,
+  } = options;
+
+  for (const resource of resources) {
+    const where = [{ field: fkField, operator: "eq" as const, value: deletedId }];
+    if (resourceField && deletedResource) {
+      where.push({ field: resourceField, operator: "eq", value: deletedResource });
+    }
+    const rows = await adapter.findMany({ model: resource, where, namespace });
+    if (rows.length > 0 && policy === "restrict") {
+      return {
+        ok: false,
+        code: "RELATION_RESTRICTED",
+        message: `Cannot delete ${deletedId}; relation "${relation.relation ?? relation.inverse ?? relation.type}" still references it`,
+        path: "id",
+      };
+    }
+    if (policy === "cascade") {
+      for (const row of rows) {
+        const rowId = String(row.id ?? "");
+        if (!rowId) continue;
+        const nested = await validateRelationDeletePolicies(
+          adapter,
+          schema,
+          resource,
+          rowId,
+          namespace,
+          visited,
+        );
+        if (!nested.ok) return nested;
+      }
+    }
+  }
+  return { ok: true };
+}
+
+async function validateRelationDeletePolicies(
+  adapter: Adapter,
+  schema: DatafnSchema,
+  resource: string,
+  id: string,
+  namespace: string,
+  visited: Set<string> = new Set(),
+): Promise<{ ok: true } | { ok: false; code: string; message: string; path: string }> {
+  const visitKey = `${resource}:${id}`;
+  if (visited.has(visitKey)) return { ok: true };
+  visited.add(visitKey);
+
+  for (const relation of schema.relations ?? []) {
+    if (relation.type === "many-many") {
+      const side = endpointIncludes(relation.from, resource)
+        ? "from"
+        : endpointIncludes(relation.to, resource)
+          ? "to"
+          : null;
+      if (!side) continue;
+      const policy = relationDeletePolicy(relation, side);
+      if (policy !== "restrict") continue;
+      const filterField = side === "from"
+        ? relation.joinColumns?.from || "from"
+        : relation.joinColumns?.to || "to";
+      for (const tableName of joinTablesForDeletedResource(relation, resource, side)) {
+        const rows = await adapter.findMany({
+          model: tableName,
+          where: [{ field: filterField, operator: "eq", value: id }],
+          namespace,
+        });
+        if (rows.length > 0) {
+          return {
+            ok: false,
+            code: "RELATION_RESTRICTED",
+            message: `Cannot delete ${id}; relation "${relation.relation ?? relation.type}" still references it`,
+            path: "id",
+          };
+        }
+      }
+    } else if (relation.type === "many-one" && endpointIncludes(relation.to, resource)) {
+      const policy = relationDeletePolicy(relation, "to");
+      if (!policy) continue;
+      const result = await validateFkDeletePolicy({
+        adapter,
+        schema,
+        relation,
+        policy,
+        resources: endpointList(relation.from),
+        fkField: relation.fkField || `${relation.relation}Id`,
+        deletedId: id,
+        namespace,
+        visited,
+        resourceField: endpointIsPolymorphic(relation.to)
+          ? fkResourceFieldForRelation(relation, "to")
+          : undefined,
+        deletedResource: resource,
+      });
+      if (!result.ok) return result;
+    } else if (relation.type === "one-many" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      const result = await validateFkDeletePolicy({
+        adapter,
+        schema,
+        relation,
+        policy,
+        resources: endpointList(relation.to),
+        fkField: fkFieldForOneMany(relation),
+        deletedId: id,
+        namespace,
+        visited,
+        resourceField: endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        deletedResource: resource,
+      });
+      if (!result.ok) return result;
+    } else if (relation.type === "htree" && endpointIncludes(relation.from, resource)) {
+      const policy = relationDeletePolicy(relation, "from");
+      if (!policy) continue;
+      const result = await validateFkDeletePolicy({
+        adapter,
+        schema,
+        relation,
+        policy,
+        resources: endpointList(relation.to),
+        fkField: htreeFkField(relation),
+        deletedId: id,
+        namespace,
+        visited,
+        resourceField: endpointIsPolymorphic(relation.from)
+          ? fkResourceFieldForRelation(relation, "from")
+          : undefined,
+        deletedResource: resource,
+      });
+      if (!result.ok) return result;
+    }
+  }
+
+  return { ok: true };
+}
+
 /**
  * Applies declared relation delete policies before deleting a record.
  */
@@ -773,6 +936,15 @@ export async function applyRelationDeletePolicies(
   | { ok: true; changes: RelationMutationChange[] }
   | { ok: false; code: string; message: string; path: string }
 > {
+  const validation = await validateRelationDeletePolicies(
+    adapter,
+    schema,
+    resource,
+    id,
+    namespace,
+  );
+  if (!validation.ok) return validation;
+
   const changes: RelationMutationChange[] = [];
 
   for (const relation of schema.relations ?? []) {

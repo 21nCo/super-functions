@@ -130,7 +130,7 @@ export async function lookupRegionByIdentifier(
   }
 
   if (pluginConfig.lookupStore) {
-    const record = parseLookupRecord(await pluginConfig.lookupStore.get(regionLookupStoreKey(identifier)));
+    const record = await readLookupStoreRecord(pluginConfig.lookupStore, identifier);
     if (record) {
       const lookup = lookupFromRecord(record);
       await setCachedJson(getAuthFnCacheStore(config), {
@@ -353,10 +353,13 @@ export async function registerUserRegion(
     };
 
     if (pluginConfig.lookupStore) {
-      const result = await pluginConfig.lookupStore.setIfAbsent({
-        key: regionLookupStoreKey(identifier),
-        value: serializeLookupRecord(lookupRecord)
-      });
+      const migratedRecord = await readLookupStoreRecord(pluginConfig.lookupStore, identifier);
+      const result = migratedRecord
+        ? { inserted: false, existing: serializeLookupRecord(migratedRecord) }
+        : await pluginConfig.lookupStore.setIfAbsent({
+            key: regionLookupStoreKey(identifier),
+            value: serializeLookupRecord(lookupRecord)
+          });
       const existingRecord = parseLookupRecord(result.existing);
       insertedLookup = result.inserted;
       if (!result.inserted && existingRecord && !recordsReferToSameRegionUser(existingRecord, lookupRecord)) {
@@ -512,6 +515,9 @@ export async function unregisterRegionLookupForIdentifier(
 ): Promise<void> {
   const normalized = normalizeIdentifier(identifier);
   await pluginConfig.lookupStore?.delete(regionLookupStoreKey(normalized));
+  // Keep the legacy bare-key namespace from resurrecting a lookup after the
+  // prefixed record is removed during a rolling migration.
+  await pluginConfig.lookupStore?.delete(normalized);
   await getAuthFnCacheStore(config)?.delete(createAuthFnCacheKey(config, 'region', normalized));
 }
 
@@ -645,6 +651,29 @@ function lookupFromRecord(record: AuthFnRegionLookupRecord): AuthFnRegionLookup 
 
 function regionLookupStoreKey(identifier: string): string {
   return `authfn:region:${identifier}`;
+}
+
+async function readLookupStoreRecord(
+  lookupStore: NonNullable<MultiRegionPluginRuntimeConfig['lookupStore']>,
+  identifier: string
+): Promise<AuthFnRegionLookupRecord | null> {
+  const currentKey = regionLookupStoreKey(identifier);
+  const current = parseLookupRecord(await lookupStore.get(currentKey));
+  if (current) return current;
+
+  // Releases before the generic conditional-KV contract used the normalized
+  // identifier itself as the key. Read that location once and lazily claim the
+  // prefixed key so existing users remain routable throughout rollout.
+  const legacy = parseLookupRecord(await lookupStore.get(identifier));
+  if (!legacy) return null;
+
+  const migration = await lookupStore.setIfAbsent({
+    key: currentKey,
+    value: serializeLookupRecord(legacy)
+  });
+  return migration.inserted
+    ? legacy
+    : parseLookupRecord(migration.existing) ?? legacy;
 }
 
 function serializeLookupRecord(record: AuthFnRegionLookupRecord): string {

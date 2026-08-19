@@ -70,7 +70,60 @@ describe('@authfn/lookup-dynamodb', () => {
         SK: 'LOOKUP',
         value: 'attempted'
       },
-      ConditionExpression: 'attribute_not_exists(PK)'
+      ConditionExpression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
+    });
+  });
+
+  it('reads legacy bare-key records and serializes them for lazy migration', async () => {
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      documentClient: {
+        async send() {
+          return {
+            Item: {
+              PK: 'ada@example.com',
+              SK: 'LOOKUP',
+              identifier: 'ada@example.com',
+              userId: 'user:ada',
+              regionId: 'eu-west-1',
+              authority: 'https://eu.example.com',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z'
+            }
+          };
+        }
+      } as any
+    });
+
+    await expect(store.get('ada@example.com')).resolves.toBe(JSON.stringify({
+      identifier: 'ada@example.com',
+      userId: 'user:ada',
+      regionId: 'eu-west-1',
+      authority: 'https://eu.example.com',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }));
+  });
+
+  it('allows set-if-absent to replace an expired lookup item', async () => {
+    const sent: any[] = [];
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      now: () => new Date('2026-08-19T00:00:00.000Z'),
+      documentClient: {
+        async send(command: any) {
+          sent.push(command.input);
+          return {};
+        }
+      } as any
+    });
+
+    await store.setIfAbsent({ key: 'lookup', value: 'value' });
+    expect(sent[0]).toMatchObject({
+      ConditionExpression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)',
+      ExpressionAttributeValues: {
+        ':now': 1787097600
+      }
     });
   });
 

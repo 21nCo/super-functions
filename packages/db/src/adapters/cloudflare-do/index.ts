@@ -23,6 +23,11 @@ export interface DurableObjectStateLike {
   };
 }
 
+interface StoredDirectoryEntry {
+  record: IndexedDirectoryRecord;
+  expiresAt?: number;
+}
+
 export interface CloudflareDurableObjectStoreOptions {
   bindingName?: string;
   objectName?: string;
@@ -234,14 +239,41 @@ export class SuperfunctionsStoresDurableObject {
   }
 
   private async readDirectoryRecord(key: string): Promise<IndexedDirectoryRecord | null> {
-    const record = await this.state.storage.get<IndexedDirectoryRecord>(directoryKey(key));
-    return record ?? null;
+    const stored = await this.state.storage.get<StoredDirectoryEntry | IndexedDirectoryRecord>(
+      directoryKey(key),
+    );
+    if (!stored) return null;
+
+    const entry = isStoredDirectoryEntry(stored)
+      ? stored
+      : {
+          record: stored,
+          ...(stored.ttlSeconds && stored.ttlSeconds > 0
+            ? { expiresAt: Date.now() + stored.ttlSeconds * 1000 }
+            : {}),
+        };
+    if (!isStoredDirectoryEntry(stored)) {
+      // Older deployments stored the record directly. Preserve it while
+      // migrating TTL-bearing records to the expiration-aware envelope.
+      await this.state.storage.put<StoredDirectoryEntry>(directoryKey(key), entry);
+    }
+    if (entry.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
+      await this.removeIndexes(entry.record);
+      await this.state.storage.delete(directoryKey(key));
+      return null;
+    }
+    return entry.record;
   }
 
   private async writeDirectoryRecord(record: IndexedDirectoryRecord): Promise<void> {
     const existing = await this.readDirectoryRecord(record.key);
     if (existing) await this.removeIndexes(existing);
-    await this.state.storage.put(directoryKey(record.key), record);
+    await this.state.storage.put<StoredDirectoryEntry>(directoryKey(record.key), {
+      record,
+      ...(record.ttlSeconds && record.ttlSeconds > 0
+        ? { expiresAt: Date.now() + record.ttlSeconds * 1000 }
+        : {}),
+    });
     await this.addIndexes(record);
   }
 
@@ -263,7 +295,12 @@ export class SuperfunctionsStoresDurableObject {
     const page = keys.slice(start, start + count);
     const records = (
       await Promise.all(page.map((key) => this.readDirectoryRecord(key)))
-    ).filter((record): record is IndexedDirectoryRecord => Boolean(record));
+    ).filter((record): record is IndexedDirectoryRecord =>
+      Boolean(
+        record
+        && normalizeIndexValues(record.indexes?.[index]).includes(value),
+      )
+    );
     const next = start + count < keys.length ? String(start + count) : undefined;
     return { records, ...(next ? { cursor: next } : {}) };
   }
@@ -313,6 +350,12 @@ async function call<T>(
 function normalizeIndexValues(value: string | readonly string[] | null | undefined): string[] {
   if (Array.isArray(value)) return value.filter((entry) => entry.length > 0);
   return typeof value === 'string' && value.length > 0 ? [value] : [];
+}
+
+function isStoredDirectoryEntry(
+  value: StoredDirectoryEntry | IndexedDirectoryRecord,
+): value is StoredDirectoryEntry {
+  return 'record' in value && Boolean(value.record);
 }
 
 function kvKey(key: string): string {

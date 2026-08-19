@@ -801,3 +801,102 @@ describe("push relate backward compatibility (COMP-001 via push)", () => {
     }
   });
 });
+
+describe("push delete relation-policy parity", () => {
+  const relationSchema: DatafnSchema = {
+    resources: [
+      { name: "projects", version: 1, fields: [{ name: "name", type: "string", required: true }] },
+      {
+        name: "tasks",
+        version: 1,
+        fields: [
+          { name: "name", type: "string", required: true },
+          { name: "projectId", type: "string", required: false },
+        ],
+      },
+    ],
+    relations: [
+      {
+        from: "tasks",
+        to: "projects",
+        type: "many-one",
+        relation: "project",
+        fkField: "projectId",
+        onDelete: { to: "setNull" },
+      },
+    ],
+  };
+
+  it("applies setNull and emits the dependent change on sync push", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const localServer: any = await createDatafnServer({
+      schema: relationSchema,
+      database: localDb,
+      allowUnknownResources: true,
+      namespaceProvider: {
+        getNamespace: () => "ns:delete-policy",
+        getActorId: () => "user:delete-policy",
+      },
+    });
+    const pushReq = async (mutations: Array<Record<string, unknown>>) => {
+      const response = await localServer.router.handle(new Request("http://localhost/datafn/push", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: "client:delete-policy", mutations }),
+      }));
+      return response.json() as any;
+    };
+
+    try {
+      const seed = await pushReq([
+        {
+          resource: "projects",
+          version: 1,
+          operation: "insert",
+          clientId: "client:delete-policy",
+          mutationId: "seed-project",
+          id: "project:1",
+          record: { name: "Project" },
+        },
+        {
+          resource: "tasks",
+          version: 1,
+          operation: "insert",
+          clientId: "client:delete-policy",
+          mutationId: "seed-task",
+          id: "task:1",
+          record: { name: "Task", projectId: "project:1" },
+        },
+      ]);
+      expect(seed.result.errors).toHaveLength(0);
+
+      const deleted = await pushReq([{
+        resource: "projects",
+        version: 1,
+        operation: "delete",
+        clientId: "client:delete-policy",
+        mutationId: "delete-project",
+        id: "project:1",
+      }]);
+      expect(deleted.result.ok).toBe(true);
+
+      const task = await localDb.findOne({
+        model: "tasks",
+        where: [{ field: "id", operator: "eq", value: "task:1" }],
+        namespace: "ns:delete-policy",
+      });
+      expect(task?.projectId).toBeNull();
+
+      const changes = await localDb.internal.findMany("__datafn_changes", [], {
+        orderBy: "server_seq",
+      });
+      expect(changes.slice(-2).map((change: any) => change.resource)).toEqual([
+        "projects",
+        "tasks",
+      ]);
+    } finally {
+      await localServer.close();
+    }
+  });
+});

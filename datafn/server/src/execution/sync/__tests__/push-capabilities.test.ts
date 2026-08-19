@@ -1457,6 +1457,13 @@ describe("sync push capability injection", () => {
       const first = await sendPush("client:auth-change", [mutation]);
       expect(first.res.status).toBe(400);
       expect(first.body.error.code).toBe("FORBIDDEN");
+      expect(first.body.result.errors).toContainEqual(
+        expect.objectContaining({
+          mutationId: "delete-after-auth-change",
+          code: "FORBIDDEN",
+          retryable: false,
+        }),
+      );
 
       const stored = await shareDb.internal.findOne("__datafn_idempotency", [
         { field: "namespace", op: "eq", value: "datafn" },

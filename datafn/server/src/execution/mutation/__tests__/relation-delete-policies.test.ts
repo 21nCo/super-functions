@@ -77,6 +77,39 @@ const restrictSchema: DatafnSchema = {
   ],
 };
 
+const cascadeRestrictSchema: DatafnSchema = {
+  ...schema,
+  resources: schema.resources.map((resource) =>
+    resource.name === "tag"
+      ? {
+          ...resource,
+          fields: [
+            ...resource.fields,
+            { name: "taskId", type: "string", required: false },
+          ],
+        }
+      : resource
+  ),
+  relations: [
+    {
+      from: "task",
+      to: "project",
+      type: "many-one",
+      relation: "project",
+      fkField: "projectId",
+      onDelete: { to: "cascade" },
+    },
+    {
+      from: "tag",
+      to: "task",
+      type: "many-one",
+      relation: "task",
+      fkField: "taskId",
+      onDelete: { to: "restrict" },
+    },
+  ],
+};
+
 async function seed(db: Adapter) {
   await db.create({ model: "project", data: { id: "project:1", name: "Project" }, namespace: NS });
   await db.create({ model: "task", data: { id: "task:1", title: "Task", projectId: "project:1" }, namespace: NS });
@@ -189,6 +222,78 @@ describe("relation delete policies", () => {
       namespace: NS,
     });
     expect(project).toBeDefined();
+  });
+
+  it("rolls back earlier relation effects when the parent delete fails", async () => {
+    const transactionalDb = memoryAdapter();
+    await transactionalDb.initialize();
+    await seed(transactionalDb);
+    const originalDelete = transactionalDb.delete.bind(transactionalDb);
+    transactionalDb.delete = async (params) => {
+      if (params.model === "project") {
+        throw new Error("parent delete failed");
+      }
+      await originalDelete(params);
+    };
+    const transactionalServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: transactionalDb,
+    });
+
+    const result = await runMutation(transactionalServer, {
+      resource: "project",
+      operation: "delete",
+      id: "project:1",
+    });
+
+    expect(result.body.ok).toBe(true);
+    expect(result.body.result.ok).toBe(false);
+    expect(result.body.result.errors[0].code).toBe("INTERNAL");
+    await expect(transactionalDb.findOne({
+      model: "project",
+      where: [{ field: "id", operator: "eq", value: "project:1" }],
+      namespace: NS,
+    })).resolves.toBeDefined();
+    await expect(transactionalDb.findOne({
+      model: "task",
+      where: [{ field: "id", operator: "eq", value: "task:1" }],
+      namespace: NS,
+    })).resolves.toMatchObject({ projectId: "project:1" });
+  });
+
+  it("preflights nested restrict policies before cascading without transactions", async () => {
+    await db.create({
+      model: "tag",
+      data: { id: "tag:dependent", name: "Dependent", taskId: "task:1" },
+      namespace: NS,
+    });
+    db.capabilities.transactions.supported = false;
+    const cascadeServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: cascadeRestrictSchema,
+      database: db,
+    });
+
+    const result = await runMutation(cascadeServer, {
+      resource: "project",
+      operation: "delete",
+      id: "project:1",
+    });
+
+    expect(result.body.ok).toBe(false);
+    expect(result.body.error.code).toBe("RELATION_RESTRICTED");
+    for (const [model, id] of [
+      ["project", "project:1"],
+      ["task", "task:1"],
+      ["tag", "tag:dependent"],
+    ] as const) {
+      await expect(db.findOne({
+        model,
+        where: [{ field: "id", operator: "eq", value: id }],
+        namespace: NS,
+      })).resolves.toBeDefined();
+    }
   });
 
   it("relate writes polymorphic discriminator fields on shared join tables", async () => {

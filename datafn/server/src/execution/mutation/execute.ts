@@ -386,15 +386,12 @@ async function executeMutationCore(
           where: [{ field: "id", operator: "eq", value: mutation.id }],
           namespace,
         });
-        await db.delete({
-          model: mutation.resource,
-          where: [{ field: "id", operator: "eq", value: mutation.id }],
-          namespace,
-        });
         if (!existingForDelete) {
           // Record didn't exist — skip change tracking (no-op delete)
           skipChangeTracking = true;
         } else {
+          // Relation policies must run before the parent disappears. In
+          // particular, a restrict result must leave the parent intact.
           const relationPolicyResult = await applyRelationDeletePolicies(
             db,
             schema,
@@ -411,6 +408,11 @@ async function executeMutationCore(
             };
             break;
           }
+          await db.delete({
+            model: mutation.resource,
+            where: [{ field: "id", operator: "eq", value: mutation.id }],
+            namespace,
+          });
           additionalChanges = [
             ...relationPolicyResult.changes,
             ...await applyInactivePropagation(
@@ -1135,11 +1137,17 @@ export async function executeMutation(
           actorId,
           logger,
         );
+        if (!txMutationResult.ok) {
+          // A returned mutation failure is still an aborted transaction. Throw
+          // after retaining the public result so adapters roll back relation
+          // effects and change tracking together.
+          throw { __datafnMutationFailed: true };
+        }
       });
     } catch (err: any) {
       if (err?.__datafnGuardFailed) {
         guardFailed = true;
-      } else if (!txMutationResult) {
+      } else if (!err?.__datafnMutationFailed && !txMutationResult) {
         // Transaction aborted for another reason
         txMutationResult = {
           ok: false,
@@ -1208,6 +1216,51 @@ export async function executeMutation(
         );
       }
       return result;
+    }
+  }
+
+  // Relation delete policies may update or cascade through several records.
+  // Keep those effects, the parent delete, and their change records atomic
+  // even when the caller did not supply a guard.
+  if (!hasGuard && mutation.operation === "delete" && hasTransaction) {
+    let txMutationResult: MutationResult | null = null;
+    try {
+      await changeTracking.ensureReady();
+      await (db as any).transaction(async (txDb: Adapter) => {
+        txMutationResult = await executeMutationCore(
+          mutation,
+          txDb,
+          schema,
+          namespace,
+          effectiveMutationId,
+          changeTracking.withDb(txDb),
+          actorId,
+          logger,
+        );
+        if (!txMutationResult.ok) {
+          throw { __datafnMutationFailed: true };
+        }
+      });
+    } catch (err: any) {
+      if (!err?.__datafnMutationFailed && !txMutationResult) {
+        txMutationResult = {
+          ok: false,
+          mutationId: effectiveMutationId,
+          affectedIds: [],
+          errors: [{ code: "INTERNAL", message: err?.message || "Transaction failed", path: "$", retryable: false }],
+          deduped: false,
+        };
+      }
+    }
+
+    if (txMutationResult) {
+      if (searchProvider && (txMutationResult as MutationResult).ok) {
+        await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger);
+      }
+      if (mutation.clientId && mutation.mutationId) {
+        await idempotencyStore.set(mutation.clientId, mutation.mutationId, txMutationResult as MutationResult);
+      }
+      return txMutationResult as MutationResult;
     }
   }
 

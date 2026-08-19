@@ -8,9 +8,13 @@ description: Region pinning, lookup, runtime overlays, and wrong-authority redir
 `authFnMultiRegionPlugin` is the operational backbone of authfn's data-residency story. Read [Concepts → Regions](../core-concepts/regions) first for the mental model — this page is the reference.
 
 ```ts
-import { authFnMultiRegionPlugin } from '@authfn/core';
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+} from '@authfn/multi-region';
 
-authFnMultiRegionPlugin({
+const plugin = authFnMultiRegionPlugin();
+const environment = authFnMultiRegionEnvironment({
   defaultRegionId: 'us-east-1',
   regions: [
     { regionId: 'us-east-1', authority: 'https://api.us.example.com', cookie: { domain: '.us.example.com' } },
@@ -20,14 +24,18 @@ authFnMultiRegionPlugin({
 });
 ```
 
+Add `plugin` to the AuthFn plugin list and pass `environment` to
+`createServer`. Routing and store settings are request-runtime configuration;
+they are intentionally separate from the plugin's schema contribution.
+
 ## Configuration
 
 ```ts
-interface MultiRegionPluginConfig {
+interface MultiRegionPluginRuntimeConfig {
   regions?: AuthFnMultiRegionRegionConfig[];
   defaultRegionId?: string;
-  lookupStore?: AuthFnRegionLookupStore;
-  directory?: AuthFnMultiRegionDirectory;          // deprecated, use lookupStore
+  lookupStore?: ConditionalKVStoreAdapter;
+  observability?: ObservabilityInput<AuthFnEvent>;
 }
 
 interface AuthFnMultiRegionRegionConfig {
@@ -46,20 +54,20 @@ interface AuthFnMultiRegionRegionConfig {
 | --- | --- |
 | `defaultRegionId` | Fallback region for requests that don't match by host. |
 | `regions` | Array of region configs. Order is irrelevant. |
-| `lookupStore` | Required for production — see below. |
-| `directory` | Deprecated; behave-equivalent to `lookupStore`. |
+| `lookupStore` | Recommended when regional databases do not replicate region profiles globally. |
+| `observability` | Optional sink for lookup-store instrumentation. |
 
 ## Lookup store
 
 ```ts
-interface AuthFnRegionLookupStore {
-  getByIdentifier(identifier: string): Promise<AuthFnRegionLookupRecord | null>;
-  putIfAbsent(record: AuthFnRegionLookupRecord): Promise<{
+interface ConditionalKVStoreAdapter {
+  get(key: string): Promise<string | null>;
+  set(input: { key: string; value: string; ttlSeconds?: number }): Promise<void>;
+  setIfAbsent(input: { key: string; value: string; ttlSeconds?: number }): Promise<{
     inserted: boolean;
-    existing?: AuthFnRegionLookupRecord;
+    existing?: string;
   }>;
-  update(record: AuthFnRegionLookupRecord): Promise<AuthFnRegionLookupRecord>;
-  deleteByIdentifier(identifier: string): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 interface AuthFnRegionLookupRecord {
@@ -73,13 +81,22 @@ interface AuthFnRegionLookupRecord {
 }
 ```
 
-The lookup store needs to be **globally consistent** across regions. Common implementations:
+AuthFn normalizes the identifier, uses the key
+`authfn:region:<normalized-identifier>`, and serializes the lookup record as the
+string value. The lookup store needs to be **globally consistent** across
+regions. Bundled implementations are available as
+`@authfn/lookup-dynamodb` and `@authfn/lookup-cloudflare-do`; a custom
+conditional KV implementation can target another backend.
 
-- **DynamoDB Global Tables** (AWS): one global table, `identifier` as partition key.
+Common implementations:
+
+- **DynamoDB Global Tables** (AWS): use the bundled composite `PK`/`SK` adapter layout.
 - **Cloudflare D1 + Replicas** or **Hyperdrive + Postgres** with a leader-followers topology.
 - **Redis with cross-region streams** (eventual consistency; pair with retries).
 
-`putIfAbsent` is what enforces region pinning under contention. Implement it as a conditional insert (`INSERT ... ON CONFLICT DO NOTHING ... RETURNING`).
+`setIfAbsent` is what enforces region pinning under contention. Implement it as
+an atomic conditional insert (`attribute_not_exists`, `INSERT ... ON CONFLICT
+DO NOTHING ... RETURNING`, or the platform equivalent).
 
 If you don't supply a lookup store, the plugin falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — fine for setups where every region's database carries every user's region profile (globally-replicated table). Less suitable for setups where each region's DB only holds that region's users.
 
@@ -88,7 +105,7 @@ If you don't supply a lookup store, the plugin falls back to reading `authfn_use
 | Method | Path | Operation ID | Notes |
 | --- | --- | --- | --- |
 | `POST` | `/auth/regions/lookup` | `lookupRegion` | Look up the right region for an identifier. Used by the client SDK for pre-routing. |
-| `GET` | `/auth/runtime` | `getRuntime` | Returns the runtime resolution for the current request: `{ regionId, authority, baseUrl, … }`. |
+| `GET` | `/auth/environment` | `getEnvironment` | Returns the resolved request environment: `{ regionId, issuer, baseUrl, … }`. |
 
 ## Schema
 
@@ -110,22 +127,24 @@ The matched region's overlays (`cookie`, `oauth`, `issuer`, `baseUrl`) are appli
 
 ## Caching
 
-When a `cacheStore` is configured on the kernel (`config.cacheStore`), region lookups are cached:
+When `stores.kv` is configured on the server, region lookups are cached:
 
-- Hits: 5 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
+- Hits: 15 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
 - Misses: 1 minute (`AUTHFN_CACHE_TTL_SECONDS.regionMiss`).
 
-Use a Redis-backed `cacheStore` in production to share caches across replicas.
+Use a shared KV store in production to share caches across replicas.
 
 ## Conflicts and races
 
 If two regions both attempt to register the same email at the same time:
 
-1. Both call `lookupStore.putIfAbsent(record)`.
+1. Both call `lookupStore.setIfAbsent(...)` for the normalized identifier key.
 2. The first wins (`inserted: true`).
 3. The second loses (`inserted: false`, `existing: <winner>`). The plugin throws `AUTHFN_REGION_MISMATCH` with `redirectTo` pointing at the winner's authority and emits `authfn.region.lookup.conflict`.
 
-The losing region also rolls back any local writes it had begun. Implement `lookupStore.putIfAbsent` *before* you do any irreversible write in your custom flows.
+The losing region also rolls back any local writes it had begun. Implement
+`lookupStore.setIfAbsent` *before* you do any irreversible write in custom
+flows.
 
 ## Errors
 

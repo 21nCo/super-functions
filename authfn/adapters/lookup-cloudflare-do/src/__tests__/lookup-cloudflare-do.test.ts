@@ -44,6 +44,35 @@ describe('AuthFnRegionLookupDurableObject', () => {
     expect(await post(object, { operation: 'get', key }))
       .toEqual({ ok: true, data: null });
   });
+
+  it('reads and deletes legacy structured records', async () => {
+    const state = createState({
+      record: {
+        identifier: 'person@example.com',
+        regionId: 'insouth',
+        authority: 'https://insouth.example.com',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const object = new AuthFnRegionLookupDurableObject(state);
+
+    const read = await post(object, { operation: 'get', key: 'person@example.com' });
+    expect(read).toEqual({
+      ok: true,
+      data: JSON.stringify({
+        identifier: 'person@example.com',
+        regionId: 'insouth',
+        authority: 'https://insouth.example.com',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+
+    await post(object, { operation: 'delete', key: 'person@example.com' });
+    expect(await post(object, { operation: 'get', key: 'person@example.com' }))
+      .toEqual({ ok: true, data: null });
+  });
 });
 
 describe('createCloudflareRegionLookupStore', () => {
@@ -76,8 +105,8 @@ describe('createCloudflareRegionLookupStore', () => {
   });
 });
 
-function createState(): DurableObjectStateLike {
-  const values = new Map<string, unknown>();
+function createState(initial: Record<string, unknown> = {}): DurableObjectStateLike {
+  const values = new Map<string, unknown>(Object.entries(initial));
   return {
     storage: {
       async get<T>(entryKey: string) {

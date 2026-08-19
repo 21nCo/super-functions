@@ -104,11 +104,19 @@ export function dynamoDbAtomicKVStore(
       }));
     },
     async setIfAbsent(input) {
+      const currentEpochSeconds = Math.floor(Date.now() / 1000);
       try {
         await client.send(new PutCommand({
           TableName: options.tableName,
           Item: kvItem(input.key, input.value, input.ttlSeconds),
-          ConditionExpression: 'attribute_not_exists(PK)',
+          ConditionExpression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)',
+          ExpressionAttributeNames: {
+            '#pk': 'PK',
+            '#expiresAt': 'expiresAt',
+          },
+          ExpressionAttributeValues: {
+            ':now': currentEpochSeconds,
+          },
         }));
         return { inserted: true };
       } catch (error) {
@@ -209,7 +217,16 @@ export function dynamoDbIndexedDirectoryStore(
     },
     async putIfAbsent(record) {
       try {
-        await writeDirectoryRecord(client, options.tableName, record, null, 'attribute_not_exists(PK)');
+        await writeDirectoryRecord(client, options.tableName, record, null, {
+          expression: '(attribute_not_exists(#pk) OR #expiresAt <= :now)',
+          names: {
+            '#pk': 'PK',
+            '#expiresAt': 'expiresAt',
+          },
+          values: {
+            ':now': Math.floor(Date.now() / 1000),
+          },
+        });
         return { inserted: true };
       } catch (error) {
         if (!isConditionalCheckFailed(error)) throw error;
@@ -255,7 +272,12 @@ export function dynamoDbIndexedDirectoryStore(
         .filter((key): key is string => Boolean(key));
       const records = (
         await Promise.all(keys.map((key) => this.get(key)))
-      ).filter((record): record is IndexedDirectoryRecord => Boolean(record));
+      ).filter((record): record is IndexedDirectoryRecord =>
+        Boolean(
+          record
+          && normalizeIndexValues(record.indexes?.[input.index]).includes(input.value),
+        )
+      );
       return {
         records,
         ...(result.LastEvaluatedKey
@@ -274,12 +296,21 @@ async function writeDirectoryRecord(
   tableName: string,
   record: IndexedDirectoryRecord,
   existing: IndexedDirectoryRecord | null,
-  conditionExpression?: string,
+  condition?: {
+    expression: string;
+    names?: Record<string, string>;
+    values?: Record<string, unknown>;
+  },
 ): Promise<void> {
-  const deletes = existing ? indexEdges(existing).map((edge) => ({
+  const nextEdges = indexEdges(record);
+  const nextEdgeKeys = new Set(nextEdges.map(indexEdgeKey));
+  const deletes = existing ? indexEdges(existing)
+    .filter((edge) => !nextEdgeKeys.has(indexEdgeKey(edge)))
+    .map((edge) => ({
     Delete: { TableName: tableName, Key: { PK: edge.pk, SK: edge.sk } },
   })) : [];
-  const puts = indexEdges(record).map((edge) => ({
+  const expiresAt = ttlEpochSeconds(record.ttlSeconds);
+  const puts = nextEdges.map((edge) => ({
     Put: {
       TableName: tableName,
       Item: {
@@ -289,6 +320,7 @@ async function writeDirectoryRecord(
         indexName: edge.index,
         indexValue: edge.value,
         dirKey: record.key,
+        ...(expiresAt ? { expiresAt } : {}),
       },
     },
   }));
@@ -299,12 +331,22 @@ async function writeDirectoryRecord(
         Put: {
           TableName: tableName,
           Item: toDirectoryItem(record),
-          ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
+          ...(condition
+            ? {
+                ConditionExpression: condition.expression,
+                ...(condition.names ? { ExpressionAttributeNames: condition.names } : {}),
+                ...(condition.values ? { ExpressionAttributeValues: condition.values } : {}),
+              }
+            : {}),
         },
       },
       ...puts,
     ],
   }));
+}
+
+function indexEdgeKey(edge: { pk: string; sk: string }): string {
+  return `${edge.pk}\u0000${edge.sk}`;
 }
 
 function documentClient(options: DynamoDbStoreOptions): DynamoDBDocumentClient {
@@ -397,11 +439,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isConditionalCheckFailed(error: unknown): boolean {
-  return Boolean(
-    error
-      && typeof error === 'object'
-      && (error as { name?: unknown }).name === 'ConditionalCheckFailedException',
-  );
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as {
+    name?: unknown;
+    CancellationReasons?: Array<{ Code?: unknown }>;
+  };
+  if (candidate.name === 'ConditionalCheckFailedException') return true;
+  return candidate.name === 'TransactionCanceledException'
+    && Array.isArray(candidate.CancellationReasons)
+    && candidate.CancellationReasons.some((reason) => reason.Code === 'ConditionalCheckFailed');
 }
 
 function kvPk(key: string): string {

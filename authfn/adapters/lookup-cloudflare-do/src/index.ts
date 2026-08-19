@@ -223,6 +223,7 @@ export class AuthFnRegionLookupDurableObject {
 
       case 'delete': {
         await this.state.storage.delete('entry');
+        await this.state.storage.delete('record');
         return json({ ok: true, data: null } satisfies LookupResponse<null>);
       }
     }
@@ -234,7 +235,13 @@ export class AuthFnRegionLookupDurableObject {
       await this.state.storage.delete('entry');
       return undefined;
     }
-    return entry;
+    if (entry) return entry;
+
+    // Older releases stored a structured lookup record under `record` in an
+    // object named from the bare identifier. Expose it as the generic KV value
+    // so AuthFn Core can lazily migrate it to the prefixed key/object.
+    const legacy = await this.state.storage.get<Record<string, unknown>>('record');
+    return legacy ? { value: JSON.stringify(legacy) } : undefined;
   }
 
   private async writeEntry(value: string, ttlSeconds?: number): Promise<void> {

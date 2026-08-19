@@ -14,6 +14,7 @@ import type { SequenceStore } from "./sequence-store.js";
 import { ChangeTrackingService, recordChangeWithRetry } from "./change-tracking.js";
 import {
   applyInactivePropagation,
+  applyRelationDeletePolicies,
   collectInactivePropagationSeeds,
   executeRelate,
   executeModifyRelation,
@@ -521,10 +522,30 @@ export async function executePush(
         if (!existing) {
           return { ok: true, changes: [] };
         }
+        const relationPolicyResult = await applyRelationDeletePolicies(
+          targetDb,
+          schema,
+          mut.resource,
+          mut.id,
+          namespace,
+        );
+        if (!relationPolicyResult.ok) {
+          return relationPolicyResult;
+        }
         await targetDb.delete({ model: mut.resource, where: [{ field: "id", operator: "eq", value: mut.id }], namespace });
+        const propagationChanges = await collectPropagationChanges(
+          targetDb,
+          relationPolicyResult.changes
+            .filter((change) => change.op === "merge")
+            .map((change) => ({ resource: change.resource, id: change.id })),
+        );
         return {
           ok: true,
-          changes: [{ resource: mut.resource, id: mut.id, op: "delete", record: null }],
+          changes: [
+            { resource: mut.resource, id: mut.id, op: "delete", record: null },
+            ...relationPolicyResult.changes,
+            ...propagationChanges,
+          ],
         };
       }
       case "trash": {
@@ -890,7 +911,6 @@ export async function executePush(
   async function recordMutationFailure(mut: any, code: string, message: string, path: string) {
     const retryable = code === "INTERNAL" ||
       code === "MUTATION_FAILED" ||
-      code === "FORBIDDEN" ||
       code === "NOT_FOUND" ||
       (code === "CONFLICT" && path === "id" && mut.operation === "insert");
     errors.push({ mutationId: mut.mutationId, code, message, path, retryable });

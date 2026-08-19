@@ -11,6 +11,7 @@ import { authFnPasswordPlugin } from '@authfn/password';
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
 import type { AuthFnDeliveryRequest, AuthFnPlugin, AuthFnRuntimeConfig } from '../index.js';
 import { findUserByPrimaryEmail } from '../core/users.js';
+import { lookupRegionByIdentifier } from '../core/regions.js';
 import { getLatestOtpChallenge } from '../core/verifications.js';
 
 function createLookupStore(
@@ -20,7 +21,7 @@ function createLookupStore(
   return {
     async get(key) {
       const identifier = identifierFromLookupKey(key);
-      lookupCalls?.push(identifier);
+      lookupCalls?.push(key);
       const record = records.get(identifier);
       return record ? JSON.stringify(record) : null;
     },
@@ -48,6 +49,65 @@ function identifierFromLookupKey(key: string): string {
 }
 
 describe('authfn multi-region plugin', () => {
+  it('lazily migrates legacy bare-key lookup records', async () => {
+    const legacyRecord: AuthFnRegionLookupRecord = {
+      identifier: 'legacy@example.com',
+      userId: 'user:legacy',
+      regionId: 'eu-west-1',
+      authority: 'https://eu.account.example.com',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    };
+    const values = new Map<string, string>([
+      ['legacy@example.com', JSON.stringify(legacyRecord)]
+    ]);
+    const lookupStore: ConditionalKVStoreAdapter = {
+      async get(key) {
+        return values.get(key) ?? null;
+      },
+      async set(input) {
+        values.set(input.key, input.value);
+      },
+      async setIfAbsent(input) {
+        const existing = values.get(input.key);
+        if (existing !== undefined) {
+          return { inserted: false, existing };
+        }
+        values.set(input.key, input.value);
+        return { inserted: true };
+      },
+      async delete(key) {
+        values.delete(key);
+      }
+    };
+
+    const lookup = await lookupRegionByIdentifier(
+      {
+        database: memoryAdapter({ debug: false }),
+        namespace: 'authfn',
+        stores: undefined,
+        plugins: []
+      },
+      {
+        regions: [],
+        lookupStore
+      },
+      {
+        identifier: 'Legacy@Example.com',
+        environment: { baseUrl: 'https://us.account.example.com' }
+      }
+    );
+
+    expect(lookup).toMatchObject({
+      userId: 'user:legacy',
+      regionId: 'eu-west-1',
+      authority: 'https://eu.account.example.com'
+    });
+    expect(values.get('authfn:region:legacy@example.com')).toBe(
+      JSON.stringify(legacyRecord)
+    );
+  });
+
   it('returns deterministic lookup guidance, exposes runtime overrides, and rejects cross-region sign-in completion', async () => {
     const otpCodes = new Map<string, string>();
     const otpDelivery = {
@@ -359,7 +419,11 @@ describe('authfn multi-region plugin', () => {
       regionId: 'eu-west-1',
       authority: 'https://eu.account.example.com'
     });
-    expect(lookupCalls).toEqual(['ada@example.com', 'ada@example.com']);
+    expect(lookupCalls.slice(0, 2)).toEqual([
+      'authfn:region:ada@example.com',
+      'ada@example.com',
+    ]);
+    const callsAfterSignUp = lookupCalls.length;
     expect(cacheWrites.some((key) => key.startsWith('authfn:nucleus:region:'))).toBe(true);
 
     const lookup = await auth.router.handle(
@@ -383,7 +447,7 @@ describe('authfn multi-region plugin', () => {
         redirectTo: 'https://eu.account.example.com'
       }
     });
-    expect(lookupCalls).toEqual(['ada@example.com', 'ada@example.com']);
+    expect(lookupCalls).toHaveLength(callsAfterSignUp);
 
     const mismatch = await auth.router.handle(
       new Request('https://us.account.example.com/auth/sign-up/password', {
@@ -450,7 +514,8 @@ describe('authfn multi-region plugin', () => {
       regionId: 'eu-west-1',
       authority: 'https://eu.account.example.com'
     });
-    expect(lookupCalls.filter((identifier) => identifier === 'grace@example.com')).toHaveLength(2);
+    expect(lookupCalls.filter((key) => key === 'authfn:region:grace@example.com')).toHaveLength(2);
+    expect(lookupCalls.filter((key) => key === 'grace@example.com')).toHaveLength(1);
     await expect(findUserByPrimaryEmail(config, 'grace@example.com')).resolves.toBeNull();
   });
 

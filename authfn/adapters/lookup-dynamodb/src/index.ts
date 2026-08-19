@@ -49,7 +49,7 @@ export function createDynamoDbRegionLookupStore(
         Key: itemKey(key),
         ConsistentRead: options.consistentRead
       }));
-      return readValue(result.Item);
+      return readValue(result.Item, ttlAttributeName, now);
     } catch (error) {
       throw new AuthFnDynamoDbLookupStoreError('get', error);
     }
@@ -57,10 +57,24 @@ export function createDynamoDbRegionLookupStore(
 
   const setIfAbsent: ConditionalKVStoreAdapter['setIfAbsent'] = async (input) => {
     try {
+      const replaceExpired = typeof ttlAttributeName === 'string';
       await client.send(new PutCommand({
         TableName: options.tableName,
         Item: toItem(input, ttlAttributeName, now),
-        ConditionExpression: 'attribute_not_exists(PK)'
+        ConditionExpression: replaceExpired
+          ? '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
+          : 'attribute_not_exists(#pk)',
+        ...(replaceExpired
+          ? {
+              ExpressionAttributeNames: {
+                '#pk': 'PK',
+                '#expiresAt': ttlAttributeName,
+              },
+              ExpressionAttributeValues: {
+                ':now': Math.floor(now().getTime() / 1000),
+              },
+            }
+          : {})
       }));
       return { inserted: true };
     } catch (error) {
@@ -160,14 +174,51 @@ function toItem(
   return item;
 }
 
-function readValue(item: Record<string, unknown> | undefined): string | null {
+function readValue(
+  item: Record<string, unknown> | undefined,
+  ttlAttributeName: string | false,
+  now: () => Date
+): string | null {
   if (!item) {
     return null;
   }
+  if (
+    ttlAttributeName
+    && typeof item[ttlAttributeName] === 'number'
+    && item[ttlAttributeName] <= Math.floor(now().getTime() / 1000)
+  ) {
+    return null;
+  }
   if (typeof item.value !== 'string') {
+    const legacy = legacyLookupRecord(item);
+    if (legacy) {
+      return JSON.stringify(legacy);
+    }
     throw new Error('DynamoDB lookup record is missing value');
   }
   return item.value;
+}
+
+function legacyLookupRecord(item: Record<string, unknown>): Record<string, unknown> | null {
+  const identifier = item.identifier ?? item.PK;
+  if (
+    typeof identifier !== 'string'
+    || typeof item.regionId !== 'string'
+    || typeof item.authority !== 'string'
+    || typeof item.createdAt !== 'string'
+    || typeof item.updatedAt !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    identifier,
+    ...(typeof item.userId === 'string' ? { userId: item.userId } : {}),
+    regionId: item.regionId,
+    authority: item.authority,
+    ...(typeof item.domain === 'string' ? { domain: item.domain } : {}),
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
 }
 
 function isConditionalCheckFailed(error: unknown): boolean {
