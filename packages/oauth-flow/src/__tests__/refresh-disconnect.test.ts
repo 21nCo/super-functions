@@ -500,7 +500,10 @@ describe("oauth-flow refresh/disconnect lifecycle", () => {
         localDeleted: true,
         cleanupAttempted: false,
         cleanupDeleted: false,
-        cleanupReason: "not-configured"
+        cleanupReason: "not-configured",
+        revokeErrorCode: "INTERNAL_ERROR",
+        revokeMessage: "upstream revoke failed",
+        revokeStatus: 500
       }
     });
 
@@ -513,7 +516,10 @@ describe("oauth-flow refresh/disconnect lifecycle", () => {
           localDeleted: true,
           cleanupAttempted: false,
           cleanupDeleted: false,
-          cleanupReason: "not-configured"
+          cleanupReason: "not-configured",
+          revokeErrorCode: "INTERNAL_ERROR",
+          revokeMessage: "upstream revoke failed",
+          revokeStatus: 500,
         }
       })
     );

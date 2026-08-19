@@ -39,6 +39,11 @@ export interface DrizzleAdapterConfig {
   upsertKeys?: Record<string, string | string[]>;
   // Optional Drizzle table for schema version tracking; if omitted, schema version methods will be no-ops.
   schemaVersionsTable?: any;
+  /**
+   * @deprecated Function authors should wrap incoming adapters with
+   * `wrapWithSchema(adapter, getSchema(...))` inside their create/init function.
+   * This option remains for compatibility and app-level direct adapter usage.
+   */
   adapterSchema?: AdapterSchemaInput;
   namespace?: AdapterFactoryOptions['config']['namespace'];
   debug?: boolean;

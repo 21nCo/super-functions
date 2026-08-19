@@ -1,0 +1,60 @@
+{
+  "name": "@plugfn/providers",
+  "version": "0.0.1",
+  "description": "First-party provider implementations for PlugFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./github": {
+      "types": "./dist/github/index.d.ts",
+      "default": "./dist/github/index.js"
+    },
+    "./linear": {
+      "types": "./dist/linear/index.d.ts",
+      "default": "./dist/linear/index.js"
+    },
+    "./gmail": {
+      "types": "./dist/gmail/index.d.ts",
+      "default": "./dist/gmail/index.js"
+    },
+    "./notion": {
+      "types": "./dist/notion/index.d.ts",
+      "default": "./dist/notion/index.js"
+    },
+    "./clickup": {
+      "types": "./dist/clickup/index.d.ts",
+      "default": "./dist/clickup/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm --prefix ../core run build && tsc",
+    "test": "vitest run",
+    "typecheck": "npm --prefix ../core run build && tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "author": "21n",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@superfunctions/oauth-providers": "0.0.1",
+    "imapflow": "^1.7.0",
+    "jose": "^5.10.0",
+    "plugfn": "0.1.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.2",
+    "vitest": "^3.2.4"
+  }
+}

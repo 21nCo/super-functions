@@ -56,8 +56,15 @@ async function convertToWebRequest(req: express.Request): Promise<Request> {
   // Handle body
   let body: BodyInit | null = null;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    // If body is already parsed (e.g., by express.json() middleware)
-    if (req.body && Object.keys(req.body).length > 0) {
+    // Preserve exact bytes from express.raw() for webhook verification. For
+    // express.json(), serialize the parsed value back into a web Request body.
+    if (Buffer.isBuffer(req.body)) {
+      const rawBody = new Uint8Array(req.body.byteLength);
+      rawBody.set(req.body);
+      body = rawBody;
+    } else if (typeof req.body === 'string') {
+      body = req.body;
+    } else if (req.body !== undefined) {
       body = JSON.stringify(req.body);
       // Ensure Content-Type is set
       if (!headers.has('Content-Type')) {

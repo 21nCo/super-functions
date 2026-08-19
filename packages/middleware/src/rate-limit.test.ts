@@ -149,6 +149,128 @@ describe('rate-limit', () => {
       expect((await limiter.check({ key: 'user1' })).allowed).toBe(false);
     });
 
+    it('checks multiple keys without consuming partial capacity when one key is blocked', async () => {
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 1,
+        algorithm: 'token-bucket',
+      });
+
+      expect((await limiter.check({ key: 'provider' })).allowed).toBe(true);
+
+      const multi = await limiter.checkMany({ keys: ['provider', 'tenant'] });
+      expect(multi.allowed).toBe(false);
+      expect(multi.remainingByKey.get('provider')).toBe(0);
+      expect(multi.remainingByKey.get('tenant')).toBe(1);
+
+      expect((await limiter.check({ key: 'tenant' })).allowed).toBe(true);
+    });
+
+    it('uses the latest blocked reset time for multi-key denials', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.000Z'));
+      const limiter = createRateLimiter({
+        windowMs: 1000,
+        maxRequests: 1,
+        algorithm: 'token-bucket',
+      });
+
+      await limiter.check({ key: 'provider' });
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.500Z'));
+      await limiter.check({ key: 'tenant' });
+      vi.setSystemTime(new Date('2026-03-12T00:00:00.600Z'));
+
+      const multi = await limiter.checkMany({ keys: ['provider', 'tenant'] });
+
+      expect(multi.allowed).toBe(false);
+      expect(multi.resetAt).toBe('2026-03-12T00:00:01.500Z');
+      expect(multi.resetAtByKey.get('provider')).toBe('2026-03-12T00:00:01.000Z');
+      expect(multi.resetAtByKey.get('tenant')).toBe('2026-03-12T00:00:01.500Z');
+    });
+
+    it('fails closed without overwriting concurrent quota when a later write fails', async () => {
+      const internalStore = new Map<string, string>();
+      let failTenantWrite = true;
+      const customStore: KVStoreAdapter = {
+        async get(key: string) {
+          return internalStore.get(key) ?? null;
+        },
+        async set(input: KVSetInput) {
+          if (input.key === 'ratelimit:tenant' && failTenantWrite) {
+            failTenantWrite = false;
+            internalStore.set(
+              'ratelimit:provider',
+              JSON.stringify({ count: 2, windowStart: 0, expiresAt: 60000 })
+            );
+            throw new Error('write failed');
+          }
+          internalStore.set(input.key, input.value);
+        },
+        async delete(key: string) {
+          internalStore.delete(key);
+        },
+      };
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 1,
+        algorithm: 'fixed-window',
+        persistence: customStore,
+        now: () => 0,
+      });
+
+      await expect(limiter.checkMany({ keys: ['provider', 'tenant'] })).rejects.toThrow(
+        'write failed'
+      );
+
+      expect(JSON.parse(internalStore.get('ratelimit:provider') ?? '{}')).toMatchObject({
+        count: 2,
+      });
+      expect((await limiter.check({ key: 'provider' })).allowed).toBe(false);
+    });
+
+    it('retains prior quota charges after a partial commit failure', async () => {
+      const internalStore = new Map<string, string>();
+      const ttlByKey = new Map<string, number | undefined>();
+      let currentTime = 0;
+      const customStore: KVStoreAdapter = {
+        async get(key: string) {
+          return internalStore.get(key) ?? null;
+        },
+        async set(input: KVSetInput) {
+          if (input.key === 'ratelimit:tenant') {
+            throw new Error('write failed');
+          }
+          internalStore.set(input.key, input.value);
+          ttlByKey.set(input.key, input.ttlSeconds);
+        },
+        async delete(key: string) {
+          internalStore.delete(key);
+          ttlByKey.delete(key);
+        },
+      };
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 2,
+        algorithm: 'fixed-window',
+        persistence: customStore,
+        now: () => currentTime,
+      });
+
+      await limiter.check({ key: 'provider' });
+      currentTime = 30000;
+
+      await expect(
+        limiter.checkMany({ keys: ['provider', 'tenant'], windowSeconds: 10 })
+      ).rejects.toThrow('write failed');
+
+      expect(ttlByKey.get('ratelimit:provider')).toBe(10);
+      expect(JSON.parse(internalStore.get('ratelimit:provider') ?? '{}')).toMatchObject({
+        count: 1,
+        windowStart: 30000,
+        expiresAt: 40000,
+      });
+    });
+
     it('resets key state', async () => {
       const limiter = createRateLimiter({
         windowMs: 60000,

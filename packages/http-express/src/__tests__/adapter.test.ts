@@ -74,6 +74,33 @@ describe('Express Adapter', () => {
       });
     });
 
+    it('preserves exact bytes parsed by express.raw()', async () => {
+      const router = createRouter({
+        routes: [
+          {
+            method: 'POST',
+            path: '/webhook',
+            handler: async (req) => {
+              const body = Buffer.from(await req.arrayBuffer()).toString('utf8');
+              return Response.json({ body });
+            },
+          },
+        ],
+      });
+      const rawBody = '{"event":"created", "spacing":"preserved"}';
+      const app = express();
+      app.use(express.raw({ type: 'application/json' }));
+      app.use('/api', toExpress(router));
+
+      const res = await supertest(app)
+        .post('/api/webhook')
+        .set('content-type', 'application/json')
+        .send(rawBody)
+        .expect(200);
+
+      expect(res.body).toEqual({ body: rawBody });
+    });
+
     it('should handle query parameters', async () => {
       const router = createRouter({
         routes: [

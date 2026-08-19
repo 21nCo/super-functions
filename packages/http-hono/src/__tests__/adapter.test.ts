@@ -75,6 +75,40 @@ describe('Hono Adapter', () => {
     });
   });
 
+  it('should reject requests after Hono middleware consumes the body', async () => {
+    const router = createRouter({
+      routes: [
+        {
+          method: 'POST',
+          path: '/users',
+          handler: async (req, ctx) => {
+            const data = await ctx.json();
+            return Response.json({ created: data }, { status: 201 });
+          },
+        },
+      ],
+    });
+
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      await c.req.raw.text();
+      await next();
+    });
+    app.route('/', toHono(router));
+
+    const res = await app.request('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice' }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error:
+        'Request body was already consumed by Hono middleware before reaching the Superfunctions router',
+    });
+  });
+
   it('should handle query parameters', async () => {
     const router = createRouter({
       routes: [
@@ -221,5 +255,45 @@ describe('Hono Adapter', () => {
 
     const deleteRes = await app.request('/resource', { method: 'DELETE' });
     expect(await deleteRes.json()).toEqual({ method: 'DELETE' });
+  });
+
+  it('should handle routes mounted at a subpath', async () => {
+    const router = createRouter({
+      routes: [
+        {
+          method: 'GET',
+          path: '/providers',
+          handler: async () => Response.json({ providers: [] }),
+        },
+      ],
+    });
+
+    const app = new Hono();
+    app.route('/api/plugfn', toHono(router));
+
+    const res = await app.request('/api/plugfn/providers');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ providers: [] });
+  });
+
+  it('should strip encoded dynamic mount prefixes without using decoded params', async () => {
+    const router = createRouter({
+      routes: [
+        {
+          method: 'GET',
+          path: '/providers',
+          handler: async () => Response.json({ providers: [] }),
+        },
+      ],
+    });
+
+    const app = new Hono();
+    app.route('/:tenant', toHono(router));
+
+    const res = await app.request('/acme%2Fwest/providers');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ providers: [] });
   });
 });

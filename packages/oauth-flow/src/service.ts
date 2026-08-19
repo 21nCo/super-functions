@@ -721,7 +721,13 @@ class DefaultOAuthFlowService implements OAuthFlowService {
         const errorWithFlags = new OAuthFlowError("INTERNAL_ERROR", "provider revoke failed after local cleanup", {
           status: 502,
           retryable: false,
-          details: toDisconnectEventDetails(remoteRevokeAttempted, localTokenDeleted, connectionCleanup)
+          details: {
+            ...toDisconnectEventDetails(remoteRevokeAttempted, localTokenDeleted, connectionCleanup),
+            revokeErrorCode: revokeError.code,
+            revokeMessage: revokeError.message,
+            revokeStatus: revokeError.status,
+            revokeDetails: revokeError.details ?? {}
+          }
         });
         this.emitEvent({
           name: "oauth.flow.disconnect.failed",
