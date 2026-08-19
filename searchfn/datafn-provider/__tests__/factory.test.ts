@@ -149,7 +149,7 @@ describe("createSearchProvider — updateIndices", () => {
     });
     expect(adapter.index).toHaveBeenCalledWith({
       resource: "tasks",
-      documents: [{ id: "1", fields: { title: "Hello" } }],
+      documents: [{ id: "1", fields: { title: "Hello" }, metadata: {} }],
     });
   });
 
@@ -167,6 +167,7 @@ describe("createSearchProvider — updateIndices", () => {
           {
             id: "1",
             fields: { count: "42", active: "true", meta: '{"x":1}' },
+            metadata: {},
           },
         ],
       }),
@@ -187,7 +188,7 @@ describe("createSearchProvider — updateIndices", () => {
 
     expect(adapter.index).toHaveBeenCalledWith({
       resource: "tasks",
-      documents: [{ id: "1", fields: { title: "Hello" } }],
+      documents: [{ id: "1", fields: { title: "Hello" }, metadata: {} }],
     });
   });
 
@@ -205,7 +206,7 @@ describe("createSearchProvider — updateIndices", () => {
 
     expect(adapter.index).toHaveBeenCalledWith(
       expect.objectContaining({
-        documents: [{ id: "1", fields: { meta: "[object Object]" } }],
+        documents: [{ id: "1", fields: { meta: "[object Object]" }, metadata: {} }],
       }),
     );
   });
