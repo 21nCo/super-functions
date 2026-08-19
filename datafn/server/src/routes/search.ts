@@ -18,6 +18,7 @@ import {
   NO_PROVIDER_NATIVE_UNSUPPORTED_MESSAGE,
 } from "../execution/search/native-fallback.js";
 import { runBeforeSearch } from "../plugins/run-hooks.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
 
 function analyzeFilterComplexity(
   node: unknown,
@@ -175,6 +176,7 @@ export function createSearchHandler(
   searchProvider?: SearchProvider,
   logger?: DatafnLogger,
 ) {
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   return async (req: Request, ctx?: { parsedBody?: unknown }): Promise<Response> => {
     const parseResult = await getBodyFromContext(req, ctx);
     if (!parseResult.ok) {
@@ -406,6 +408,7 @@ export function createSearchHandler(
             validatedSchema,
             namespace,
             logger,
+            multiRegionRuntime,
           )
         : await executeDbNativeCrossResourceSearch(
             searchParams,

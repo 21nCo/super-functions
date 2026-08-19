@@ -37,7 +37,10 @@ import {
   getSpv2MigrationRuntimeConfig,
 } from "../execution/migration/spv2.js";
 import { hasTemporalGrouping } from "@datafn/core";
-import { queryDatafnPermissionGrants } from "../plugins/multi-region.js";
+import {
+  getDatafnMultiRegionRuntimeConfig,
+  queryDatafnPermissionGrants,
+} from "../plugins/multi-region.js";
 
 // Re-export query helpers for direct imports from routes/query.
 export { validateQuery, validateFilters } from "./query/validate.js";
@@ -78,6 +81,7 @@ export function createQueryHandler(
   /** Unwrapped adapter used only to discover grants in explicitly requested source namespaces. */
   crossNamespaceDb?: Adapter,
 ) {
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   // Build schema index once for efficient validation
   const schemaIndex = buildSchemaIndex(validatedSchema);
 
@@ -290,7 +294,7 @@ export function createQueryHandler(
       const directoryRows = await queryDatafnPermissionGrants({
         principalId,
         resourceType: resource,
-      });
+      }, multiRegionRuntime);
       const rows: Record<string, unknown>[] = directoryRows.map((grant) => ({
         id: grant.id,
         resourceType: grant.resourceType,
@@ -471,6 +475,7 @@ export function createQueryHandler(
         searchProvider,
         logger,
         timer,
+        multiRegionRuntime,
       );
       if (
         result &&
@@ -832,6 +837,7 @@ export function createQueryHandler(
                   searchProvider,
                   logger,
                   timer,
+                  multiRegionRuntime,
                 );
               }).then((result) => {
                 queryDurations.push(Date.now() - queryStart);

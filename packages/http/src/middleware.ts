@@ -15,21 +15,29 @@ export async function executeMiddlewareChain<TContext>(
   middlewares: Middleware<TContext>[],
   request: Request,
   context: TContext & RouteContext,
-  finalHandler: () => Promise<Response>
+  finalHandler: () => Promise<Response>,
+  onError?: (error: unknown) => Response | Promise<Response>,
 ): Promise<Response> {
   let index = 0;
 
   const next = async (): Promise<Response> => {
-    // If we've reached the end of middleware, call the final handler
-    if (index >= middlewares.length) {
-      return finalHandler();
-    }
+    try {
+      // If we've reached the end of middleware, call the final handler
+      if (index >= middlewares.length) {
+        return await finalHandler();
+      }
 
-    // Get current middleware and increment index
-    const middleware = middlewares[index++];
-    
-    // Execute middleware
-    return middleware(request, context, next);
+      // Get current middleware and increment index
+      const middleware = middlewares[index++];
+
+      // Convert failures at the point where downstream middleware is invoked.
+      // This keeps the eventual error response inside upstream middleware such
+      // as observability, so it can still finalize headers and completion hooks.
+      return await middleware(request, context, next);
+    } catch (error) {
+      if (!onError) throw error;
+      return onError(error);
+    }
   };
 
   return next();

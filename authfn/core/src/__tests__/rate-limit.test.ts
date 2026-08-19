@@ -57,4 +57,16 @@ describe('authfn rate limiting', () => {
       }
     });
   });
+
+  it('applies the password policy to password sign-up', async () => {
+    const config = createConfig('rate-limit-sign-up-test');
+
+    await expect(callRateLimitedRoute(config, '/auth/sign-up/password')).resolves.toHaveProperty('status', 200);
+    await expect(callRateLimitedRoute(config, '/auth/sign-up/password')).rejects.toMatchObject({
+      name: 'AuthFnRateLimitedError',
+      details: {
+        scope: 'password'
+      }
+    });
+  });
 });

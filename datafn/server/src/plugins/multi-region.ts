@@ -30,8 +30,6 @@ export interface DatafnPermissionDirectoryGrant {
   resourceRegion: string;
 }
 
-let runtimeConfig: DatafnMultiRegionRuntimeConfig | null = null;
-
 export function datafnMultiRegionPlugin(
   config: DatafnMultiRegionPluginConfig,
 ): DatafnPlugin & DatafnMultiRegionRuntimeConfig {
@@ -39,7 +37,6 @@ export function datafnMultiRegionPlugin(
     regionId: config.regionId,
     directory: resolveDirectory(config.directory),
   };
-  setDatafnMultiRegionRuntimeConfig(runtime);
   return {
     name: 'datafn-multi-region',
     runsOn: ['server'],
@@ -49,18 +46,23 @@ export function datafnMultiRegionPlugin(
 
 export const createDatafnMultiRegionPlugin = datafnMultiRegionPlugin;
 
-export function setDatafnMultiRegionRuntimeConfig(config: DatafnMultiRegionRuntimeConfig | null): void {
-  runtimeConfig = config;
-}
-
-export function getDatafnMultiRegionRuntimeConfig(): DatafnMultiRegionRuntimeConfig | null {
-  return runtimeConfig;
+export function getDatafnMultiRegionRuntimeConfig(
+  plugins: readonly DatafnPlugin[],
+): DatafnMultiRegionRuntimeConfig | null {
+  const plugin = plugins.find((candidate) => candidate.name === 'datafn-multi-region') as
+    | (DatafnPlugin & Partial<DatafnMultiRegionRuntimeConfig>)
+    | undefined;
+  return plugin
+    && typeof plugin.regionId === 'string'
+    && plugin.directory !== undefined
+    ? { regionId: plugin.regionId, directory: plugin.directory }
+    : null;
 }
 
 export async function indexDatafnPermissionGrant(
   grant: Record<string, unknown>,
+  config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
-  const config = getDatafnMultiRegionRuntimeConfig();
   const normalized = normalizeGrant(grant, config?.regionId);
   if (!config || !normalized) return;
   await config.directory.put(permissionGrantRecord(normalized));
@@ -74,8 +76,8 @@ export async function deleteDatafnPermissionGrant(
     resourceId: string | null;
     principalId: string;
   },
+  config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
-  const config = getDatafnMultiRegionRuntimeConfig();
   if (!config) return;
   await config.directory.delete(permissionDirectoryKey(input.id));
 }
@@ -85,8 +87,8 @@ export async function queryDatafnPermissionGrants(
     principalId: string;
     resourceType: string;
   },
+  config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<DatafnPermissionDirectoryGrant[]> {
-  const config = getDatafnMultiRegionRuntimeConfig();
   if (!config) return [];
   const result = await config.directory.query({
     index: 'datafn.permission.principalResource',

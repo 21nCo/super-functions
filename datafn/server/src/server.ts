@@ -58,6 +58,7 @@ import {
   type Spv2MigrationRuntimeConfig,
 } from "./execution/migration/spv2.js";
 import type { DatafnPublicLinksPlugin } from "./plugins/public-links.js";
+import { getDatafnMultiRegionRuntimeConfig } from "./plugins/multi-region.js";
 import type {
   DataFnAction,
   DataFnAuthorizationDeniedMetadata,
@@ -415,6 +416,7 @@ export async function createDatafnServer<TContext = any>(
   if (config.publicLinks && !plugins.includes(config.publicLinks)) {
     plugins.push(config.publicLinks);
   }
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   const schemaWithPluginResources = plugins.reduce(
     (schema, plugin) => plugin.withSchema ? plugin.withSchema(schema) : schema,
     config.schema,
@@ -1551,6 +1553,7 @@ export async function createDatafnServer<TContext = any>(
         validatedSchema,
         namespace,
         logger,
+        multiRegionRuntime,
       );
     }
     if (!hasDbNativeSearchSupport(db)) {

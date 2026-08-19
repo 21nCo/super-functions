@@ -103,6 +103,62 @@ describe('dynamoDbAtomicKVStore', () => {
     );
     expect(putCommand?.input.ExpressionAttributeValues?.[':now']).toEqual(expect.any(Number));
   });
+
+  it('increments the canonical value written by set and compare-and-set', async () => {
+    let item: Record<string, unknown> = { value: '4' };
+    const documentClient = {
+      async send(command: unknown): Promise<Record<string, unknown>> {
+        if (command instanceof GetCommand) {
+          return { Item: item };
+        }
+        if (command instanceof PutCommand) {
+          const expected = command.input.ExpressionAttributeValues?.[':expected'];
+          if (item.value !== expected) throw conditionalCheckFailed();
+          item = command.input.Item as Record<string, unknown>;
+          return {};
+        }
+        throw new Error('Unexpected DynamoDB command');
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const store = dynamoDbAtomicKVStore({
+      tableName: 'runtime-store',
+      documentClient,
+    });
+
+    await expect(store.incr({ key: 'counter', by: 3 })).resolves.toEqual({ value: 7 });
+    await expect(store.get('counter')).resolves.toBe('7');
+    expect(item).toMatchObject({ value: '7', itemType: 'kv' });
+    expect(item).not.toHaveProperty('counter');
+  });
+
+  it('migrates a legacy counter item into the canonical value on increment', async () => {
+    let item: Record<string, unknown> = { counter: 2 };
+    let putCommand: PutCommand | undefined;
+    const documentClient = {
+      async send(command: unknown): Promise<Record<string, unknown>> {
+        if (command instanceof GetCommand) {
+          return { Item: item };
+        }
+        if (command instanceof PutCommand) {
+          putCommand = command;
+          const expectedCounter = command.input.ExpressionAttributeValues?.[':expectedCounter'];
+          if (item.counter !== expectedCounter) throw conditionalCheckFailed();
+          item = command.input.Item as Record<string, unknown>;
+          return {};
+        }
+        throw new Error('Unexpected DynamoDB command');
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const store = dynamoDbAtomicKVStore({
+      tableName: 'runtime-store',
+      documentClient,
+    });
+
+    await expect(store.incr({ key: 'counter' })).resolves.toEqual({ value: 3 });
+    expect(putCommand?.input.ConditionExpression).toContain('#counter = :expectedCounter');
+    await expect(store.get('counter')).resolves.toBe('3');
+    expect(item).not.toHaveProperty('counter');
+  });
 });
 
 describe('dynamoDbIndexedDirectoryStore', () => {

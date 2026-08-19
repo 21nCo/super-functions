@@ -21,6 +21,7 @@ import {
 import { executeSchemaAwareMerge } from "./merge-decision.js";
 import { executeShare, executeUnshare, getPermissionsTable } from "./share.js";
 import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { ChangeTrackingService, recordChangeWithRetry, recordChangesWithRetry, type ChangeEntryInput } from "../sync/change-tracking.js";
 import {
   applyRelationInheritanceForRelate,
@@ -43,6 +44,7 @@ async function tryUpdateSearchIndex(
   db: Adapter,
   namespace: string | undefined,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
   const op = mutation.operation === "delete" ? "delete" : "upsert";
   const shouldIndex = op === "delete" || SEARCH_UPSERT_OPS.has(mutation.operation);
@@ -56,14 +58,13 @@ async function tryUpdateSearchIndex(
             namespace,
           })
         : null;
-    const runtime = getDatafnMultiRegionRuntimeConfig();
     const record = storedRecord ?? { id: mutation.id, ...(mutation.record || {}) };
     await searchProvider.updateIndices({
       resource: mutation.resource,
       records: [{
         ...record,
         __ns: namespace,
-        ...(runtime?.regionId ? { __region: runtime.regionId } : {}),
+        ...(multiRegionRuntime?.regionId ? { __region: multiRegionRuntime.regionId } : {}),
       }],
       operation: op,
     });
@@ -185,6 +186,7 @@ async function executeMutationCore(
   changeTracking: ChangeTrackingService,
   actorId?: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<MutationResult> {
   const resolvedCapabilities = resolveCapabilitiesForResource(schema, mutation.resource);
   let opResult:
@@ -681,6 +683,7 @@ async function executeMutationCore(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!shareResult.ok) {
           opResult = {
@@ -728,6 +731,7 @@ async function executeMutationCore(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!unshareResult.ok) {
           opResult = {
@@ -998,6 +1002,7 @@ export async function executeMutation(
   logger?: DatafnLogger,
   searchProvider?: SearchProvider,
 ): Promise<MutationResult> {
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   // clientId and mutationId are optional. When absent, skip idempotency tracking.
   // EXE-009: Use crypto.randomUUID() for unpredictable anonymous mutation IDs
   const effectiveMutationId = mutation.mutationId || randomUUID();
@@ -1136,6 +1141,7 @@ export async function executeMutation(
           changeTracking.withDb(txDb),
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!txMutationResult.ok) {
           // A returned mutation failure is still an aborted transaction. Throw
@@ -1175,7 +1181,7 @@ export async function executeMutation(
 
     if (txMutationResult) {
       if (searchProvider && (txMutationResult as MutationResult).ok) {
-        await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger);
+        await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
       }
       if (mutation.clientId && mutation.mutationId) {
         await idempotencyStore.set(mutation.clientId, mutation.mutationId, txMutationResult as MutationResult);
@@ -1236,6 +1242,7 @@ export async function executeMutation(
           changeTracking.withDb(txDb),
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!txMutationResult.ok) {
           throw { __datafnMutationFailed: true };
@@ -1255,7 +1262,7 @@ export async function executeMutation(
 
     if (txMutationResult) {
       if (searchProvider && (txMutationResult as MutationResult).ok) {
-        await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger);
+        await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
       }
       if (mutation.clientId && mutation.mutationId) {
         await idempotencyStore.set(mutation.clientId, mutation.mutationId, txMutationResult as MutationResult);
@@ -1276,10 +1283,11 @@ export async function executeMutation(
     changeTracking.withDb(db),
     actorId,
     logger,
+    multiRegionRuntime,
   );
 
   if (searchProvider && result.ok) {
-    await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger);
+    await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
   }
 
   // Store for idempotency only when IDs were provided

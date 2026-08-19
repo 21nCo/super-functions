@@ -84,7 +84,7 @@ function policyForScope(
 }
 
 function scopeForPath(path: string): AuthFnRateLimitScope {
-  if (path.endsWith('/sign-in/password')) return 'password';
+  if (path.endsWith('/sign-in/password') || path.endsWith('/sign-up/password')) return 'password';
   if (path.endsWith('/otp/send')) return 'otp-send';
   if (path.endsWith('/otp/verify')) return 'otp-verify';
   if (path.endsWith('/password/reset/start')) return 'password-reset';

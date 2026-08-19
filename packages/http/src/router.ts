@@ -203,15 +203,8 @@ export function createRouter<TContext = any>(
         allMiddleware,
         request,
         fullContext,
-        async () => {
-          try {
-            return await matched.route.handler(request, fullContext);
-          } catch (error) {
-            // Convert handler failures inside the middleware chain so outer
-            // middleware can finalize metrics, headers, and completion hooks.
-            return handleError(error, request);
-          }
-        }
+        async () => matched.route.handler(request, fullContext),
+        (error) => handleError(error, request),
       );
 
       return response;

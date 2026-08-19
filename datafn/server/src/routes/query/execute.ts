@@ -27,7 +27,7 @@ import {
   NO_PROVIDER_NATIVE_UNSUPPORTED_MESSAGE,
 } from "../../execution/search/native-fallback.js";
 import type { ExecutionTimer } from "../../middleware/timing.js";
-import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 
 function mergeAnchorFilter(
   filters: Record<string, unknown> | undefined,
@@ -103,6 +103,7 @@ async function executeRelationQuery(
   searchProvider: SearchProvider | undefined,
   logger?: DatafnLogger,
   timer?: ExecutionTimer | null,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<unknown> {
   const resource = query.resource as string;
   const relationName = query.relation as string;
@@ -154,6 +155,7 @@ async function executeRelationQuery(
     searchProvider,
     logger,
     timer,
+    multiRegionRuntime,
   );
   const anchorData =
     anchorResult &&
@@ -222,6 +224,7 @@ export async function executeSingleQuery(
   searchProvider: SearchProvider | undefined,
   logger?: DatafnLogger,
   timer?: ExecutionTimer | null,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<unknown> {
   if (typeof query.relation === "string" && typeof query.id === "string") {
     return executeRelationQuery(
@@ -233,6 +236,7 @@ export async function executeSingleQuery(
       searchProvider,
       logger,
       timer,
+      multiRegionRuntime,
     );
   }
 
@@ -290,7 +294,6 @@ export async function executeSingleQuery(
     const metadata = query.metadata && typeof query.metadata === "object" && !Array.isArray(query.metadata)
       ? query.metadata as Record<string, unknown>
       : {};
-    const runtime = getDatafnMultiRegionRuntimeConfig();
     const scopedQuery = {
       ...query,
       metadata: {
@@ -298,7 +301,7 @@ export async function executeSingleQuery(
         searchNamespaceFilter: Array.isArray(metadata.namespaceFilter)
           ? metadata.namespaceFilter
           : [namespace],
-        ...(runtime?.regionId ? { searchRegionFilter: [runtime.regionId] } : {}),
+        ...(multiRegionRuntime?.regionId ? { searchRegionFilter: [multiRegionRuntime.regionId] } : {}),
       },
     };
     if (searchProvider) {

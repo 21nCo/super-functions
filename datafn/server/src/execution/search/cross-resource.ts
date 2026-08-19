@@ -4,8 +4,8 @@ import type { SearchProvider } from "../../search-provider.js";
 import type { DatafnLogger } from "../../logger.js";
 import { DatafnExecutionError } from "../errors.js";
 import { evaluateFilter } from "../query/filters.js";
-import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { queryDatafnPermissionGrants } from "../../plugins/multi-region.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { canonicalizePrincipalFromLegacyUserId } from "../migration/spv2.js";
 
 export interface SearchResultItem {
@@ -89,6 +89,7 @@ export async function executeCrossResourceSearch(
   schema: DatafnSchema,
   namespace: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<SearchResult> {
   assertNotAborted(params.signal);
   if (!searchProvider.searchAll) {
@@ -103,13 +104,13 @@ export async function executeCrossResourceSearch(
     params.limitPerResource !== undefined
       ? Math.min(params.limitPerResource, 1000)
       : undefined;
-  const runtime = getDatafnMultiRegionRuntimeConfig();
   const sharedAccess = await resolveSharedSearchAccess({
     actorId: params.actorId,
     namespace,
     resources: params.resources,
     schema,
-    regionId: runtime?.regionId,
+    regionId: multiRegionRuntime?.regionId,
+    multiRegionRuntime,
   });
   const namespaceFilter = [
     namespace,
@@ -129,7 +130,7 @@ export async function executeCrossResourceSearch(
     fuzzy: params.fuzzy,
     fieldBoosts: params.fieldBoosts,
     namespaceFilter,
-    ...(runtime?.regionId ? { regionFilter: [runtime.regionId] } : {}),
+    ...(multiRegionRuntime?.regionId ? { regionFilter: [multiRegionRuntime.regionId] } : {}),
     signal: params.signal,
   })).filter((candidate) => !requestedResources || requestedResources.has(candidate.resource));
 
@@ -240,6 +241,7 @@ async function resolveSharedSearchAccess(input: {
   resources: string[] | undefined;
   schema: DatafnSchema;
   regionId?: string;
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null;
 }): Promise<{
   namespaces: Set<string>;
   byResource: Map<string, Map<string, { scope: boolean; recordIds: Set<string> }>>;
@@ -262,7 +264,7 @@ async function resolveSharedSearchAccess(input: {
       const grants = await queryDatafnPermissionGrants({
         principalId,
         resourceType: resource,
-      });
+      }, input.multiRegionRuntime ?? null);
       for (const grant of grants) {
         if (grant.revokedAt !== null && grant.revokedAt !== undefined) continue;
         if (!grant.resourceNs || grant.resourceNs === input.namespace) continue;

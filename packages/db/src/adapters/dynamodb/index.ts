@@ -6,7 +6,6 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
-  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type {
   AtomicKVStoreAdapter,
@@ -128,21 +127,34 @@ export function dynamoDbAtomicKVStore(
     async compareAndSet(input) {
       const currentEpochSeconds = Math.floor(Date.now() / 1000);
       const expectingMissing = input.expected === null;
+      const expectedLegacyCounter = input.expected === null
+        ? undefined
+        : parseCanonicalNumber(input.expected);
       try {
         await client.send(new PutCommand({
           TableName: options.tableName,
           Item: kvItem(input.key, input.value, input.ttlSeconds),
           ConditionExpression: expectingMissing
             ? '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
-            : '#value = :expected AND (attribute_not_exists(#expiresAt) OR #expiresAt > :now)',
+            : `${expectedLegacyCounter === undefined
+              ? '#value = :expected'
+              : '(#value = :expected OR (attribute_not_exists(#value) AND #counter = :expectedCounter))'} AND (attribute_not_exists(#expiresAt) OR #expiresAt > :now)`,
           ExpressionAttributeNames: {
             '#pk': 'PK',
             '#expiresAt': 'expiresAt',
-            ...(expectingMissing ? {} : { '#value': 'value' }),
+            ...(expectingMissing ? {} : {
+              '#value': 'value',
+              ...(expectedLegacyCounter === undefined ? {} : { '#counter': 'counter' }),
+            }),
           },
           ExpressionAttributeValues: {
             ':now': currentEpochSeconds,
-            ...(expectingMissing ? {} : { ':expected': input.expected }),
+            ...(expectingMissing ? {} : {
+              ':expected': input.expected,
+              ...(expectedLegacyCounter === undefined
+                ? {}
+                : { ':expectedCounter': expectedLegacyCounter }),
+            }),
           },
         }));
         return { updated: true };
@@ -159,27 +171,19 @@ export function dynamoDbAtomicKVStore(
       }));
     },
     async incr(input) {
-      const ttl = ttlEpochSeconds(input.ttlSeconds);
-      const result = await client.send(new UpdateCommand({
-        TableName: options.tableName,
-        Key: { PK: kvPk(input.key), SK: KV_SORT_KEY },
-        UpdateExpression: [
-          `SET #itemType = :itemType${ttl ? ', #expiresAt = :expiresAt' : ''}`,
-          'ADD #counter :by',
-        ].join(' '),
-        ExpressionAttributeNames: {
-          '#counter': 'counter',
-          '#itemType': 'itemType',
-          ...(ttl ? { '#expiresAt': 'expiresAt' } : {}),
-        },
-        ExpressionAttributeValues: {
-          ':by': input.by ?? 1,
-          ':itemType': 'kv',
-          ...(ttl ? { ':expiresAt': ttl } : {}),
-        },
-        ReturnValues: 'ALL_NEW',
-      }));
-      return { value: Number(result.Attributes?.counter ?? 0) };
+      for (;;) {
+        const current = await this.get(input.key);
+        const value = Number(current ?? '0') + (input.by ?? 1);
+        const result = await this.compareAndSet!({
+          key: input.key,
+          expected: current,
+          value: String(value),
+          ttlSeconds: input.ttlSeconds,
+        });
+        if (result.updated) {
+          return { value };
+        }
+      }
     },
     async isHealthy() {
       await client.send(new QueryCommand({
@@ -422,6 +426,11 @@ function normalizeIndexes(indexes: Record<string, unknown>): Record<string, stri
 function normalizeIndexValues(value: string | readonly string[] | null | undefined): string[] {
   if (Array.isArray(value)) return value.filter((entry) => entry.length > 0);
   return typeof value === 'string' && value.length > 0 ? [value] : [];
+}
+
+function parseCanonicalNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && String(parsed) === value ? parsed : undefined;
 }
 
 function ttlEpochSeconds(ttlSeconds: number | undefined): number | undefined {
