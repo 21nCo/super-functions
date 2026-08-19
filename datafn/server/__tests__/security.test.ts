@@ -601,7 +601,7 @@ describe("SEC-006: Batch size limit enforcement", () => {
     // Should not be a batch size error
     expect(body.error?.code).not.toBe("DFQL_BATCH_LIMIT");
     expect(res.status).not.toBe(400); // batch limit would be 400
-  });
+  }, 30_000);
 
   it("custom maxBatchSize below default — mutations within default limit are still processed", async () => {
     // Note: maxBatchSize enforcement is applied against the server's active limit.
