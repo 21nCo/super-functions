@@ -4,12 +4,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, TypedDict
 
 from pydantic import BaseModel, Field
 from superfunctions.auth import AuthSubject
 from superfunctions.db import OrderBy as OrderByClause
-from superfunctions.db import TableSchema, WhereClause
+from superfunctions.db import WhereClause
+
+
+class AuthFnFieldSchema(TypedDict, total=False):
+    """Serializable field schema used by AuthFn plugins."""
+
+    type: str
+    required: bool
+    unique: bool
+    fieldName: str
+
+
+class AuthFnIndexSchema(TypedDict, total=False):
+    """Serializable index schema used by AuthFn plugins."""
+
+    name: str
+    fields: List[str]
+    unique: bool
+
+
+class TableSchema(TypedDict, total=False):
+    """Plain schema descriptor composed before an adapter is selected."""
+
+    modelName: str
+    fields: Dict[str, AuthFnFieldSchema]
+    indexes: List[AuthFnIndexSchema]
 
 
 class ApiKeySession(BaseModel):
