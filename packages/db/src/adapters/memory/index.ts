@@ -28,6 +28,11 @@ import type {
   InternalColumnDef,
 } from '../../adapter/types.js';
 import { normalizeAdapterSchema } from '../../adapter/schema-codecs.js';
+export {
+  createMemoryAtomicKVStore,
+  createMemoryIndexedDirectoryStore,
+  createMemoryRuntimeStores,
+} from './stores.js';
 
 export interface MemoryAdapterConfig {
   /**
@@ -42,6 +47,10 @@ export interface MemoryAdapterConfig {
     prefix?: string;
   };
   debug?: boolean;
+}
+
+function isNullish(value: unknown): boolean {
+  return value === null || value === undefined;
 }
 
 type MemoryInternalSnapshot = {
@@ -67,10 +76,12 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
     return where.every((w) => {
       const val = record[w.field];
       switch (w.op) {
-        case 'eq': return val === w.value;
-        case 'ne': return val !== w.value;
+        case 'eq': return w.value === null ? isNullish(val) : val === w.value;
+        case 'ne': return w.value === null ? !isNullish(val) : val !== w.value;
         case 'in':
           return Array.isArray(w.value) && w.value.includes(val);
+        case 'not_in':
+          return Array.isArray(w.value) && !w.value.includes(val);
         case 'gt': return (val as number) > (w.value as number);
         case 'gte': return (val as number) >= (w.value as number);
         case 'lt': return (val as number) < (w.value as number);
@@ -710,9 +721,9 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
 function matchesClause(value: any, clause: WhereClause): boolean {
   switch (clause.operator) {
     case 'eq':
-      return value === clause.value;
+      return clause.value === null ? isNullish(value) : value === clause.value;
     case 'ne':
-      return value !== clause.value;
+      return clause.value === null ? !isNullish(value) : value !== clause.value;
     case 'gt':
       return value > clause.value;
     case 'gte':

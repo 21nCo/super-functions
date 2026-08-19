@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createObservability, readObservationGroup } from '@superfunctions/observability';
 import { createRateLimiter, createInMemoryKVStore, type KVStoreAdapter } from './rate-limit.js';
 
 interface KVSetInput {
@@ -344,6 +345,25 @@ describe('rate-limit', () => {
 
       await limiter.check({ key: 'user1' });
       expect(internalStore.size).toBe(1);
+    });
+
+    it('records persistence latency through configured observability', async () => {
+      const observability = createObservability({ service: 'middleware-test' });
+      const request = observability.startRequest({ requestId: 'req_rate_limit' });
+      const limiter = createRateLimiter({
+        windowMs: 60000,
+        maxRequests: 2,
+        persistence: createInMemoryKVStore(),
+        observability,
+        component: 'test.rate-limit',
+      });
+
+      await observability.runWithRequest(request, () => limiter.check({ key: 'observed' }));
+      const snapshot = request.finish({ status: 200 });
+      const cache = readObservationGroup(snapshot, 'cache');
+
+      expect(cache.count).toBeGreaterThan(0);
+      expect(snapshot.metrics[0]?.component).toBe('test.rate-limit.cache');
     });
   });
 

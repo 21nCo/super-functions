@@ -486,6 +486,10 @@ describe('DrizzleAdapter - SQLite', () => {
       expect(results.length).toBeGreaterThanOrEqual(2);
     });
 
+    it('should advertise native text search support', () => {
+      expect(adapter.capabilities.operations.fulltext).toBe(true);
+    });
+
     it('should filter with starts_with', async () => {
       const results = await adapter.findMany({
         model: 'users',

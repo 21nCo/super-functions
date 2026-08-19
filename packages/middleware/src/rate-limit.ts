@@ -1,4 +1,5 @@
-import type { Adapter, KVStoreAdapter } from '@superfunctions/db';
+import { instrumentKVStore, type Adapter, type AtomicStoreAdapter, type KVStoreAdapter } from '@superfunctions/db';
+import { normalizeObservability, type ObservabilityInput } from '@superfunctions/observability';
 
 export { KVStoreAdapter };
 
@@ -10,8 +11,11 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyPrefix?: string;
   persistence?: Adapter | KVStoreAdapter;
+  atomicStore?: AtomicStoreAdapter;
   algorithm?: RateLimitAlgorithm;
   now?: () => number;
+  observability?: ObservabilityInput;
+  component?: string;
 }
 
 export interface RateLimitResult {
@@ -166,10 +170,25 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     maxRequests,
     keyPrefix = 'ratelimit:',
     persistence = createInMemoryKVStore(now),
+    atomicStore,
     algorithm = 'fixed-window',
+    observability: observabilityInput,
+    component = 'rate-limit',
   } = config;
 
-  const kv = ensureKV(persistence, now);
+  const observability = normalizeObservability(observabilityInput)?.child({ component });
+  const atomic = atomicStore
+    ? instrumentKVStore(atomicStore, {
+        observability,
+        kind: 'cache',
+        component: `${component}.atomic`,
+      })
+    : undefined;
+  const kv = instrumentKVStore(ensureKV(persistence, now), {
+    observability,
+    kind: 'cache',
+    component: `${component}.cache`,
+  });
   const keyLocks = new Map<string, Promise<void>>();
 
   async function withKeyLock<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -246,7 +265,6 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
       if (allowed && commit) {
         timestamps.push(currentTime);
       }
-
       const oldest = timestamps[0] ?? currentTime;
       const resetAt = oldest + effectiveWindowMs;
       if (commit) {

@@ -100,6 +100,31 @@ program
     }
   });
 
+const stores = program
+  .command("stores")
+  .description("Manage generic runtime store provisioning");
+
+stores
+  .command("generate")
+  .description("Generate provisioning artifacts for configured RuntimeStores")
+  .option(
+    "-c, --config <path>",
+    "Path to superfunctions config",
+    "superfunctions.config.js"
+  )
+  .option("-o, --output <path>", "Output directory", "./superfunctions/stores")
+  .option("--force", "Overwrite existing files", false)
+  .option("--dry-run", "Print generated artifacts without writing files", false)
+  .action(async (options) => {
+    const { generateStoreProvisioning } = await import("./commands/stores.js");
+    try {
+      await generateStoreProvisioning(options);
+    } catch (e: any) {
+      console.error("❌ Error:", e.message);
+      process.exitCode = 1;
+    }
+  });
+
 program
   .command("validate")
   .description("Validate configuration file structure")

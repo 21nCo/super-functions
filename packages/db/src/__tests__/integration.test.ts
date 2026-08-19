@@ -234,6 +234,46 @@ describe('Integration Tests', () => {
       });
       expect(notInResults).toHaveLength(1);
     });
+
+    it('should treat missing fields as null for null equality filters', async () => {
+      await adapter.createMany({
+        model: 'documents',
+        data: [
+          { id: 'd1', title: 'Missing archivedAt' },
+          { id: 'd2', title: 'Null archivedAt', archivedAt: null },
+          { id: 'd3', title: 'Archived', archivedAt: 100 },
+        ],
+      });
+
+      const nullishResults = await adapter.findMany({
+        model: 'documents',
+        where: [{ field: 'archivedAt', operator: 'eq', value: null }],
+      });
+      expect(nullishResults.map((record) => record.id).sort()).toEqual(['d1', 'd2']);
+
+      const nonNullishResults = await adapter.findMany({
+        model: 'documents',
+        where: [{ field: 'archivedAt', operator: 'ne', value: null }],
+      });
+      expect(nonNullishResults.map((record) => record.id)).toEqual(['d3']);
+    });
+
+    it('should treat missing internal fields as null for null equality filters', async () => {
+      await adapter.internal.ensureTable('__datafn_test_nullish', []);
+      await adapter.internal.create('__datafn_test_nullish', { id: 'i1', name: 'missing' });
+      await adapter.internal.create('__datafn_test_nullish', { id: 'i2', name: 'null', removedAt: null });
+      await adapter.internal.create('__datafn_test_nullish', { id: 'i3', name: 'removed', removedAt: 100 });
+
+      const nullishResults = await adapter.internal.findMany('__datafn_test_nullish', [
+        { field: 'removedAt', op: 'eq', value: null },
+      ]);
+      expect(nullishResults.map((record) => record.id).sort()).toEqual(['i1', 'i2']);
+
+      const nonNullishResults = await adapter.internal.findMany('__datafn_test_nullish', [
+        { field: 'removedAt', op: 'ne', value: null },
+      ]);
+      expect(nonNullishResults.map((record) => record.id)).toEqual(['i3']);
+    });
   });
 
   describe('Schema Tracker Integration', () => {

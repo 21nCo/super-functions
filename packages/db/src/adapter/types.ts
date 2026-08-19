@@ -422,7 +422,15 @@ export interface InternalColumnDef {
   primaryKey?: boolean;
 }
 
-export type InternalCrudOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
+export type InternalCrudOperator =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'in'
+  | 'not_in';
 
 export interface InternalWhereClause {
   field: string;
@@ -486,6 +494,124 @@ export interface KVStoreAdapter {
 
 export interface KVStoreAdapterFactory<TConfig = unknown> {
   (config: TConfig): KVStoreAdapter;
+}
+
+export interface ConditionalKVSetResult {
+  inserted: boolean;
+  existing?: string;
+}
+
+/** KV store with atomic conditional writes for ownership and directory claims. */
+export interface ConditionalKVStoreAdapter extends KVStoreAdapter {
+  setIfAbsent(input: {
+    key: string;
+    value: string;
+    ttlSeconds?: number;
+  }): Promise<ConditionalKVSetResult>;
+  compareAndSet?(input: {
+    key: string;
+    expected: string | null;
+    value: string;
+    ttlSeconds?: number;
+  }): Promise<{ updated: boolean; existing?: string }>;
+}
+
+export interface ConditionalKVStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): ConditionalKVStoreAdapter;
+}
+
+/** Atomic KV store with conditional writes and counters. */
+export interface AtomicKVStoreAdapter extends ConditionalKVStoreAdapter {
+  incr(input: { key: string; by?: number; ttlSeconds?: number }): Promise<{ value: number }>;
+  isHealthy?(): Promise<boolean>;
+  close?(): Promise<void>;
+}
+
+export interface AtomicKVStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): AtomicKVStoreAdapter;
+}
+
+export interface IndexedDirectoryRecord {
+  key: string;
+  value: string;
+  indexes?: Record<string, string | readonly string[] | null | undefined>;
+  ttlSeconds?: number;
+}
+
+export interface IndexedDirectoryQuery {
+  index: string;
+  value: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface IndexedDirectoryQueryResult {
+  records: IndexedDirectoryRecord[];
+  cursor?: string;
+}
+
+/** Directory store with adapter-owned secondary indexes for global lookup tables. */
+export interface IndexedDirectoryStoreAdapter {
+  get(key: string): Promise<IndexedDirectoryRecord | null>;
+  put(record: IndexedDirectoryRecord): Promise<void>;
+  putIfAbsent(record: IndexedDirectoryRecord): Promise<{
+    inserted: boolean;
+    existing?: IndexedDirectoryRecord;
+  }>;
+  update(record: IndexedDirectoryRecord): Promise<IndexedDirectoryRecord>;
+  delete(key: string): Promise<void>;
+  query(input: IndexedDirectoryQuery): Promise<IndexedDirectoryQueryResult>;
+}
+
+export interface IndexedDirectoryStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): IndexedDirectoryStoreAdapter;
+}
+
+export type StoreProvisioningProvider =
+  | 'postgres'
+  | 'mysql'
+  | 'sqlite'
+  | 'dynamodb'
+  | 'cloudflare-do'
+  | 'redis'
+  | 'memory'
+  | (string & {});
+
+export interface StoreProvisioningResource {
+  type: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface StoreProvisioningPlan {
+  id?: string;
+  provider: StoreProvisioningProvider;
+  resources: StoreProvisioningResource[];
+  notes?: string[];
+}
+
+export interface ProvisionableStoreAdapter {
+  getProvisioningPlan?(): StoreProvisioningPlan | StoreProvisioningPlan[];
+}
+
+// ============================================================================
+// Runtime Stores
+// ============================================================================
+
+export interface AtomicStoreAdapter extends KVStoreAdapter {
+  incr(input: { key: string; by?: number; ttlSeconds?: number }): Promise<{ value: number }>;
+  isHealthy?(): Promise<boolean>;
+  close?(): Promise<void>;
+}
+
+export interface RuntimeStores {
+  kv?: KVStoreAdapter;
+  atomicKv?: AtomicKVStoreAdapter;
+  directory?: IndexedDirectoryStoreAdapter;
+}
+
+export interface AtomicStoreAdapterFactory<TConfig = unknown> {
+  (config: TConfig): AtomicStoreAdapter;
 }
 
 // ============================================================================

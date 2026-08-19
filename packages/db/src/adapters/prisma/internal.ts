@@ -8,7 +8,9 @@ import {
   assertInternalIdentifier,
   assertInternalTableName,
   assertInternalWhereClauses,
+  internalListOperatorValues,
   internalOperatorSql,
+  isInternalListOperator,
   normalizeInternalResultCount,
   parseInternalOrderBy,
   quoteInternalIdentifier,
@@ -72,6 +74,18 @@ function buildWhereSQL(
 
     if (clause.value === null && clause.op === 'ne') {
       parts.push(`${fieldSql} IS NOT NULL`);
+      continue;
+    }
+
+    if (isInternalListOperator(clause.op)) {
+      const values = internalListOperatorValues(clause.value, clause.op);
+      if (values.length === 0) {
+        parts.push(clause.op === 'in' ? '1 = 0' : '1 = 1');
+        continue;
+      }
+      const placeholders = values.map(() => placeholderFor(provider, nextIndex++));
+      parts.push(`${fieldSql} ${internalOperatorSql(clause.op)} (${placeholders.join(', ')})`);
+      params.push(...values);
       continue;
     }
 
