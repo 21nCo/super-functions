@@ -1,36 +1,61 @@
 ---
-title: "@authfn/core"
-description: The Node server kernel — createAuthFn, AuthFnInstance, the plugin contract, and everything you import to build a runtime.
+title: "authfn"
+description: The Node server kernel — declare an app with authfn(), then inject runtime dependencies with createServer().
 ---
 
-# @authfn/core
+# authfn
 
-`@authfn/core` is the server kernel. You create a runtime with `createAuthFn(config)` and mount the resulting `AuthFnInstance.router` on your HTTP framework.
+The `authfn` package is the server kernel and plugin contract. It uses a two-stage API: declare a side-effect-free app, then create a server with runtime dependencies.
 
 ```bash
-npm install @authfn/core
+npm install authfn
 ```
 
-## `createAuthFn(config)`
+## `authfn(config)`
 
 ```ts
-function createAuthFn(config: AuthFnConfig): AuthFnInstance;
+function authfn<TPlugins extends AuthFnPluginList>(
+  config: AuthFnConfig<TPlugins>
+): AuthFnApp<TPlugins>;
 
-interface AuthFnConfig {
-  database: Adapter;                         // @superfunctions/db adapter
-  cacheStore?: KVStoreAdapter;               // optional cache
-  namespace?: string;                        // default: 'authfn'
-  basePath?: string;                         // default: '/'
+interface AuthFnConfig<TPlugins> {
+  namespace?: string;
+  basePath?: string;
   cookie?: AuthFnCookieConfig;
   accountLinking?: AuthFnAccountLinkingConfig;
-  runtime?: AuthFnRuntimeResolver;
-  hooks?: Partial<AuthFnHooks>;
-  plugins: AuthFnPlugin[];
+  plugins: TPlugins;
   openApi?: boolean | { title: string; version: string };
-  observability?: AuthFnObservabilityConfig;
+}
+```
+
+Use `authFnPlugins(...)` when declaring plugins so TypeScript preserves their exact names and infers the matching `pluginRuntime` shape.
+
+```ts
+import { authfn, authFnPlugins } from "authfn";
+import { authFnPasswordPlugin } from "@authfn/password";
+
+const app = authfn({
+  namespace: "authfn",
+  plugins: authFnPlugins(authFnPasswordPlugin()),
+});
+```
+
+`app.getSchema()` is available without creating a server. Tooling such as schema generation can therefore load the declaration without opening database or network connections.
+
+## `app.createServer(config)`
+
+```ts
+interface AuthFnServerConfig {
+  database: Adapter;
+  stores?: RuntimeStores;
+  rateLimit?: AuthFnRateLimitConfig;
+  environment?: AuthFnEnvironmentResolver;
+  hooks?: Partial<AuthFnHooks>;
+  pluginRuntime?: AuthFnPluginRuntimeConfigMap;
+  observability?: ObservabilityInput<AuthFnEvent>;
 }
 
-interface AuthFnInstance {
+interface AuthFnServer {
   router: Router;
   provider: AuthProvider<AuthFnSession>;
   getSchema(): AuthFnSchemaDefinition;
@@ -38,157 +63,87 @@ interface AuthFnInstance {
 }
 ```
 
+The server wraps the incoming database with authfn's combined schema before any service uses it. Shared stores, rate limiting, hooks, environment resolution, provider credentials, and observability belong to this runtime stage.
+
 | Property | Notes |
 | --- | --- |
-| `router` | Framework-agnostic router. Mount it through one of the `@superfunctions/http-*` adapters. |
-| `provider` | Has `authenticate(request) → Promise<AuthFnSession | null>`. Use it inside your own routes/middleware to read the current session. |
-| `getSchema()` | Returns the union of every plugin's schema. Used by `@superfunctions/cli generate`. |
-| `openApi()` | Returns an OpenAPI 3.1 document for the enabled plugin set. Undefined when `openApi: false`. |
+| `router` | Framework-neutral router mounted through an `@superfunctions/http-*` adapter. |
+| `provider` | Auth provider for authenticating requests inside other Superfunctions or application routes. |
+| `getSchema()` | Combined core and plugin schema. |
+| `openApi()` | OpenAPI document for the enabled plugin set; present only when `openApi` is enabled on the app. |
 
-## Bundled plugin factories
+## Plugin packages
 
-```ts
-authFnPasswordPlugin(config?: PasswordPluginConfig): AuthFnPlugin;
-authFnEmailOtpPlugin(config?: EmailOtpPluginConfig): AuthFnPlugin;
-authFnSocialOAuthPlugin(config?: SocialOAuthPluginConfig): AuthFnPlugin;
-authFnApiKeyPlugin(config?: ApiKeyPluginConfig): AuthFnPlugin;
-authFnTwoFactorPlugin(config?: TwoFactorPluginConfig): AuthFnPlugin;
-authFnMultiRegionPlugin(config?: MultiRegionPluginConfig): AuthFnPlugin;
-authFnNativeHandoffPlugin(config?: NativeHandoffPluginConfig): AuthFnPlugin;
-```
+Plugins are published independently and are not re-exported by the kernel:
 
-See [Plugins](../plugins) for each plugin's full reference.
+| Plugin | Package |
+| --- | --- |
+| Password | `@authfn/password` |
+| Email OTP | `@authfn/email-otp` |
+| Social OAuth | `@authfn/social-oauth` |
+| API keys | `@authfn/api-keys` |
+| Two-factor authentication | `@authfn/two-factor` |
+| Multi-region routing | `@authfn/multi-region` |
+| Native handoff | `@authfn/native-handoff` |
 
-## Error classes
-
-Every error the kernel can return has a typed class. Throw them from custom plugins or hooks; the kernel wraps them in [error envelopes](../core-concepts/envelopes).
-
-```ts
-import {
-  AuthFnError,
-  AuthFnConflictError,
-  AuthFnConfigError,
-  AuthFnValidationError,
-  AuthFnInvalidCredentialsError,
-  AuthFnUnauthenticatedError,
-  AuthFnSessionExpiredError,
-  AuthFnSessionRevokedError,
-  AuthFnCsrfInvalidError,
-  AuthFnNotFoundError,
-  AuthFnNotImplementedError,
-  AuthFnRateLimitedError,
-  AuthFnDeliveryFailedError,
-  AuthFnEmailNotVerifiedError,
-  AuthFnPluginAbortedError,
-  AuthFnInternalError,
-  AuthFnOAuthCallbackInvalidError,
-  AuthFnOAuthProviderUnsupportedError,
-  AuthFnOAuthStateInvalidError,
-  AuthFnOAuthStateReplayedError,
-  AuthFnOtpInvalidError,
-  AuthFnOtpExpiredError,
-  AuthFnOtpReplayedError,
-  AuthFnRedirectUriDisallowedError,
-  AuthFnRegionMismatchError,
-  AuthFnRegionNotFoundError,
-  AuthFnTwoFactorRequiredError,
-  AuthFnTwoFactorInvalidCodeError,
-  AuthFnApiKeyRevokedError,
-  AuthFnAdminAmbiguousUserError,
-  AuthFnAdminConfigError,
-  AuthFnAdminUnauthorizedError,
-} from '@authfn/core';
-```
-
-Every class extends `AuthFnError` and exposes `code`, `status`, `retryable`, `details`. See [Errors](../core-concepts/errors) for the full code → behavior table.
-
-## Type exports
-
-```ts
-import type {
-  AuthFnConfig,
-  AuthFnInstance,
-  AuthFnPlugin,
-  AuthFnPluginRuntimeContext,
-  AuthFnSession,
-  AuthFnSessionRecord,
-  AuthFnUserRecord,
-  AuthFnHooks,
-  AuthFnHookContext,
-  AuthFnRuntimeResolver,
-  AuthFnRuntimeResolution,
-  AuthFnCookieConfig,
-  AuthFnAccountLinkingConfig,
-  AuthFnObservabilityConfig,
-  AuthFnEvent,
-  AuthFnEventType,
-  AuthFnDeliveryProvider,
-  AuthFnSocialProviderConfig,
-  AuthFnSocialProfileResolver,
-  AuthFnPasswordCompromiseChecker,
-  AuthFnSchemaDefinition,
-  AuthFnSuccessEnvelope,
-  AuthFnErrorEnvelope,
-} from '@authfn/core';
-```
+Schema and policy options are passed to each plugin factory in `authfn({...})`. Runtime dependencies such as OTP delivery, OAuth secrets, shared stores, and clocks are passed under `.createServer({ pluginRuntime })`.
 
 ## Authentication helper
-
-Inside your own routes (or framework middleware), read the current session via `auth.provider`:
 
 ```ts
 const session = await auth.provider.authenticate(request);
 if (!session) {
-  return new Response('unauthorized', { status: 401 });
+  return new Response("unauthorized", { status: 401 });
 }
 ```
 
-`authenticate` returns `null` for an unauthenticated request, an `AuthFnSession` for a cookie- or bearer-authenticated request, or throws an `AuthFnError` for a malformed or revoked credential.
+## Hooks and observability
 
-## Hooks API
+Hooks and observability are runtime dependencies:
 
 ```ts
-createAuthFn({
-  // ...
+const auth = app.createServer({
+  database,
   hooks: {
-    beforeUserCreate(ctx, input) { /* ... */ },
-    afterUserCreate(ctx, user) { /* ... */ },
-    beforeSessionIssue(ctx, input) { /* ... */ },
-    afterSessionIssue(ctx, session) { /* ... */ },
-    beforeChallengeSend(ctx, input) { /* ... */ },
-    afterChallengeSend(ctx, result) { /* ... */ },
-    beforeOAuthStart(ctx, input) { /* ... */ },
-    afterOAuthCallback(ctx, result) { /* ... */ },
-    beforeAccountDelete(ctx, input) { /* ... */ },
-    afterAccountDelete(ctx, result) { /* ... */ },
+    beforeUserCreate(ctx, input) {
+      // validate or replace input
+    },
+    afterSessionIssue(ctx, session) {
+      auditSession(session);
+    },
   },
-});
-```
-
-See [Concepts → Hooks](../core-concepts/hooks).
-
-## Observability
-
-```ts
-createAuthFn({
-  // ...
   observability: {
     emit(event) {
-      myLogger.info(event.type, event);
+      logger.info(event.type, event);
     },
   },
 });
 ```
 
-See [Concepts → Observability](../core-concepts/observability).
+## Public types and errors
+
+Core types and the canonical error hierarchy are exported from `authfn`:
+
+```ts
+import {
+  AuthFnConfigError,
+  AuthFnInvalidCredentialsError,
+  AuthFnPluginAbortedError,
+  AuthFnRateLimitedError,
+  AuthFnUnauthenticatedError,
+  AuthFnValidationError,
+  type AuthFnApp,
+  type AuthFnConfig,
+  type AuthFnHooks,
+  type AuthFnPlugin,
+  type AuthFnServer,
+  type AuthFnServerConfig,
+  type AuthFnSession,
+} from "authfn";
+```
+
+See [Errors](../core-concepts/errors), [Hooks](../core-concepts/hooks), and [Observability](../core-concepts/observability) for behavior and examples.
 
 ## Versioning
 
-`@authfn/core` follows semver. New plugins or new optional fields on existing types are minor versions. Breaking changes (renaming an envelope field, deleting a route) are major versions, and are accompanied by a migration note in the [changelog](../reference/changelog).
-
-## Related
-
-- [Concepts → Architecture](../core-concepts/architecture) — how the kernel composes its parts.
-- [Plugins](../plugins) — bundled plugin reference.
-- [Plugins → Authoring](../plugins/authoring) — write your own plugin.
-- [Frameworks](../frameworks) — `@superfunctions/http-*` adapters for mounting the router.
+`authfn` is the canonical Node kernel package. Plugin and client packages release independently while tracking its public plugin and wire contracts.

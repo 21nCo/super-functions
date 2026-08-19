@@ -4,45 +4,50 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { memoryAdapter } from "@superfunctions/db/adapters/memory";
-import {
-  authFnApiKeyPlugin,
-  authFnEmailOtpPlugin,
-  authFnMultiRegionPlugin,
-  authFnNativeHandoffPlugin,
-  authFnPasswordPlugin,
-  authFnSocialOAuthPlugin,
-  authFnTwoFactorPlugin,
-  createAuthFn,
-} from "@authfn/core";
+import { authfn, authFnPlugins } from "authfn";
+import { authFnApiKeyPlugin } from "@authfn/api-keys";
+import { authFnEmailOtpPlugin } from "@authfn/email-otp";
+import { authFnMultiRegionPlugin } from "@authfn/multi-region";
+import { authFnNativeHandoffPlugin } from "@authfn/native-handoff";
+import { authFnPasswordPlugin } from "@authfn/password";
+import { authFnSocialOAuthPlugin } from "@authfn/social-oauth";
+import { authFnTwoFactorPlugin } from "@authfn/two-factor";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "..", "content", "api");
 const outFile = join(outDir, "authfn.json");
 
-const auth = createAuthFn({
-  database: memoryAdapter({ debug: false }),
+const authApp = authfn({
   namespace: "authfn",
   openApi: {
     title: "AuthFn API",
     version: "0.1.1",
   },
-  plugins: [
+  plugins: authFnPlugins(
     authFnPasswordPlugin(),
-    authFnEmailOtpPlugin({
+    authFnEmailOtpPlugin(),
+    authFnSocialOAuthPlugin(),
+    authFnApiKeyPlugin(),
+    authFnTwoFactorPlugin(),
+    authFnMultiRegionPlugin(),
+    authFnNativeHandoffPlugin(),
+  ),
+});
+
+const auth = authApp.createServer({
+  database: memoryAdapter({ debug: false }),
+  pluginRuntime: {
+    emailOtp: {
       delivery: { async send() { return { sent: true }; } },
-    }),
-    authFnSocialOAuthPlugin({
+    },
+    socialOAuth: {
       providers: {
         google: { clientId: "google-client-id", clientSecret: "google-client-secret" },
         github: { clientId: "github-client-id", clientSecret: "github-client-secret" },
         apple: { clientId: "apple-client-id", clientSecret: "apple-client-secret" },
       },
-    }),
-    authFnApiKeyPlugin(),
-    authFnTwoFactorPlugin(),
-    authFnMultiRegionPlugin(),
-    authFnNativeHandoffPlugin(),
-  ],
+    },
+  },
 });
 
 const document = auth.openApi?.();
@@ -58,7 +63,7 @@ const annotated = {
     ...(document.info ?? {}),
     title: "AuthFn API",
     description:
-      "Generated from @authfn/core with every bundled plugin enabled. The shape of " +
+      "Generated from authfn with every bundled plugin enabled. The shape of " +
       "your deployment's OpenAPI document depends on the plugins you actually mount.",
   },
 };
