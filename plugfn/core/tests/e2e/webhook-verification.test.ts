@@ -588,6 +588,20 @@ describe('PlugFn webhook verification e2e', () => {
           JSON.stringify({ historyId: '123', emailAddress: 'user@example.com' })
         ).toString('base64'),
       },
+      deliveryAttempt: 1,
+    });
+    const gmailRetryBody = JSON.stringify({
+      ...JSON.parse(gmailBody),
+      deliveryAttempt: 2,
+    });
+    const gmailChangedMessageBody = JSON.stringify({
+      ...JSON.parse(gmailBody),
+      message: {
+        ...JSON.parse(gmailBody).message,
+        data: Buffer.from(
+          JSON.stringify({ historyId: '999', emailAddress: 'user@example.com' })
+        ).toString('base64'),
+      },
     });
 
     const postTwice = async (url: string, body: string) => {
@@ -596,12 +610,32 @@ describe('PlugFn webhook verification e2e', () => {
       return { first, second };
     };
     const slack = await postTwice('http://localhost/webhooks/slack/events', slackBody);
-    const gmail = await postTwice('http://localhost/webhooks/gmail/mail-update', gmailBody);
+    const gmail = {
+      first: await router.handle(
+        new Request('http://localhost/webhooks/gmail/mail-update', {
+          method: 'POST',
+          body: gmailBody,
+        })
+      ),
+      second: await router.handle(
+        new Request('http://localhost/webhooks/gmail/mail-update', {
+          method: 'POST',
+          body: gmailRetryBody,
+        })
+      ),
+    };
 
     expect(slack.first.status).toBe(200);
     expect(gmail.first.status).toBe(200);
     await expect(slack.second.json()).resolves.toMatchObject({ data: { duplicate: true } });
     await expect(gmail.second.json()).resolves.toMatchObject({ data: { duplicate: true } });
+    const gmailConflict = await router.handle(
+      new Request('http://localhost/webhooks/gmail/mail-update', {
+        method: 'POST',
+        body: gmailChangedMessageBody,
+      })
+    );
+    expect(gmailConflict.status).toBe(409);
     expect(slackHandler).toHaveBeenCalledTimes(1);
     expect(gmailHandler).toHaveBeenCalledTimes(1);
   });

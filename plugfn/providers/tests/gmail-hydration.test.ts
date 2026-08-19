@@ -123,4 +123,40 @@ describe('isHydratedGmailApiMessage', () => {
       expect.objectContaining({ params: { format: 'full' } })
     );
   });
+
+  it('requests full Gmail payloads for snippet mode before stripping bodies', async () => {
+    const get = vi.fn(async (url: string) =>
+      url.endsWith('/messages')
+        ? { data: { messages: [{ id: 'msg-1' }], historyId: 'history-1' } }
+        : {
+            data: {
+              id: 'msg-1',
+              snippet: 'Inbox preview',
+              internalDate: `${Date.parse('2026-08-15T00:00:00.000Z')}`,
+              payload: { headers: [] },
+            },
+          }
+    );
+
+    const result = await gmailProvider.actions['mail.sync'].execute(
+      {
+        tenantId: 'gmail-snippet-test',
+        mode: 'full',
+        pageSize: 1,
+        featureMode: 'snippet',
+      },
+      {
+        userId: 'user-1',
+        connectionId: 'gmail-snippet-connection',
+        provider: { name: 'gmail', baseUrl: gmailProvider.baseUrl },
+        http: { get },
+      } as any
+    );
+
+    expect(get).toHaveBeenCalledWith(
+      expect.stringMatching(/\/messages\/msg-1$/),
+      expect.objectContaining({ params: { format: 'full' } })
+    );
+    expect(result.messages[0]).toMatchObject({ snippet: 'Inbox preview' });
+  });
 });

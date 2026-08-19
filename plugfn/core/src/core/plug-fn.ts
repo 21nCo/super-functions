@@ -240,6 +240,7 @@ export interface PlugFnSyncQueueOptions extends PlugFnSyncRunOptions {
 
 export interface PlugFnSyncWorkerOptions {
   limit?: number;
+  leaseMs?: number;
 }
 
 export interface PlugFnSyncWorkerResult {
@@ -605,7 +606,8 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   async function processQueuedSyncJobs(
     options: PlugFnSyncWorkerOptions = {}
   ): Promise<PlugFnSyncWorkerResult> {
-    const queued = await runtimeStorage.claimQueuedSyncJobs(options.limit ?? 25);
+    const leaseMs = Math.max(30, options.leaseMs ?? 5 * 60 * 1000);
+    const queued = await runtimeStorage.claimQueuedSyncJobs(options.limit ?? 25, leaseMs);
     const jobs: PlugFnSyncJob[] = [];
     let completed = 0;
     let cancelled = 0;
@@ -1196,6 +1198,14 @@ async function executeProviderSyncDefinition(input: {
   cursor?: string;
   checkpoint?: unknown;
 }> {
+  if (input.sinkId && !input.persistenceSinks.has(input.sinkId)) {
+    throw new PlugFnRuntimeError(
+      'SYNC_SINK_NOT_FOUND',
+      `persistence sink ${input.sinkId} is not registered`,
+      404
+    );
+  }
+
   let fetchedCount = 0;
   let persistedCount = 0;
   let skippedCount = 0;

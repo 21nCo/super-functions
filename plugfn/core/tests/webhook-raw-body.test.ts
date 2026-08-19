@@ -278,6 +278,52 @@ describe('raw-body webhook verification', () => {
     expect(handleWebhook).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves receipt context when delivery creation fails', async () => {
+    const handleWebhook = vi.fn();
+    const plug = createRouterPlugMock(handleWebhook);
+    plug.runtime.webhooks.createReceipt = vi.fn(async () => ({
+      id: 'receipt_setup_failed',
+      metadata: {
+        contentType: 'application/json',
+        userAgent: 'test-agent',
+      },
+      verificationStatus: 'verified',
+      createdAt: new Date(),
+    }));
+    plug.runtime.webhooks.createDelivery = vi.fn(async () => {
+      throw new Error('delivery storage unavailable');
+    });
+    const router = createPlugFnRouter(plug, {
+      webhookSecret: { github: 'router-secret' },
+    });
+    const rawBody = '{"action":"opened","issue":{"id":1}}';
+
+    const response = await router.handle(
+      new Request('http://localhost/webhooks/github/issues', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'test-agent',
+          'x-hub-signature-256': signRawBody(rawBody, 'router-secret'),
+        },
+        body: rawBody,
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(plug.runtime.webhooks.updateReceipt).toHaveBeenCalledWith(
+      'receipt_setup_failed',
+      expect.objectContaining({
+        verificationStatus: 'failed',
+        metadata: {
+          contentType: 'application/json',
+          userAgent: 'test-agent',
+          error: 'delivery storage unavailable',
+        },
+      })
+    );
+  });
+
   it.each([
     {
       provider: 'github',

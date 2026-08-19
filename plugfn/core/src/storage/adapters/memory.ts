@@ -312,8 +312,12 @@ export class MemoryAdapter implements DbAdapter {
     return this.storage.listSyncJobs(filters, limit);
   }
 
-  async claimQueuedSyncJobs(limit: number, workerId: string): Promise<PlugFnSyncJob[]> {
-    return this.storage.claimQueuedSyncJobs(limit, workerId);
+  async claimQueuedSyncJobs(
+    limit: number,
+    workerId: string,
+    leaseMs?: number
+  ): Promise<PlugFnSyncJob[]> {
+    return this.storage.claimQueuedSyncJobs(limit, workerId, leaseMs);
   }
 
   async updateSyncJob(id: string, updates: Partial<PlugFnSyncJob>): Promise<PlugFnSyncJob> {

@@ -193,6 +193,114 @@ describe('PlugFn sync runtime', () => {
     expect(result.jobs[0]?.fetchedCount).toBe(2);
   });
 
+  it('reclaims sync jobs abandoned after their worker lease expires', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    plug.use(testSyncProvider);
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_abandoned',
+      userId: 'user_1',
+      provider: 'test-sync',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const job = await plug.sync.enqueue({
+      mode: 'full',
+      provider: 'test-sync',
+      connectionId: 'conn_sync_abandoned',
+      resource: 'records',
+      actor: { userId: 'user_1' },
+    });
+    const activeJob = await plug.sync.enqueue({
+      mode: 'full',
+      provider: 'test-sync',
+      connectionId: 'conn_sync_abandoned',
+      resource: 'records',
+      actor: { userId: 'user_1' },
+    });
+    await database.updateSyncJob(job.id, {
+      status: 'running',
+      updatedAt: new Date(Date.now() - 60_000),
+    });
+    await database.updateSyncJob(activeJob.id, {
+      status: 'running',
+      updatedAt: new Date(),
+    });
+
+    const result = await plug.sync.processQueued({ leaseMs: 30_000 });
+
+    expect(result).toMatchObject({
+      processed: 1,
+      completed: 1,
+      failed: 0,
+      jobs: [{ id: job.id, status: 'completed' }],
+    });
+    await expect(plug.runtime.sync.getJob(activeJob.id)).resolves.toMatchObject({
+      status: 'running',
+    });
+  });
+
+  it('rejects an explicit unknown sink before fetching or advancing checkpoints', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({
+      database,
+      auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      integrations: {},
+    });
+    const fetch = vi.fn(async () => ({
+      items: [{ id: 'r1' }],
+      checkpoint: { page: 1 },
+      done: true,
+    }));
+    plug.use({
+      ...testSyncProvider,
+      name: 'test-sync-missing-sink',
+      sync: { records: { resource: 'records', fetch } },
+    });
+    const now = new Date();
+    await database.createConnection({
+      id: 'conn_sync_missing_sink',
+      userId: 'user_1',
+      provider: 'test-sync-missing-sink',
+      ownerKind: 'user',
+      ownerId: 'user_1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      plug.sync.backfill({
+        provider: 'test-sync-missing-sink',
+        connectionId: 'conn_sync_missing_sink',
+        resource: 'records',
+        sinkId: 'missing-sink',
+        actor: { userId: 'user_1' },
+      })
+    ).rejects.toMatchObject({ code: 'SYNC_SINK_NOT_FOUND' });
+
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(
+      plug.runtime.sync.getCheckpoint('conn_sync_missing_sink', 'records')
+    ).resolves.toBeNull();
+  });
+
   it('uses custom connection authorization for enqueue and worker revalidation', async () => {
     const database = new MemoryAdapter();
     let allowed = true;

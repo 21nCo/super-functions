@@ -151,16 +151,24 @@ class WorkflowEngine:
             persisted: Optional[Workflow] = None
             try:
                 persisted = await asyncio.shield(self.get_workflow(workflow_id))
-            except BaseException:
-                pass
-            if persisted is not None and persisted.status == WorkflowStatus.ENABLED:
+            except BaseException as reconciliation_error:
+                # The durable outcome is unknown. Preserve the gated binding
+                # and let each invocation re-check workflow state rather than
+                # deleting a trigger that may already be committed as enabled.
                 activation.ready.set()
+                self.logger.error(
+                    f"Failed to reconcile enabled workflow: {workflow_id}",
+                    {"error": str(reconciliation_error)},
+                )
             else:
-                activation.error = error
-                activation.ready.set()
-                self._unregister_trigger(workflow, required=False)
-                if previous_binding is not None:
-                    self._restore_trigger_binding(workflow.id, previous_binding)
+                if persisted is not None and persisted.status == WorkflowStatus.ENABLED:
+                    activation.ready.set()
+                else:
+                    activation.error = error
+                    activation.ready.set()
+                    self._unregister_trigger(workflow, required=False)
+                    if previous_binding is not None:
+                        self._restore_trigger_binding(workflow.id, previous_binding)
             raise
         activation.ready.set()
 

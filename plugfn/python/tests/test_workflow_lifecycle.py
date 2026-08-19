@@ -351,6 +351,50 @@ async def test_cancelled_enable_keeps_binding_when_status_already_committed() ->
 
 
 @pytest.mark.asyncio
+async def test_cancelled_enable_preserves_binding_when_reconciliation_read_fails() -> None:
+    workflow = create_workflow()
+
+    class CommitThenFailReadStorage(WorkflowStorageStub):
+        def __init__(self, item: Workflow) -> None:
+            super().__init__(item)
+            self.committed = asyncio.Event()
+            self.fail_next_read = False
+
+        async def get_workflow(self, workflow_id: str) -> Workflow | None:
+            if self.fail_next_read:
+                self.fail_next_read = False
+                raise RuntimeError("storage read unavailable")
+            return await super().get_workflow(workflow_id)
+
+        async def update_workflow(self, workflow_id: str, updates: Dict[str, Any]) -> None:
+            await super().update_workflow(workflow_id, updates)
+            self.fail_next_read = True
+            self.committed.set()
+            await asyncio.Event().wait()
+
+    storage = CommitThenFailReadStorage(workflow)
+    webhooks = WebhookHandlerStub()
+    engine = WorkflowEngine(
+        storage,  # type: ignore[arg-type]
+        webhooks,
+        LoggerStub(),
+        ActionExecutorStub(),
+    )
+
+    enable_task = asyncio.create_task(engine.enable_workflow(workflow.id))
+    await storage.committed.wait()
+    enable_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await enable_task
+
+    handler = webhooks.handlers[("github", "issues.opened")]
+    result = await handler({"issue": {"id": 1}})
+
+    assert storage.workflow.status == WorkflowStatus.ENABLED
+    assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_action_failure_marks_workflow_execution_failed() -> None:
     workflow = create_workflow()
     storage = WorkflowStorageStub(workflow)

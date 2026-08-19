@@ -467,7 +467,7 @@ async function hydrateMessages(
       `${context.provider.baseUrl}/gmail/v1/users/me/messages/${entry.id}`,
       {
         params: {
-          format: featureMode === 'full-body' ? 'full' : 'metadata',
+          format: featureMode === 'metadata-only' ? 'metadata' : 'full',
         },
       }
     );

@@ -848,6 +848,7 @@ async function handleWebhookRoute(
   let deliveryId: string | undefined;
   let deliveryAttempts = 0;
   let receiptId: string | undefined;
+  let receiptMetadata: Record<string, unknown> | undefined;
   let rawBody: Uint8Array | undefined;
   let headers: Record<string, string> | undefined;
   let payloadHash: string | undefined;
@@ -886,7 +887,9 @@ async function handleWebhookRoute(
           : inferredEvent;
     }
     const secret = await resolveWebhookSecret(provider, req, headers, options.webhookSecret);
-    const currentPayloadHash = createHash('sha256').update(rawBody).digest('hex');
+    const currentPayloadHash = createHash('sha256')
+      .update(webhookPayloadForHash(provider, rawBody))
+      .digest('hex');
     payloadHash = currentPayloadHash;
     const verification = await ctx.plugFn.webhooks.verify(
       provider,
@@ -980,6 +983,7 @@ async function handleWebhookRoute(
         ...(receiptClaimToken ? { receiptClaimToken } : {}),
       },
     });
+    receiptMetadata = receipt.metadata;
     if (
       receiptClaimToken &&
       receipt.metadata?.receiptClaimToken !== receiptClaimToken &&
@@ -1053,6 +1057,7 @@ async function handleWebhookRoute(
       await ctx.plugFn.runtime.webhooks.updateReceipt(receiptId, {
         verificationStatus: 'failed',
         metadata: {
+          ...(receiptMetadata ?? {}),
           error: error instanceof Error ? error.message : 'webhook handler failed',
         },
       });
@@ -1247,6 +1252,43 @@ function readSlackUrlVerificationChallenge(
   return value.type === 'url_verification' && typeof value.challenge === 'string'
     ? value.challenge
     : undefined;
+}
+
+function webhookPayloadForHash(provider: string, rawBody: Uint8Array): Uint8Array | string {
+  if (provider !== 'gmail') {
+    return rawBody;
+  }
+
+  try {
+    const envelope = JSON.parse(Buffer.from(rawBody).toString('utf8')) as unknown;
+    if (!envelope || typeof envelope !== 'object') {
+      return rawBody;
+    }
+    const message = (envelope as Record<string, unknown>).message;
+    if (!message || typeof message !== 'object') {
+      return rawBody;
+    }
+    // Pub/Sub can change deliveryAttempt and other envelope delivery metadata
+    // across retries. Hash only the immutable logical message so its stable
+    // messageId remains deduplicable while changed message content conflicts.
+    return JSON.stringify(sortWebhookPayload(message));
+  } catch {
+    return rawBody;
+  }
+}
+
+function sortWebhookPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortWebhookPayload);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, sortWebhookPayload(nested)])
+  );
 }
 
 function readWebhookIdempotencyKey(

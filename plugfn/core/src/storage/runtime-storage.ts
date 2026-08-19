@@ -328,9 +328,10 @@ export class AdapterRuntimeStorage {
 
   claimQueuedSyncJobs(
     limit = 25,
+    leaseMs?: number,
     workerId = generateId('sync_worker')
   ): Promise<PlugFnSyncJob[]> {
-    return this.adapter.claimQueuedSyncJobs(limit, workerId);
+    return this.adapter.claimQueuedSyncJobs(limit, workerId, leaseMs);
   }
 
   updateSyncJob(id: string, updates: UpdateSyncJobProgressInput): Promise<PlugFnSyncJob> {

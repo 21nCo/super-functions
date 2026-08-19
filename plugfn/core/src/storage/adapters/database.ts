@@ -14,6 +14,7 @@ import type { Workflow, WorkflowExecution } from '../../types/workflow.js';
 import type { WebhookRecord } from '../webhook-storage.js';
 
 const WEBHOOK_DELIVERY_LEASE_MS = 5 * 60 * 1000;
+const SYNC_JOB_LEASE_MS = 5 * 60 * 1000;
 
 export interface PlugFnStorageModelMapping {
   connections: string;
@@ -129,7 +130,11 @@ export interface PlugFnDatabaseStorageAdapter {
   createSyncJob(job: PlugFnSyncJob): Promise<PlugFnSyncJob>;
   getSyncJob(id: string): Promise<PlugFnSyncJob | null>;
   listSyncJobs(filters?: Record<string, unknown>, limit?: number): Promise<PlugFnSyncJob[]>;
-  claimQueuedSyncJobs(limit: number, workerId: string): Promise<PlugFnSyncJob[]>;
+  claimQueuedSyncJobs(
+    limit: number,
+    workerId: string,
+    leaseMs?: number
+  ): Promise<PlugFnSyncJob[]>;
   updateSyncJob(id: string, updates: Partial<PlugFnSyncJob>): Promise<PlugFnSyncJob>;
   upsertSyncCheckpoint(checkpoint: PlugFnSyncCheckpoint): Promise<PlugFnSyncCheckpoint>;
   getSyncCheckpoint(connectionId: string, resource: string): Promise<PlugFnSyncCheckpoint | null>;
@@ -659,24 +664,47 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
     });
   }
 
-  async claimQueuedSyncJobs(limit: number, workerId: string): Promise<PlugFnSyncJob[]> {
-    const candidates = await this.database.findMany<PlugFnSyncJob>({
-      model: this.models.syncJobs,
-      where: [{ field: 'status', operator: 'eq', value: 'queued' }],
-      orderBy: [{ field: 'createdAt', direction: 'asc' }],
-      limit,
-    });
-    const claimed: PlugFnSyncJob[] = [];
+  async claimQueuedSyncJobs(
+    limit: number,
+    workerId: string,
+    leaseMs = SYNC_JOB_LEASE_MS
+  ): Promise<PlugFnSyncJob[]> {
     const claimedAt = new Date();
+    const staleBefore = new Date(claimedAt.getTime() - leaseMs);
+    const [queued, abandoned] = await Promise.all([
+      this.database.findMany<PlugFnSyncJob>({
+        model: this.models.syncJobs,
+        where: [{ field: 'status', operator: 'eq', value: 'queued' }],
+        orderBy: [{ field: 'createdAt', direction: 'asc' }],
+        limit,
+      }),
+      this.database.findMany<PlugFnSyncJob>({
+        model: this.models.syncJobs,
+        where: [
+          { field: 'status', operator: 'eq', value: 'running' },
+          { field: 'updatedAt', operator: 'lte', value: staleBefore },
+        ],
+        orderBy: [{ field: 'createdAt', direction: 'asc' }],
+        limit,
+      }),
+    ]);
+    const candidates = [...queued, ...abandoned]
+      .sort((left, right) => toTime(left.createdAt) - toTime(right.createdAt))
+      .slice(0, limit);
+    const claimed: PlugFnSyncJob[] = [];
 
     for (const job of candidates) {
       try {
+        const where: WhereClause[] = [
+          { field: 'id', operator: 'eq', value: job.id },
+          { field: 'status', operator: 'eq', value: job.status },
+        ];
+        if (job.status === 'running') {
+          where.push({ field: 'updatedAt', operator: 'lte', value: staleBefore });
+        }
         const updated = await this.database.update<PlugFnSyncJob>({
           model: this.models.syncJobs,
-          where: [
-            { field: 'id', operator: 'eq', value: job.id },
-            { field: 'status', operator: 'eq', value: 'queued' },
-          ],
+          where,
           data: cloneRecord({
             status: 'running',
             metadata: claimMetadata(job.metadata, workerId, claimedAt),
