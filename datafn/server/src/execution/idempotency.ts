@@ -16,6 +16,9 @@ export interface MutationResult {
 }
 
 export interface IdempotencyStore {
+  /** Initialize backing storage before an enclosing transaction begins. */
+  ensureReady?(): Promise<void>;
+
   /**
    * Get a previously stored mutation result
    */
@@ -29,6 +32,9 @@ export interface IdempotencyStore {
     mutationId: string,
     result: MutationResult
   ): Promise<void>;
+
+  /** Return an equivalent store bound to a transaction-scoped adapter. */
+  withDb?(db: import("@superfunctions/db").Adapter): IdempotencyStore;
 }
 
 interface StoredEntry {

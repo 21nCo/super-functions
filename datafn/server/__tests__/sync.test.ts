@@ -2032,6 +2032,7 @@ describe("MRG-003: push merge race retry behavior", () => {
   it("retries update once after create conflict and succeeds", async () => {
     const baseDb = memoryAdapter();
     await baseDb.initialize();
+    baseDb.capabilities.transactions.supported = false;
     const baseCreate = baseDb.create.bind(baseDb);
     const baseUpdate = baseDb.update.bind(baseDb);
     let updateCalls = 0;
@@ -2107,6 +2108,7 @@ describe("MRG-003: push merge race retry behavior", () => {
   it("returns NOT_FOUND when retry update still fails after create conflict", async () => {
     const baseDb = memoryAdapter();
     await baseDb.initialize();
+    baseDb.capabilities.transactions.supported = false;
     const baseCreate = baseDb.create.bind(baseDb);
 
     const db = new Proxy(baseDb, {

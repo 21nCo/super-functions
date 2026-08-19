@@ -38,6 +38,12 @@ export interface OAuthBrowserRouteConfig {
     request: Request,
     context: RouteContext
   ) => Promise<string> | string;
+  /**
+   * Additional origins (beyond the request's own origin) that a post-callback
+   * redirect is permitted to target. Used to validate `returnTo` and prevent
+   * open-redirect attacks. Same-origin redirects are always allowed.
+   */
+  allowedRedirectOrigins?: string[];
   serializeCallbackResult?: (
     result: OAuthFlowCallbackResult,
     request: Request,
@@ -48,6 +54,7 @@ export interface OAuthBrowserRouteConfig {
 }
 
 export function createOAuthBrowserRoutes(config: OAuthBrowserRouteConfig): Route[] {
+  assertValidRedirectOrigins(config.allowedRedirectOrigins);
   const requestIdHeader = (config.requestIdHeader ?? "x-request-id").toLowerCase();
 
   return [
@@ -117,6 +124,29 @@ export function createOAuthBrowserRoutes(config: OAuthBrowserRouteConfig): Route
       }
     }
   ];
+}
+
+function assertValidRedirectOrigins(origins: readonly string[] | undefined): void {
+  for (const origin of origins ?? []) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
+    if (
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      (parsed.pathname !== "" && parsed.pathname !== "/") ||
+      parsed.search !== "" ||
+      parsed.hash !== ""
+    ) {
+      throw new Error(`OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${origin}`);
+    }
+  }
 }
 
 function resolveRouteMeta(defaultMeta: HttpRouteMeta, overrideMeta: HttpRouteMeta | undefined): HttpRouteMeta {
@@ -204,14 +234,63 @@ async function resolveRedirectLocation(
   context: RouteContext
 ): Promise<string> {
   if (config.getRedirectLocation) {
+    // Caller-provided resolvers are trusted to produce safe locations.
     return config.getRedirectLocation(result, request, context);
   }
 
   if (result.subject.kind === "browser-auth" && result.subject.returnTo) {
-    return result.subject.returnTo;
+    // `returnTo` originates from the (unauthenticated) flow start request and
+    // is attacker-influenceable, so it must be validated against the current
+    // origin and any explicitly allowlisted origins to prevent open redirects.
+    return sanitizeRedirectLocation(result.subject.returnTo, request, config.allowedRedirectOrigins);
   }
 
   return new URL("/", request.url).toString();
+}
+
+function sanitizeRedirectLocation(
+  returnTo: string,
+  request: Request,
+  allowedRedirectOrigins?: string[]
+): string {
+  const requestUrl = new URL(request.url);
+  const fallback = new URL("/", requestUrl).toString();
+
+  let target: URL;
+  try {
+    // Resolve relative URLs against the request origin; absolute URLs are
+    // parsed as-is so their origin can be checked.
+    target = new URL(returnTo, requestUrl);
+  } catch {
+    return fallback;
+  }
+
+  // Only http(s) targets are ever acceptable (blocks javascript:, data:, etc.).
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
+    return fallback;
+  }
+
+  if (target.origin === requestUrl.origin) {
+    return target.toString();
+  }
+
+  const allowed = new Set(
+    (allowedRedirectOrigins ?? [])
+      .map((origin) => {
+        try {
+          return new URL(origin).origin;
+        } catch {
+          return null;
+        }
+      })
+      .filter((origin): origin is string => origin !== null)
+  );
+
+  if (allowed.has(target.origin)) {
+    return target.toString();
+  }
+
+  return fallback;
 }
 
 async function parseDisconnectBody(

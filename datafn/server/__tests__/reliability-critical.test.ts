@@ -48,6 +48,88 @@ function makeMemoryIdempotencyStore() {
 // ─── REL-001: Transaction fallback ────────────────────────────────────
 
 describe("REL-001: Transaction atomicity — no silent fallthrough", () => {
+  it("does not initialize mutation stores for a read-only atomic transaction", async () => {
+    const order: string[] = [];
+    const db = {
+      internal: {
+        ensureTable: vi.fn(async (tableName: string) => {
+          order.push(`table:${tableName}`);
+        })
+      },
+      transaction: async (callback: (tx: any) => Promise<unknown>) => {
+        order.push("transaction");
+        return callback(db);
+      }
+    } as any;
+    const idempotencyStore = {
+      ...makeMemoryIdempotencyStore(),
+      ensureReady: vi.fn(async () => {
+        order.push("idempotency-ready");
+      })
+    };
+
+    const result = await executeTransaction(
+      { atomic: true, steps: [] },
+      testSchema,
+      db,
+      idempotencyStore,
+      undefined,
+      "default",
+      undefined
+    );
+
+    expect(result.ok).toBe(true);
+    expect(order).toEqual(["transaction"]);
+  });
+
+  it("initializes all durable runtime tables before opening an atomic transaction", async () => {
+    const order: string[] = [];
+    const db = {
+      internal: {
+        ensureTable: vi.fn(async (tableName: string) => {
+          order.push(`table:${tableName}`);
+        })
+      },
+      transaction: async () => {
+        order.push("transaction");
+        throw new Error("serialization failure");
+      }
+    } as any;
+    const idempotencyStore = {
+      ...makeMemoryIdempotencyStore(),
+      ensureReady: vi.fn(async () => {
+        order.push("idempotency-ready");
+      })
+    };
+
+    await executeTransaction(
+      {
+        atomic: true,
+        steps: [{
+          mutation: {
+            resource: "tasks",
+            operation: "insert",
+            id: "task:ready",
+            record: { title: "ready" },
+          } as any,
+        }],
+      },
+      testSchema,
+      db,
+      idempotencyStore,
+      undefined,
+      "default",
+      undefined
+    );
+
+    expect(order).toEqual([
+      "idempotency-ready",
+      "table:__datafn_changes",
+      "table:__datafn_meta",
+      "transaction"
+    ]);
+  });
+
   it("TV-REL-001: DB error returns INTERNAL, no sequential fallback", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     // Patch the adapter to have a transaction function that throws

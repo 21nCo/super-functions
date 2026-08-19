@@ -217,7 +217,10 @@ describe("oauth-router route factories", () => {
       basePath: "/auth/social",
       flowService: browser.service,
       resolveStartInput: async (request) => (await request.json()) as never,
-      callbackMode: "redirect"
+      callbackMode: "redirect",
+      // The mocked returnTo is cross-origin (https://app.example) relative to
+      // the http://localhost request, so it must be explicitly allowlisted.
+      allowedRedirectOrigins: ["https://app.example"]
     });
     const browserRouter = createRouter({ routes: browserRoutes });
 
@@ -272,6 +275,75 @@ describe("oauth-router route factories", () => {
 
     expect(redirectResponse.status).toBe(302);
     expect(redirectResponse.headers.get("location")).toBe("https://app.example/");
+  });
+
+  it("blocks open-redirects to cross-origin returnTo values that are not allowlisted", async () => {
+    const browser = createFlowServiceMocks();
+    // The mocked returnTo is https://app.example/post-auth, cross-origin to the
+    // http://localhost request and NOT in allowedRedirectOrigins.
+    const browserRoutes = createOAuthBrowserRoutes({
+      basePath: "/auth/social",
+      flowService: browser.service,
+      resolveStartInput: async (request) => (await request.json()) as never,
+      callbackMode: "redirect"
+    });
+    const browserRouter = createRouter({ routes: browserRoutes });
+
+    const redirectResponse = await browserRouter.handle(
+      new Request("http://localhost/auth/social/callback/google?code=code_02&state=st_01")
+    );
+
+    expect(redirectResponse.status).toBe(302);
+    // Falls back to the request-origin root instead of the attacker origin.
+    expect(redirectResponse.headers.get("location")).toBe("http://localhost/");
+  });
+
+  it("falls back to the request origin for non-HTTP returnTo schemes", async () => {
+    const browser = createFlowServiceMocks();
+    browser.handleCallback.mockResolvedValue({
+      providerId: "google",
+      subject: {
+        kind: "browser-auth",
+        intentId: "intent_01",
+        returnTo: "javascript:alert('xss')"
+      },
+      tokenSet: { accessToken: "access_01" }
+    });
+    const browserRoutes = createOAuthBrowserRoutes({
+      basePath: "/auth/social",
+      flowService: browser.service,
+      resolveStartInput: async (request) => (await request.json()) as never,
+      callbackMode: "redirect"
+    });
+
+    const response = await createRouter({ routes: browserRoutes }).handle(
+      new Request("http://localhost/auth/social/callback/google?code=code_02&state=st_01")
+    );
+
+    expect(response.headers.get("location")).toBe("http://localhost/");
+  });
+
+  it("rejects invalid allowedRedirectOrigins during route construction", () => {
+    const browser = createFlowServiceMocks();
+    const createRoutes = (allowedRedirectOrigins: string[]) => createOAuthBrowserRoutes({
+        basePath: "/auth/social",
+        flowService: browser.service,
+        resolveStartInput: async (request) => (await request.json()) as never,
+        callbackMode: "redirect",
+        allowedRedirectOrigins
+      });
+
+    for (const invalidOrigin of [
+      "not a URL",
+      "https://app.example/callback",
+      "https://app.example?tenant=one",
+      "https://app.example#callback",
+      "https://user:secret@app.example"
+    ]) {
+      expect(() => createRoutes([invalidOrigin])).toThrow(
+        `OAUTH_ALLOWED_REDIRECT_ORIGIN_INVALID: ${invalidOrigin}`
+      );
+    }
   });
 
   it("preserves resolver-provided requestId when the start header is absent", async () => {

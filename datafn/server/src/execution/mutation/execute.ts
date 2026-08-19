@@ -232,12 +232,15 @@ async function executeMutationCore(
             id: mutation.id,
             delta: mergeData,
             update: async () => {
-              await db.update({
+              const updated = await db.update({
                 model: mutation.resource,
                 where: [{ field: "id", operator: "eq", value: mutation.id }],
                 data: mergeData,
                 namespace,
               });
+              if (strictUpdateNotFound && !updated) {
+                throw { name: "NotFoundError", message: "Record not found after update" };
+              }
             },
             create: async (record) => {
               await db.create({
@@ -949,6 +952,7 @@ export async function executeMutation(
     let guardFailed = false;
 
     try {
+      await changeTracking.ensureReady();
       await (db as any).transaction(async (txDb: Adapter) => {
         // DI-002: Re-read record inside transaction to prevent TOCTOU
         const guardResult = await evaluateGuard(

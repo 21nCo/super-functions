@@ -172,6 +172,31 @@ describe('wrapWithRowLevelNamespace', () => {
     });
   });
 
+  describe('singular write guards', () => {
+    it('rejects empty update and delete filters before namespace injection', async () => {
+      await db.create({
+        model: 'task',
+        data: { id: 't1', title: 'Original' },
+        namespace: 'user:A',
+      });
+
+      await expect(db.update({
+        model: 'task',
+        where: [],
+        data: { title: 'Changed' },
+        namespace: 'user:A',
+      })).rejects.toThrow('update requires a non-empty where clause');
+      await expect(db.delete({
+        model: 'task',
+        where: [],
+        namespace: 'user:A',
+      })).rejects.toThrow('delete requires a non-empty where clause');
+
+      expect(await db.findMany({ model: 'task', where: [], namespace: 'user:A' }))
+        .toEqual([{ id: 't1', title: 'Original' }]);
+    });
+  });
+
   // -----------------------------------------------------------------------
   // TV-RLN-006 & TV-RLN-007: missing/empty namespace throws
   // -----------------------------------------------------------------------
@@ -584,6 +609,29 @@ describe('wrapWithRowLevelNamespace', () => {
         ],
       });
       expect(found).toEqual([{ id: 'optional-hidden', title: 'Hidden namespace' }]);
+    });
+
+    it('rejects singular mutations whose only filter is the hidden namespace column', async () => {
+      await optionalDb.create({
+        model: 'task',
+        data: { id: 'optional-safe', title: 'Safe' },
+      });
+      const namespaceOnlyWhere = [{ field: '__ns', operator: 'eq' as const, value: 'forged' }];
+
+      await expect(optionalDb.update({
+        model: 'task',
+        where: namespaceOnlyWhere,
+        data: { title: 'Changed' },
+      })).rejects.toThrow('update requires a non-empty where clause');
+      await expect(optionalDb.delete({
+        model: 'task',
+        where: namespaceOnlyWhere,
+      })).rejects.toThrow('delete requires a non-empty where clause');
+
+      await expect(optionalBase.findOne({
+        model: 'task',
+        where: [{ field: 'id', operator: 'eq', value: 'optional-safe' }],
+      })).resolves.toMatchObject({ title: 'Safe' });
     });
   });
 

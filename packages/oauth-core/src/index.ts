@@ -3,6 +3,16 @@ export interface OAuthProviderDescriptor {
   authorizationUrl: string;
   tokenUrl: string;
   revocationUrl?: string;
+  /**
+   * How to call the revocation endpoint.
+   * - "rfc7009" (default): POST application/x-www-form-urlencoded token body.
+   * - "github": DELETE with JSON body and Basic auth, per GitHub's
+   *   `/applications/{client_id}/token` OAuth app API.
+   *
+   * `revocationUrl` may contain a `{client_id}` placeholder, which is
+   * substituted with the (URL-encoded) client id at request time.
+   */
+  revocationStyle?: "rfc7009" | "github";
   defaultScopes: string[];
   responseType?: string;
   supportsPkce: boolean;

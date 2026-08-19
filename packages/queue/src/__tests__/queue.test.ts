@@ -17,6 +17,25 @@ describe('queue adapters', () => {
     expect(await queue.dequeue('q')).toBeNull();
   });
 
+  it('rejects enqueue once maxSize is reached', async () => {
+    const queue = new MemoryQueueAdapter<string>({ maxSize: 2 });
+
+    await queue.enqueue('q', 'a');
+    await queue.enqueue('q', 'b');
+
+    await expect(queue.enqueue('q', 'c')).rejects.toThrow('FLOWFN_QUEUE_FULL');
+
+    // Draining one item frees a slot.
+    expect(await queue.dequeue('q')).toBe('a');
+    await expect(queue.enqueue('q', 'c')).resolves.toBeUndefined();
+  });
+
+  it('rejects an invalid maxSize', () => {
+    expect(() => new MemoryQueueAdapter<string>({ maxSize: 0 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
+    expect(() => new MemoryQueueAdapter<string>({ maxSize: -1 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
+    expect(() => new MemoryQueueAdapter<string>({ maxSize: 1.5 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
+  });
+
   it('memory queue preserves undefined payloads', async () => {
     const queue = new MemoryQueueAdapter<string | undefined>();
 

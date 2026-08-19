@@ -10,7 +10,7 @@ export class RouterError extends Error {
   ) {
     super(message);
     this.name = 'RouterError';
-    Object.setPrototypeOf(this, RouterError.prototype);
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 
   toResponse(): Response {
@@ -53,9 +53,21 @@ export class NotFoundError extends RouterError {
 }
 
 export class MethodNotAllowedError extends RouterError {
-  constructor(message: string = 'Method Not Allowed', code?: string) {
+  constructor(
+    message: string = 'Method Not Allowed',
+    code?: string,
+    public readonly allowedMethods: readonly string[] = []
+  ) {
     super(message, 405, code);
     this.name = 'MethodNotAllowedError';
+  }
+
+  override toResponse(): Response {
+    const response = super.toResponse();
+    if (this.allowedMethods.length > 0) {
+      response.headers.set('Allow', this.allowedMethods.join(', '));
+    }
+    return response;
   }
 }
 
@@ -70,6 +82,13 @@ export class UnprocessableEntityError extends RouterError {
   constructor(message: string = 'Unprocessable Entity', code?: string) {
     super(message, 422, code);
     this.name = 'UnprocessableEntityError';
+  }
+}
+
+export class PayloadTooLargeError extends RouterError {
+  constructor(message: string = 'Payload Too Large', code?: string) {
+    super(message, 413, code);
+    this.name = 'PayloadTooLargeError';
   }
 }
 

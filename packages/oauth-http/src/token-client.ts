@@ -27,6 +27,8 @@ interface ResponseLike {
   status: number;
   headers: HeadersLike;
   text(): Promise<string>;
+  /** Release an unread response body and any request timeout resources. */
+  discard?(): Promise<void>;
 }
 
 export interface RequestInitLike {
@@ -41,7 +43,16 @@ export interface OAuthTokenClientOptions {
   fetcher?: OAuthFetchLike;
   retryPolicy?: OAuthRetryPolicy;
   sleep?: (delayMs: number) => Promise<void>;
+  /**
+   * Per-request timeout (ms) applied to the default global-fetch fetcher.
+   * Prevents a hung/slow provider endpoint from blocking indefinitely and
+   * exhausting sockets. Ignored when a custom `fetcher` is supplied. Defaults
+   * to 15000ms; set to 0 to disable.
+   */
+  timeoutMs?: number;
 }
+
+const DEFAULT_OAUTH_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface DisconnectWithRevokeInput {
   revokeSupported: boolean;
@@ -69,7 +80,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
   private readonly sleep: (delayMs: number) => Promise<void>;
 
   constructor(options: OAuthTokenClientOptions = {}) {
-    this.fetcher = options.fetcher ?? getGlobalFetch();
+    this.fetcher = options.fetcher ?? getGlobalFetch(options.timeoutMs ?? DEFAULT_OAUTH_REQUEST_TIMEOUT_MS);
     this.retryPolicy = options.retryPolicy ?? DEFAULT_OAUTH_RETRY_POLICY;
     this.sleep = options.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
   }
@@ -84,7 +95,15 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       scopes: input.scopes
     });
     const endpointRequest = createTokenRequest(input, credentials);
-    const response = await this.executeWithRetry(input.provider.tokenUrl, endpointRequest);
+    const failureCode = input.grantType === "refresh_token"
+      ? "OAUTH_TOKEN_REFRESH_FAILED"
+      : "OAUTH_TOKEN_EXCHANGE_FAILED";
+    const response = await this.executeWithRetry(
+      input.provider.tokenUrl,
+      endpointRequest,
+      "always",
+      failureCode,
+    );
     const contentType = response.headers.get("content-type");
     const rawBodyText = await response.text();
     const parsedBody = parseResponseBody(rawBodyText, contentType);
@@ -98,7 +117,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       });
     }
 
-    return normalizeTokenResponse(parsedBody);
+    return normalizeTokenResponse(parsedBody, input.grantType);
   }
 
   async revokeToken(input: OAuthRevocationRequest): Promise<void> {
@@ -113,8 +132,13 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       tokenTypeHint: input.tokenTypeHint
     });
     const revocationUrl = resolveRevocationUrl(input.provider.revocationUrl, credentials.clientId);
-    const endpointRequest = createRevokeRequest(input, credentials, revocationUrl);
-    const response = await this.executeWithRetry(revocationUrl, endpointRequest);
+    const endpointRequest = createRevokeRequest(input, credentials);
+    const response = await this.executeWithRetry(
+      revocationUrl,
+      endpointRequest,
+      "errors-only",
+      "INTERNAL_ERROR",
+    );
     if (response.ok) {
       return;
     }
@@ -136,39 +160,24 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     });
   }
 
-  private async executeWithRetry(url: string, init: RequestInitLike): Promise<ResponseLike> {
+  private async executeWithRetry(
+    url: string,
+    init: RequestInitLike,
+    bodyMode: "always" | "errors-only",
+    failureCode: OAuthHttpError["code"],
+  ): Promise<ResponseLike> {
     let attempt = 1;
     while (true) {
       let response: ResponseLike;
       try {
         response = await this.fetcher(url, init);
       } catch (error) {
-        const decision = decideRetry(
-          {
-            attempt,
-            status: 503
-          },
-          this.retryPolicy
-        );
-
-        if (!decision.retry) {
-          throw new OAuthHttpError("OAuth provider request failed", {
-            code: "OAUTH_TOKEN_EXCHANGE_FAILED",
-            status: 502,
-            retryable: false,
-            cause: error,
-            details: {
-              transportFailure: true
-            }
-          });
-        }
-
-        await this.sleep(decision.delayMs);
+        await this.retryTransportFailure(error, attempt, failureCode);
         attempt += 1;
         continue;
       }
 
-      const decision = decideRetry(
+      const statusDecision = decideRetry(
         {
           attempt,
           status: response.status,
@@ -177,13 +186,87 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         this.retryPolicy
       );
 
-      if (!decision.retry) {
+      if (statusDecision.retry) {
+        await response.discard?.().catch(() => undefined);
+        await this.sleep(statusDecision.delayMs);
+        attempt += 1;
+        continue;
+      }
+
+      if (bodyMode === "errors-only" && response.ok) {
+        // RFC 7009 success responses do not require a body. Do not let a
+        // provider that returned successful headers delay local cleanup.
+        await response.discard?.().catch(() => undefined);
         return response;
       }
 
-      await this.sleep(decision.delayMs);
-      attempt += 1;
+      let body: string;
+      try {
+        // Read before leaving the retry boundary. Response bodies can fail or
+        // time out after headers have arrived and must receive the same retry
+        // and error normalization as the initial fetch.
+        body = await response.text();
+      } catch (error) {
+        await response.discard?.().catch(() => undefined);
+        if (bodyMode === "always") {
+          const timedOut = error instanceof OAuthHttpError && error.status === 504;
+          throw new OAuthHttpError("OAuth provider response body failed", {
+            code: failureCode,
+            status: timedOut ? 504 : 502,
+            retryable: false,
+            cause: error,
+            details: {
+              transportFailure: true,
+              responseBodyFailure: true
+            }
+          });
+        }
+        await this.retryTransportFailure(error, attempt, failureCode);
+        attempt += 1;
+        continue;
+      }
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        headers: response.headers,
+        text: async () => body,
+        discard: async () => undefined
+      };
     }
+  }
+
+  private async retryTransportFailure(
+    error: unknown,
+    attempt: number,
+    failureCode: OAuthHttpError["code"],
+  ): Promise<void> {
+    const timeoutError =
+      error instanceof OAuthHttpError && error.status === 504 && error.retryable;
+    const decision = decideRetry(
+      {
+        attempt,
+        status: timeoutError ? 504 : 503
+      },
+      this.retryPolicy
+    );
+
+    if (!decision.retry) {
+      if (timeoutError) {
+        throw error;
+      }
+      throw new OAuthHttpError("OAuth provider request failed", {
+        code: failureCode,
+        status: 502,
+        retryable: false,
+        cause: error,
+        details: {
+          transportFailure: true
+        }
+      });
+    }
+
+    await this.sleep(decision.delayMs);
   }
 }
 
@@ -346,29 +429,16 @@ function resolveRevocationUrl(revocationUrl: string | undefined, clientId: strin
   return revocationUrl.replace("{client_id}", encodeURIComponent(clientId));
 }
 
-function isGitHubApplicationRevokeUrl(revocationUrl: string | undefined): boolean {
-  return !!revocationUrl && revocationUrl.includes("/applications/") && revocationUrl.includes("/token");
-}
-
 function createRevokeRequest(
   input: OAuthRevocationRequest,
-  credentials: ResolvedRequestCredentials,
-  revocationUrl: string
+  credentials: ResolvedRequestCredentials
 ): RequestInitLike {
-  if (isGitHubApplicationRevokeUrl(revocationUrl)) {
-    const authUser = encodeURIComponent(credentials.clientId);
-    const authPassword = encodeURIComponent(credentials.clientSecret);
-    const auth = encodeBasicCredentials(authUser, authPassword);
-
-    return {
-      method: "DELETE",
-      headers: {
-        accept: "application/json",
-        authorization: `Basic ${auth}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ access_token: input.token })
-    };
+  if (
+    input.provider.revocationStyle === "github" ||
+    (input.provider.revocationStyle === undefined &&
+      isGitHubApplicationRevokeUrl(input.provider.revocationUrl))
+  ) {
+    return createGithubRevokeRequest(input, credentials);
   }
 
   const params = new URLSearchParams();
@@ -381,6 +451,34 @@ function createRevokeRequest(
     method: "POST",
     headers: createAuthHeaders(credentials, params),
     body: params.toString()
+  };
+}
+
+function isGitHubApplicationRevokeUrl(revocationUrl: string | undefined): boolean {
+  return Boolean(
+    revocationUrl?.includes("/applications/") && revocationUrl.includes("/token")
+  );
+}
+
+/**
+ * GitHub OAuth-app token revocation uses raw client credentials for HTTP
+ * Basic auth. URL encoding is only applied to the client-id URL segment.
+ */
+function createGithubRevokeRequest(
+  input: OAuthRevocationRequest,
+  credentials: ResolvedRequestCredentials
+): RequestInitLike {
+  const auth = encodeBasicCredentials(credentials.clientId, credentials.clientSecret);
+
+  return {
+    method: "DELETE",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Basic ${auth}`,
+      "content-type": "application/json",
+      "x-github-api-version": "2022-11-28"
+    },
+    body: JSON.stringify({ access_token: input.token })
   };
 }
 
@@ -454,10 +552,13 @@ function parseResponseBody(rawBodyText: string, contentType: string | null): unk
   return parseFormBody(rawBodyText);
 }
 
-function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse {
+function normalizeTokenResponse(
+  parsedBody: unknown,
+  grantType: OAuthTokenGrantType
+): OAuthTokenEndpointResponse {
   if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
     throw new OAuthHttpError("OAuth token response body must be a JSON object", {
-      code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+      code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
       status: 502,
       retryable: false,
       details: { parsedBodyKeys: [] }
@@ -468,7 +569,7 @@ function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse
   const accessToken = asString(payload.access_token);
   if (!accessToken) {
     throw new OAuthHttpError("OAuth token response missing access_token", {
-      code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+      code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
       status: 502,
       retryable: false,
       details: { parsedBodyKeys: Object.keys(payload).slice(0, 10) }
@@ -484,9 +585,21 @@ function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse
     raw: payload
   };
 
-  const expiresIn = asNumber(payload.expires_in);
-  if (expiresIn !== undefined) {
-    result.expiresIn = expiresIn;
+  if (payload.expires_in !== undefined) {
+    const expiresIn = asNumber(payload.expires_in);
+    if (expiresIn === undefined || expiresIn < 0) {
+      throw new OAuthHttpError("OAuth token response has invalid expires_in", {
+        code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
+        status: 502,
+        retryable: false,
+        details: { invalidField: "expires_in" }
+      });
+    }
+    // Preserve the established zero-lifetime behavior: some providers use
+    // zero to indicate that no useful expiry was supplied.
+    if (expiresIn > 0) {
+      result.expiresIn = expiresIn;
+    }
   }
 
   return result;
@@ -586,7 +699,14 @@ function ensureOAuthHttpError(error: unknown): OAuthHttpError {
   });
 }
 
-function getGlobalFetch(): OAuthFetchLike {
+function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new OAuthHttpError("OAuth HTTP timeout must be a finite non-negative number", {
+      code: "VALIDATION_ERROR",
+      status: 400,
+      retryable: false
+    });
+  }
   const fetcher = globalThis.fetch;
   if (!fetcher) {
     throw new OAuthHttpError("global fetch is not available", {
@@ -597,11 +717,58 @@ function getGlobalFetch(): OAuthFetchLike {
   }
 
   return async (url, init) => {
-    const response = await fetcher(url, {
-      method: init.method,
-      headers: init.headers,
-      body: init.body
-    });
+    const controller =
+      timeoutMs > 0 && typeof AbortController === "function" ? new AbortController() : undefined;
+    const timeoutId =
+      controller !== undefined ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
+    let response: Response;
+    try {
+      response = await fetcher(url, {
+        method: init.method,
+        headers: init.headers,
+        body: init.body,
+        signal: controller?.signal
+      });
+    } catch (error) {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      if (controller?.signal.aborted) {
+        throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
+          code: "INTERNAL_ERROR",
+          status: 504,
+          retryable: true,
+          cause: error
+        });
+      }
+      throw error;
+    }
+
+    let timeoutCleared = false;
+    const clearRequestTimeout = () => {
+      if (!timeoutCleared && timeoutId !== undefined) {
+        timeoutCleared = true;
+        clearTimeout(timeoutId);
+      }
+    };
+    let bodyText: Promise<string> | undefined;
+    const readBody = () => {
+      bodyText ??= response.text()
+        .catch((error) => {
+          if (controller?.signal.aborted) {
+            throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
+              code: "INTERNAL_ERROR",
+              status: 504,
+              retryable: true,
+              cause: error
+            });
+          }
+          throw error;
+        })
+        .finally(clearRequestTimeout);
+      return bodyText;
+    };
 
     return {
       ok: response.ok,
@@ -611,7 +778,16 @@ function getGlobalFetch(): OAuthFetchLike {
           return response.headers.get(name);
         }
       },
-      text: () => response.text()
+      // Keep the abort timer active through response consumption. Fetch may
+      // resolve after headers while an attacker-controlled body stalls.
+      text: readBody,
+      discard: async () => {
+        try {
+          await response.body?.cancel();
+        } finally {
+          clearRequestTimeout();
+        }
+      }
     };
   };
 }

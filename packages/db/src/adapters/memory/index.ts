@@ -2,6 +2,7 @@
  * In-memory adapter for testing
  */
 
+import { randomUUID } from 'node:crypto';
 import { createAdapterFactory } from '../../adapter/factory.js';
 import { NotFoundError } from '../../adapter/errors.js';
 import type {
@@ -99,7 +100,7 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
         internalStore.set(table, new Map());
       }
       const store = internalStore.get(table)!;
-      const id = (data.id as string) ?? Math.random().toString(36).substr(2, 9);
+      const id = (data.id as string) || randomUUID();
       const record = { ...data, id };
       store.set(id, record);
       return record;
@@ -185,7 +186,7 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
       const tableStore = internalStore.get(table)!;
       const results: Record<string, unknown>[] = [];
       for (const item of data) {
-        const id = (item.id as string) ?? Math.random().toString(36).substr(2, 9);
+        const id = (item.id as string) || randomUUID();
         const record = { ...item, id };
         tableStore.set(id, record);
         results.push(record);
@@ -287,7 +288,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           customTypes: false,
         },
       },
-      customIdGenerator: () => Math.random().toString(36).substr(2, 9),
+      customIdGenerator: () => randomUUID(),
       namespace: config?.namespace,
       debug: config?.debug,
     },
@@ -330,7 +331,7 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
           }
 
           const table = store.get(tableName)!;
-          const id = params.data.id || Math.random().toString(36).substr(2, 9);
+          const id = params.data.id || randomUUID();
 
           // Enforce uniqueness: create must fail if record with this ID already exists
           if (table.has(id)) {
@@ -416,6 +417,9 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
         },
 
         async update<T>(params: UpdateParams): Promise<T> {
+          if (!params.where || params.where.length === 0) {
+            throw new Error('update requires a non-empty where clause; use updateMany to update all rows');
+          }
           const tableName = context.getModelName(params.model);
           const table = store.get(tableName);
 
@@ -444,6 +448,9 @@ export function memoryAdapter(config?: MemoryAdapterConfig): Adapter {
         },
 
         async delete(params: DeleteParams): Promise<void> {
+          if (!params.where || params.where.length === 0) {
+            throw new Error('delete requires a non-empty where clause; use deleteMany to delete all rows');
+          }
           const tableName = context.getModelName(params.model);
           const table = store.get(tableName);
 
@@ -665,36 +672,18 @@ function matchesWhere(record: any, where: WhereClause[]): boolean {
     return true;
   }
 
-  let hasOrClause = false;
-  let orMatched = false;
-  let andMatched = true;
-
-  for (const clause of where) {
-    const value = record[clause.field];
-    const matches = matchesClause(value, clause);
-
-    if (clause.connector === 'OR') {
-      hasOrClause = true;
-      if (matches) orMatched = true;
-    } else {
-      // Default AND - all AND clauses must match
-      if (!matches) {
-        andMatched = false;
-      }
-    }
+  // A connector belongs to the clause it introduces. Evaluate in the same
+  // left-associative order used by the SQL and Prisma adapters so a mixed
+  // `A, OR B, AND C` filter consistently means `(A OR B) AND C`.
+  let matched = matchesClause(record[where[0].field], where[0]);
+  for (let index = 1; index < where.length; index += 1) {
+    const clause = where[index];
+    const clauseMatched = matchesClause(record[clause.field], clause);
+    matched = clause.connector === 'OR'
+      ? matched || clauseMatched
+      : matched && clauseMatched;
   }
-
-  // All AND clauses must match
-  if (!andMatched) {
-    return false;
-  }
-
-  // If we had OR clauses, at least one must have matched
-  if (hasOrClause && !orMatched) {
-    return false;
-  }
-
-  return true;
+  return matched;
 }
 
 /**

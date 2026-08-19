@@ -3,7 +3,7 @@ export interface MetricsEmitter {
 }
 
 export function createMetricsEmitter(
-  trackFn?: (event: string, properties?: Record<string, unknown>) => void,
+  trackFn?: (event: string, properties?: Record<string, unknown>) => void | PromiseLike<void>,
 ): MetricsEmitter {
   if (!trackFn) {
     return {
@@ -13,7 +13,16 @@ export function createMetricsEmitter(
 
   return {
     track(event: string, properties?: Record<string, unknown>): void {
-      trackFn(event, properties);
+      // Instrumentation must never break the business/request path: a throwing
+      // telemetry sink is swallowed rather than propagated to the caller.
+      try {
+        const result = trackFn(event, properties);
+        if (result && typeof result.then === 'function') {
+          void Promise.resolve(result).catch(() => undefined);
+        }
+      } catch {
+        // Intentionally ignored.
+      }
     },
   };
 }

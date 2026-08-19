@@ -12,7 +12,7 @@ import type {
 import { compilePattern, matchPath, normalizePath, joinPaths, type CompiledPattern } from './path-matcher.js';
 import { createRouteContext, mergeContexts } from './context.js';
 import { executeMiddlewareChain, combineMiddleware } from './middleware.js';
-import { RouterError, NotFoundError } from './errors.js';
+import { RouterError, NotFoundError, MethodNotAllowedError } from './errors.js';
 
 interface CompiledRouteEntry<TContext> {
   route: Route<TContext>;
@@ -32,7 +32,15 @@ export function createRouter<TContext = any>(
     context: contextFactory,
     onError,
     basePath = '/',
+    maxBodyBytes,
   } = options;
+
+  if (
+    maxBodyBytes !== undefined &&
+    (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 0)
+  ) {
+    throw new RangeError('maxBodyBytes must be a non-negative integer');
+  }
 
   // Pre-compile all route patterns
   const compiledRoutes: CompiledRouteEntry<TContext>[] = routes.map((route) => {
@@ -68,6 +76,21 @@ export function createRouter<TContext = any>(
   }
 
   /**
+   * Collect the HTTP methods registered for a path (regardless of method).
+   * Used to distinguish "no such path" (404) from "wrong method" (405).
+   */
+  function allowedMethodsForPath(path: string): string[] {
+    const normalizedPath = normalizePath(path);
+    const methods = new Set<string>();
+    for (const entry of compiledRoutes) {
+      if (matchPath(entry.compiledPattern, normalizedPath).matched) {
+        methods.add(entry.route.method);
+      }
+    }
+    return [...methods];
+  }
+
+  /**
    * Handle an incoming request
    */
   async function handle(request: Request): Promise<Response> {
@@ -80,11 +103,22 @@ export function createRouter<TContext = any>(
       const matched = match(method, path);
 
       if (!matched) {
+        // Distinguish an unknown path (404) from a known path invoked with an
+        // unsupported method (405 + Allow header, per RFC 7231).
+        const allowed = allowedMethodsForPath(path);
+        if (allowed.length > 0) {
+          const error = new MethodNotAllowedError(
+            `Method ${method} not allowed for ${path}`,
+            undefined,
+            allowed
+          );
+          throw error;
+        }
         throw new NotFoundError(`Route not found: ${method} ${path}`);
       }
 
       // Create route context
-      const routeContext = createRouteContext(request, matched.params);
+      const routeContext = createRouteContext(request, matched.params, { maxBodyBytes });
 
       // Create user context
       let userContext: TContext;
@@ -120,7 +154,17 @@ export function createRouter<TContext = any>(
       // Handle errors
       if (onError) {
         try {
-          return await onError(error as Error, request);
+          const response = await onError(error as Error, request);
+          if (error instanceof MethodNotAllowedError && error.allowedMethods.length > 0) {
+            const headers = new Headers(response.headers);
+            headers.set('Allow', error.allowedMethods.join(', '));
+            return new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+            });
+          }
+          return response;
         } catch (handlerError) {
           // If error handler itself fails, return 500
           return Response.json(
@@ -133,6 +177,30 @@ export function createRouter<TContext = any>(
       // Default error handling
       if (error instanceof RouterError) {
         return error.toResponse();
+      }
+
+      // Shared middleware packages expose HTTP-shaped errors without taking a
+      // dependency on this package's RouterError class. Honor only explicit,
+      // valid error status metadata; arbitrary exceptions remain generic 500s.
+      const httpError = error as {
+        isHttpError?: unknown;
+        message?: unknown;
+        code?: unknown;
+        statusCode?: unknown;
+      };
+      if (
+        httpError?.isHttpError === true &&
+        Number.isInteger(httpError?.statusCode) &&
+        (httpError.statusCode as number) >= 400 &&
+        (httpError.statusCode as number) <= 599
+      ) {
+        return Response.json(
+          {
+            error: typeof httpError.message === 'string' ? httpError.message : 'Request failed',
+            ...(typeof httpError.code === 'string' ? { code: httpError.code } : {}),
+          },
+          { status: httpError.statusCode as number },
+        );
       }
 
       // Unknown error - don't expose details

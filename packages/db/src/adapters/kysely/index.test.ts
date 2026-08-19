@@ -4,9 +4,19 @@ import { kyselyAdapter } from './index.js';
 describe('kyselyAdapter', () => {
   it('uses IS NULL and IS NOT NULL for public adapter null predicates', async () => {
     const predicates: unknown[][] = [];
+    const expressionBuilder = Object.assign(
+      (...args: unknown[]) => args,
+      {
+        and: (expressions: unknown[]) => ['and', ...expressions],
+        or: (expressions: unknown[]) => ['or', ...expressions],
+      }
+    );
     const query = {
       where(...args: unknown[]) {
-        predicates.push(args);
+        const expression = args[0];
+        predicates.push(
+          typeof expression === 'function' ? expression(expressionBuilder) : args
+        );
         return this;
       },
       orWhere(...args: unknown[]) {

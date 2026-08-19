@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createRouter } from '../router.js';
 import { NotFoundError, UnauthorizedError } from '../errors.js';
 
@@ -369,5 +369,283 @@ describe('createRouter', () => {
 
     expect(calls).toContain('route-mw');
     expect(calls).toContain('handler');
+  });
+
+  it('returns 405 with an Allow header when the path exists under another method', async () => {
+    const router = createRouter({
+      routes: [
+        { method: 'GET', path: '/users/:id', handler: async () => Response.json({}) },
+        { method: 'DELETE', path: '/users/:id', handler: async () => new Response(null, { status: 204 }) },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users/1', { method: 'POST' })
+    );
+
+    expect(res.status).toBe(405);
+    const allow = res.headers.get('Allow') ?? '';
+    expect(allow.split(', ').sort()).toEqual(['DELETE', 'GET']);
+  });
+
+  it('routes 405 errors through onError while preserving the Allow header', async () => {
+    const onError = vi.fn(async (error: Error) =>
+      Response.json({ name: error.name }, { status: 405 })
+    );
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+      onError,
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users', { method: 'POST' })
+    );
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET');
+  });
+
+  it('preserves immutable onError responses when adding the Allow header', async () => {
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+      onError: async () => Response.redirect('https://example.com/method-error', 302),
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users', { method: 'POST' })
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://example.com/method-error');
+    expect(res.headers.get('Allow')).toBe('GET');
+  });
+
+  it('maps HTTP-shaped handler errors without exposing unknown exceptions', async () => {
+    const router = createRouter({
+      routes: [{
+        method: 'GET',
+        path: '/protected',
+        handler: async () => {
+          throw Object.assign(new Error('Authentication required'), {
+            isHttpError: true,
+            code: 'AUTHENTICATION_FAILED',
+            statusCode: 401,
+          });
+        },
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/protected'));
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Authentication required',
+      code: 'AUTHENTICATION_FAILED',
+    });
+  });
+
+  it('redacts arbitrary errors even when they contain HTTP-shaped metadata', async () => {
+    const router = createRouter({
+      routes: [{
+        method: 'GET',
+        path: '/upstream',
+        handler: async () => {
+          throw Object.assign(new Error('private upstream details'), {
+            code: 'UPSTREAM_FAILURE',
+            statusCode: 500,
+          });
+        },
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/upstream'));
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'Internal Server Error' });
+  });
+
+  it('still returns 404 for a genuinely unknown path', async () => {
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/nope', { method: 'POST' })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects request bodies exceeding maxBodyBytes via Content-Length', async () => {
+    const router = createRouter({
+      maxBodyBytes: 10,
+      routes: [
+        {
+          method: 'POST',
+          path: '/echo',
+          handler: async (_req, ctx) => Response.json(await ctx.json()),
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/echo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: 'this is definitely more than ten bytes' }),
+      })
+    );
+
+    expect(res.status).toBe(413);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    'rejects invalid maxBodyBytes configuration: %s',
+    (maxBodyBytes) => {
+      expect(() => createRouter({ maxBodyBytes, routes: [] })).toThrow(
+        'maxBodyBytes must be a non-negative integer'
+      );
+    }
+  );
+
+  it('preserves Request.json rejection semantics for an empty bounded body', async () => {
+    const onError = vi.fn(async () => Response.json({ invalid: true }, { status: 400 }));
+    const router = createRouter({
+      maxBodyBytes: 1024,
+      onError,
+      routes: [{
+        method: 'POST',
+        path: '/json',
+        handler: async (_request, ctx) => Response.json(await ctx.json()),
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/json', { method: 'POST' }));
+
+    expect(res.status).toBe(400);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('accepts request bodies within maxBodyBytes', async () => {
+    const router = createRouter({
+      maxBodyBytes: 1024,
+      routes: [
+        {
+          method: 'POST',
+          path: '/echo',
+          handler: async (_req, ctx) => Response.json(await ctx.json()),
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/echo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ok: true }),
+      })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('cancels a streaming body as soon as maxBodyBytes is exceeded', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"value":"too large"}'));
+      },
+      cancel,
+    });
+    const router = createRouter({
+      maxBodyBytes: 10,
+      routes: [
+        {
+          method: 'POST',
+          path: '/echo',
+          handler: async (_req, ctx) => Response.json(await ctx.json()),
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/echo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' })
+    );
+
+    expect(res.status).toBe(413);
+    expect(cancel).toHaveBeenCalledWith('PAYLOAD_TOO_LARGE');
+  });
+
+  it('enforces maxBodyBytes for streamed multipart form data', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            '--boundary\r\nContent-Disposition: form-data; name="value"\r\n\r\ntoo large\r\n'
+          )
+        );
+      },
+      cancel,
+    });
+    const router = createRouter({
+      maxBodyBytes: 16,
+      routes: [
+        {
+          method: 'POST',
+          path: '/form',
+          handler: async (_req, ctx) => {
+            const form = await ctx.formData();
+            return Response.json({ value: form.get('value') });
+          },
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/form', {
+        method: 'POST',
+        headers: { 'content-type': 'multipart/form-data; boundary=boundary' },
+        body,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' })
+    );
+
+    expect(res.status).toBe(413);
+    expect(cancel).toHaveBeenCalledWith('PAYLOAD_TOO_LARGE');
+  });
+
+  it('preserves binary multipart fields while enforcing maxBodyBytes', async () => {
+    const form = new FormData();
+    form.set('note', 'hello');
+    form.set('file', new Blob([new Uint8Array([0, 255, 1, 128])]), 'bytes.bin');
+    const router = createRouter({
+      maxBodyBytes: 4096,
+      routes: [
+        {
+          method: 'POST',
+          path: '/form',
+          handler: async (_req, ctx) => {
+            const parsed = await ctx.formData();
+            const file = parsed.get('file');
+            return Response.json({
+              note: parsed.get('note'),
+              bytes: file instanceof Blob ? [...new Uint8Array(await file.arrayBuffer())] : null,
+            });
+          },
+        },
+      ],
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/form', { method: 'POST', body: form })
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ note: 'hello', bytes: [0, 255, 1, 128] });
   });
 });

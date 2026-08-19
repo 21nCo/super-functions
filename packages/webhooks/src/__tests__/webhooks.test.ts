@@ -1,11 +1,24 @@
 import { createHmac } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   deliverWebhook,
   signWebhookPayload,
   verifyStandardWebhookSignature,
   verifyWebhookSignature
 } from '../index.js';
+
+const { undiciFetchMock } = vi.hoisted(() => ({ undiciFetchMock: vi.fn() }));
+
+vi.mock('undici', async () => {
+  const actual = await vi.importActual<typeof import('undici')>('undici');
+  return { ...actual, fetch: undiciFetchMock };
+});
+
+const resolvePublicHostname = async () => ['93.184.216.34'] as const;
+
+beforeEach(() => {
+  undiciFetchMock.mockReset();
+});
 
 describe('webhooks package exports', () => {
   it('signs and verifies webhook payload using timing-safe verification path', () => {
@@ -91,7 +104,7 @@ describe('webhooks package exports', () => {
 
   it('delivers payload with bounded retries and returns structured attempts', async () => {
     let attempt = 0;
-    const fetchMock = vi.fn().mockImplementation(async () => {
+    const fetchMock = undiciFetchMock.mockImplementation(async () => {
       attempt += 1;
       if (attempt < 3) {
         return { ok: false, status: 500 };
@@ -108,7 +121,7 @@ describe('webhooks package exports', () => {
         signatureHeader: 'X-Test-Signature',
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
         maxDelayMs: 2,
@@ -141,7 +154,7 @@ describe('webhooks package exports', () => {
   });
 
   it('does not retry non-transient HTTP failures', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: false, status: 400 }));
+    const fetchMock = undiciFetchMock.mockImplementation(async () => ({ ok: false, status: 400 }));
 
     const result = await deliverWebhook(
       {
@@ -149,7 +162,7 @@ describe('webhooks package exports', () => {
         payload: { hello: 'world' },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 3,
         initialDelayMs: 1,
       }
@@ -161,7 +174,7 @@ describe('webhooks package exports', () => {
   });
 
   it('aborts a hanging attempt using the configured per-attempt timeout', async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    undiciFetchMock.mockImplementation((_url: string, init?: RequestInit) => {
       return new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
           reject(new DOMException('The operation was aborted.', 'AbortError'));
@@ -175,7 +188,7 @@ describe('webhooks package exports', () => {
         payload: { hello: 'world' },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
         maxRetries: 1,
         perAttemptTimeoutMs: 5,
       }
@@ -189,8 +202,37 @@ describe('webhooks package exports', () => {
     });
   });
 
+  it('bounds hostname validation with the configured per-attempt timeout', async () => {
+    const resolver = vi.fn((_hostname: string, signal: AbortSignal) =>
+      new Promise<readonly string[]>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      })
+    );
+
+    const result = await deliverWebhook(
+      {
+        url: 'https://stalled.example.com/hook',
+        payload: { hello: 'world' },
+      },
+      {
+        resolveHostname: resolver,
+        maxRetries: 1,
+        perAttemptTimeoutMs: 5,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]).toMatchObject({
+      attempt: 1,
+      ok: false,
+      error: 'Webhook target validation timed out after 5ms',
+    });
+    expect(undiciFetchMock).not.toHaveBeenCalled();
+    expect(resolver.mock.calls[0]?.[1].aborted).toBe(true);
+  });
+
   it('canonicalizes content-type and signature headers before delivery', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -212,7 +254,7 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -228,7 +270,7 @@ describe('webhooks package exports', () => {
   });
 
   it('prefers the latest content-type variant when canonicalizing headers', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -246,7 +288,7 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -255,7 +297,7 @@ describe('webhooks package exports', () => {
   });
 
   it('forces application/json when caller supplies a non-json content type', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = undiciFetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -272,7 +314,7 @@ describe('webhooks package exports', () => {
         },
       },
       {
-        fetch: fetchMock as unknown as typeof globalThis.fetch,
+        resolveHostname: resolvePublicHostname,
       }
     );
 
@@ -351,5 +393,122 @@ describe('webhooks package exports', () => {
         signatureHeader: '   ',
       })
     ).rejects.toThrow('WEBHOOK_SIGNATURE_HEADER_INVALID');
+  });
+
+  it('refuses to deliver to non-http(s) URL schemes (SSRF guard)', async () => {
+    const fetchMock = undiciFetchMock;
+    const result = await deliverWebhook({ url: 'file:///etc/passwd', payload: { hello: 'world' } });
+
+    expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.attempts[0]?.error).toContain('scheme not allowed');
+  });
+
+  it('refuses to deliver to a malformed URL', async () => {
+    const fetchMock = undiciFetchMock;
+    const result = await deliverWebhook({ url: 'not a url', payload: { hello: 'world' } });
+
+    expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://127.0.0.1/hook',
+    'http://10.0.0.1/hook',
+    'http://169.254.169.254/latest/meta-data',
+    'http://[::1]/hook',
+    'http://[::10.0.0.5]/hook',
+    'http://[64:ff9b::10.0.0.5]/hook',
+    'http://[64:ff9b:1::a00:1]/hook',
+    'http://[fd00::1]/hook',
+    'http://[fe80::1]/hook',
+  ])('refuses to deliver to a non-public literal address: %s', async (url) => {
+    const fetchMock = undiciFetchMock;
+    const resolver = vi.fn(resolvePublicHostname);
+
+    const result = await deliverWebhook(
+      { url, payload: { hello: 'world' } },
+      {
+        resolveHostname: resolver,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('non-public address');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://localhost/hook',
+    'http://api.localhost/hook',
+    'http://foo.localhost./hook',
+  ])('refuses to deliver to a localhost-style hostname: %s', async (url) => {
+    const fetchMock = undiciFetchMock;
+    const resolver = vi.fn(resolvePublicHostname);
+
+    const result = await deliverWebhook(
+      { url, payload: { hello: 'world' } },
+      {
+        resolveHostname: resolver,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('not public');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['resolver error', async () => { throw new Error('dns unavailable'); }],
+    ['empty result', async () => []],
+  ] as const)('refuses delivery after a DNS %s', async (_label, resolveHostname) => {
+    const fetchMock = undiciFetchMock;
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      {
+        resolveHostname,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('could not be resolved');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes a pinned dispatcher to the actual webhook request', async () => {
+    const fetchMock = undiciFetchMock.mockImplementation(
+      async () => ({ ok: true, status: 200 }) as Response
+    );
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      {
+        resolveHostname: resolvePublicHostname,
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock.mock.calls[0]?.[1]).toHaveProperty('dispatcher');
+  });
+
+  it('resolves hostnames and refuses delivery when any address is non-public', async () => {
+    const fetchMock = undiciFetchMock;
+    const resolver = vi.fn(async () => ['93.184.216.34', '10.0.0.5']);
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      {
+        resolveHostname: resolver,
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('10.0.0.5');
+    expect(resolver).toHaveBeenCalledWith('hooks.example.com', expect.anything());
+    expect(resolver.mock.calls[0]?.[1].aborted).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

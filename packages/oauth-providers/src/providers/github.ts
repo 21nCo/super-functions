@@ -6,6 +6,7 @@ export const githubOAuthProviderDescriptor: OAuthProviderDescriptor = {
   authorizationUrl: "https://github.com/login/oauth/authorize",
   tokenUrl: "https://github.com/login/oauth/access_token",
   revocationUrl: "https://api.github.com/applications/{client_id}/token",
+  revocationStyle: "github",
   defaultScopes: ["read:user", "user:email"],
   supportsPkce: true,
   supportsRefreshToken: false,

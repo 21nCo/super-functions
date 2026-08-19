@@ -14,12 +14,35 @@ function normalizeQueueName(queueName: string): string {
   return normalized;
 }
 
+export interface MemoryQueueAdapterOptions {
+  /**
+   * Maximum number of items retained per queue. When reached, further
+   * `enqueue` calls reject with `FLOWFN_QUEUE_FULL` instead of growing the
+   * backing array without bound (which would leak memory until OOM if
+   * producers outpace consumers). Unset means unbounded (legacy behaviour).
+   */
+  maxSize?: number;
+}
+
 export class MemoryQueueAdapter<TPayload> implements QueueAdapter<TPayload> {
   private readonly queues = new Map<string, TPayload[]>();
+  private readonly maxSize?: number;
+
+  constructor(options: MemoryQueueAdapterOptions = {}) {
+    if (options.maxSize !== undefined) {
+      if (!Number.isInteger(options.maxSize) || options.maxSize <= 0) {
+        throw new Error('FLOWFN_QUEUE_MAX_SIZE_INVALID');
+      }
+    }
+    this.maxSize = options.maxSize;
+  }
 
   async enqueue(queueName: string, payload: TPayload): Promise<void> {
     const normalizedQueueName = normalizeQueueName(queueName);
     const queue = this.queues.get(normalizedQueueName) ?? [];
+    if (this.maxSize !== undefined && queue.length >= this.maxSize) {
+      throw new Error('FLOWFN_QUEUE_FULL');
+    }
     queue.push(payload);
     this.queues.set(normalizedQueueName, queue);
   }

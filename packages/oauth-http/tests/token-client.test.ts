@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultOAuthTokenHttpClient,
   OAuthHttpError,
@@ -18,6 +18,10 @@ const googleProvider = {
   scopeSeparator: " ",
   tokenAuthMethod: "client_secret_post" as const
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("oauth-http token client", () => {
   it("serializes token exchange as form-encoded for client_secret_post", async () => {
@@ -381,6 +385,97 @@ describe("oauth-http token client", () => {
     expect(response.accessToken).toBe("at_after_retry");
   });
 
+  it("does not replay an authorization-code exchange after response headers arrive", async () => {
+    const sleep = vi.fn(async () => undefined);
+    let calls = 0;
+    const fetcher: OAuthFetchLike = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        text: async () => {
+          throw new Error("response body disconnected");
+        }
+      };
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher, sleep });
+    await expect(client.exchangeToken({
+        provider: googleProvider,
+        grantType: "authorization_code",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        code: "code-body-failure",
+        redirectUri: "https://app/callback"
+      })).rejects.toMatchObject({
+        code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+        retryable: false,
+        details: {
+          transportFailure: true,
+          responseBodyFailure: true
+        }
+      });
+
+    expect(calls).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("classifies a refresh response-body failure without replaying the request", async () => {
+    const sleep = vi.fn(async () => undefined);
+    let calls = 0;
+    const fetcher: OAuthFetchLike = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        text: async () => {
+          throw new Error("response body disconnected");
+        }
+      };
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher, sleep });
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType: "refresh_token",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-body-failure"
+    })).rejects.toMatchObject({
+      code: "OAUTH_TOKEN_REFRESH_FAILED",
+      retryable: false,
+      details: {
+        transportFailure: true,
+        responseBodyFailure: true
+      }
+    });
+
+    expect(calls).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("preserves prototype-backed fields when a custom fetcher returns Response", async () => {
+    const client = new DefaultOAuthTokenHttpClient({
+      fetcher: async () => new Response(
+        JSON.stringify({ access_token: "at_native", token_type: "bearer" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    });
+
+    const response = await client.exchangeToken({
+      provider: googleProvider,
+      grantType: "authorization_code",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code-native-response",
+      redirectUri: "https://app/callback"
+    });
+
+    expect(response.accessToken).toBe("at_native");
+  });
+
   it("wraps exhausted fetch exceptions in OAuthHttpError after retry attempts are spent", async () => {
     const sleep = vi.fn(async () => undefined);
     const client = new DefaultOAuthTokenHttpClient({
@@ -461,6 +556,95 @@ describe("oauth-http token client", () => {
       code: "OAUTH_TOKEN_REFRESH_FAILED",
       message: "refresh token expired"
     });
+  });
+
+  it.each([
+    ["authorization_code", "OAUTH_TOKEN_EXCHANGE_FAILED"],
+    ["refresh_token", "OAUTH_TOKEN_REFRESH_FAILED"],
+  ] as const)("rejects negative expires_in values for %s", async (grantType, code) => {
+    const client = new DefaultOAuthTokenHttpClient({
+      fetcher: async () => createResponse({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ access_token: "at_invalid", expires_in: -1 })
+      })
+    });
+
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      ...(grantType === "authorization_code"
+        ? { code: "code-invalid", redirectUri: "https://app/callback" }
+        : { refreshToken: "rt_invalid" })
+    })).rejects.toMatchObject({
+      code,
+      status: 502,
+      details: { invalidField: "expires_in" }
+    });
+  });
+
+  it("keeps the timeout active while consuming the provider response body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: () => new Promise<string>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      })
+    })));
+    const client = new DefaultOAuthTokenHttpClient({
+      timeoutMs: 5,
+      retryPolicy: {
+        maxAttempts: 1,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        jitterRatio: 0,
+        random: () => 0
+      }
+    });
+
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType: "authorization_code",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code-timeout",
+      redirectUri: "https://app/callback"
+    })).rejects.toMatchObject({ status: 504, retryable: false });
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+    "rejects invalid default-fetch timeout configuration: %s",
+    (timeoutMs) => {
+      expect(() => new DefaultOAuthTokenHttpClient({ timeoutMs })).toThrow(
+        expect.objectContaining({ code: "VALIDATION_ERROR", status: 400 })
+      );
+    }
+  );
+
+  it("does not wait for a successful revocation response body", async () => {
+    const cancel = vi.fn(async () => undefined);
+    const text = vi.fn(() => new Promise<string>(() => undefined));
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: { cancel },
+      text,
+    })));
+    const client = new DefaultOAuthTokenHttpClient({ timeoutMs: 50 });
+
+    await client.revokeToken({
+      provider: googleProvider,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      token: "token-to-revoke",
+    });
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(text).not.toHaveBeenCalled();
   });
 
   it("calls provider revocation endpoint when supported", async () => {
@@ -629,6 +813,71 @@ describe("oauth-http token client", () => {
     });
     expect(deleteLocalTokenRecord).toHaveBeenCalledTimes(1);
     expect(deleteConnectionRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it("revokes RFC 7009 tokens via form-encoded POST", async () => {
+    let capturedUrl: string | null = null;
+    let capturedInit: RequestInitLike | null = null;
+    const fetcher: OAuthFetchLike = async (url, init) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return createResponse({ status: 200, contentType: "application/json", body: "{}" });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher });
+    await client.revokeToken({
+      provider: googleProvider,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      token: "tok_123",
+      tokenTypeHint: "access_token"
+    });
+
+    expect(capturedUrl).toBe("https://oauth2.googleapis.com/revoke");
+    expect(capturedInit?.method).toBe("POST");
+    expect(capturedInit?.headers["content-type"]).toBe("application/x-www-form-urlencoded");
+    const params = new URLSearchParams(capturedInit?.body);
+    expect(params.get("token")).toBe("tok_123");
+    expect(params.get("token_type_hint")).toBe("access_token");
+  });
+
+  it("revokes GitHub tokens via DELETE with a JSON body, Basic auth and substituted client_id", async () => {
+    const githubProvider = {
+      id: "github",
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      revocationUrl: "https://api.github.com/applications/{client_id}/token",
+      revocationStyle: "github" as const,
+      defaultScopes: ["read:user"],
+      supportsPkce: true,
+      supportsRefreshToken: false,
+      scopeSeparator: " " as const,
+      tokenAuthMethod: "client_secret_post" as const
+    };
+
+    let capturedUrl: string | null = null;
+    let capturedInit: RequestInitLike | null = null;
+    const fetcher: OAuthFetchLike = async (url, init) => {
+      capturedUrl = url;
+      capturedInit = init;
+      return createResponse({ status: 204, contentType: "application/json", body: "" });
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher });
+    await client.revokeToken({
+      provider: githubProvider,
+      clientId: "Iv1.abc+123",
+      clientSecret: "gh-secret/=value%",
+      token: "gho_token"
+    });
+
+    expect(capturedUrl).toBe("https://api.github.com/applications/Iv1.abc%2B123/token");
+    expect(capturedInit?.method).toBe("DELETE");
+    expect(capturedInit?.headers["content-type"]).toBe("application/json");
+    expect(capturedInit?.headers["accept"]).toBe("application/vnd.github+json");
+    const expectedAuth = Buffer.from("Iv1.abc+123:gh-secret/=value%", "utf8").toString("base64");
+    expect(capturedInit?.headers["authorization"]).toBe(`Basic ${expectedAuth}`);
+    expect(JSON.parse(capturedInit?.body ?? "{}")).toEqual({ access_token: "gho_token" });
   });
 });
 
