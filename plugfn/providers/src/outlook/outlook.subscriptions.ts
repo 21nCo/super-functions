@@ -21,6 +21,7 @@ export interface OutlookSubscriptionState {
 
 export interface OutlookSubscriptionStore {
   get(connectionId: string): Promise<OutlookSubscriptionState | null>;
+  getBySubscriptionId(subscriptionId: string): Promise<OutlookSubscriptionState | null>;
   set(connectionId: string, state: OutlookSubscriptionState): Promise<void>;
 }
 
@@ -87,6 +88,7 @@ export interface HandleOutlookSubscriptionNotificationDependencies {
 export interface OutlookSubscriptionNotification {
   subscriptionId: string;
   resource: string;
+  clientState?: string;
 }
 
 export class OutlookSubscriptionError extends Error {
@@ -244,6 +246,7 @@ export function parseOutlookSubscriptionNotifications(
     notifications.push({
       subscriptionId,
       resource,
+      clientState: asString(asRecord.clientState),
     });
   }
 
@@ -275,6 +278,10 @@ export class MemoryOutlookSubscriptionStore implements OutlookSubscriptionStore 
 
   async get(connectionId: string): Promise<OutlookSubscriptionState | null> {
     return this.states.get(connectionId) ?? null;
+  }
+
+  async getBySubscriptionId(subscriptionId: string): Promise<OutlookSubscriptionState | null> {
+    return [...this.states.values()].find((state) => state.subscriptionId === subscriptionId) ?? null;
   }
 
   async set(connectionId: string, state: OutlookSubscriptionState): Promise<void> {

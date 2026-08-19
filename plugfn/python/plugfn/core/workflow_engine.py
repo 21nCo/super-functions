@@ -22,6 +22,16 @@ class _TriggerActivation:
     def __init__(self) -> None:
         self.ready = asyncio.Event()
         self.error: Optional[BaseException] = None
+        self.reconcile: Optional[Callable[[], Awaitable[None]]] = None
+        self._reconcile_lock = asyncio.Lock()
+
+    async def reconcile_if_needed(self) -> None:
+        """Retry an outcome-unknown durable-state read on webhook invocation."""
+        if self.ready.is_set() or self.reconcile is None:
+            return
+        async with self._reconcile_lock:
+            if not self.ready.is_set() and self.reconcile is not None:
+                await self.reconcile()
 
 
 class WorkflowEngine:
@@ -152,10 +162,26 @@ class WorkflowEngine:
             try:
                 persisted = await asyncio.shield(self.get_workflow(workflow_id))
             except BaseException as reconciliation_error:
-                # The durable outcome is unknown. Preserve the gated binding
-                # and let each invocation re-check workflow state rather than
-                # deleting a trigger that may already be committed as enabled.
-                activation.ready.set()
+                # The durable outcome is unknown. Keep the binding gated and
+                # retry reconciliation on subsequent webhook invocations.
+                activation_error = error
+
+                async def reconcile_activation() -> None:
+                    persisted_retry = await self.get_workflow(workflow_id)
+                    if (
+                        persisted_retry is not None
+                        and persisted_retry.status == WorkflowStatus.ENABLED
+                    ):
+                        activation.ready.set()
+                        return
+
+                    activation.error = activation_error
+                    activation.ready.set()
+                    self._unregister_trigger(workflow, required=False)
+                    if previous_binding is not None:
+                        self._restore_trigger_binding(workflow.id, previous_binding)
+
+                activation.reconcile = reconcile_activation
                 self.logger.error(
                     f"Failed to reconcile enabled workflow: {workflow_id}",
                     {"error": str(reconciliation_error)},
@@ -236,6 +262,7 @@ class WorkflowEngine:
 
         async def handler(payload: Dict[str, Any]) -> Any:
             if activation is not None:
+                await activation.reconcile_if_needed()
                 await activation.ready.wait()
                 if activation.error is not None:
                     raise activation.error

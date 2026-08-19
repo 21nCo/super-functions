@@ -5,6 +5,7 @@ import type { Adapter as DbAdapter, KVStoreAdapter } from '@superfunctions/db';
 import type { AuthSession } from '@superfunctions/auth';
 import type { PlugFnOAuthClientConfig, PlugFnSecretResolverConfig } from './runtime.js';
 import type { Connection } from './connection.js';
+import type { WorkflowRuntimeRegistry } from './workflow.js';
 
 export type PlugFnDatabaseAdapter = DbAdapter;
 export type Adapter = PlugFnDatabaseAdapter;
@@ -127,6 +128,10 @@ export interface PlugFnConfig {
   logger?: Logger;
   webhooks?: WebhookOptions;
   authorization?: PlugFnAuthorizationOptions;
+  workflows?: {
+    /** Runtime functions resolved by serializable workflow action/condition references. */
+    runtime?: WorkflowRuntimeRegistry;
+  };
 }
 
 /**

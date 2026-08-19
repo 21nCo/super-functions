@@ -48,7 +48,21 @@ export interface WorkflowDefinition {
 export interface WorkflowTrigger {
   provider: string;
   event: string;
-  filter?: (context: WorkflowContext) => boolean;
+  filter?: WorkflowCondition;
+}
+
+export type WorkflowAction = (context: WorkflowContext) => Promise<any>;
+export type WorkflowCondition = string | ((context: WorkflowContext) => boolean);
+export type WorkflowErrorHandlerFn = (
+  error: Error,
+  context: WorkflowContext
+) => Promise<void>;
+
+/** Runtime implementations for serializable workflow references. */
+export interface WorkflowRuntimeRegistry {
+  actions?: Record<string, WorkflowAction>;
+  conditions?: Record<string, Exclude<WorkflowCondition, string>>;
+  errorHandlers?: Record<string, WorkflowErrorHandlerFn>;
 }
 
 /**
@@ -64,19 +78,19 @@ export type WorkflowStep =
 export interface ActionStep {
   type: 'action';
   id: string;
-  action: (context: WorkflowContext) => Promise<any>;
+  action: string | WorkflowAction;
 }
 
 export interface FilterStep {
   type: 'filter';
   id: string;
-  condition: (context: WorkflowContext) => boolean;
+  condition: WorkflowCondition;
 }
 
 export interface BranchStep {
   type: 'branch';
   id: string;
-  condition: (context: WorkflowContext) => boolean;
+  condition: WorkflowCondition;
   then: WorkflowStep[];
   else?: WorkflowStep[];
 }
@@ -84,7 +98,7 @@ export interface BranchStep {
 export interface ParallelStep {
   type: 'parallel';
   id: string;
-  actions: Array<(context: WorkflowContext) => Promise<any>>;
+  actions: Array<string | WorkflowAction>;
 }
 
 export interface DelayStep {
@@ -115,7 +129,7 @@ export interface WorkflowContext {
  */
 export interface WorkflowErrorHandler {
   stepId?: string;
-  handler: (error: Error, context: WorkflowContext) => Promise<void>;
+  handler: string | WorkflowErrorHandlerFn;
 }
 
 /**
@@ -153,4 +167,3 @@ export interface ListWorkflowsOptions {
   status?: WorkflowStatus;
   provider?: string;
 }
-

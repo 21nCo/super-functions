@@ -1,4 +1,4 @@
-import type { Workflow, WorkflowContext } from '../types/workflow.js';
+import type { Workflow, WorkflowContext, WorkflowRuntimeRegistry } from '../types/workflow.js';
 import type { Provider } from '../types/provider.js';
 
 /**
@@ -12,6 +12,7 @@ export interface WorkflowTestOptions {
   };
   mocks?: Record<string, Provider>;
   timeout?: number;
+  runtime?: WorkflowRuntimeRegistry;
 }
 
 /**
@@ -53,7 +54,14 @@ export async function testWorkflow(
 
     // Check filter
     if (workflow.definition.trigger.filter) {
-      const shouldRun = workflow.definition.trigger.filter(context);
+      const filter = workflow.definition.trigger.filter;
+      const condition = typeof filter === 'function'
+        ? filter
+        : options.runtime?.conditions?.[filter];
+      if (!condition) {
+        throw new Error(`Workflow condition reference ${String(filter)} is not registered`);
+      }
+      const shouldRun = condition(context);
       if (!shouldRun) {
         return {
           success: true,
@@ -69,7 +77,7 @@ export async function testWorkflow(
       const stepStartTime = Date.now();
       
       try {
-        await executeTestStep(step, context);
+        await executeTestStep(step, context, options.runtime);
         
         steps.push({
           id: step.id,
@@ -107,33 +115,55 @@ export async function testWorkflow(
 /**
  * Execute a workflow step in test mode
  */
-async function executeTestStep(step: any, context: WorkflowContext): Promise<void> {
+async function executeTestStep(
+  step: any,
+  context: WorkflowContext,
+  runtime?: WorkflowRuntimeRegistry
+): Promise<void> {
   switch (step.type) {
-    case 'action':
-      const result = await step.action(context);
+    case 'action': {
+      const action = typeof step.action === 'function' ? step.action : runtime?.actions?.[step.action];
+      if (!action) throw new Error(`Workflow action reference ${String(step.action)} is not registered`);
+      const result = await action(context);
       Object.assign(context.data, result);
       break;
+    }
 
-    case 'filter':
-      const shouldContinue = step.condition(context);
+    case 'filter': {
+      const condition = typeof step.condition === 'function'
+        ? step.condition
+        : runtime?.conditions?.[step.condition];
+      if (!condition) throw new Error(`Workflow condition reference ${String(step.condition)} is not registered`);
+      const shouldContinue = condition(context);
       if (!shouldContinue) {
         throw new Error('Filter condition not met');
       }
       break;
+    }
 
-    case 'branch':
-      const condition = step.condition(context);
-      const branch = condition ? step.then : step.else;
+    case 'branch': {
+      const condition = typeof step.condition === 'function'
+        ? step.condition
+        : runtime?.conditions?.[step.condition];
+      if (!condition) throw new Error(`Workflow condition reference ${String(step.condition)} is not registered`);
+      const branch = condition(context) ? step.then : step.else;
       if (branch) {
         for (const branchStep of branch) {
-          await executeTestStep(branchStep, context);
+          await executeTestStep(branchStep, context, runtime);
         }
       }
       break;
+    }
 
-    case 'parallel':
-      await Promise.all(step.actions.map((action: any) => action(context)));
+    case 'parallel': {
+      const actions = step.actions.map((action: any) => {
+        const resolved = typeof action === 'function' ? action : runtime?.actions?.[action];
+        if (!resolved) throw new Error(`Workflow action reference ${String(action)} is not registered`);
+        return resolved;
+      });
+      await Promise.all(actions.map((action: any) => action(context)));
       break;
+    }
 
     case 'delay':
       // In test mode, skip actual delays
@@ -166,4 +196,3 @@ export function assertWorkflowError(result: WorkflowTestResult, expectedMessage?
     );
   }
 }
-

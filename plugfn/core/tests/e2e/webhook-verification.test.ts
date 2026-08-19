@@ -6,7 +6,7 @@ import { githubProvider } from '../../../providers/src/github/index.js';
 import { linearProvider } from '../../../providers/src/linear/index.js';
 import { slackProvider } from '../../../providers/src/slack/index.js';
 import { stripeProvider } from '../../../providers/src/stripe/index.js';
-import { outlookProvider } from '../../../providers/src/outlook/index.js';
+import { outlookProvider, outlookSubscriptionStore } from '../../../providers/src/outlook/index.js';
 import { gmailProvider } from '../../../providers/src/gmail/index.js';
 import { MemoryAdapter } from '../../src/storage/adapters/memory.js';
 
@@ -42,6 +42,14 @@ describe('PlugFn webhook verification e2e', () => {
   });
 
   it('parses raw Outlook payloads before clientState verification', async () => {
+    await outlookSubscriptionStore.set('connection-sub-1', {
+      connectionId: 'connection-sub-1', subscriptionId: 'sub-1',
+      resource: "/me/mailFolders('Inbox')/messages",
+      notificationUrl: 'https://app.example.com/webhooks/outlook',
+      expirationDateTime: '2026-08-20T00:00:00.000Z',
+      clientState: 'expected-client-state', policyVersion: '2026-08-19',
+      createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
+    });
     const plug = createPlug();
     const handler = vi.fn();
     plug.providers.register(outlookProvider);
@@ -593,6 +601,7 @@ describe('PlugFn webhook verification e2e', () => {
     const gmailRetryBody = JSON.stringify({
       ...JSON.parse(gmailBody),
       deliveryAttempt: 2,
+      message: { ...JSON.parse(gmailBody).message, deliveryAttempt: 2 },
     });
     const gmailChangedMessageBody = JSON.stringify({
       ...JSON.parse(gmailBody),

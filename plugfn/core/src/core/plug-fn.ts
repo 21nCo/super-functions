@@ -346,7 +346,12 @@ export function plugFn(config: PlugFnConfig): PlugFn {
     verifySignatures: config.webhooks?.verifySignatures,
   });
 
-  const workflowEngine = new WorkflowEngine(workflowStorage, webhookHandler, logger);
+  const workflowEngine = new WorkflowEngine(
+    workflowStorage,
+    webhookHandler,
+    logger,
+    config.workflows?.runtime
+  );
   let readyAttempt: Promise<void> | undefined;
   const ensureReady = (): Promise<void> => {
     if (!readyAttempt) {
@@ -615,7 +620,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
 
     for (const job of queued) {
       try {
-        const processedJob = await executeSyncJob(job, { claimed: true });
+        const processedJob = await executeSyncJob(job, { claimed: true, leaseMs });
         if (processedJob.status === 'completed') {
           completed += 1;
         } else if (processedJob.status === 'cancelled') {
@@ -645,16 +650,34 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   }
 
   async function executeQueuedSyncJob(job: PlugFnSyncJob): Promise<PlugFnSyncJob> {
-    return executeSyncJob(job, { claimed: false });
+    return executeSyncJob(job, { claimed: false, leaseMs: 5 * 60 * 1000 });
   }
 
   async function executeSyncJob(
     job: PlugFnSyncJob,
-    options: { claimed: boolean }
+    options: { claimed: boolean; leaseMs: number }
   ): Promise<PlugFnSyncJob> {
+    let claimToken = job.claimToken;
     if (!options.claimed) {
-      await runtimeStorage.updateSyncJob(job.id, { status: 'running' });
+      claimToken = `direct:${job.id}:${Date.now()}`;
+      job = await runtimeStorage.updateSyncJob(job.id, { status: 'running', claimToken });
     }
+    if (!claimToken) throw syncJobClaimLostError(job.id);
+
+    let heartbeatError: unknown;
+    let heartbeatInFlight = false;
+    const renewClaim = async (): Promise<void> => {
+      if (heartbeatInFlight || heartbeatError) return;
+      heartbeatInFlight = true;
+      try {
+        if (!(await runtimeStorage.updateClaimedSyncJob(job.id, claimToken!, {}))) {
+          heartbeatError = syncJobClaimLostError(job.id);
+        }
+      } catch (error) { heartbeatError = error; }
+      finally { heartbeatInFlight = false; }
+    };
+    const heartbeatTimer = setInterval(() => { void renewClaim(); }, Math.max(10, Math.floor(options.leaseMs / 3)));
+    heartbeatTimer.unref?.();
 
     try {
       const connection = await connectionManager.get(job.connectionId);
@@ -686,28 +709,37 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         checkpoint: job.checkpoint,
         maxPages: workerOptions.maxPages ?? 50,
         shouldContinue: async () => {
+          if (heartbeatError) throw heartbeatError;
           const currentJob = await runtimeStorage.getSyncJob(job.id);
-          return currentJob?.status !== 'cancelled';
+          if (currentJob?.status === 'cancelled') return false;
+          if (currentJob?.status !== 'running' || currentJob.claimToken !== claimToken) {
+            throw syncJobClaimLostError(job.id);
+          }
+          return true;
         },
         onPage: async (progress) => {
-          await runtimeStorage.updateSyncJob(job.id, {
-            cursor: progress.cursor,
-            checkpoint: progress.checkpoint,
-            fetchedCount: progress.fetchedCount,
-            persistedCount: progress.persistedCount,
-            skippedCount: progress.skippedCount,
-          });
-          if (progress.checkpoint !== undefined) {
-            await runtimeStorage.upsertSyncCheckpoint({
-              provider: job.provider,
-              connectionId: job.connectionId,
-              resource: job.resource,
-              checkpoint: progress.checkpoint,
-            });
-          }
+          const updated = await runtimeStorage.checkpointClaimedSyncJob(
+            job.id, claimToken!, {
+              cursor: progress.cursor, checkpoint: progress.checkpoint,
+              fetchedCount: progress.fetchedCount, persistedCount: progress.persistedCount,
+              skippedCount: progress.skippedCount,
+            },
+            progress.checkpoint === undefined ? undefined : {
+              provider: job.provider, connectionId: job.connectionId,
+              resource: job.resource, checkpoint: progress.checkpoint,
+            }
+          );
+          if (!updated) throw syncJobClaimLostError(job.id);
         },
       });
 
+      clearInterval(heartbeatTimer);
+      if (heartbeatError) throw heartbeatError;
+      const completedJob = await runtimeStorage.completeSyncJob(job.id, {
+        cursor: result.cursor, checkpoint: result.checkpoint,
+        fetchedCount: result.fetchedCount, persistedCount: result.persistedCount,
+        skippedCount: result.skippedCount,
+      }, claimToken);
       if (result.checkpoint !== undefined) {
         await runtimeStorage.upsertSyncCheckpoint({
           provider: job.provider,
@@ -717,28 +749,34 @@ export function plugFn(config: PlugFnConfig): PlugFn {
         });
       }
 
-      return runtimeStorage.completeSyncJob(job.id, {
-        cursor: result.cursor,
-        checkpoint: result.checkpoint,
-        fetchedCount: result.fetchedCount,
-        persistedCount: result.persistedCount,
-        skippedCount: result.skippedCount,
-      });
+      return completedJob;
     } catch (error) {
       if (isSyncCancelledError(error)) {
-        return runtimeStorage.updateSyncJob(job.id, {
+        const cancelledJob = await runtimeStorage.updateClaimedSyncJob(job.id, claimToken, {
           status: 'cancelled',
           error: undefined,
         });
+        if (cancelledJob) return cancelledJob;
+        const currentJob = await runtimeStorage.getSyncJob(job.id);
+        if (currentJob?.status === 'cancelled') return currentJob;
+        throw syncJobClaimLostError(job.id);
+      }
+      const currentJob = await runtimeStorage.getSyncJob(job.id);
+      if (currentJob?.status === 'cancelled') return currentJob;
+      if (currentJob?.status !== 'running' || currentJob.claimToken !== claimToken) {
+        throw syncJobClaimLostError(job.id);
       }
       const failedJob = await runtimeStorage.failSyncJob(
         job.id,
-        error instanceof Error ? error.message : 'sync failed'
+        error instanceof Error ? error.message : 'sync failed',
+        claimToken
       );
       if (failedJob.status === 'cancelled') {
         return failedJob;
       }
       throw error;
+    } finally {
+      clearInterval(heartbeatTimer);
     }
   }
 
@@ -1228,11 +1266,16 @@ async function executeProviderSyncDefinition(input: {
       cursor,
     });
 
+    if (input.shouldContinue && !(await input.shouldContinue())) throw syncCancelledError();
+
     fetchedCount += result.items.length;
     checkpoint = result.checkpoint ?? checkpoint;
     cursor = result.cursor;
 
     const sinkId = input.sinkId ?? result.sinkId ?? input.syncDefinition.defaultSinkId;
+    if (sinkId && !input.persistenceSinks.has(sinkId)) {
+      throw new PlugFnRuntimeError('SYNC_SINK_NOT_FOUND', `persistence sink ${sinkId} is not registered`, 404);
+    }
     if (sinkId || input.persistenceSinks.size > 0) {
       const sink = sinkId
         ? input.persistenceSinks.get(sinkId)
@@ -1242,6 +1285,7 @@ async function executeProviderSyncDefinition(input: {
 
       if (sink) {
         for (const item of result.items) {
+          if (input.shouldContinue && !(await input.shouldContinue())) throw syncCancelledError();
           const context: PlugFnSinkContext = {
             provider: input.provider,
             resource: input.resource,
@@ -1292,6 +1336,10 @@ function syncCancelledError(): { code: string; message: string; status: number }
     message: 'sync job was cancelled',
     status: 409,
   };
+}
+
+function syncJobClaimLostError(jobId: string): PlugFnRuntimeError {
+  return new PlugFnRuntimeError('SYNC_JOB_CLAIM_LOST', `sync job ${jobId} claim is no longer owned by this worker`, 409);
 }
 
 class PlugFnRuntimeError extends Error {

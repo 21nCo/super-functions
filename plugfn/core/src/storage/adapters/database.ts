@@ -136,6 +136,7 @@ export interface PlugFnDatabaseStorageAdapter {
     leaseMs?: number
   ): Promise<PlugFnSyncJob[]>;
   updateSyncJob(id: string, updates: Partial<PlugFnSyncJob>): Promise<PlugFnSyncJob>;
+  updateClaimedSyncJob(id: string, claimToken: string, updates: Partial<PlugFnSyncJob>): Promise<PlugFnSyncJob | null>;
   upsertSyncCheckpoint(checkpoint: PlugFnSyncCheckpoint): Promise<PlugFnSyncCheckpoint>;
   getSyncCheckpoint(connectionId: string, resource: string): Promise<PlugFnSyncCheckpoint | null>;
   createProviderEvent(event: PlugFnProviderEvent): Promise<PlugFnProviderEvent>;
@@ -702,11 +703,13 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
         if (job.status === 'running') {
           where.push({ field: 'updatedAt', operator: 'lte', value: staleBefore });
         }
+        const claimToken = `${workerId}:${job.id}:${claimedAt.getTime()}`;
         const updated = await this.database.update<PlugFnSyncJob>({
           model: this.models.syncJobs,
           where,
           data: cloneRecord({
             status: 'running',
+            claimToken,
             metadata: claimMetadata(job.metadata, workerId, claimedAt),
             updatedAt: claimedAt,
           }),
@@ -728,6 +731,27 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
       where: [{ field: 'id', operator: 'eq', value: id }],
       data: cloneRecord(updates),
     });
+  }
+
+  async updateClaimedSyncJob(
+    id: string,
+    claimToken: string,
+    updates: Partial<PlugFnSyncJob>
+  ): Promise<PlugFnSyncJob | null> {
+    try {
+      return await this.database.update<PlugFnSyncJob>({
+        model: this.models.syncJobs,
+        where: [
+          { field: 'id', operator: 'eq', value: id },
+          { field: 'status', operator: 'eq', value: 'running' },
+          { field: 'claimToken', operator: 'eq', value: claimToken },
+        ],
+        data: cloneRecord(updates),
+      });
+    } catch (error) {
+      if (error instanceof NotFoundError) return null;
+      throw error;
+    }
   }
 
   async upsertSyncCheckpoint(

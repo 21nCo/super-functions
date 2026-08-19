@@ -12,6 +12,50 @@ import {
 } from '../src/types/workflow.js';
 
 describe('workflow durability semantics', () => {
+  it('resolves serializable workflow references after a storage round trip and restart', async () => {
+    const { storage, logger } = createHarness();
+    const action = async () => ({ durable: true });
+    const firstEngine = new WorkflowEngine(
+      storage,
+      new WebhookHandler(new ProviderRegistry(logger), logger),
+      logger,
+      { actions: { 'records.persist': action } }
+    );
+    const workflow = await firstEngine.create({
+      userId: 'user-1', name: 'workflow-durable-references', status: WorkflowStatus.Enabled,
+      definition: {
+        trigger: { provider: 'github', event: 'issues.opened' },
+        steps: [{ id: 'persist', type: 'action', action: 'records.persist' }],
+      },
+    });
+    storage.roundTripWorkflow(workflow.id);
+    const restarted = new WorkflowEngine(
+      storage,
+      new WebhookHandler(new ProviderRegistry(logger), logger),
+      logger,
+      { actions: { 'records.persist': action } }
+    );
+    await expect(restarted.execute(workflow.id, { id: 'event-1' })).resolves.toMatchObject({
+      status: WorkflowExecutionStatus.Completed,
+      output: { data: { durable: true } },
+    });
+  });
+
+  it('fails clearly when a persisted workflow reference is not registered', async () => {
+    const { engine } = createHarness();
+    const workflow = await engine.create({
+      userId: 'user-1', name: 'workflow-missing-reference', status: WorkflowStatus.Enabled,
+      definition: {
+        trigger: { provider: 'github', event: 'issues.opened' },
+        steps: [{ id: 'persist', type: 'action', action: 'records.missing' }],
+      },
+    });
+    await expect(engine.execute(workflow.id, { id: 'event-1' })).rejects.toMatchObject({
+      code: 'WORKFLOW_DEFINITION_INVALID',
+      details: { kind: 'action', reference: 'records.missing' },
+    });
+  });
+
   it('resumes a failed execution after restart and prevents duplicate completed execution', async () => {
     const { storage, logger } = createHarness();
     const firstEngine = new WorkflowEngine(
@@ -188,6 +232,15 @@ class InMemoryWorkflowStorage implements WorkflowStorage {
   private readonly executions = new Map<string, WorkflowExecution>();
   private workflowCounter = 0;
   private executionCounter = 0;
+
+  roundTripWorkflow(id: string): void {
+    const workflow = this.workflows.get(id);
+    if (!workflow) throw new Error(`Workflow ${id} not found`);
+    const serialized = JSON.parse(JSON.stringify(workflow)) as Workflow;
+    serialized.createdAt = new Date(String(serialized.createdAt));
+    serialized.updatedAt = new Date(String(serialized.updatedAt));
+    this.workflows.set(id, serialized);
+  }
 
   async create(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow> {
     const created: Workflow = {

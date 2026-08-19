@@ -1271,7 +1271,9 @@ function webhookPayloadForHash(provider: string, rawBody: Uint8Array): Uint8Arra
     // Pub/Sub can change deliveryAttempt and other envelope delivery metadata
     // across retries. Hash only the immutable logical message so its stable
     // messageId remains deduplicable while changed message content conflicts.
-    return JSON.stringify(sortWebhookPayload(message));
+    const logicalMessage = { ...(message as Record<string, unknown>) };
+    delete logicalMessage.deliveryAttempt;
+    return JSON.stringify(sortWebhookPayload(logicalMessage));
   } catch {
     return rawBody;
   }

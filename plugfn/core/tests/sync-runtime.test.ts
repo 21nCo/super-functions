@@ -252,6 +252,53 @@ describe('PlugFn sync runtime', () => {
     });
   });
 
+  it('heartbeats active sync claims so another worker cannot reclaim a slow job', async () => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({ database, auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', integrations: {} });
+    let releaseFetch!: () => void;
+    const fetchReleased = new Promise<void>((resolve) => { releaseFetch = resolve; });
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve; });
+    const fetch = vi.fn(async () => {
+      markFetchStarted(); await fetchReleased;
+      return { items: [], checkpoint: { page: 1 }, done: true };
+    });
+    plug.use({ ...testSyncProvider, name: 'test-sync-heartbeat',
+      sync: { records: { resource: 'records', fetch } } });
+    const now = new Date();
+    await database.createConnection({ id: 'conn_sync_heartbeat', userId: 'user_1',
+      provider: 'test-sync-heartbeat', ownerKind: 'user', ownerId: 'user_1',
+      status: ConnectionStatus.Active, credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now, createdAt: now, updatedAt: now });
+    await plug.sync.enqueue({ mode: 'full', provider: 'test-sync-heartbeat',
+      connectionId: 'conn_sync_heartbeat', resource: 'records', actor: { userId: 'user_1' } });
+    const workerA = plug.sync.processQueued({ leaseMs: 30 });
+    await fetchStarted;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const workerB = await plug.sync.processQueued({ leaseMs: 30 });
+    expect(workerB.processed).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    releaseFetch();
+    await expect(workerA).resolves.toMatchObject({ completed: 1, failed: 0 });
+  });
+
+  it('fences progress writes from a worker whose sync claim was reclaimed', async () => {
+    const database = new MemoryAdapter();
+    const now = new Date();
+    const job = await database.createSyncJob({ id: 'sync_fenced_claim', provider: 'test-sync',
+      connectionId: 'conn_sync_fenced_claim', resource: 'records', mode: 'full', status: 'queued',
+      fetchedCount: 0, persistedCount: 0, skippedCount: 0, createdAt: now, updatedAt: now });
+    const [workerA] = await database.claimQueuedSyncJobs(1, 'worker-a', 30);
+    await database.updateSyncJob(job.id, { updatedAt: new Date(Date.now() - 1_000) });
+    const [workerB] = await database.claimQueuedSyncJobs(1, 'worker-b', 30);
+    expect(workerA.claimToken).not.toBe(workerB.claimToken);
+    await expect(database.updateClaimedSyncJob(job.id, workerA.claimToken!, { fetchedCount: 1 })).resolves.toBeNull();
+    await expect(database.updateClaimedSyncJob(job.id, workerB.claimToken!, { fetchedCount: 2 }))
+      .resolves.toMatchObject({ fetchedCount: 2, claimToken: workerB.claimToken });
+  });
+
   it('rejects an explicit unknown sink before fetching or advancing checkpoints', async () => {
     const database = new MemoryAdapter();
     const plug = plugFn({
@@ -299,6 +346,31 @@ describe('PlugFn sync runtime', () => {
     await expect(
       plug.runtime.sync.getCheckpoint('conn_sync_missing_sink', 'records')
     ).resolves.toBeNull();
+  });
+
+  it.each([
+    ['provider result', { resultSinkId: 'missing-provider-sink', defaultSinkId: undefined }],
+    ['provider default', { resultSinkId: undefined, defaultSinkId: 'missing-default-sink' }],
+  ])('rejects an unknown %s sink before advancing checkpoints', async (_source, sinkConfig) => {
+    const database = new MemoryAdapter();
+    const plug = plugFn({ database, auth: { async authenticate() { return { userId: 'user_1' }; } },
+      baseUrl: 'https://app.example.com',
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', integrations: {} });
+    plug.use({ ...testSyncProvider, name: 'test-sync-resolved-missing-sink', sync: { records: {
+      resource: 'records', defaultSinkId: sinkConfig.defaultSinkId,
+      fetch: async () => ({ items: [{ id: 'r1' }], checkpoint: { page: 1 },
+        sinkId: sinkConfig.resultSinkId, done: true }),
+    } } });
+    const now = new Date();
+    await database.createConnection({ id: 'conn_sync_resolved_missing_sink', userId: 'user_1',
+      provider: 'test-sync-resolved-missing-sink', ownerKind: 'user', ownerId: 'user_1',
+      status: ConnectionStatus.Active, credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: now, createdAt: now, updatedAt: now });
+    await expect(plug.sync.backfill({ provider: 'test-sync-resolved-missing-sink',
+      connectionId: 'conn_sync_resolved_missing_sink', resource: 'records', actor: { userId: 'user_1' } }))
+      .rejects.toMatchObject({ code: 'SYNC_SINK_NOT_FOUND' });
+    await expect(plug.runtime.sync.getCheckpoint('conn_sync_resolved_missing_sink', 'records'))
+      .resolves.toBeNull();
   });
 
   it('uses custom connection authorization for enqueue and worker revalidation', async () => {

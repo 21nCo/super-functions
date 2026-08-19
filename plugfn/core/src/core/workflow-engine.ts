@@ -5,6 +5,10 @@ import type {
   WorkflowStats,
   ListWorkflowsOptions,
   WorkflowStep,
+  WorkflowAction,
+  WorkflowCondition,
+  WorkflowErrorHandlerFn,
+  WorkflowRuntimeRegistry,
 } from '../types/workflow.js';
 import { WorkflowStatus, WorkflowExecutionStatus } from '../types/workflow.js';
 import type { Logger } from '../types/action.js';
@@ -60,7 +64,8 @@ export class WorkflowEngine {
   constructor(
     private workflowStorage: WorkflowStorage,
     private webhookHandler: WebhookHandler,
-    private logger: Logger
+    private logger: Logger,
+    private runtime: WorkflowRuntimeRegistry = {}
   ) {}
 
   async create(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow> {
@@ -227,7 +232,10 @@ export class WorkflowEngine {
 
       try {
         if (workflow.definition.trigger.filter) {
-          const shouldRun = workflow.definition.trigger.filter(context);
+          const shouldRun = this.resolveCondition(
+            workflow.definition.trigger.filter,
+            'workflow trigger filter'
+          )(context);
           if (!shouldRun) {
             await this.workflowStorage.updateExecution(execution.id, {
               status: WorkflowExecutionStatus.Completed,
@@ -288,7 +296,10 @@ export class WorkflowEngine {
         if (workflow.definition.errorHandlers) {
           for (const errorHandler of workflow.definition.errorHandlers) {
             try {
-              await errorHandler.handler(failure.error, context);
+              await this.resolveErrorHandler(
+                errorHandler.handler,
+                `workflow error handler${errorHandler.stepId ? ` for ${errorHandler.stepId}` : ''}`
+              )(failure.error, context);
             } catch (handlerError) {
               this.logger.error('Error handler failed', { handlerError });
             }
@@ -330,13 +341,16 @@ export class WorkflowEngine {
   ): Promise<void> {
     switch (step.type) {
       case 'action': {
-        const result = await step.action(context);
+        const result = await this.resolveAction(step.action, `action step ${step.id}`)(context);
         Object.assign(context.data, result);
         break;
       }
 
       case 'filter': {
-        const shouldContinue = step.condition(context);
+        const shouldContinue = this.resolveCondition(
+          step.condition,
+          `filter step ${step.id}`
+        )(context);
         if (!shouldContinue) {
           throw new Error('Filter condition not met');
         }
@@ -378,7 +392,9 @@ export class WorkflowEngine {
     completedStepIds: string[],
     checkpointStep: (stepId: string) => Promise<void>
   ): Promise<void> {
-    const branch = step.condition(context) ? step.then : step.else;
+    const branch = this.resolveCondition(step.condition, `branch step ${step.id}`)(context)
+      ? step.then
+      : step.else;
     if (!branch) {
       return;
     }
@@ -400,7 +416,7 @@ export class WorkflowEngine {
   ): Promise<void> {
     const pendingActions = step.actions
       .map((action, index) => ({
-        action,
+        action: this.resolveAction(action, `parallel step ${step.id} action ${index}`),
         checkpointId: parallelActionCheckpointId(step.id, index),
       }))
       .filter(({ checkpointId }) => !completedStepIds.includes(checkpointId));
@@ -439,6 +455,41 @@ export class WorkflowEngine {
       default:
         return duration;
     }
+  }
+
+  private resolveAction(action: string | WorkflowAction, location: string): WorkflowAction {
+    if (typeof action === 'function') return action;
+    const resolved = this.runtime.actions?.[action];
+    if (!resolved) throw this.missingRuntimeReference('action', action, location);
+    return resolved;
+  }
+
+  private resolveCondition(
+    condition: WorkflowCondition,
+    location: string
+  ): Exclude<WorkflowCondition, string> {
+    if (typeof condition === 'function') return condition;
+    const resolved = this.runtime.conditions?.[condition];
+    if (!resolved) throw this.missingRuntimeReference('condition', condition, location);
+    return resolved;
+  }
+
+  private resolveErrorHandler(
+    handler: string | WorkflowErrorHandlerFn,
+    location: string
+  ): WorkflowErrorHandlerFn {
+    if (typeof handler === 'function') return handler;
+    const resolved = this.runtime.errorHandlers?.[handler];
+    if (!resolved) throw this.missingRuntimeReference('error handler', handler, location);
+    return resolved;
+  }
+
+  private missingRuntimeReference(kind: string, reference: string, location: string): WorkflowEngineError {
+    return new WorkflowEngineError(
+      'WORKFLOW_DEFINITION_INVALID',
+      `${location} references unregistered ${kind} ${reference}`,
+      { kind, reference, location }
+    );
   }
 
   async getStats(workflowId: string): Promise<WorkflowStats> {

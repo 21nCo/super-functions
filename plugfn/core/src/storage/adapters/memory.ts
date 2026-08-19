@@ -324,6 +324,10 @@ export class MemoryAdapter implements DbAdapter {
     return this.storage.updateSyncJob(id, updates);
   }
 
+  async updateClaimedSyncJob(id: string, claimToken: string, updates: Partial<PlugFnSyncJob>): Promise<PlugFnSyncJob | null> {
+    return this.storage.updateClaimedSyncJob(id, claimToken, updates);
+  }
+
   async upsertSyncCheckpoint(checkpoint: PlugFnSyncCheckpoint): Promise<PlugFnSyncCheckpoint> {
     return this.storage.upsertSyncCheckpoint(checkpoint);
   }

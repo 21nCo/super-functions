@@ -103,6 +103,7 @@ export interface PlugFnSyncJob {
   resource: string;
   mode: 'full' | 'incremental';
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  claimToken?: string;
   ownerKind?: PlugFnOwnerKind;
   ownerId?: string;
   cursor?: string;

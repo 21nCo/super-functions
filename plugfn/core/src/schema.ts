@@ -33,6 +33,7 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           grants: { type: 'json', required: false, fieldName: 'grants' },
           name: { type: 'string', required: false, fieldName: 'name' },
           status: { type: 'string', required: true, fieldName: 'status' },
+          claimToken: { type: 'string', required: false, fieldName: 'claim_token' },
           credentials: { type: 'json', required: true, fieldName: 'credentials' },
           scopes: { type: 'json', required: false, fieldName: 'scopes' },
           metadata: { type: 'json', required: false, fieldName: 'metadata' },

@@ -1,4 +1,4 @@
-import type { Adapter as DbAdapter } from '@superfunctions/db';
+import { NotFoundError, type Adapter as DbAdapter, type WhereClause } from '@superfunctions/db';
 import type {
   PlugFnConnectionGrant,
   PlugFnConnectionOwner,
@@ -63,6 +63,7 @@ export interface CreateSyncJobInput {
 
 export interface UpdateSyncJobProgressInput {
   status?: PlugFnSyncJob['status'];
+  claimToken?: string;
   cursor?: string;
   checkpoint?: unknown;
   fetchedCount?: number;
@@ -74,6 +75,7 @@ export interface UpdateSyncJobProgressInput {
 export class AdapterRuntimeStorage {
   private readonly adapter: PlugFnDatabaseStorageAdapter;
   private readonly webhookReceiptClaimLocks = new Map<string, Promise<void>>();
+  private readonly syncCheckpointLocks = new Map<string, Promise<void>>();
 
   constructor(adapter: DbAdapter | PlugFnDatabaseStorageAdapter) {
     this.adapter = ensurePlugFnDatabaseAdapter(adapter);
@@ -341,19 +343,88 @@ export class AdapterRuntimeStorage {
     });
   }
 
+  updateClaimedSyncJob(id: string, claimToken: string, updates: UpdateSyncJobProgressInput = {}): Promise<PlugFnSyncJob | null> {
+    return this.adapter.updateClaimedSyncJob(id, claimToken, { ...updates, updatedAt: new Date() });
+  }
+
+  checkpointClaimedSyncJob(
+    id: string,
+    claimToken: string,
+    updates: UpdateSyncJobProgressInput,
+    checkpointInput?: { provider: string; connectionId: string; resource: string; checkpoint: unknown }
+  ): Promise<PlugFnSyncJob | null> {
+    return this.withSyncCheckpointLock(id, async () => {
+      if (!this.adapter.database.capabilities.transactions.supported) {
+        const job = await this.updateClaimedSyncJob(id, claimToken, updates);
+        if (!job) return null;
+        if (checkpointInput) await this.upsertSyncCheckpoint(checkpointInput);
+        return job;
+      }
+      return this.adapter.database.transaction(async (transaction) => {
+        let job: PlugFnSyncJob;
+        try {
+          job = await transaction.update<PlugFnSyncJob>({
+            model: this.adapter.models.syncJobs,
+            where: [
+              { field: 'id', operator: 'eq', value: id },
+              { field: 'status', operator: 'eq', value: 'running' },
+              { field: 'claimToken', operator: 'eq', value: claimToken },
+            ],
+            data: { ...updates, updatedAt: new Date() },
+          });
+        } catch (error) {
+          if (error instanceof NotFoundError) return null;
+          throw error;
+        }
+        if (checkpointInput) {
+          const now = new Date();
+          await transaction.upsert<PlugFnSyncCheckpoint>({
+            model: this.adapter.models.syncCheckpoints,
+            where: [
+              { field: 'connectionId', operator: 'eq', value: checkpointInput.connectionId },
+              { field: 'resource', operator: 'eq', value: checkpointInput.resource },
+            ],
+            create: { id: checkpointId(checkpointInput.connectionId, checkpointInput.resource), ...checkpointInput, updatedAt: now },
+            update: { provider: checkpointInput.provider, checkpoint: checkpointInput.checkpoint, updatedAt: now },
+            conflictTarget: ['connectionId', 'resource'],
+          });
+        }
+        return job;
+      });
+    });
+  }
+
+  private async withSyncCheckpointLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.syncCheckpointLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.catch(() => {}).then(() => current);
+    this.syncCheckpointLocks.set(key, queued);
+    await previous.catch(() => {});
+    try { return await work(); }
+    finally {
+      release();
+      if (this.syncCheckpointLocks.get(key) === queued) this.syncCheckpointLocks.delete(key);
+    }
+  }
+
   async completeSyncJob(
     id: string,
-    updates: Omit<UpdateSyncJobProgressInput, 'status' | 'error'> = {}
+    updates: Omit<UpdateSyncJobProgressInput, 'status' | 'error'> = {},
+    claimToken?: string
   ): Promise<PlugFnSyncJob> {
+    const where: WhereClause[] = [
+      { field: 'id', operator: 'eq', value: id },
+      { field: 'status', operator: 'eq', value: 'running' },
+    ];
+    if (claimToken) where.push({ field: 'claimToken', operator: 'eq', value: claimToken });
     const updated = await this.adapter.database.updateMany({
       model: this.adapter.models.syncJobs,
-      where: [
-        { field: 'id', operator: 'eq', value: id },
-        { field: 'status', operator: 'eq', value: 'running' },
-      ],
+      where,
       data: {
         ...updates,
         status: 'completed',
+        claimToken: undefined,
         updatedAt: new Date(),
       },
     });
@@ -362,6 +433,7 @@ export class AdapterRuntimeStorage {
     if (!job) {
       throw new Error(`Sync job ${id} not found after completion`);
     }
+    if (updated === 0 && claimToken) throw syncJobClaimLost(id);
     if (updated === 0 && !['completed', 'cancelled', 'failed'].includes(job.status)) {
       throw new Error(`Sync job ${id} could not transition to completed from ${job.status}`);
     }
@@ -402,15 +474,18 @@ export class AdapterRuntimeStorage {
     return job;
   }
 
-  async failSyncJob(id: string, error: string): Promise<PlugFnSyncJob> {
+  async failSyncJob(id: string, error: string, claimToken?: string): Promise<PlugFnSyncJob> {
+    const where: WhereClause[] = [
+      { field: 'id', operator: 'eq', value: id },
+      { field: 'status', operator: 'eq', value: 'running' },
+    ];
+    if (claimToken) where.push({ field: 'claimToken', operator: 'eq', value: claimToken });
     const updated = await this.adapter.database.updateMany({
       model: this.adapter.models.syncJobs,
-      where: [
-        { field: 'id', operator: 'eq', value: id },
-        { field: 'status', operator: 'eq', value: 'running' },
-      ],
+      where,
       data: {
         status: 'failed',
+        claimToken: undefined,
         error,
         updatedAt: new Date(),
       },
@@ -420,6 +495,7 @@ export class AdapterRuntimeStorage {
     if (!job) {
       throw new Error(`Sync job ${id} not found after failure`);
     }
+    if (updated === 0 && claimToken) throw syncJobClaimLost(id);
     if (updated === 0 && !['completed', 'cancelled', 'failed'].includes(job.status)) {
       throw new Error(`Sync job ${id} could not transition to failed from ${job.status}`);
     }
@@ -476,6 +552,12 @@ export class AdapterRuntimeStorage {
   listSecretRefs(filters: Record<string, unknown> = {}): Promise<PlugFnSecretRef[]> {
     return this.adapter.listSecretRefs(filters);
   }
+}
+
+function syncJobClaimLost(id: string): Error {
+  const error = new Error(`sync job ${id} claim is no longer owned by this worker`);
+  error.name = 'SyncJobClaimLostError';
+  return error;
 }
 
 function assertMatchingWebhookReceipt(

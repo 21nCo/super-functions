@@ -21,12 +21,13 @@ import {
   ensureOutlookSubscription,
   handleOutlookSubscriptionNotification,
   parseOutlookSubscriptionNotifications,
+  type OutlookSubscriptionStore,
   type OutlookSubscriptionClient,
 } from './outlook.subscriptions.js';
 
 const defaultDeltaTokenStore = new MemoryOutlookDeltaTokenStore();
 const defaultMessageStore = new MemoryOutlookMessageStore();
-const defaultSubscriptionStore = new MemoryOutlookSubscriptionStore();
+export const outlookSubscriptionStore = new MemoryOutlookSubscriptionStore();
 const defaultPolicyRegistry = createDefaultProviderPolicyRegistry();
 
 const syncParamsSchema = z.object({
@@ -226,7 +227,7 @@ export const outlookProvider: Provider = {
             featureMode: params.featureMode,
           },
           {
-            subscriptionStore: defaultSubscriptionStore,
+            subscriptionStore: outlookSubscriptionStore,
             subscriptionClient,
             policyRegistry: defaultPolicyRegistry,
           }
@@ -263,7 +264,7 @@ export const outlookProvider: Provider = {
             payload: params.payload,
           },
           {
-            subscriptionStore: defaultSubscriptionStore,
+            subscriptionStore: outlookSubscriptionStore,
             triggerDeltaSync: async ({ tenantId, userId, connectionId: syncConnectionId }) => {
               await runOutlookDeltaSync(
                 {
@@ -296,8 +297,8 @@ export const outlookProvider: Provider = {
       webhookConfig: {
         path: '/webhooks/outlook/mail-update',
         method: 'POST',
-        verifySignature: (payload, _signature, secret) =>
-          verifyOutlookClientState(payload, secret),
+        verifySignature: (payload) =>
+          verifyOutlookSubscriptionClientState(payload, outlookSubscriptionStore),
       },
       schema: z.object({
         value: z.array(z.unknown()),
@@ -339,6 +340,28 @@ export function verifyOutlookClientState(
       typeof clientState === 'string' && secureStringEqual(clientState, expectedClientState)
     );
   });
+}
+
+export async function verifyOutlookSubscriptionClientState(
+  payload: unknown,
+  subscriptionStore: OutlookSubscriptionStore
+): Promise<boolean> {
+  let notifications;
+  try {
+    notifications = parseOutlookSubscriptionNotifications(payload);
+  } catch {
+    return false;
+  }
+
+  for (const notification of notifications) {
+    const subscription = await subscriptionStore.getBySubscriptionId(notification.subscriptionId);
+    if (
+      !subscription?.clientState ||
+      !notification.clientState ||
+      !secureStringEqual(notification.clientState, subscription.clientState)
+    ) return false;
+  }
+  return true;
 }
 
 function requireConnectionId(context: ActionContext): string {
