@@ -23,6 +23,7 @@ import type { UpsertRow } from "./postgres-sql";
 import { redactSensitive } from "./internal/redaction";
 import { runWithRetry, type RetryPolicy } from "./internal/retry";
 import { retryBudgetExhaustedError, withRedactedErrorMessage } from "./internal/errors";
+import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
 
 export type PostgresRetryPolicy = RetryPolicy;
 
@@ -41,8 +42,7 @@ export interface PostgresAdapterOptions {
   retry?: PostgresRetryPolicy;
   /** Maximum documents per index batch. Default: 10000 */
   maxBatchSize?: number;
-  /** Optional structured logger for observability hooks. */
-  logger?: PostgresAdapterLogger;
+  observability?: ObservabilityInput;
   /** Construct-time defaults applied when query params are omitted. */
   defaults?: SearchDefaults;
 }
@@ -96,11 +96,16 @@ export class PostgresAdapter implements SearchAdapter {
   private readonly queryTimeoutMs: number;
   private readonly maxBatchSize: number;
   private readonly defaults: SearchDefaults;
+  private readonly logger?: PostgresAdapterLogger;
 
   constructor(private readonly options: PostgresAdapterOptions) {
+    const observability = normalizeObservability(options.observability)?.child({
+      component: "searchfn.postgres",
+    });
     this.queryTimeoutMs = options.queryTimeoutMs ?? 30_000;
     this.maxBatchSize = options.maxBatchSize ?? 10_000;
     this.defaults = options.defaults ?? {};
+    this.logger = postgresLoggerFromObservability(observability?.logger);
   }
 
   private assertNotDisposed(): void {
@@ -130,7 +135,7 @@ export class PostgresAdapter implements SearchAdapter {
         isRetryableError: isRetryable,
         exhaustedError: retryBudgetExhaustedError(),
         onRetry: ({ attempt, delayMs, reason }) => {
-          this.options.logger?.warn(
+          this.logger?.warn(
             "adapter.retry",
             redactSensitive({
               backend: "postgres",
@@ -379,4 +384,15 @@ export class PostgresAdapter implements SearchAdapter {
       this.pool = null;
     }
   }
+}
+
+function postgresLoggerFromObservability(
+  logger: ObservationLogger | undefined,
+): PostgresAdapterLogger | undefined {
+  if (!logger) return undefined;
+  return {
+    debug: (message, context) => logger.debug?.(message, context),
+    warn: (message, context) => logger.warn?.(message, context),
+    error: (message, context) => logger.error?.(message, context),
+  };
 }

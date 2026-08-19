@@ -24,7 +24,7 @@ Every document and query passes through a configurable text pipeline:
 Documents are stored in an inverted index: each unique term maps to a posting list of `(docId, termFrequency)` pairs.
 
 - **MemoryAdapter** stores postings in an in-memory `Map` keyed by `field::term`.
-- **IndexedDbAdapter** stores postings in IndexedDB object stores with LRU caches for hot term lookups.
+- **IndexedDbAdapter** owns browser persistence and stores resource-namespaced postings in one IndexedDB database with LRU caches for hot term lookups.
 
 ### BM25 Scoring
 
@@ -78,14 +78,14 @@ graph TD
     DP --> Adapters
 ```
 
-| Layer | Package | Responsibility |
-| --- | --- | --- |
-| Engine | `@searchfn/core` | Text pipeline, inverted index, BM25 scoring, fuzzy matching, stemming |
-| Contracts | `@searchfn/adapter-contracts` | Shared `SearchAdapter` contract, request/response params, and capability types |
-| Adapters | `@searchfn/adapter-memory`, `@searchfn/adapter-indexeddb`, `@searchfn/adapter-postgres`, `@searchfn/adapter-meilisearch`, `@searchfn/adapter-elasticsearch`, `@searchfn/adapter-opensearch` | Adapter implementations. Memory and IndexedDB use the built-in engine; Postgres, Meilisearch, and ES/OS delegate to external backends. |
-| Client | `@searchfn/client` | Validates inputs, applies defaults, and delegates to an adapter |
-| Server | `@searchfn/server` | Validates HTTP requests, runs authorization, delegates to an adapter, and returns canonical response envelopes |
-| Integration | `@searchfn/datafn-provider` | Maps a `SearchAdapter` into a DataFn `SearchProvider` |
+| Layer       | Package                                                                                                                                                                                     | Responsibility                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine      | `@searchfn/core`                                                                                                                                                                            | Text pipeline, inverted index, BM25 scoring, fuzzy matching, stemming, storage contracts, and posting codecs                                                               |
+| Contracts   | `@searchfn/adapter-contracts`                                                                                                                                                               | Shared `SearchAdapter` contract, request/response params, and capability types                                                                                             |
+| Adapters    | `@searchfn/adapter-memory`, `@searchfn/adapter-indexeddb`, `@searchfn/adapter-postgres`, `@searchfn/adapter-meilisearch`, `@searchfn/adapter-elasticsearch`, `@searchfn/adapter-opensearch` | Adapter implementations. The IndexedDB adapter owns browser persistence, Memory uses in-process state, and Postgres, Meilisearch, and ES/OS delegate to external backends. |
+| Client      | `@searchfn/client`                                                                                                                                                                          | Validates inputs, applies defaults, and delegates to an adapter                                                                                                            |
+| Server      | `@searchfn/server`                                                                                                                                                                          | Validates HTTP requests, runs authorization, delegates to an adapter, and returns canonical response envelopes                                                             |
+| Integration | `@searchfn/datafn-provider`                                                                                                                                                                 | Maps a `SearchAdapter` into a DataFn `SearchProvider`                                                                                                                      |
 
 ## Adapter Contract
 
@@ -106,15 +106,15 @@ interface SearchAdapter {
 }
 ```
 
-| Method | Required | Description |
-| --- | --- | --- |
+| Method       | Required | Description                                                   |
+| ------------ | -------- | ------------------------------------------------------------- |
 | `initialize` | Optional | Declare resources and their searchable fields before indexing |
-| `index` | Yes | Index a batch of documents into a resource |
-| `search` | Yes | Search a single resource, returns matching IDs |
-| `searchAll` | Optional | Search across multiple resources, returns IDs with scores |
-| `remove` | Yes | Remove documents by ID from a resource |
-| `clear` | Yes | Remove all documents from a resource |
-| `dispose` | Optional | Release resources (connections, caches, handles) |
+| `index`      | Yes      | Index a batch of documents into a resource                    |
+| `search`     | Yes      | Search a single resource, returns matching IDs                |
+| `searchAll`  | Optional | Search across multiple resources, returns IDs with scores     |
+| `remove`     | Yes      | Remove documents by ID from a resource                        |
+| `clear`      | Yes      | Remove all documents from a resource                          |
+| `dispose`    | Optional | Release resources (connections, caches, handles)              |
 
 ### Capabilities
 
@@ -130,19 +130,20 @@ interface SearchAdapterCapabilities {
 }
 ```
 
-| Capability | Description |
-| --- | --- |
-| `persistent` | Data survives process restarts (IndexedDB, Postgres, Meilisearch, Elasticsearch) |
-| `searchAll` | Adapter natively supports cross-resource search |
-| `fuzzy` | Adapter supports fuzzy/approximate matching |
-| `fieldBoosts` | Adapter supports per-field relevance boosting |
-| `maxBatchSize` | Maximum documents per `index` call |
+| Capability     | Description                                                                      |
+| -------------- | -------------------------------------------------------------------------------- |
+| `persistent`   | Data survives process restarts (IndexedDB, Postgres, Meilisearch, Elasticsearch) |
+| `searchAll`    | Adapter natively supports cross-resource search                                  |
+| `fuzzy`        | Adapter supports fuzzy/approximate matching                                      |
+| `fieldBoosts`  | Adapter supports per-field relevance boosting                                    |
+| `maxBatchSize` | Maximum documents per `index` call                                               |
 
 ## Response Envelope
 
 The server wraps all responses in a canonical envelope:
 
 **Success:**
+
 ```json
 {
   "ok": true,
@@ -151,6 +152,7 @@ The server wraps all responses in a canonical envelope:
 ```
 
 **Failure:**
+
 ```json
 {
   "ok": false,
@@ -164,14 +166,14 @@ The server wraps all responses in a canonical envelope:
 
 ### Error Codes
 
-| Code | Meaning |
-| --- | --- |
-| `DFQL_INVALID` | Malformed request or missing required fields |
-| `LIMIT_EXCEEDED` | Query, limit, or batch size exceeds configured maximums |
-| `DFQL_ABORTED` | Request was cancelled via AbortSignal |
+| Code               | Meaning                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| `DFQL_INVALID`     | Malformed request or missing required fields                |
+| `LIMIT_EXCEEDED`   | Query, limit, or batch size exceeds configured maximums     |
+| `DFQL_ABORTED`     | Request was cancelled via AbortSignal                       |
 | `DFQL_UNSUPPORTED` | Adapter does not support the requested operation or dialect |
-| `FORBIDDEN` | Authorization callback denied the request |
-| `INTERNAL` | Unexpected backend or runtime failure |
+| `FORBIDDEN`        | Authorization callback denied the request                   |
+| `INTERNAL`         | Unexpected backend or runtime failure                       |
 
 ## Data Flow
 

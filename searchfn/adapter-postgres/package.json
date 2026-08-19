@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@searchfn/adapter-contracts": "0.3.0",
+    "@superfunctions/observability": "0.0.1",
     "pg": "^8.17.2"
   },
   "devDependencies": {

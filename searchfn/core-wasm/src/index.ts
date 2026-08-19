@@ -2,16 +2,16 @@ import {
   QueryEngine,
   TsSearchCoreEngine,
   type DocumentStatsProvider,
-  type IndexedDbManager,
   type LruCache,
   type Pipeline,
+  type QueryStorage,
   type QueryScoringInput,
   type ScoredDocument,
   type SearchCoreEngine,
   type StoredPostingChunk,
   type TermCacheValue,
   type TermPosting,
-  type VectorCacheValue
+  type VectorCacheValue,
 } from "@searchfn/core";
 
 export const abiVersion = 1;
@@ -20,7 +20,7 @@ const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 
 export interface SearchCoreEngineFactoryOptions {
-  storage: IndexedDbManager;
+  storage: QueryStorage;
   termCache: LruCache<TermCacheValue>;
   vectorCache: LruCache<VectorCacheValue>;
   stats: DocumentStatsProvider;
@@ -62,7 +62,7 @@ interface RustScoreRequest {
 let wasmExportsPromise: Promise<SearchFnRustWasmExports> | null = null;
 
 export async function createSearchCoreEngine(
-  options: SearchCoreEngineFactoryOptions
+  options: SearchCoreEngineFactoryOptions,
 ): Promise<SearchCoreEngine> {
   const wasm = await loadRustWasmExports();
   const delegate = new TsSearchCoreEngine({
@@ -70,7 +70,7 @@ export async function createSearchCoreEngine(
     termCache: options.termCache,
     vectorCache: options.vectorCache,
     stats: options.stats,
-    pipeline: options.pipeline
+    pipeline: options.pipeline,
   });
   const queryEngine = new QueryEngine({
     storage: options.storage,
@@ -78,7 +78,7 @@ export async function createSearchCoreEngine(
     vectorCache: options.vectorCache,
     stats: options.stats,
     decodeChunk: (chunk) => decodeChunkWithRust(wasm, delegate, chunk),
-    scoreDocuments: (input) => scoreDocumentsWithRust(wasm, input)
+    scoreDocuments: (input) => scoreDocumentsWithRust(wasm, input),
   });
 
   return {
@@ -91,22 +91,24 @@ export async function createSearchCoreEngine(
         input.postings.map((posting) => ({
           docId: String(posting.docId),
           termFrequency: normalizeTermFrequency(posting.termFrequency),
-          metadata: posting.metadata
-        }))
+          metadata: posting.metadata,
+        })),
       ),
       encoding: "posting-bin-v1",
       docFrequency: input.postings.length,
-      inverseDocumentFrequency: undefined
+      inverseDocumentFrequency: undefined,
     }),
     decodePostings: (input) => decodeChunkWithRust(wasm, delegate, input.chunk),
     executeQuery: (input) =>
       queryEngine.execute(input.tokens, {
-        limit: input.limit
+        limit: input.limit,
       }),
     selfTest: async () => {
       const decoded = decodePostingsWithRust(
         wasm,
-        encodePostingsWithRust(wasm, [{ docId: "__searchfn_wasm_self_test__", termFrequency: 1 }])
+        encodePostingsWithRust(wasm, [
+          { docId: "__searchfn_wasm_self_test__", termFrequency: 1 },
+        ]),
       );
       assertSelfTestPostings(decoded);
 
@@ -118,24 +120,28 @@ export async function createSearchCoreEngine(
             docFrequency: 2,
             postings: [
               { docId: "doc-1", termFrequency: 2 },
-              { docId: "doc-2", termFrequency: 1, metadata: { isPrefix: true } }
-            ]
-          }
+              {
+                docId: "doc-2",
+                termFrequency: 1,
+                metadata: { isPrefix: true },
+              },
+            ],
+          },
         ],
         documentLengths: new Map([
           ["doc-1", 4],
-          ["doc-2", 4]
+          ["doc-2", 4],
         ]),
         averageDocLength: 4,
         options: {
           k1: 1.2,
           b: 0.75,
-          d: 0.5
+          d: 0.5,
         },
-        limit: 2
+        limit: 2,
       });
       assertSelfTestScores(scored);
-    }
+    },
   };
 }
 
@@ -143,14 +149,15 @@ async function loadRustWasmExports(): Promise<SearchFnRustWasmExports> {
   if (!wasmExportsPromise) {
     wasmExportsPromise = (async () => {
       const bytes = await loadWasmBytes();
-      const instantiated = await WebAssembly.instantiate(bytes, {}) as
+      const instantiated = (await WebAssembly.instantiate(bytes, {})) as
         | WebAssembly.WebAssemblyInstantiatedSource
         | WebAssembly.Instance;
-      const instance: WebAssembly.Instance = "instance" in instantiated ? instantiated.instance : instantiated;
+      const instance: WebAssembly.Instance =
+        "instance" in instantiated ? instantiated.instance : instantiated;
       const exports = instance.exports as unknown as SearchFnRustWasmExports;
       if (exports.searchfn_wasm_abi_version() !== abiVersion) {
         throw new Error(
-          `SearchFn core-wasm ABI mismatch: expected ${abiVersion}, received ${exports.searchfn_wasm_abi_version()}.`
+          `SearchFn core-wasm ABI mismatch: expected ${abiVersion}, received ${exports.searchfn_wasm_abi_version()}.`,
         );
       }
       return exports;
@@ -165,7 +172,7 @@ async function loadRustWasmExports(): Promise<SearchFnRustWasmExports> {
 async function loadWasmBytes(): Promise<Uint8Array> {
   const candidates = [
     new URL("../.wasm/searchfn_core_wasm.wasm", import.meta.url),
-    new URL("./searchfn_core_wasm.wasm", import.meta.url)
+    new URL("./searchfn_core_wasm.wasm", import.meta.url),
   ];
   const failures: string[] = [];
 
@@ -177,7 +184,9 @@ async function loadWasmBytes(): Promise<Uint8Array> {
     }
   }
 
-  throw new Error(`Unable to load SearchFn core-wasm binary. ${failures.join(" ")}`);
+  throw new Error(
+    `Unable to load SearchFn core-wasm binary. ${failures.join(" ")}`,
+  );
 }
 
 async function readWasmCandidate(candidate: URL): Promise<Uint8Array> {
@@ -195,7 +204,11 @@ async function readWasmCandidate(candidate: URL): Promise<Uint8Array> {
 
 function encodePostingsWithRust(
   wasm: SearchFnRustWasmExports,
-  postings: Array<{ docId: string; termFrequency: number; metadata?: Record<string, unknown> }>
+  postings: Array<{
+    docId: string;
+    termFrequency: number;
+    metadata?: Record<string, unknown>;
+  }>,
 ): ArrayBuffer {
   const payload = TEXT_ENCODER.encode(JSON.stringify(postings));
   const success = invokeWasm(wasm, payload, wasm.searchfn_encode_postings_json);
@@ -205,8 +218,15 @@ function encodePostingsWithRust(
   return toArrayBuffer(readOutputBytes(wasm));
 }
 
-function decodePostingsWithRust(wasm: SearchFnRustWasmExports, payload: ArrayBuffer): TermPosting[] {
-  const success = invokeWasm(wasm, new Uint8Array(payload), wasm.searchfn_decode_postings_to_json);
+function decodePostingsWithRust(
+  wasm: SearchFnRustWasmExports,
+  payload: ArrayBuffer,
+): TermPosting[] {
+  const success = invokeWasm(
+    wasm,
+    new Uint8Array(payload),
+    wasm.searchfn_decode_postings_to_json,
+  );
   if (!success) {
     throw new Error(readLastError(wasm));
   }
@@ -221,16 +241,16 @@ function decodePostingsWithRust(wasm: SearchFnRustWasmExports, payload: ArrayBuf
   return decoded.map((posting) => ({
     docId: posting.docId,
     termFrequency: normalizeTermFrequency(posting.termFrequency),
-    metadata: posting.metadata
+    metadata: posting.metadata,
   }));
 }
 
 function scoreDocumentsWithRust(
   wasm: SearchFnRustWasmExports,
-  input: QueryScoringInput
+  input: QueryScoringInput,
 ): ScoredDocument[] {
   const payload = TEXT_ENCODER.encode(
-    JSON.stringify(serializeScoringInput(input))
+    JSON.stringify(serializeScoringInput(input)),
   );
   const success = invokeWasm(wasm, payload, wasm.searchfn_score_documents_json);
   if (!success) {
@@ -238,18 +258,21 @@ function scoreDocumentsWithRust(
   }
 
   const decodedJson = TEXT_DECODER.decode(readOutputBytes(wasm));
-  const decoded = JSON.parse(decodedJson) as Array<{ docId: string; score: number }>;
+  const decoded = JSON.parse(decodedJson) as Array<{
+    docId: string;
+    score: number;
+  }>;
 
   return decoded.map((document) => ({
     docId: document.docId,
-    score: Number.isFinite(document.score) ? document.score : 0
+    score: Number.isFinite(document.score) ? document.score : 0,
   }));
 }
 
 function decodeChunkWithRust(
   wasm: SearchFnRustWasmExports,
   delegate: TsSearchCoreEngine,
-  chunk: StoredPostingChunk
+  chunk: StoredPostingChunk,
 ): TermPosting[] {
   if (chunk.encoding === "posting-bin-v1") {
     return decodePostingsWithRust(wasm, chunk.payload);
@@ -268,22 +291,25 @@ function serializeScoringInput(input: QueryScoringInput): RustScoreRequest {
       postings: chunk.postings.map((posting) => ({
         docId: String(posting.docId),
         termFrequency: normalizeScoreTermFrequency(posting.termFrequency),
-        metadata: posting.metadata
-      }))
+        metadata: posting.metadata,
+      })),
     })),
     documentLengths: Object.fromEntries(
-      Array.from(input.documentLengths.entries()).map(([docId, length]) => [String(docId), normalizeLength(length)])
+      Array.from(input.documentLengths.entries()).map(([docId, length]) => [
+        String(docId),
+        normalizeLength(length),
+      ]),
     ),
     averageDocLength: normalizeLength(input.averageDocLength),
     options: input.options,
-    limit: input.limit
+    limit: input.limit,
   };
 }
 
 function invokeWasm(
   wasm: SearchFnRustWasmExports,
   bytes: Uint8Array,
-  fn: (ptr: number, len: number) => number
+  fn: (ptr: number, len: number) => number,
 ): boolean {
   const capacity = Math.max(bytes.byteLength, 1);
   const ptr = wasm.searchfn_alloc(capacity);
@@ -308,7 +334,10 @@ function readLastError(wasm: SearchFnRustWasmExports): string {
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 }
 
 function assertSelfTestPostings(postings: TermPosting[]): void {
