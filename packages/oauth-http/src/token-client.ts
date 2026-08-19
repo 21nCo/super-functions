@@ -107,7 +107,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       });
     }
 
-    return normalizeTokenResponse(parsedBody);
+    return normalizeTokenResponse(parsedBody, input.grantType);
   }
 
   async revokeToken(input: OAuthRevocationRequest): Promise<void> {
@@ -152,15 +152,20 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       try {
         response = await this.fetcher(url, init);
       } catch (error) {
+        const timeoutError =
+          error instanceof OAuthHttpError && error.status === 504 && error.retryable;
         const decision = decideRetry(
           {
             attempt,
-            status: 503
+            status: timeoutError ? 504 : 503
           },
           this.retryPolicy
         );
 
         if (!decision.retry) {
+          if (timeoutError) {
+            throw error;
+          }
           throw new OAuthHttpError("OAuth provider request failed", {
             code: "OAUTH_TOKEN_EXCHANGE_FAILED",
             status: 502,
@@ -478,7 +483,10 @@ function parseResponseBody(rawBodyText: string, contentType: string | null): unk
   return parseFormBody(rawBodyText);
 }
 
-function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse {
+function normalizeTokenResponse(
+  parsedBody: unknown,
+  grantType: OAuthTokenGrantType
+): OAuthTokenEndpointResponse {
   if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
     throw new OAuthHttpError("OAuth token response body must be a JSON object", {
       code: "OAUTH_TOKEN_EXCHANGE_FAILED",
@@ -508,11 +516,21 @@ function normalizeTokenResponse(parsedBody: unknown): OAuthTokenEndpointResponse
     raw: payload
   };
 
-  const expiresIn = asNumber(payload.expires_in);
-  // Ignore non-positive `expires_in` values: a negative/zero lifetime would
-  // produce an already-expired token and trigger spurious refresh loops.
-  if (expiresIn !== undefined && expiresIn > 0) {
-    result.expiresIn = expiresIn;
+  if (payload.expires_in !== undefined) {
+    const expiresIn = asNumber(payload.expires_in);
+    if (expiresIn === undefined || expiresIn < 0) {
+      throw new OAuthHttpError("OAuth token response has invalid expires_in", {
+        code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
+        status: 502,
+        retryable: false,
+        details: { invalidField: "expires_in" }
+      });
+    }
+    // Preserve the established zero-lifetime behavior: some providers use
+    // zero to indicate that no useful expiry was supplied.
+    if (expiresIn > 0) {
+      result.expiresIn = expiresIn;
+    }
   }
 
   return result;
@@ -629,6 +647,7 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
       controller !== undefined ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
 
     let response: Response;
+    let rawBodyText: string;
     try {
       response = await fetcher(url, {
         method: init.method,
@@ -636,6 +655,10 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
         body: init.body,
         signal: controller?.signal
       });
+      // Consume the body while the same abort timer remains active. Fetch can
+      // resolve after headers even while an attacker-controlled provider
+      // stalls the response body indefinitely.
+      rawBodyText = await response.text();
     } catch (error) {
       if (controller?.signal.aborted) {
         throw new OAuthHttpError(`OAuth HTTP request timed out after ${timeoutMs}ms`, {
@@ -660,7 +683,7 @@ function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
           return response.headers.get(name);
         }
       },
-      text: () => response.text()
+      text: async () => rawBodyText
     };
   };
 }

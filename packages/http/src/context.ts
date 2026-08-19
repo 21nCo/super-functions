@@ -131,7 +131,7 @@ export function createRouteContext(
       if (!jsonCache) {
         jsonCache =
           maxBodyBytes !== undefined
-            ? readText().then((text) => (text.length === 0 ? undefined : JSON.parse(text)))
+            ? readText().then((text) => JSON.parse(text))
             : request.json();
       }
       return jsonCache as Promise<T>;
@@ -147,9 +147,7 @@ export function createRouteContext(
           formDataCache = readBuffer().then((bytes) => {
             // Parse from the same bounded binary buffer used by json() and
             // text(). Response.formData() preserves multipart file bytes.
-            const body = new Uint8Array(bytes.byteLength);
-            body.set(bytes);
-            return new Response(body.buffer, { headers: request.headers }).formData();
+            return new Response(bytes.buffer as ArrayBuffer, { headers: request.headers }).formData();
           });
         } else {
           formDataCache = request.formData();

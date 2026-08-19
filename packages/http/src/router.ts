@@ -35,6 +35,13 @@ export function createRouter<TContext = any>(
     maxBodyBytes,
   } = options;
 
+  if (
+    maxBodyBytes !== undefined &&
+    (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 0)
+  ) {
+    throw new RangeError('maxBodyBytes must be a non-negative integer');
+  }
+
   // Pre-compile all route patterns
   const compiledRoutes: CompiledRouteEntry<TContext>[] = routes.map((route) => {
     const fullPath = joinPaths(basePath, route.path);
@@ -101,11 +108,11 @@ export function createRouter<TContext = any>(
         const allowed = allowedMethodsForPath(path);
         if (allowed.length > 0) {
           const error = new MethodNotAllowedError(
-            `Method ${method} not allowed for ${path}`
+            `Method ${method} not allowed for ${path}`,
+            undefined,
+            allowed
           );
-          const response = error.toResponse();
-          response.headers.set('Allow', allowed.join(', '));
-          return response;
+          throw error;
         }
         throw new NotFoundError(`Route not found: ${method} ${path}`);
       }
@@ -147,7 +154,11 @@ export function createRouter<TContext = any>(
       // Handle errors
       if (onError) {
         try {
-          return await onError(error as Error, request);
+          const response = await onError(error as Error, request);
+          if (error instanceof MethodNotAllowedError && error.allowedMethods.length > 0) {
+            response.headers.set('Allow', error.allowedMethods.join(', '));
+          }
+          return response;
         } catch (handlerError) {
           // If error handler itself fails, return 500
           return Response.json(

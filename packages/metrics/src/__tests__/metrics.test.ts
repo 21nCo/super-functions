@@ -15,4 +15,13 @@ describe('metrics', () => {
     namespaced.track('event');
     expect(events).toEqual(['recfn.event']);
   });
+
+  it('swallows asynchronous telemetry failures', async () => {
+    const metrics = createMetricsEmitter(async () => {
+      throw new Error('telemetry unavailable');
+    });
+
+    expect(metrics.track('api.request')).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 });

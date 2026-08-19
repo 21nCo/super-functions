@@ -173,6 +173,9 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
        * @throws {Error} If no rows were updated
        */
       async update<T = any>({ model, where, data, select }: UpdateParams): Promise<T> {
+        if (!where || where.length === 0) {
+          throw new Error('update requires a non-empty where clause; use updateMany to update all rows');
+        }
         const m = resolveModel(model);
         const prismaWhere = buildPrismaWhere(where);
         const prismaSelect = buildPrismaSelect(select);
@@ -187,6 +190,9 @@ export function prismaAdapter(config: PrismaAdapterConfig): Adapter {
       },
 
       async delete({ model, where }: DeleteParams): Promise<void> {
+        if (!where || where.length === 0) {
+          throw new Error('delete requires a non-empty where clause; use deleteMany to delete all rows');
+        }
         const m = resolveModel(model);
         const prismaWhere = buildPrismaWhere(where);
         // Use deleteMany to support complex where clauses

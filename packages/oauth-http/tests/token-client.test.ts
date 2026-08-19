@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DefaultOAuthTokenHttpClient,
   OAuthHttpError,
@@ -18,6 +18,10 @@ const googleProvider = {
   scopeSeparator: " ",
   tokenAuthMethod: "client_secret_post" as const
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("oauth-http token client", () => {
   it("serializes token exchange as form-encoded for client_secret_post", async () => {
@@ -461,6 +465,63 @@ describe("oauth-http token client", () => {
       code: "OAUTH_TOKEN_REFRESH_FAILED",
       message: "refresh token expired"
     });
+  });
+
+  it.each([
+    ["authorization_code", "OAUTH_TOKEN_EXCHANGE_FAILED"],
+    ["refresh_token", "OAUTH_TOKEN_REFRESH_FAILED"],
+  ] as const)("rejects negative expires_in values for %s", async (grantType, code) => {
+    const client = new DefaultOAuthTokenHttpClient({
+      fetcher: async () => createResponse({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ access_token: "at_invalid", expires_in: -1 })
+      })
+    });
+
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType,
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      ...(grantType === "authorization_code"
+        ? { code: "code-invalid", redirectUri: "https://app/callback" }
+        : { refreshToken: "rt_invalid" })
+    })).rejects.toMatchObject({
+      code,
+      status: 502,
+      details: { invalidField: "expires_in" }
+    });
+  });
+
+  it("keeps the timeout active while consuming the provider response body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: () => new Promise<string>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      })
+    })));
+    const client = new DefaultOAuthTokenHttpClient({
+      timeoutMs: 5,
+      retryPolicy: {
+        maxAttempts: 1,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        jitterRatio: 0,
+        random: () => 0
+      }
+    });
+
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType: "authorization_code",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code-timeout",
+      redirectUri: "https://app/callback"
+    })).rejects.toMatchObject({ status: 504, retryable: true });
   });
 
   it("calls provider revocation endpoint when supported", async () => {

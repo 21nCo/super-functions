@@ -389,6 +389,8 @@ describe('webhooks package exports', () => {
     'http://10.0.0.1/hook',
     'http://169.254.169.254/latest/meta-data',
     'http://[::1]/hook',
+    'http://[::10.0.0.5]/hook',
+    'http://[64:ff9b::10.0.0.5]/hook',
     'http://[fd00::1]/hook',
     'http://[fe80::1]/hook',
   ])('refuses to deliver to a non-public literal address: %s', async (url) => {
@@ -407,6 +409,53 @@ describe('webhooks package exports', () => {
     expect(result.attempts[0]?.error).toContain('non-public address');
     expect(fetchMock).not.toHaveBeenCalled();
     expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://localhost/hook',
+    'http://api.localhost/hook',
+    'http://foo.localhost./hook',
+  ])('refuses to deliver to a localhost-style hostname: %s', async (url) => {
+    const fetchMock = vi.fn();
+    const resolver = vi.fn(resolvePublicHostname);
+
+    const result = await deliverWebhook(
+      { url, payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolver }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('not public');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['resolver error', async () => { throw new Error('dns unavailable'); }],
+    ['empty result', async () => []],
+  ] as const)('refuses delivery after a DNS %s', async (_label, resolveHostname) => {
+    const fetchMock = vi.fn();
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch, resolveHostname }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.attempts[0]?.error).toContain('could not be resolved');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes a pinned dispatcher to the actual webhook request', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+
+    const result = await deliverWebhook(
+      { url: 'https://hooks.example.com/delivery', payload: { hello: 'world' } },
+      { fetch: fetchMock as unknown as typeof fetch, resolveHostname: resolvePublicHostname }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock.mock.calls[0]?.[1]).toHaveProperty('dispatcher');
   });
 
   it('resolves hostnames and refuses delivery when any address is non-public', async () => {

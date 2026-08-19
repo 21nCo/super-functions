@@ -100,7 +100,7 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
         internalStore.set(table, new Map());
       }
       const store = internalStore.get(table)!;
-      const id = (data.id as string) ?? randomUUID();
+      const id = (data.id as string) || randomUUID();
       const record = { ...data, id };
       store.set(id, record);
       return record;
@@ -186,7 +186,7 @@ function createMemoryInternalCrud(): MemoryInternalCrudState {
       const tableStore = internalStore.get(table)!;
       const results: Record<string, unknown>[] = [];
       for (const item of data) {
-        const id = (item.id as string) ?? randomUUID();
+        const id = (item.id as string) || randomUUID();
         const record = { ...item, id };
         tableStore.set(id, record);
         results.push(record);

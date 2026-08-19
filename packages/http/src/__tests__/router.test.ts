@@ -388,6 +388,24 @@ describe('createRouter', () => {
     expect(allow.split(', ').sort()).toEqual(['DELETE', 'GET']);
   });
 
+  it('routes 405 errors through onError while preserving the Allow header', async () => {
+    const onError = vi.fn(async (error: Error) =>
+      Response.json({ name: error.name }, { status: 405 })
+    );
+    const router = createRouter({
+      routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
+      onError,
+    });
+
+    const res = await router.handle(
+      new Request('http://localhost/users', { method: 'POST' })
+    );
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(res.status).toBe(405);
+    expect(res.headers.get('Allow')).toBe('GET');
+  });
+
   it('still returns 404 for a genuinely unknown path', async () => {
     const router = createRouter({
       routes: [{ method: 'GET', path: '/users', handler: async () => Response.json({}) }],
@@ -420,6 +438,33 @@ describe('createRouter', () => {
     );
 
     expect(res.status).toBe(413);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    'rejects invalid maxBodyBytes configuration: %s',
+    (maxBodyBytes) => {
+      expect(() => createRouter({ maxBodyBytes, routes: [] })).toThrow(
+        'maxBodyBytes must be a non-negative integer'
+      );
+    }
+  );
+
+  it('preserves Request.json rejection semantics for an empty bounded body', async () => {
+    const onError = vi.fn(async () => Response.json({ invalid: true }, { status: 400 }));
+    const router = createRouter({
+      maxBodyBytes: 1024,
+      onError,
+      routes: [{
+        method: 'POST',
+        path: '/json',
+        handler: async (_request, ctx) => Response.json(await ctx.json()),
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/json', { method: 'POST' }));
+
+    expect(res.status).toBe(400);
+    expect(onError).toHaveBeenCalledOnce();
   });
 
   it('accepts request bodies within maxBodyBytes', async () => {

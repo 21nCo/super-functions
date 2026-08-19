@@ -33,6 +33,7 @@ describe('queue adapters', () => {
   it('rejects an invalid maxSize', () => {
     expect(() => new MemoryQueueAdapter<string>({ maxSize: 0 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
     expect(() => new MemoryQueueAdapter<string>({ maxSize: -1 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
+    expect(() => new MemoryQueueAdapter<string>({ maxSize: 1.5 })).toThrow('FLOWFN_QUEUE_MAX_SIZE_INVALID');
   });
 
   it('memory queue preserves undefined payloads', async () => {
