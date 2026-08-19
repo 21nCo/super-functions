@@ -421,6 +421,41 @@ describe("oauth-http token client", () => {
     expect(sleep).not.toHaveBeenCalled();
   });
 
+  it("classifies a refresh response-body failure without replaying the request", async () => {
+    const sleep = vi.fn(async () => undefined);
+    let calls = 0;
+    const fetcher: OAuthFetchLike = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => "application/json" },
+        text: async () => {
+          throw new Error("response body disconnected");
+        }
+      };
+    };
+
+    const client = new DefaultOAuthTokenHttpClient({ fetcher, sleep });
+    await expect(client.exchangeToken({
+      provider: googleProvider,
+      grantType: "refresh_token",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-body-failure"
+    })).rejects.toMatchObject({
+      code: "OAUTH_TOKEN_REFRESH_FAILED",
+      retryable: false,
+      details: {
+        transportFailure: true,
+        responseBodyFailure: true
+      }
+    });
+
+    expect(calls).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it("preserves prototype-backed fields when a custom fetcher returns Response", async () => {
     const client = new DefaultOAuthTokenHttpClient({
       fetcher: async () => new Response(

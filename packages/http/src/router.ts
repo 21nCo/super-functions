@@ -182,8 +182,14 @@ export function createRouter<TContext = any>(
       // Shared middleware packages expose HTTP-shaped errors without taking a
       // dependency on this package's RouterError class. Honor only explicit,
       // valid error status metadata; arbitrary exceptions remain generic 500s.
-      const httpError = error as { message?: unknown; code?: unknown; statusCode?: unknown };
+      const httpError = error as {
+        isHttpError?: unknown;
+        message?: unknown;
+        code?: unknown;
+        statusCode?: unknown;
+      };
       if (
+        httpError?.isHttpError === true &&
         Number.isInteger(httpError?.statusCode) &&
         (httpError.statusCode as number) >= 400 &&
         (httpError.statusCode as number) <= 599

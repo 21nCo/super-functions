@@ -145,13 +145,13 @@ export class ChangeTrackingService {
    * Used to run change tracking within a transaction (pass tx db here).
    * The namespace and sequenceStore are inherited from the original instance.
   */
-  withDb(txDb: Adapter): ChangeTrackingService {
+  withDb(txDb: Adapter, emitChanges = true): ChangeTrackingService {
     const sequenceStore = this.sequenceStore?.withDb?.(txDb) ?? this.sequenceStore;
     return new ChangeTrackingService(
       txDb,
       this.namespace,
       sequenceStore,
-      this.onChange,
+      emitChanges ? this.onChange : undefined,
       this.logger,
       this.metaEnsured,
       this.changesEnsured,

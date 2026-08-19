@@ -428,6 +428,7 @@ describe('createRouter', () => {
         path: '/protected',
         handler: async () => {
           throw Object.assign(new Error('Authentication required'), {
+            isHttpError: true,
             code: 'AUTHENTICATION_FAILED',
             statusCode: 401,
           });
@@ -441,6 +442,25 @@ describe('createRouter', () => {
       error: 'Authentication required',
       code: 'AUTHENTICATION_FAILED',
     });
+  });
+
+  it('redacts arbitrary errors even when they contain HTTP-shaped metadata', async () => {
+    const router = createRouter({
+      routes: [{
+        method: 'GET',
+        path: '/upstream',
+        handler: async () => {
+          throw Object.assign(new Error('private upstream details'), {
+            code: 'UPSTREAM_FAILURE',
+            statusCode: 500,
+          });
+        },
+      }],
+    });
+
+    const res = await router.handle(new Request('http://localhost/upstream'));
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'Internal Server Error' });
   });
 
   it('still returns 404 for a genuinely unknown path', async () => {

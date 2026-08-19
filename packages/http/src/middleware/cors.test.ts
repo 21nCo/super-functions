@@ -52,6 +52,18 @@ describe('corsMiddleware', () => {
     expect(response.headers.get('Vary')).toBeNull();
   });
 
+  it('supports a wildcard inside an origin array when credentials are disabled', async () => {
+    const mw = corsMiddleware({ origin: ['https://app.example', '*'] });
+    const response = await mw(
+      new Request('http://localhost/api', { headers: { Origin: 'https://other.example' } }),
+      {},
+      okHandler
+    );
+
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(response.headers.get('Vary')).toBeNull();
+  });
+
   it('adds Vary: Origin to preflight responses for reflected origins', async () => {
     const mw = corsMiddleware({ origin: ['https://app.example'] });
     const response = await mw(

@@ -37,9 +37,13 @@ export function corsMiddleware<TContext = any>(
     if (typeof origin === 'string') {
       allowedOrigin = origin;
     } else if (Array.isArray(origin)) {
-      varyOnOrigin = true;
-      if (origin.includes(requestOrigin)) {
-        allowedOrigin = requestOrigin;
+      if (origin.includes('*')) {
+        allowedOrigin = '*';
+      } else {
+        varyOnOrigin = true;
+        if (origin.includes(requestOrigin)) {
+          allowedOrigin = requestOrigin;
+        }
       }
     } else if (typeof origin === 'function') {
       varyOnOrigin = true;

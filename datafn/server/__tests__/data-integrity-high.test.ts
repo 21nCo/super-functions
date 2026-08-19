@@ -397,6 +397,62 @@ describe("transaction-bound runtime state", () => {
     expect(changes[0]).toMatchObject({ record_id: "task:committed", server_seq: 1 });
     await db.close();
   });
+
+  it("does not publish change notifications when transaction commit fails", async () => {
+    const db = memoryAdapter() as any;
+    await db.initialize();
+    let transactionCalls = 0;
+    const transaction = async (callback: (tx: any) => Promise<unknown>) => {
+      transactionCalls += 1;
+      const result = await callback(db);
+      if (transactionCalls > 1) {
+        throw new Error("forced commit failure");
+      }
+      return result;
+    };
+    const transactionalDb = new Proxy(db, {
+      get(target, property, receiver) {
+        if (property === "capabilities") {
+          return {
+            ...target.capabilities,
+            transactions: { ...target.capabilities.transactions, supported: true },
+          };
+        }
+        if (property === "transaction") return transaction;
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const onChange = vi.fn();
+    const schema: DatafnSchema = {
+      resources: [{
+        name: "tasks",
+        version: 1,
+        fields: [{ name: "title", type: "string", required: true }],
+      }],
+      relations: [],
+    };
+
+    const result = await executePush({
+      clientId: "client",
+      mutations: [{
+        resource: "tasks",
+        version: 1,
+        operation: "insert",
+        id: "task:commit-fails",
+        clientId: "client",
+        mutationId: "m-commit-fails",
+        record: { title: "not published" },
+      }],
+    }, schema, transactionalDb, new MemoryIdempotencyStore(), "default", undefined, onChange);
+
+    expect(result.applied).toEqual([]);
+    expect(result.errors).toEqual([
+      expect.objectContaining({ mutationId: "m-commit-fails", code: "INTERNAL" }),
+    ]);
+    expect(onChange).not.toHaveBeenCalled();
+    await db.close();
+  });
 });
 
 // ─── REL-008: Redis rate limiter uses Lua eval for atomic TTL ─────────────

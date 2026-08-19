@@ -52,6 +52,7 @@ export async function executeTransaction(
 ): Promise<TransactResult> {
   const steps = request.steps;
   const isAtomic = request.atomic !== false; // Default true
+  const hasMutations = steps.some((step) => Boolean(step.mutation));
 
   // SRV-012: Step limit check moved to route handler; skip duplicate check here
   // (createTransactHandler validates before calling executeTransaction)
@@ -107,11 +108,14 @@ export async function executeTransaction(
   if (isAtomic && typeof (db as any).transaction === "function") {
     // REL-001: Atomic execution with DB transaction support
     try {
-      // Initialize durable idempotency storage on the outer adapter. Some
-      // databases implicitly commit DDL, so table creation must never occur
-      // after the atomic transaction has begun.
-      await idempotencyStore.ensureReady?.();
-      await changeTracking.ensureReady();
+      if (hasMutations) {
+        // Initialize durable mutation storage on the outer adapter. Some
+        // databases implicitly commit DDL, so table creation must never occur
+        // after the atomic transaction has begun. Read-only transactions do
+        // not need these tables and must not perform mutation-side DDL.
+        await idempotencyStore.ensureReady?.();
+        await changeTracking.ensureReady();
+      }
       await (db as any).transaction(async (tx: Adapter) => {
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];

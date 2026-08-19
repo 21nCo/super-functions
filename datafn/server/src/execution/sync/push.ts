@@ -767,6 +767,7 @@ export async function executePush(
       };
       let mutationLatestSeq = 0;
       const mutationResourceSeqs: Record<string, number> = {};
+      const pendingChangeEvents: number[] = [];
       try {
         await (db as any).transaction(async (txDb: Adapter) => {
           // Execute operation inside transaction
@@ -778,7 +779,9 @@ export async function executePush(
 
           // Build and record changes inside the same transaction
           const changes = opResult.changes;
-          const txChangeTracking = changeTracking.withDb(txDb);
+          // Change notifications describe committed state, so suppress the
+          // transaction-bound service callback and publish only after commit.
+          const txChangeTracking = changeTracking.withDb(txDb, false);
           for (const change of changes) {
             const seq = await takeNextServerSeq(txSequenceAllocation, txChangeTracking);
             mutationLatestSeq = Math.max(mutationLatestSeq, seq);
@@ -790,6 +793,7 @@ export async function executePush(
             await recordChangeWithRetry(txChangeTracking, {
               serverSeq: seq, resource: change.resource, id: change.id, op: change.op, record: change.record,
             }, 2, logger);
+            pendingChangeEvents.push(seq);
           }
         });
         sequenceAllocation.initialBatchAllocated = txSequenceAllocation.initialBatchAllocated;
@@ -797,6 +801,19 @@ export async function executePush(
         latestSeq = Math.max(latestSeq, mutationLatestSeq);
         for (const [resource, seq] of Object.entries(mutationResourceSeqs)) {
           resourceSeqs[resource] = Math.max(resourceSeqs[resource] || 0, seq);
+        }
+        for (const seq of pendingChangeEvents) {
+          try {
+            onChange?.(seq, namespace);
+          } catch (error) {
+            // The transaction has already committed; notification failures
+            // must not report the durable mutation as rolled back.
+            logger?.error("Push change notification failed", {
+              error: String(error),
+              operation: "push.onChange",
+              resource: mut.resource,
+            });
+          }
         }
         mutationSucceeded = true;
       } catch (err: any) {

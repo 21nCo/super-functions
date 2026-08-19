@@ -95,7 +95,15 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       scopes: input.scopes
     });
     const endpointRequest = createTokenRequest(input, credentials);
-    const response = await this.executeWithRetry(input.provider.tokenUrl, endpointRequest, "always");
+    const failureCode = input.grantType === "refresh_token"
+      ? "OAUTH_TOKEN_REFRESH_FAILED"
+      : "OAUTH_TOKEN_EXCHANGE_FAILED";
+    const response = await this.executeWithRetry(
+      input.provider.tokenUrl,
+      endpointRequest,
+      "always",
+      failureCode,
+    );
     const contentType = response.headers.get("content-type");
     const rawBodyText = await response.text();
     const parsedBody = parseResponseBody(rawBodyText, contentType);
@@ -125,7 +133,12 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     });
     const revocationUrl = resolveRevocationUrl(input.provider.revocationUrl, credentials.clientId);
     const endpointRequest = createRevokeRequest(input, credentials);
-    const response = await this.executeWithRetry(revocationUrl, endpointRequest, "errors-only");
+    const response = await this.executeWithRetry(
+      revocationUrl,
+      endpointRequest,
+      "errors-only",
+      "INTERNAL_ERROR",
+    );
     if (response.ok) {
       return;
     }
@@ -150,7 +163,8 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
   private async executeWithRetry(
     url: string,
     init: RequestInitLike,
-    bodyMode: "always" | "errors-only"
+    bodyMode: "always" | "errors-only",
+    failureCode: OAuthHttpError["code"],
   ): Promise<ResponseLike> {
     let attempt = 1;
     while (true) {
@@ -158,7 +172,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
       try {
         response = await this.fetcher(url, init);
       } catch (error) {
-        await this.retryTransportFailure(error, attempt);
+        await this.retryTransportFailure(error, attempt, failureCode);
         attempt += 1;
         continue;
       }
@@ -197,7 +211,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         if (bodyMode === "always") {
           const timedOut = error instanceof OAuthHttpError && error.status === 504;
           throw new OAuthHttpError("OAuth provider response body failed", {
-            code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+            code: failureCode,
             status: timedOut ? 504 : 502,
             retryable: false,
             cause: error,
@@ -207,7 +221,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
             }
           });
         }
-        await this.retryTransportFailure(error, attempt);
+        await this.retryTransportFailure(error, attempt, failureCode);
         attempt += 1;
         continue;
       }
@@ -222,7 +236,11 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
     }
   }
 
-  private async retryTransportFailure(error: unknown, attempt: number): Promise<void> {
+  private async retryTransportFailure(
+    error: unknown,
+    attempt: number,
+    failureCode: OAuthHttpError["code"],
+  ): Promise<void> {
     const timeoutError =
       error instanceof OAuthHttpError && error.status === 504 && error.retryable;
     const decision = decideRetry(
@@ -238,7 +256,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
         throw error;
       }
       throw new OAuthHttpError("OAuth provider request failed", {
-        code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+        code: failureCode,
         status: 502,
         retryable: false,
         cause: error,
@@ -540,7 +558,7 @@ function normalizeTokenResponse(
 ): OAuthTokenEndpointResponse {
   if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
     throw new OAuthHttpError("OAuth token response body must be a JSON object", {
-      code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+      code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
       status: 502,
       retryable: false,
       details: { parsedBodyKeys: [] }
@@ -551,7 +569,7 @@ function normalizeTokenResponse(
   const accessToken = asString(payload.access_token);
   if (!accessToken) {
     throw new OAuthHttpError("OAuth token response missing access_token", {
-      code: "OAUTH_TOKEN_EXCHANGE_FAILED",
+      code: grantType === "refresh_token" ? "OAUTH_TOKEN_REFRESH_FAILED" : "OAUTH_TOKEN_EXCHANGE_FAILED",
       status: 502,
       retryable: false,
       details: { parsedBodyKeys: Object.keys(payload).slice(0, 10) }
