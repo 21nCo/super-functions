@@ -3,7 +3,7 @@
   "info": {
     "title": "AuthFn API",
     "version": "0.1.1",
-    "description": "Generated from @authfn/core with every bundled plugin enabled. The shape of your deployment's OpenAPI document depends on the plugins you actually mount."
+    "description": "Generated from authfn with every bundled plugin enabled. The shape of your deployment's OpenAPI document depends on the plugins you actually mount."
   },
   "paths": {
     "/auth/2fa/challenge": {
@@ -138,6 +138,20 @@
         }
       }
     },
+    "/auth/environment": {
+      "get": {
+        "operationId": "getEnvironment",
+        "summary": "Get resolved environment and cookie/provider overrides",
+        "tags": [
+          "authfn"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
     "/auth/handoff/native/exchange": {
       "post": {
         "operationId": "exchangeNativeHandoff",
@@ -254,20 +268,6 @@
       "post": {
         "operationId": "lookupRegion",
         "summary": "Lookup region routing guidance for an identifier",
-        "tags": [
-          "authfn"
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/auth/runtime": {
-      "get": {
-        "operationId": "getRuntime",
-        "summary": "Get resolved runtime and cookie/provider overrides",
         "tags": [
           "authfn"
         ],
