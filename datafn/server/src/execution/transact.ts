@@ -100,9 +100,18 @@ export async function executeTransaction(
       // owner leases. Release every task already created without waiting on an
       // external directory. They remain durable and immediately eligible for
       // the regular background reconciler.
-      await Promise.allSettled(prequeuedUnshareTaskIds.map((taskId) =>
+      const releases = await Promise.allSettled(prequeuedUnshareTaskIds.map((taskId) =>
         markPermissionDirectorySyncReady(db, taskId)
       ));
+      releases.forEach((release, index) => {
+        if (release.status === "rejected") {
+          logger?.error("Permission directory task release deferred", {
+            error: String(release.reason),
+            operation: "permission-directory",
+            taskId: prequeuedUnshareTaskIds[index],
+          });
+        }
+      });
     }
     return {
       ok: false,

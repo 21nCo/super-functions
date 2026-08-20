@@ -4,7 +4,11 @@
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
-import { mysqlColumnTypeFromSnapshot, mysqlVarcharLength } from './mysql-types.js';
+import {
+  MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH,
+  mysqlColumnTypeFromSnapshot,
+  mysqlVarcharLength,
+} from './mysql-types.js';
 
 export type Dialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -125,6 +129,48 @@ function escapeSqlString(value: string, dialect: Dialect): string {
   return `'${escaped}'`;
 }
 
+function schemaDefaultClause(field: FieldSchema, dialect: Dialect): string {
+  if (field.defaultValue === undefined) return '';
+  const value = typeof field.defaultValue === 'string'
+    ? escapeSqlString(field.defaultValue, dialect)
+    : String(field.defaultValue);
+  return ` DEFAULT ${value}`;
+}
+
+function introspectedMySqlDefaultClause(input: {
+  dataType: string;
+  defaultValue?: string | null;
+}): string {
+  if (input.defaultValue == null) return '';
+  const type = input.dataType.trim().toLowerCase();
+  const value = String(input.defaultValue);
+  if (
+    /^(?:current_timestamp(?:\(\d*\))?|current_date|current_time(?:\(\d*\))?|localtimestamp(?:\(\d*\))?)$/i.test(value)
+  ) {
+    return ` DEFAULT ${value}`;
+  }
+  if (/^(?:tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real|bit|boolean|bool|year)$/.test(type)) {
+    return ` DEFAULT ${value}`;
+  }
+  return ` DEFAULT ${escapeSqlString(value, 'mysql')}`;
+}
+
+function mysqlChangedColumnDefinition(
+  field: FieldSchema,
+  current: NonNullable<NonNullable<TableDiff['columnChanges']>[number]['current']>,
+): string {
+  const defaultClause = field.defaultValue !== undefined
+    ? schemaDefaultClause(field, 'mysql')
+    : introspectedMySqlDefaultClause(current);
+  return `${fieldTypeToSQL(field, 'mysql')} ${field.required ? 'NOT NULL' : 'NULL'}${defaultClause}`;
+}
+
+function mysqlCurrentColumnDefinition(
+  current: NonNullable<NonNullable<TableDiff['columnChanges']>[number]['current']>,
+): string {
+  return `${mysqlColumnTypeFromSnapshot(current)} ${current.isNullable ? 'NULL' : 'NOT NULL'}${introspectedMySqlDefaultClause(current)}`;
+}
+
 /**
  * Generate CREATE TABLE statement
  */
@@ -232,9 +278,12 @@ function generateAlterTableSQL(
         ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
       )?.[1];
       if (dialect === 'mysql' && field) {
-        const sqlType = fieldTypeToSQL(field, dialect);
         statements.push(
-          `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${sqlType} ${field.required ? 'NOT NULL' : 'NULL'};`,
+          `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${
+            change.current
+              ? mysqlChangedColumnDefinition(field, change.current)
+              : `${fieldTypeToSQL(field, dialect)} ${field.required ? 'NOT NULL' : 'NULL'}${schemaDefaultClause(field, dialect)}`
+          };`,
         );
       } else {
         statements.push(
@@ -268,13 +317,30 @@ function generateCreateIndexSQL(
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
   const mysqlTextColumns = new Set(knownTextColumns);
   if (dialect === 'mysql' && schema) {
+    let indexedStringCharacters = 0;
     for (const column of index.columns) {
       const field = Object.entries(schema.fields).find(
         ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
       )?.[1];
-      if (field && fieldTypeToSQL(field, dialect) === 'TEXT') {
-        mysqlTextColumns.add(column);
+      if (field?.type === 'string') {
+        const length = mysqlVarcharLength(field);
+        if (length === null) {
+          mysqlTextColumns.add(column);
+          indexedStringCharacters += 191;
+        } else {
+          if (length > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH) {
+            throw new Error(
+              `Cannot generate MySQL index ${index.name} on ${column}: maxLength ${length} exceeds the utf8mb4 full-column index limit ${MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH}`,
+            );
+          }
+          indexedStringCharacters += length;
+        }
       }
+    }
+    if (indexedStringCharacters > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH) {
+      throw new Error(
+        `Cannot generate MySQL index ${index.name}: indexed utf8mb4 string widths total ${indexedStringCharacters}, exceeding ${MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH}`,
+      );
     }
   }
   if (dialect === 'mysql' && index.unique) {
@@ -537,13 +603,11 @@ export function generateKyselyMigration(
           ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
         )?.[1];
         if (dialect === 'mysql' && field && change.current) {
-          const requiredType = fieldTypeToSQL(field, dialect);
-          const currentType = mysqlColumnTypeFromSnapshot(change.current);
           upStatements.push(
-            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${requiredType} ${field.required ? 'NOT NULL' : 'NULL'}\`.execute(db);`,
+            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlChangedColumnDefinition(field, change.current)}\`.execute(db);`,
           );
           revertChangedColumns.push(
-            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${currentType} ${change.current.isNullable ? 'NULL' : 'NOT NULL'}\`.execute(db);`,
+            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlCurrentColumnDefinition(change.current)}\`.execute(db);`,
           );
         }
       }

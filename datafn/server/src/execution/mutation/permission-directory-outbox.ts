@@ -13,6 +13,7 @@ const DRAIN_CLAIM_LEASE_MS = 60 * 1000;
 interface PrecommitLeaseHeartbeat {
   stopped: boolean;
   timer: ReturnType<typeof setTimeout> | null;
+  leaseValue: string;
 }
 
 const precommitLeaseHeartbeats = new Map<string, PrecommitLeaseHeartbeat>();
@@ -29,9 +30,17 @@ function stopPrecommitLeaseHeartbeat(taskId: string): void {
   precommitLeaseHeartbeats.delete(taskId);
 }
 
-function startPrecommitLeaseHeartbeat(db: Adapter, taskId: string): void {
+function startPrecommitLeaseHeartbeat(
+  db: Adapter,
+  taskId: string,
+  initialLeaseValue: string,
+): void {
   stopPrecommitLeaseHeartbeat(taskId);
-  const heartbeat: PrecommitLeaseHeartbeat = { stopped: false, timer: null };
+  const heartbeat: PrecommitLeaseHeartbeat = {
+    stopped: false,
+    timer: null,
+    leaseValue: initialLeaseValue,
+  };
   const schedule = () => {
     if (heartbeat.stopped) return;
     heartbeat.timer = setTimeout(() => {
@@ -41,12 +50,18 @@ function startPrecommitLeaseHeartbeat(db: Adapter, taskId: string): void {
     heartbeat.timer.unref?.();
   };
   const renew = async () => {
+    const expectedLeaseValue = heartbeat.leaseValue;
+    const renewedLeaseValue = nextPrecommitLeaseExpiry();
     try {
-      await db.internal.update(OUTBOX_TABLE, [
+      const updated = await db.internal.update(OUTBOX_TABLE, [
         { field: "id", op: "eq", value: taskId },
+        { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
       ], {
-        next_attempt_at: nextPrecommitLeaseExpiry(),
+        next_attempt_at: renewedLeaseValue,
       });
+      if (updated > 0 && !heartbeat.stopped) {
+        heartbeat.leaseValue = renewedLeaseValue;
+      }
     } catch {
       // Keep trying while the owner is alive. If it crashes or cannot renew,
       // the last persisted lease expires and another drainer can recover it.
@@ -98,7 +113,7 @@ export async function enqueuePermissionDirectorySync(
     // A renewable owner lease keeps background drainers away for operations
     // of any duration. Process death stops renewal, making the durable task
     // recoverable once the last lease expires.
-    startPrecommitLeaseHeartbeat(db, id);
+    startPrecommitLeaseHeartbeat(db, id, nextAttemptAt);
   }
   return id;
 }

@@ -336,6 +336,94 @@ describe("SyncEngine push", () => {
     expect(await storage.changelogList()).toEqual([]);
   });
 
+  it("resends compacted writes when the replacing delete is rejected", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:merge",
+      timestampMs: 1,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "merge",
+        id: "goal:missing",
+        record: { label: "recoverable write" },
+        clientId: "client:1",
+        mutationId: "mut:merge",
+      },
+    });
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:delete",
+      timestampMs: 2,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "delete",
+        id: "goal:missing",
+        clientId: "client:1",
+        mutationId: "mut:delete",
+      },
+    });
+
+    const failedDelete = {
+      ok: false,
+      error: {
+        code: "RELATION_RESTRICTED",
+        message: "Delete restricted",
+      },
+      result: {
+        ok: false,
+        applied: [] as string[],
+        errors: [{
+          mutationId: "mut:delete",
+          code: "RELATION_RESTRICTED",
+          message: "Delete restricted",
+          path: "operation",
+          retryable: false,
+        }],
+        cursor: "0",
+        cursorBefore: "0",
+      },
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(failedDelete)
+      .mockResolvedValueOnce({
+        ...failedDelete,
+        result: {
+          ...failedDelete.result,
+          applied: ["mut:merge"],
+        },
+      });
+    const remote: any = {
+      push,
+      pull: vi.fn(),
+      clone: vi.fn(),
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete"]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:merge", "mut:delete"]);
+    expect(await storage.changelogList()).toEqual([]);
+  });
+
   it("keeps retryable failed push mutations queued", async () => {
     const storage = new MemoryStorageAdapter(["goal"]);
     await storage.changelogAppend({
@@ -613,7 +701,7 @@ describe("SyncEngine push", () => {
     expect(await storage.changelogList()).toEqual([]);
   });
 
-  it("acks a compacted mutation before a retryable delete failure", async () => {
+  it("resends and acks a compacted mutation before a retryable delete failure", async () => {
     const storage = new MemoryStorageAdapter(["goal"]);
     await storage.changelogAppend({
       clientId: "client:1",
@@ -643,7 +731,7 @@ describe("SyncEngine push", () => {
       },
     });
 
-    const push = vi.fn().mockResolvedValue({
+    const firstFailure = {
       ok: true,
       error: { code: "MUTATION_FAILED", message: "retry", details: {} },
       result: {
@@ -659,7 +747,16 @@ describe("SyncEngine push", () => {
         cursor: "0",
         cursorBefore: "0",
       },
-    });
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(firstFailure)
+      .mockResolvedValueOnce({
+        ...firstFailure,
+        result: {
+          ...firstFailure.result,
+          applied: ["mut:stale-merge"],
+        },
+      });
     const remote: any = {
       push,
       pull: vi.fn(),
@@ -682,6 +779,10 @@ describe("SyncEngine push", () => {
     await engine.processPush();
 
     expect(push.mock.calls[0][0].mutations).toEqual([
+      expect.objectContaining({ mutationId: "mut:retry-delete" }),
+    ]);
+    expect(push.mock.calls[1][0].mutations).toEqual([
+      expect.objectContaining({ mutationId: "mut:stale-merge" }),
       expect.objectContaining({ mutationId: "mut:retry-delete" }),
     ]);
     expect(

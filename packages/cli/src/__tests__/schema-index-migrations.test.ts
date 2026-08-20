@@ -386,6 +386,126 @@ describe("schema index migrations", () => {
       "plugfn",
       "mysql",
     )).toThrow("expected an integer between 1 and 16383");
+
+    expect(() => diffTables([invalid], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        maxLength: 16_384,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn")).toThrow("expected an integer between 1 and 16383");
+  });
+
+  it("rejects bounded MySQL string indexes above the utf8mb4 key budget", () => {
+    const invalidIndex = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: { ...syncJobs.fields.claimToken, maxLength: 769 },
+      },
+    } as unknown as TableSchema;
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_sync_jobs",
+      action: "create",
+    }]);
+
+    for (const generate of [
+      generateDrizzleMigration,
+      generatePrismaMigration,
+      generateKyselyMigration,
+    ]) {
+      expect(() => generate(plan, [invalidIndex], "mysql"))
+        .toThrow("exceeds the utf8mb4 full-column index limit 768");
+    }
+  });
+
+  it("detects an existing MySQL VARCHAR when the schema requires unbounded TEXT", () => {
+    const unbounded = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+        },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const diffs = diffTables([unbounded], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(64)",
+        maxLength: 64,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].columnChanges?.[0].change)
+      .toContain("maxLength changed from 64 to unbounded");
+  });
+
+  it("preserves desired and prior defaults plus the complete MySQL rollback type", () => {
+    const withDefault = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          ...syncJobs.fields.claimToken,
+          defaultValue: "pending",
+        },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const diffs = diffTables([withDefault], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "enum",
+        columnType: "enum('legacy','pending')",
+        maxLength: 7,
+        isNullable: false,
+        defaultValue: "legacy",
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+    const plan = createMigrationPlan("plugfn", 5, 6, diffs);
+
+    for (const generate of [generateDrizzleMigration, generatePrismaMigration]) {
+      expect(generate(plan, [withDefault], "mysql").content).toContain(
+        "MODIFY COLUMN claim_token VARCHAR(64) NULL DEFAULT 'pending';",
+      );
+    }
+    const kysely = generateKyselyMigration(plan, [withDefault], "mysql").content;
+    expect(kysely).toContain(
+      "MODIFY COLUMN claim_token VARCHAR(64) NULL DEFAULT 'pending'",
+    );
+    expect(kysely).toContain(
+      "MODIFY COLUMN claim_token enum('legacy','pending') NOT NULL DEFAULT 'legacy'",
+    );
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {

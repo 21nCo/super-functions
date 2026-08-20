@@ -3,6 +3,9 @@ import type { FieldSchema } from "@superfunctions/db";
 // utf8mb4 can use four bytes per character. This conservative per-column
 // ceiling stays below MySQL's 65,535-byte VARCHAR limit.
 export const MYSQL_MAX_SAFE_VARCHAR_LENGTH = 16_383;
+// InnoDB's modern maximum index-key size is 3,072 bytes. utf8mb4 can use four
+// bytes per character, so this is the largest portable full-column key part.
+export const MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH = 768;
 
 export function mysqlVarcharLength(field: FieldSchema): number | null {
   if (field.maxLength === undefined) return null;
@@ -36,8 +39,24 @@ export function databaseStringLength(input: {
 
 export function mysqlColumnTypeFromSnapshot(input: {
   dataType: string;
+  columnType?: string;
   maxLength?: number | null;
 }): string {
+  if (input.columnType) {
+    const completeType = input.columnType.trim();
+    // COLUMN_TYPE is database-owned metadata, but generated migrations should
+    // still refuse statement delimiters and SQL comments.
+    if (
+      completeType.length === 0 ||
+      /[;\r\n`]/.test(completeType) ||
+      completeType.includes("--") ||
+      completeType.includes("/*") ||
+      completeType.includes("*/")
+    ) {
+      throw new Error(`Unsupported introspected MySQL column type: ${input.columnType}`);
+    }
+    return completeType;
+  }
   const normalized = input.dataType.trim().toUpperCase();
   const length = databaseStringLength(input);
   if (length !== null && /^(?:VAR)?CHAR(?:\s*\(.*\))?$/i.test(input.dataType.trim())) {

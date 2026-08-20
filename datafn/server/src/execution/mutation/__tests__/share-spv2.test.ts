@@ -1063,6 +1063,43 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("fences an in-flight lease renewal when publishing readiness", async () => {
+    vi.useFakeTimers();
+    try {
+      const localDb = memoryAdapter();
+      await localDb.initialize();
+      const originalUpdate = localDb.internal.update.bind(localDb.internal);
+      let interceptRenewal = false;
+      let renewalWhere: Array<{ field: string; op: string; value: unknown }> = [];
+      localDb.internal.update = async (table, where, data) => {
+        if (
+          interceptRenewal &&
+          table === "__datafn_permission_directory_outbox"
+        ) {
+          interceptRenewal = false;
+          renewalWhere = where;
+          return 0;
+        }
+        if (table === "__datafn_permission_directory_outbox") return 1;
+        return originalUpdate(table, where, data);
+      };
+      const taskId = await enqueuePermissionDirectorySync(localDb, {
+        operation: "share",
+        resource: "notes",
+        id: "note:renewal-race",
+        shareWith: { principalId: "user:partner" },
+      }, namespace, "region:test", { pending: true });
+      interceptRenewal = true;
+
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+      expect(renewalWhere.some((clause) => clause.field === "next_attempt_at"))
+        .toBe(true);
+      await markPermissionDirectorySyncReady(localDb, taskId);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops a pending lease before a failing explicit drain lookup", async () => {
     vi.useFakeTimers();
     try {

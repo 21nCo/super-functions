@@ -1528,16 +1528,40 @@ export class SyncEngine {
       const compacted = await this.compactDeletedRecordMutations(
         sanitizedMutations,
       );
-      const mutations = compacted.mutations;
+      let mutations = compacted.mutations;
       const batchThroughSeq = batchPending[batchPending.length - 1].seq;
 
       // 2. Push with retries
-      const pushResult = await this.pushWithRetries(mutations, batchClientId);
+      let pushResult = await this.pushWithRetries(mutations, batchClientId);
+
+      if (
+        pushResult &&
+        !pushResult.ok &&
+        compacted.omittedMutationIds.size > 0
+      ) {
+        // A compacted write is only redundant if the delete that replaced it
+        // succeeds. Resend the complete idempotent batch after any failed
+        // compacted push so a terminal/retryable delete cannot discard a
+        // merge or replace that could be accepted independently.
+        mutations = sanitizedMutations;
+        pushResult = await this.pushWithRetries(mutations, batchClientId);
+        if (!pushResult) {
+          this.pushConsecutiveFailures++;
+          this.applyPushIntervalBackoff();
+          return;
+        }
+      }
 
       if (pushResult) {
         const throughSeq = pushResult.ok
           ? batchThroughSeq
-          : computeAckThroughSeq(batchPending, pushResult, compacted.omittedMutationIds);
+          : computeAckThroughSeq(
+              batchPending,
+              pushResult,
+              mutations === compacted.mutations
+                ? compacted.omittedMutationIds
+                : new Set(),
+            );
         if (throughSeq === null) {
           this.pushConsecutiveFailures++;
           this.applyPushIntervalBackoff();

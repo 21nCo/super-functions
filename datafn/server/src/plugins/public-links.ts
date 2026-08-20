@@ -9,6 +9,7 @@ import {
 import { errorResponse, okResponse } from "../http/errors.js";
 import {
   executeShare,
+  rollbackDatafnPermissionGrantAfterFailedShare,
   syncDatafnPermissionGrantAfterCommit,
 } from "../execution/mutation/share.js";
 import type { DataFnAction } from "../events.js";
@@ -683,6 +684,22 @@ async function createDatafnPublicLink(input: {
       permissionDirectoryRuntime,
     );
   } catch (error) {
+    let compensationError: unknown;
+    try {
+      await rollbackDatafnPermissionGrantAfterFailedShare(
+        input.database,
+        {
+          resource: validation.resource,
+          id: validation.recordId ?? undefined,
+          scope: validation.scope,
+          shareWith: { principalId },
+        },
+        input.namespace,
+        permissionDirectoryRuntime,
+      );
+    } catch (cleanupError) {
+      compensationError = cleanupError;
+    }
     try {
       // The public-link row is created before its permission grant. If grant
       // creation throws, roll the token back just as we do for an explicit
@@ -694,6 +711,13 @@ async function createDatafnPublicLink(input: {
       });
     } finally {
       await settlePermissionDirectoryTask();
+    }
+    if (compensationError) {
+      const cleanupFailure = new Error(
+        `Public-link share failed and permission compensation was incomplete: ${String(compensationError)}`,
+      );
+      (cleanupFailure as Error & { cause?: unknown }).cause = error;
+      throw cleanupFailure;
     }
     throw error;
   }

@@ -401,7 +401,7 @@ function shouldIncludeJoinRowForStore(
 function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
   const resource = schema.resources.find((item) => item.name === resourceName);
   const configuredPrefix = resource?.idPrefix ?? resourceName;
-  const prefix = configuredPrefix.endsWith(":")
+  const prefix = configuredPrefix.endsWith(":") && configuredPrefix.length > 1
     ? configuredPrefix.slice(0, -1)
     : configuredPrefix;
   return id === prefix || id.startsWith(`${prefix}:`);

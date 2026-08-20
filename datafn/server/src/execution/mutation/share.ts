@@ -569,6 +569,80 @@ export async function executeUnshare(
   };
 }
 
+/**
+ * Removes every grant representation that may have been written before a
+ * share operation threw. This deliberately bypasses owner re-validation: the
+ * caller is compensating a grant that never became a successful operation.
+ */
+export async function rollbackDatafnPermissionGrantAfterFailedShare(
+  db: Adapter,
+  mutation: {
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+  },
+  namespace: string,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
+): Promise<void> {
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) {
+    throw new Error("Cannot compensate a failed share with an invalid principal");
+  }
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const permissionId = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  const failures: unknown[] = [];
+
+  try {
+    await db.delete({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: permissionId }],
+      namespace,
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    await removeLegacyV1Grant({
+      db,
+      namespace,
+      resource: mutation.resource,
+      resourceId,
+      principalId: principal.principalId,
+    });
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    await deleteDatafnPermissionGrant({
+      id: permissionId,
+      resourceType: mutation.resource,
+      resourceNs: namespace,
+      resourceId,
+      principalId: principal.principalId,
+    }, multiRegionRuntime ?? null);
+  } catch (error) {
+    failures.push(error);
+  }
+
+  if (failures.length > 0) {
+    const error = new Error(
+      `Failed to fully compensate a rejected share (${failures.length} cleanup error${failures.length === 1 ? "" : "s"})`,
+    );
+    (error as Error & { causes?: unknown[] }).causes = failures;
+    throw error;
+  }
+}
+
 /** Reconciles the distributed permission directory from committed database state. */
 export async function syncDatafnPermissionGrantAfterCommit(
   db: Adapter,

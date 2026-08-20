@@ -10,6 +10,8 @@ export interface DatabaseColumn {
   tableName: string;
   columnName: string;
   dataType: string;
+  /** Complete dialect-native type, for example `decimal(10,2) unsigned`. */
+  columnType?: string;
   maxLength?: number | null;
   isNullable: boolean;
   defaultValue: string | null;
@@ -175,6 +177,7 @@ export async function introspectMySQL(
       SELECT 
         COLUMN_NAME as column_name,
         DATA_TYPE as data_type,
+        COLUMN_TYPE as column_type,
         CHARACTER_MAXIMUM_LENGTH as character_maximum_length,
         IS_NULLABLE as is_nullable,
         COLUMN_DEFAULT as column_default,
@@ -221,6 +224,7 @@ export async function introspectMySQL(
         tableName: table_name,
         columnName: c.column_name,
         dataType: c.data_type,
+        columnType: c.column_type,
         maxLength: c.character_maximum_length == null
           ? null
           : Number(c.character_maximum_length),

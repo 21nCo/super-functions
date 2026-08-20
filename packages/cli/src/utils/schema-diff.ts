@@ -1,6 +1,10 @@
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import type { DatabaseTable } from './introspection.js';
-import { databaseStringLength, isUnboundedMySqlTextType } from './mysql-types.js';
+import {
+  databaseStringLength,
+  isUnboundedMySqlTextType,
+  mysqlVarcharLength,
+} from './mysql-types.js';
 
 /**
  * Convert string to snake_case
@@ -111,8 +115,10 @@ export interface TableDiff {
     change: string;
     current?: {
       dataType: string;
+      columnType?: string;
       maxLength?: number | null;
       isNullable: boolean;
+      defaultValue?: string | null;
     };
   }>;
   missingIndexes?: Array<{
@@ -269,24 +275,14 @@ export function diffTables(
           changes.push(`type changed from ${actualType} to ${expectedType}`);
         }
 
-        if (
-          curCol.dialect === 'mysql' &&
-          fieldSchema.type === 'string' &&
-          fieldSchema.maxLength !== undefined
-        ) {
-          if (
-            typeof fieldSchema.maxLength !== 'number' ||
-            !Number.isInteger(fieldSchema.maxLength) ||
-            fieldSchema.maxLength <= 0
-          ) {
-            throw new Error(
-              `Invalid maxLength for ${dbName}.${colName}: expected a positive integer`,
-            );
-          }
+        if (curCol.dialect === 'mysql' && fieldSchema.type === 'string') {
+          // Validate even when the database already has the same declared
+          // width; otherwise an oversized schema can bypass every generator.
+          const desiredLength = mysqlVarcharLength(fieldSchema);
           const actualLength = databaseStringLength(curCol);
-          if (actualLength !== fieldSchema.maxLength) {
+          if (actualLength !== desiredLength) {
             changes.push(
-              `maxLength changed from ${actualLength ?? 'unbounded'} to ${fieldSchema.maxLength}`,
+              `maxLength changed from ${actualLength ?? 'unbounded'} to ${desiredLength ?? 'unbounded'}`,
             );
           }
         }
@@ -304,8 +300,10 @@ export function diffTables(
             change: changes.join(', '),
             current: {
               dataType: curCol.dataType,
+              columnType: curCol.columnType,
               maxLength: curCol.maxLength,
               isNullable: curCol.isNullable,
+              defaultValue: curCol.defaultValue,
             },
           });
         }

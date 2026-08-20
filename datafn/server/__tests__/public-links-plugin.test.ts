@@ -362,7 +362,7 @@ describe("DataFn public-links plugin", () => {
     }
   });
 
-  it("removes a public-link row when permission creation throws", async () => {
+  it("removes public-link and canonical grant rows when sharing throws after the grant write", async () => {
     const db = memoryAdapter();
     await db.initialize();
     const directory = createMemoryIndexedDirectoryStore();
@@ -401,7 +401,8 @@ describe("DataFn public-links plugin", () => {
       const originalCreate = db.create.bind(db);
       db.create = async (input) => {
         if (input.model === "__datafn_permissions_global") {
-          throw new Error("permission storage unavailable");
+          await originalCreate(input);
+          throw new Error("post-permission write failure");
         }
         return originalCreate(input);
       };
@@ -419,6 +420,15 @@ describe("DataFn public-links plugin", () => {
         where: [],
         namespace: "user:owner",
       })).resolves.toEqual([]);
+      await expect(db.findMany({
+        model: "__datafn_permissions_global",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toEqual([]);
     } finally {
       await server.close();
     }
