@@ -282,7 +282,7 @@ export function validateQuery(
     }
   }
 
-  if (q.temporal) {
+  if (q.temporal !== undefined) {
     const temporalResult = validateTemporal(q, fieldNames);
     if (!temporalResult.ok) {
       return temporalResult;

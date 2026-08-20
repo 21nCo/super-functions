@@ -24,6 +24,7 @@ describe("OAuth token diagnostics", () => {
         },
       } as never,
       diagnostics: {
+        includeSuccessful: true,
         sink: async () => {
           throw new Error("diagnostic sink unavailable");
         },

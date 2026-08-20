@@ -17,7 +17,8 @@ function isSortDirection(direction: string): direction is SortTerm["direction"] 
 export function parseSortTerm(term: unknown): SortTerm {
   if (typeof term === "object" && term !== null && !Array.isArray(term)) {
     const field = (term as { field?: unknown }).field;
-    const direction = (term as { direction?: unknown }).direction ?? "asc";
+    const rawDirection = (term as { direction?: unknown }).direction;
+    const direction = rawDirection === undefined ? "asc" : rawDirection;
     if (typeof field !== "string" || field.length === 0) {
       throw new Error("Invalid sort field");
     }

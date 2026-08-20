@@ -68,6 +68,30 @@ const fixtureF1Schema = {
 };
 
 describe("Query Validation - VALID-001", () => {
+  it("rejects an explicitly supplied falsy temporal value", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: fixtureF1Schema,
+      database: db,
+    });
+
+    const response = await server.router.handle(new Request(
+      "http://localhost/datafn/query",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resource: "task", temporal: false }),
+      },
+    ));
+    const body = await readJson(response);
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("DFQL_INVALID");
+    expect(body.error.details.path).toBe("temporal");
+  });
+
   describe("Resource validation", () => {
     it("TV-VALID-RESOURCE-001: unknown resource returns DFQL_UNKNOWN_RESOURCE", async () => {
       const db = memoryAdapter();

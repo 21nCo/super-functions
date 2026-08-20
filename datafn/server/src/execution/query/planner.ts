@@ -361,7 +361,7 @@ export function classifyQuery(
   query: Record<string, unknown>,
   schema?: unknown,
 ): QueryStrategy {
-  if (query.temporal) return "IN_MEMORY";
+  if (Object.prototype.hasOwnProperty.call(query, "temporal")) return "IN_MEMORY";
   // --- Rule 1: search ---
   if (query.search) return "IN_MEMORY";
 

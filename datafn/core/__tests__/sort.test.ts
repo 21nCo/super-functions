@@ -22,6 +22,11 @@ describe("parseSortTerms (TV-SRT-001)", () => {
   it("rejects malformed structured terms", () => {
     expect(() => parseSortTerms([{ direction: "asc" } as never])).toThrow("Invalid sort field");
   });
+  it("rejects an explicit null structured direction", () => {
+    expect(() => parseSortTerms([{ field: "name", direction: null } as never])).toThrow(
+      'Invalid sort direction "null"',
+    );
+  });
 });
 
 describe("sortRecords (TV-SRT-002)", () => {

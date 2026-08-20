@@ -84,6 +84,46 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     }));
     vi.restoreAllMocks();
   });
+
+  it("falls back to loading join rows when db.count() fails", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+      }],
+    };
+    await db.create({
+      model: "__datafn_join_tasks_assignees",
+      data: { id: "t1:u1", from: "t1", to: "u1" },
+      namespace: "default",
+    });
+    const originalCount = db.count.bind(db);
+    vi.spyOn(db, "count").mockImplementation(async (input) => {
+      if (input.model === "__datafn_join_tasks_assignees") {
+        throw new Error("count unavailable");
+      }
+      return originalCount(input);
+    });
+    const findManySpy = vi.spyOn(db, "findMany");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(findManySpy).toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    vi.restoreAllMocks();
+  });
 });
 
 // ─── SCA-002: Clone auto-pagination ───────────────────────────────────

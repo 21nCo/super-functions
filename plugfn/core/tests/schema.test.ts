@@ -22,7 +22,14 @@ describe('PlugFn schema metadata', () => {
     const syncJobs = schema.schemas.find(
       (table) => table.modelName === 'plugfn_sync_jobs'
     );
-    expect(connections?.fields.claimToken).toBeUndefined();
-    expect(syncJobs?.fields.claimToken).toMatchObject({ fieldName: 'claim_token' });
+    expect(connections).toBeDefined();
+    expect(connections!.fields.claimToken).toBeUndefined();
+    expect(syncJobs).toBeDefined();
+    expect(syncJobs!.fields.claimToken).toMatchObject({ fieldName: 'claim_token' });
+    expect(syncJobs!.indexes).toContainEqual({
+      name: 'idx_plugfn_sync_jobs_claim_token',
+      fields: ['claimToken'],
+      unique: true,
+    });
   });
 });

@@ -532,6 +532,10 @@ describe("classifyQuery", () => {
     ).toBe("IN_MEMORY");
   });
 
+  it("classifies an explicitly supplied falsy temporal value as in-memory", () => {
+    expect(classifyQuery({ resource: "task", temporal: false })).toBe("IN_MEMORY");
+  });
+
   it("temporal clauses always use the normalized in-memory path", () => {
     expect(classifyQuery({
       resource: "task",

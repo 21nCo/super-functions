@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TableSchema } from "@superfunctions/db";
-import { generateDrizzleMigration, generateKyselyMigration } from "../utils/generators.js";
+import {
+  generateDrizzleMigration,
+  generateKyselyMigration,
+  generatePrismaMigration,
+} from "../utils/generators.js";
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
 
 const syncJobs = {
@@ -76,5 +80,28 @@ describe("schema index migrations", () => {
     expect(generateKyselyMigration(plan, [syncJobs], "postgres").content).toContain(
       "createIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').columns([\"claim_token\"]).unique().execute()",
     );
+
+    const mysqlIndex =
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);";
+    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
+    expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
+    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).not.toContain(
+      "INDEX IF NOT EXISTS",
+    );
+    expect(generateKyselyMigration(plan, [syncJobs], "mysql").content).toContain(
+      "dropIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').execute()",
+    );
+  });
+
+  it("emits dialect-valid indexes when creating a MySQL table", () => {
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_sync_jobs",
+      action: "create",
+    }]);
+    const expected =
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);";
+
+    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(expected);
+    expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(expected);
   });
 });

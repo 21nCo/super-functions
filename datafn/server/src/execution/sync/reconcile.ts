@@ -218,21 +218,22 @@ export async function executeReconcile(
         if (!relationTouchesPrivateResource && typeof db.count === "function") {
           const joinTableName = getRelationJoinTableName(relation, fromResource);
           const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
+          let countSucceeded = false;
           try {
             joinCounts[joinStoreKey] = await db.count({
               model: joinTableName,
               where: [],
               namespace,
             });
+            countSucceeded = true;
           } catch (error) {
             logger?.warn("Reconcile: join count failed", {
               error: String(error),
               joinTable: joinTableName,
               operation: "reconcile-join-count",
             });
-            joinCounts[joinStoreKey] = 0;
           }
-          continue;
+          if (countSucceeded) continue;
         }
       }
 
