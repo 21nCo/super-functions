@@ -32,9 +32,13 @@ function shouldIncludeJoinRowForStore(
   const fromValue = typeof row.from === "string" ? row.from : undefined;
   const toValue = typeof row.to === "string" ? row.to : undefined;
   const fromMatches =
-    froms.length === 1 || !fromValue || resourceIdMatches(schema, from, fromValue);
+    froms.length === 1 ||
+    !fromValue ||
+    resourceIdMatches(schema, froms, from, fromValue);
   const toMatches =
-    tos.length === 1 || !toValue || resourceIdMatches(schema, to, toValue);
+    tos.length === 1 ||
+    !toValue ||
+    resourceIdMatches(schema, tos, to, toValue);
   return fromMatches && toMatches;
 }
 

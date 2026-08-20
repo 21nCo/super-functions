@@ -719,6 +719,39 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
     throw new Error("Cannot compensate a failed share with a mismatched snapshot");
   }
 
+  if (snapshot.canonical) {
+    const currentCanonical = await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: permissionId }],
+      namespace,
+    });
+    if (
+      !currentCanonical ||
+      permissionDirectoryGrantSignature(currentCanonical) !==
+        permissionDirectoryGrantSignature(snapshot.canonical)
+    ) {
+      // A delayed compensation must not overwrite a newer committed share or
+      // resurrect a grant that was concurrently removed. Reconcile the
+      // directory to the current authoritative state and leave both canonical
+      // and legacy rows owned by that newer operation untouched.
+      if (currentCanonical) {
+        await indexDatafnPermissionGrant(
+          currentCanonical as Record<string, unknown>,
+          multiRegionRuntime ?? null,
+        );
+      } else {
+        await deleteDatafnPermissionGrant({
+          id: permissionId,
+          resourceType: mutation.resource,
+          resourceNs: namespace,
+          resourceId,
+          principalId: principal.principalId,
+        }, multiRegionRuntime ?? null);
+      }
+      return;
+    }
+  }
+
   if (snapshot.legacyManaged) {
     const legacyId = `${mutation.resource}:${resourceId ?? "*"}:${principal.principalId}`;
     if (snapshot.legacy) {

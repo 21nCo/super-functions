@@ -152,7 +152,7 @@ describe("share SPV2 mutation semantics", () => {
     expect(grants[0].grantKind).toBe("record");
   });
 
-  it("restores prior canonical and legacy grants after a failed share update", async () => {
+  it("does not let delayed compensation overwrite a newer canonical or legacy grant", async () => {
     setSpv2MigrationRuntimeConfig({
       readMode: "dual",
       writeMode: "dual",
@@ -191,9 +191,9 @@ describe("share SPV2 mutation semantics", () => {
       version: 1,
       operation: "share",
       clientId: "share-restore",
-      mutationId: "share-restore-editor",
+      mutationId: "share-restore-owner",
       id: "note:share-restore",
-      shareWith: { principalId: "user:partner", level: "editor" },
+      shareWith: { principalId: "user:partner", level: "owner" },
     });
 
     await rollbackDatafnPermissionGrantAfterFailedShare(
@@ -205,14 +205,14 @@ describe("share SPV2 mutation semantics", () => {
     );
 
     await expect(listGlobalGrants()).resolves.toEqual([
-      expect.objectContaining({ level: "viewer", principalId: "user:partner" }),
+      expect.objectContaining({ level: "owner", principalId: "user:partner" }),
     ]);
     await expect(db.findMany({
       model: getLegacyPermissionsTable("notes"),
       where: [],
       namespace,
     })).resolves.toEqual([
-      expect.objectContaining({ level: "viewer", userId: "user:partner" }),
+      expect.objectContaining({ level: "owner", userId: "user:partner" }),
     ]);
   });
 

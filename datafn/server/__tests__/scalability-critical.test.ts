@@ -183,10 +183,11 @@ describe("SCA-001: Reconcile uses db.count()", () => {
         { name: "tasks", version: 1, idPrefix: "task:", fields: [] },
         { name: "projects", version: 1, idPrefix: "project:", fields: [] },
         { name: "documents", version: 1, idPrefix: "doc", fields: [] },
+        { name: "documentArchives", version: 1, idPrefix: "document", fields: [] },
         { name: "users", version: 1, idPrefix: "user:", fields: [] },
       ],
       relations: [{
-        from: ["tasks", "projects", "documents"],
+        from: ["tasks", "projects", "documents", "documentArchives"],
         to: "users",
         type: "many-many",
         relation: "assignees",
@@ -208,6 +209,11 @@ describe("SCA-001: Reconcile uses db.count()", () => {
       data: { id: "document:user", from: "doc42", to: "user:1" },
       namespace: "default",
     });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "archive:user", from: "document42", to: "user:1" },
+      namespace: "default",
+    });
     vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
     vi.spyOn(ChangeTrackingService.prototype, "getLatestServerSeq").mockResolvedValue(0);
 
@@ -221,6 +227,7 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
     expect(result.joinCounts?.join_projects_assignees_users).toBe(1);
     expect(result.joinCounts?.join_documents_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_documentArchives_assignees_users).toBe(1);
 
     const clone = await executeClone(
       { clientId: "c1", includeJoins: true },
@@ -230,6 +237,9 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     );
     expect(clone.joins?.join_documents_assignees_users).toEqual([
       expect.objectContaining({ from: "doc42", to: "user:1" }),
+    ]);
+    expect(clone.joins?.join_documentArchives_assignees_users).toEqual([
+      expect.objectContaining({ from: "document42", to: "user:1" }),
     ]);
     vi.restoreAllMocks();
   });
