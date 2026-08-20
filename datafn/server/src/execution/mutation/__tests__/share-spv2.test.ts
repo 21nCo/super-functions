@@ -16,6 +16,7 @@ import {
   setSpv2MigrationRuntimeConfig,
 } from "../../migration/spv2.js";
 import {
+  deferFailedShareCompensation,
   drainPermissionDirectoryOutbox,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
@@ -250,6 +251,239 @@ describe("share SPV2 mutation semantics", () => {
     })).resolves.toEqual([
       expect.objectContaining({ level: "owner", userId: "user:partner" }),
     ]);
+  });
+
+  it("compensates exact failed grant state without transactions", async () => {
+    setSpv2MigrationRuntimeConfig({
+      readMode: "dual",
+      writeMode: "dual",
+      warnOnLegacyApi: true,
+    });
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "insert",
+      clientId: "share-no-transaction",
+      mutationId: "share-no-transaction-insert",
+      id: "note:share-no-transaction",
+      record: { title: "No transaction compensation" },
+    });
+    const failedMutation = {
+      resource: "notes",
+      id: "note:share-no-transaction",
+      shareWith: { principalId: "user:partner" },
+    };
+    const snapshot = await snapshotDatafnPermissionGrantBeforeShare(
+      db,
+      failedMutation,
+      namespace,
+    );
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "share-no-transaction",
+      mutationId: "share-no-transaction-editor",
+      id: "note:share-no-transaction",
+      shareWith: { principalId: "user:partner", level: "editor" },
+    });
+    const expectedFailedCanonical = (await listGlobalGrants())[0];
+    (db.capabilities.transactions as { supported: boolean }).supported = false;
+    const transactionSpy = vi.spyOn(db, "transaction");
+
+    await rollbackDatafnPermissionGrantAfterFailedShare(
+      db,
+      failedMutation,
+      namespace,
+      null,
+      {
+        ...snapshot,
+        compensationExpectedCanonical: expectedFailedCanonical,
+      },
+    );
+
+    expect(transactionSpy).not.toHaveBeenCalled();
+    await expect(listGlobalGrants()).resolves.toEqual([]);
+    await expect(db.findMany({
+      model: getLegacyPermissionsTable("notes"),
+      where: [],
+      namespace,
+    })).resolves.toEqual([]);
+  });
+
+  it("retries compensation directory reconciliation after a concurrent share", async () => {
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "insert",
+      clientId: "compensation-directory-race",
+      mutationId: "compensation-directory-race-insert",
+      id: "note:compensation-directory-race",
+      record: { title: "Compensation directory race" },
+    });
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "compensation-directory-race",
+      mutationId: "compensation-directory-race-viewer",
+      id: "note:compensation-directory-race",
+      shareWith: { principalId: "user:partner", level: "viewer" },
+    });
+    const failedMutation = {
+      resource: "notes",
+      id: "note:compensation-directory-race",
+      shareWith: { principalId: "user:partner" },
+    };
+    const snapshot = await snapshotDatafnPermissionGrantBeforeShare(
+      db,
+      failedMutation,
+      namespace,
+    );
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "compensation-directory-race",
+      mutationId: "compensation-directory-race-editor",
+      id: "note:compensation-directory-race",
+      shareWith: { principalId: "user:partner", level: "editor" },
+    });
+    const expectedFailedCanonical = (await listGlobalGrants())[0];
+    const backingDirectory = createMemoryIndexedDirectoryStore();
+    let interleaved = false;
+    const directory = {
+      ...backingDirectory,
+      put: async (record: Parameters<typeof backingDirectory.put>[0]) => {
+        await backingDirectory.put(record);
+        if (!interleaved) {
+          interleaved = true;
+          await mutation({
+            resource: "notes",
+            version: 1,
+            operation: "share",
+            clientId: "compensation-directory-race",
+            mutationId: "compensation-directory-race-owner",
+            id: "note:compensation-directory-race",
+            shareWith: { principalId: "user:partner", level: "owner" },
+          });
+        }
+      },
+    };
+
+    await rollbackDatafnPermissionGrantAfterFailedShare(
+      db,
+      failedMutation,
+      namespace,
+      { regionId: "region:test", directory },
+      {
+        ...snapshot,
+        compensationExpectedCanonical: expectedFailedCanonical,
+      },
+    );
+
+    expect(interleaved).toBe(true);
+    await expect(listGlobalGrants()).resolves.toEqual([
+      expect.objectContaining({ level: "owner" }),
+    ]);
+    const indexed = await backingDirectory.query({
+      index: "datafn.permission.principalResource",
+      value: "user:partner#notes",
+    });
+    expect(indexed.records).toHaveLength(1);
+    expect(JSON.parse(String(indexed.records[0].value))).toMatchObject({
+      level: "owner",
+    });
+  });
+
+  it("waits for an in-flight lease renewal before replacing a failed share task", async () => {
+    vi.useFakeTimers();
+    const taskDb = memoryAdapter();
+    await taskDb.initialize();
+    await ensurePermissionDirectoryOutbox(taskDb);
+    const originalUpdate = taskDb.internal.update.bind(taskDb.internal);
+    let releaseRenewal!: () => void;
+    const renewalGate = new Promise<void>((resolve) => {
+      releaseRenewal = resolve;
+    });
+    let renewalStarted!: () => void;
+    const renewalStart = new Promise<void>((resolve) => {
+      renewalStarted = resolve;
+    });
+    const heartbeatDb = Object.create(taskDb);
+    heartbeatDb.internal = {
+      ...taskDb.internal,
+      update: async (...args: Parameters<typeof originalUpdate>) => {
+        const [table, where, data] = args;
+        if (
+          table === "__datafn_permission_directory_outbox" &&
+          where.length === 2 &&
+          !("mutation" in data)
+        ) {
+          renewalStarted();
+          await renewalGate;
+        }
+        return originalUpdate(...args);
+      },
+    };
+    const taskId = await enqueuePermissionDirectorySync(
+      heartbeatDb,
+      {
+        operation: "share",
+        resource: "notes",
+        id: "note:lease-race",
+        shareWith: { principalId: "user:partner" },
+      },
+      namespace,
+      "region:test",
+      { pending: true },
+    );
+
+    try {
+      vi.advanceTimersByTime(100_000);
+      await renewalStart;
+      let deferred = false;
+      const deferPromise = deferFailedShareCompensation(
+        heartbeatDb,
+        taskId,
+        {
+          operation: "share",
+          resource: "notes",
+          id: "note:lease-race",
+          shareWith: { principalId: "user:partner" },
+        },
+        {
+          permissionId: "notes:user:owner:note:lease-race:user:partner",
+          resource: "notes",
+          resourceId: "note:lease-race",
+          principalId: "user:partner",
+          canonical: null,
+          legacyManaged: false,
+          legacy: null,
+        },
+        new Error("failed share"),
+        namespace,
+        "region:test",
+      ).then(() => {
+        deferred = true;
+      });
+      await Promise.resolve();
+      expect(deferred).toBe(false);
+      releaseRenewal();
+      await deferPromise;
+
+      const tasks = await taskDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(tasks).toHaveLength(1);
+      expect(JSON.parse(String(tasks[0].mutation))).toMatchObject({
+        operation: "compensate-failed-share",
+      });
+    } finally {
+      vi.useRealTimers();
+      await taskDb.close();
+    }
   });
 
   it("retries transient legacy cleanup before completing failed-share compensation", async () => {

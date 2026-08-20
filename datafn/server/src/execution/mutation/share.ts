@@ -341,25 +341,43 @@ async function reconcileCompensatedGrantDirectory(
   namespace: string,
   multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
-  const current = await db.findOne({
-    model: getPermissionsTableName(),
-    where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
-    namespace,
-  });
-  if (current) {
-    await indexDatafnPermissionGrant(
-      current as Record<string, unknown>,
-      multiRegionRuntime,
-    );
-    return;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
+      namespace,
+    });
+    if (current) {
+      await indexDatafnPermissionGrant(
+        current as Record<string, unknown>,
+        multiRegionRuntime,
+      );
+    } else {
+      await deleteDatafnPermissionGrant({
+        id: snapshot.permissionId,
+        resourceType: snapshot.resource,
+        resourceNs: namespace,
+        resourceId: snapshot.resourceId,
+        principalId: snapshot.principalId,
+      }, multiRegionRuntime);
+    }
+    const settled = await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
+      namespace,
+    });
+    if (
+      (current === null && settled === null) ||
+      (current !== null && settled !== null &&
+        permissionDirectoryGrantSignature(current) ===
+          permissionDirectoryGrantSignature(settled))
+    ) {
+      return;
+    }
   }
-  await deleteDatafnPermissionGrant({
-    id: snapshot.permissionId,
-    resourceType: snapshot.resource,
-    resourceNs: namespace,
-    resourceId: snapshot.resourceId,
-    principalId: snapshot.principalId,
-  }, multiRegionRuntime);
+  throw new Error(
+    "Permission grant changed repeatedly during compensation reconciliation",
+  );
 }
 
 async function removeLegacyGrantWithRetries(input: {
@@ -875,38 +893,66 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
   }
 
   if (snapshot.compensationExpectedCanonical) {
-    try {
-      await db.transaction(async (trx) => {
-        if (snapshot.legacyManaged) {
-          const expectedLegacy = expectedLegacyGrantFromCanonical(
-            snapshot,
-            snapshot.compensationExpectedCanonical!,
-          );
-          const legacyRestored = await conditionallyRestoreGrantRecord(
-            trx,
-            getLegacyPermissionsTable(mutation.resource),
-            expectedLegacy,
-            snapshot.legacy,
-            LEGACY_GRANT_OWNERSHIP_FIELDS,
-            namespace,
-          );
-          if (!legacyRestored) throw COMPENSATION_OWNERSHIP_LOST;
-        }
-        const canonicalRestored = await conditionallyRestoreGrantRecord(
-          trx,
-          getPermissionsTableName(),
-          snapshot.compensationExpectedCanonical!,
-          snapshot.canonical,
-          CANONICAL_GRANT_OWNERSHIP_FIELDS,
+    if (db.capabilities?.transactions?.supported === false) {
+      // Transaction-disabled adapters still provide conditional bulk writes.
+      // Restore canonical state first; only touch the legacy mirror while the
+      // exact failed canonical state is still owned by this compensation.
+      const canonicalRestored = await conditionallyRestoreGrantRecord(
+        db,
+        getPermissionsTableName(),
+        snapshot.compensationExpectedCanonical,
+        snapshot.canonical,
+        CANONICAL_GRANT_OWNERSHIP_FIELDS,
+        namespace,
+      );
+      if (canonicalRestored && snapshot.legacyManaged) {
+        const expectedLegacy = expectedLegacyGrantFromCanonical(
+          snapshot,
+          snapshot.compensationExpectedCanonical,
+        );
+        await conditionallyRestoreGrantRecord(
+          db,
+          getLegacyPermissionsTable(mutation.resource),
+          expectedLegacy,
+          snapshot.legacy,
+          LEGACY_GRANT_OWNERSHIP_FIELDS,
           namespace,
         );
-        if (!canonicalRestored) throw COMPENSATION_OWNERSHIP_LOST;
-      });
-    } catch (error) {
-      if (error !== COMPENSATION_OWNERSHIP_LOST) throw error;
-      // A newer share or unshare owns at least one representation. The
-      // transaction rolls back every partial restore before the directory is
-      // reconciled from the current authoritative canonical row.
+      }
+    } else {
+      try {
+        await db.transaction(async (trx) => {
+          if (snapshot.legacyManaged) {
+            const expectedLegacy = expectedLegacyGrantFromCanonical(
+              snapshot,
+              snapshot.compensationExpectedCanonical!,
+            );
+            const legacyRestored = await conditionallyRestoreGrantRecord(
+              trx,
+              getLegacyPermissionsTable(mutation.resource),
+              expectedLegacy,
+              snapshot.legacy,
+              LEGACY_GRANT_OWNERSHIP_FIELDS,
+              namespace,
+            );
+            if (!legacyRestored) throw COMPENSATION_OWNERSHIP_LOST;
+          }
+          const canonicalRestored = await conditionallyRestoreGrantRecord(
+            trx,
+            getPermissionsTableName(),
+            snapshot.compensationExpectedCanonical!,
+            snapshot.canonical,
+            CANONICAL_GRANT_OWNERSHIP_FIELDS,
+            namespace,
+          );
+          if (!canonicalRestored) throw COMPENSATION_OWNERSHIP_LOST;
+        });
+      } catch (error) {
+        if (error !== COMPENSATION_OWNERSHIP_LOST) throw error;
+        // A newer share or unshare owns at least one representation. The
+        // transaction rolls back every partial restore before the directory is
+        // reconciled from the current authoritative canonical row.
+      }
     }
     await reconcileCompensatedGrantDirectory(
       db,
@@ -1079,6 +1125,7 @@ function permissionDirectoryGrantSignature(grant: Record<string, unknown>): stri
     grant.grantedBy,
     grant.grantedAt,
     grant.revokedAt ?? null,
+    grant.resourceRegion ?? null,
   ]);
 }
 

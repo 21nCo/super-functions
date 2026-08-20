@@ -870,6 +870,9 @@ describe("schema index migrations", () => {
     expect(
       hasUnsafeMySqlMetadataSyntax("(concat('safe\\'; DROP TABLE users; --'))"),
     ).toBe(true);
+    expect(
+      hasUnsafeMySqlMetadataSyntax("enum('a\\''; 'b\\'')"),
+    ).toBe(true);
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {

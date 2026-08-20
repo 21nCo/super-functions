@@ -206,6 +206,11 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     });
     await db.create({
       model: "shared_assignments",
+      data: { id: "project-prefix:user", from: "project", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
       data: { id: "document:user", from: "doc42", to: "user:1" },
       namespace: "default",
     });
@@ -225,7 +230,7 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     );
 
     expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
-    expect(result.joinCounts?.join_projects_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_projects_assignees_users).toBe(2);
     expect(result.joinCounts?.join_documents_assignees_users).toBe(1);
     expect(result.joinCounts?.join_documentArchives_assignees_users).toBe(1);
 
@@ -241,6 +246,10 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     expect(clone.joins?.join_tasks_assignees_users).toEqual([
       expect.objectContaining({ from: "tasks", to: "user:1" }),
     ]);
+    expect(clone.joins?.join_projects_assignees_users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: "project:1", to: "user:1" }),
+      expect.objectContaining({ from: "project", to: "user:1" }),
+    ]));
     expect(clone.joins?.join_documentArchives_assignees_users).toEqual([
       expect.objectContaining({ from: "document42", to: "user:1" }),
     ]);

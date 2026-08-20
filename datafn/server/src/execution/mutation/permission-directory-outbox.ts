@@ -17,6 +17,7 @@ interface PrecommitLeaseHeartbeat {
   stopped: boolean;
   timer: ReturnType<typeof setTimeout> | null;
   leaseValue: string;
+  inFlight: Promise<void> | null;
 }
 
 const precommitLeaseHeartbeats = new Map<string, PrecommitLeaseHeartbeat>();
@@ -25,12 +26,23 @@ function nextPrecommitLeaseExpiry(): string {
   return new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString();
 }
 
-function stopPrecommitLeaseHeartbeat(taskId: string): string | undefined {
+function detachPrecommitLeaseHeartbeat(
+  taskId: string,
+): PrecommitLeaseHeartbeat | undefined {
   const heartbeat = precommitLeaseHeartbeats.get(taskId);
   if (!heartbeat) return undefined;
   heartbeat.stopped = true;
   if (heartbeat.timer) clearTimeout(heartbeat.timer);
   precommitLeaseHeartbeats.delete(taskId);
+  return heartbeat;
+}
+
+async function stopPrecommitLeaseHeartbeat(
+  taskId: string,
+): Promise<string | undefined> {
+  const heartbeat = detachPrecommitLeaseHeartbeat(taskId);
+  if (!heartbeat) return undefined;
+  await heartbeat.inFlight;
   return heartbeat.leaseValue;
 }
 
@@ -39,17 +51,22 @@ function startPrecommitLeaseHeartbeat(
   taskId: string,
   initialLeaseValue: string,
 ): void {
-  stopPrecommitLeaseHeartbeat(taskId);
+  detachPrecommitLeaseHeartbeat(taskId);
   const heartbeat: PrecommitLeaseHeartbeat = {
     stopped: false,
     timer: null,
     leaseValue: initialLeaseValue,
+    inFlight: null,
   };
   const schedule = () => {
     if (heartbeat.stopped) return;
     heartbeat.timer = setTimeout(() => {
       heartbeat.timer = null;
-      void renew();
+      const inFlight = renew();
+      heartbeat.inFlight = inFlight;
+      void inFlight.finally(() => {
+        if (heartbeat.inFlight === inFlight) heartbeat.inFlight = null;
+      });
     }, PRECOMMIT_TASK_RENEWAL_MS);
     heartbeat.timer.unref?.();
   };
@@ -63,7 +80,7 @@ function startPrecommitLeaseHeartbeat(
       ], {
         next_attempt_at: renewedLeaseValue,
       });
-      if (updated > 0 && !heartbeat.stopped) {
+      if (updated > 0) {
         heartbeat.leaseValue = renewedLeaseValue;
       }
     } catch {
@@ -127,7 +144,7 @@ export async function markPermissionDirectorySyncReady(
   db: Adapter,
   taskId: string,
 ): Promise<void> {
-  stopPrecommitLeaseHeartbeat(taskId);
+  await stopPrecommitLeaseHeartbeat(taskId);
   await db.internal.update(OUTBOX_TABLE, [
     { field: "id", op: "eq", value: taskId },
   ], {
@@ -144,7 +161,7 @@ export async function deferFailedShareCompensation(
   namespace: string,
   regionId: string,
 ): Promise<void> {
-  const expectedLeaseValue = stopPrecommitLeaseHeartbeat(taskId);
+  const expectedLeaseValue = await stopPrecommitLeaseHeartbeat(taskId);
   const compensationMutation = {
     ...mutation,
     operation: "compensate-failed-share",
@@ -185,7 +202,7 @@ export async function drainPermissionDirectorySync(
   // including lookup failure or a missing row, leaves the durable lease able
   // to expire into background recovery.
   if (!options.expectedNextAttemptAt) {
-    stopPrecommitLeaseHeartbeat(taskId);
+    await stopPrecommitLeaseHeartbeat(taskId);
   }
   const taskWhere: Array<{
     field: string;
@@ -217,7 +234,7 @@ export async function drainPermissionDirectorySync(
       runtime,
     );
     const deleted = await db.internal.delete(OUTBOX_TABLE, taskWhere);
-    if (deleted > 0) stopPrecommitLeaseHeartbeat(taskId);
+    if (deleted > 0) detachPrecommitLeaseHeartbeat(taskId);
     // A live owner may renew after a stale drainer claimed the row. The
     // conditional delete fences that race: reconciliation is idempotent, and
     // the still-durable task will be repaired again after owner settlement.
