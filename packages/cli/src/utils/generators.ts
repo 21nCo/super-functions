@@ -3,10 +3,16 @@
  */
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
-import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
+import {
+  resolvePhysicalTableName,
+  type MigrationPlan,
+  type MySqlIndexColumnMetadata,
+  type TableDiff,
+} from './schema-diff.js';
 import {
   MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH,
   hasUnsafeMySqlMetadataSyntax,
+  isUnboundedMySqlTextType,
   mysqlColumnTypeFromSnapshot,
   mysqlVarcharLength,
 } from './mysql-types.js';
@@ -426,6 +432,7 @@ function generateCreateIndexSQL(
   schema?: TableSchema,
   knownTextColumns: readonly string[] = [],
   knownPrefixLengths: readonly (number | null)[] = [],
+  knownColumnMetadata: readonly (MySqlIndexColumnMetadata | null)[] = [],
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
   const mysqlTextColumns = new Set(knownTextColumns);
@@ -438,7 +445,7 @@ function generateCreateIndexSQL(
   });
   if (dialect === 'mysql' && schema) {
     let indexedKeyBytes = 0;
-    for (const column of index.columns) {
+    for (const [indexPosition, column] of index.columns.entries()) {
       const preservedPrefixLength = mysqlPrefixLengths.get(column);
       if (preservedPrefixLength) {
         indexedKeyBytes += preservedPrefixLength * 4;
@@ -448,6 +455,17 @@ function generateCreateIndexSQL(
         ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
       )?.[1];
       if (!field) {
+        const metadata = knownColumnMetadata[indexPosition];
+        if (metadata) {
+          if (isUnboundedMySqlTextType(metadata.dataType)) {
+            mysqlTextColumns.add(column);
+            indexedKeyBytes += 191 * 4;
+          }
+          // This exact index already existed in the introspected database, so
+          // recreating a non-TEXT key part does not require guessing a schema
+          // field or revalidating its dialect-specific encoded width.
+          continue;
+        }
         if (mysqlTextColumns.has(column)) {
           indexedKeyBytes += 191 * 4;
           continue;
@@ -537,9 +555,10 @@ function generateKyselyCreateIndex(
   schema: TableSchema,
   knownTextColumns: readonly string[] = [],
   knownPrefixLengths: readonly (number | null)[] = [],
+  knownColumnMetadata: readonly (MySqlIndexColumnMetadata | null)[] = [],
 ): string {
   if (dialect === 'mysql') {
-    return `  await sql\`${escapeJavaScriptTemplateLiteral(generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns, knownPrefixLengths))}\`.execute(db);`;
+    return `  await sql\`${escapeJavaScriptTemplateLiteral(generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns, knownPrefixLengths, knownColumnMetadata))}\`.execute(db);`;
   }
   const unique = index.unique ? `.unique()` : '';
   return `  await db.schema.createIndex('${index.name}').on('${tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`;
@@ -801,6 +820,7 @@ export function generateKyselyMigration(
           schema,
           index.current.textColumns,
           index.current.prefixLengths,
+          index.current.columnMetadata,
         ));
       }
       downStatements.push(...revertChangedColumns);

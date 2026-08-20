@@ -189,7 +189,12 @@ describe("schema index migrations", () => {
       expect.objectContaining({
         changedIndexes: [{
           name: "plugfn_sync_jobs_claim_token_idx",
-          current: { columns: ["id"], unique: false, textColumns: ["id"] },
+          current: {
+            columns: ["id"],
+            unique: false,
+            textColumns: ["id"],
+            columnMetadata: [{ dataType: "text" }],
+          },
           required: { columns: ["claim_token"], unique: true },
         }],
       }),
@@ -833,6 +838,61 @@ describe("schema index migrations", () => {
     const down = content.slice(content.indexOf("export async function down"));
     expect(down).toContain(
       "CREATE UNIQUE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_note(50));",
+    );
+  });
+
+  it("preserves removed numeric-column metadata in a Kysely index rollback", () => {
+    const replacementSchema = {
+      modelName: "jobs",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id" },
+        count: { type: "number", required: false, fieldName: "count" },
+      },
+      indexes: [{ name: "jobs_lookup_idx", fields: ["count"] }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_jobs",
+      columns: [
+        {
+          tableName: "plugfn_jobs",
+          columnName: "id",
+          dataType: "text",
+          isNullable: false,
+          defaultValue: null,
+          isPrimaryKey: true,
+          isUnique: true,
+        },
+        {
+          dialect: "mysql",
+          tableName: "plugfn_jobs",
+          columnName: "legacy_count",
+          dataType: "int",
+          columnType: "int unsigned",
+          isNullable: true,
+          defaultValue: null,
+          isPrimaryKey: false,
+          isUnique: false,
+        },
+      ],
+      indexes: [{
+        name: "jobs_lookup_idx",
+        tableName: "plugfn_jobs",
+        columns: ["legacy_count"],
+        isUnique: false,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].changedIndexes?.[0].current.columnMetadata)
+      .toEqual([{ dataType: "int", columnType: "int unsigned" }]);
+    const content = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [replacementSchema],
+      "mysql",
+    ).content;
+    const down = content.slice(content.indexOf("export async function down"));
+    expect(down).toContain(
+      "CREATE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_count);",
     );
   });
 });

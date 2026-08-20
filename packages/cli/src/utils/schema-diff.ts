@@ -99,6 +99,12 @@ export interface SchemaDiff {
   }>;
 }
 
+export interface MySqlIndexColumnMetadata {
+  dataType: string;
+  columnType?: string;
+  maxLength?: number | null;
+}
+
 export interface LibrarySchemaRequirement {
   namespace: string;
   version: number;
@@ -139,6 +145,7 @@ export interface TableDiff {
       unique: boolean;
       textColumns?: string[];
       prefixLengths?: Array<number | null>;
+      columnMetadata?: Array<MySqlIndexColumnMetadata | null>;
     };
     required: { columns: string[]; unique: boolean };
   }>;
@@ -250,6 +257,22 @@ export function diffTables(
           ? isUnboundedMySqlTextType(currentColumn.dataType)
           : false;
       });
+      const currentColumnMetadata = currentIndex.columns.map((column) => {
+        const currentColumn = curTable.columns.find(
+          (candidate) => candidate.columnName === column,
+        );
+        return currentColumn
+          ? {
+              dataType: currentColumn.dataType,
+              ...(currentColumn.columnType
+                ? { columnType: currentColumn.columnType }
+                : {}),
+              ...(currentColumn.maxLength !== undefined
+                ? { maxLength: currentColumn.maxLength }
+                : {}),
+            }
+          : null;
+      });
       return [{
         name: requiredIndex.name,
         current: {
@@ -258,6 +281,9 @@ export function diffTables(
           ...(currentTextColumns.length > 0 ? { textColumns: currentTextColumns } : {}),
           ...(currentIndex.prefixLengths?.some((length) => length !== null)
             ? { prefixLengths: [...currentIndex.prefixLengths] }
+            : {}),
+          ...(currentColumnMetadata.some((metadata) => metadata !== null)
+            ? { columnMetadata: currentColumnMetadata }
             : {}),
         },
         required: {
