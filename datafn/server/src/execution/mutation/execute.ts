@@ -47,6 +47,7 @@ import {
   discardPermissionDirectorySync,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
+  enqueuePermissionDirectorySyncDurably,
   ensurePermissionDirectoryOutbox,
   markPermissionDirectorySyncReady,
 } from "./permission-directory-outbox.js";
@@ -1524,7 +1525,10 @@ export async function executeMutation(
       );
       permissionDirectoryTaskPending = false;
     } else if (permissionDirectoryTaskId) {
-      await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
+      const discarded = await discardPermissionDirectorySync(
+        db,
+        permissionDirectoryTaskId,
+      )
         .catch((error) => {
           logger?.error("Failed share directory task could not be discarded", {
             error: String(error),
@@ -1534,7 +1538,14 @@ export async function executeMutation(
           });
           return false;
         });
-      permissionDirectoryTaskId = null;
+      permissionDirectoryTaskId = discarded || !multiRegionRuntime
+        ? null
+        : await enqueuePermissionDirectorySyncDurably(
+            db,
+            mutation,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
       permissionDirectoryTaskPending = false;
     }
   } else {

@@ -10,6 +10,7 @@ import { datafnMultiRegionPlugin } from "../../../plugins/multi-region.js";
 import {
   rollbackDatafnPermissionGrantAfterFailedShare,
   snapshotDatafnPermissionGrantBeforeShare,
+  syncDatafnPermissionGrantAfterCommit,
 } from "../share.js";
 import {
   getLegacyPermissionsTable,
@@ -566,8 +567,13 @@ describe("share SPV2 mutation semantics", () => {
         operation: "share",
       });
 
+      await vi.advanceTimersByTimeAsync(50);
+      expect(deferred).toBe(false);
+
       rejectCompensationPersistence = false;
-      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(99);
+      expect(deferred).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
       const durableTaskId = await deferPromise;
       expect(durableTaskId).toEqual(expect.any(String));
 
@@ -1025,13 +1031,51 @@ describe("share SPV2 mutation semantics", () => {
       ) {
         throw new Error("legacy mirror unavailable");
       }
-      return originalUpsert(input);
+      const result = await originalUpsert(input);
+      if (rejectLegacyMirror && input.model === globalPermissionsTable) {
+        await syncDatafnPermissionGrantAfterCommit(
+          localDb,
+          {
+            operation: "share",
+            resource: "notes",
+            id: "note:direct-failed-share",
+            shareWith: { principalId: "user:partner" },
+          },
+          namespace,
+          { regionId: "region:test", directory },
+        );
+      }
+      return result;
     };
     const directory = createMemoryIndexedDirectoryStore();
+    const originalInternalDelete = localDb.internal.delete.bind(localDb.internal);
+    let losePrecommitTaskOwnership = true;
+    const ownershipLosingInternal = {
+      ...localDb.internal,
+      delete: async (...args: Parameters<typeof originalInternalDelete>) => {
+        const [table, where] = args;
+        if (
+          losePrecommitTaskOwnership &&
+          table === "__datafn_permission_directory_outbox" &&
+          where.some((condition) => condition.field === "next_attempt_at")
+        ) {
+          losePrecommitTaskOwnership = false;
+          await originalInternalDelete(...args);
+          return 0;
+        }
+        return originalInternalDelete(...args);
+      },
+    };
+    const ownershipLosingDb = new Proxy(localDb, {
+      get(target, property, receiver) {
+        if (property === "internal") return ownershipLosingInternal;
+        return Reflect.get(target, property, receiver);
+      },
+    });
     const localServer = await createDatafnServer({
       allowUnknownResources: true,
       schema,
-      database: localDb,
+      database: ownershipLosingDb,
       spv2Migration: {
         readMode: "dual",
         writeMode: "dual",

@@ -40,6 +40,7 @@ import {
   discardPermissionDirectorySync,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
+  enqueuePermissionDirectorySyncDurably,
   ensurePermissionDirectoryOutbox,
 } from "../mutation/permission-directory-outbox.js";
 
@@ -1261,7 +1262,10 @@ export async function executePush(
       } else {
         if (mut.operation === "share" && !failedShareCompensationDeferred) {
           if (permissionDirectoryTaskId) {
-            await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
+            const discarded = await discardPermissionDirectorySync(
+              db,
+              permissionDirectoryTaskId,
+            )
               .catch((error) => {
                 logger?.error("Push failed-share directory task could not be discarded", {
                   error: String(error),
@@ -1271,7 +1275,17 @@ export async function executePush(
                 });
                 return false;
               });
-            permissionDirectoryTaskId = null;
+            permissionDirectoryTaskId = discarded || !multiRegionRuntime
+              ? null
+              : await enqueuePermissionDirectorySyncDurably(
+                  db,
+                  mut,
+                  namespace,
+                  multiRegionRuntime.regionId,
+                );
+            if (permissionDirectoryTaskId) {
+              await reconcilePermissionDirectoryAfterSettlement();
+            }
           }
         } else {
           await reconcilePermissionDirectoryAfterSettlement(

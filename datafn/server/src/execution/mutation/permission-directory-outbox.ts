@@ -13,6 +13,8 @@ const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
 const PRECOMMIT_TASK_LEASE_MS = 5 * 60 * 1000;
 const PRECOMMIT_TASK_RENEWAL_MS = Math.floor(PRECOMMIT_TASK_LEASE_MS / 3);
 const DRAIN_CLAIM_LEASE_MS = 60 * 1000;
+const SETTLEMENT_RETRY_MIN_MS = 50;
+const SETTLEMENT_RETRY_MAX_MS = 5_000;
 interface PrecommitLeaseHeartbeat {
   stopped: boolean;
   timer: ReturnType<typeof setTimeout> | null;
@@ -21,6 +23,14 @@ interface PrecommitLeaseHeartbeat {
 }
 
 const precommitLeaseHeartbeats = new Map<string, PrecommitLeaseHeartbeat>();
+
+async function waitForSettlementRetry(attempt: number): Promise<void> {
+  const delayMs = Math.min(
+    SETTLEMENT_RETRY_MIN_MS * (2 ** Math.min(attempt, 7)),
+    SETTLEMENT_RETRY_MAX_MS,
+  );
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
 
 function nextPrecommitLeaseExpiry(): string {
   return new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString();
@@ -140,6 +150,30 @@ export async function enqueuePermissionDirectorySync(
   return id;
 }
 
+export async function enqueuePermissionDirectorySyncDurably(
+  db: Adapter,
+  mutation: PermissionDirectorySyncMutation,
+  namespace: string,
+  regionId: string,
+): Promise<string> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await enqueuePermissionDirectorySync(
+        db,
+        mutation,
+        namespace,
+        regionId,
+      );
+    } catch {
+      // Failed-share settlement is fail-closed: do not return without durable
+      // reconciliation, but cap retry pressure during a prolonged outage.
+      await waitForSettlementRetry(attempt);
+      attempt += 1;
+    }
+  }
+}
+
 export async function markPermissionDirectorySyncReady(
   db: Adapter,
   taskId: string,
@@ -211,26 +245,17 @@ export async function deferFailedShareCompensation(
   }
   if (updated > 0) return taskId;
 
-  let replacementTaskId: string | null = null;
-  while (!replacementTaskId) {
-    try {
-      replacementTaskId = await enqueuePermissionDirectorySync(
-        db,
-        compensationMutation,
-        namespace,
-        regionId,
-      );
-    } catch {
-      // A failed share must not return while its only durable task can still
-      // execute as a share. Keep the request fail-closed until persistence
-      // recovers; an ambiguous create may leave harmless duplicate repairs.
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
+  const replacementTaskId = await enqueuePermissionDirectorySyncDurably(
+    db,
+    compensationMutation,
+    namespace,
+    regionId,
+  );
 
   // A replacement guarantees compensation survives even if another drainer
   // already claimed the original. Before returning, also fence every durable
   // copy of the original task away from the failed `share` operation.
+  let settlementAttempt = 0;
   while (true) {
     let originalTask: Record<string, unknown> | null;
     try {
@@ -238,7 +263,8 @@ export async function deferFailedShareCompensation(
         { field: "id", op: "eq", value: taskId },
       ]);
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitForSettlementRetry(settlementAttempt);
+      settlementAttempt += 1;
       continue;
     }
     if (!originalTask) return replacementTaskId;
@@ -262,7 +288,8 @@ export async function deferFailedShareCompensation(
       // Re-read and retry. We return only after the original is gone or its
       // durable mutation has been fenced to compensation.
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await waitForSettlementRetry(settlementAttempt);
+    settlementAttempt += 1;
   }
 }
 
