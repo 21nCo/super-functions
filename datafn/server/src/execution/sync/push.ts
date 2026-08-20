@@ -1071,6 +1071,33 @@ export async function executePush(
       continue;
     }
 
+    if (multiRegionRuntime && mut.operation === "unshare") {
+      try {
+        // Directory invalidation happens before the permission-row delete.
+        // Persist repair work on the settled outer adapter first so commit or
+        // rollback can always converge from authoritative database state.
+        permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+          db,
+          mut,
+          namespace,
+          multiRegionRuntime.regionId,
+        );
+      } catch (error) {
+        logger?.error("Push unshare durability prerequisite failed", {
+          error: String(error),
+          operation: mut.operation,
+          resource: mut.resource,
+        });
+        await recordMutationFailure(
+          mut,
+          "INTERNAL",
+          "Permission directory repair could not be persisted",
+          "$",
+        );
+        continue;
+      }
+    }
+
     // FIX-REL-011: When transactions are supported, wrap operation + change tracking atomically
     if (hasTransaction) {
       let mutationSucceeded = false;

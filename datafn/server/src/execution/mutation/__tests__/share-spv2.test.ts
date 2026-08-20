@@ -568,6 +568,86 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not invalidate a direct unshare when repair persistence is unavailable", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response;
+    };
+
+    try {
+      await request({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "direct-unshare-prequeue",
+        mutationId: "direct-unshare-prequeue-insert",
+        id: "note:direct-unshare-prequeue",
+        record: { title: "Direct unshare prequeue" },
+      });
+      await request({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "direct-unshare-prequeue",
+        mutationId: "direct-unshare-prequeue-share",
+        id: "note:direct-unshare-prequeue",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+
+      const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
+      localDb.internal.create = async (table: string, record: Record<string, unknown>) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          throw new Error("outbox unavailable");
+        }
+        return originalInternalCreate(table, record);
+      };
+
+      const response = await request({
+        resource: "notes",
+        version: 1,
+        operation: "unshare",
+        clientId: "direct-unshare-prequeue",
+        mutationId: "direct-unshare-prequeue-unshare",
+        id: "note:direct-unshare-prequeue",
+        shareWith: { principalId: "user:partner" },
+      });
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(1);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("durably retries a committed share when directory indexing fails", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -1003,6 +1083,104 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not invalidate a push unshare when repair persistence is unavailable", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response;
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "push-unshare-prequeue",
+        mutationId: "push-unshare-prequeue-insert",
+        id: "note:push-unshare-prequeue",
+        record: { title: "Push unshare prequeue" },
+      });
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "push-unshare-prequeue",
+        mutationId: "push-unshare-prequeue-share",
+        id: "note:push-unshare-prequeue",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+
+      await localDb.internal.create("__datafn_idempotency", {
+        id: "datafn:push-unshare-prequeue:push-unshare-prequeue-unshare",
+        namespace: "datafn",
+        client_id: "push-unshare-prequeue",
+        mutation_id: "push-unshare-prequeue-unshare",
+        result: JSON.stringify({
+          ok: false,
+          mutationId: "push-unshare-prequeue-unshare",
+          affectedIds: [],
+          errors: [{ code: "INTERNAL", message: "retry", path: "$", retryable: true }],
+          deduped: false,
+        }),
+        created_at: new Date().toISOString(),
+      });
+
+      const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
+      localDb.internal.create = async (table: string, record: Record<string, unknown>) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          throw new Error("outbox unavailable");
+        }
+        return originalInternalCreate(table, record);
+      };
+
+      const response = await request("push", {
+        clientId: "push-unshare-prequeue",
+        mutations: [{
+          resource: "notes",
+          version: 1,
+          operation: "unshare",
+          clientId: "push-unshare-prequeue",
+          mutationId: "push-unshare-prequeue-unshare",
+          id: "note:push-unshare-prequeue",
+          shareWith: { principalId: "user:partner" },
+        }],
+      });
+
+      expect(response.status).toBe(400);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(1);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("durably restores a push unshare when its transaction rolls back", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -1280,6 +1458,94 @@ describe("share SPV2 mutation semantics", () => {
       })).resolves.toEqual({ records: [] });
     } finally {
       await localServer.close?.();
+    }
+  });
+
+  it("does not enter an outer unshare transaction when repair persistence is unavailable", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:test",
+        directory,
+      })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response;
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "transact-unshare-prequeue",
+        mutationId: "transact-unshare-prequeue-insert",
+        id: "note:transact-unshare-prequeue",
+        record: { title: "Transact unshare prequeue" },
+      });
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "transact-unshare-prequeue",
+        mutationId: "transact-unshare-prequeue-share",
+        id: "note:transact-unshare-prequeue",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+
+      const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
+      localDb.internal.create = async (table: string, record: Record<string, unknown>) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          throw new Error("outbox unavailable");
+        }
+        return originalInternalCreate(table, record);
+      };
+
+      const response = await request("transact", {
+        atomic: true,
+        steps: [{
+          mutation: {
+            resource: "notes",
+            version: 1,
+            operation: "unshare",
+            clientId: "transact-unshare-prequeue",
+            mutationId: "transact-unshare-prequeue-unshare",
+            id: "note:transact-unshare-prequeue",
+            shareWith: { principalId: "user:partner" },
+          },
+        }],
+      });
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(1);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
     }
   });
 

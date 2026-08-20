@@ -1015,9 +1015,11 @@ export async function executeMutation(
   deferPermissionDirectorySync?: (
     sync: (committedDb: Adapter) => Promise<void>,
   ) => void,
+  prequeuedPermissionDirectoryTaskId?: string,
 ): Promise<MutationResult> {
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
-  let permissionDirectoryTaskId: string | null = null;
+  let permissionDirectoryTaskId: string | null =
+    prequeuedPermissionDirectoryTaskId ?? null;
   const needsPermissionDirectoryOutbox = Boolean(
     multiRegionRuntime &&
     (mutation.operation === "share" || mutation.operation === "unshare"),
@@ -1026,7 +1028,7 @@ export async function executeMutation(
     multiRegionRuntime && mutation.operation === "share",
   );
   const queuePermissionDirectorySync = async (targetDb: Adapter) => {
-    if (!shouldQueuePermissionDirectorySync) return;
+    if (!needsPermissionDirectoryOutbox || permissionDirectoryTaskId) return;
     permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
       targetDb,
       mutation,
@@ -1192,6 +1194,16 @@ export async function executeMutation(
     // inserted with the grant so a committed share always has a durable retry.
     await ensurePermissionDirectoryOutbox(db);
   }
+  if (
+    multiRegionRuntime &&
+    mutation.operation === "unshare" &&
+    !insideTransaction
+  ) {
+    // Unshare invalidates the external directory before the database write.
+    // Persist repair work on the outer adapter first so a later rollback can
+    // never restore the grant without leaving durable re-index work.
+    await queuePermissionDirectorySync(db);
+  }
 
   // DI-002: Guard evaluation + operation MUST run in same transaction to prevent TOCTOU.
   // When db.transaction is available and a guard is present, wrap the guard check +
@@ -1247,7 +1259,7 @@ export async function executeMutation(
           logger,
           multiRegionRuntime,
         );
-        if (txMutationResult.ok) {
+        if (txMutationResult.ok && shouldQueuePermissionDirectorySync) {
           await queuePermissionDirectorySync(txDb);
         }
         if (!txMutationResult.ok) {
@@ -1359,7 +1371,7 @@ export async function executeMutation(
           logger,
           multiRegionRuntime,
         );
-        if (txMutationResult.ok) {
+        if (txMutationResult.ok && shouldQueuePermissionDirectorySync) {
           await queuePermissionDirectorySync(txDb);
         }
         if (!txMutationResult.ok) {
@@ -1417,7 +1429,7 @@ export async function executeMutation(
   );
 
   if (result.ok) {
-    if (insideTransaction) {
+    if (insideTransaction && shouldQueuePermissionDirectorySync) {
       await queuePermissionDirectorySync(db);
     }
     await reconcilePermissionDirectoryAfterCommit();

@@ -13,7 +13,11 @@ import { DbDataStore } from "./db-store.js";
 import { ChangeTrackingService } from "./sync/change-tracking.js";
 import type { DatafnLogger } from "../logger.js";
 import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
-import { ensurePermissionDirectoryOutbox } from "./mutation/permission-directory-outbox.js";
+import {
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  ensurePermissionDirectoryOutbox,
+} from "./mutation/permission-directory-outbox.js";
 
 export interface TransactStep {
   query?: any;
@@ -55,9 +59,10 @@ export async function executeTransaction(
   const steps = request.steps;
   const isAtomic = request.atomic !== false; // Default true
   const hasMutations = steps.some((step) => Boolean(step.mutation));
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   const needsPermissionDirectoryOutbox = Boolean(
     hasMutations &&
-    getDatafnMultiRegionRuntimeConfig(plugins) &&
+    multiRegionRuntime &&
     steps.some((step) =>
       step.mutation?.operation === "share" ||
       step.mutation?.operation === "unshare"
@@ -68,6 +73,24 @@ export async function executeTransaction(
     // transactions, so durable DDL must also be initialized up front there.
     await ensurePermissionDirectoryOutbox(db);
   }
+  const prequeuedUnshareTaskIds: string[] = [];
+  const prequeuedUnshareTasks = new Map<DFQLMutation, string>();
+  if (multiRegionRuntime) {
+    for (const step of steps) {
+      if (step.mutation?.operation !== "unshare") continue;
+      // Atomic unshare removes the external grant before its transaction
+      // settles. Queue repair on the outer adapter before entering the
+      // transaction so enqueue failure aborts before invalidation.
+      const taskId = await enqueuePermissionDirectorySync(
+        db,
+        step.mutation,
+        namespace,
+        multiRegionRuntime.regionId,
+      );
+      prequeuedUnshareTaskIds.push(taskId);
+      prequeuedUnshareTasks.set(step.mutation, taskId);
+    }
+  }
 
   // SRV-012: Step limit check moved to route handler; skip duplicate check here
   // (createTransactHandler validates before calling executeTransaction)
@@ -77,6 +100,26 @@ export async function executeTransaction(
   type DeferredPermissionDirectorySync = (
     committedDb: Adapter,
   ) => Promise<void>;
+  const drainPrequeuedUnshareTasks = async () => {
+    if (!multiRegionRuntime) return;
+    for (const taskId of prequeuedUnshareTaskIds) {
+      try {
+        await drainPermissionDirectorySync(
+          db,
+          taskId,
+          multiRegionRuntime,
+          logger,
+        );
+      } catch (error) {
+        // The task is already durable. Startup/interval draining owns retry.
+        logger?.error("Prequeued unshare reconciliation deferred", {
+          error: String(error),
+          operation: "permission-directory",
+          taskId,
+        });
+      }
+    }
+  };
 
   // Helper to execute a single step
   const executeStep = async (
@@ -117,6 +160,7 @@ export async function executeTransaction(
         deferredPermissionDirectorySyncs
           ? (sync) => deferredPermissionDirectorySyncs.push(sync)
           : undefined,
+        prequeuedUnshareTasks.get(step.mutation),
       );
       // Expose the first error as a top-level `.error` property so that
       // transact callers can access result.results[i].error.code directly
@@ -137,6 +181,7 @@ export async function executeTransaction(
     // REL-001: Atomic execution with DB transaction support
     const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
     const reconcilePermissionDirectoryAfterSettlement = async () => {
+      await drainPrequeuedUnshareTasks();
       for (const sync of deferredPermissionDirectorySyncs) {
         try {
           await sync(db);
@@ -268,6 +313,7 @@ export async function executeTransaction(
         const mutRes = result as any;
         if (mutRes?.ok === false) {
           // Stop on first failure if atomic (even without rollback support we stop)
+          await drainPrequeuedUnshareTasks();
           return { ok: true, result: { ok: false, results } };
         }
       }
@@ -286,7 +332,10 @@ export async function executeTransaction(
         ok: false,
         error: { code: errorCode, message: e?.message || String(e) }
       });
-      if (isAtomic) return { ok: true, result: { ok: false, results } };
+      if (isAtomic) {
+        await drainPrequeuedUnshareTasks();
+        return { ok: true, result: { ok: false, results } };
+      }
     }
   }
 
@@ -297,5 +346,6 @@ export async function executeTransaction(
     return false;
   });
 
+  await drainPrequeuedUnshareTasks();
   return { ok: true, result: { ok: !anyFailed, results } };
 }
