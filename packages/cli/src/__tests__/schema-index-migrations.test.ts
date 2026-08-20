@@ -8,6 +8,7 @@ import {
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
 import { introspectMySQL, introspectSQLite } from "../utils/introspection.js";
 import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
+import { hasUnsafeMySqlMetadataSyntax } from "../utils/mysql-types.js";
 
 const syncJobs = {
   modelName: "syncJobs",
@@ -701,6 +702,12 @@ describe("schema index migrations", () => {
           fieldName: "request_id",
           maxLength: 36,
         },
+        quotedDefault: {
+          type: "string",
+          required: true,
+          fieldName: "quoted_default",
+          maxLength: 128,
+        },
       },
       indexes: [],
     } as unknown as TableSchema;
@@ -740,6 +747,18 @@ describe("schema index migrations", () => {
         defaultValue: "(uuid())",
         isPrimaryKey: false,
         isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_metadata",
+        columnName: "quoted_default",
+        dataType: "varchar",
+        columnType: "varchar(128)",
+        maxLength: 128,
+        extra: "DEFAULT_GENERATED",
+        isNullable: true,
+        defaultValue: "(concat('a--b', '/*c*/', 'semi;colon'))",
+        isPrimaryKey: false,
+        isUnique: false,
       }],
       indexes: [],
       constraints: [],
@@ -753,6 +772,12 @@ describe("schema index migrations", () => {
     expect(content).toContain("varchar(32) NOT NULL DEFAULT 'CURRENT_TIMESTAMP'");
     expect(content).toContain("enum('safe','\\${process.env.SECRET}','--','/*')");
     expect(content).toContain("varchar(36) NOT NULL DEFAULT (uuid())");
+    expect(content).toContain(
+      "varchar(128) NOT NULL DEFAULT (concat('a--b', '/*c*/', 'semi;colon'))",
+    );
+    expect(
+      hasUnsafeMySqlMetadataSyntax("(concat('safe') /* outside quote */)"),
+    ).toBe(true);
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {

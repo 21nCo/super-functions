@@ -49,7 +49,7 @@ export function mysqlColumnTypeFromSnapshot(input: {
     // and SET values. Comment-looking text inside a quoted value is data.
     if (
       completeType.length === 0 ||
-      hasUnsafeMySqlTypeSyntax(completeType)
+      hasUnsafeMySqlMetadataSyntax(completeType)
     ) {
       throw new Error(`Unsupported introspected MySQL column type: ${input.columnType}`);
     }
@@ -69,7 +69,7 @@ export function mysqlColumnTypeFromSnapshot(input: {
   return normalized;
 }
 
-function hasUnsafeMySqlTypeSyntax(value: string): boolean {
+export function hasUnsafeMySqlMetadataSyntax(value: string): boolean {
   let quote: "'" | '"' | null = null;
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];

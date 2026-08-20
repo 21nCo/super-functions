@@ -6,6 +6,7 @@ import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
 import {
   MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH,
+  hasUnsafeMySqlMetadataSyntax,
   mysqlColumnTypeFromSnapshot,
   mysqlVarcharLength,
 } from './mysql-types.js';
@@ -187,12 +188,7 @@ function safeMySqlMetadataIdentifier(
 
 function safeMySqlMetadataFragment(value: string, label: string): string {
   const normalized = value.trim();
-  if (
-    /[;\r\n]/.test(normalized) ||
-    normalized.includes('--') ||
-    normalized.includes('/*') ||
-    normalized.includes('*/')
-  ) {
+  if (hasUnsafeMySqlMetadataSyntax(normalized)) {
     throw new Error(`Unsupported introspected MySQL ${label}: ${value}`);
   }
   return normalized;
