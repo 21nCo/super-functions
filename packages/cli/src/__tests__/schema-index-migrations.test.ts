@@ -634,6 +634,73 @@ describe("schema index migrations", () => {
       .toContain("maxLength changed from 64 to unbounded");
   });
 
+  it("rebuilds dependent MySQL indexes around indexed column widening", () => {
+    const widened = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+        },
+      },
+      indexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        fields: ["claimToken"],
+        unique: false,
+      }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([widened], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(100)",
+        maxLength: 100,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: false,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].rebuiltIndexes).toEqual([
+      expect.objectContaining({
+        name: "plugfn_sync_jobs_claim_token_idx",
+        required: { columns: ["claim_token"], unique: false },
+      }),
+    ]);
+    const plan = createMigrationPlan("plugfn", 5, 6, diffs);
+    const drop = "DROP INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs";
+    const alter = "MODIFY COLUMN claim_token TEXT NULL";
+    const create =
+      "CREATE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191))";
+
+    for (const content of [
+      generateDrizzleMigration(plan, [widened], "mysql").content,
+      generatePrismaMigration(plan, [widened], "mysql").content,
+    ]) {
+      expect(content.indexOf(drop)).toBeGreaterThanOrEqual(0);
+      expect(content.indexOf(alter)).toBeGreaterThan(content.indexOf(drop));
+      expect(content.indexOf(create)).toBeGreaterThan(content.indexOf(alter));
+    }
+    const kysely = generateKyselyMigration(plan, [widened], "mysql").content;
+    const kyselyDrop = "dropIndex('plugfn_sync_jobs_claim_token_idx')";
+    expect(kysely.indexOf(kyselyDrop)).toBeGreaterThanOrEqual(0);
+    expect(kysely.indexOf(alter)).toBeGreaterThan(kysely.indexOf(kyselyDrop));
+    expect(kysely.indexOf(create)).toBeGreaterThan(kysely.indexOf(alter));
+  });
+
   it("preserves desired and prior defaults plus the complete MySQL rollback type", () => {
     const withDefault = {
       ...syncJobs,

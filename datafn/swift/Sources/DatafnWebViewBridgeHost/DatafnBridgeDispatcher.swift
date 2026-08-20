@@ -777,6 +777,7 @@ public final class DatafnBridgeDispatcher: @unchecked Sendable {
         let capabilities = [
             searchHandlers == nil ? nil : "search",
             "storage",
+            "storage.atomicMergeIfMissing",
             remoteHandlers.isAvailable ? "remote" : nil,
             syncHandlers.isAvailable ? "sync" : nil,
             "events",

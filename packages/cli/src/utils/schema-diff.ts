@@ -150,6 +150,18 @@ export interface TableDiff {
     };
     required: { columns: string[]; unique: boolean };
   }>;
+  rebuiltIndexes?: Array<{
+    name: string;
+    current: {
+      columns: string[];
+      unique: boolean;
+      textColumns?: string[];
+      prefixLengths?: Array<number | null>;
+      columnMetadata?: Array<MySqlIndexColumnMetadata | null>;
+      indexType?: string;
+    };
+    required: { columns: string[]; unique: boolean };
+  }>;
 }
 
 export interface MigrationPlan {
@@ -376,12 +388,86 @@ export function diffTables(
       }
     }
 
+    const changedMySqlColumns = new Set(
+      columnChanges
+        .filter((change) =>
+          change.current &&
+          curColMap.get(change.column)?.dialect === 'mysql' &&
+          /(?:^|, )(?:type|maxLength) changed/.test(change.change)
+        )
+        .map((change) => change.column),
+    );
+    const changedIndexNames = new Set(changedIndexes.map((index) => index.name));
+    const rebuiltIndexes: NonNullable<TableDiff['rebuiltIndexes']> =
+      changedMySqlColumns.size === 0
+        ? []
+        : requiredIndexes.flatMap((requiredIndex) => {
+            if (changedIndexNames.has(requiredIndex.name)) return [];
+            const currentIndex = curTable.indexes.find(
+              (candidate) => candidate.name === requiredIndex.name,
+            );
+            if (
+              !currentIndex ||
+              !currentIndex.columns.some((column) => changedMySqlColumns.has(column))
+            ) return [];
+
+            const currentTextColumns = currentIndex.columns.filter((column) => {
+              const currentColumn = curTable.columns.find(
+                (candidate) => candidate.columnName === column,
+              );
+              return currentColumn
+                ? isUnboundedMySqlTextType(currentColumn.dataType)
+                : false;
+            });
+            const currentColumnMetadata = currentIndex.columns.map((column) => {
+              const currentColumn = curTable.columns.find(
+                (candidate) => candidate.columnName === column,
+              );
+              return currentColumn
+                ? {
+                    dataType: currentColumn.dataType,
+                    ...(currentColumn.columnType
+                      ? { columnType: currentColumn.columnType }
+                      : {}),
+                    ...(currentColumn.maxLength !== undefined
+                      ? { maxLength: currentColumn.maxLength }
+                      : {}),
+                  }
+                : null;
+            });
+
+            return [{
+              name: requiredIndex.name,
+              current: {
+                columns: [...currentIndex.columns],
+                unique: currentIndex.isUnique,
+                ...(currentTextColumns.length > 0
+                  ? { textColumns: currentTextColumns }
+                  : {}),
+                ...(currentIndex.prefixLengths?.some((length) => length !== null)
+                  ? { prefixLengths: [...currentIndex.prefixLengths] }
+                  : {}),
+                ...(currentIndex.indexType
+                  ? { indexType: currentIndex.indexType }
+                  : {}),
+                ...(currentColumnMetadata.some((metadata) => metadata !== null)
+                  ? { columnMetadata: currentColumnMetadata }
+                  : {}),
+              },
+              required: {
+                columns: [...requiredIndex.columns],
+                unique: requiredIndex.unique,
+              },
+            }];
+          });
+
     if (
       missingColumns.length > 0 ||
       extraColumns.length > 0 ||
       columnChanges.length > 0 ||
       missingIndexes.length > 0 ||
-      changedIndexes.length > 0
+      changedIndexes.length > 0 ||
+      rebuiltIndexes.length > 0
     ) {
       diffs.push({
         tableName: dbName,
@@ -391,6 +477,7 @@ export function diffTables(
         columnChanges,
         missingIndexes,
         changedIndexes,
+        rebuiltIndexes,
       });
     }
   }

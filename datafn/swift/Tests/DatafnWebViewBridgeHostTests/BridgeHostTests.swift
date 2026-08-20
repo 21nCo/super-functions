@@ -69,7 +69,10 @@ struct BridgeHostTests {
         #expect(result["syncOwner"] == "native")
         #expect(result["remoteMode"] == "datafn-server")
         #expect(result["indexedDbDisabled"] == true)
-        #expect(result["capabilities"] == ["storage", "remote", "sync", "events", "health"])
+        #expect(
+            result["capabilities"]
+                == ["storage", "storage.atomicMergeIfMissing", "remote", "sync", "events", "health"]
+        )
         #expect(extractEventNames(from: outbound.get()) == ["bridge.ready"])
     }
 

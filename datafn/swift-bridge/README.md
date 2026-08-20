@@ -59,5 +59,6 @@ For CloudKit-backed personal apps, change `remoteMode` to `"icloud"`.
 
 - The bridge uses the canonical `datafn-bridge/v1` request/response/event envelopes.
 - Native-backed mode is explicit and fail-fast.
+- Optional storage semantics such as atomic missing-record merges are enabled only when the native host advertises them during the handshake.
 - IndexedDB must not be used as a fallback persistence layer in native-backed mode.
 - The same bridge event stream should drive both JavaScript signals and SwiftUI observers from the shared native store.

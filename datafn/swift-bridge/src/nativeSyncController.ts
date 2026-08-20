@@ -9,6 +9,7 @@ import {
   DATAFN_BRIDGE_PROTOCOL,
   createBridgeError,
   nextBridgeRequestId,
+  recordNegotiatedBridgeCapabilities,
   requestBridgeMethod,
   type DatafnBridgeBus,
   type NativeBridgeMarker,
@@ -48,6 +49,10 @@ export function createNativeSyncController(
         return { ok: false, error: validationError };
       }
 
+      // Capabilities belong to one successful handshake. Clear any prior
+      // negotiation before contacting a host that may have restarted or been
+      // replaced with an older bridge implementation.
+      recordNegotiatedBridgeCapabilities(bus, []);
       const response = await bus.request({
         protocol: DATAFN_BRIDGE_PROTOCOL,
         id: nextBridgeRequestId(),
@@ -58,6 +63,12 @@ export function createNativeSyncController(
       if (!response.ok) {
         return { ok: false, error: response.error };
       }
+
+      recordNegotiatedBridgeCapabilities(
+        bus,
+        (response.result as Partial<DatafnNativeHandshakeResult> | undefined)
+          ?.capabilities,
+      );
 
       return {
         ok: true,

@@ -1640,6 +1640,7 @@ describe("share SPV2 mutation semantics", () => {
       { next_attempt_at: new Date(Date.now() - 1_000).toISOString() },
     );
     let ownerRenewed = false;
+    const renewedLease = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const drainInternal = new Proxy(localDb.internal, {
       get(target, property, receiver) {
         if (property === "findMany") {
@@ -1653,7 +1654,7 @@ describe("share SPV2 mutation semantics", () => {
               await localDb.internal.update(
                 "__datafn_permission_directory_outbox",
                 [{ field: "id", op: "eq", value: taskId }],
-                { next_attempt_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() },
+                { next_attempt_at: renewedLease },
               );
             }
             return selected;
@@ -1682,7 +1683,14 @@ describe("share SPV2 mutation semantics", () => {
       value: "user:partner#notes",
     })).resolves.toEqual({ records: [] });
 
-    await markPermissionDirectorySyncReady(localDb, taskId);
+    await expect(localDb.internal.update(
+      "__datafn_permission_directory_outbox",
+      [
+        { field: "id", op: "eq", value: taskId },
+        { field: "next_attempt_at", op: "eq", value: renewedLease },
+      ],
+      { next_attempt_at: new Date().toISOString() },
+    )).resolves.toBe(1);
     await expect(drainPermissionDirectoryOutbox(localDb, runtime))
       .resolves.toEqual({ processed: 1, pending: 0 });
   });

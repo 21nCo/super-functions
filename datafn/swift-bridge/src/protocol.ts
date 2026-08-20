@@ -4,6 +4,36 @@ import type {
 import type { DatafnError, DatafnErrorCode } from "@datafn/core";
 
 export const DATAFN_BRIDGE_PROTOCOL = "datafn-bridge/v1" as const;
+export const DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING =
+  "storage.atomicMergeIfMissing" as const;
+
+const negotiatedCapabilities = new WeakMap<
+  DatafnBridgeBus,
+  ReadonlySet<string>
+>();
+
+export function recordNegotiatedBridgeCapabilities(
+  bus: DatafnBridgeBus,
+  capabilities: unknown,
+): void {
+  negotiatedCapabilities.set(
+    bus,
+    new Set(
+      Array.isArray(capabilities)
+        ? capabilities.filter((capability): capability is string =>
+            typeof capability === "string"
+          )
+        : [],
+    ),
+  );
+}
+
+export function hasNegotiatedBridgeCapability(
+  bus: DatafnBridgeBus,
+  capability: string,
+): boolean {
+  return negotiatedCapabilities.get(bus)?.has(capability) === true;
+}
 
 export const DATAFN_BRIDGE_METHODS = [
   "handshake",

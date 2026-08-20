@@ -128,7 +128,15 @@ struct DatafnSearchFnBackendTests {
         let handshakeResult = try #require(handshake.result?.objectValue)
         #expect(
             handshakeResult["capabilities"]
-                == ["search", "storage", "remote", "sync", "events", "health"]
+                == [
+                    "search",
+                    "storage",
+                    "storage.atomicMergeIfMissing",
+                    "remote",
+                    "sync",
+                    "events",
+                    "health",
+                ]
         )
 
         #expect(bridgeResults.ok)

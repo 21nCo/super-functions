@@ -361,6 +361,15 @@ function generateAlterTableSQL(
 ): string[] {
   const statements: string[] = [];
 
+  if (dialect === 'mysql') {
+    for (const index of [
+      ...(diff.changedIndexes ?? []),
+      ...(diff.rebuiltIndexes ?? []),
+    ]) {
+      statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
+    }
+  }
+
   // Add missing columns
   if (diff.missingColumns) {
     for (const colName of diff.missingColumns) {
@@ -418,7 +427,15 @@ function generateAlterTableSQL(
     statements.push(generateCreateIndexSQL(diff.tableName, index, dialect, schema));
   }
   for (const index of diff.changedIndexes ?? []) {
-    statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
+    if (dialect !== 'mysql') {
+      statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
+    }
+    statements.push(generateCreateIndexSQL(diff.tableName, {
+      name: index.name,
+      ...index.required,
+    }, dialect, schema));
+  }
+  for (const index of diff.rebuiltIndexes ?? []) {
     statements.push(generateCreateIndexSQL(diff.tableName, {
       name: index.name,
       ...index.required,
@@ -786,6 +803,7 @@ export function generateKyselyMigration(
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       const dropAddedColumns: string[] = [];
       const revertChangedColumns: string[] = [];
+      const restoreRebuiltIndexes: string[] = [];
       if (schema && diff.missingColumns) {
         for (const colName of diff.missingColumns) {
           const field = Object.entries(schema.fields).find(
@@ -799,6 +817,16 @@ export function generateKyselyMigration(
           );
           dropAddedColumns.push(
             `  await db.schema.alterTable('${diff.tableName}').dropColumn('${colName}').execute();`
+          );
+        }
+      }
+      if (dialect === 'mysql') {
+        for (const index of [
+          ...(diff.changedIndexes ?? []),
+          ...(diff.rebuiltIndexes ?? []),
+        ]) {
+          upStatements.push(
+            `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`,
           );
         }
       }
@@ -837,7 +865,9 @@ export function generateKyselyMigration(
         const drop = dialect === 'mysql'
           ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
           : `  await db.schema.dropIndex('${index.name}').execute();`;
-        upStatements.push(drop);
+        if (dialect !== 'mysql') {
+          upStatements.push(drop);
+        }
         upStatements.push(generateKyselyCreateIndex(
           diff.tableName,
           { name: index.name, ...index.required },
@@ -845,7 +875,28 @@ export function generateKyselyMigration(
           schema,
         ));
         downStatements.push(drop);
-        downStatements.push(generateKyselyCreateIndex(
+        restoreRebuiltIndexes.push(generateKyselyCreateIndex(
+          diff.tableName,
+          { name: index.name, ...index.current },
+          dialect,
+          schema,
+          index.current.textColumns,
+          index.current.prefixLengths,
+          index.current.columnMetadata,
+        ));
+      }
+      for (const index of diff.rebuiltIndexes ?? []) {
+        if (!schema) continue;
+        upStatements.push(generateKyselyCreateIndex(
+          diff.tableName,
+          { name: index.name, ...index.required },
+          dialect,
+          schema,
+        ));
+        downStatements.push(
+          `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`,
+        );
+        restoreRebuiltIndexes.push(generateKyselyCreateIndex(
           diff.tableName,
           { name: index.name, ...index.current },
           dialect,
@@ -856,6 +907,7 @@ export function generateKyselyMigration(
         ));
       }
       downStatements.push(...revertChangedColumns);
+      downStatements.push(...restoreRebuiltIndexes);
       // Rollbacks must remove dependent indexes before their newly added
       // columns. PostgreSQL may auto-drop the index with the column, while
       // other dialects can reject the column drop outright.

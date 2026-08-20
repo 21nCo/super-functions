@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
   DATAFN_BRIDGE_PROTOCOL,
+  createNativeBackedStorageAdapter,
   createNativeSyncController,
   createWKWebViewBridgeBus,
 } from "../src/index.js";
@@ -36,7 +38,14 @@ function installSyncHost(
           syncOwner: "native",
           remoteMode: envelope.payload.remoteMode,
           indexedDbDisabled: true,
-          capabilities: ["storage", "remote", "sync", "events", "health"],
+          capabilities: [
+            "storage",
+            DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
+            "remote",
+            "sync",
+            "events",
+            "health",
+          ],
         },
       };
     } else {
@@ -92,9 +101,61 @@ describe("@datafn/swift-bridge native sync controller", () => {
         syncOwner: "native",
         remoteMode: "datafn-server",
         indexedDbDisabled: true,
-        capabilities: ["storage", "remote", "sync", "events", "health"],
+        capabilities: [
+          "storage",
+          DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
+          "remote",
+          "sync",
+          "events",
+          "health",
+        ],
       },
     });
+  });
+
+  it("negotiates atomic missing-record merges instead of assuming host support", async () => {
+    installSyncHost();
+    const bus = createWKWebViewBridgeBus();
+    const storage = createNativeBackedStorageAdapter(bus);
+    const controller = createNativeSyncController(bus);
+
+    expect(storage.capabilities?.atomicMergeIfMissing).toBe(false);
+    await controller.handshake({
+      schemaHash: "abc123",
+      namespace: "org-1:user-1",
+      clientId: "device-1",
+      remoteMode: "datafn-server",
+    });
+    expect(storage.capabilities?.atomicMergeIfMissing).toBe(true);
+  });
+
+  it("keeps atomic missing-record merges disabled for legacy v1 hosts", async () => {
+    installSyncHost((envelope) => ({
+      protocol: DATAFN_BRIDGE_PROTOCOL,
+      id: envelope.id,
+      ok: true,
+      result: {
+        bridgeVersion: 1,
+        schemaHash: envelope.payload.schemaHash,
+        namespace: envelope.payload.namespace,
+        storageBackend: "coredata",
+        syncOwner: "native",
+        remoteMode: envelope.payload.remoteMode,
+        indexedDbDisabled: true,
+        capabilities: ["storage", "remote", "sync", "events", "health"],
+      },
+    }));
+    const bus = createWKWebViewBridgeBus();
+    const storage = createNativeBackedStorageAdapter(bus);
+    const controller = createNativeSyncController(bus);
+
+    await controller.handshake({
+      schemaHash: "abc123",
+      namespace: "org-1:user-1",
+      clientId: "device-1",
+      remoteMode: "datafn-server",
+    });
+    expect(storage.capabilities?.atomicMergeIfMissing).toBe(false);
   });
 
   it("TV-BRG-003N: handshake fails fast when namespace is missing", async () => {
