@@ -162,6 +162,27 @@ describe('dynamoDbAtomicKVStore', () => {
 });
 
 describe('dynamoDbIndexedDirectoryStore', () => {
+  it('uses strongly consistent authorization reads by default', async () => {
+    let read: GetCommand | undefined;
+    const documentClient = {
+      async send(command: unknown): Promise<Record<string, unknown>> {
+        if (command instanceof GetCommand) {
+          read = command;
+          return {};
+        }
+        throw new Error('Unexpected DynamoDB command');
+      },
+    } as unknown as DynamoDBDocumentClient;
+    const store = dynamoDbIndexedDirectoryStore({
+      tableName: 'runtime-store',
+      documentClient,
+      consistentRead: false,
+    });
+
+    await expect(store.get('permission')).resolves.toBeNull();
+    expect(read?.input.ConsistentRead).toBe(true);
+  });
+
   it('allows an expired directory record to be claimed again', async () => {
     let transaction: TransactWriteCommand | undefined;
     const documentClient = {

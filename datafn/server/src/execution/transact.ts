@@ -55,6 +55,16 @@ export async function executeTransaction(
   const steps = request.steps;
   const isAtomic = request.atomic !== false; // Default true
   const hasMutations = steps.some((step) => Boolean(step.mutation));
+  const needsPermissionDirectoryOutbox = Boolean(
+    hasMutations &&
+    getDatafnMultiRegionRuntimeConfig(plugins) &&
+    steps.some((step) => step.mutation?.operation === "share"),
+  );
+  if (needsPermissionDirectoryOutbox) {
+    // Sequential steps are marked insideTransaction to avoid nested database
+    // transactions, so durable DDL must also be initialized up front there.
+    await ensurePermissionDirectoryOutbox(db);
+  }
 
   // SRV-012: Step limit check moved to route handler; skip duplicate check here
   // (createTransactHandler validates before calling executeTransaction)
@@ -125,7 +135,14 @@ export async function executeTransaction(
     const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
     const reconcilePermissionDirectoryAfterSettlement = async () => {
       for (const sync of deferredPermissionDirectorySyncs) {
-        await sync(db);
+        try {
+          await sync(db);
+        } catch (error) {
+          logger?.error("Permission directory reconciliation failed after settlement", {
+            error: String(error),
+            operation: "permission-directory",
+          });
+        }
       }
     };
     try {
@@ -136,12 +153,6 @@ export async function executeTransaction(
         // not need these tables and must not perform mutation-side DDL.
         await idempotencyStore.ensureReady?.();
         await changeTracking.ensureReady();
-        if (
-          getDatafnMultiRegionRuntimeConfig(plugins) &&
-          steps.some((step) => step.mutation?.operation === "share")
-        ) {
-          await ensurePermissionDirectoryOutbox(db);
-        }
       }
       await (db as any).transaction(async (tx: Adapter) => {
         deferredPermissionDirectorySyncs.length = 0;

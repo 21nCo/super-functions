@@ -674,6 +674,104 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not let an older retry overwrite a newer grant level", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const backingDirectory = createMemoryIndexedDirectoryStore();
+    let blockNextPut = false;
+    let signalPutStarted!: () => void;
+    let releasePut!: () => void;
+    const putStarted = new Promise<void>((resolve) => { signalPutStarted = resolve; });
+    const putReleased = new Promise<void>((resolve) => { releasePut = resolve; });
+    const directory = {
+      ...backingDirectory,
+      put: async (record: Parameters<typeof backingDirectory.put>[0]) => {
+        if (blockNextPut) {
+          blockNextPut = false;
+          signalPutStarted();
+          await putReleased;
+        }
+        return backingDirectory.put(record);
+      },
+    };
+    const runtime = { regionId: "region:test", directory };
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin(runtime)],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "retry-level",
+        mutationId: "retry-level-insert",
+        id: "note:retry-level",
+        record: { title: "Retry level" },
+      });
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "retry-level",
+        mutationId: "retry-level-viewer",
+        id: "note:retry-level",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+      const taskId = await enqueuePermissionDirectorySync(localDb, {
+        operation: "share",
+        resource: "notes",
+        id: "note:retry-level",
+        scope: "record",
+        shareWith: { principalId: "user:partner" },
+      }, namespace, runtime.regionId);
+
+      blockNextPut = true;
+      const retry = drainPermissionDirectorySync(localDb, taskId, runtime);
+      await putStarted;
+      const updated = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "retry-level",
+        mutationId: "retry-level-editor",
+        id: "note:retry-level",
+        shareWith: { principalId: "user:partner", level: "editor" },
+      });
+      expect(updated.result.ok).toBe(true);
+      releasePut();
+      await expect(retry).resolves.toBe(true);
+
+      const indexed = await backingDirectory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+      expect(JSON.parse(indexed.records[0].value).level).toBe("editor");
+    } finally {
+      releasePut?.();
+      await localServer.close();
+    }
+  });
+
   it("backs off failed outbox tasks so newer grants are not starved", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();

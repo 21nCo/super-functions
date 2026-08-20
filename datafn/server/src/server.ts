@@ -552,18 +552,6 @@ export async function createDatafnServer<TContext = any>(
         operation: "permission-directory-outbox",
       });
     }
-    permissionDirectoryRetryInterval = setInterval(() => {
-      for (const runtime of permissionDirectoryRetryRuntimes) {
-        void drainPermissionDirectoryOutbox(db!, runtime, logger).catch((error) => {
-          logger.warn("Permission directory retry drain failed", {
-            error: String(error),
-            operation: "permission-directory-outbox",
-            regionId: runtime.regionId,
-          });
-        });
-      }
-    }, 60_000);
-    permissionDirectoryRetryInterval.unref?.();
   }
 
   // Startup pruning (RET-004)
@@ -1619,6 +1607,23 @@ export async function createDatafnServer<TContext = any>(
       logger,
     );
   };
+
+  // Start recurring work only after every fallible construction step has
+  // completed and the close path is available to own the timer.
+  if (db && permissionDirectoryRetryRuntimes.length > 0) {
+    permissionDirectoryRetryInterval = setInterval(() => {
+      for (const runtime of permissionDirectoryRetryRuntimes) {
+        void drainPermissionDirectoryOutbox(db!, runtime, logger).catch((error) => {
+          logger.warn("Permission directory retry drain failed", {
+            error: String(error),
+            operation: "permission-directory-outbox",
+            regionId: runtime.regionId,
+          });
+        });
+      }
+    }, 60_000);
+    permissionDirectoryRetryInterval.unref?.();
+  }
 
   return {
     router,

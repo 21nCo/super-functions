@@ -231,14 +231,14 @@ function generateAlterTableSQL(
   }
 
   for (const index of diff.missingIndexes ?? []) {
-    statements.push(generateCreateIndexSQL(diff.tableName, index, dialect));
+    statements.push(generateCreateIndexSQL(diff.tableName, index, dialect, schema));
   }
   for (const index of diff.changedIndexes ?? []) {
     statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
     statements.push(generateCreateIndexSQL(diff.tableName, {
       name: index.name,
       ...index.required,
-    }, dialect));
+    }, dialect, schema));
   }
 
   return statements;
@@ -248,9 +248,19 @@ function generateCreateIndexSQL(
   tableName: string,
   index: { name: string; columns: string[]; unique: boolean },
   dialect: Dialect,
+  schema?: TableSchema,
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
-  return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+  const columns = index.columns.map((column) => {
+    if (dialect !== 'mysql' || !schema) return column;
+    const field = Object.entries(schema.fields).find(
+      ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
+    )?.[1];
+    return field && fieldTypeToSQL(field, dialect) === 'TEXT'
+      ? `${column}(191)`
+      : column;
+  });
+  return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name} ON ${tableName} (${columns.join(', ')});`;
 }
 
 function generateDropIndexSQL(
@@ -269,6 +279,19 @@ function schemaIndexes(schema: TableSchema): Array<{ name: string; columns: stri
     columns: index.fields.map((fieldName) => schema.fields[fieldName]?.fieldName ?? fieldName),
     unique: index.unique === true,
   }));
+}
+
+function generateKyselyCreateIndex(
+  tableName: string,
+  index: { name: string; columns: string[]; unique: boolean },
+  dialect: Dialect,
+  schema: TableSchema,
+): string {
+  if (dialect === 'mysql') {
+    return `  await sql\`${generateCreateIndexSQL(tableName, index, dialect, schema)}\`.execute(db);`;
+  }
+  const unique = index.unique ? `.unique()` : '';
+  return `  await db.schema.createIndex('${index.name}').on('${tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`;
 }
 
 /**
@@ -309,7 +332,7 @@ export function generateDrizzleMigration(
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
-        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index, dialect)));
+        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index, dialect, schema)));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
@@ -370,7 +393,7 @@ export function generatePrismaMigration(
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
-        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index, dialect)));
+        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index, dialect, schema)));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
@@ -446,10 +469,12 @@ export function generateKyselyMigration(
         upStatements.push(`    .execute();`);
 
         for (const index of schemaIndexes(schema)) {
-          const unique = index.unique ? `.unique()` : '';
-          upStatements.push(
-            `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`
-          );
+          upStatements.push(generateKyselyCreateIndex(
+            diff.tableName,
+            index,
+            dialect,
+            schema,
+          ));
         }
 
         // Down: drop table
@@ -474,10 +499,13 @@ export function generateKyselyMigration(
         }
       }
       for (const index of diff.missingIndexes ?? []) {
-        const unique = index.unique ? `.unique()` : '';
-        upStatements.push(
-          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`
-        );
+        if (!schema) continue;
+        upStatements.push(generateKyselyCreateIndex(
+          diff.tableName,
+          index,
+          dialect,
+          schema,
+        ));
         downStatements.push(
           dialect === 'mysql'
             ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
@@ -485,19 +513,24 @@ export function generateKyselyMigration(
         );
       }
       for (const index of diff.changedIndexes ?? []) {
-        const requiredUnique = index.required.unique ? `.unique()` : '';
-        const currentUnique = index.current.unique ? `.unique()` : '';
+        if (!schema) continue;
         const drop = dialect === 'mysql'
           ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
           : `  await db.schema.dropIndex('${index.name}').execute();`;
         upStatements.push(drop);
-        upStatements.push(
-          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.required.columns)})${requiredUnique}.execute();`,
-        );
+        upStatements.push(generateKyselyCreateIndex(
+          diff.tableName,
+          { name: index.name, ...index.required },
+          dialect,
+          schema,
+        ));
         downStatements.push(drop);
-        downStatements.push(
-          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.current.columns)})${currentUnique}.execute();`,
-        );
+        downStatements.push(generateKyselyCreateIndex(
+          diff.tableName,
+          { name: index.name, ...index.current },
+          dialect,
+          schema,
+        ));
       }
     } else if (diff.action === 'drop') {
       upStatements.push(`  // await db.schema.dropTable('${diff.tableName}').execute();`);
@@ -531,7 +564,7 @@ export function generateKyselyMigration(
   downStatements.push(`    .where('namespace', '=', '${plan.namespace}')`);
   downStatements.push(`    .execute();`);
 
-  const content = `import { Kysely } from 'kysely';
+  const content = `import { Kysely${dialect === 'mysql' ? ', sql' : ''} } from 'kysely';
 
 export async function up(db: Kysely<any>): Promise<void> {
 ${upStatements.join('\n')}

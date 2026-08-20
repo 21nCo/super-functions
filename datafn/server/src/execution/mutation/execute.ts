@@ -1032,12 +1032,22 @@ export async function executeMutation(
   };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
     if (multiRegionRuntime && permissionDirectoryTaskId) {
-      await drainPermissionDirectorySync(
-        committedDb,
-        permissionDirectoryTaskId,
-        multiRegionRuntime,
-        logger,
-      );
+      try {
+        await drainPermissionDirectorySync(
+          committedDb,
+          permissionDirectoryTaskId,
+          multiRegionRuntime,
+          logger,
+        );
+      } catch (error) {
+        // The grant and outbox task have already committed. Preserve the
+        // successful mutation result; startup/interval draining owns retry.
+        logger?.error("Permission directory reconciliation failed after commit", {
+          error: String(error),
+          operation: mutation.operation,
+          resource: mutation.resource,
+        });
+      }
       return;
     }
     try {

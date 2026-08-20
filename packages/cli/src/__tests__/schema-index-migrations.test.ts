@@ -115,14 +115,14 @@ describe("schema index migrations", () => {
       "DROP INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs;",
     );
     expect(mysqlSql).toContain(
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));",
     );
     const kysely = generateKyselyMigration(plan, [syncJobs], "mysql").content;
     expect(kysely).toContain(
       "dropIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').execute()",
     );
     expect(kysely).toContain(
-      "columns([\"claim_token\"]).unique().execute()",
+      "sql`CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));`.execute(db)",
     );
   });
 
@@ -145,7 +145,7 @@ describe("schema index migrations", () => {
     );
 
     const mysqlIndex =
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);";
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));";
     expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
     expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
     expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).not.toContain(
@@ -162,7 +162,7 @@ describe("schema index migrations", () => {
       action: "create",
     }]);
     const expected =
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);";
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));";
 
     expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(expected);
     expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(expected);

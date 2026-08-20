@@ -307,7 +307,7 @@ async function overlayLocalQueryResult(
     ((cursor as Record<string, unknown>).after != null ||
       (cursor as Record<string, unknown>).before != null);
   if (
-    (typeof query.offset === "number" && query.offset > 0) ||
+    typeof query.offset === "number" ||
     hasActiveCursor
   ) {
     return remoteResult;

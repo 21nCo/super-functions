@@ -598,35 +598,43 @@ export async function syncDatafnPermissionGrantAfterCommit(
     resourceId,
     principal.principalId,
   );
-  const permission = await db.findOne({
+  let permission = await db.findOne({
     model: getPermissionsTableName(),
     where: [{ field: "id", operator: "eq", value: id }],
     namespace,
   });
   if (permission) {
-    await indexDatafnPermissionGrant(
-      permission as Record<string, unknown>,
-      multiRegionRuntime,
-    );
-    // Fence a delayed share retry against a concurrent revocation. Unshare
-    // deletes before its database write and reconciles again afterwards; this
-    // post-write authoritative read covers the inverse ordering where the
-    // delayed put lands only after unshare's final delete.
-    const stillGranted = await db.findOne({
-      model: getPermissionsTableName(),
-      where: [{ field: "id", operator: "eq", value: id }],
-      namespace,
-    });
-    if (!stillGranted) {
-      await deleteDatafnPermissionGrant({
-        id,
-        resourceType: mutation.resource,
-        resourceNs: namespace,
-        resourceId,
-        principalId: principal.principalId,
-      }, multiRegionRuntime);
+    // Fence delayed retries against both revocation and a newer grant update.
+    // Once the post-write read matches what was indexed, any later mutation
+    // owns its own post-commit reconciliation. Repeated churn keeps the outbox
+    // task pending instead of acknowledging an unstable snapshot.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await indexDatafnPermissionGrant(
+        permission as Record<string, unknown>,
+        multiRegionRuntime,
+      );
+      const currentPermission = await db.findOne({
+        model: getPermissionsTableName(),
+        where: [{ field: "id", operator: "eq", value: id }],
+        namespace,
+      });
+      if (!currentPermission) {
+        await deleteDatafnPermissionGrant({
+          id,
+          resourceType: mutation.resource,
+          resourceNs: namespace,
+          resourceId,
+          principalId: principal.principalId,
+        }, multiRegionRuntime);
+        return;
+      }
+      if (permissionDirectoryGrantSignature(currentPermission) ===
+        permissionDirectoryGrantSignature(permission)) {
+        return;
+      }
+      permission = currentPermission;
     }
-    return;
+    throw new Error("Permission grant changed repeatedly during directory reconciliation");
   }
   await deleteDatafnPermissionGrant({
     id,
@@ -635,6 +643,22 @@ export async function syncDatafnPermissionGrantAfterCommit(
     resourceId,
     principalId: principal.principalId,
   }, multiRegionRuntime);
+}
+
+function permissionDirectoryGrantSignature(grant: Record<string, unknown>): string {
+  return JSON.stringify([
+    grant.id,
+    grant.resourceType,
+    grant.resourceNs,
+    grant.resourceId ?? null,
+    grant.principalId,
+    grant.level,
+    grant.grantKind,
+    grant.sourceRef,
+    grant.grantedBy,
+    grant.grantedAt,
+    grant.revokedAt ?? null,
+  ]);
 }
 
 export function getPermissionsTable(resource: string): string {
