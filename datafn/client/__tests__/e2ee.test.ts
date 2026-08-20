@@ -41,14 +41,14 @@ const schema: DatafnSchema = {
   ],
 };
 
-function createProvider(): DatafnE2eeProvider {
+function createProvider(keyRef = "test-key"): DatafnE2eeProvider {
   return {
-    keyRef: "test-key",
+    keyRef,
     async encrypt({ plaintext, resource, id, field, aad }) {
       return {
         __datafnE2ee: 1,
         alg: "AES-GCM",
-        keyRef: "test-key",
+        keyRef,
         iv: `${resource}:${id}:${field}`,
         data: JSON.stringify({
           plaintext: [...plaintext],
@@ -166,8 +166,7 @@ describe("DataFn E2EE client transforms", () => {
         record: { id: "task:rekey", notes: "secret" },
       },
     )) as { record: Record<string, unknown> };
-    const nextProvider = createProvider();
-    nextProvider.keyRef = "next-key";
+    const nextProvider = createProvider("next-key");
     const encrypt = vi.spyOn(nextProvider, "encrypt");
 
     const reencrypted = (await encryptMutationPayloadForE2ee(
@@ -183,6 +182,7 @@ describe("DataFn E2EE client transforms", () => {
 
     expect(encrypt).toHaveBeenCalledOnce();
     expect(reencrypted.record.notes).not.toBe(first.record.notes);
+    expect((reencrypted.record.notes as { keyRef: string }).keyRef).toBe("next-key");
   });
 
   it("blocks direct remote query and search while allowing plaintext KV query", () => {

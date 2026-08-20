@@ -119,7 +119,7 @@ export function buildSchemaIndex(schema: DatafnSchema): SchemaIndex {
       if (rel.type === "many-one") {
         const fromResources = Array.isArray(rel.from) ? rel.from : [rel.from];
         for (const fromRes of fromResources) {
-          const fkField = (rel as any).fkField ?? (rel as any).foreignKey ?? `${rel.relation}Id`;
+          const fkField = (rel as any).fkField || (rel as any).foreignKey || `${rel.relation}Id`;
           fieldsByResource.get(fromRes)?.add(fkField);
           writableFieldsByResource.get(fromRes)?.add(fkField);
         }

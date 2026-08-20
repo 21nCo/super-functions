@@ -361,6 +361,68 @@ describe("DataFn public-links plugin", () => {
       await server.close();
     }
   });
+
+  it("removes a public-link row when permission creation throws", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:throwing-link",
+        clientId: "public-link-throw",
+        mutationId: "public-link-throw-insert",
+        record: { id: "tag:throwing-link", label: "Throwing link" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+
+      const originalCreate = db.create.bind(db);
+      db.create = async (input) => {
+        if (input.model === "__datafn_permissions_global") {
+          throw new Error("permission storage unavailable");
+        }
+        return originalCreate(input);
+      };
+
+      const created = await post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:throwing-link",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+
+      expect(created.status).toBeGreaterThanOrEqual(500);
+      await expect(db.findMany({
+        model: "publicLink",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 function createTestPublicLinks() {

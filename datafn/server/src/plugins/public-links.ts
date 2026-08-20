@@ -683,7 +683,18 @@ async function createDatafnPublicLink(input: {
       permissionDirectoryRuntime,
     );
   } catch (error) {
-    await settlePermissionDirectoryTask();
+    try {
+      // The public-link row is created before its permission grant. If grant
+      // creation throws, roll the token back just as we do for an explicit
+      // unsuccessful result so it can never resolve without authority.
+      await input.database.delete({
+        model: input.modelName,
+        where: [{ field: "id", operator: "eq", value: id }],
+        namespace: input.namespace
+      });
+    } finally {
+      await settlePermissionDirectoryTask();
+    }
     throw error;
   }
   if (!shareResult.ok) {

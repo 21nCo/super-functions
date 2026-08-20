@@ -1,5 +1,6 @@
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import type { DatabaseTable } from './introspection.js';
+import { databaseStringLength, isUnboundedMySqlTextType } from './mysql-types.js';
 
 /**
  * Convert string to snake_case
@@ -108,6 +109,11 @@ export interface TableDiff {
   columnChanges?: Array<{
     column: string;
     change: string;
+    current?: {
+      dataType: string;
+      maxLength?: number | null;
+      isNullable: boolean;
+    };
   }>;
   missingIndexes?: Array<{
     name: string;
@@ -195,7 +201,7 @@ export function diffTables(
 
     const missingColumns: string[] = [];
     const extraColumns: string[] = [];
-    const columnChanges: Array<{ column: string; change: string }> = [];
+    const columnChanges: NonNullable<TableDiff['columnChanges']> = [];
     const requiredIndexes = (reqTable.indexes ?? []).map((requiredIndex) => ({
         name: requiredIndex.name,
         columns: requiredIndex.fields.map((fieldName) =>
@@ -224,7 +230,7 @@ export function diffTables(
           (candidate) => candidate.columnName === column,
         );
         return currentColumn
-          ? normalizeColumnType(currentColumn.dataType) === 'text'
+          ? isUnboundedMySqlTextType(currentColumn.dataType)
           : false;
       });
       return [{
@@ -263,6 +269,28 @@ export function diffTables(
           changes.push(`type changed from ${actualType} to ${expectedType}`);
         }
 
+        if (
+          curCol.dialect === 'mysql' &&
+          fieldSchema.type === 'string' &&
+          fieldSchema.maxLength !== undefined
+        ) {
+          if (
+            typeof fieldSchema.maxLength !== 'number' ||
+            !Number.isInteger(fieldSchema.maxLength) ||
+            fieldSchema.maxLength <= 0
+          ) {
+            throw new Error(
+              `Invalid maxLength for ${dbName}.${colName}: expected a positive integer`,
+            );
+          }
+          const actualLength = databaseStringLength(curCol);
+          if (actualLength !== fieldSchema.maxLength) {
+            changes.push(
+              `maxLength changed from ${actualLength ?? 'unbounded'} to ${fieldSchema.maxLength}`,
+            );
+          }
+        }
+
         if (fieldSchema.required && curCol.isNullable) {
           changes.push('changed to NOT NULL');
         }
@@ -274,6 +302,11 @@ export function diffTables(
           columnChanges.push({
             column: colName,
             change: changes.join(', '),
+            current: {
+              dataType: curCol.dataType,
+              maxLength: curCol.maxLength,
+              isNullable: curCol.isNullable,
+            },
           });
         }
       }

@@ -175,6 +175,46 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     }));
     vi.restoreAllMocks();
   });
+
+  it("matches colon-terminated prefixes in polymorphic shared join tables", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: [
+        { name: "tasks", version: 1, idPrefix: "task:", fields: [] },
+        { name: "projects", version: 1, idPrefix: "project:", fields: [] },
+        { name: "users", version: 1, idPrefix: "user:", fields: [] },
+      ],
+      relations: [{
+        from: ["tasks", "projects"],
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+        joinTable: "shared_assignments",
+      }],
+    };
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "task:user", from: "task:1", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "project:user", from: "project:1", to: "user:1" },
+      namespace: "default",
+    });
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_projects_assignees_users).toBe(1);
+    vi.restoreAllMocks();
+  });
 });
 
 // ─── SCA-002: Clone auto-pagination ───────────────────────────────────

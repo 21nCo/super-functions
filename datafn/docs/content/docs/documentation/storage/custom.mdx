@@ -39,8 +39,6 @@ function resolveColumns(resource: string, columns: string[]): string {
 }
 
 class CustomStorageAdapter implements DatafnStorageAdapter {
-  readonly capabilities = { atomicMergeIfMissing: true } as const;
-
   // Records
   async getRecord(resource: string, id: string): Promise<Record<string, unknown> | null> {
     const table = resolveTable(resource);
@@ -107,9 +105,17 @@ async mergeRecord(
   partial: Record<string, unknown>,
   options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
-  // Begin transaction
+  // Begin a real database transaction or optimistic-concurrency operation.
   const existing = await this.getRecord(resource, id);
-  const merged = existing ? { ...existing } : { ...(options?.ifMissing ?? {}), id };
+  if (!existing && options?.ifMissing) {
+    // ifMissing is the complete create payload. Insert it atomically only if
+    // the row is still absent; do not merge partial over it.
+    const created = { ...options.ifMissing, id };
+    await this.upsertRecord(resource, created);
+    // Commit transaction
+    return created;
+  }
+  const merged = existing ? { ...existing } : { ...partial, id };
 
   for (const [key, value] of Object.entries(partial)) {
     if (
@@ -128,6 +134,11 @@ async mergeRecord(
   return merged;
 }
 ```
+
+Only declare `readonly capabilities = { atomicMergeIfMissing: true }` when the
+existence check and write above are protected by a real transaction, mutex, or
+optimistic-concurrency primitive. Without that capability, DataFn uses a
+merge-safe legacy fallback that does not apply create-only defaults.
 
 ### Monotonic Changelog Sequence
 

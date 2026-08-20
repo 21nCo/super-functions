@@ -63,6 +63,21 @@ describe("MemoryStorageAdapter", () => {
       });
     });
 
+    it("uses ifMissing as the complete creation payload", async () => {
+      await storage.mergeRecord(
+        "task",
+        "t1",
+        { title: "patch", patchOnly: true },
+        { ifMissing: { title: "create", status: "default" } },
+      );
+
+      expect(await storage.getRecord("task", "t1")).toEqual({
+        id: "t1",
+        title: "create",
+        status: "default",
+      });
+    });
+
     it("rejects an empty merge id before persisting a record", async () => {
       await expect(storage.mergeRecord("task", "", { title: "invalid" }))
         .rejects.toThrow("Record missing id");

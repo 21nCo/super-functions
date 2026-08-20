@@ -261,6 +261,133 @@ describe("schema index migrations", () => {
     );
   });
 
+  it("migrates existing MySQL TEXT before creating a bounded unique index", () => {
+    const diffs = diffTables([syncJobs], [{
+      name: "plugfn_sync_jobs",
+      columns: [
+        {
+          dialect: "mysql",
+          tableName: "plugfn_sync_jobs",
+          columnName: "id",
+          dataType: "text",
+          maxLength: null,
+          isNullable: false,
+          defaultValue: null,
+          isPrimaryKey: true,
+          isUnique: true,
+        },
+        {
+          dialect: "mysql",
+          tableName: "plugfn_sync_jobs",
+          columnName: "claim_token",
+          dataType: "text",
+          maxLength: null,
+          isNullable: true,
+          defaultValue: null,
+          isPrimaryKey: false,
+          isUnique: false,
+        },
+      ],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].columnChanges).toEqual([expect.objectContaining({
+      column: "claim_token",
+      change: "maxLength changed from unbounded to 64",
+    })]);
+    const plan = createMigrationPlan("plugfn", 5, 6, diffs);
+    for (const generate of [generateDrizzleMigration, generatePrismaMigration]) {
+      const content = generate(plan, [syncJobs], "mysql").content;
+      expect(content).toContain(
+        "ALTER TABLE plugfn_sync_jobs MODIFY COLUMN claim_token VARCHAR(64) NULL;",
+      );
+      expect(content.indexOf("MODIFY COLUMN claim_token"))
+        .toBeLessThan(content.indexOf("CREATE UNIQUE INDEX"));
+    }
+    const kysely = generateKyselyMigration(plan, [syncJobs], "mysql").content;
+    const up = kysely.slice(0, kysely.indexOf("export async function down"));
+    const down = kysely.slice(kysely.indexOf("export async function down"));
+    expect(up.indexOf("MODIFY COLUMN claim_token VARCHAR(64) NULL"))
+      .toBeLessThan(up.indexOf("CREATE UNIQUE INDEX"));
+    expect(down.indexOf("dropIndex('plugfn_sync_jobs_claim_token_idx')"))
+      .toBeLessThan(down.indexOf("MODIFY COLUMN claim_token TEXT NULL"));
+  });
+
+  it("does not classify bounded VARCHAR columns as unbounded rollback text", () => {
+    const replacementSchema = {
+      ...syncJobs,
+      indexes: [{ name: "plugfn_sync_jobs_claim_token_idx", fields: ["id"] }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        maxLength: 64,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_sync_jobs",
+        columnName: "id",
+        dataType: "varchar",
+        maxLength: 64,
+        isNullable: false,
+        defaultValue: null,
+        isPrimaryKey: true,
+        isUnique: true,
+      }],
+      indexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: true,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].changedIndexes?.[0].current.textColumns).toBeUndefined();
+    expect(() => generateKyselyMigration(
+      createMigrationPlan("plugfn", 6, 7, diffs),
+      [replacementSchema],
+      "mysql",
+    )).not.toThrow();
+  });
+
+  it("rejects MySQL VARCHAR bounds beyond the utf8mb4-safe limit", () => {
+    const invalid = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: { ...syncJobs.fields.claimToken, maxLength: 16_384 },
+      },
+    } as unknown as TableSchema;
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_sync_jobs",
+      action: "create",
+    }]);
+
+    for (const generate of [
+      generateDrizzleMigration,
+      generatePrismaMigration,
+      generateKyselyMigration,
+    ]) {
+      expect(() => generate(plan, [invalid], "mysql"))
+        .toThrow("expected an integer between 1 and 16383");
+    }
+    expect(() => generateDrizzleSchemaFile(
+      { version: 1, schemas: [invalid] },
+      "plugfn",
+      "plugfn",
+      "mysql",
+    )).toThrow("expected an integer between 1 and 16383");
+  });
+
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
     const replacementSchema = {
       modelName: "jobs",

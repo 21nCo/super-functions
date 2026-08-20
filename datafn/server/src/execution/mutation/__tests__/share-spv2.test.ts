@@ -1063,6 +1063,76 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("stops a pending lease before a failing explicit drain lookup", async () => {
+    vi.useFakeTimers();
+    try {
+      const localDb = memoryAdapter();
+      await localDb.initialize();
+      const taskId = await enqueuePermissionDirectorySync(localDb, {
+        operation: "share",
+        resource: "notes",
+        id: "note:lookup-failure",
+        shareWith: { principalId: "user:partner" },
+      }, namespace, "region:test", { pending: true });
+      const originalFindOne = localDb.internal.findOne.bind(localDb.internal);
+      const originalUpdate = localDb.internal.update.bind(localDb.internal);
+      let renewalCalls = 0;
+      localDb.internal.findOne = async () => {
+        throw new Error("lookup unavailable");
+      };
+      localDb.internal.update = async (table, where, data) => {
+        if (table === "__datafn_permission_directory_outbox") renewalCalls += 1;
+        return originalUpdate(table, where, data);
+      };
+
+      await expect(drainPermissionDirectorySync(localDb, taskId, {
+        regionId: "region:test",
+        directory: createMemoryIndexedDirectoryStore(),
+      })).rejects.toThrow("lookup unavailable");
+      localDb.internal.findOne = originalFindOne;
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      expect(renewalCalls).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a local pending heartbeat after background recovery deletes its task", async () => {
+    vi.useFakeTimers();
+    try {
+      const localDb = memoryAdapter();
+      await localDb.initialize();
+      const directory = createMemoryIndexedDirectoryStore();
+      const runtime = { regionId: "region:test", directory };
+      const taskId = await enqueuePermissionDirectorySync(localDb, {
+        operation: "share",
+        resource: "notes",
+        id: "note:background-recovery",
+        shareWith: { principalId: "user:partner" },
+      }, namespace, runtime.regionId, { pending: true });
+      await localDb.internal.update(
+        "__datafn_permission_directory_outbox",
+        [{ field: "id", op: "eq", value: taskId }],
+        { next_attempt_at: new Date(Date.now() - 1).toISOString() },
+      );
+      let updatesAfterDelete = 0;
+      const originalUpdate = localDb.internal.update.bind(localDb.internal);
+      await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+        .resolves.toEqual({ processed: 1, pending: 0 });
+      localDb.internal.update = async (table, where, data) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          updatesAfterDelete += 1;
+        }
+        return originalUpdate(table, where, data);
+      };
+
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      expect(updatesAfterDelete).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fences a stale due-task selection when its owner renews before claim", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -1714,7 +1784,6 @@ describe("share SPV2 mutation semantics", () => {
         id: "note:transact-unshare-prequeue",
         shareWith: { principalId: "user:partner", level: "viewer" },
       });
-
       const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
       localDb.internal.create = async (table: string, record: Record<string, unknown>) => {
         if (table === "__datafn_permission_directory_outbox") {

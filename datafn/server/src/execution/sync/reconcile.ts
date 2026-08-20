@@ -15,7 +15,10 @@ import { isPrivateShareableResource, resolveAccessLevel } from "../../validation
 
 function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
   const resource = schema.resources.find((item) => item.name === resourceName);
-  const prefix = resource?.idPrefix ?? resourceName;
+  const configuredPrefix = resource?.idPrefix ?? resourceName;
+  const prefix = configuredPrefix.endsWith(":")
+    ? configuredPrefix.slice(0, -1)
+    : configuredPrefix;
   return id === prefix || id.startsWith(`${prefix}:`);
 }
 

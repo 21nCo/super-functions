@@ -1,0 +1,53 @@
+import type { FieldSchema } from "@superfunctions/db";
+
+// utf8mb4 can use four bytes per character. This conservative per-column
+// ceiling stays below MySQL's 65,535-byte VARCHAR limit.
+export const MYSQL_MAX_SAFE_VARCHAR_LENGTH = 16_383;
+
+export function mysqlVarcharLength(field: FieldSchema): number | null {
+  if (field.maxLength === undefined) return null;
+  if (
+    typeof field.maxLength !== "number" ||
+    !Number.isInteger(field.maxLength) ||
+    field.maxLength <= 0 ||
+    field.maxLength > MYSQL_MAX_SAFE_VARCHAR_LENGTH
+  ) {
+    throw new Error(
+      `Invalid MySQL maxLength ${String(field.maxLength)}; expected an integer between 1 and ${MYSQL_MAX_SAFE_VARCHAR_LENGTH}`,
+    );
+  }
+  return field.maxLength;
+}
+
+export function isUnboundedMySqlTextType(dataType: string): boolean {
+  return /^(tinytext|text|mediumtext|longtext)$/i.test(dataType.trim());
+}
+
+export function databaseStringLength(input: {
+  dataType: string;
+  maxLength?: number | null;
+}): number | null {
+  if (typeof input.maxLength === "number" && Number.isFinite(input.maxLength)) {
+    return input.maxLength;
+  }
+  const match = input.dataType.trim().match(/^(?:var)?char\s*\(\s*(\d+)\s*\)$/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function mysqlColumnTypeFromSnapshot(input: {
+  dataType: string;
+  maxLength?: number | null;
+}): string {
+  const normalized = input.dataType.trim().toUpperCase();
+  const length = databaseStringLength(input);
+  if (length !== null && /^(?:VAR)?CHAR(?:\s*\(.*\))?$/i.test(input.dataType.trim())) {
+    const base = input.dataType.trim().toLowerCase().startsWith("var")
+      ? "VARCHAR"
+      : "CHAR";
+    return `${base}(${length})`;
+  }
+  if (!/^[A-Z][A-Z0-9_]*(?:\s*\(\s*\d+\s*\))?$/.test(normalized)) {
+    throw new Error(`Unsupported introspected MySQL column type: ${input.dataType}`);
+  }
+  return normalized;
+}

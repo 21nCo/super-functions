@@ -403,7 +403,7 @@ describe("Offline Mutation Tests", () => {
     });
   });
 
-  it("offline merge preserves create defaults for legacy three-argument storage adapters", async () => {
+  it("uses a merge-safe patch for legacy three-argument storage adapters", async () => {
     const storage = new MockStorageAdapter();
     const timestampMs = 1_726_000_000_000;
     const schemaWithCreateFields = {
@@ -434,12 +434,11 @@ describe("Offline Mutation Tests", () => {
     await expect(storage.getRecord("task", "task:new")).resolves.toMatchObject({
       id: "task:new",
       title: "Created by merge",
-      status: "open",
-      createdAt: timestampMs,
       updatedAt: timestampMs,
-      createdBy: "client:legacy-merge",
       updatedBy: "client:legacy-merge",
     });
+    await expect(storage.getRecord("task", "task:new")).resolves.not.toHaveProperty("status");
+    await expect(storage.getRecord("task", "task:new")).resolves.not.toHaveProperty("createdAt");
   });
 
   it("uses explicit capability detection for atomic merge adapters with default parameters", async () => {

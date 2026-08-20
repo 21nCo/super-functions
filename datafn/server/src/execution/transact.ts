@@ -17,6 +17,7 @@ import {
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
+  markPermissionDirectorySyncReady,
 } from "./mutation/permission-directory-outbox.js";
 
 export interface TransactStep {
@@ -94,6 +95,15 @@ export async function executeTransaction(
       }
     }
   } catch (error: any) {
+    if (multiRegionRuntime) {
+      // A later enqueue can fail after earlier pending tasks started renewable
+      // owner leases. Release every task already created without waiting on an
+      // external directory. They remain durable and immediately eligible for
+      // the regular background reconciler.
+      await Promise.allSettled(prequeuedUnshareTaskIds.map((taskId) =>
+        markPermissionDirectorySyncReady(db, taskId)
+      ));
+    }
     return {
       ok: false,
       error: {

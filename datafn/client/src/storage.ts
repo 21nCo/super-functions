@@ -34,8 +34,9 @@ export type DatafnChangelogEntry = {
 
 export interface DatafnStorageAdapterCapabilities {
   /**
-   * `mergeRecord` applies `options.ifMissing` atomically in the same
-   * read-modify-write transaction used for the merge.
+   * `mergeRecord` atomically chooses between applying `partial` to an existing
+   * record and creating a missing record from the complete `options.ifMissing`
+   * payload. It must not reapply `partial` to that creation payload.
    */
   readonly atomicMergeIfMissing?: boolean;
 }
@@ -57,13 +58,15 @@ export interface DatafnStorageAdapter {
   
   /** 
    * Atomic read-modify-write merge. MUST execute in a single transaction.
-   * If record doesn't exist, upserts with partial as the full record.
+   * If the record does not exist, creates from `options.ifMissing` when
+   * supplied, otherwise from `partial`.
    * Uses one-level-deep merge for object-type fields.
    */
   mergeRecord(
     resource: string, 
     id: string, 
     partial: Record<string, unknown>,
+    /** Complete creation payload used instead of `partial` when absent. */
     options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>>;
 

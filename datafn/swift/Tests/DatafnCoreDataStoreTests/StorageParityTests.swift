@@ -56,22 +56,24 @@ struct StorageParityTests {
         #expect(health == DatafnStorageHealthReport(ok: true, issues: []))
     }
 
-    @Test("Missing-record merge atomically applies the complete create payload")
+    @Test("Missing-record merge atomically selects the complete create payload")
     func missingRecordMergeUsesIfMissingPayload() throws {
         let store = try makeStore(namespace: "org-1:user-merge")
 
         let merged = try store.mergeRecord(
             resource: "tasks",
             id: "task:new",
-            partial: ["title": "Patch"],
+            partial: ["title": "Patch", "patchOnly": true],
             ifMissing: [
                 "id": "task:new",
-                "title": "Patch",
+                "title": "Create",
                 "status": "draft",
                 "createdBy": "user:1",
             ]
         )
 
+        #expect(merged["title"] == "Create")
+        #expect(merged["patchOnly"] == nil)
         #expect(merged["status"] == "draft")
         #expect(merged["createdBy"] == "user:1")
         #expect(try store.getRecord(resource: "tasks", id: "task:new") == merged)

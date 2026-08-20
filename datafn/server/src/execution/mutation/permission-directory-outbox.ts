@@ -10,10 +10,12 @@ const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
 const PRECOMMIT_TASK_LEASE_MS = 5 * 60 * 1000;
 const PRECOMMIT_TASK_RENEWAL_MS = Math.floor(PRECOMMIT_TASK_LEASE_MS / 3);
 const DRAIN_CLAIM_LEASE_MS = 60 * 1000;
-const precommitLeaseHeartbeats = new Map<
-  string,
-  ReturnType<typeof setInterval>
->();
+interface PrecommitLeaseHeartbeat {
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const precommitLeaseHeartbeats = new Map<string, PrecommitLeaseHeartbeat>();
 
 function nextPrecommitLeaseExpiry(): string {
   return new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString();
@@ -22,24 +24,40 @@ function nextPrecommitLeaseExpiry(): string {
 function stopPrecommitLeaseHeartbeat(taskId: string): void {
   const heartbeat = precommitLeaseHeartbeats.get(taskId);
   if (!heartbeat) return;
-  clearInterval(heartbeat);
+  heartbeat.stopped = true;
+  if (heartbeat.timer) clearTimeout(heartbeat.timer);
   precommitLeaseHeartbeats.delete(taskId);
 }
 
 function startPrecommitLeaseHeartbeat(db: Adapter, taskId: string): void {
   stopPrecommitLeaseHeartbeat(taskId);
-  const heartbeat = setInterval(() => {
-    void db.internal.update(OUTBOX_TABLE, [
-      { field: "id", op: "eq", value: taskId },
-    ], {
-      next_attempt_at: nextPrecommitLeaseExpiry(),
-    }).catch(() => {
+  const heartbeat: PrecommitLeaseHeartbeat = { stopped: false, timer: null };
+  const schedule = () => {
+    if (heartbeat.stopped) return;
+    heartbeat.timer = setTimeout(() => {
+      heartbeat.timer = null;
+      void renew();
+    }, PRECOMMIT_TASK_RENEWAL_MS);
+    heartbeat.timer.unref?.();
+  };
+  const renew = async () => {
+    try {
+      await db.internal.update(OUTBOX_TABLE, [
+        { field: "id", op: "eq", value: taskId },
+      ], {
+        next_attempt_at: nextPrecommitLeaseExpiry(),
+      });
+    } catch {
       // Keep trying while the owner is alive. If it crashes or cannot renew,
       // the last persisted lease expires and another drainer can recover it.
-    });
-  }, PRECOMMIT_TASK_RENEWAL_MS);
-  heartbeat.unref?.();
+    } finally {
+      // Schedule only after the current write settles. Overlapping writes can
+      // otherwise complete out of order and shorten a newer owner lease.
+      schedule();
+    }
+  };
   precommitLeaseHeartbeats.set(taskId, heartbeat);
+  schedule();
 }
 
 export interface PermissionDirectorySyncMutation {
@@ -104,6 +122,13 @@ export async function drainPermissionDirectorySync(
   logger?: DatafnLogger,
   options: { expectedNextAttemptAt?: string } = {},
 ): Promise<boolean> {
+  // Explicit settlement transfers ownership away from the local pre-commit
+  // operation. Stop renewal before the first fallible read so every exit,
+  // including lookup failure or a missing row, leaves the durable lease able
+  // to expire into background recovery.
+  if (!options.expectedNextAttemptAt) {
+    stopPrecommitLeaseHeartbeat(taskId);
+  }
   const taskWhere: Array<{
     field: string;
     op: "eq";
@@ -120,18 +145,10 @@ export async function drainPermissionDirectorySync(
   ];
   const task = await db.internal.findOne(OUTBOX_TABLE, taskWhere);
   if (!task) {
-    if (!options.expectedNextAttemptAt) {
-      stopPrecommitLeaseHeartbeat(taskId);
-      return true;
-    }
+    if (!options.expectedNextAttemptAt) return true;
     return false;
   }
   if (String(task.region_id) !== runtime.regionId) return false;
-  // Explicit settlement drains stop the local owner heartbeat. Background
-  // drains carry a conditional claim and must not disturb a live owner.
-  if (!options.expectedNextAttemptAt) {
-    stopPrecommitLeaseHeartbeat(taskId);
-  }
 
   try {
     const mutation = JSON.parse(String(task.mutation)) as PermissionDirectorySyncMutation;
@@ -142,6 +159,7 @@ export async function drainPermissionDirectorySync(
       runtime,
     );
     const deleted = await db.internal.delete(OUTBOX_TABLE, taskWhere);
+    if (deleted > 0) stopPrecommitLeaseHeartbeat(taskId);
     // A live owner may renew after a stale drainer claimed the row. The
     // conditional delete fences that race: reconciliation is idempotent, and
     // the still-durable task will be repaired again after owner settlement.

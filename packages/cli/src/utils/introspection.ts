@@ -6,9 +6,11 @@
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 
 export interface DatabaseColumn {
+  dialect?: 'postgres' | 'mysql' | 'sqlite';
   tableName: string;
   columnName: string;
   dataType: string;
+  maxLength?: number | null;
   isNullable: boolean;
   defaultValue: string | null;
   isPrimaryKey: boolean;
@@ -68,6 +70,7 @@ export async function introspectPostgres(
       SELECT 
         c.column_name,
         c.data_type,
+        c.character_maximum_length,
         c.is_nullable,
         c.column_default,
         CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
@@ -117,9 +120,13 @@ export async function introspectPostgres(
     result.push({
       name: table_name,
       columns: columns.rows.map((c: any) => ({
+        dialect: 'postgres' as const,
         tableName: table_name,
         columnName: c.column_name,
         dataType: c.data_type,
+        maxLength: c.character_maximum_length == null
+          ? null
+          : Number(c.character_maximum_length),
         isNullable: c.is_nullable === 'YES',
         defaultValue: c.column_default,
         isPrimaryKey: c.is_primary_key,
@@ -168,6 +175,7 @@ export async function introspectMySQL(
       SELECT 
         COLUMN_NAME as column_name,
         DATA_TYPE as data_type,
+        CHARACTER_MAXIMUM_LENGTH as character_maximum_length,
         IS_NULLABLE as is_nullable,
         COLUMN_DEFAULT as column_default,
         COLUMN_KEY as column_key
@@ -209,9 +217,13 @@ export async function introspectMySQL(
     result.push({
       name: table_name,
       columns: (columns as any[]).map((c) => ({
+        dialect: 'mysql' as const,
         tableName: table_name,
         columnName: c.column_name,
         dataType: c.data_type,
+        maxLength: c.character_maximum_length == null
+          ? null
+          : Number(c.character_maximum_length),
         isNullable: c.is_nullable === 'YES',
         defaultValue: c.column_default,
         isPrimaryKey: c.column_key === 'PRI',
@@ -275,6 +287,7 @@ export async function introspectSQLite(
     result.push({
       name: table_name,
       columns: columns.map((c: any) => ({
+        dialect: 'sqlite' as const,
         tableName: table_name,
         columnName: c.name,
         dataType: c.type,

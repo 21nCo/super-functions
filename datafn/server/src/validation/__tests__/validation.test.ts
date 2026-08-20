@@ -77,19 +77,23 @@ describe("Query Validation - VALID-001", () => {
       database: db,
     });
 
-    const response = await server.router.handle(new Request(
-      "http://localhost/datafn/query",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resource: "task", temporal: false }),
-      },
-    ));
-    const body = await readJson(response);
+    try {
+      const response = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resource: "task", temporal: false }),
+        },
+      ));
+      const body = await readJson(response);
 
-    expect(response.status).toBe(400);
-    expect(body.error.code).toBe("DFQL_INVALID");
-    expect(body.error.details.path).toBe("temporal");
+      expect(response.status).toBe(400);
+      expect(body.error.code).toBe("DFQL_INVALID");
+      expect(body.error.details.path).toBe("temporal");
+    } finally {
+      await server.close();
+    }
   });
 
   it("rejects non-boolean null-predicate operands", async () => {

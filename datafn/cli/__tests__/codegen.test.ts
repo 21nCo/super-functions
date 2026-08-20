@@ -165,7 +165,7 @@ describe("TypeScript Codegen Tests", () => {
 
     const taskBlock = output.slice(output.indexOf("export interface Task"));
     expect(taskBlock).toContain("legacyProjectId?: string | null;");
-    expect(taskBlock).not.toContain("projectId: string;");
+    expect(taskBlock).not.toMatch(/\bprojectId\s*:/);
   });
 
   it("TV-CODEGEN-002: Invalid schema input is rejected deterministically", () => {

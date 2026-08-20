@@ -4,6 +4,7 @@
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName, type TableDiff, type MigrationPlan } from './schema-diff.js';
+import { mysqlColumnTypeFromSnapshot, mysqlVarcharLength } from './mysql-types.js';
 
 export type Dialect = 'postgres' | 'mysql' | 'sqlite';
 
@@ -37,11 +38,10 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
     case 'mysql':
       switch (baseType) {
         case 'string':
-          return typeof field.maxLength === 'number' &&
-            Number.isInteger(field.maxLength) &&
-            field.maxLength > 0
-            ? `VARCHAR(${field.maxLength})`
-            : 'TEXT';
+          {
+            const length = mysqlVarcharLength(field);
+            return length === null ? 'TEXT' : `VARCHAR(${length})`;
+          }
         case 'number':
           return 'INT';
         case 'bigint':
@@ -228,9 +228,19 @@ function generateAlterTableSQL(
   // Handle column changes (NOT NULL, etc)
   if (diff.columnChanges) {
     for (const change of diff.columnChanges) {
-      statements.push(
-        `-- TODO: Handle column change for ${diff.tableName}.${change.column}: ${change.change}`
-      );
+      const field = Object.entries(schema.fields).find(
+        ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
+      )?.[1];
+      if (dialect === 'mysql' && field) {
+        const sqlType = fieldTypeToSQL(field, dialect);
+        statements.push(
+          `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${sqlType} ${field.required ? 'NOT NULL' : 'NULL'};`,
+        );
+      } else {
+        statements.push(
+          `-- TODO: Handle column change for ${diff.tableName}.${change.column}: ${change.change}`
+        );
+      }
     }
   }
 
@@ -504,6 +514,7 @@ export function generateKyselyMigration(
     } else if (diff.action === 'alter') {
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       const dropAddedColumns: string[] = [];
+      const revertChangedColumns: string[] = [];
       if (schema && diff.missingColumns) {
         for (const colName of diff.missingColumns) {
           const field = Object.entries(schema.fields).find(
@@ -517,6 +528,22 @@ export function generateKyselyMigration(
           );
           dropAddedColumns.push(
             `  await db.schema.alterTable('${diff.tableName}').dropColumn('${colName}').execute();`
+          );
+        }
+      }
+      for (const change of diff.columnChanges ?? []) {
+        if (!schema) continue;
+        const field = Object.entries(schema.fields).find(
+          ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
+        )?.[1];
+        if (dialect === 'mysql' && field && change.current) {
+          const requiredType = fieldTypeToSQL(field, dialect);
+          const currentType = mysqlColumnTypeFromSnapshot(change.current);
+          upStatements.push(
+            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${requiredType} ${field.required ? 'NOT NULL' : 'NULL'}\`.execute(db);`,
+          );
+          revertChangedColumns.push(
+            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${currentType} ${change.current.isNullable ? 'NULL' : 'NOT NULL'}\`.execute(db);`,
           );
         }
       }
@@ -555,6 +582,7 @@ export function generateKyselyMigration(
           index.current.textColumns,
         ));
       }
+      downStatements.push(...revertChangedColumns);
       // Rollbacks must remove dependent indexes before their newly added
       // columns. PostgreSQL may auto-drop the index with the column, while
       // other dialects can reject the column drop outright.

@@ -807,14 +807,11 @@ export async function applyOptimisticMutationToStorage(
     } else {
       // DatafnStorageAdapter implementations written before the optional
       // ifMissing argument remain structurally compatible with the interface.
-      // Preserve their create semantics by selecting the complete create
-      // payload before calling their legacy three-argument merge method.
-      const existing = await storage.getRecord(resource, id);
-      await storage.mergeRecord(
-        resource,
-        id,
-        existing ? optimisticPatch : optimisticCreate,
-      );
+      // Their existence check cannot be made atomic from the client: applying
+      // create-only defaults after a racy read could overwrite a concurrent
+      // create. Use the merge-safe patch; adapters that need complete atomic
+      // create defaults must advertise atomicMergeIfMissing.
+      await storage.mergeRecord(resource, id, optimisticPatch);
     }
     await applyInactivePropagation(storage, schema, [{ resource, id }]);
   } else if (operation === "insert" || operation === "replace") {
