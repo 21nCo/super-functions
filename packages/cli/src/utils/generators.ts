@@ -218,6 +218,7 @@ function mysqlCompleteColumnDefinition(
   const extra = rawExtra
     .replace(/\bDEFAULT_GENERATED\b/gi, '')
     .replace(/\b(?:VIRTUAL|STORED)\s+GENERATED\b/gi, '')
+    .replace(/\bINVISIBLE\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
   const generationExpression = current.generationExpression?.trim();
@@ -253,12 +254,15 @@ function mysqlCompleteColumnDefinition(
 function mysqlChangedColumnDefinition(
   field: FieldSchema,
   current: MySqlColumnSnapshot,
+  change: string,
 ): string {
   const defaultClause = field.defaultValue !== undefined
     ? schemaDefaultClause(field, 'mysql')
     : introspectedMySqlDefaultClause(current);
   return mysqlCompleteColumnDefinition(
-    fieldTypeToSQL(field, 'mysql'),
+    /(?:^|, )(?:type|maxLength) changed/.test(change)
+      ? fieldTypeToSQL(field, 'mysql')
+      : mysqlColumnTypeFromSnapshot(current),
     !field.required,
     defaultClause,
     current,
@@ -386,7 +390,7 @@ function generateAlterTableSQL(
         statements.push(
           `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${
             change.current
-              ? mysqlChangedColumnDefinition(field, change.current)
+              ? mysqlChangedColumnDefinition(field, change.current, change.change)
               : `${fieldTypeToSQL(field, dialect)} ${field.required ? 'NOT NULL' : 'NULL'}${schemaDefaultClause(field, dialect)}`
           };`,
         );
@@ -418,12 +422,25 @@ function generateCreateIndexSQL(
   dialect: Dialect,
   schema?: TableSchema,
   knownTextColumns: readonly string[] = [],
+  knownPrefixLengths: readonly (number | null)[] = [],
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
   const mysqlTextColumns = new Set(knownTextColumns);
+  const mysqlPrefixLengths = new Map<string, number>();
+  index.columns.forEach((column, indexPosition) => {
+    const prefixLength = knownPrefixLengths[indexPosition];
+    if (typeof prefixLength === 'number' && prefixLength > 0) {
+      mysqlPrefixLengths.set(column, prefixLength);
+    }
+  });
   if (dialect === 'mysql' && schema) {
     let indexedKeyBytes = 0;
     for (const column of index.columns) {
+      const preservedPrefixLength = mysqlPrefixLengths.get(column);
+      if (preservedPrefixLength) {
+        indexedKeyBytes += preservedPrefixLength * 4;
+        continue;
+      }
       const field = Object.entries(schema.fields).find(
         ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
       )?.[1];
@@ -474,7 +491,9 @@ function generateCreateIndexSQL(
     }
   }
   if (dialect === 'mysql' && index.unique) {
-    const unsafeColumns = index.columns.filter((column) => mysqlTextColumns.has(column));
+    const unsafeColumns = index.columns.filter((column) =>
+      mysqlTextColumns.has(column) && !mysqlPrefixLengths.has(column)
+    );
     if (unsafeColumns.length > 0) {
       throw new Error(
         `Cannot generate unique MySQL index ${index.name} on unbounded TEXT column(s): ${unsafeColumns.join(', ')}`,
@@ -482,9 +501,10 @@ function generateCreateIndexSQL(
     }
   }
   const columns = index.columns.map((column) => {
-    return dialect === 'mysql' && mysqlTextColumns.has(column)
-      ? `${column}(191)`
-      : column;
+    if (dialect !== 'mysql') return column;
+    const preservedPrefixLength = mysqlPrefixLengths.get(column);
+    if (preservedPrefixLength) return `${column}(${preservedPrefixLength})`;
+    return mysqlTextColumns.has(column) ? `${column}(191)` : column;
   });
   return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name} ON ${tableName} (${columns.join(', ')});`;
 }
@@ -513,9 +533,10 @@ function generateKyselyCreateIndex(
   dialect: Dialect,
   schema: TableSchema,
   knownTextColumns: readonly string[] = [],
+  knownPrefixLengths: readonly (number | null)[] = [],
 ): string {
   if (dialect === 'mysql') {
-    return `  await sql\`${escapeJavaScriptTemplateLiteral(generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns))}\`.execute(db);`;
+    return `  await sql\`${escapeJavaScriptTemplateLiteral(generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns, knownPrefixLengths))}\`.execute(db);`;
   }
   const unique = index.unique ? `.unique()` : '';
   return `  await db.schema.createIndex('${index.name}').on('${tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`;
@@ -733,7 +754,7 @@ export function generateKyselyMigration(
           ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
         )?.[1];
         if (dialect === 'mysql' && field && change.current) {
-          const upSql = `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlChangedColumnDefinition(field, change.current)}`;
+          const upSql = `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlChangedColumnDefinition(field, change.current, change.change)}`;
           const downSql = `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlCurrentColumnDefinition(change.current)}`;
           upStatements.push(
             `  await sql\`${escapeJavaScriptTemplateLiteral(upSql)}\`.execute(db);`,
@@ -776,6 +797,7 @@ export function generateKyselyMigration(
           dialect,
           schema,
           index.current.textColumns,
+          index.current.prefixLengths,
         ));
       }
       downStatements.push(...revertChangedColumns);

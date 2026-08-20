@@ -1059,11 +1059,13 @@ export class SyncEngine {
   ): Promise<{
     mutations: any[];
     omittedMutationIds: Set<string>;
-    replacingDeleteByMutationId: Map<string, string>;
+    replacingDeleteIdsByMutationId: Map<string, Set<string>>;
   }> {
-    const deletedKeys = new Set<string>();
-    const replacingDeleteByKey = new Map<string, string>();
-    for (const mutation of mutations) {
+    const replacingDeletesByKey = new Map<
+      string,
+      Array<{ index: number; mutationId: string }>
+    >();
+    for (const [index, mutation] of mutations.entries()) {
       if (
         mutation &&
         typeof mutation.resource === "string" &&
@@ -1071,26 +1073,27 @@ export class SyncEngine {
         mutation.operation === "delete"
       ) {
         const key = `${mutation.resource}\u0000${mutation.id}`;
-        deletedKeys.add(key);
         if (typeof mutation.mutationId === "string") {
-          replacingDeleteByKey.set(key, mutation.mutationId);
+          const deletes = replacingDeletesByKey.get(key) ?? [];
+          deletes.push({ index, mutationId: mutation.mutationId });
+          replacingDeletesByKey.set(key, deletes);
         }
       }
     }
 
-    if (deletedKeys.size === 0) {
+    if (replacingDeletesByKey.size === 0) {
       return {
         mutations,
         omittedMutationIds: new Set(),
-        replacingDeleteByMutationId: new Map(),
+        replacingDeleteIdsByMutationId: new Map(),
       };
     }
 
     const existingByKey = new Map<string, boolean>();
     const compacted: any[] = [];
     const omittedMutationIds = new Set<string>();
-    const replacingDeleteByMutationId = new Map<string, string>();
-    for (const mutation of mutations) {
+    const replacingDeleteIdsByMutationId = new Map<string, Set<string>>();
+    for (const [index, mutation] of mutations.entries()) {
       if (
         mutation &&
         typeof mutation.resource === "string" &&
@@ -1098,7 +1101,10 @@ export class SyncEngine {
         isRecordMutationOperation(mutation.operation)
       ) {
         const key = `${mutation.resource}\u0000${mutation.id}`;
-        if (deletedKeys.has(key)) {
+        const laterDeleteIds = (replacingDeletesByKey.get(key) ?? [])
+          .filter((candidate) => candidate.index > index)
+          .map((candidate) => candidate.mutationId);
+        if (laterDeleteIds.length > 0) {
           if (!existingByKey.has(key)) {
             const existing = await this.storage.getRecord(mutation.resource, mutation.id);
             existingByKey.set(key, existing !== null);
@@ -1106,13 +1112,10 @@ export class SyncEngine {
           if (existingByKey.get(key) === false) {
             if (typeof mutation.mutationId === "string") {
               omittedMutationIds.add(mutation.mutationId);
-              const replacingDeleteId = replacingDeleteByKey.get(key);
-              if (replacingDeleteId) {
-                replacingDeleteByMutationId.set(
-                  mutation.mutationId,
-                  replacingDeleteId,
-                );
-              }
+              replacingDeleteIdsByMutationId.set(
+                mutation.mutationId,
+                new Set(laterDeleteIds),
+              );
             }
             continue;
           }
@@ -1124,7 +1127,7 @@ export class SyncEngine {
     return {
       mutations: compacted,
       omittedMutationIds,
-      replacingDeleteByMutationId,
+      replacingDeleteIdsByMutationId,
     };
   }
 
@@ -1573,12 +1576,16 @@ export class SyncEngine {
         compacted.omittedMutationIds.size > 0
       ) {
         const initiallyApplied = new Set(pushResult.applied ?? []);
-        const failedReplacementDeletes = new Set(
-          [...compacted.replacingDeleteByMutationId.values()].filter(
-            (deleteMutationId) => !initiallyApplied.has(deleteMutationId),
-          ),
+        const replayableOmittedMutationIds = new Set(
+          [...compacted.replacingDeleteIdsByMutationId.entries()]
+            .filter(([, deleteMutationIds]) =>
+              [...deleteMutationIds].every(
+                (deleteMutationId) => !initiallyApplied.has(deleteMutationId),
+              )
+            )
+            .map(([mutationId]) => mutationId),
         );
-        if (failedReplacementDeletes.size > 0) {
+        if (replayableOmittedMutationIds.size > 0) {
           // Replay only writes whose own replacing delete failed. Replaying a
           // write after its delete succeeded can resurrect the record because
           // the server correctly deduplicates the already-applied delete.
@@ -1588,10 +1595,8 @@ export class SyncEngine {
               ? candidate.mutationId
               : null;
             if (!mutationId) return true;
-            const replacingDeleteId =
-              compacted.replacingDeleteByMutationId.get(mutationId);
-            return !replacingDeleteId ||
-              failedReplacementDeletes.has(replacingDeleteId);
+            return !compacted.omittedMutationIds.has(mutationId) ||
+              replayableOmittedMutationIds.has(mutationId);
           });
           pushResult = await this.pushWithRetries(mutations, batchClientId);
           if (!pushResult) {
@@ -1608,9 +1613,11 @@ export class SyncEngine {
           pushResults.flatMap((result) => result.applied ?? []),
         );
         const acknowledgedOmittedMutationIds = new Set(
-          [...compacted.replacingDeleteByMutationId.entries()]
-            .filter(([, deleteMutationId]) =>
-              appliedAcrossAttempts.has(deleteMutationId)
+          [...compacted.replacingDeleteIdsByMutationId.entries()]
+            .filter(([, deleteMutationIds]) =>
+              [...deleteMutationIds].some((deleteMutationId) =>
+                appliedAcrossAttempts.has(deleteMutationId)
+              )
             )
             .map(([mutationId]) => mutationId),
         );

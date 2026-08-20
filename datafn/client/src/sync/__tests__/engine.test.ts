@@ -505,6 +505,95 @@ describe("SyncEngine push", () => {
     expect(await storage.changelogList()).toEqual([]);
   });
 
+  it("does not replay a write when any of multiple replacing deletes applied", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    const mutations = [
+      {
+        resource: "goal", version: 1, operation: "merge",
+        id: "goal:x", record: { label: "must stay deleted" },
+        clientId: "client:1", mutationId: "mut:merge-x",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:x", clientId: "client:1", mutationId: "mut:delete-x-1",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:x", clientId: "client:1", mutationId: "mut:delete-x-2",
+      },
+      {
+        resource: "goal", version: 1, operation: "merge",
+        id: "goal:y", record: { label: "retry independently" },
+        clientId: "client:1", mutationId: "mut:merge-y",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:y", clientId: "client:1", mutationId: "mut:delete-y",
+      },
+    ];
+    for (const [index, mutation] of mutations.entries()) {
+      await storage.changelogAppend({
+        clientId: "client:1",
+        mutationId: mutation.mutationId,
+        timestampMs: index + 1,
+        mutation,
+      });
+    }
+    const failedResult = {
+      ok: false,
+      error: { code: "MUTATION_FAILED", message: "Retryable deletes" },
+      result: {
+        ok: false,
+        applied: ["mut:delete-x-1"],
+        errors: [
+          {
+            mutationId: "mut:delete-x-2", code: "MUTATION_FAILED",
+            message: "Retry delete x", path: "mutations[mut:delete-x-2]",
+            retryable: true,
+          },
+          {
+            mutationId: "mut:delete-y", code: "MUTATION_FAILED",
+            message: "Retry delete y", path: "mutations[mut:delete-y]",
+            retryable: false,
+          },
+        ],
+        cursor: "1",
+        cursorBefore: "0",
+      },
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(failedResult)
+      .mockResolvedValueOnce(failedResult);
+    const remote: any = {
+      push,
+      pull: vi.fn(), clone: vi.fn(), query: vi.fn(), mutation: vi.fn(),
+      transact: vi.fn(), seed: vi.fn(), reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete-x-1", "mut:delete-x-2", "mut:delete-y"]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .toEqual([
+        "mut:delete-x-1",
+        "mut:delete-x-2",
+        "mut:merge-y",
+        "mut:delete-y",
+      ]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .not.toContain("mut:merge-x");
+  });
+
   it("keeps retryable failed push mutations queued", async () => {
     const storage = new MemoryStorageAdapter(["goal"]);
     await storage.changelogAppend({

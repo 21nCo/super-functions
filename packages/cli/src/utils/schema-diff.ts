@@ -134,7 +134,12 @@ export interface TableDiff {
   }>;
   changedIndexes?: Array<{
     name: string;
-    current: { columns: string[]; unique: boolean; textColumns?: string[] };
+    current: {
+      columns: string[];
+      unique: boolean;
+      textColumns?: string[];
+      prefixLengths?: Array<number | null>;
+    };
     required: { columns: string[]; unique: boolean };
   }>;
 }
@@ -251,6 +256,9 @@ export function diffTables(
           columns: [...currentIndex.columns],
           unique: currentIndex.isUnique,
           ...(currentTextColumns.length > 0 ? { textColumns: currentTextColumns } : {}),
+          ...(currentIndex.prefixLengths?.some((length) => length !== null)
+            ? { prefixLengths: [...currentIndex.prefixLengths] }
+            : {}),
         },
         required: {
           columns: [...requiredIndex.columns],

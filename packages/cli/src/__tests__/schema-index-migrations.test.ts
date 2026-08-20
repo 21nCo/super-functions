@@ -6,7 +6,7 @@ import {
   generatePrismaMigration,
 } from "../utils/generators.js";
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
-import { introspectSQLite } from "../utils/introspection.js";
+import { introspectMySQL, introspectSQLite } from "../utils/introspection.js";
 import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
 
 const syncJobs = {
@@ -26,6 +26,49 @@ const syncJobs = {
 } as unknown as TableSchema;
 
 describe("schema index migrations", () => {
+  it("reads MySQL visibility from EXTRA and preserves index prefixes", async () => {
+    const db = {
+      query: async (query: string) => {
+        if (query.includes("information_schema.TABLES")) {
+          return [[{ table_name: "plugfn_jobs" }]];
+        }
+        if (query.includes("information_schema.COLUMNS")) {
+          expect(query).not.toContain("IS_VISIBLE");
+          return [[{
+            column_name: "legacy_note",
+            data_type: "text",
+            column_type: "text",
+            character_maximum_length: 65_535,
+            extra: "INVISIBLE",
+            generation_expression: "",
+            character_set_name: "utf8mb4",
+            collation_name: "utf8mb4_0900_ai_ci",
+            column_comment: "",
+            is_nullable: "YES",
+            column_default: null,
+            column_key: "UNI",
+          }]];
+        }
+        if (query.includes("information_schema.STATISTICS")) {
+          expect(query).toContain("SUB_PART as sub_part");
+          return [[{
+            name: "jobs_note_idx",
+            table_name: "plugfn_jobs",
+            non_unique: 0,
+            column_name: "legacy_note",
+            sub_part: 50,
+          }]];
+        }
+        throw new Error(`Unexpected query: ${query}`);
+      },
+    };
+
+    const [table] = await introspectMySQL(db, "app", "plugfn_");
+
+    expect(table.columns[0].isVisible).toBe(false);
+    expect(table.indexes[0].prefixLengths).toEqual([50]);
+  });
+
   it("preserves SQLite index uniqueness during introspection", async () => {
     const db = {
       all: async (query: string, params: unknown[]) => {
@@ -627,10 +670,10 @@ describe("schema index migrations", () => {
       "mysql",
     ).content;
     expect(drizzle).toContain(
-      "MODIFY COLUMN id INT NOT NULL auto_increment COMMENT 'primary counter';",
+      "MODIFY COLUMN id int unsigned NOT NULL auto_increment COMMENT 'primary counter';",
     );
     expect(drizzle).toContain(
-      "MODIFY COLUMN updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP INVISIBLE COMMENT 'update clock';",
+      "MODIFY COLUMN updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP INVISIBLE COMMENT 'update clock';",
     );
 
     const kysely = generateKyselyMigration(
@@ -689,7 +732,7 @@ describe("schema index migrations", () => {
       "mysql",
     ).content;
 
-    expect(content).toContain("VARCHAR(32) NOT NULL DEFAULT 'CURRENT_TIMESTAMP'");
+    expect(content).toContain("varchar(32) NOT NULL DEFAULT 'CURRENT_TIMESTAMP'");
     expect(content).toContain("enum('safe','\\${process.env.SECRET}','--','/*')");
   });
 
@@ -728,13 +771,16 @@ describe("schema index migrations", () => {
         name: "jobs_lookup_idx",
         tableName: "plugfn_jobs",
         columns: ["legacy_note"],
-        isUnique: false,
+        prefixLengths: [50],
+        isUnique: true,
       }],
       constraints: [],
     }], "plugfn");
 
     expect(diffs[0].changedIndexes?.[0].current.textColumns)
       .toEqual(["legacy_note"]);
+    expect(diffs[0].changedIndexes?.[0].current.prefixLengths)
+      .toEqual([50]);
     const content = generateKyselyMigration(
       createMigrationPlan("plugfn", 1, 2, diffs),
       [replacementSchema],
@@ -742,7 +788,7 @@ describe("schema index migrations", () => {
     ).content;
     const down = content.slice(content.indexOf("export async function down"));
     expect(down).toContain(
-      "CREATE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_note(191));",
+      "CREATE UNIQUE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_note(50));",
     );
   });
 });

@@ -36,6 +36,8 @@ export interface DatabaseIndex {
   name: string;
   tableName: string;
   columns: string[];
+  /** MySQL prefix length for each corresponding column, or null for full width. */
+  prefixLengths?: Array<number | null>;
   isUnique: boolean;
 }
 
@@ -187,7 +189,6 @@ export async function introspectMySQL(
         CHARACTER_MAXIMUM_LENGTH as character_maximum_length,
         EXTRA as extra,
         GENERATION_EXPRESSION as generation_expression,
-        IS_VISIBLE as is_visible,
         CHARACTER_SET_NAME as character_set_name,
         COLLATION_NAME as collation_name,
         COLUMN_COMMENT as column_comment,
@@ -207,7 +208,8 @@ export async function introspectMySQL(
         INDEX_NAME as name,
         TABLE_NAME as table_name,
         NON_UNIQUE as non_unique,
-        COLUMN_NAME as column_name
+        COLUMN_NAME as column_name,
+        SUB_PART as sub_part
       FROM information_schema.STATISTICS
       WHERE TABLE_SCHEMA = ?
         AND TABLE_NAME = ?
@@ -223,10 +225,14 @@ export async function introspectMySQL(
           name: row.name,
           tableName: row.table_name,
           columns: [],
+          prefixLengths: [],
           isUnique: row.non_unique === 0,
         });
       }
       indexMap.get(row.name)!.columns.push(row.column_name);
+      indexMap.get(row.name)!.prefixLengths!.push(
+        row.sub_part == null ? null : Number(row.sub_part),
+      );
     }
 
     result.push({
@@ -242,9 +248,7 @@ export async function introspectMySQL(
           : Number(c.character_maximum_length),
         extra: c.extra,
         generationExpression: c.generation_expression,
-        isVisible: c.is_visible == null
-          ? undefined
-          : c.is_visible === 'YES',
+        isVisible: !/\bINVISIBLE\b/i.test(String(c.extra ?? '')),
         characterSet: c.character_set_name,
         collation: c.collation_name,
         comment: c.column_comment,
