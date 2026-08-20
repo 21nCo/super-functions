@@ -138,6 +138,7 @@ export async function executeTransaction(
     step: TransactStep,
     stepDb: Adapter,
     deferredPermissionDirectorySyncs?: DeferredPermissionDirectorySync[],
+    insideDatabaseTransaction = false,
   ) => {
     if (step.query) {
       // Create store for query
@@ -168,8 +169,8 @@ export async function executeTransaction(
         actorId,
         logger,
         undefined,
-        true,
-        deferredPermissionDirectorySyncs
+        insideDatabaseTransaction,
+        insideDatabaseTransaction && deferredPermissionDirectorySyncs
           ? (sync) => deferredPermissionDirectorySyncs.push(sync)
           : undefined,
         prequeuedUnshareTasks.get(step.mutation),
@@ -222,6 +223,7 @@ export async function executeTransaction(
             step,
             tx,
             deferredPermissionDirectorySyncs,
+            true,
           );
           results.push(result);
 

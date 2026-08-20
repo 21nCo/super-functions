@@ -1063,6 +1063,145 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("fences a stale due-task selection when its owner renews before claim", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:test", directory };
+    const taskId = await enqueuePermissionDirectorySync(localDb, {
+      operation: "share",
+      resource: "notes",
+      id: "note:stale-selection",
+      shareWith: { principalId: "user:partner" },
+    }, namespace, runtime.regionId, { pending: true });
+    await localDb.internal.update(
+      "__datafn_permission_directory_outbox",
+      [{ field: "id", op: "eq", value: taskId }],
+      { next_attempt_at: new Date(Date.now() - 1_000).toISOString() },
+    );
+    let ownerRenewed = false;
+    const drainInternal = new Proxy(localDb.internal, {
+      get(target, property, receiver) {
+        if (property === "findMany") {
+          return async (table: string, where: any[], options: any) => {
+            const selected = await localDb.internal.findMany(table, where, options);
+            if (
+              table === "__datafn_permission_directory_outbox" &&
+              selected.some((task) => task.id === taskId)
+            ) {
+              ownerRenewed = true;
+              await localDb.internal.update(
+                "__datafn_permission_directory_outbox",
+                [{ field: "id", op: "eq", value: taskId }],
+                { next_attempt_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() },
+              );
+            }
+            return selected;
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const staleSelectingDb = new Proxy(localDb, {
+      get(target, property, receiver) {
+        return property === "internal"
+          ? drainInternal
+          : Reflect.get(target, property, receiver);
+      },
+    });
+
+    await expect(drainPermissionDirectoryOutbox(staleSelectingDb, runtime))
+      .resolves.toEqual({ processed: 0, pending: 1 });
+    expect(ownerRenewed).toBe(true);
+    await expect(localDb.internal.findMany(
+      "__datafn_permission_directory_outbox",
+      [],
+    )).resolves.toHaveLength(1);
+    await expect(directory.query({
+      index: "datafn.permission.principalResource",
+      value: "user:partner#notes",
+    })).resolves.toEqual({ records: [] });
+
+    await markPermissionDirectorySyncReady(localDb, taskId);
+    await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+      .resolves.toEqual({ processed: 1, pending: 0 });
+  });
+
+  it("prequeues sequential transact shares before committing their grants", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    (localDb.capabilities.transactions as { supported: boolean }).supported = false;
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return { response, body: await response.json() as any };
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "transact-share-outbox",
+        mutationId: "transact-share-outbox-insert",
+        id: "note:transact-share-outbox",
+        record: { title: "Transact share outbox" },
+      });
+      const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
+      localDb.internal.create = async (table, record) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          throw new Error("outbox unavailable");
+        }
+        return originalInternalCreate(table, record);
+      };
+
+      const transacted = await request("transact", {
+        atomic: false,
+        steps: [{
+          mutation: {
+            resource: "notes",
+            version: 1,
+            operation: "share",
+            clientId: "transact-share-outbox",
+            mutationId: "transact-share-outbox-share",
+            id: "note:transact-share-outbox",
+            shareWith: { principalId: "user:partner", level: "viewer" },
+          },
+        }],
+      });
+
+      expect(transacted.body.result.ok).toBe(false);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("does not commit a non-transactional push share when its retry cannot be persisted", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
