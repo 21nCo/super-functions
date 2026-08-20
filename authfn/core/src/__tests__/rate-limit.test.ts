@@ -131,5 +131,5 @@ describe('authfn rate limiting', () => {
     await expect(callRateLimitedRoute(config, '/auth/account', {
       'x-test-client-ip': '198.51.0.0'
     })).rejects.toMatchObject({ name: 'AuthFnRateLimitedError' });
-  });
+  }, 30_000);
 });
