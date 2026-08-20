@@ -13,6 +13,12 @@ export interface DatabaseColumn {
   /** Complete dialect-native type, for example `decimal(10,2) unsigned`. */
   columnType?: string;
   maxLength?: number | null;
+  extra?: string | null;
+  generationExpression?: string | null;
+  isVisible?: boolean;
+  characterSet?: string | null;
+  collation?: string | null;
+  comment?: string | null;
   isNullable: boolean;
   defaultValue: string | null;
   isPrimaryKey: boolean;
@@ -179,6 +185,12 @@ export async function introspectMySQL(
         DATA_TYPE as data_type,
         COLUMN_TYPE as column_type,
         CHARACTER_MAXIMUM_LENGTH as character_maximum_length,
+        EXTRA as extra,
+        GENERATION_EXPRESSION as generation_expression,
+        IS_VISIBLE as is_visible,
+        CHARACTER_SET_NAME as character_set_name,
+        COLLATION_NAME as collation_name,
+        COLUMN_COMMENT as column_comment,
         IS_NULLABLE as is_nullable,
         COLUMN_DEFAULT as column_default,
         COLUMN_KEY as column_key
@@ -228,6 +240,14 @@ export async function introspectMySQL(
         maxLength: c.character_maximum_length == null
           ? null
           : Number(c.character_maximum_length),
+        extra: c.extra,
+        generationExpression: c.generation_expression,
+        isVisible: c.is_visible == null
+          ? undefined
+          : c.is_visible === 'YES',
+        characterSet: c.character_set_name,
+        collation: c.collation_name,
+        comment: c.column_comment,
         isNullable: c.is_nullable === 'YES',
         defaultValue: c.column_default,
         isPrimaryKey: c.column_key === 'PRI',

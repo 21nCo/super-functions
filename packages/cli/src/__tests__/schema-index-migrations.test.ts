@@ -508,6 +508,86 @@ describe("schema index migrations", () => {
     );
   });
 
+  it("preserves MySQL AUTO_INCREMENT and ON UPDATE column attributes", () => {
+    const attributesSchema = {
+      modelName: "attributes",
+      fields: {
+        id: { type: "number", required: true, fieldName: "id" },
+        updatedAt: {
+          type: "datetime",
+          required: false,
+          fieldName: "updated_at",
+        },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const diffs = diffTables([attributesSchema], [{
+      name: "plugfn_attributes",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_attributes",
+        columnName: "id",
+        dataType: "int",
+        columnType: "int unsigned",
+        maxLength: null,
+        extra: "auto_increment",
+        generationExpression: "",
+        isVisible: true,
+        characterSet: null,
+        collation: null,
+        comment: "primary counter",
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: true,
+        isUnique: true,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_attributes",
+        columnName: "updated_at",
+        dataType: "timestamp",
+        columnType: "timestamp",
+        maxLength: null,
+        extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+        generationExpression: "",
+        isVisible: false,
+        characterSet: null,
+        collation: null,
+        comment: "update clock",
+        isNullable: false,
+        defaultValue: "CURRENT_TIMESTAMP",
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+    const plan = createMigrationPlan("plugfn", 1, 2, diffs);
+
+    const drizzle = generateDrizzleMigration(
+      plan,
+      [attributesSchema],
+      "mysql",
+    ).content;
+    expect(drizzle).toContain(
+      "MODIFY COLUMN id INT NOT NULL auto_increment COMMENT 'primary counter';",
+    );
+    expect(drizzle).toContain(
+      "MODIFY COLUMN updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP INVISIBLE COMMENT 'update clock';",
+    );
+
+    const kysely = generateKyselyMigration(
+      plan,
+      [attributesSchema],
+      "mysql",
+    ).content;
+    expect(kysely).toContain(
+      "MODIFY COLUMN id int unsigned NULL auto_increment COMMENT 'primary counter'",
+    );
+    expect(kysely).toContain(
+      "MODIFY COLUMN updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP INVISIBLE COMMENT 'update clock'",
+    );
+  });
+
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
     const replacementSchema = {
       modelName: "jobs",

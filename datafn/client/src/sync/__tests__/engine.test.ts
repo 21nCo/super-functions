@@ -424,6 +424,87 @@ describe("SyncEngine push", () => {
     expect(await storage.changelogList()).toEqual([]);
   });
 
+  it("does not replay a compacted write after its replacing delete applied", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    for (const [seq, mutation] of [
+      [1, {
+        resource: "goal",
+        version: 1,
+        operation: "merge",
+        id: "goal:deleted",
+        record: { label: "must stay deleted" },
+        clientId: "client:1",
+        mutationId: "mut:merge-deleted",
+      }],
+      [2, {
+        resource: "goal",
+        version: 1,
+        operation: "delete",
+        id: "goal:deleted",
+        clientId: "client:1",
+        mutationId: "mut:delete-applied",
+      }],
+      [3, {
+        resource: "goal",
+        version: 1,
+        operation: "insert",
+        id: "goal:unrelated",
+        record: { type: "INDEFINITE", status: "NOT_STARTED" },
+        clientId: "client:1",
+        mutationId: "mut:unrelated-terminal",
+      }],
+    ] as const) {
+      await storage.changelogAppend({
+        clientId: "client:1",
+        mutationId: mutation.mutationId,
+        timestampMs: seq,
+        mutation,
+      });
+    }
+    const push = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { code: "DFQL_INVALID", message: "Unrelated failure" },
+      result: {
+        ok: false,
+        applied: ["mut:delete-applied"],
+        errors: [{
+          mutationId: "mut:unrelated-terminal",
+          code: "DFQL_INVALID",
+          message: "Unrelated failure",
+          path: "mutations[mut:unrelated-terminal]",
+          retryable: false,
+        }],
+        cursor: "1",
+        cursorBefore: "0",
+      },
+    });
+    const remote: any = {
+      push,
+      pull: vi.fn(),
+      clone: vi.fn(),
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete-applied", "mut:unrelated-terminal"]);
+    expect(await storage.changelogList()).toEqual([]);
+  });
+
   it("keeps retryable failed push mutations queued", async () => {
     const storage = new MemoryStorageAdapter(["goal"]);
     await storage.changelogAppend({

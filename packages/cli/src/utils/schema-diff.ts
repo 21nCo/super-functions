@@ -117,6 +117,12 @@ export interface TableDiff {
       dataType: string;
       columnType?: string;
       maxLength?: number | null;
+      extra?: string | null;
+      generationExpression?: string | null;
+      isVisible?: boolean;
+      characterSet?: string | null;
+      collation?: string | null;
+      comment?: string | null;
       isNullable: boolean;
       defaultValue?: string | null;
     };
@@ -302,6 +308,12 @@ export function diffTables(
               dataType: curCol.dataType,
               columnType: curCol.columnType,
               maxLength: curCol.maxLength,
+              extra: curCol.extra,
+              generationExpression: curCol.generationExpression,
+              isVisible: curCol.isVisible,
+              characterSet: curCol.characterSet,
+              collation: curCol.collation,
+              comment: curCol.comment,
               isNullable: curCol.isNullable,
               defaultValue: curCol.defaultValue,
             },

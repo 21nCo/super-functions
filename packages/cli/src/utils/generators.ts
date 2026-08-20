@@ -155,20 +155,117 @@ function introspectedMySqlDefaultClause(input: {
   return ` DEFAULT ${escapeSqlString(value, 'mysql')}`;
 }
 
+type MySqlColumnSnapshot = NonNullable<
+  NonNullable<TableDiff['columnChanges']>[number]['current']
+>;
+
+function safeMySqlMetadataIdentifier(
+  value: string | null | undefined,
+  label: string,
+): string {
+  if (!value) return '';
+  if (!/^[A-Za-z0-9_]+$/.test(value)) {
+    throw new Error(`Unsupported introspected MySQL ${label}: ${value}`);
+  }
+  return value;
+}
+
+function safeMySqlMetadataFragment(value: string, label: string): string {
+  const normalized = value.trim();
+  if (
+    /[;\r\n]/.test(normalized) ||
+    normalized.includes('--') ||
+    normalized.includes('/*') ||
+    normalized.includes('*/')
+  ) {
+    throw new Error(`Unsupported introspected MySQL ${label}: ${value}`);
+  }
+  return normalized;
+}
+
+function mysqlCompleteColumnDefinition(
+  sqlType: string,
+  nullable: boolean,
+  defaultClause: string,
+  current: MySqlColumnSnapshot,
+): string {
+  const stringLike = /(?:char|text|enum|set)/i.test(sqlType);
+  const characterSet = stringLike
+    ? safeMySqlMetadataIdentifier(current.characterSet, 'character set')
+    : '';
+  const collation = stringLike
+    ? safeMySqlMetadataIdentifier(current.collation, 'collation')
+    : '';
+  const characterClauses = [
+    characterSet ? `CHARACTER SET ${characterSet}` : '',
+    collation ? `COLLATE ${collation}` : '',
+  ].filter(Boolean).join(' ');
+  const comment = current.comment
+    ? `COMMENT ${escapeSqlString(current.comment, 'mysql')}`
+    : '';
+  const visibility = current.isVisible === false ? 'INVISIBLE' : '';
+  const rawExtra = safeMySqlMetadataFragment(current.extra ?? '', 'EXTRA');
+  const generationMode = rawExtra.match(/\b(VIRTUAL|STORED)\s+GENERATED\b/i)?.[1]
+    ?.toUpperCase() ?? '';
+  const extra = rawExtra
+    .replace(/\bDEFAULT_GENERATED\b/gi, '')
+    .replace(/\b(?:VIRTUAL|STORED)\s+GENERATED\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const generationExpression = current.generationExpression?.trim();
+
+  if (generationExpression) {
+    const expression = safeMySqlMetadataFragment(
+      generationExpression,
+      'generation expression',
+    );
+    return [
+      sqlType,
+      characterClauses,
+      `GENERATED ALWAYS AS (${expression})`,
+      generationMode,
+      nullable ? 'NULL' : 'NOT NULL',
+      extra,
+      visibility,
+      comment,
+    ].filter(Boolean).join(' ');
+  }
+
+  return [
+    sqlType,
+    characterClauses,
+    nullable ? 'NULL' : 'NOT NULL',
+    defaultClause.trim(),
+    extra,
+    visibility,
+    comment,
+  ].filter(Boolean).join(' ');
+}
+
 function mysqlChangedColumnDefinition(
   field: FieldSchema,
-  current: NonNullable<NonNullable<TableDiff['columnChanges']>[number]['current']>,
+  current: MySqlColumnSnapshot,
 ): string {
   const defaultClause = field.defaultValue !== undefined
     ? schemaDefaultClause(field, 'mysql')
     : introspectedMySqlDefaultClause(current);
-  return `${fieldTypeToSQL(field, 'mysql')} ${field.required ? 'NOT NULL' : 'NULL'}${defaultClause}`;
+  return mysqlCompleteColumnDefinition(
+    fieldTypeToSQL(field, 'mysql'),
+    !field.required,
+    defaultClause,
+    current,
+  );
 }
 
 function mysqlCurrentColumnDefinition(
-  current: NonNullable<NonNullable<TableDiff['columnChanges']>[number]['current']>,
+  current: MySqlColumnSnapshot,
 ): string {
-  return `${mysqlColumnTypeFromSnapshot(current)} ${current.isNullable ? 'NULL' : 'NOT NULL'}${introspectedMySqlDefaultClause(current)}`;
+  return mysqlCompleteColumnDefinition(
+    mysqlColumnTypeFromSnapshot(current),
+    current.isNullable,
+    introspectedMySqlDefaultClause(current),
+    current,
+  );
 }
 
 /**
