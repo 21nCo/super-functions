@@ -224,10 +224,13 @@ function mysqlCompleteColumnDefinition(
   const rawExtra = safeMySqlMetadataFragment(current.extra ?? '', 'EXTRA');
   const generationMode = rawExtra.match(/\b(VIRTUAL|STORED)\s+GENERATED\b/i)?.[1]
     ?.toUpperCase() ?? '';
-  const extra = rawExtra
+  const metadataExtra = rawExtra
     .replace(/\bDEFAULT_GENERATED\b/gi, '')
     .replace(/\b(?:VIRTUAL|STORED)\s+GENERATED\b/gi, '')
-    .replace(/\bINVISIBLE\b/gi, '')
+    .replace(/\bINVISIBLE\b/gi, '');
+  const extra = (/^(?:DATE|DATETIME|TIME|TIMESTAMP)\b/i.test(sqlType)
+    ? metadataExtra
+    : metadataExtra.replace(/(?:^|\s)ON UPDATE\b[\s\S]*$/i, ''))
     .replace(/\s+/g, ' ')
     .trim();
   const generationExpression = current.generationExpression?.trim();
@@ -427,7 +430,7 @@ function generateAlterTableSQL(
 
 function generateCreateIndexSQL(
   tableName: string,
-  index: { name: string; columns: string[]; unique: boolean },
+  index: { name: string; columns: string[]; unique: boolean; indexType?: string },
   dialect: Dialect,
   schema?: TableSchema,
   knownTextColumns: readonly string[] = [],
@@ -435,6 +438,25 @@ function generateCreateIndexSQL(
   knownColumnMetadata: readonly (MySqlIndexColumnMetadata | null)[] = [],
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
+  const mysqlIndexType = dialect === 'mysql' && index.indexType
+    ? index.indexType.toUpperCase()
+    : '';
+  if (
+    mysqlIndexType &&
+    !['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL'].includes(mysqlIndexType)
+  ) {
+    throw new Error(
+      `Unsupported introspected MySQL index type for ${index.name}: ${index.indexType}`,
+    );
+  }
+  if (mysqlIndexType === 'FULLTEXT' || mysqlIndexType === 'SPATIAL') {
+    if (index.unique) {
+      throw new Error(
+        `Unsupported unique MySQL ${mysqlIndexType} index ${index.name}`,
+      );
+    }
+    return `CREATE ${mysqlIndexType} INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+  }
   const mysqlTextColumns = new Set(knownTextColumns);
   const mysqlPrefixLengths = new Map<string, number>();
   index.columns.forEach((column, indexPosition) => {
@@ -498,7 +520,11 @@ function generateCreateIndexSQL(
       } else if (/^BOOLEAN$/.test(physicalType)) {
         indexedKeyBytes += 1;
       } else if (/^(?:DATE|DATETIME|TIMESTAMP|TIME)$/.test(physicalType)) {
-        indexedKeyBytes += 8;
+        indexedKeyBytes += physicalType === 'DATETIME'
+          ? 5
+          : physicalType === 'TIMESTAMP'
+            ? 4
+            : 3;
       } else {
         throw new Error(
           `Cannot generate MySQL index ${index.name}: encoded key size for ${column} (${physicalType}) cannot be proven safe`,
@@ -527,7 +553,8 @@ function generateCreateIndexSQL(
     if (preservedPrefixLength) return `${column}(${preservedPrefixLength})`;
     return mysqlTextColumns.has(column) ? `${column}(191)` : column;
   });
-  return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name} ON ${tableName} (${columns.join(', ')});`;
+  const mysqlUsing = mysqlIndexType ? ` USING ${mysqlIndexType}` : '';
+  return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name}${mysqlUsing} ON ${tableName} (${columns.join(', ')});`;
 }
 
 function generateDropIndexSQL(
@@ -550,7 +577,7 @@ function schemaIndexes(schema: TableSchema): Array<{ name: string; columns: stri
 
 function generateKyselyCreateIndex(
   tableName: string,
-  index: { name: string; columns: string[]; unique: boolean },
+  index: { name: string; columns: string[]; unique: boolean; indexType?: string },
   dialect: Dialect,
   schema: TableSchema,
   knownTextColumns: readonly string[] = [],

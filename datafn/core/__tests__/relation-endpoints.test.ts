@@ -12,6 +12,9 @@ describe("relation endpoint resolution", () => {
 
   it("resolves polymorphic endpoints using schema idPrefix values", () => {
     expect(
+      resolveEndpointResource(["documents", "operations"], "doc42", schema),
+    ).toBe("documents");
+    expect(
       resolveEndpointResource(["documents", "operations"], "op_42", schema),
     ).toBe("operations");
     expect(
@@ -31,7 +34,7 @@ describe("relation endpoint resolution", () => {
     ).toBe("long");
   });
 
-  it("does not treat a partial alphanumeric prefix as a resource match", () => {
+  it("matches custom prefixes directly and prefers the longest overlap", () => {
     const boundarySchema = {
       resources: [
         { name: "tasks", idPrefix: "task" },
@@ -47,6 +50,6 @@ describe("relation endpoint resolution", () => {
     ).toBe("taskforces");
     expect(
       resolveEndpointResource(["tasks", "taskforces"], "taskforceful:1", boundarySchema),
-    ).toBeUndefined();
+    ).toBe("taskforces");
   });
 });

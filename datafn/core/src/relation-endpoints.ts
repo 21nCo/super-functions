@@ -49,12 +49,7 @@ export function resolveEndpointResource(
         name: resource.name,
         prefix: resource.idPrefix ?? `${resource.name}:`,
       }))
-      .filter((candidate) => {
-        if (id === candidate.prefix) return true;
-        return /[a-z0-9]$/i.test(candidate.prefix)
-          ? id.startsWith(`${candidate.prefix}:`)
-          : id.startsWith(candidate.prefix);
-      })
+      .filter((candidate) => id.startsWith(candidate.prefix))
       .sort((left, right) => right.prefix.length - left.prefix.length)[0];
     if (prefixedMatch) {
       return prefixedMatch.name;

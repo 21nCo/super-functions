@@ -12,7 +12,10 @@ import {
   type DatafnServer,
   type SearchProvider,
 } from "../src/index.js";
-import { drainPermissionDirectoryOutbox } from
+import {
+  drainPermissionDirectoryOutbox,
+  drainPermissionDirectorySync,
+} from
   "../src/execution/mutation/permission-directory-outbox.js";
 
 type TestContext = {
@@ -461,7 +464,19 @@ describe("DataFn public-links plugin", () => {
     });
     const originalCreate = db.create.bind(db);
     const originalDelete = db.delete.bind(db);
+    const originalInternalUpdate = db.internal.update.bind(db.internal);
     let failCompensation = true;
+    let lostOriginalTask = false;
+    db.internal.update = async (table, where, data) => {
+      if (
+        table === "__datafn_permission_directory_outbox" &&
+        String(data.mutation ?? "").includes("compensate-failed-share")
+      ) {
+        lostOriginalTask = true;
+        return 0;
+      }
+      return originalInternalUpdate(table, where, data);
+    };
     try {
       const inserted = await post(server, "/datafn/mutation", {
         resource: "linkTag",
@@ -497,6 +512,23 @@ describe("DataFn public-links plugin", () => {
         level: "viewer",
       }, ownerHeaders());
       expect(created.status).toBeGreaterThanOrEqual(500);
+      const tasksAfterOwnershipLoss = await db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(lostOriginalTask).toBe(true);
+      expect(tasksAfterOwnershipLoss).toHaveLength(2);
+      const replacement = tasksAfterOwnershipLoss.find((task) =>
+        String(task.mutation).includes("compensate-failed-share")
+      );
+      expect(replacement).toBeDefined();
+      for (const task of tasksAfterOwnershipLoss) {
+        if (task.id === replacement?.id) continue;
+        await db.internal.delete(
+          "__datafn_permission_directory_outbox",
+          [{ field: "id", op: "eq", value: task.id }],
+        );
+      }
       const pending = await db.internal.findMany(
         "__datafn_permission_directory_outbox",
         [],
@@ -505,8 +537,12 @@ describe("DataFn public-links plugin", () => {
       expect(String(pending[0].mutation)).toContain("compensate-failed-share");
 
       failCompensation = false;
-      await expect(drainPermissionDirectoryOutbox(db, runtime))
-        .resolves.toEqual({ processed: 1, pending: 0 });
+      db.internal.update = originalInternalUpdate;
+      await expect(drainPermissionDirectorySync(
+        db,
+        String(replacement!.id),
+        runtime,
+      )).resolves.toBe(true);
       await expect(db.findMany({
         model: "__datafn_permissions_global",
         where: [],
@@ -518,6 +554,7 @@ describe("DataFn public-links plugin", () => {
       )).resolves.toEqual([]);
     } finally {
       failCompensation = false;
+      db.internal.update = originalInternalUpdate;
       await server.close();
     }
   });

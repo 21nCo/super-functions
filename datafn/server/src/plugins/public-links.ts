@@ -723,6 +723,8 @@ async function createDatafnPublicLink(input: {
           permissionMutation,
           permissionSnapshot,
           compensationError,
+          input.namespace,
+          permissionDirectoryRuntime!.regionId,
         );
       } catch (schedulingError) {
         const combined = new Error(

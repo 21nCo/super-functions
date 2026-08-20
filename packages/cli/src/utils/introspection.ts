@@ -38,6 +38,8 @@ export interface DatabaseIndex {
   columns: string[];
   /** MySQL prefix length for each corresponding column, or null for full width. */
   prefixLengths?: Array<number | null>;
+  /** Dialect-native MySQL index method, for example BTREE or FULLTEXT. */
+  indexType?: string;
   isUnique: boolean;
 }
 
@@ -209,7 +211,8 @@ export async function introspectMySQL(
         TABLE_NAME as table_name,
         NON_UNIQUE as non_unique,
         COLUMN_NAME as column_name,
-        SUB_PART as sub_part
+        SUB_PART as sub_part,
+        INDEX_TYPE as index_type
       FROM information_schema.STATISTICS
       WHERE TABLE_SCHEMA = ?
         AND TABLE_NAME = ?
@@ -226,6 +229,7 @@ export async function introspectMySQL(
           tableName: row.table_name,
           columns: [],
           prefixLengths: [],
+          indexType: row.index_type,
           isUnique: row.non_unique === 0,
         });
       }

@@ -1552,14 +1552,25 @@ export class SyncEngine {
         clientIdMismatchIndex === -1 ? pending.length : clientIdMismatchIndex,
       );
 
-      const sanitizedMutations = batchPending.map((p) =>
-        sanitizeChangelogMutationForSchema(
+      const sanitizedMutations = batchPending.map((p) => {
+        const mutation = sanitizeChangelogMutationForSchema(
           this.writableRecordFieldsByResource,
           this.writableRecordDefaultsByResource,
           this.writableRelationMetadataByResource,
           p.mutation,
-        ),
-      );
+        );
+        const mutationId = getChangelogMutationId(p);
+        if (
+          !mutationId ||
+          typeof mutation !== "object" ||
+          mutation === null ||
+          Array.isArray(mutation) ||
+          typeof (mutation as Record<string, unknown>).mutationId === "string"
+        ) {
+          return mutation;
+        }
+        return { ...mutation, mutationId };
+      });
       const compacted = await this.compactDeletedRecordMutations(
         sanitizedMutations,
       );

@@ -52,12 +52,14 @@ describe("schema index migrations", () => {
         }
         if (query.includes("information_schema.STATISTICS")) {
           expect(query).toContain("SUB_PART as sub_part");
+          expect(query).toContain("INDEX_TYPE as index_type");
           return [[{
             name: "jobs_note_idx",
             table_name: "plugfn_jobs",
             non_unique: 0,
             column_name: "legacy_note",
             sub_part: 50,
+            index_type: "FULLTEXT",
           }]];
         }
         throw new Error(`Unexpected query: ${query}`);
@@ -68,6 +70,7 @@ describe("schema index migrations", () => {
 
     expect(table.columns[0].isVisible).toBe(false);
     expect(table.indexes[0].prefixLengths).toEqual([50]);
+    expect(table.indexes[0].indexType).toBe("FULLTEXT");
   });
 
   it("preserves SQLite index uniqueness during introspection", async () => {
@@ -506,6 +509,34 @@ describe("schema index migrations", () => {
     }
   });
 
+  it("uses physical temporal widths in composite MySQL index budgets", () => {
+    const composite = {
+      modelName: "events",
+      fields: {
+        token: { type: "string", required: true, fieldName: "token", maxLength: 766 },
+        recordedAt: {
+          type: "datetime",
+          required: true,
+          fieldName: "recorded_at",
+        },
+        active: { type: "boolean", required: true, fieldName: "active" },
+      },
+      indexes: [{
+        name: "events_token_recorded_idx",
+        fields: ["token", "recordedAt", "active"],
+      }],
+    } as unknown as TableSchema;
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_events",
+      action: "create",
+    }]);
+
+    expect(() => generateDrizzleMigration(plan, [composite], "mysql"))
+      .not.toThrow();
+    expect(generateDrizzleMigration(plan, [composite], "mysql").content)
+      .toContain("events_token_recorded_idx ON plugfn_events (token, recorded_at, active)");
+  });
+
   it("prefixes MySQL indexes for date fields stored as ISO text", () => {
     const dateText = {
       modelName: "events",
@@ -695,6 +726,59 @@ describe("schema index migrations", () => {
     );
   });
 
+  it("removes temporal ON UPDATE metadata when changing to a non-temporal MySQL type", () => {
+    const replacementSchema = {
+      modelName: "attributes",
+      fields: {
+        legacyClock: {
+          type: "string",
+          required: false,
+          fieldName: "legacy_clock",
+          maxLength: 64,
+        },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_attributes",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_attributes",
+        columnName: "legacy_clock",
+        dataType: "timestamp",
+        columnType: "timestamp",
+        maxLength: null,
+        extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+        generationExpression: "",
+        isVisible: true,
+        characterSet: null,
+        collation: null,
+        comment: null,
+        isNullable: false,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+    const kysely = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [replacementSchema],
+      "mysql",
+    ).content;
+    const up = kysely.slice(0, kysely.indexOf("export async function down"));
+    const down = kysely.slice(kysely.indexOf("export async function down"));
+
+    expect(up).toContain(
+      "MODIFY COLUMN legacy_clock VARCHAR(64) NULL",
+    );
+    expect(up).not.toContain("ON UPDATE");
+    expect(down).toContain(
+      "MODIFY COLUMN legacy_clock timestamp NOT NULL on update CURRENT_TIMESTAMP",
+    );
+  });
+
   it("quotes character defaults and escapes introspected types in Kysely templates", () => {
     const metadataSchema = {
       modelName: "metadata",
@@ -783,6 +867,9 @@ describe("schema index migrations", () => {
     expect(
       hasUnsafeMySqlMetadataSyntax("(concat('safe') /* outside quote */)"),
     ).toBe(true);
+    expect(
+      hasUnsafeMySqlMetadataSyntax("(concat('safe\\'; DROP TABLE users; --'))"),
+    ).toBe(true);
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
@@ -839,6 +926,63 @@ describe("schema index migrations", () => {
     expect(down).toContain(
       "CREATE UNIQUE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_note(50));",
     );
+  });
+
+  it("preserves removed MySQL FULLTEXT index type without adding prefixes", () => {
+    const replacementSchema = {
+      modelName: "jobs",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id", maxLength: 64 },
+        sequence: { type: "number", required: false, fieldName: "sequence" },
+      },
+      indexes: [{ name: "jobs_lookup_idx", fields: ["sequence"] }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_jobs",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_jobs",
+        columnName: "legacy_body",
+        dataType: "text",
+        columnType: "text",
+        maxLength: 65_535,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_jobs",
+        columnName: "sequence",
+        dataType: "int",
+        columnType: "int",
+        maxLength: null,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "jobs_lookup_idx",
+        tableName: "plugfn_jobs",
+        columns: ["legacy_body"],
+        indexType: "FULLTEXT",
+        isUnique: false,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].changedIndexes?.[0].current.indexType).toBe("FULLTEXT");
+    const content = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [replacementSchema],
+      "mysql",
+    ).content;
+    const down = content.slice(content.indexOf("export async function down"));
+    expect(down).toContain(
+      "CREATE FULLTEXT INDEX jobs_lookup_idx ON plugfn_jobs (legacy_body);",
+    );
+    expect(down).not.toContain("legacy_body(191)");
   });
 
   it("preserves removed numeric-column metadata in a Kysely index rollback", () => {

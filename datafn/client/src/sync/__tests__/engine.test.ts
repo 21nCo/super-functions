@@ -349,7 +349,6 @@ describe("SyncEngine push", () => {
         id: "goal:missing",
         record: { label: "recoverable write" },
         clientId: "client:1",
-        mutationId: "mut:merge",
       },
     });
     await storage.changelogAppend({
@@ -362,7 +361,6 @@ describe("SyncEngine push", () => {
         operation: "delete",
         id: "goal:missing",
         clientId: "client:1",
-        mutationId: "mut:delete",
       },
     });
 

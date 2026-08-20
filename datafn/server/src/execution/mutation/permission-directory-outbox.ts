@@ -25,12 +25,13 @@ function nextPrecommitLeaseExpiry(): string {
   return new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString();
 }
 
-function stopPrecommitLeaseHeartbeat(taskId: string): void {
+function stopPrecommitLeaseHeartbeat(taskId: string): string | undefined {
   const heartbeat = precommitLeaseHeartbeats.get(taskId);
-  if (!heartbeat) return;
+  if (!heartbeat) return undefined;
   heartbeat.stopped = true;
   if (heartbeat.timer) clearTimeout(heartbeat.timer);
   precommitLeaseHeartbeats.delete(taskId);
+  return heartbeat.leaseValue;
 }
 
 function startPrecommitLeaseHeartbeat(
@@ -140,21 +141,35 @@ export async function deferFailedShareCompensation(
   mutation: PermissionDirectorySyncMutation,
   snapshot: DatafnPermissionGrantSnapshot,
   error: unknown,
+  namespace: string,
+  regionId: string,
 ): Promise<void> {
-  stopPrecommitLeaseHeartbeat(taskId);
-  const updated = await db.internal.update(OUTBOX_TABLE, [
-    { field: "id", op: "eq", value: taskId },
-  ], {
-    mutation: JSON.stringify({
-      ...mutation,
-      operation: "compensate-failed-share",
-      compensationSnapshot: snapshot,
-    } satisfies PermissionDirectorySyncMutation),
-    last_error: String(error),
-    next_attempt_at: new Date().toISOString(),
-  });
+  const expectedLeaseValue = stopPrecommitLeaseHeartbeat(taskId);
+  const compensationMutation = {
+    ...mutation,
+    operation: "compensate-failed-share",
+    compensationSnapshot: snapshot,
+  } satisfies PermissionDirectorySyncMutation;
+  const updated = expectedLeaseValue
+    ? await db.internal.update(OUTBOX_TABLE, [
+        { field: "id", op: "eq", value: taskId },
+        { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
+      ], {
+        mutation: JSON.stringify(compensationMutation),
+        last_error: String(error),
+        next_attempt_at: new Date().toISOString(),
+      })
+    : 0;
   if (updated === 0) {
-    throw new Error(`Permission compensation task ${taskId} is no longer durable`);
+    // Ownership was already transferred to a drainer (or the original row was
+    // deleted). A fresh ready task preserves the failed compensation instead
+    // of mutating a task that another owner may concurrently settle.
+    await enqueuePermissionDirectorySync(
+      db,
+      compensationMutation,
+      namespace,
+      regionId,
+    );
   }
 }
 

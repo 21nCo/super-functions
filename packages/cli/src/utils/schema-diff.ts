@@ -146,6 +146,7 @@ export interface TableDiff {
       textColumns?: string[];
       prefixLengths?: Array<number | null>;
       columnMetadata?: Array<MySqlIndexColumnMetadata | null>;
+      indexType?: string;
     };
     required: { columns: string[]; unique: boolean };
   }>;
@@ -248,7 +249,13 @@ export function diffTables(
         currentIndex.columns.every(
           (column, index) => column === requiredIndex.columns[index],
         );
-      if (sameColumns && currentIndex.isUnique === requiredIndex.unique) return [];
+      const currentIndexType = currentIndex.indexType?.toUpperCase();
+      const hasDefaultIndexType = !currentIndexType || currentIndexType === 'BTREE';
+      if (
+        sameColumns &&
+        currentIndex.isUnique === requiredIndex.unique &&
+        hasDefaultIndexType
+      ) return [];
       const currentTextColumns = currentIndex.columns.filter((column) => {
         const currentColumn = curTable.columns.find(
           (candidate) => candidate.columnName === column,
@@ -281,6 +288,9 @@ export function diffTables(
           ...(currentTextColumns.length > 0 ? { textColumns: currentTextColumns } : {}),
           ...(currentIndex.prefixLengths?.some((length) => length !== null)
             ? { prefixLengths: [...currentIndex.prefixLengths] }
+            : {}),
+          ...(currentIndex.indexType
+            ? { indexType: currentIndex.indexType }
             : {}),
           ...(currentColumnMetadata.some((metadata) => metadata !== null)
             ? { columnMetadata: currentColumnMetadata }
