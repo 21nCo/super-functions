@@ -19,6 +19,7 @@ import {
   evaluateFilter as coreEvaluateFilter,
   normalizeFilterOps,
   normalizeTemporalQuery,
+  resolveEndpointResource,
 } from "@datafn/core";
 import { EventBus, type EventHandler } from "./events/bus.js";
 import type { EventFilter } from "./events/filter.js";
@@ -1430,7 +1431,9 @@ function _buildRawClient<S extends DatafnSchema>(
       ? raw.resources.filter(
           (resource): resource is string => typeof resource === "string",
         )
-      : Object.keys(baseFilters);
+      : Object.keys(baseFilters).length > 0
+        ? Object.keys(baseFilters)
+        : searchProviderResources.map((resource) => resource.name);
     const resourceClauses = new Map<
       string,
       DatafnTemporalClause | readonly DatafnTemporalClause[]
@@ -1478,16 +1481,11 @@ function _buildRawClient<S extends DatafnSchema>(
   };
 
   const resourceNameById = (id: string): string | undefined => {
-    const prefix = id.includes(":") ? id.split(":")[0] : undefined;
-    if (!prefix) return undefined;
-    const byIdPrefix = schema.resources.find(
-      (resource) => resource.idPrefix === prefix,
+    return resolveEndpointResource(
+      schema.resources.map((resource) => resource.name),
+      id,
+      schema,
     );
-    if (byIdPrefix) return byIdPrefix.name;
-    const byName = schema.resources.find(
-      (resource) => resource.name === prefix,
-    );
-    return byName?.name;
   };
 
   // Create debouncer for mutation debouncing (DEB-001)

@@ -25,8 +25,14 @@ import {
 } from "../mutation/relations.js";
 import { executeSchemaAwareMerge } from "../mutation/merge-decision.js";
 import { stripReadonlyCapabilityFields } from "../mutation/execute.js";
-import { executeShare, executeUnshare, getPermissionsTable } from "../mutation/share.js";
+import {
+  executeShare,
+  executeUnshare,
+  getPermissionsTable,
+  syncDatafnPermissionGrantAfterCommit,
+} from "../mutation/share.js";
 import type { DatafnLogger } from "../../logger.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
 
 export interface PushRequest {
@@ -217,6 +223,7 @@ export async function executePush(
   onChange?: (seq: number, namespace: string) => void,
   actorId?: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<PushResult> {
   // Validate clientId at request level - this is a critical error
   if (!request.clientId || typeof request.clientId !== "string") {
@@ -1062,6 +1069,18 @@ export async function executePush(
       }
 
       if (mutationSucceeded) {
+        await syncDatafnPermissionGrantAfterCommit(
+          db,
+          mut,
+          namespace,
+          multiRegionRuntime ?? null,
+        ).catch((error) => {
+          logger?.error("Push permission directory reconciliation failed after commit", {
+            error: String(error),
+            operation: mut.operation,
+            resource: mut.resource,
+          });
+        });
         await recordMutationSuccess(mut);
       }
     } else {
@@ -1100,6 +1119,18 @@ export async function executePush(
         if (changeTrackingFailed) {
           await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
         } else {
+          await syncDatafnPermissionGrantAfterCommit(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime ?? null,
+          ).catch((error) => {
+            logger?.error("Push permission directory reconciliation failed after commit", {
+              error: String(error),
+              operation: mut.operation,
+              resource: mut.resource,
+            });
+          });
           await recordMutationSuccess(mut);
         }
       } else {

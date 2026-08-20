@@ -5,7 +5,7 @@ import {
 } from '@superfunctions/oauth-storage';
 import { DEFAULT_PLUGFN_STORAGE_MODELS, resolvePlugFnStorageModels, type PlugFnStorageModelMapping } from './storage/adapters/database.js';
 
-export const PLUGFN_SCHEMA_VERSION = 5;
+export const PLUGFN_SCHEMA_VERSION = 6;
 
 export interface PlugFnSchemaOptions {
   namespace?: string;
@@ -33,7 +33,6 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           grants: { type: 'json', required: false, fieldName: 'grants' },
           name: { type: 'string', required: false, fieldName: 'name' },
           status: { type: 'string', required: true, fieldName: 'status' },
-          claimToken: { type: 'string', required: false, fieldName: 'claim_token' },
           credentials: { type: 'json', required: true, fieldName: 'credentials' },
           scopes: { type: 'json', required: false, fieldName: 'scopes' },
           metadata: { type: 'json', required: false, fieldName: 'metadata' },
@@ -221,6 +220,7 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           resource: { type: 'string', required: true, fieldName: 'resource' },
           mode: { type: 'string', required: true, fieldName: 'mode' },
           status: { type: 'string', required: true, fieldName: 'status' },
+          claimToken: { type: 'string', required: false, fieldName: 'claim_token' },
           ownerKind: { type: 'string', required: false, fieldName: 'owner_kind' },
           ownerId: { type: 'string', required: false, fieldName: 'owner_id' },
           cursor: { type: 'string', required: false, fieldName: 'cursor' },

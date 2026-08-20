@@ -107,6 +107,8 @@ export {
   type DatafnRelationFkField,
   getRelationFkFieldsForResource,
   normalizeRelationFkRecord,
+  relationFkFieldForManyOne,
+  relationFkFieldForOneMany,
 } from "./relation-fks.js";
 
 // Re-export schema index utilities
@@ -178,7 +180,13 @@ export {
 } from "./temporal.js";
 
 // Re-export sort utilities
-export { type SortTerm, parseSortTerms, sortRecords } from "./sort.js";
+export {
+  type SortInputTerm,
+  type SortTerm,
+  parseSortTerm,
+  parseSortTerms,
+  sortRecords,
+} from "./sort.js";
 
 // Re-export select token parsing
 export { type SelectToken, parseSelectToken } from "./select.js";

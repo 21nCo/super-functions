@@ -237,7 +237,11 @@ function buildRelationFieldsByResource(schema: DatafnSchema): Map<string, Datafn
         ? fkResourceFieldForRelation(relation, "to")
         : undefined;
       for (const resource of endpointList(relation.from)) {
-        addRelationField(byResource, resource, stringField(relation.fkField || `${relation.relation}Id`));
+        addRelationField(
+          byResource,
+          resource,
+          stringField(relation.fkField || `${relation.relation ?? endpointList(relation.to)[0]}Id`),
+        );
         if (resourceField) addRelationField(byResource, resource, stringField(resourceField));
       }
     } else if (relation.type === "one-many") {

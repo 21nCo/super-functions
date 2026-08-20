@@ -26,6 +26,38 @@ function cookieHeaderFromSetCookies(setCookies: string[]): string {
 }
 
 describe('authfn password plugin', () => {
+  it('keeps the documented inline OTP delivery configuration compatible', async () => {
+    const delivered: unknown[] = [];
+    const auth = createTestServer({
+      database: memoryAdapter({ debug: false }),
+      namespace: 'authfn',
+      plugins: [
+        authFnPasswordPlugin({
+          otp: {
+            codeGenerator: () => '123456',
+            delivery: {
+              async send(message) {
+                delivered.push(message);
+                return { sent: true };
+              }
+            }
+          }
+        })
+      ]
+    });
+
+    const response = await auth.router.handle(
+      new Request('https://account.example.com/auth/password/reset/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'ada@example.com' })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(delivered).toHaveLength(1);
+  });
+
   it('signs up with password, stores a hash, and issues a session cookie pair', async () => {
     const config = createConfig();
     const auth = createTestServer(config);

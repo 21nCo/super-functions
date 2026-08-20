@@ -218,6 +218,26 @@ export function createTemporalApi(deps: TemporalApiDeps): DatafnTemporalApi {
 
       const effectiveFrom = toMs(input.effectiveFrom);
       const recordedAt = toMs(input.recordedAt);
+      if (!Number.isFinite(effectiveFrom)) {
+        return {
+          ok: false as const,
+          error: {
+            code: "DFQL_INVALID",
+            message: "effectiveFrom must resolve to a finite timestamp",
+            details: { path: "effectiveFrom" },
+          },
+        };
+      }
+      if (!Number.isFinite(recordedAt)) {
+        return {
+          ok: false as const,
+          error: {
+            code: "DFQL_INVALID",
+            message: "recordedAt must resolve to a finite timestamp",
+            details: { path: "recordedAt" },
+          },
+        };
+      }
       const record: DatafnTimezoneChangeRecord = {
         id: timezoneChangeId(
           effectiveFrom,

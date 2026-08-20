@@ -209,6 +209,32 @@ export async function executeReconcile(
 
       const fromCol = relation.joinColumns?.from || "from";
       const toCol = relation.joinColumns?.to || "to";
+      if (fromResources.length === 1 && toResources.length === 1) {
+        const fromResource = fromResources[0];
+        const toResource = toResources[0];
+        const relationTouchesPrivateResource =
+          isPrivateShareableResource(schema, fromResource) ||
+          isPrivateShareableResource(schema, toResource);
+        if (!relationTouchesPrivateResource && typeof db.count === "function") {
+          const joinTableName = getRelationJoinTableName(relation, fromResource);
+          const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
+          try {
+            joinCounts[joinStoreKey] = await db.count({
+              model: joinTableName,
+              where: [],
+              namespace,
+            });
+          } catch (error) {
+            logger?.warn("Reconcile: join count failed", {
+              error: String(error),
+              joinTable: joinTableName,
+              operation: "reconcile-join-count",
+            });
+            joinCounts[joinStoreKey] = 0;
+          }
+          continue;
+        }
+      }
 
       for (const fromResource of fromResources) {
         const joinTableName = getRelationJoinTableName(relation, fromResource);

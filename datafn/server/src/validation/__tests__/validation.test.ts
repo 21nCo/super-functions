@@ -195,6 +195,45 @@ describe("Query Validation - VALID-001", () => {
       expect(body.error.details.path).toBe("sort[0]");
     });
 
+    it("validates structured sort terms against the resource schema", async () => {
+      const server = await createDatafnServer({
+        allowUnknownResources: true,
+        schema: fixtureF1Schema,
+        limits: { maxLimit: 100 },
+      });
+
+      const accepted = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            version: 1,
+            sort: [{ field: "updatedAt", direction: "desc" }],
+          }),
+        },
+      ));
+      expect(accepted.status).toBe(200);
+
+      const rejected = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            version: 1,
+            sort: [{ field: "unknown_field", direction: "asc" }],
+          }),
+        },
+      ));
+      expect(rejected.status).toBe(400);
+      await expect(readJson(rejected)).resolves.toMatchObject({
+        error: { code: "DFQL_UNKNOWN_FIELD", details: { path: "sort[0]" } },
+      });
+    });
+
     it("unknown field in omit returns DFQL_UNKNOWN_FIELD", async () => {
       const server = await createDatafnServer({ allowUnknownResources: true,
         schema: fixtureF1Schema,

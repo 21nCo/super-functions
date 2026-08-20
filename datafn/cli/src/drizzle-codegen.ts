@@ -894,7 +894,7 @@ function buildRelationFkColumnsByResource(
       for (const resource of endpointListOf(relation.from)) {
         add({
           resource,
-          field: relation.fkField || `${relation.relation}Id`,
+          field: relation.fkField || `${relation.relation ?? toResources[0]}Id`,
           relation,
           targetResource,
           targetSide: "to",
@@ -994,7 +994,8 @@ function buildForeignKeyDefinition(entry: RelationFkColumn, namespaced: boolean)
     : `[${targetTable}.id]`;
   const action = relationForeignKeyDeleteAction(entry.relation, entry.targetSide);
   const definition = `foreignKey({ columns: ${columns}, foreignColumns: ${foreignColumns} })`;
-  return action ? `${definition}.onDelete(${JSON.stringify(action)})` : definition;
+  const databaseAction = namespaced && action === "set null" ? undefined : action;
+  return databaseAction ? `${definition}.onDelete(${JSON.stringify(databaseAction)})` : definition;
 }
 
 function buildJoinForeignKeyDefinition(

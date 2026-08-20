@@ -124,6 +124,36 @@ describe("DataFn E2EE client transforms", () => {
     expect(decrypted.data.task?.[0]).toEqual(record);
   });
 
+  it("encrypts user data that merely resembles an E2EE envelope", async () => {
+    const collidingValue = {
+      __datafnE2ee: 1 as const,
+      alg: "AES-GCM",
+      keyRef: "user-controlled",
+      iv: "not-provider-output",
+      data: "not-ciphertext",
+    };
+
+    const encrypted = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      {
+        operation: "insert",
+        resource: "task",
+        id: "task:collision",
+        record: { id: "task:collision", notes: collidingValue },
+      },
+    )) as { record: Record<string, unknown> };
+
+    expect(encrypted.record.notes).not.toBe(collidingValue);
+    expect(isDatafnE2eeEnvelope(encrypted.record.notes)).toBe(true);
+    const decrypted = await decryptCloneResultForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      { ok: true, data: { task: [encrypted.record] }, cursors: {}, next: {} },
+    );
+    expect(decrypted.data.task?.[0]?.notes).toEqual(collidingValue);
+  });
+
   it("blocks direct remote query and search while allowing plaintext KV query", () => {
     const e2ee = { enabled: true, provider: createProvider() };
 

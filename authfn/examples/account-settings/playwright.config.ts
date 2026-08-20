@@ -18,6 +18,9 @@ export default defineConfig({
     {
       command: 'npm --prefix ./server run start:test',
       url: 'http://127.0.0.1:4313/health',
+      env: {
+        AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64: Buffer.alloc(32, 7).toString('base64')
+      },
       reuseExistingServer: false,
       timeout: 120_000
     },

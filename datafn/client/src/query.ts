@@ -300,6 +300,9 @@ async function overlayLocalQueryResult(
   schemaIndex?: SchemaIndex,
   temporal?: DatafnTemporalConfig,
 ): Promise<unknown> {
+  if (query.offset !== undefined || query.cursor !== undefined) {
+    return remoteResult;
+  }
   try {
     const { limit: _limit, offset: _offset, ...unpaginatedQuery } = query;
     const localQuery = injectLocalCapabilityAutoFilters(unpaginatedQuery, schema);

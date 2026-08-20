@@ -6209,7 +6209,7 @@ const client = createDatafnClient({
   schema,
   clientId,
   storage,
-  plugins: [createTemporalPlugin({ timezone: "user", weekStartsOn: 1 })],
+  plugins: [createTemporalPlugin({ timezone: "UTC", weekStartsOn: 1 })],
 });
 ```
 

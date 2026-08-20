@@ -19,6 +19,7 @@ import {
   resourceNameFromId,
 } from "@datafn/core";
 import type { DatafnLogger } from "../logger.js";
+import type { DatafnSchema } from "../core-types.js";
 import { isPrivateShareableResource, resolveAccessLevel } from "../validation/authz.js";
 
 function relationNameFor(relation: { relation?: string; inverse?: string; to: string | readonly string[] }): string {
@@ -191,7 +192,7 @@ export class DbDataStore implements DataStore {
     ): Promise<void> => {
       const idsByResource = new Map<string, string[]>();
       for (const id of ids) {
-        const resource = DbDataStore.resolveEndpointResourceForId(endpoint, id);
+        const resource = DbDataStore.resolveEndpointResourceForId(schema, endpoint, id);
         if (!resource) continue;
         const current = idsByResource.get(resource) ?? [];
         current.push(id);
@@ -328,6 +329,7 @@ export class DbDataStore implements DataStore {
 
             const normalizedRows = DbDataStore.normalizeJoinRows(joinRows, fromCol, toCol);
             const rowsForRelation = DbDataStore.filterJoinRowsForResource(
+              schema,
               normalizedRows,
               rel.from,
               fromResource,
@@ -415,6 +417,7 @@ export class DbDataStore implements DataStore {
             }
             const normalizedRows2 = DbDataStore.normalizeJoinRows(joinRows2, fromCol2, toCol2);
             const rowsForRelation2 = DbDataStore.filterJoinRowsForResource(
+              schema,
               normalizedRows2,
               rel2.from,
               fromResource,
@@ -539,8 +542,12 @@ export class DbDataStore implements DataStore {
     return records.filter(r => r[field] === value);
   }
 
-  private static resolveEndpointResourceForId(endpoint: string | readonly string[], id: unknown): string | undefined {
-    return resolveEndpointResource(endpoint, id) ?? resourceNameFromId(id);
+  private static resolveEndpointResourceForId(
+    schema: DatafnSchema,
+    endpoint: string | readonly string[],
+    id: unknown,
+  ): string | undefined {
+    return resolveEndpointResource(endpoint, id, schema) ?? resourceNameFromId(id);
   }
 
   private static normalizeJoinRows(
@@ -556,6 +563,7 @@ export class DbDataStore implements DataStore {
   }
 
   private static filterJoinRowsForResource(
+    schema: DatafnSchema,
     rows: JoinRow[],
     endpoint: string | readonly string[],
     resource: string,
@@ -567,7 +575,7 @@ export class DbDataStore implements DataStore {
       if (typeof discriminator === "string") {
         return discriminator === resource;
       }
-      return resolveEndpointResource(endpoint, row[field]) === resource;
+      return resolveEndpointResource(endpoint, row[field], schema) === resource;
     });
   }
 
@@ -801,6 +809,7 @@ export class DbDataStore implements DataStore {
 
         const normalizedRows = DbDataStore.normalizeJoinRows(joinRows, fromCol, toCol);
         const rowsForRelation = DbDataStore.filterJoinRowsForResource(
+          schema,
           normalizedRows,
           (rel as any).from,
           fromResource,
@@ -818,7 +827,7 @@ export class DbDataStore implements DataStore {
         ];
         const idsByResource = new Map<string, string[]>();
         for (const secondaryId of secondaryIds) {
-          const secondaryResource = DbDataStore.resolveEndpointResourceForId(secondaryEndpoint, secondaryId);
+          const secondaryResource = DbDataStore.resolveEndpointResourceForId(schema, secondaryEndpoint, secondaryId);
           if (!secondaryResource) continue;
           const ids = idsByResource.get(secondaryResource) ?? [];
           ids.push(secondaryId);

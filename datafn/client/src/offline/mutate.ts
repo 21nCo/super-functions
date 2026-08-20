@@ -20,6 +20,7 @@ import {
   endpointList,
   findRelationMatch,
   firstEndpoint,
+  relationFkFieldForManyOne,
   getJoinStoreKey,
   normalizeRelationPayload,
   resolveEndpointResource,
@@ -66,6 +67,7 @@ function fkResourcePatch(
 }
 
 function resolveManyManyJoin(
+  schema: DatafnSchema,
   relation: DatafnRelationSchema,
   direction: DatafnRelationDirection,
   resource: string,
@@ -83,10 +85,10 @@ function resolveManyManyJoin(
   const fromResource =
     direction === "forward"
       ? resource
-      : resolveEndpointResource(relation.from, targetId);
+      : resolveEndpointResource(relation.from, targetId, schema);
   const toResource =
     direction === "forward"
-      ? resolveEndpointResource(relation.to, targetId)
+      ? resolveEndpointResource(relation.to, targetId, schema)
       : resource;
 
   if (!fromResource || !toResource) {
@@ -137,17 +139,17 @@ async function resolveAncestorInactive(
     if (relation.type === "htree") {
       const parentId = record[htreeFkField(relation)];
       if (typeof parentId !== "string" || parentId.length === 0) continue;
-      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId) ?? resource, parentId);
+      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId, schema) ?? resource, parentId);
       if (isRecordEffectivelyInactive(parent)) return true;
     } else if (relation.type === "many-one") {
-      const parentId = record[relation.fkField || `${relation.relation}Id`];
+      const parentId = record[relationFkFieldForManyOne(relation)];
       if (typeof parentId !== "string" || parentId.length === 0) continue;
-      const parent = await storage.getRecord(resolveEndpointResource(relation.to, parentId) ?? firstEndpoint(relation.to), parentId);
+      const parent = await storage.getRecord(resolveEndpointResource(relation.to, parentId, schema) ?? firstEndpoint(relation.to), parentId);
       if (isRecordEffectivelyInactive(parent)) return true;
     } else if (relation.type === "one-many") {
       const parentId = record[relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`];
       if (typeof parentId !== "string" || parentId.length === 0) continue;
-      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId) ?? firstEndpoint(relation.from), parentId);
+      const parent = await storage.getRecord(resolveEndpointResource(relation.from, parentId, schema) ?? firstEndpoint(relation.from), parentId);
       if (isRecordEffectivelyInactive(parent)) return true;
     }
   }
@@ -197,7 +199,7 @@ async function applyInactivePropagation(
           if (changed) queue.push({ resource: targetResource, id: child.id as string });
         }
       } else if (relation.type === "many-one" && endpointIncludes(relation.to, seed.resource)) {
-        const fkField = relation.fkField || `${relation.relation}Id`;
+        const fkField = relationFkFieldForManyOne(relation);
         for (const childResource of typeof relation.from === "string" ? [relation.from] : relation.from) {
           const children = await storage.findRecords(childResource, fkField, seed.id);
           for (const child of children) {
@@ -240,7 +242,7 @@ function collectInactivePropagationSeeds(
     if (relation.inheritsInactive !== true && relation.type !== "htree") continue;
     const targetEndpoint = direction === "forward" ? relation.to : relation.from;
     for (const item of normalizeRelationPayload(payload)) {
-      addSeed(resolveEndpointResource(targetEndpoint, item.toId) ?? firstEndpoint(targetEndpoint), item.toId);
+      addSeed(resolveEndpointResource(targetEndpoint, item.toId, schema) ?? firstEndpoint(targetEndpoint), item.toId);
     }
   }
   return [...seeds.values()];
@@ -406,7 +408,7 @@ async function validateRelationDeletePolicies(
         relation,
         policy,
         endpointList(relation.from),
-        relation.fkField || `${relation.relation}Id`,
+        relationFkFieldForManyOne(relation),
         id,
         visited,
         endpointIsPolymorphic(relation.to)
@@ -548,7 +550,7 @@ async function applyRelationDeletePolicies(
         relation,
         policy,
         endpointList(relation.from),
-        relation.fkField || `${relation.relation}Id`,
+        relationFkFieldForManyOne(relation),
         id,
         visited,
         fkResourcePatch(relation, "to", null),
@@ -778,12 +780,14 @@ export async function applyOptimisticMutationToStorage(
     await applyInactivePropagation(storage, schema, [{ resource, id }]);
   } else if (operation === "merge") {
     // Merge: Use atomic mergeRecord with one-level-deep merge
+    const existing = await storage.getRecord(resource, id);
     const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
       schema,
       sanitizedMutation,
       {
         timestampMs,
         actorId,
+        existingRecord: existing,
       },
     );
     await storage.mergeRecord(resource, id, optimisticRecord);
@@ -877,6 +881,7 @@ async function validateRelationMutation(
 
       for (const item of items) {
         const join = resolveManyManyJoin(
+          schema,
           relation,
           direction,
           resource,
@@ -934,7 +939,7 @@ async function applyRelate(
     // Apply based on relation type
     if (relation.type === "many-one" && direction === "forward") {
       const fkField = relation.fkField || `${relationName}Id`;
-      const targetResource = resolveEndpointResource(relation.to, items[0].toId);
+      const targetResource = resolveEndpointResource(relation.to, items[0].toId, schema);
       const existing = await storage.getRecord(resource, id);
       if (existing) {
         await storage.upsertRecord(resource, {
@@ -944,9 +949,9 @@ async function applyRelate(
         });
       }
     } else if (relation.type === "many-one" && direction === "inverse") {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       for (const item of items) {
-        const targetResource = resolveEndpointResource(relation.from, item.toId);
+        const targetResource = resolveEndpointResource(relation.from, item.toId, schema);
         if (!targetResource) continue;
         const existing = await storage.getRecord(targetResource, item.toId);
         if (existing) {
@@ -962,7 +967,7 @@ async function applyRelate(
         relation.fkField || relation.inverse || `${resource}Id`;
 
       for (const item of items) {
-        const targetResource = resolveEndpointResource(relation.to, item.toId);
+        const targetResource = resolveEndpointResource(relation.to, item.toId, schema);
         if (!targetResource) continue;
         const targetRecord = await storage.getRecord(
           targetResource,
@@ -978,7 +983,7 @@ async function applyRelate(
       }
     } else if (relation.type === "one-many" && direction === "inverse") {
       const fkField = relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
-      const targetResource = resolveEndpointResource(relation.from, items[0].toId);
+      const targetResource = resolveEndpointResource(relation.from, items[0].toId, schema);
       const existing = await storage.getRecord(resource, id);
       if (existing) {
         await storage.upsertRecord(resource, {
@@ -1001,13 +1006,14 @@ async function applyRelate(
           treeResource,
           isForward ? item.toId : id,
           isForward ? id : item.toId,
-          isForward ? resource : resolveEndpointResource(relation.from, item.toId) ?? null,
+          isForward ? resource : resolveEndpointResource(relation.from, item.toId, schema) ?? null,
           relation,
         );
       }
     } else if (relation.type === "many-many") {
       for (const item of items) {
         const join = resolveManyManyJoin(
+          schema,
           relation,
           direction,
           resource,
@@ -1066,6 +1072,7 @@ async function applyModifyRelation(
 
     for (const item of items) {
       const join = resolveManyManyJoin(
+        schema,
         relation,
         direction,
         resource,
@@ -1120,9 +1127,9 @@ async function applyUnrelate(
         });
       }
     } else if (relation.type === "many-one" && direction === "inverse") {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       for (const item of items) {
-        const targetResource = resolveEndpointResource(relation.from, item.toId);
+        const targetResource = resolveEndpointResource(relation.from, item.toId, schema);
         if (!targetResource) continue;
         const targetRecord = await storage.getRecord(targetResource, item.toId);
         if (targetRecord) {
@@ -1138,7 +1145,7 @@ async function applyUnrelate(
         relation.fkField || relation.inverse || `${resource}Id`;
 
       for (const item of items) {
-        const targetResource = resolveEndpointResource(relation.to, item.toId);
+        const targetResource = resolveEndpointResource(relation.to, item.toId, schema);
         if (!targetResource) continue;
         const targetRecord = await storage.getRecord(
           targetResource,
@@ -1183,6 +1190,7 @@ async function applyUnrelate(
     } else if (relation.type === "many-many") {
       for (const item of items) {
         const join = resolveManyManyJoin(
+          schema,
           relation,
           direction,
           resource,

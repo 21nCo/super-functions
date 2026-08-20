@@ -79,7 +79,7 @@ export async function deleteDatafnPermissionGrant(
   config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
   if (!config) return;
-  await config.directory.delete(permissionDirectoryKey(input.id));
+  await config.directory.delete(permissionDirectoryKey(config.regionId, input.id));
 }
 
 export async function queryDatafnPermissionGrants(
@@ -90,11 +90,21 @@ export async function queryDatafnPermissionGrants(
   config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<DatafnPermissionDirectoryGrant[]> {
   if (!config) return [];
-  const result = await config.directory.query({
-    index: 'datafn.permission.principalResource',
-    value: `${input.principalId}#${input.resourceType}`,
-  });
-  return result.records
+  const records: IndexedDirectoryRecord[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const result = await config.directory.query({
+      index: 'datafn.permission.principalResource',
+      value: `${input.principalId}#${input.resourceType}`,
+      ...(cursor ? { cursor } : {}),
+    });
+    records.push(...result.records);
+    cursor = result.cursor;
+    if (cursor && seenCursors.has(cursor)) break;
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return records
     .map((record) => parseGrant(record.value))
     .filter((grant): grant is DatafnPermissionDirectoryGrant => Boolean(grant));
 }
@@ -132,7 +142,7 @@ function normalizeGrant(
 
 function permissionGrantRecord(grant: DatafnPermissionDirectoryGrant): IndexedDirectoryRecord {
   return {
-    key: permissionDirectoryKey(grant.id),
+    key: permissionDirectoryKey(grant.resourceRegion, grant.id),
     value: JSON.stringify(grant),
     indexes: {
       'datafn.permission.principal': grant.principalId,
@@ -171,6 +181,6 @@ function parseGrant(value: string): DatafnPermissionDirectoryGrant | null {
   }
 }
 
-function permissionDirectoryKey(id: string): string {
-  return `datafn:permission:${id}`;
+function permissionDirectoryKey(regionId: string, id: string): string {
+  return `datafn:permission:${regionId}:${id}`;
 }

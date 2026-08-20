@@ -16,7 +16,8 @@ export function createAuthFnSessionTransportAuth(
   options: AuthFnSessionTransportAuthOptions = {},
 ): HttpTransportAuthProvider {
   return {
-    getCredentials: () => options.credentials ?? 'include',
+    getCredentials: () =>
+      options.credentials ?? (options.bearerToken === undefined ? 'include' : 'omit'),
     getRequestHeaders: async () => {
       const headers: Record<string, string> = {};
       const bearerToken = await resolveToken(options.bearerToken);

@@ -26,12 +26,14 @@ const HOST = process.env.HOST ?? '127.0.0.1';
 const PORT = Number(process.env.PORT ?? '4313');
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://127.0.0.1:4013';
 const SERVER_BASE_URL = process.env.SERVER_BASE_URL ?? `http://${HOST}:${PORT}`;
+const TWO_FACTOR_ENCRYPTION_KEY = readTwoFactorEncryptionKey();
 
 export async function createAccountSettingsServer() {
   const database = createAccountSettingsDatabase();
   const eventBuffer = new ExampleEventBuffer();
   const auth = createAccountSettingsAuth({
     database: database.adapter,
+    twoFactorEncryptionKeyResolver: () => TWO_FACTOR_ENCRYPTION_KEY,
     onEvent: createEventEmitter(eventBuffer)
   });
 
@@ -86,6 +88,19 @@ void main().catch((error: unknown) => {
   console.error(error);
   process.exit(1);
 });
+
+function readTwoFactorEncryptionKey(): Buffer {
+  const encoded = process.env.AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64;
+  if (!encoded) {
+    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must be configured');
+  }
+
+  const key = Buffer.from(encoded, 'base64');
+  if (key.length !== 32) {
+    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes');
+  }
+  return key;
+}
 
 function createCorsMiddleware(allowedOrigin: string): RequestHandler {
   return (request, response, next) => {

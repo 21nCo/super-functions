@@ -24,6 +24,7 @@ export const accountSettingsSchema = accountSettingsAuthApp.getSchema();
 
 export function createAccountSettingsAuth(options: {
   database: Adapter;
+  twoFactorEncryptionKeyResolver: (keyRef: string) => Promise<Buffer> | Buffer;
   onEvent?(event: AuthFnEvent): Promise<void> | void;
 }): AuthFnServer {
   return accountSettingsAuthApp.createServer({
@@ -48,7 +49,8 @@ export function createAccountSettingsAuth(options: {
     pluginRuntime: {
       twoFactor: {
         issuer: 'authfn-account-settings',
-        recoveryCodeCount: 3
+        recoveryCodeCount: 3,
+        encryptionKeyResolver: options.twoFactorEncryptionKeyResolver
       }
     }
   });

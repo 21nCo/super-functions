@@ -8,6 +8,7 @@ import {
   endpointList,
   findRelationMatch,
   firstEndpoint,
+  relationFkFieldForManyOne,
   getJoinStoreKey,
   relationTargetEndpoint,
   resolveEndpointResource,
@@ -54,9 +55,13 @@ function filterAncestorInactiveRecords(
   return records.filter((record) => record.isAncestorInactive !== true);
 }
 
-function recordResourceName(id: unknown, fallback: string | readonly string[]): string {
+function recordResourceName(
+  schema: DatafnSchema,
+  id: unknown,
+  fallback: string | readonly string[],
+): string {
   return (
-    resolveEndpointResource(fallback, id) ??
+    resolveEndpointResource(fallback, id, schema) ??
     resourceNameFromId(id) ??
     firstEndpoint(fallback)
   );
@@ -72,7 +77,7 @@ async function materializeMixedRecords(
 ): Promise<Record<string, unknown>[]> {
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const record of records) {
-    const resource = recordResourceName(record.id, endpoint);
+    const resource = recordResourceName(schema, record.id, endpoint);
     const group = groups.get(resource) ?? [];
     group.push(record);
     groups.set(resource, group);
@@ -209,7 +214,7 @@ export async function expandRelation(
       const val = record[fk] as string;
       if (val) targetIds.push(val);
     } else {
-      const fk = relation.fkField || `${relation.relation}Id`;
+      const fk = relationFkFieldForManyOne(relation);
       for (const targetResource of endpointList(targetEndpoint)) {
         const records = await storage.findRecords(targetResource, fk, record.id);
         targetIds.push(...records.map((r) => r.id as string));
@@ -279,7 +284,7 @@ export async function expandRelation(
   // 3. Fetch records
 	  const targets = [];
   for (const id of targetIds) {
-    const recordResource = recordResourceName(id, targetEndpoint);
+    const recordResource = recordResourceName(schema, id, targetEndpoint);
     const r = await storage.getRecord(recordResource, id);
     if (r) targets.push(r);
   }

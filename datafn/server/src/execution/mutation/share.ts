@@ -408,8 +408,6 @@ export async function executeShare(
     });
   }
 
-  await indexDatafnPermissionGrant(permissionRecord, multiRegionRuntime ?? null);
-
   return { ok: true, permissionRecord };
 }
 
@@ -528,11 +526,11 @@ export async function executeUnshare(
     namespace,
   });
 
-  // Remove the distributed authorization entry before deleting the
-  // authoritative database grant. If directory invalidation fails, the
-  // database row remains active and the unshare fails without creating a
-  // revoked-database/stale-directory authorization bypass. This also cleans a
-  // stale directory entry when an earlier database deletion already happened.
+  // Invalidate the distributed authorization entry before deleting the
+  // authoritative grant. If invalidation fails, the database grant remains
+  // active, preventing a revoked-database/stale-directory authorization gap.
+  // Share indexing is deliberately post-commit; unshare invalidation is
+  // deliberately fail-closed before the database delete.
   await deleteDatafnPermissionGrant({
     id: changeId,
     resourceType: mutation.resource,
@@ -566,6 +564,59 @@ export async function executeUnshare(
     deleted: true,
     changeId,
   };
+}
+
+/** Reconciles the distributed permission directory from committed database state. */
+export async function syncDatafnPermissionGrantAfterCommit(
+  db: Adapter,
+  mutation: {
+    operation: string;
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+  },
+  namespace: string,
+  multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
+): Promise<void> {
+  if (
+    !multiRegionRuntime ||
+    (mutation.operation !== "share" && mutation.operation !== "unshare")
+  ) {
+    return;
+  }
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) return;
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const id = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  const permission = await db.findOne({
+    model: getPermissionsTableName(),
+    where: [{ field: "id", operator: "eq", value: id }],
+    namespace,
+  });
+  if (permission) {
+    await indexDatafnPermissionGrant(
+      permission as Record<string, unknown>,
+      multiRegionRuntime,
+    );
+    return;
+  }
+  await deleteDatafnPermissionGrant({
+    id,
+    resourceType: mutation.resource,
+    resourceNs: namespace,
+    resourceId,
+    principalId: principal.principalId,
+  }, multiRegionRuntime);
 }
 
 export function getPermissionsTable(resource: string): string {

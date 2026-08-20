@@ -19,7 +19,12 @@ import {
   extractRelationRecordDeltasFromDB,
 } from "./relations.js";
 import { executeSchemaAwareMerge } from "./merge-decision.js";
-import { executeShare, executeUnshare, getPermissionsTable } from "./share.js";
+import {
+  executeShare,
+  executeUnshare,
+  getPermissionsTable,
+  syncDatafnPermissionGrantAfterCommit,
+} from "./share.js";
 import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { ChangeTrackingService, recordChangeWithRetry, recordChangesWithRetry, type ChangeEntryInput } from "../sync/change-tracking.js";
@@ -1001,8 +1006,25 @@ export async function executeMutation(
   actorId?: string,
   logger?: DatafnLogger,
   searchProvider?: SearchProvider,
+  insideTransaction = false,
 ): Promise<MutationResult> {
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  const syncPermissionDirectoryAfterCommit = async () => {
+    try {
+      await syncDatafnPermissionGrantAfterCommit(
+        db,
+        mutation,
+        namespace,
+        multiRegionRuntime,
+      );
+    } catch (error) {
+      logger?.error("Permission directory reconciliation failed after commit", {
+        error: String(error),
+        operation: mutation.operation,
+        resource: mutation.resource,
+      });
+    }
+  };
   // clientId and mutationId are optional. When absent, skip idempotency tracking.
   // EXE-009: Use crypto.randomUUID() for unpredictable anonymous mutation IDs
   const effectiveMutationId = mutation.mutationId || randomUUID();
@@ -1104,6 +1126,7 @@ export async function executeMutation(
   // capabilities.transactions.supported === false means explicitly no support (e.g. memoryAdapter).
   // If capabilities are absent/incomplete (e.g. test mocks), fall back to duck-typing.
   const hasTransaction =
+    !insideTransaction &&
     (db.capabilities?.transactions?.supported !== false) &&
     typeof db.transaction === "function";
 
@@ -1153,7 +1176,7 @@ export async function executeMutation(
     } catch (err: any) {
       if (err?.__datafnGuardFailed) {
         guardFailed = true;
-      } else if (!err?.__datafnMutationFailed && !txMutationResult) {
+      } else if (!err?.__datafnMutationFailed) {
         // Transaction aborted for another reason
         txMutationResult = {
           ok: false,
@@ -1180,6 +1203,9 @@ export async function executeMutation(
     }
 
     if (txMutationResult) {
+      if ((txMutationResult as MutationResult).ok) {
+        await syncPermissionDirectoryAfterCommit();
+      }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
       }
@@ -1228,7 +1254,7 @@ export async function executeMutation(
   // Relation delete policies may update or cascade through several records.
   // Keep those effects, the parent delete, and their change records atomic
   // even when the caller did not supply a guard.
-  if (!hasGuard && mutation.operation === "delete" && hasTransaction) {
+  if (!hasGuard && hasTransaction) {
     let txMutationResult: MutationResult | null = null;
     try {
       await changeTracking.ensureReady();
@@ -1249,7 +1275,7 @@ export async function executeMutation(
         }
       });
     } catch (err: any) {
-      if (!err?.__datafnMutationFailed && !txMutationResult) {
+      if (!err?.__datafnMutationFailed) {
         txMutationResult = {
           ok: false,
           mutationId: effectiveMutationId,
@@ -1261,6 +1287,9 @@ export async function executeMutation(
     }
 
     if (txMutationResult) {
+      if ((txMutationResult as MutationResult).ok) {
+        await syncPermissionDirectoryAfterCommit();
+      }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
       }
@@ -1285,6 +1314,10 @@ export async function executeMutation(
     logger,
     multiRegionRuntime,
   );
+
+  if (result.ok) {
+    await syncPermissionDirectoryAfterCommit();
+  }
 
   if (searchProvider && result.ok) {
     await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);

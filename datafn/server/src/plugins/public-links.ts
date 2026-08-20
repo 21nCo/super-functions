@@ -7,7 +7,10 @@ import {
   type DatafnSchema,
 } from "@datafn/core";
 import { errorResponse, okResponse } from "../http/errors.js";
-import { executeShare } from "../execution/mutation/share.js";
+import {
+  executeShare,
+  syncDatafnPermissionGrantAfterCommit,
+} from "../execution/mutation/share.js";
 import type { DataFnAction } from "../events.js";
 
 export type DatafnPublicLinkShareLevel = "viewer" | "editor" | "owner";
@@ -629,6 +632,20 @@ async function createDatafnPublicLink(input: {
     });
     throw new DatafnPublicLinkInputError(shareResult.message, shareResult.path);
   }
+  await syncDatafnPermissionGrantAfterCommit(
+    input.database,
+    {
+      operation: "share",
+      resource: validation.resource,
+      id: validation.recordId ?? undefined,
+      scope: validation.scope,
+      shareWith: { principalId },
+    },
+    input.namespace,
+    input.directory && input.resourceRegion
+      ? { directory: input.directory, regionId: input.resourceRegion }
+      : null,
+  ).catch(() => undefined);
   await input.directory?.put(publicLinkDirectoryRecord(record));
 
   return {

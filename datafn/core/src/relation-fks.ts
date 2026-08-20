@@ -11,11 +11,11 @@ function htreeFkField(relation: DatafnRelationSchema): string {
   return relation.fkField || relation.inverse || "parentId";
 }
 
-function fkFieldForOneMany(relation: DatafnRelationSchema): string {
+export function relationFkFieldForOneMany(relation: DatafnRelationSchema): string {
   return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
 }
 
-function fkFieldForManyOne(relation: DatafnRelationSchema): string {
+export function relationFkFieldForManyOne(relation: DatafnRelationSchema): string {
   return relation.fkField || `${relation.relation ?? firstEndpoint(relation.to)}Id`;
 }
 
@@ -41,7 +41,7 @@ function isOptionalResourceField(
   const resource = schema.resources.find((candidate) => candidate.name === resourceName);
   const field = resource?.fields.find((candidate) => candidate.name === fieldName);
   if (!field) return true;
-  return field.nullable === true || field.required !== true;
+  return field.required !== true && field.nullable === true;
 }
 
 /**
@@ -65,13 +65,13 @@ export function getRelationFkFieldsForResource(
     if (relation.type === "many-one" && endpointIncludes(relation.from, resourceName)) {
       const toResources = endpointList(relation.to);
       add(
-        fkFieldForManyOne(relation),
+        relationFkFieldForManyOne(relation),
         toResources.length > 1 ? fkResourceFieldForRelation(relation, "to") : undefined,
       );
     } else if (relation.type === "one-many" && endpointIncludes(relation.to, resourceName)) {
       const fromResources = endpointList(relation.from);
       add(
-        fkFieldForOneMany(relation),
+        relationFkFieldForOneMany(relation),
         fromResources.length > 1 ? fkResourceFieldForRelation(relation, "from") : undefined,
       );
     } else if (relation.type === "htree" && endpointIncludes(relation.to, resourceName)) {

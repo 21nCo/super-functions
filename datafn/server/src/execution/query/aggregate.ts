@@ -233,7 +233,7 @@ function resolveValue(
       if (!targetId) return null;
       const targetEndpoint = relationTargetEndpoint(match.relation as any, match.direction);
       const targetResource =
-        resolveEndpointResource(targetEndpoint, targetId) ??
+        resolveEndpointResource(targetEndpoint, targetId, schema) ??
         resourceNameFromId(targetId) ??
         firstEndpoint(targetEndpoint);
       const target = store.getRecord(targetResource, targetId as string);

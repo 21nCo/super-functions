@@ -21,6 +21,7 @@ import { validateMutationAuthz } from "../validation/authz.js";
 import type { MutationValidationOpts } from "../validation/mutation.js";
 import { resolveCapabilities } from "@datafn/core";
 import { stripReadonlyCapabilityFields } from "../execution/mutation/execute.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
 
 /**
  * Options for push handler (VAL-001, VAL-006–009)
@@ -449,6 +450,7 @@ export function createPushHandler(
         onChange,
         actorId,
         logger,
+        getDatafnMultiRegionRuntimeConfig(plugins),
         );
 
         timer?.startPhase("changeLog");

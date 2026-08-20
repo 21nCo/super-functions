@@ -317,6 +317,7 @@ function computeAckThroughSeq(
     mutation?: Record<string, unknown>;
   }>,
   result: PushSyncResult,
+  omittedMutationIds: ReadonlySet<string> = new Set(),
 ): number | null {
   const applied = new Set(result.applied ?? []);
   const errorsByMutationId = new Map<string, PushMutationError>();
@@ -330,7 +331,7 @@ function computeAckThroughSeq(
   for (const entry of entries) {
     const mutationId = getChangelogMutationId(entry);
     if (!mutationId) break;
-    if (applied.has(mutationId)) {
+    if (applied.has(mutationId) || omittedMutationIds.has(mutationId)) {
       throughSeq = entry.seq;
       continue;
     }
@@ -1045,7 +1046,9 @@ export class SyncEngine {
     });
   }
 
-  private async compactDeletedRecordMutations(mutations: any[]): Promise<any[]> {
+  private async compactDeletedRecordMutations(
+    mutations: any[],
+  ): Promise<{ mutations: any[]; omittedMutationIds: Set<string> }> {
     const deletedKeys = new Set<string>();
     for (const mutation of mutations) {
       if (
@@ -1058,10 +1061,13 @@ export class SyncEngine {
       }
     }
 
-    if (deletedKeys.size === 0) return mutations;
+    if (deletedKeys.size === 0) {
+      return { mutations, omittedMutationIds: new Set() };
+    }
 
     const existingByKey = new Map<string, boolean>();
     const compacted: any[] = [];
+    const omittedMutationIds = new Set<string>();
     for (const mutation of mutations) {
       if (
         mutation &&
@@ -1075,13 +1081,18 @@ export class SyncEngine {
             const existing = await this.storage.getRecord(mutation.resource, mutation.id);
             existingByKey.set(key, existing !== null);
           }
-          if (existingByKey.get(key) === false) continue;
+          if (existingByKey.get(key) === false) {
+            if (typeof mutation.mutationId === "string") {
+              omittedMutationIds.add(mutation.mutationId);
+            }
+            continue;
+          }
         }
       }
       compacted.push(mutation);
     }
 
-    return compacted;
+    return { mutations: compacted, omittedMutationIds };
   }
 
   /**
@@ -1513,9 +1524,10 @@ export class SyncEngine {
           p.mutation,
         ),
       );
-      const mutations = await this.compactDeletedRecordMutations(
+      const compacted = await this.compactDeletedRecordMutations(
         sanitizedMutations,
       );
+      const mutations = compacted.mutations;
       const batchThroughSeq = batchPending[batchPending.length - 1].seq;
 
       // 2. Push with retries
@@ -1524,7 +1536,7 @@ export class SyncEngine {
       if (pushResult) {
         const throughSeq = pushResult.ok
           ? batchThroughSeq
-          : computeAckThroughSeq(batchPending, pushResult);
+          : computeAckThroughSeq(batchPending, pushResult, compacted.omittedMutationIds);
         if (throughSeq === null) {
           this.pushConsecutiveFailures++;
           this.applyPushIntervalBackoff();

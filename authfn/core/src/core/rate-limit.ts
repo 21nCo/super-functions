@@ -149,6 +149,9 @@ async function incrementAtomic(
 }
 
 const localWindows = new Map<string, { count: number; expiresAt: number }>();
+const MAX_LOCAL_RATE_LIMIT_WINDOWS = 10_000;
+const LOCAL_SWEEP_INTERVAL = 128;
+let localIncrementCount = 0;
 
 async function incrementCache(
   store: KVStoreAdapter,
@@ -167,13 +170,33 @@ async function incrementCache(
 
 function incrementLocal(key: string, windowSeconds: number): number {
   const now = Date.now();
+  localIncrementCount += 1;
+  if (localIncrementCount % LOCAL_SWEEP_INTERVAL === 0) {
+    sweepExpiredLocalWindows(now);
+  }
   const existing = localWindows.get(key);
   if (!existing || existing.expiresAt <= now) {
+    if (!existing && localWindows.size >= MAX_LOCAL_RATE_LIMIT_WINDOWS) {
+      sweepExpiredLocalWindows(now);
+      while (localWindows.size >= MAX_LOCAL_RATE_LIMIT_WINDOWS) {
+        const oldestKey = localWindows.keys().next().value as string | undefined;
+        if (oldestKey === undefined) break;
+        localWindows.delete(oldestKey);
+      }
+    }
     localWindows.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
     return 1;
   }
   existing.count += 1;
   return existing.count;
+}
+
+function sweepExpiredLocalWindows(now: number): void {
+  for (const [key, window] of localWindows) {
+    if (window.expiresAt <= now) {
+      localWindows.delete(key);
+    }
+  }
 }
 
 function hashKeyPart(value: string): string {

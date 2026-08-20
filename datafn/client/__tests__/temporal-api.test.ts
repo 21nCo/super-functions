@@ -117,4 +117,33 @@ describe("@datafn/client temporal api", () => {
 
     await client.destroy();
   });
+
+  it("rejects non-finite timezone-change timestamps before persistence", async () => {
+    const client = createDatafnClient({
+      schema,
+      clientId: "client-invalid-time",
+      storage: new MemoryStorageAdapter(["session"]),
+      sync: { mode: "local-only" },
+      temporal: { timezone: "UTC", detectTimezone: () => "UTC" },
+    });
+
+    await expect(client.temporal.recordTimezoneChange({
+      timezone: "UTC",
+      effectiveFrom: "not-a-date",
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "DFQL_INVALID", details: { path: "effectiveFrom" } },
+    });
+    await expect(client.temporal.recordTimezoneChange({
+      timezone: "UTC",
+      effectiveFrom: 0,
+      recordedAt: Number.POSITIVE_INFINITY,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "DFQL_INVALID", details: { path: "recordedAt" } },
+    });
+    await expect(client.temporal.listTimezoneChanges()).resolves.toEqual([]);
+
+    await client.destroy();
+  });
 });

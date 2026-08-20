@@ -89,6 +89,7 @@ export class ElasticsearchAdapter implements SearchAdapter {
     fuzzy: true,
     prefix: true,
     fieldBoosts: true,
+    metadataFilters: true,
   };
 
   private readonly dialect: ElasticDialect;

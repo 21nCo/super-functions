@@ -148,6 +148,15 @@ describe("convertDfqlFilters", () => {
     ]);
   });
 
+  it("normalizes false null predicates instead of forwarding booleans", () => {
+    expect(convertDfqlFilters({ trashedAt: { $is_null: false } })).toEqual([
+      { field: "trashedAt", operator: "ne", value: null },
+    ]);
+    expect(convertDfqlFilters({ trashedAt: { $is_not_null: false } })).toEqual([
+      { field: "trashedAt", operator: "eq", value: null },
+    ]);
+  });
+
   it("$is_empty remains in-memory because empty semantics are field-type dependent", () => {
     const result = convertDfqlFilters({ title: { $is_empty: true } });
     expect(result).toBeNull();
@@ -521,6 +530,13 @@ describe("classifyQuery", () => {
         search: { query: "hello", type: "fullText" },
       }),
     ).toBe("IN_MEMORY");
+  });
+
+  it("temporal clauses always use the normalized in-memory path", () => {
+    expect(classifyQuery({
+      resource: "task",
+      temporal: { mode: "asOf", at: "2026-08-19T00:00:00.000Z" },
+    })).toBe("IN_MEMORY");
   });
 
   it("$all relation quantifier → IN_MEMORY", () => {

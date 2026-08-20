@@ -11,6 +11,7 @@ import {
   parseSelectToken,
   relationKeyFor,
   relationTargetEndpoint,
+  relationFkFieldForManyOne,
   resolveEndpointResource,
   resourceNameFromId,
   type DatafnRelationEndpoint,
@@ -125,9 +126,13 @@ function htreePath(record: Record<string, unknown>, relation: DatafnRelationSche
   return (record[pathFieldForHtree(relation)] as string | undefined) || "";
 }
 
-function recordResourceName(id: unknown, fallback: DatafnRelationEndpoint): string {
+function recordResourceName(
+  schema: DatafnSchema,
+  id: unknown,
+  fallback: DatafnRelationEndpoint,
+): string {
   return (
-    resolveEndpointResource(fallback, id) ??
+    resolveEndpointResource(fallback, id, schema) ??
     resourceNameFromId(id) ??
     firstEndpoint(fallback)
   );
@@ -146,7 +151,7 @@ function materializeRelatedRecord(
   omit?: string[],
   metadata?: QueryMetadata,
 ): Record<string, unknown> {
-  const resource = recordResourceName(record.id, targetEndpointFor(match));
+  const resource = recordResourceName(schema, record.id, targetEndpointFor(match));
   return materializeSelect(record, resource, select, schema, store, omit, metadata);
 }
 
@@ -447,7 +452,7 @@ export function materializeSelect(
     } else if (parsed.directive === "#") {
       // Emit join rows for many-many
       if (relation.relation.type === "many-many") {
-        result[parsed.baseName] = getJoinRows(record, relation, store);
+        result[parsed.baseName] = getJoinRows(record, relation, schema, store);
       }
     } else if (parsed.directive === "*#") {
       // Expand relation with metadata for many-many
@@ -519,11 +524,11 @@ function getRelationIds(
 
   if (relation.type === "many-one") {
     if (isForward) {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       const relatedId = record[fkField] as string | undefined;
       return relatedId || null;
     }
-    const fkField = relation.fkField || `${relation.relation}Id`;
+    const fkField = relationFkFieldForManyOne(relation);
     const records = endpointList(relation.from).flatMap((targetResource) =>
       store.findRecords(targetResource, fkField, record.id),
     );
@@ -584,13 +589,13 @@ function expandRelationToRecords(
 
   if (relation.type === "many-one") {
     if (isForward) {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       const relatedId = record[fkField] as string | undefined;
       if (!relatedId) return null;
-      const relatedRecord = store.getRecord(recordResourceName(relatedId, targetEndpoint), relatedId);
+      const relatedRecord = store.getRecord(recordResourceName(schema, relatedId, targetEndpoint), relatedId);
       return relatedRecord ?? null;
     }
-    const fkField = relation.fkField || `${relation.relation}Id`;
+    const fkField = relationFkFieldForManyOne(relation);
     const records = endpointList(targetEndpoint)
       .flatMap((targetResource) => store.findRecords(targetResource, fkField, record.id))
       .sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
@@ -603,7 +608,7 @@ function expandRelationToRecords(
     return sortedJoins
       .map((join) => {
         const targetId = isForward ? join.to : join.from;
-        return store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
+        return store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
       })
       .filter(isMaterializedRecord);
   }
@@ -613,7 +618,7 @@ function expandRelationToRecords(
       const fkField = relation.fkField || `${relation.inverse}Id`;
       const relatedId = record[fkField] as string | undefined;
       if (!relatedId) return null;
-      return store.getRecord(recordResourceName(relatedId, targetEndpoint), relatedId);
+      return store.getRecord(recordResourceName(schema, relatedId, targetEndpoint), relatedId);
     }
     const fkField = relation.fkField || `${relation.inverse}Id`;
     const relatedRecords = endpointList(targetEndpoint).flatMap((targetResource) =>
@@ -666,7 +671,7 @@ function expandRelation(
       return sortedJoins
         .map((join) => {
           const targetId = isForward ? join.to : join.from;
-          const relatedRecord = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
+          const relatedRecord = store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
           if (!relatedRecord) return null;
           if (filterAncestorInactiveRecords([relatedRecord], match, metadata).length === 0) return null;
           return materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata);
@@ -676,7 +681,7 @@ function expandRelation(
       return sortedJoins
         .map((join) => {
           const targetId = isForward ? join.to : join.from;
-          const relatedRecord = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
+          const relatedRecord = store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
           if (!relatedRecord) return null;
           if (filterAncestorInactiveRecords([relatedRecord], match, metadata).length === 0) return null;
           const result = materializeRelatedRecord(relatedRecord, match, ["*"], schema, store, omit, metadata);
@@ -717,10 +722,12 @@ function expandRelation(
 function getJoinRows(
   record: Record<string, unknown>,
   match: DatafnRelationMatch,
+  schema: DatafnSchema,
   store: DataStore,
 ): unknown[] {
   const relation = match.relation;
   const resource = recordResourceName(
+    schema,
     record.id,
     match.direction === "forward" ? relation.from : relation.to,
   );

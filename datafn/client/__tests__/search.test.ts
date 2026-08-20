@@ -236,6 +236,55 @@ describe("TV-OFFL-001: client.search() offline — uses searchProvider.searchAll
 
     expect(result.results.map((entry) => entry.id)).toEqual(["t1"]);
   });
+
+  it("applies top-level temporal filters to every searchable resource by default", async () => {
+    const { MemoryStorageAdapter } = await import("../src/adapters/memoryStorage.js");
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord("tasks", {
+      id: "t1",
+      title: "task one",
+      startUnix: Date.parse("2026-05-18T12:00:00.000Z"),
+    });
+    await storage.upsertRecord("tasks", {
+      id: "t2",
+      title: "task two",
+      startUnix: Date.parse("2026-05-19T12:00:00.000Z"),
+    });
+
+    const searchProvider: any = {
+      name: "offline-provider",
+      search: vi.fn().mockResolvedValue([]),
+      searchAll: vi.fn().mockResolvedValue([
+        { resource: "tasks", id: "t1", score: 0.9 },
+        { resource: "tasks", id: "t2", score: 0.8 },
+      ]),
+      updateIndices: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const searchableSchema: DatafnSchema = {
+      ...schema,
+      resources: schema.resources.map((resource) => ({
+        ...resource,
+        indices: { search: ["title"] },
+      })),
+    };
+    const client = createDatafnClient({
+      schema: searchableSchema,
+      sync: { mode: "local-only" },
+      storage,
+      clientId: "test-offline-top-level-temporal-search",
+      searchProvider,
+    });
+
+    const result = await client.search({
+      query: "task",
+      temporal: time.day("startUnix", "2026-05-18T08:00:00.000Z", {
+        timezone: "UTC",
+      }),
+    });
+
+    expect(result.results.map((entry) => entry.id)).toEqual(["t1"]);
+  });
 });
 
 describe("TV-USEC-001: client.search() — throws when no remote and no searchProvider.searchAll", () => {

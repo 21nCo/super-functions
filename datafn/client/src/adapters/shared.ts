@@ -63,6 +63,9 @@ export function cloneForStorage<T>(value: T, seen = new WeakMap<object, unknown>
     const output: unknown[] = [];
     seen.set(source, output);
     for (const item of value) {
+      if (typeof item === "function" || typeof item === "symbol") {
+        continue;
+      }
       output.push(cloneForStorage(item, seen));
     }
     return output as T;

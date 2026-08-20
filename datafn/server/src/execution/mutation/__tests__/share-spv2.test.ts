@@ -413,6 +413,77 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not publish a permission-directory grant when the database transaction rolls back", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:test",
+        directory,
+      })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "rollback",
+        mutationId: "rollback-insert",
+        id: "note:rollback",
+        record: { title: "Rollback" },
+      });
+      const originalTransaction = localDb.transaction.bind(localDb);
+      localDb.transaction = async (callback: (tx: any) => Promise<unknown>) =>
+        originalTransaction(async (tx: any) => {
+          await callback(tx);
+          throw new Error("commit failed");
+        });
+
+      const result = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "rollback",
+        mutationId: "rollback-share",
+        id: "note:rollback",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+
+      expect(result.result.ok).toBe(false);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+    } finally {
+      await localServer.close?.();
+    }
+  });
+
   it("rejects resource scope share and unshare for non-owners", async () => {
     actorId = "user:partner";
 

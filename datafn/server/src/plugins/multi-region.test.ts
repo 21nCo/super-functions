@@ -6,8 +6,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   datafnMultiRegionPlugin,
+  deleteDatafnPermissionGrant,
   getDatafnMultiRegionRuntimeConfig,
   indexDatafnPermissionGrant,
+  queryDatafnPermissionGrants,
 } from './multi-region.js';
 
 function directoryStore(): IndexedDirectoryStoreAdapter {
@@ -62,9 +64,56 @@ describe('DataFn multi-region runtime', () => {
     await indexDatafnPermissionGrant(grant, euRuntime);
     await indexDatafnPermissionGrant(grant, usRuntime);
 
-    const euRecord = await euDirectory.get('datafn:permission:grant:1');
-    const usRecord = await usDirectory.get('datafn:permission:grant:1');
+    const euRecord = await euDirectory.get('datafn:permission:eu-west:grant:1');
+    const usRecord = await usDirectory.get('datafn:permission:us-east:grant:1');
     expect(JSON.parse(euRecord?.value ?? '{}')).toMatchObject({ resourceRegion: 'eu-west' });
     expect(JSON.parse(usRecord?.value ?? '{}')).toMatchObject({ resourceRegion: 'us-east' });
+
+    await deleteDatafnPermissionGrant({
+      id: 'grant:1',
+      resourceType: 'document',
+      resourceNs: 'tenant:1',
+      resourceId: 'document:1',
+      principalId: 'user:1',
+    }, euRuntime);
+    await expect(euDirectory.get('datafn:permission:eu-west:grant:1')).resolves.toBeNull();
+    await expect(usDirectory.get('datafn:permission:us-east:grant:1')).resolves.not.toBeNull();
+  });
+
+  it('reads every permission-directory cursor page', async () => {
+    const first = {
+      key: 'datafn:permission:eu-west:grant:1',
+      value: JSON.stringify({
+        id: 'grant:1',
+        resourceType: 'document',
+        resourceNs: 'tenant:1',
+        resourceId: 'document:1',
+        principalId: 'user:1',
+        resourceRegion: 'eu-west',
+      }),
+      indexes: {},
+    };
+    const second = {
+      ...first,
+      key: 'datafn:permission:eu-west:grant:2',
+      value: JSON.stringify({
+        ...JSON.parse(first.value),
+        id: 'grant:2',
+        resourceId: 'document:2',
+      }),
+    };
+    const query = vi.fn(async (input: { cursor?: string }) =>
+      input.cursor === 'page-2'
+        ? { records: [second] }
+        : { records: [first], cursor: 'page-2' });
+    const directory = { ...directoryStore(), query };
+
+    const grants = await queryDatafnPermissionGrants(
+      { principalId: 'user:1', resourceType: 'document' },
+      { regionId: 'eu-west', directory },
+    );
+
+    expect(grants.map((grant) => grant.id)).toEqual(['grant:1', 'grant:2']);
+    expect(query).toHaveBeenNthCalledWith(2, expect.objectContaining({ cursor: 'page-2' }));
   });
 });

@@ -47,6 +47,43 @@ describe("SCA-001: Reconcile uses db.count()", () => {
 
     vi.restoreAllMocks();
   });
+
+  it("counts non-polymorphic public join stores without loading their rows", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+      }],
+    };
+    await db.create({
+      model: "__datafn_join_tasks_assignees",
+      data: { id: "t1:u1", from: "t1", to: "u1" },
+      namespace: "default",
+    });
+    const countSpy = vi.spyOn(db, "count");
+    const findManySpy = vi.spyOn(db, "findMany");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(countSpy).toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    expect(findManySpy).not.toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    vi.restoreAllMocks();
+  });
 });
 
 // ─── SCA-002: Clone auto-pagination ───────────────────────────────────

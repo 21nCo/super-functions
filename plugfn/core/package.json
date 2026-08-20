@@ -76,7 +76,7 @@
   },
   "superfunctions": {
     "initFunction": "plugFn",
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "namespace": "plugfn"
   }
 }

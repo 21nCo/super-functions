@@ -89,6 +89,9 @@ export async function executeTransaction(
         plugins,
         namespace,
         actorId,
+        logger,
+        undefined,
+        true,
       );
       // Expose the first error as a top-level `.error` property so that
       // transact callers can access result.results[i].error.code directly

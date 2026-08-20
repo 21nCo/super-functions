@@ -230,7 +230,26 @@ function generateAlterTableSQL(
     }
   }
 
+  for (const index of diff.missingIndexes ?? []) {
+    statements.push(generateCreateIndexSQL(diff.tableName, index));
+  }
+
   return statements;
+}
+
+function generateCreateIndexSQL(
+  tableName: string,
+  index: { name: string; columns: string[]; unique: boolean }
+): string {
+  return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+}
+
+function schemaIndexes(schema: TableSchema): Array<{ name: string; columns: string[]; unique: boolean }> {
+  return (schema.indexes ?? []).map((index) => ({
+    name: index.name,
+    columns: index.fields.map((fieldName) => schema.fields[fieldName]?.fieldName ?? fieldName),
+    unique: index.unique === true,
+  }));
 }
 
 /**
@@ -271,6 +290,7 @@ export function generateDrizzleMigration(
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
+        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index)));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
@@ -331,6 +351,7 @@ export function generatePrismaMigration(
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
       if (schema) {
         statements.push(generateCreateTableSQL(schema, dialect, true, diff.tableName));
+        statements.push(...schemaIndexes(schema).map((index) => generateCreateIndexSQL(diff.tableName, index)));
         statements.push('');
       }
     } else if (diff.action === 'alter') {
@@ -405,6 +426,13 @@ export function generateKyselyMigration(
 
         upStatements.push(`    .execute();`);
 
+        for (const index of schemaIndexes(schema)) {
+          const unique = index.unique ? `.unique()` : '';
+          upStatements.push(
+            `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`
+          );
+        }
+
         // Down: drop table
         downStatements.push(`  await db.schema.dropTable('${diff.tableName}').execute();`);
       }
@@ -425,6 +453,13 @@ export function generateKyselyMigration(
             `  await db.schema.alterTable('${diff.tableName}').dropColumn('${colName}').execute();`
           );
         }
+      }
+      for (const index of diff.missingIndexes ?? []) {
+        const unique = index.unique ? `.unique()` : '';
+        upStatements.push(
+          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`
+        );
+        downStatements.push(`  await db.schema.dropIndex('${index.name}').execute();`);
       }
     } else if (diff.action === 'drop') {
       upStatements.push(`  // await db.schema.dropTable('${diff.tableName}').execute();`);

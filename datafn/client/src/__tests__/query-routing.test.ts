@@ -138,6 +138,41 @@ describe("Query routing", () => {
     });
   });
 
+  it("does not overlay local rows onto offset or cursor pages", async () => {
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord("tasks", { id: "task:local", title: "Local" });
+    await storage.setHydrationState("tasks", "hydrating");
+    const remoteResult = {
+      data: [{ id: "task:remote-page", title: "Remote page" }],
+      nextCursor: "next-page",
+    };
+    const remote: DatafnRemoteAdapter = {
+      query: vi.fn().mockResolvedValue({ ok: true, result: remoteResult }),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      clone: vi.fn(),
+      pull: vi.fn(),
+      push: vi.fn(),
+      reconcile: vi.fn(),
+    };
+
+    await expect(executeQuery(
+      remote,
+      { resource: "tasks", offset: 10, limit: 10 },
+      storage,
+      [],
+      schema,
+    )).resolves.toEqual(remoteResult);
+    await expect(executeQuery(
+      remote,
+      { resource: "tasks", sort: ["id:asc"], cursor: { after: { id: "task:10" } } },
+      storage,
+      [],
+      schema,
+    )).resolves.toEqual(remoteResult);
+  });
+
   it("masks remotely stale rows changed by pending local mutations", async () => {
     const storage = new MemoryStorageAdapter(["tasks"]);
     await storage.upsertRecord("tasks", { id: "task:changed", title: "Done" });

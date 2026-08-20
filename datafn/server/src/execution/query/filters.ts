@@ -12,6 +12,7 @@ import {
   OP_REMAP,
   relationKeyFor,
   relationTargetEndpoint,
+  relationFkFieldForManyOne,
   resolveEndpointResource,
   resourceNameFromId,
 } from "@datafn/core";
@@ -34,7 +35,7 @@ function buildResolver(schema: any, store: any) {
     if (!rel) return [];
     const rec = store.getRecord(resource, recordId);
     if (!rec) return [];
-    return getRelatedRecords(rec, rel, store, resource);
+    return getRelatedRecords(rec, rel, store, resource, schema);
   };
 }
 
@@ -92,9 +93,13 @@ function findRelation(schema: any, resourceName: string, relationName: string) {
   return findRelationMatch(schema, resourceName, relationName) ?? null;
 }
 
-function recordResourceName(id: unknown, fallback: string | readonly string[]): string {
+function recordResourceName(
+  schema: any,
+  id: unknown,
+  fallback: string | readonly string[],
+): string {
   return (
-    resolveEndpointResource(fallback, id) ??
+    resolveEndpointResource(fallback, id, schema) ??
     resourceNameFromId(id) ??
     firstEndpoint(fallback)
   );
@@ -105,6 +110,7 @@ function getRelatedRecords(
   rel: any,
   store: any,
   resourceName: string,
+  schema: any,
 ): Record<string, unknown>[] {
   const relation = rel.relation;
   const direction = rel.direction;
@@ -113,13 +119,13 @@ function getRelatedRecords(
 
   if (relation.type === "many-one") {
     if (isForward) {
-      const fk = relation.fkField || relation.foreignKey || `${relation.relation}Id`;
+      const fk = relation.foreignKey || relationFkFieldForManyOne(relation);
       const targetId = record[fk];
       if (!targetId) return [];
-      const target = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
+      const target = store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
       return target ? [target] : [];
     } else {
-      const fk = relation.fkField || relation.foreignKey || `${relation.relation}Id`;
+      const fk = relation.foreignKey || relationFkFieldForManyOne(relation);
       return endpointList(targetEndpoint).flatMap((targetResource) =>
         store.findRecords(targetResource, fk, record.id),
       );
@@ -134,7 +140,7 @@ function getRelatedRecords(
       const fk = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
       const targetId = record[fk];
       if (!targetId) return [];
-      const target = store.getRecord(recordResourceName(targetId, targetEndpoint), targetId as string);
+      const target = store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
       return target ? [target] : [];
     }
   } else if (relation.type === "many-many") {
@@ -144,7 +150,7 @@ function getRelatedRecords(
         .filter((row: any) => row.from === record.id)
         .map((row: any) => row.to);
       return relatedIds
-        .map((id: unknown) => store.getRecord(recordResourceName(id, targetEndpoint), id as string))
+        .map((id: unknown) => store.getRecord(recordResourceName(schema, id, targetEndpoint), id as string))
         .filter((target: unknown): target is Record<string, unknown> => Boolean(target));
     } else {
       return endpointList(relation.from).flatMap((fromResource) => {
@@ -152,7 +158,7 @@ function getRelatedRecords(
         return joinRows
           .filter((row: any) => row.to === record.id)
           .map((row: any) => row.from)
-          .map((id: unknown) => store.getRecord(recordResourceName(id, targetEndpoint), id as string))
+          .map((id: unknown) => store.getRecord(recordResourceName(schema, id, targetEndpoint), id as string))
           .filter((target: unknown): target is Record<string, unknown> => Boolean(target));
       });
     }
@@ -171,10 +177,10 @@ function evaluateRelationFilter(
   const rel = findRelation(schema, resourceName, relationName);
   if (!rel) return false;
 
-  const relatedRecords = getRelatedRecords(record, rel, store, resourceName);
+  const relatedRecords = getRelatedRecords(record, rel, store, resourceName, schema);
   const targetEndpoint = relationTargetEndpoint(rel.relation, rel.direction);
   const relatedResource = (relatedRecord: Record<string, unknown>) =>
-    recordResourceName(relatedRecord.id, targetEndpoint);
+    recordResourceName(schema, relatedRecord.id, targetEndpoint);
 
   if (ops.$any) {
     const subFilter = ops.$any as Record<string, unknown>;

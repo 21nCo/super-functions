@@ -109,6 +109,11 @@ export interface TableDiff {
     column: string;
     change: string;
   }>;
+  missingIndexes?: Array<{
+    name: string;
+    columns: string[];
+    unique: boolean;
+  }>;
 }
 
 export interface MigrationPlan {
@@ -186,6 +191,15 @@ export function diffTables(
     const missingColumns: string[] = [];
     const extraColumns: string[] = [];
     const columnChanges: Array<{ column: string; change: string }> = [];
+    const missingIndexes = (reqTable.indexes ?? [])
+      .filter((requiredIndex) => !curTable.indexes.some((currentIndex) => currentIndex.name === requiredIndex.name))
+      .map((requiredIndex) => ({
+        name: requiredIndex.name,
+        columns: requiredIndex.fields.map((fieldName) =>
+          reqTable.fields[fieldName]?.fieldName ?? fieldName
+        ),
+        unique: requiredIndex.unique === true,
+      }));
 
     const curColMap = new Map(curTable.columns.map((c) => [c.columnName, c]));
     const reqFieldMap = reqTable.fields;
@@ -235,13 +249,19 @@ export function diffTables(
       }
     }
 
-    if (missingColumns.length > 0 || extraColumns.length > 0 || columnChanges.length > 0) {
+    if (
+      missingColumns.length > 0 ||
+      extraColumns.length > 0 ||
+      columnChanges.length > 0 ||
+      missingIndexes.length > 0
+    ) {
       diffs.push({
         tableName: dbName,
         action: 'alter',
         missingColumns,
         extraColumns,
         columnChanges,
+        missingIndexes,
       });
     }
   }

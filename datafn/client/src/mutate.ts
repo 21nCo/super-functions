@@ -739,16 +739,21 @@ export async function executeMutation(
   try {
     const response = await remote.mutation(mutationForRemote);
     result = unwrapRemoteSuccess(response);
-    await applyRemoteSuccessToLocalStorage(
-      storage,
-      schema,
-      offlinability,
-      clientId,
-      searchProvider,
-      mutationForLocal,
-      result,
-      getTimestamp,
-    );
+    try {
+      await applyRemoteSuccessToLocalStorage(
+        storage,
+        schema,
+        offlinability,
+        clientId,
+        searchProvider,
+        mutationForLocal,
+        result,
+        getTimestamp,
+      );
+    } catch {
+      // The remote mutation is already committed. Local reconciliation is
+      // best-effort and the next pull remains the source of repair.
+    }
     // Run afterMutation hooks (fail-open)
     result = schema
       ? await runAfterMutation(plugins, schema, mutationForRemote, result)

@@ -112,6 +112,30 @@ describe("createSearchProvider — search delegates to adapter.search", () => {
       expect.objectContaining({ signal: controller.signal }),
     );
   });
+
+  it("rejects scope filters when the adapter cannot enforce them", async () => {
+    const provider = createSearchProvider(makeAdapter());
+    await expect(provider.search({
+      resource: "tasks",
+      query: "private",
+      namespaceFilter: ["tenant:1"],
+    })).rejects.toMatchObject({ code: "DFQL_UNSUPPORTED" });
+  });
+
+  it("forwards scope filters only to adapters that declare enforcement", async () => {
+    const adapter = makeAdapter({ capabilities: { metadataFilters: true } });
+    const provider = createSearchProvider(adapter);
+    await provider.search({
+      resource: "tasks",
+      query: "private",
+      namespaceFilter: ["tenant:1"],
+      regionFilter: ["eu-west"],
+    });
+    expect(adapter.search).toHaveBeenCalledWith(expect.objectContaining({
+      namespaceFilter: ["tenant:1"],
+      regionFilter: ["eu-west"],
+    }));
+  });
 });
 
 describe("createSearchProvider — updateIndices", () => {

@@ -237,8 +237,8 @@ function fileEventMetadata<TEvent extends FileFnEvent>(
   event: TEvent
 ): FileFnObservationMetadata<TEvent> {
   const { type, timestamp, requestId, ...metadata } = event as FileFnEvent & Record<string, unknown>;
-  return {
+  return sanitizeEventData({
     timestamp,
     ...metadata
-  } as FileFnObservationMetadata<TEvent>;
+  }) as FileFnObservationMetadata<TEvent>;
 }

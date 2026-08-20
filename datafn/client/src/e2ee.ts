@@ -42,6 +42,7 @@ export type DatafnE2eeConfig = {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const providerEncryptedEnvelopes = new WeakSet<object>();
 
 type RecordMutationOperation = "insert" | "merge" | "replace";
 
@@ -151,18 +152,23 @@ async function encryptRecordFields(
       encrypted[field] = value;
       continue;
     }
-    if (isDatafnE2eeEnvelope(value)) {
+    if (
+      isDatafnE2eeEnvelope(value) &&
+      providerEncryptedEnvelopes.has(value as object)
+    ) {
       encrypted[field] = value;
       continue;
     }
 
-    encrypted[field] = await provider.encrypt({
+    const envelope = await provider.encrypt({
       resource,
       id,
       field,
       plaintext: encodeFieldValue(value),
       aad: aadFor(resource, id, field),
     });
+    providerEncryptedEnvelopes.add(envelope);
+    encrypted[field] = envelope;
   }
 
   return encrypted;

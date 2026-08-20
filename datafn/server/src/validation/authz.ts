@@ -18,6 +18,7 @@ import {
   getCapabilityFields,
   getTemporalClauses,
   getTemporalGroupAliases,
+  parseSortTerm,
   relationTargetEndpoint,
   resolveCapabilities,
 } from "@datafn/core";
@@ -353,11 +354,17 @@ export function validateQueryAuthz(
   if (query.sort && Array.isArray(query.sort)) {
     for (let i = 0; i < query.sort.length; i++) {
       const sortItem = query.sort[i];
-      if (typeof sortItem !== "string") continue;
-      // Parse: "field", "field:asc", "field:desc", "-field"
-      const parts = sortItem.split(":");
-      const rawField = parts[0];
-      const field = rawField.startsWith("-") ? rawField.slice(1) : rawField;
+      let field: string;
+      try {
+        field = parseSortTerm(sortItem).field;
+      } catch {
+        return {
+          ok: false,
+          code: "FORBIDDEN",
+          message: "Authorization denied",
+          path: `sort[${i}]`,
+        };
+      }
       if (field === "id" || capabilityFields.has(field)) continue;
       // Allow sorting by aggregation aliases
       if (query.aggregations && typeof query.aggregations === "object" && field in (query.aggregations as object)) {

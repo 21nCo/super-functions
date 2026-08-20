@@ -12,7 +12,12 @@ import {
   getRelationTarget,
   getRelation,
 } from "./schema.js";
-import { parseSelectToken, checkPrototypePollution, getTemporalGroupAliases } from "@datafn/core";
+import {
+  parseSelectToken,
+  checkPrototypePollution,
+  getTemporalGroupAliases,
+  parseSortTerm,
+} from "@datafn/core";
 import { validateFilterDepth, validateRelationDepth } from "./depth.js";
 
 /**
@@ -173,10 +178,8 @@ export function validateQuery(
         // Validate sort has id tie-breaker
         if (Array.isArray(q.sort)) {
             const lastSort = q.sort[q.sort.length - 1];
-            if (typeof lastSort === "string") {
-                const parts = lastSort.split(":");
-                const rawField = parts[0];
-                const field = rawField.startsWith("-") ? rawField.slice(1) : rawField;
+            try {
+                const field = parseSortTerm(lastSort).field;
                 if (field !== "id") {
                     return vErr(
                         "DFQL_INVALID",
@@ -184,7 +187,7 @@ export function validateQuery(
                         "sort",
                     );
                 }
-            } else {
+            } catch {
                  return vErr("DFQL_INVALID", "Invalid sort format", "sort");
             }
         }
@@ -256,12 +259,12 @@ export function validateQuery(
     }
     for (let i = 0; i < q.sort.length; i++) {
       const sortItem = q.sort[i];
-      if (typeof sortItem !== "string") continue;
-
-      // Parse sort field (can be "fieldName", "fieldName:asc/desc", or "-fieldName")
-      const parts = sortItem.split(":");
-      const rawField = parts[0];
-      const fieldName = rawField.startsWith("-") ? rawField.slice(1) : rawField;
+      let fieldName: string;
+      try {
+        fieldName = parseSortTerm(sortItem).field;
+      } catch {
+        return vErr("DFQL_INVALID", `Invalid sort format: sort[${i}]`, `sort[${i}]`);
+      }
 
       // Allow sorting by aggregation aliases
       if (q.aggregations && typeof q.aggregations === "object" && !Array.isArray(q.aggregations)) {

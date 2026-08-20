@@ -347,6 +347,42 @@ describe("Offline Mutation Tests", () => {
     });
   });
 
+  it("offline merge preserves omitted existing fields instead of reapplying defaults", async () => {
+    const storage = new MockStorageAdapter();
+    await storage.upsertRecord("task", {
+      id: "task:existing",
+      title: "Before",
+      status: "done",
+    });
+    const schemaWithDefault = {
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithDefault,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:merge-default",
+      storage,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:existing",
+      record: { title: "After" },
+    });
+
+    await expect(storage.getRecord("task", "task:existing")).resolves.toMatchObject({
+      title: "After",
+      status: "done",
+    });
+  });
+
   it("TV-OFFLINE-MUT-002: If changelog append fails, mutation fails", async () => {
     const storage = new MockStorageAdapter();
     storage.failChangelogAppend = true;

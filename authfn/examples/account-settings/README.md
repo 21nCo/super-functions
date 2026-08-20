@@ -19,6 +19,7 @@ Use a local Postgres database, for example:
 
 ```bash
 export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/authfn_examples_account_settings
+export AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64="$(openssl rand -base64 32)"
 ```
 
 ## Auth routes exercised
@@ -58,4 +59,5 @@ The root example package exposes `dev:server`, `dev:client`, and `test:e2e`. The
 ## Notes
 
 - The server uses Postgres + Drizzle and imports auth tables from `src/db/generated/authfn-schema.ts`.
+- `AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64` must decode to exactly 32 bytes and should be supplied by a secret manager outside local development.
 - The checked-in `superfunctions.config.ts` matches the documented shape, and `db:generate` uses the JS runtime wrapper because the current CLI loader executes JS/MJS configs at runtime.

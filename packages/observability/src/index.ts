@@ -461,11 +461,10 @@ export function instrumentMethods<TTarget extends object>(
         return value;
       }
 
-      return async (...args: unknown[]) => {
+      return (...args: unknown[]) => {
         const extracted = extract?.({ property, args }) ?? {};
         const startedAt = now();
-        try {
-          const result = await value.apply(currentTarget, args);
+        const record = (ok: boolean) => {
           observability.metrics.record({
             kind,
             component,
@@ -473,24 +472,38 @@ export function instrumentMethods<TTarget extends object>(
             resource: extracted.resource,
             labels: extracted.labels,
             durationMs: now() - startedAt,
-            ok: true,
+            ok,
           });
+        };
+        try {
+          const result = value.apply(currentTarget, args);
+          if (isPromiseLike(result)) {
+            return Promise.resolve(result).then(
+              (resolved) => {
+                record(true);
+                return resolved;
+              },
+              (error) => {
+                record(false);
+                throw error;
+              },
+            );
+          }
+          record(true);
           return result;
         } catch (error) {
-          observability.metrics.record({
-            kind,
-            component,
-            operation: extracted.operation ?? String(property),
-            resource: extracted.resource,
-            labels: extracted.labels,
-            durationMs: now() - startedAt,
-            ok: false,
-          });
+          record(false);
           throw error;
         }
       };
     },
   }) as TTarget;
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === "object" && value !== null) || typeof value === "function"
+  ) && typeof (value as PromiseLike<unknown>).then === "function";
 }
 
 export function readObservationGroup(

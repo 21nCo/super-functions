@@ -62,7 +62,10 @@ function createPasswordRoutes(
   config: PasswordPluginConfig
 ): Route[] {
   const runtimeConfig = readPluginRuntimeConfig<PasswordPluginRuntimeConfig>(ctx, 'password');
-  const otpConfig = runtimeConfig.otp ?? {};
+  const otpConfig = {
+    ...config.otp,
+    ...runtimeConfig.otp
+  };
 
   return [
     {

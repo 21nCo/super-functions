@@ -83,4 +83,40 @@ describe("relation FK normalization", () => {
       sessionId: "",
     });
   });
+
+  it("does not treat an explicitly required nullable relation FK as optional", () => {
+    const schema: DatafnSchema = {
+      resources: [
+        {
+          name: "account",
+          version: 1,
+          fields: [{ name: "id", type: "string", required: true }],
+        },
+        {
+          name: "session",
+          version: 1,
+          fields: [
+            { name: "id", type: "string", required: true },
+            { name: "accountId", type: "string", required: true, nullable: true },
+          ],
+        },
+      ],
+      relations: [
+        {
+          from: "session",
+          to: "account",
+          type: "many-one",
+          relation: "account",
+          fkField: "accountId",
+        },
+      ],
+    };
+
+    expect(
+      normalizeRelationFkRecord(schema, "session", {
+        id: "session:1",
+        accountId: "",
+      }),
+    ).toEqual({ id: "session:1", accountId: "" });
+  });
 });

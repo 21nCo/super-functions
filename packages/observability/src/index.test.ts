@@ -6,6 +6,25 @@ import {
 } from "./index.js";
 
 describe("superfunction observability", () => {
+  it("preserves synchronous method return values", () => {
+    const observability = createObservability({ service: "test-service" });
+    const observed = instrumentMethods({
+      target: {
+        capabilitiesForTarget() {
+          return { transactions: true };
+        },
+      },
+      observability,
+      kind: "db",
+      component: "test.db",
+    });
+
+    const result = observed.capabilitiesForTarget();
+
+    expect(result).toEqual({ transactions: true });
+    expect(result).not.toBeInstanceOf(Promise);
+  });
+
   it("records async method metrics into the active request", async () => {
     const observability = createObservability({
       service: "test-service",
