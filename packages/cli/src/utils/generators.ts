@@ -482,6 +482,7 @@ export function generateKyselyMigration(
       }
     } else if (diff.action === 'alter') {
       const schema = findSchemaForTable(schemas, plan.namespace, diff.tableName);
+      const dropAddedColumns: string[] = [];
       if (schema && diff.missingColumns) {
         for (const colName of diff.missingColumns) {
           const field = Object.entries(schema.fields).find(
@@ -493,7 +494,7 @@ export function generateKyselyMigration(
           upStatements.push(
             `  await db.schema.alterTable('${diff.tableName}').addColumn('${colName}', '${sqlType.toLowerCase()}', (col) => ${field.required ? 'col.notNull()' : 'col'}).execute();`
           );
-          downStatements.push(
+          dropAddedColumns.push(
             `  await db.schema.alterTable('${diff.tableName}').dropColumn('${colName}').execute();`
           );
         }
@@ -532,6 +533,10 @@ export function generateKyselyMigration(
           schema,
         ));
       }
+      // Rollbacks must remove dependent indexes before their newly added
+      // columns. PostgreSQL may auto-drop the index with the column, while
+      // other dialects can reject the column drop outright.
+      downStatements.push(...dropAddedColumns);
     } else if (diff.action === 'drop') {
       upStatements.push(`  // await db.schema.dropTable('${diff.tableName}').execute();`);
       downStatements.push(`  // Recreate ${diff.tableName} if needed`);

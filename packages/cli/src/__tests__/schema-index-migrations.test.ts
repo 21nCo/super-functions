@@ -156,6 +156,24 @@ describe("schema index migrations", () => {
     );
   });
 
+  it("drops a new index before its indexed column in Kysely rollbacks", () => {
+    const plan = createMigrationPlan("plugfn", 5, 6, [{
+      tableName: "plugfn_sync_jobs",
+      action: "alter",
+      missingColumns: ["claim_token"],
+      missingIndexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        columns: ["claim_token"],
+        unique: true,
+      }],
+    }]);
+    const content = generateKyselyMigration(plan, [syncJobs], "postgres").content;
+    const down = content.slice(content.indexOf("export async function down"));
+
+    expect(down.indexOf("dropIndex('plugfn_sync_jobs_claim_token_idx')"))
+      .toBeLessThan(down.indexOf("dropColumn('claim_token')"));
+  });
+
   it("emits dialect-valid indexes when creating a MySQL table", () => {
     const plan = createMigrationPlan("plugfn", 0, 1, [{
       tableName: "plugfn_sync_jobs",
