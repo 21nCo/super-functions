@@ -1007,12 +1007,15 @@ export async function executeMutation(
   logger?: DatafnLogger,
   searchProvider?: SearchProvider,
   insideTransaction = false,
+  deferPermissionDirectorySync?: (
+    sync: (committedDb: Adapter) => Promise<void>,
+  ) => void,
 ): Promise<MutationResult> {
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
-  const syncPermissionDirectoryAfterCommit = async () => {
+  const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
     try {
       await syncDatafnPermissionGrantAfterCommit(
-        db,
+        committedDb,
         mutation,
         namespace,
         multiRegionRuntime,
@@ -1024,6 +1027,13 @@ export async function executeMutation(
         resource: mutation.resource,
       });
     }
+  };
+  const reconcilePermissionDirectoryAfterCommit = async () => {
+    if (insideTransaction && deferPermissionDirectorySync) {
+      deferPermissionDirectorySync(syncPermissionDirectoryAfterCommit);
+      return;
+    }
+    await syncPermissionDirectoryAfterCommit();
   };
   // clientId and mutationId are optional. When absent, skip idempotency tracking.
   // EXE-009: Use crypto.randomUUID() for unpredictable anonymous mutation IDs
@@ -1204,7 +1214,7 @@ export async function executeMutation(
 
     if (txMutationResult) {
       if ((txMutationResult as MutationResult).ok) {
-        await syncPermissionDirectoryAfterCommit();
+        await reconcilePermissionDirectoryAfterCommit();
       }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
@@ -1288,7 +1298,7 @@ export async function executeMutation(
 
     if (txMutationResult) {
       if ((txMutationResult as MutationResult).ok) {
-        await syncPermissionDirectoryAfterCommit();
+        await reconcilePermissionDirectoryAfterCommit();
       }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
@@ -1316,7 +1326,7 @@ export async function executeMutation(
   );
 
   if (result.ok) {
-    await syncPermissionDirectoryAfterCommit();
+    await reconcilePermissionDirectoryAfterCommit();
   }
 
   if (searchProvider && result.ok) {

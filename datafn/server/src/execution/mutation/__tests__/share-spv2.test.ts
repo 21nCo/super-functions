@@ -484,6 +484,83 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not publish a permission-directory grant before an outer transaction commits", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:test",
+        directory,
+      })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "outer-rollback",
+        mutationId: "outer-rollback-insert",
+        id: "note:outer-rollback",
+        record: { title: "Outer rollback" },
+      });
+      const result = await request("transact", {
+        atomic: true,
+        steps: [
+          {
+            mutation: {
+              resource: "notes",
+              version: 1,
+              operation: "share",
+              clientId: "outer-rollback",
+              mutationId: "outer-rollback-share",
+              id: "note:outer-rollback",
+              shareWith: { principalId: "user:partner", level: "viewer" },
+            },
+          },
+          {
+            mutation: {
+              resource: "notes",
+              version: 1,
+              operation: "insert",
+              clientId: "outer-rollback",
+              mutationId: "outer-rollback-conflict",
+              id: "note:outer-rollback",
+              record: { title: "Conflict" },
+            },
+          },
+        ],
+      });
+
+      expect(result.result.ok).toBe(false);
+      await expect(directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+    } finally {
+      await localServer.close?.();
+    }
+  });
+
   it("rejects resource scope share and unshare for non-owners", async () => {
     actorId = "user:partner";
 

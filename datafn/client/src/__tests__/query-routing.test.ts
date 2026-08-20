@@ -173,6 +173,53 @@ describe("Query routing", () => {
     )).resolves.toEqual(remoteResult);
   });
 
+  it("preserves local overlays for no-op pagination values", async () => {
+    const storage = new MemoryStorageAdapter(["tasks"]);
+    await storage.upsertRecord("tasks", { id: "task:local", title: "Local" });
+    await storage.setHydrationState("tasks", "hydrating");
+    const remote: DatafnRemoteAdapter = {
+      query: vi.fn().mockResolvedValue({
+        ok: true,
+        result: { data: [{ id: "task:remote", title: "Remote" }] },
+      }),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      clone: vi.fn(),
+      pull: vi.fn(),
+      push: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const expected = {
+      data: [
+        { id: "task:remote", title: "Remote" },
+        { id: "task:local", title: "Local" },
+      ],
+    };
+
+    await expect(executeQuery(
+      remote,
+      { resource: "tasks", offset: 0 },
+      storage,
+      [],
+      schema,
+    )).resolves.toEqual(expected);
+    await expect(executeQuery(
+      remote,
+      { resource: "tasks", cursor: null } as any,
+      storage,
+      [],
+      schema,
+    )).resolves.toEqual(expected);
+    await expect(executeQuery(
+      remote,
+      { resource: "tasks", cursor: {} },
+      storage,
+      [],
+      schema,
+    )).resolves.toEqual(expected);
+  });
+
   it("masks remotely stale rows changed by pending local mutations", async () => {
     const storage = new MemoryStorageAdapter(["tasks"]);
     await storage.upsertRecord("tasks", { id: "task:changed", title: "Done" });

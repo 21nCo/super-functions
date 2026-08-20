@@ -59,9 +59,16 @@ export async function executeTransaction(
 
   const results: Array<any> = [];
   const changeTracking = new ChangeTrackingService(db, namespace, sequenceStore);
+  type DeferredPermissionDirectorySync = (
+    committedDb: Adapter,
+  ) => Promise<void>;
 
   // Helper to execute a single step
-  const executeStep = async (step: TransactStep, stepDb: Adapter) => {
+  const executeStep = async (
+    step: TransactStep,
+    stepDb: Adapter,
+    deferredPermissionDirectorySyncs?: DeferredPermissionDirectorySync[],
+  ) => {
     if (step.query) {
       // Create store for query
       const store = await DbDataStore.forQuery(
@@ -92,6 +99,9 @@ export async function executeTransaction(
         logger,
         undefined,
         true,
+        deferredPermissionDirectorySyncs
+          ? (sync) => deferredPermissionDirectorySyncs.push(sync)
+          : undefined,
       );
       // Expose the first error as a top-level `.error` property so that
       // transact callers can access result.results[i].error.code directly
@@ -119,10 +129,16 @@ export async function executeTransaction(
         await idempotencyStore.ensureReady?.();
         await changeTracking.ensureReady();
       }
+      const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
       await (db as any).transaction(async (tx: Adapter) => {
+        deferredPermissionDirectorySyncs.length = 0;
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];
-          const result = await executeStep(step, tx);
+          const result = await executeStep(
+            step,
+            tx,
+            deferredPermissionDirectorySyncs,
+          );
           results.push(result);
 
           if (step.mutation) {
@@ -146,6 +162,9 @@ export async function executeTransaction(
           }
         }
       });
+      for (const sync of deferredPermissionDirectorySyncs) {
+        await sync(db);
+      }
       // If we got here, commit happened — TV-REL-006: no rolledBack field
       return { ok: true, result: { ok: true, results } };
     } catch (error: any) {
