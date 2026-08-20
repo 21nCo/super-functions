@@ -656,6 +656,11 @@ async function createDatafnPublicLink(input: {
       await markPermissionDirectorySyncReady(
         input.database,
         permissionDirectoryTaskId,
+        {
+          mutation: permissionMutation,
+          namespace: input.namespace,
+          regionId: permissionDirectoryRuntime.regionId,
+        },
       );
       await drainPermissionDirectorySync(
         input.database,

@@ -71,6 +71,7 @@ export async function executeTransaction(
   );
   const prequeuedUnshareTaskIds: string[] = [];
   const prequeuedUnshareTasks = new Map<DFQLMutation, string>();
+  const prequeuedUnshareMutationsByTaskId = new Map<string, DFQLMutation>();
   try {
     if (needsPermissionDirectoryOutbox) {
       // Sequential steps are marked insideTransaction to avoid nested database
@@ -92,6 +93,7 @@ export async function executeTransaction(
         );
         prequeuedUnshareTaskIds.push(taskId);
         prequeuedUnshareTasks.set(step.mutation, taskId);
+        prequeuedUnshareMutationsByTaskId.set(taskId, step.mutation);
       }
     }
   } catch (error: any) {
@@ -101,7 +103,11 @@ export async function executeTransaction(
       // external directory. They remain durable and immediately eligible for
       // the regular background reconciler.
       const releases = await Promise.allSettled(prequeuedUnshareTaskIds.map((taskId) =>
-        markPermissionDirectorySyncReady(db, taskId)
+        markPermissionDirectorySyncReady(db, taskId, {
+          mutation: prequeuedUnshareMutationsByTaskId.get(taskId)!,
+          namespace,
+          regionId: multiRegionRuntime.regionId,
+        })
       ));
       releases.forEach((release, index) => {
         if (release.status === "rejected") {

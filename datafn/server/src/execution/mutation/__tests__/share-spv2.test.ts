@@ -1433,7 +1433,16 @@ describe("share SPV2 mutation semantics", () => {
       [],
     )).resolves.toHaveLength(1);
 
-    await markPermissionDirectorySyncReady(localDb, taskId);
+    await markPermissionDirectorySyncReady(localDb, taskId, {
+      mutation: {
+        operation: "share",
+        resource: "notes",
+        id: "note:precommit",
+        shareWith: { principalId: "user:partner" },
+      },
+      namespace,
+      regionId: runtime.regionId,
+    });
     await expect(drainPermissionDirectoryOutbox(localDb, runtime))
       .resolves.toEqual({ processed: 1, pending: 0 });
     await expect(localDb.internal.findMany(
@@ -1471,7 +1480,16 @@ describe("share SPV2 mutation semantics", () => {
       await expect(drainPermissionDirectoryOutbox(localDb, runtime))
         .resolves.toEqual({ processed: 0, pending: 0 });
 
-      await markPermissionDirectorySyncReady(localDb, taskId);
+      await markPermissionDirectorySyncReady(localDb, taskId, {
+        mutation: {
+          operation: "unshare",
+          resource: "notes",
+          id: "note:long-running",
+          shareWith: { principalId: "user:partner" },
+        },
+        namespace,
+        regionId: runtime.regionId,
+      });
       await expect(drainPermissionDirectoryOutbox(localDb, runtime))
         .resolves.toEqual({ processed: 1, pending: 0 });
     } finally {
@@ -1510,10 +1528,61 @@ describe("share SPV2 mutation semantics", () => {
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
       expect(renewalWhere.some((clause) => clause.field === "next_attempt_at"))
         .toBe(true);
-      await markPermissionDirectorySyncReady(localDb, taskId);
+      await markPermissionDirectorySyncReady(localDb, taskId, {
+        mutation: {
+          operation: "share",
+          resource: "notes",
+          id: "note:renewal-race",
+          shareWith: { principalId: "user:partner" },
+        },
+        namespace,
+        regionId: "region:test",
+      });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("publishes a fresh ready task after losing the pre-commit lease", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const permissionMutation = {
+      operation: "share",
+      resource: "notes",
+      id: "note:lost-release-lease",
+      shareWith: { principalId: "user:partner" },
+    } as const;
+    const taskId = await enqueuePermissionDirectorySync(
+      localDb,
+      permissionMutation,
+      namespace,
+      "region:test",
+      { pending: true },
+    );
+    const claimedLease = new Date(Date.now() + 60 * 1000).toISOString();
+    await localDb.internal.update(
+      "__datafn_permission_directory_outbox",
+      [{ field: "id", op: "eq", value: taskId }],
+      { next_attempt_at: claimedLease },
+    );
+
+    await markPermissionDirectorySyncReady(localDb, taskId, {
+      mutation: permissionMutation,
+      namespace,
+      regionId: "region:test",
+    });
+
+    const tasks = await localDb.internal.findMany(
+      "__datafn_permission_directory_outbox",
+      [],
+    );
+    expect(tasks).toHaveLength(2);
+    expect(tasks.find((task) => task.id === taskId)?.next_attempt_at)
+      .toBe(claimedLease);
+    const replacement = tasks.find((task) => task.id !== taskId);
+    expect(JSON.parse(String(replacement?.mutation))).toEqual(permissionMutation);
+    expect(Date.parse(String(replacement?.next_attempt_at)))
+      .toBeLessThanOrEqual(Date.now());
   });
 
   it("stops a pending lease before a failing explicit drain lookup", async () => {
@@ -1645,7 +1714,16 @@ describe("share SPV2 mutation semantics", () => {
       value: "user:partner#notes",
     })).resolves.toEqual({ records: [] });
 
-    await markPermissionDirectorySyncReady(localDb, taskId);
+    await markPermissionDirectorySyncReady(localDb, taskId, {
+      mutation: {
+        operation: "share",
+        resource: "notes",
+        id: "note:stale-selection",
+        shareWith: { principalId: "user:partner" },
+      },
+      namespace,
+      regionId: runtime.regionId,
+    });
     await expect(drainPermissionDirectoryOutbox(localDb, runtime))
       .resolves.toEqual({ processed: 1, pending: 0 });
   });

@@ -1048,7 +1048,11 @@ export async function executeMutation(
   const releasePermissionDirectoryTask = async () => {
     if (!permissionDirectoryTaskId || !permissionDirectoryTaskPending) return;
     try {
-      await markPermissionDirectorySyncReady(db, permissionDirectoryTaskId);
+      await markPermissionDirectorySyncReady(db, permissionDirectoryTaskId, {
+        mutation,
+        namespace,
+        regionId: multiRegionRuntime!.regionId,
+      });
       permissionDirectoryTaskPending = false;
     } catch (error) {
       // The pre-commit lease keeps the task durable and makes it eligible for

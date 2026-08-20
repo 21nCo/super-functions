@@ -143,13 +143,32 @@ export async function enqueuePermissionDirectorySync(
 export async function markPermissionDirectorySyncReady(
   db: Adapter,
   taskId: string,
+  context: {
+    mutation: PermissionDirectorySyncMutation;
+    namespace: string;
+    regionId: string;
+  },
 ): Promise<void> {
-  await stopPrecommitLeaseHeartbeat(taskId);
-  await db.internal.update(OUTBOX_TABLE, [
-    { field: "id", op: "eq", value: taskId },
-  ], {
-    next_attempt_at: new Date().toISOString(),
-  });
+  const expectedLeaseValue = await stopPrecommitLeaseHeartbeat(taskId);
+  const updated = expectedLeaseValue
+    ? await db.internal.update(OUTBOX_TABLE, [
+        { field: "id", op: "eq", value: taskId },
+        { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
+      ], {
+        next_attempt_at: new Date().toISOString(),
+      })
+    : 0;
+  if (updated === 0) {
+    // The pre-commit owner lost its lease or the claimed task was already
+    // removed. Publish a fresh ready task so a grant that commits after a
+    // stale drainer ran cannot disappear from the directory permanently.
+    await enqueuePermissionDirectorySync(
+      db,
+      context.mutation,
+      context.namespace,
+      context.regionId,
+    );
+  }
 }
 
 export async function deferFailedShareCompensation(
