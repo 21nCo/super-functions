@@ -12,6 +12,8 @@ import {
   type DatafnServer,
   type SearchProvider,
 } from "../src/index.js";
+import { drainPermissionDirectoryOutbox } from
+  "../src/execution/mutation/permission-directory-outbox.js";
 
 type TestContext = {
   ownerActorId: string | null;
@@ -271,6 +273,93 @@ describe("DataFn public-links plugin", () => {
       select: ["id"],
     }, tokenHeaders);
     expect(revokedRead.status).toBe(403);
+  });
+
+  it("keeps directory work pending until a public-link share is committed", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:public-links", directory };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: runtime.regionId,
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    let releasePermissionCreate!: () => void;
+    const permissionCreateReleased = new Promise<void>((resolve) => {
+      releasePermissionCreate = resolve;
+    });
+    let permissionCreateStarted!: () => void;
+    const permissionCreateReached = new Promise<void>((resolve) => {
+      permissionCreateStarted = resolve;
+    });
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:pending-link",
+        clientId: "public-link-pending",
+        mutationId: "public-link-pending-insert",
+        record: { id: "tag:pending-link", label: "Pending link" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+
+      const originalCreate = db.create.bind(db);
+      db.create = async (input) => {
+        if (input.model === "__datafn_permissions_global") {
+          permissionCreateStarted();
+          await permissionCreateReleased;
+        }
+        return originalCreate(input);
+      };
+
+      const creating = post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:pending-link",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+      await permissionCreateReached;
+
+      await expect(drainPermissionDirectoryOutbox(db, runtime))
+        .resolves.toEqual({ processed: 0, pending: 0 });
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(1);
+
+      releasePermissionCreate();
+      const created = await creating;
+      expect(created.status).toBe(200);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: `${readString(created.body.result.principalId)}#linkTag`,
+      });
+      expect(indexed.records).toHaveLength(1);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(0);
+    } finally {
+      releasePermissionCreate();
+      await server.close();
+    }
   });
 });
 

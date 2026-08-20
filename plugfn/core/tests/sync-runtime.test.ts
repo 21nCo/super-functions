@@ -293,6 +293,9 @@ describe('PlugFn sync runtime', () => {
     const [workerA] = await database.claimQueuedSyncJobs(1, 'worker-a', 30);
     await database.updateSyncJob(job.id, { updatedAt: new Date(Date.now() - 1_000) });
     const [workerB] = await database.claimQueuedSyncJobs(1, 'worker-b', 30);
+    expect(workerA.claimToken).toMatch(/^claim_[0-9a-f]{48}$/);
+    expect(workerA.claimToken).toHaveLength(54);
+    expect(workerB.claimToken).toMatch(/^claim_[0-9a-f]{48}$/);
     expect(workerA.claimToken).not.toBe(workerB.claimToken);
     await expect(database.updateClaimedSyncJob(job.id, workerA.claimToken!, { fetchedCount: 1 })).resolves.toBeNull();
     await expect(database.updateClaimedSyncJob(job.id, workerB.claimToken!, { fetchedCount: 2 }))

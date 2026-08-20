@@ -25,7 +25,10 @@ describe('PlugFn schema metadata', () => {
     expect(connections).toBeDefined();
     expect(connections!.fields.claimToken).toBeUndefined();
     expect(syncJobs).toBeDefined();
-    expect(syncJobs!.fields.claimToken).toMatchObject({ fieldName: 'claim_token' });
+    expect(syncJobs!.fields.claimToken).toMatchObject({
+      fieldName: 'claim_token',
+      maxLength: 64,
+    });
     expect(syncJobs!.indexes).toContainEqual({
       name: 'idx_plugfn_sync_jobs_claim_token',
       fields: ['claimToken'],

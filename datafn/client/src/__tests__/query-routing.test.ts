@@ -173,7 +173,7 @@ describe("Query routing", () => {
     )).resolves.toEqual(remoteResult);
   });
 
-  it("preserves local overlays for no-op cursors but not explicit offsets", async () => {
+  it("preserves local overlays for zero offsets and no-op cursors", async () => {
     const storage = new MemoryStorageAdapter(["tasks"]);
     await storage.upsertRecord("tasks", { id: "task:local", title: "Local" });
     await storage.setHydrationState("tasks", "hydrating");
@@ -203,9 +203,7 @@ describe("Query routing", () => {
       storage,
       [],
       schema,
-    )).resolves.toEqual({
-      data: [{ id: "task:remote", title: "Remote" }],
-    });
+    )).resolves.toEqual(expected);
     await expect(executeQuery(
       remote,
       { resource: "tasks", cursor: null } as any,

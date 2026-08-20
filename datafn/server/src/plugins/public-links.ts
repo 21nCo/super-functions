@@ -17,6 +17,7 @@ import {
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
+  markPermissionDirectorySyncReady,
 } from "../execution/mutation/permission-directory-outbox.js";
 
 export type DatafnPublicLinkShareLevel = "viewer" | "editor" | "owner";
@@ -630,59 +631,75 @@ async function createDatafnPublicLink(input: {
         id: validation.recordId ?? undefined,
         scope: validation.scope,
         shareWith: { principalId },
-      }, input.namespace, permissionDirectoryRuntime.regionId)
+      }, input.namespace, permissionDirectoryRuntime.regionId, { pending: true })
     : null;
 
-  await input.database.create({
-    model: input.modelName,
-    data: record as unknown as Record<string, unknown>,
-    namespace: input.namespace
-  });
-
-  const shareResult = await executeShare(
-    input.database,
-    {
-      resource: validation.resource,
-      id: validation.recordId ?? undefined,
-      scope: validation.scope,
-      shareWith: {
-        principalId,
-        level: validation.level
-      }
-    },
-    validation.capabilities,
-    input.namespace,
-    input.actorId,
-    undefined,
-    permissionDirectoryRuntime,
-  );
-  if (!shareResult.ok) {
-    await input.database.delete({
-      model: input.modelName,
-      where: [{ field: "id", operator: "eq", value: id }],
-      namespace: input.namespace
-    });
-    if (permissionDirectoryRuntime && permissionDirectoryTaskId) {
+  const settlePermissionDirectoryTask = async () => {
+    if (!permissionDirectoryRuntime || !permissionDirectoryTaskId) return;
+    try {
+      await markPermissionDirectorySyncReady(
+        input.database,
+        permissionDirectoryTaskId,
+      );
       await drainPermissionDirectorySync(
         input.database,
         permissionDirectoryTaskId,
         permissionDirectoryRuntime,
       );
-    }
-    throw new DatafnPublicLinkInputError(shareResult.message, shareResult.path);
-  }
-  if (permissionDirectoryRuntime) {
-    const reconciled = await drainPermissionDirectorySync(
-      input.database,
-      permissionDirectoryTaskId!,
-      permissionDirectoryRuntime,
-    );
-    if (!reconciled) {
+    } catch (error) {
+      // The task remains durable. A failed release stops its owner heartbeat,
+      // so the last lease eventually expires into the scheduled retry queue.
       console.warn("Public-link permission directory reconciliation deferred", {
+        error: String(error),
         operation: "public-link-permission-directory",
         taskId: permissionDirectoryTaskId,
       });
     }
+  };
+
+  let shareResult: Awaited<ReturnType<typeof executeShare>>;
+  try {
+    await input.database.create({
+      model: input.modelName,
+      data: record as unknown as Record<string, unknown>,
+      namespace: input.namespace
+    });
+
+    shareResult = await executeShare(
+      input.database,
+      {
+        resource: validation.resource,
+        id: validation.recordId ?? undefined,
+        scope: validation.scope,
+        shareWith: {
+          principalId,
+          level: validation.level
+        }
+      },
+      validation.capabilities,
+      input.namespace,
+      input.actorId,
+      undefined,
+      permissionDirectoryRuntime,
+    );
+  } catch (error) {
+    await settlePermissionDirectoryTask();
+    throw error;
+  }
+  if (!shareResult.ok) {
+    try {
+      await input.database.delete({
+        model: input.modelName,
+        where: [{ field: "id", operator: "eq", value: id }],
+        namespace: input.namespace
+      });
+    } finally {
+      await settlePermissionDirectoryTask();
+    }
+    throw new DatafnPublicLinkInputError(shareResult.message, shareResult.path);
+  }
+  if (permissionDirectoryRuntime) {
+    await settlePermissionDirectoryTask();
   } else {
     await syncDatafnPermissionGrantAfterCommit(
       input.database,

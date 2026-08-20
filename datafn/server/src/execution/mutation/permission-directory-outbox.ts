@@ -8,6 +8,38 @@ import { syncDatafnPermissionGrantAfterCommit } from "./share.js";
 
 const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
 const PRECOMMIT_TASK_LEASE_MS = 5 * 60 * 1000;
+const PRECOMMIT_TASK_RENEWAL_MS = Math.floor(PRECOMMIT_TASK_LEASE_MS / 3);
+const precommitLeaseHeartbeats = new Map<
+  string,
+  ReturnType<typeof setInterval>
+>();
+
+function nextPrecommitLeaseExpiry(): string {
+  return new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString();
+}
+
+function stopPrecommitLeaseHeartbeat(taskId: string): void {
+  const heartbeat = precommitLeaseHeartbeats.get(taskId);
+  if (!heartbeat) return;
+  clearInterval(heartbeat);
+  precommitLeaseHeartbeats.delete(taskId);
+}
+
+function startPrecommitLeaseHeartbeat(db: Adapter, taskId: string): void {
+  stopPrecommitLeaseHeartbeat(taskId);
+  const heartbeat = setInterval(() => {
+    void db.internal.update(OUTBOX_TABLE, [
+      { field: "id", op: "eq", value: taskId },
+    ], {
+      next_attempt_at: nextPrecommitLeaseExpiry(),
+    }).catch(() => {
+      // Keep trying while the owner is alive. If it crashes or cannot renew,
+      // the last persisted lease expires and another drainer can recover it.
+    });
+  }, PRECOMMIT_TASK_RENEWAL_MS);
+  heartbeat.unref?.();
+  precommitLeaseHeartbeats.set(taskId, heartbeat);
+}
 
 export interface PermissionDirectorySyncMutation {
   operation: string;
@@ -31,7 +63,7 @@ export async function enqueuePermissionDirectorySync(
   const id = randomUUID();
   const now = new Date().toISOString();
   const nextAttemptAt = options.pending
-    ? new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString()
+    ? nextPrecommitLeaseExpiry()
     : now;
   await db.internal.create(OUTBOX_TABLE, {
     id,
@@ -43,6 +75,12 @@ export async function enqueuePermissionDirectorySync(
     next_attempt_at: nextAttemptAt,
     created_at: now,
   });
+  if (options.pending) {
+    // A renewable owner lease keeps background drainers away for operations
+    // of any duration. Process death stops renewal, making the durable task
+    // recoverable once the last lease expires.
+    startPrecommitLeaseHeartbeat(db, id);
+  }
   return id;
 }
 
@@ -50,6 +88,7 @@ export async function markPermissionDirectorySyncReady(
   db: Adapter,
   taskId: string,
 ): Promise<void> {
+  stopPrecommitLeaseHeartbeat(taskId);
   await db.internal.update(OUTBOX_TABLE, [
     { field: "id", op: "eq", value: taskId },
   ], {
@@ -66,8 +105,14 @@ export async function drainPermissionDirectorySync(
   const task = await db.internal.findOne(OUTBOX_TABLE, [
     { field: "id", op: "eq", value: taskId },
   ]);
-  if (!task) return true;
+  if (!task) {
+    stopPrecommitLeaseHeartbeat(taskId);
+    return true;
+  }
   if (String(task.region_id) !== runtime.regionId) return false;
+  // Explicit drains happen only after the originating operation settles, or
+  // after a crashed owner's renewable lease expires in the background queue.
+  stopPrecommitLeaseHeartbeat(taskId);
 
   try {
     const mutation = JSON.parse(String(task.mutation)) as PermissionDirectorySyncMutation;

@@ -37,7 +37,11 @@ function fieldTypeToSQL(field: FieldSchema, dialect: Dialect): string {
     case 'mysql':
       switch (baseType) {
         case 'string':
-          return 'TEXT';
+          return typeof field.maxLength === 'number' &&
+            Number.isInteger(field.maxLength) &&
+            field.maxLength > 0
+            ? `VARCHAR(${field.maxLength})`
+            : 'TEXT';
         case 'number':
           return 'INT';
         case 'bigint':

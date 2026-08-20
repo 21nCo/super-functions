@@ -230,6 +230,14 @@ function mapFieldToDrizzle(
 
   switch (field.type) {
     case 'string':
+      if (
+        dialect === 'mysql' &&
+        typeof field.maxLength === 'number' &&
+        Number.isInteger(field.maxLength) &&
+        field.maxLength > 0
+      ) {
+        return { type: 'varchar', config: `{ length: ${field.maxLength} }` };
+      }
       return { type: 'text' };
     case 'number':
       return { type: 'integer' };

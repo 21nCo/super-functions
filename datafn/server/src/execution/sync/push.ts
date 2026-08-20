@@ -1231,10 +1231,10 @@ export async function executePush(
           changeTrackingFailed = true;
         }
 
+        await reconcilePermissionDirectoryAfterSettlement(true);
         if (changeTrackingFailed) {
           await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
         } else {
-          await reconcilePermissionDirectoryAfterSettlement(true);
           await recordMutationSuccess(mut);
         }
       } else {

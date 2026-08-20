@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
@@ -1024,6 +1024,43 @@ describe("share SPV2 mutation semantics", () => {
       "__datafn_permission_directory_outbox",
       [],
     )).resolves.toHaveLength(0);
+  });
+
+  it("renews a pre-commit lease for operations longer than the recovery window", async () => {
+    vi.useFakeTimers();
+    try {
+      const localDb = memoryAdapter();
+      await localDb.initialize();
+      const directory = createMemoryIndexedDirectoryStore();
+      const runtime = { regionId: "region:test", directory };
+      const taskId = await enqueuePermissionDirectorySync(localDb, {
+        operation: "unshare",
+        resource: "notes",
+        id: "note:long-running",
+        shareWith: { principalId: "user:partner" },
+      }, namespace, runtime.regionId, { pending: true });
+      const initial = await localDb.internal.findOne(
+        "__datafn_permission_directory_outbox",
+        [{ field: "id", op: "eq", value: taskId }],
+      );
+
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+
+      const renewed = await localDb.internal.findOne(
+        "__datafn_permission_directory_outbox",
+        [{ field: "id", op: "eq", value: taskId }],
+      );
+      expect(Date.parse(String(renewed?.next_attempt_at)))
+        .toBeGreaterThan(Date.parse(String(initial?.next_attempt_at)));
+      await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+        .resolves.toEqual({ processed: 0, pending: 0 });
+
+      await markPermissionDirectorySyncReady(localDb, taskId);
+      await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+        .resolves.toEqual({ processed: 1, pending: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not commit a non-transactional push share when its retry cannot be persisted", async () => {

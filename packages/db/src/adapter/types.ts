@@ -203,6 +203,8 @@ export interface FieldSchema {
   type: 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'json' | 'bigint';
   required?: boolean;
   unique?: boolean;
+  /** Maximum stored string length. MySQL migrations emit VARCHAR(length). */
+  maxLength?: number;
   defaultValue?: any;
   /**
    * Runtime value shape expected by the library for `date`/`datetime` fields.

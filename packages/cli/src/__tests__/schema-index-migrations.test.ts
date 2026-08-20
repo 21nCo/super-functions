@@ -7,12 +7,18 @@ import {
 } from "../utils/generators.js";
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
 import { introspectSQLite } from "../utils/introspection.js";
+import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
 
 const syncJobs = {
   modelName: "syncJobs",
   fields: {
     id: { type: "string", required: true, fieldName: "id" },
-    claimToken: { type: "string", required: false, fieldName: "claim_token" },
+    claimToken: {
+      type: "string",
+      required: false,
+      fieldName: "claim_token",
+      maxLength: 64,
+    },
   },
   indexes: [
     { name: "plugfn_sync_jobs_claim_token_idx", fields: ["claimToken"], unique: true },
@@ -146,10 +152,12 @@ describe("schema index migrations", () => {
     ]);
 
     const plan = createMigrationPlan("plugfn", 5, 6, diffs);
-    expect(() => generateDrizzleMigration(plan, [syncJobs], "mysql"))
-      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
-    expect(() => generateKyselyMigration(plan, [syncJobs], "mysql"))
-      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+    const mysqlIndex =
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);";
+    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content)
+      .toContain(mysqlIndex);
+    expect(generateKyselyMigration(plan, [syncJobs], "mysql").content)
+      .toContain(mysqlIndex);
   });
 
   it("emits missing indexes for SQL and Kysely migrations", () => {
@@ -175,8 +183,9 @@ describe("schema index migrations", () => {
       generatePrismaMigration,
       generateKyselyMigration,
     ]) {
-      expect(() => generate(plan, [syncJobs], "mysql"))
-        .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+      expect(generate(plan, [syncJobs], "mysql").content).toContain(
+        "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
+      );
     }
   });
 
@@ -199,14 +208,57 @@ describe("schema index migrations", () => {
   });
 
   it("rejects unique MySQL indexes on unbounded TEXT columns", () => {
+    const unboundedSyncJobs = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+        },
+      },
+    } as unknown as TableSchema;
     const plan = createMigrationPlan("plugfn", 0, 1, [{
       tableName: "plugfn_sync_jobs",
       action: "create",
     }]);
-    expect(() => generateDrizzleMigration(plan, [syncJobs], "mysql"))
+    expect(() => generateDrizzleMigration(plan, [unboundedSyncJobs], "mysql"))
       .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
-    expect(() => generatePrismaMigration(plan, [syncJobs], "mysql"))
+    expect(() => generatePrismaMigration(plan, [unboundedSyncJobs], "mysql"))
       .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+  });
+
+  it("creates bounded MySQL claim tokens with full-value uniqueness", () => {
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_sync_jobs",
+      action: "create",
+    }]);
+    for (const generate of [generateDrizzleMigration, generatePrismaMigration]) {
+      const content = generate(plan, [syncJobs], "mysql").content;
+      expect(content).toContain("claim_token VARCHAR(64)");
+      expect(content).toContain(
+        "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
+      );
+      expect(content).not.toContain("claim_token(191)");
+    }
+    const kysely = generateKyselyMigration(plan, [syncJobs], "mysql").content;
+    expect(kysely).toContain("addColumn('claim_token', 'varchar(64)'");
+    expect(kysely).toContain(
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
+    );
+    const drizzleSchema = generateDrizzleSchemaFile(
+      { version: 6, schemas: [syncJobs] },
+      "plugfn",
+      "plugfn",
+      "mysql",
+    );
+    expect(drizzleSchema).toContain(
+      "claimToken: varchar('claim_token', { length: 64 })",
+    );
+    expect(drizzleSchema).toContain(
+      "uniqueIndex('plugfn_sync_jobs_claim_token_idx').on(table.claimToken)",
+    );
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
