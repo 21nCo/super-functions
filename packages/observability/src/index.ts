@@ -480,7 +480,9 @@ export function instrumentMethods<TTarget extends object>(
           const then = readThen(result);
           if (then) {
             const assimilated = new Promise<unknown>((resolve, reject) => {
-              then.call(result, resolve, reject);
+              void Promise.resolve()
+                .then(() => Reflect.apply(then, result, [resolve, reject]))
+                .catch(reject);
             });
             return assimilated.then(
               (resolved) => {

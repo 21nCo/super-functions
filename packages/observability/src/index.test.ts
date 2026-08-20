@@ -84,6 +84,45 @@ describe("superfunction observability", () => {
     expect(reads).toBe(1);
   });
 
+  it("assimilates thenables whose callable then shadows Function.call", async () => {
+    const observability = createObservability({ service: "test-service" });
+    const then = (resolve: (value: string) => void) => resolve("loaded");
+    Object.defineProperty(then, "call", { value: null });
+    const observed = instrumentMethods({
+      target: { load: () => ({ then }) },
+      observability,
+      kind: "db",
+      component: "test.db",
+    });
+
+    await expect(observed.load()).resolves.toBe("loaded");
+  });
+
+  it("defers custom thenable execution until after the instrumented call returns", async () => {
+    const observability = createObservability({ service: "test-service" });
+    let callReturned = false;
+    let invokedAfterReturn = false;
+    const observed = instrumentMethods({
+      target: {
+        load: () => ({
+          then(resolve: (value: string) => void) {
+            invokedAfterReturn = callReturned;
+            resolve("loaded");
+          },
+        }),
+      },
+      observability,
+      kind: "db",
+      component: "test.db",
+    });
+
+    const result = observed.load();
+    callReturned = true;
+
+    await expect(result).resolves.toBe("loaded");
+    expect(invokedAfterReturn).toBe(true);
+  });
+
   it("shares active request state across child scopes", async () => {
     const observability = createObservability({
       service: "test-service",

@@ -95,9 +95,19 @@ function readTwoFactorEncryptionKey(): Buffer {
     throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must be configured');
   }
 
-  const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32 || key.toString('base64') !== encoded) {
-    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes');
+  const normalized = encoded.replace(/\s+/g, '');
+  const unpadded = normalized.replace(/=+$/, '');
+  const hasValidAlphabet = /^[A-Za-z0-9+/]+={0,2}$/.test(normalized);
+  const hasValidLength = normalized.length % 4 !== 1;
+  const padded = unpadded.padEnd(Math.ceil(unpadded.length / 4) * 4, '=');
+  const key = Buffer.from(padded, 'base64');
+  if (
+    !hasValidAlphabet ||
+    !hasValidLength ||
+    key.length !== 32 ||
+    key.toString('base64').replace(/=+$/, '') !== unpadded
+  ) {
+    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must be valid base64 encoding of exactly 32 bytes');
   }
   return key;
 }

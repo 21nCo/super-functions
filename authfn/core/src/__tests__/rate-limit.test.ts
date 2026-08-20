@@ -119,6 +119,8 @@ describe('authfn rate limiting', () => {
     config.rateLimit!.policies!.account = { ipLimit: 1, windowSeconds: 60 };
     config.rateLimit!.resolveClientIp = (request) => request.headers.get('x-test-client-ip') ?? undefined;
 
+    // Must fill exactly MAX_LOCAL_RATE_LIMIT_WINDOWS (10_000) distinct windows
+    // in core/rate-limit.ts; one more would trip fail-closed mid-loop.
     for (let i = 0; i < 10_000; i += 1) {
       await expect(callRateLimitedRoute(config, '/auth/account', {
         'x-test-client-ip': `198.51.${Math.floor(i / 256)}.${i % 256}`
