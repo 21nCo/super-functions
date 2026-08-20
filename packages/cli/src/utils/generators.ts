@@ -249,14 +249,30 @@ function generateCreateIndexSQL(
   index: { name: string; columns: string[]; unique: boolean },
   dialect: Dialect,
   schema?: TableSchema,
+  knownTextColumns: readonly string[] = [],
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
+  const mysqlTextColumns = new Set(knownTextColumns);
+  if (dialect === 'mysql' && schema) {
+    for (const column of index.columns) {
+      const field = Object.entries(schema.fields).find(
+        ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
+      )?.[1];
+      if (field && fieldTypeToSQL(field, dialect) === 'TEXT') {
+        mysqlTextColumns.add(column);
+      }
+    }
+  }
+  if (dialect === 'mysql' && index.unique) {
+    const unsafeColumns = index.columns.filter((column) => mysqlTextColumns.has(column));
+    if (unsafeColumns.length > 0) {
+      throw new Error(
+        `Cannot generate unique MySQL index ${index.name} on unbounded TEXT column(s): ${unsafeColumns.join(', ')}`,
+      );
+    }
+  }
   const columns = index.columns.map((column) => {
-    if (dialect !== 'mysql' || !schema) return column;
-    const field = Object.entries(schema.fields).find(
-      ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
-    )?.[1];
-    return field && fieldTypeToSQL(field, dialect) === 'TEXT'
+    return dialect === 'mysql' && mysqlTextColumns.has(column)
       ? `${column}(191)`
       : column;
   });
@@ -286,9 +302,10 @@ function generateKyselyCreateIndex(
   index: { name: string; columns: string[]; unique: boolean },
   dialect: Dialect,
   schema: TableSchema,
+  knownTextColumns: readonly string[] = [],
 ): string {
   if (dialect === 'mysql') {
-    return `  await sql\`${generateCreateIndexSQL(tableName, index, dialect, schema)}\`.execute(db);`;
+    return `  await sql\`${generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns)}\`.execute(db);`;
   }
   const unique = index.unique ? `.unique()` : '';
   return `  await db.schema.createIndex('${index.name}').on('${tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`;
@@ -531,6 +548,7 @@ export function generateKyselyMigration(
           { name: index.name, ...index.current },
           dialect,
           schema,
+          index.current.textColumns,
         ));
       }
       // Rollbacks must remove dependent indexes before their newly added

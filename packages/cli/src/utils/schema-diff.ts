@@ -116,7 +116,7 @@ export interface TableDiff {
   }>;
   changedIndexes?: Array<{
     name: string;
-    current: { columns: string[]; unique: boolean };
+    current: { columns: string[]; unique: boolean; textColumns?: string[] };
     required: { columns: string[]; unique: boolean };
   }>;
 }
@@ -219,11 +219,20 @@ export function diffTables(
           (column, index) => column === requiredIndex.columns[index],
         );
       if (sameColumns && currentIndex.isUnique === requiredIndex.unique) return [];
+      const currentTextColumns = currentIndex.columns.filter((column) => {
+        const currentColumn = curTable.columns.find(
+          (candidate) => candidate.columnName === column,
+        );
+        return currentColumn
+          ? normalizeColumnType(currentColumn.dataType) === 'text'
+          : false;
+      });
       return [{
         name: requiredIndex.name,
         current: {
           columns: [...currentIndex.columns],
           unique: currentIndex.isUnique,
+          ...(currentTextColumns.length > 0 ? { textColumns: currentTextColumns } : {}),
         },
         required: {
           columns: [...requiredIndex.columns],

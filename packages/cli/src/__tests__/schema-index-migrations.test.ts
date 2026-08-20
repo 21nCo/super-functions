@@ -6,6 +6,7 @@ import {
   generatePrismaMigration,
 } from "../utils/generators.js";
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
+import { introspectSQLite } from "../utils/introspection.js";
 
 const syncJobs = {
   modelName: "syncJobs",
@@ -19,6 +20,41 @@ const syncJobs = {
 } as unknown as TableSchema;
 
 describe("schema index migrations", () => {
+  it("preserves SQLite index uniqueness during introspection", async () => {
+    const db = {
+      all: async (query: string, params: unknown[]) => {
+        if (query.includes("FROM sqlite_master") && query.includes("type = 'table'")) {
+          return [{ table_name: "plugfn_sync_jobs" }];
+        }
+        if (query.includes("PRAGMA table_info")) {
+          return [
+            { name: "id", type: "TEXT", notnull: 1, dflt_value: null, pk: 1 },
+            { name: "claim_token", type: "TEXT", notnull: 0, dflt_value: null, pk: 0 },
+          ];
+        }
+        if (query.includes("pragma_index_list")) {
+          expect(params).toEqual(["plugfn_sync_jobs"]);
+          return [{ name: "plugfn_sync_jobs_claim_token_idx", is_unique: 1 }];
+        }
+        if (query.includes("pragma_index_info")) {
+          expect(params).toEqual(["plugfn_sync_jobs_claim_token_idx"]);
+          return [{ name: "claim_token", seqno: 0 }];
+        }
+        throw new Error(`Unexpected query: ${query}`);
+      },
+    };
+
+    const [table] = await introspectSQLite(db);
+
+    expect(table.indexes).toEqual([{
+      name: "plugfn_sync_jobs_claim_token_idx",
+      tableName: "plugfn_sync_jobs",
+      columns: ["claim_token"],
+      isUnique: true,
+    }]);
+    expect(diffTables([syncJobs], [table], "plugfn")).toEqual([]);
+  });
+
   it("detects a required index missing from an existing table", () => {
     const diffs = diffTables(
       [syncJobs],
@@ -103,27 +139,17 @@ describe("schema index migrations", () => {
       expect.objectContaining({
         changedIndexes: [{
           name: "plugfn_sync_jobs_claim_token_idx",
-          current: { columns: ["id"], unique: false },
+          current: { columns: ["id"], unique: false, textColumns: ["id"] },
           required: { columns: ["claim_token"], unique: true },
         }],
       }),
     ]);
 
     const plan = createMigrationPlan("plugfn", 5, 6, diffs);
-    const mysqlSql = generateDrizzleMigration(plan, [syncJobs], "mysql").content;
-    expect(mysqlSql).toContain(
-      "DROP INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs;",
-    );
-    expect(mysqlSql).toContain(
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));",
-    );
-    const kysely = generateKyselyMigration(plan, [syncJobs], "mysql").content;
-    expect(kysely).toContain(
-      "dropIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').execute()",
-    );
-    expect(kysely).toContain(
-      "sql`CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));`.execute(db)",
-    );
+    expect(() => generateDrizzleMigration(plan, [syncJobs], "mysql"))
+      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+    expect(() => generateKyselyMigration(plan, [syncJobs], "mysql"))
+      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
   });
 
   it("emits missing indexes for SQL and Kysely migrations", () => {
@@ -144,16 +170,14 @@ describe("schema index migrations", () => {
       "createIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').columns([\"claim_token\"]).unique().execute()",
     );
 
-    const mysqlIndex =
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));";
-    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
-    expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(mysqlIndex);
-    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).not.toContain(
-      "INDEX IF NOT EXISTS",
-    );
-    expect(generateKyselyMigration(plan, [syncJobs], "mysql").content).toContain(
-      "dropIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').execute()",
-    );
+    for (const generate of [
+      generateDrizzleMigration,
+      generatePrismaMigration,
+      generateKyselyMigration,
+    ]) {
+      expect(() => generate(plan, [syncJobs], "mysql"))
+        .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+    }
   });
 
   it("drops a new index before its indexed column in Kysely rollbacks", () => {
@@ -174,15 +198,67 @@ describe("schema index migrations", () => {
       .toBeLessThan(down.indexOf("dropColumn('claim_token')"));
   });
 
-  it("emits dialect-valid indexes when creating a MySQL table", () => {
+  it("rejects unique MySQL indexes on unbounded TEXT columns", () => {
     const plan = createMigrationPlan("plugfn", 0, 1, [{
       tableName: "plugfn_sync_jobs",
       action: "create",
     }]);
-    const expected =
-      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token(191));";
+    expect(() => generateDrizzleMigration(plan, [syncJobs], "mysql"))
+      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+    expect(() => generatePrismaMigration(plan, [syncJobs], "mysql"))
+      .toThrow("Cannot generate unique MySQL index plugfn_sync_jobs_claim_token_idx on unbounded TEXT column(s): claim_token");
+  });
 
-    expect(generateDrizzleMigration(plan, [syncJobs], "mysql").content).toContain(expected);
-    expect(generatePrismaMigration(plan, [syncJobs], "mysql").content).toContain(expected);
+  it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
+    const replacementSchema = {
+      modelName: "jobs",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id" },
+        sequence: { type: "number", required: false, fieldName: "sequence" },
+      },
+      indexes: [{ name: "jobs_lookup_idx", fields: ["sequence"] }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_jobs",
+      columns: [
+        {
+          tableName: "plugfn_jobs",
+          columnName: "id",
+          dataType: "text",
+          isNullable: false,
+          defaultValue: null,
+          isPrimaryKey: true,
+          isUnique: true,
+        },
+        {
+          tableName: "plugfn_jobs",
+          columnName: "legacy_note",
+          dataType: "text",
+          isNullable: true,
+          defaultValue: null,
+          isPrimaryKey: false,
+          isUnique: false,
+        },
+      ],
+      indexes: [{
+        name: "jobs_lookup_idx",
+        tableName: "plugfn_jobs",
+        columns: ["legacy_note"],
+        isUnique: false,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].changedIndexes?.[0].current.textColumns)
+      .toEqual(["legacy_note"]);
+    const content = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [replacementSchema],
+      "mysql",
+    ).content;
+    const down = content.slice(content.indexOf("export async function down"));
+    expect(down).toContain(
+      "CREATE INDEX jobs_lookup_idx ON plugfn_jobs (legacy_note(191));",
+    );
   });
 });

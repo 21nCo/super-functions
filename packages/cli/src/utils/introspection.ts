@@ -254,18 +254,21 @@ export async function introspectSQLite(
 
     // Query indexes
     const indexesQuery = await db.all(
-      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?`,
+      `SELECT name, "unique" AS is_unique FROM pragma_index_list(?)`,
       [table_name]
     );
 
     const indexes: DatabaseIndex[] = [];
-    for (const { name } of indexesQuery) {
-      const indexInfo = await db.all(`PRAGMA index_info(${name})`);
+    for (const { name, is_unique } of indexesQuery) {
+      const indexInfo = await db.all(
+        `SELECT name, seqno FROM pragma_index_info(?) ORDER BY seqno`,
+        [name],
+      );
       indexes.push({
         name,
         tableName: table_name,
         columns: indexInfo.map((i: any) => i.name),
-        isUnique: false, // Would need index_list to determine
+        isUnique: Number(is_unique) === 1,
       });
     }
 
