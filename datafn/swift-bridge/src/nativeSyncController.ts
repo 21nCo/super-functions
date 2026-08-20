@@ -7,9 +7,10 @@ import type {
 import type { DatafnEnvelope } from "@datafn/core";
 import {
   DATAFN_BRIDGE_PROTOCOL,
+  beginBridgeCapabilityNegotiation,
+  completeBridgeCapabilityNegotiation,
   createBridgeError,
   nextBridgeRequestId,
-  recordNegotiatedBridgeCapabilities,
   requestBridgeMethod,
   type DatafnBridgeBus,
   type NativeBridgeMarker,
@@ -52,7 +53,7 @@ export function createNativeSyncController(
       // Capabilities belong to one successful handshake. Clear any prior
       // negotiation before contacting a host that may have restarted or been
       // replaced with an older bridge implementation.
-      recordNegotiatedBridgeCapabilities(bus, []);
+      const negotiationGeneration = beginBridgeCapabilityNegotiation(bus);
       const response = await bus.request({
         protocol: DATAFN_BRIDGE_PROTOCOL,
         id: nextBridgeRequestId(),
@@ -64,8 +65,9 @@ export function createNativeSyncController(
         return { ok: false, error: response.error };
       }
 
-      recordNegotiatedBridgeCapabilities(
+      completeBridgeCapabilityNegotiation(
         bus,
+        negotiationGeneration,
         (response.result as Partial<DatafnNativeHandshakeResult> | undefined)
           ?.capabilities,
       );

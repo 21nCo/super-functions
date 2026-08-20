@@ -5,6 +5,7 @@ import {
   createNativeBackedStorageAdapter,
   createNativeSyncController,
   createWKWebViewBridgeBus,
+  type DatafnBridgeBus,
 } from "../src/index.js";
 
 type BridgeRequest = {
@@ -156,6 +157,65 @@ describe("@datafn/swift-bridge native sync controller", () => {
       remoteMode: "datafn-server",
     });
     expect(storage.capabilities?.atomicMergeIfMissing).toBe(false);
+  });
+
+  it("ignores stale capability results from overlapping handshakes", async () => {
+    const pending: Array<{
+      message: BridgeRequest;
+      resolve: (response: any) => void;
+    }> = [];
+    const bus: DatafnBridgeBus = {
+      __datafnNativeBacked: true,
+      request(message) {
+        return new Promise((resolve) => {
+          pending.push({ message, resolve });
+        });
+      },
+      subscribe() {
+        return () => {};
+      },
+    };
+    const storage = createNativeBackedStorageAdapter(bus);
+    const controller = createNativeSyncController(bus);
+    const handshake = (clientId: string) => controller.handshake({
+      schemaHash: "abc123",
+      namespace: "org-1:user-1",
+      clientId,
+      remoteMode: "datafn-server",
+    });
+    const stale = handshake("device-stale");
+    const latest = handshake("device-latest");
+    expect(pending).toHaveLength(2);
+
+    const respond = (
+      request: (typeof pending)[number],
+      capabilities: string[],
+    ) => request.resolve({
+      protocol: DATAFN_BRIDGE_PROTOCOL,
+      id: request.message.id,
+      ok: true,
+      result: {
+        bridgeVersion: 1,
+        schemaHash: request.message.payload.schemaHash,
+        namespace: request.message.payload.namespace,
+        storageBackend: "coredata",
+        syncOwner: "native",
+        remoteMode: request.message.payload.remoteMode,
+        indexedDbDisabled: true,
+        capabilities,
+      },
+    });
+
+    respond(pending[1], [
+      "storage",
+      DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
+    ]);
+    await latest;
+    expect(storage.capabilities?.atomicMergeIfMissing).toBe(true);
+
+    respond(pending[0], ["storage"]);
+    await stale;
+    expect(storage.capabilities?.atomicMergeIfMissing).toBe(true);
   });
 
   it("TV-BRG-003N: handshake fails fast when namespace is missing", async () => {

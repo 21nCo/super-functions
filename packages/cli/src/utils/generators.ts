@@ -362,12 +362,12 @@ function generateAlterTableSQL(
   const statements: string[] = [];
 
   if (dialect === 'mysql') {
-    for (const index of [
-      ...(diff.changedIndexes ?? []),
-      ...(diff.rebuiltIndexes ?? []),
-    ]) {
+    for (const index of diff.changedIndexes ?? []) {
       statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
     }
+  }
+  for (const index of diff.rebuiltIndexes ?? []) {
+    statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
   }
 
   // Add missing columns
@@ -821,14 +821,18 @@ export function generateKyselyMigration(
         }
       }
       if (dialect === 'mysql') {
-        for (const index of [
-          ...(diff.changedIndexes ?? []),
-          ...(diff.rebuiltIndexes ?? []),
-        ]) {
+        for (const index of diff.changedIndexes ?? []) {
           upStatements.push(
             `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`,
           );
         }
+      }
+      for (const index of diff.rebuiltIndexes ?? []) {
+        upStatements.push(
+          dialect === 'mysql'
+            ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
+            : `  await db.schema.dropIndex('${index.name}').execute();`,
+        );
       }
       for (const change of diff.columnChanges ?? []) {
         if (!schema) continue;
@@ -894,7 +898,9 @@ export function generateKyselyMigration(
           schema,
         ));
         downStatements.push(
-          `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`,
+          dialect === 'mysql'
+            ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
+            : `  await db.schema.dropIndex('${index.name}').execute();`,
         );
         restoreRebuiltIndexes.push(generateKyselyCreateIndex(
           diff.tableName,

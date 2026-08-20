@@ -701,6 +701,26 @@ describe("schema index migrations", () => {
     expect(kysely.indexOf(create)).toBeGreaterThan(kysely.indexOf(alter));
   });
 
+  it("uses dialect-correct Kysely drops for explicit rebuilt-index plans", () => {
+    const plan = createMigrationPlan("plugfn", 5, 6, [{
+      tableName: "plugfn_sync_jobs",
+      action: "alter",
+      rebuiltIndexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        current: { columns: ["claim_token"], unique: true },
+        required: { columns: ["claim_token"], unique: true },
+      }],
+    }]);
+
+    const content = generateKyselyMigration(plan, [syncJobs], "postgres").content;
+    expect(content).toContain(
+      "dropIndex('plugfn_sync_jobs_claim_token_idx').execute()",
+    );
+    expect(content).not.toContain(
+      "dropIndex('plugfn_sync_jobs_claim_token_idx').on(",
+    );
+  });
+
   it("preserves desired and prior defaults plus the complete MySQL rollback type", () => {
     const withDefault = {
       ...syncJobs,
