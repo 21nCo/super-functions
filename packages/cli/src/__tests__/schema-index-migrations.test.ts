@@ -6,7 +6,11 @@ import {
   generatePrismaMigration,
 } from "../utils/generators.js";
 import { createMigrationPlan, diffTables } from "../utils/schema-diff.js";
-import { introspectMySQL, introspectSQLite } from "../utils/introspection.js";
+import {
+  introspectMySQL,
+  introspectPostgres,
+  introspectSQLite,
+} from "../utils/introspection.js";
 import { generateDrizzleSchemaFile } from "../utils/schema-generators.js";
 import { hasUnsafeMySqlMetadataSyntax } from "../utils/mysql-types.js";
 
@@ -27,6 +31,35 @@ const syncJobs = {
 } as unknown as TableSchema;
 
 describe("schema index migrations", () => {
+  it("scopes PostgreSQL index relations to the requested schema", async () => {
+    let indexQuery = "";
+    let indexParams: unknown[] = [];
+    const db = {
+      query: async (query: string, params: unknown[]) => {
+        if (query.includes("information_schema.tables")) {
+          return { rows: [{ table_name: "sync_jobs" }] };
+        }
+        if (query.includes("information_schema.columns")) {
+          return { rows: [] };
+        }
+        if (query.includes("FROM pg_indexes")) {
+          indexQuery = query;
+          indexParams = params;
+          return { rows: [] };
+        }
+        throw new Error(`Unexpected query: ${query}`);
+      },
+    };
+
+    await introspectPostgres(db, "tenant_a");
+
+    expect(indexQuery).toContain(
+      "JOIN pg_namespace index_ns ON index_ns.oid = c.relnamespace",
+    );
+    expect(indexQuery).toContain("AND index_ns.nspname = $1");
+    expect(indexParams).toEqual(["tenant_a", "sync_jobs"]);
+  });
+
   it("reads MySQL visibility from EXTRA and preserves index prefixes", async () => {
     const db = {
       query: async (query: string) => {

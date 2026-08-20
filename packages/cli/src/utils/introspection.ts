@@ -121,9 +121,11 @@ export async function introspectPostgres(
         ix.indisunique as is_unique
       FROM pg_indexes i
       JOIN pg_class c ON c.relname = i.indexname
+      JOIN pg_namespace index_ns ON index_ns.oid = c.relnamespace
       JOIN pg_index ix ON ix.indexrelid = c.oid
       JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = ANY(ix.indkey)
       WHERE i.schemaname = $1 
+        AND index_ns.nspname = $1
         AND i.tablename = $2
       GROUP BY i.indexname, i.tablename, ix.indisunique
     `;

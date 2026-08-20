@@ -124,6 +124,23 @@ describe("validateSchema", () => {
     }
   });
 
+  it("rejects a resource idPrefix that normalizes to empty", () => {
+    const result = validateSchema({
+      resources: [
+        { name: "documents", version: 1, idPrefix: ":", fields: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.message).toContain("must not normalize to empty");
+      expect(result.error.details).toEqual({
+        path: "resources.documents.idPrefix",
+      });
+    }
+  });
+
   it("rejects duplicate field names within a resource", () => {
     const input = {
       resources: [

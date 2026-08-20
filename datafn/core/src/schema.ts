@@ -293,6 +293,13 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     const normalizedIdPrefix = effectiveIdPrefix.endsWith(":")
       ? effectiveIdPrefix.slice(0, -1)
       : effectiveIdPrefix;
+    if (normalizedIdPrefix.length === 0) {
+      return err(
+        "SCHEMA_INVALID",
+        "Invalid schema: resource.idPrefix must not normalize to empty",
+        { path: `resources.${r.name}.idPrefix` },
+      );
+    }
     const conflictingResource = normalizedIdPrefixes.get(normalizedIdPrefix);
     if (conflictingResource !== undefined) {
       return err(
