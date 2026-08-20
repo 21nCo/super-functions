@@ -383,6 +383,45 @@ describe("Offline Mutation Tests", () => {
     });
   });
 
+  it("offline merge preserves create defaults for legacy three-argument storage adapters", async () => {
+    const storage = new MockStorageAdapter();
+    const timestampMs = 1_726_000_000_000;
+    const schemaWithCreateFields = {
+      capabilities: ["timestamps", "audit"],
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithCreateFields,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:legacy-merge",
+      storage,
+      getTimestamp: () => timestampMs,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:new",
+      record: { title: "Created by merge" },
+    });
+
+    await expect(storage.getRecord("task", "task:new")).resolves.toMatchObject({
+      id: "task:new",
+      title: "Created by merge",
+      status: "open",
+      createdAt: timestampMs,
+      updatedAt: timestampMs,
+      createdBy: "client:legacy-merge",
+      updatedBy: "client:legacy-merge",
+    });
+  });
+
   it("TV-OFFLINE-MUT-002: If changelog append fails, mutation fails", async () => {
     const storage = new MockStorageAdapter();
     storage.failChangelogAppend = true;

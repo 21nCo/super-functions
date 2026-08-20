@@ -800,9 +800,22 @@ export async function applyOptimisticMutationToStorage(
         existingRecord: null,
       },
     );
-    await storage.mergeRecord(resource, id, optimisticPatch, {
-      ifMissing: optimisticCreate,
-    });
+    if (storage.mergeRecord.length >= 4) {
+      await storage.mergeRecord(resource, id, optimisticPatch, {
+        ifMissing: optimisticCreate,
+      });
+    } else {
+      // DatafnStorageAdapter implementations written before the optional
+      // ifMissing argument remain structurally compatible with the interface.
+      // Preserve their create semantics by selecting the complete create
+      // payload before calling their legacy three-argument merge method.
+      const existing = await storage.getRecord(resource, id);
+      await storage.mergeRecord(
+        resource,
+        id,
+        existing ? optimisticPatch : optimisticCreate,
+      );
+    }
     await applyInactivePropagation(storage, schema, [{ resource, id }]);
   } else if (operation === "insert" || operation === "replace") {
     // Insert/Replace: Overwrite (simple upsert)
