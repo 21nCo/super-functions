@@ -71,6 +71,24 @@ describe("validateSchema", () => {
     }
   });
 
+  it("rejects resource idPrefix collisions after trailing-colon normalization", () => {
+    const result = validateSchema({
+      resources: [
+        { name: "projects", version: 1, idPrefix: "project:", fields: [] },
+        { name: "projectAliases", version: 1, idPrefix: "project", fields: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.message).toContain("conflicts");
+      expect(result.error.details).toEqual({
+        path: "resources.projectAliases.idPrefix",
+      });
+    }
+  });
+
   it("rejects duplicate field names within a resource", () => {
     const input = {
       resources: [

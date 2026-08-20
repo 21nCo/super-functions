@@ -342,11 +342,11 @@ async function reconcileCompensatedGrantDirectory(
   multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const current = await db.findOne({
+    const current = (await db.findOne({
       model: getPermissionsTableName(),
       where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
       namespace,
-    });
+    })) ?? null;
     if (current) {
       await indexDatafnPermissionGrant(
         current as Record<string, unknown>,
@@ -361,11 +361,11 @@ async function reconcileCompensatedGrantDirectory(
         principalId: snapshot.principalId,
       }, multiRegionRuntime);
     }
-    const settled = await db.findOne({
+    const settled = (await db.findOne({
       model: getPermissionsTableName(),
       where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
       namespace,
-    });
+    })) ?? null;
     if (
       (current === null && settled === null) ||
       (current !== null && settled !== null &&

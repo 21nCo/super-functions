@@ -237,6 +237,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
   }
 
   const resourceNames = new Set<string>();
+  const normalizedIdPrefixes = new Map<string, string>();
   const normalizedResources: DatafnResourceSchema[] = [];
 
   for (const resource of s.resources) {
@@ -270,6 +271,28 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
       );
     }
     resourceNames.add(r.name);
+
+    if (r.idPrefix !== undefined) {
+      if (typeof r.idPrefix !== "string") {
+        return err(
+          "SCHEMA_INVALID",
+          "Invalid schema: resource.idPrefix must be string",
+          { path: `resources.${r.name}.idPrefix` },
+        );
+      }
+      const normalizedIdPrefix = r.idPrefix.endsWith(":")
+        ? r.idPrefix.slice(0, -1)
+        : r.idPrefix;
+      const conflictingResource = normalizedIdPrefixes.get(normalizedIdPrefix);
+      if (conflictingResource) {
+        return err(
+          "SCHEMA_INVALID",
+          `Invalid schema: resource idPrefix "${r.idPrefix}" conflicts with resource "${conflictingResource}" after normalization`,
+          { path: `resources.${r.name}.idPrefix` },
+        );
+      }
+      normalizedIdPrefixes.set(normalizedIdPrefix, r.name);
+    }
 
     // Validate version
     if (typeof r.version !== "number" || !Number.isInteger(r.version)) {
