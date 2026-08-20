@@ -537,6 +537,25 @@ export function diffTables(
               },
             }];
           });
+    const constrainedRebuiltIndexes = rebuiltIndexes.filter((index) =>
+      curTable.constraints.some(
+        (constraint) =>
+          (isLocalForeignKey(constraint) &&
+            indexStartsWith(index.current.columns, constraint.columns)) ||
+          (isInboundForeignKey(constraint) &&
+            indexStartsWith(
+              index.current.columns,
+              constraint.referencedColumns ?? [],
+            )),
+      ),
+    );
+    if (constrainedRebuiltIndexes.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: foreign-key supporting indexes must be migrated explicitly: ${constrainedRebuiltIndexes
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
 
     if (
       missingColumns.length > 0 ||

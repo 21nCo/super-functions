@@ -890,6 +890,87 @@ describe("schema index migrations", () => {
     );
   });
 
+  it("refuses rebuilt MySQL composite indexes that support foreign keys", () => {
+    const widenedComposite = {
+      modelName: "syncJobs",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id" },
+        ownerId: {
+          type: "string",
+          required: true,
+          fieldName: "owner_id",
+          maxLength: 64,
+        },
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+          maxLength: 128,
+        },
+      },
+      indexes: [{
+        name: "plugfn_sync_jobs_owner_claim_idx",
+        fields: ["ownerId", "claimToken"],
+        unique: true,
+      }],
+    } as unknown as TableSchema;
+    const currentTable = {
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql" as const,
+        tableName: "plugfn_sync_jobs",
+        columnName: "owner_id",
+        dataType: "varchar",
+        columnType: "varchar(64)",
+        maxLength: 64,
+        isNullable: false,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }, {
+        dialect: "mysql" as const,
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(64)",
+        maxLength: 64,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "plugfn_sync_jobs_owner_claim_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["owner_id", "claim_token"],
+        isUnique: true,
+      }],
+    };
+
+    for (const constraint of [{
+      name: "sync_jobs_owner_fk",
+      type: "FOREIGN KEY" as const,
+      tableName: "plugfn_sync_jobs",
+      columns: ["owner_id"],
+      referencedTable: "plugfn_owners",
+      referencedColumns: ["id"],
+    }, {
+      name: "audit_owner_fk",
+      type: "FOREIGN KEY" as const,
+      tableName: "plugfn_audit",
+      columns: ["owner_id"],
+      referencedTable: "plugfn_sync_jobs",
+      referencedColumns: ["owner_id"],
+    }]) {
+      expect(() => diffTables([widenedComposite], [{
+        ...currentTable,
+        constraints: [constraint],
+      }], "plugfn")).toThrow(
+        /foreign-key supporting indexes.*plugfn_sync_jobs_owner_claim_idx/,
+      );
+    }
+  });
+
   it("uses dialect-correct Kysely drops for explicit rebuilt-index plans", () => {
     const plan = createMigrationPlan("plugfn", 5, 6, [{
       tableName: "plugfn_sync_jobs",
