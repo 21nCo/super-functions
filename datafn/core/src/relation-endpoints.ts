@@ -9,6 +9,10 @@ export type DatafnRelationMatch = {
   direction: DatafnRelationDirection;
 };
 
+type DatafnEndpointSchema = {
+  resources: readonly { name: string; idPrefix?: string }[];
+};
+
 export function endpointList(endpoint: DatafnRelationEndpoint): string[] {
   return typeof endpoint === "string" ? [endpoint] : [...endpoint];
 }
@@ -34,9 +38,23 @@ export function resourceNameFromId(id: unknown): string | undefined {
 export function resolveEndpointResource(
   endpoint: DatafnRelationEndpoint,
   id: unknown,
+  schema?: DatafnEndpointSchema,
 ): string | undefined {
   const resources = endpointList(endpoint);
   if (resources.length === 1) return resources[0];
+  if (typeof id === "string" && schema) {
+    const prefixedMatch = schema.resources
+      .filter((resource) => resources.includes(resource.name))
+      .map((resource) => ({
+        name: resource.name,
+        prefix: resource.idPrefix ?? `${resource.name}:`,
+      }))
+      .filter((candidate) => id.startsWith(candidate.prefix))
+      .sort((left, right) => right.prefix.length - left.prefix.length)[0];
+    if (prefixedMatch) {
+      return prefixedMatch.name;
+    }
+  }
   const resourceFromId = resourceNameFromId(id);
   if (resourceFromId && resources.includes(resourceFromId)) {
     return resourceFromId;

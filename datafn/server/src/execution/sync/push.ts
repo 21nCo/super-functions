@@ -25,9 +25,24 @@ import {
 } from "../mutation/relations.js";
 import { executeSchemaAwareMerge } from "../mutation/merge-decision.js";
 import { stripReadonlyCapabilityFields } from "../mutation/execute.js";
-import { executeShare, executeUnshare, getPermissionsTable } from "../mutation/share.js";
+import {
+  executeShare,
+  executeUnshare,
+  getFailedShareCompensation,
+  getPermissionsTable,
+  syncDatafnPermissionGrantAfterCommit,
+} from "../mutation/share.js";
 import type { DatafnLogger } from "../../logger.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
+import {
+  deferFailedShareCompensation,
+  discardPermissionDirectorySync,
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  enqueuePermissionDirectorySyncDurably,
+  ensurePermissionDirectoryOutbox,
+} from "../mutation/permission-directory-outbox.js";
 
 export interface PushRequest {
   clientId: string;
@@ -217,6 +232,7 @@ export async function executePush(
   onChange?: (seq: number, namespace: string) => void,
   actorId?: string,
   logger?: DatafnLogger,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<PushResult> {
   // Validate clientId at request level - this is a critical error
   if (!request.clientId || typeof request.clientId !== "string") {
@@ -275,6 +291,15 @@ export async function executePush(
   let latestSeq = 0;
   // Track per-resource max serverSeq so the client can advance per-table cursors (FIX-B)
   const resourceSeqs: Record<string, number> = {};
+
+  if (
+    multiRegionRuntime &&
+    request.mutations.some((mutation) =>
+      mutation.operation === "share" || mutation.operation === "unshare"
+    )
+  ) {
+    await ensurePermissionDirectoryOutbox(db);
+  }
 
   // FIX-REL-011: Detect transaction support for atomic mutation units
   let hasTransaction =
@@ -771,6 +796,7 @@ export async function executePush(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!shareResult.ok) {
           return {
@@ -800,6 +826,7 @@ export async function executePush(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!unshareResult.ok) {
           return {
@@ -937,6 +964,65 @@ export async function executePush(
   // ---- Process each mutation ----
   for (const mutation of request.mutations) {
     const mut = mutation as any;
+    let permissionDirectoryTaskId: string | null = null;
+    const reconcilePermissionDirectoryAfterSettlement = async (
+      durableUnshare = false,
+    ) => {
+      if (!multiRegionRuntime) return;
+      if (
+        durableUnshare &&
+        mut.operation === "unshare" &&
+        !permissionDirectoryTaskId
+      ) {
+        try {
+          permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+        } catch (error) {
+          logger?.error("Push permission directory rollback repair could not be queued", {
+            error: String(error),
+            operation: mut.operation,
+            resource: mut.resource,
+          });
+          return;
+        }
+      }
+      if (permissionDirectoryTaskId) {
+        try {
+          await drainPermissionDirectorySync(
+            db,
+            permissionDirectoryTaskId,
+            multiRegionRuntime,
+            logger,
+          );
+        } catch (error) {
+          // The database mutation and durable task have already committed.
+          // Keep the client result stable and let scheduled draining retry.
+          logger?.error("Push permission directory reconciliation deferred", {
+            error: String(error),
+            operation: mut.operation,
+            resource: mut.resource,
+            taskId: permissionDirectoryTaskId,
+          });
+        }
+        return;
+      }
+      await syncDatafnPermissionGrantAfterCommit(
+        db,
+        mut,
+        namespace,
+        multiRegionRuntime,
+      ).catch((error) => {
+        logger?.error("Push permission directory reconciliation failed after commit", {
+          error: String(error),
+          operation: mut.operation,
+          resource: mut.resource,
+        });
+      });
+    };
 
     // Validate required fields
     if (!mut.clientId || !mut.mutationId) {
@@ -989,6 +1075,34 @@ export async function executePush(
       continue;
     }
 
+    if (multiRegionRuntime && mut.operation === "unshare") {
+      try {
+        // Directory invalidation happens before the permission-row delete.
+        // Persist repair work on the settled outer adapter first so commit or
+        // rollback can always converge from authoritative database state.
+        permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+          db,
+          mut,
+          namespace,
+          multiRegionRuntime.regionId,
+          { pending: true },
+        );
+      } catch (error) {
+        logger?.error("Push unshare durability prerequisite failed", {
+          error: String(error),
+          operation: mut.operation,
+          resource: mut.resource,
+        });
+        await recordMutationFailure(
+          mut,
+          "INTERNAL",
+          "Permission directory repair could not be persisted",
+          "$",
+        );
+        continue;
+      }
+    }
+
     // FIX-REL-011: When transactions are supported, wrap operation + change tracking atomically
     if (hasTransaction) {
       let mutationSucceeded = false;
@@ -1011,6 +1125,14 @@ export async function executePush(
           if (!opResult.ok) {
             // Signal failure without aborting transaction (we handle it below)
             throw { __opFailed: true, ...opResult };
+          }
+          if (multiRegionRuntime && mut.operation === "share") {
+            permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+              txDb,
+              mut,
+              namespace,
+              multiRegionRuntime.regionId,
+            );
           }
 
           // Build and record changes inside the same transaction
@@ -1059,17 +1181,51 @@ export async function executePush(
           logger?.error("Push atomic mutation failed", { error: formatUnknownError(err), operation: "push.transaction", resource: mut.resource });
           await recordMutationFailure(mut, "MUTATION_FAILED", "Mutation failed", `mutations[${mut.mutationId}]`);
         }
+        if (mut.operation === "unshare") {
+          await reconcilePermissionDirectoryAfterSettlement(true);
+        }
       }
 
       if (mutationSucceeded) {
+        await reconcilePermissionDirectoryAfterSettlement(true);
         await recordMutationSuccess(mut);
       }
     } else {
       // Non-transaction path: execute operation, then record changes separately (best-effort)
       let opResult: ExecuteMutationResult;
+      let failedShareCompensationDeferred = false;
       try {
+        if (multiRegionRuntime && mut.operation === "share") {
+          // With no transaction available, persist the reconciliation task
+          // before the grant. A task for a failed operation safely drains as
+          // a no-op; a committed grant can never lose its only retry record.
+          permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime.regionId,
+            { pending: true },
+          );
+        }
         opResult = await executeMutationOp(mut, db);
       } catch (error) {
+        const failedShareCompensation = getFailedShareCompensation(error);
+        if (
+          failedShareCompensation &&
+          permissionDirectoryTaskId &&
+          multiRegionRuntime
+        ) {
+          permissionDirectoryTaskId = await deferFailedShareCompensation(
+            db,
+            permissionDirectoryTaskId,
+            mut,
+            failedShareCompensation.snapshot,
+            failedShareCompensation.error,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+          failedShareCompensationDeferred = true;
+        }
         logger?.error("Push operation failed", { error: String(error), operation: mut.operation, resource: mut.resource, id: mut.id });
         opResult = {
           ok: false,
@@ -1097,12 +1253,45 @@ export async function executePush(
           changeTrackingFailed = true;
         }
 
+        await reconcilePermissionDirectoryAfterSettlement(true);
         if (changeTrackingFailed) {
           await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
         } else {
           await recordMutationSuccess(mut);
         }
       } else {
+        if (mut.operation === "share" && !failedShareCompensationDeferred) {
+          if (permissionDirectoryTaskId) {
+            const discarded = await discardPermissionDirectorySync(
+              db,
+              permissionDirectoryTaskId,
+            )
+              .catch((error) => {
+                logger?.error("Push failed-share directory task could not be discarded", {
+                  error: String(error),
+                  operation: mut.operation,
+                  resource: mut.resource,
+                  taskId: permissionDirectoryTaskId,
+                });
+                return false;
+              });
+            permissionDirectoryTaskId = discarded || !multiRegionRuntime
+              ? null
+              : await enqueuePermissionDirectorySyncDurably(
+                  db,
+                  mut,
+                  namespace,
+                  multiRegionRuntime.regionId,
+                );
+            if (permissionDirectoryTaskId) {
+              await reconcilePermissionDirectoryAfterSettlement();
+            }
+          }
+        } else {
+          await reconcilePermissionDirectoryAfterSettlement(
+            mut.operation === "unshare",
+          );
+        }
         await recordMutationFailure(mut, opResult.code, opResult.message, opResult.path);
       }
     }

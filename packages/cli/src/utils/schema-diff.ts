@@ -1,5 +1,10 @@
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import type { DatabaseTable } from './introspection.js';
+import {
+  databaseStringLength,
+  isUnboundedMySqlTextType,
+  mysqlVarcharLength,
+} from './mysql-types.js';
 
 /**
  * Convert string to snake_case
@@ -94,6 +99,12 @@ export interface SchemaDiff {
   }>;
 }
 
+export interface MySqlIndexColumnMetadata {
+  dataType: string;
+  columnType?: string;
+  maxLength?: number | null;
+}
+
 export interface LibrarySchemaRequirement {
   namespace: string;
   version: number;
@@ -108,6 +119,48 @@ export interface TableDiff {
   columnChanges?: Array<{
     column: string;
     change: string;
+    current?: {
+      dataType: string;
+      columnType?: string;
+      maxLength?: number | null;
+      extra?: string | null;
+      generationExpression?: string | null;
+      isVisible?: boolean;
+      characterSet?: string | null;
+      collation?: string | null;
+      comment?: string | null;
+      isNullable: boolean;
+      defaultValue?: string | null;
+    };
+  }>;
+  missingIndexes?: Array<{
+    name: string;
+    columns: string[];
+    unique: boolean;
+  }>;
+  changedIndexes?: Array<{
+    name: string;
+    current: {
+      columns: string[];
+      unique: boolean;
+      textColumns?: string[];
+      prefixLengths?: Array<number | null>;
+      columnMetadata?: Array<MySqlIndexColumnMetadata | null>;
+      indexType?: string;
+    };
+    required: { columns: string[]; unique: boolean };
+  }>;
+  rebuiltIndexes?: Array<{
+    name: string;
+    current: {
+      columns: string[];
+      unique: boolean;
+      textColumns?: string[];
+      prefixLengths?: Array<number | null>;
+      columnMetadata?: Array<MySqlIndexColumnMetadata | null>;
+      indexType?: string;
+    };
+    required: { columns: string[]; unique: boolean };
   }>;
 }
 
@@ -185,7 +238,124 @@ export function diffTables(
 
     const missingColumns: string[] = [];
     const extraColumns: string[] = [];
-    const columnChanges: Array<{ column: string; change: string }> = [];
+    const columnChanges: NonNullable<TableDiff['columnChanges']> = [];
+    const requiredIndexes = (reqTable.indexes ?? []).map((requiredIndex) => ({
+        name: requiredIndex.name,
+        columns: requiredIndex.fields.map((fieldName) =>
+          reqTable.fields[fieldName]?.fieldName ?? fieldName
+        ),
+        unique: requiredIndex.unique === true,
+      }));
+    const missingIndexes = requiredIndexes.filter(
+      (requiredIndex) => !curTable.indexes.some(
+        (currentIndex) => currentIndex.name === requiredIndex.name,
+      ),
+    );
+    const changedIndexes = requiredIndexes.flatMap((requiredIndex) => {
+      const currentIndex = curTable.indexes.find(
+        (candidate) => candidate.name === requiredIndex.name,
+      );
+      if (!currentIndex) return [];
+      const sameColumns =
+        currentIndex.columns.length === requiredIndex.columns.length &&
+        currentIndex.columns.every(
+          (column, index) => column === requiredIndex.columns[index],
+        );
+      const currentIndexType = currentIndex.indexType?.toUpperCase();
+      const hasDefaultIndexType = !currentIndexType || currentIndexType === 'BTREE';
+      if (
+        sameColumns &&
+        currentIndex.isUnique === requiredIndex.unique &&
+        hasDefaultIndexType
+      ) return [];
+      const currentTextColumns = currentIndex.columns.filter((column) => {
+        const currentColumn = curTable.columns.find(
+          (candidate) => candidate.columnName === column,
+        );
+        return currentColumn
+          ? isUnboundedMySqlTextType(currentColumn.dataType)
+          : false;
+      });
+      const currentColumnMetadata = currentIndex.columns.map((column) => {
+        const currentColumn = curTable.columns.find(
+          (candidate) => candidate.columnName === column,
+        );
+        return currentColumn
+          ? {
+              dataType: currentColumn.dataType,
+              ...(currentColumn.columnType
+                ? { columnType: currentColumn.columnType }
+                : {}),
+              ...(currentColumn.maxLength !== undefined
+                ? { maxLength: currentColumn.maxLength }
+                : {}),
+            }
+          : null;
+      });
+      return [{
+        name: requiredIndex.name,
+        current: {
+          columns: [...currentIndex.columns],
+          unique: currentIndex.isUnique,
+          ...(currentTextColumns.length > 0 ? { textColumns: currentTextColumns } : {}),
+          ...(currentIndex.prefixLengths?.some((length) => length !== null)
+            ? { prefixLengths: [...currentIndex.prefixLengths] }
+            : {}),
+          ...(currentIndex.indexType
+            ? { indexType: currentIndex.indexType }
+            : {}),
+          ...(currentColumnMetadata.some((metadata) => metadata !== null)
+            ? { columnMetadata: currentColumnMetadata }
+            : {}),
+        },
+        required: {
+          columns: [...requiredIndex.columns],
+          unique: requiredIndex.unique,
+        },
+      }];
+    });
+    const isLocalForeignKey = (constraint: DatabaseTable['constraints'][number]) =>
+      constraint.type === 'FOREIGN KEY' &&
+      constraint.tableName === dbName &&
+      (
+        !curTable.schema ||
+        !constraint.tableSchema ||
+        constraint.tableSchema === curTable.schema
+      );
+    const isInboundForeignKey = (constraint: DatabaseTable['constraints'][number]) =>
+      constraint.type === 'FOREIGN KEY' &&
+      constraint.referencedTable === dbName &&
+      (
+        !curTable.schema ||
+        !constraint.referencedTableSchema ||
+        constraint.referencedTableSchema === curTable.schema
+      );
+    const indexStartsWith = (indexColumns: string[], dependencyColumns: string[]) =>
+      dependencyColumns.length > 0 &&
+      dependencyColumns.every(
+        (column, position) => indexColumns[position] === column,
+      );
+    const constrainedIndexChanges = curTable.columns.some(
+      (column) => column.dialect === 'mysql',
+    )
+      ? changedIndexes.filter((index) => curTable.constraints.some(
+          (constraint) =>
+            (isLocalForeignKey(constraint) &&
+              indexStartsWith(index.current.columns, constraint.columns)) ||
+            (isInboundForeignKey(constraint) &&
+              indexStartsWith(
+                index.current.columns,
+                constraint.referencedColumns ?? [],
+              )),
+        ))
+      : [];
+    if (constrainedIndexChanges.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL index change for ${dbName}: foreign-key supporting indexes must be migrated explicitly: ${constrainedIndexChanges
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
 
     const curColMap = new Map(curTable.columns.map((c) => [c.columnName, c]));
     const reqFieldMap = reqTable.fields;
@@ -209,6 +379,18 @@ export function diffTables(
           changes.push(`type changed from ${actualType} to ${expectedType}`);
         }
 
+        if (curCol.dialect === 'mysql' && fieldSchema.type === 'string') {
+          // Validate even when the database already has the same declared
+          // width; otherwise an oversized schema can bypass every generator.
+          const desiredLength = mysqlVarcharLength(fieldSchema);
+          const actualLength = databaseStringLength(curCol);
+          if (actualLength !== desiredLength) {
+            changes.push(
+              `maxLength changed from ${actualLength ?? 'unbounded'} to ${desiredLength ?? 'unbounded'}`,
+            );
+          }
+        }
+
         if (fieldSchema.required && curCol.isNullable) {
           changes.push('changed to NOT NULL');
         }
@@ -220,6 +402,19 @@ export function diffTables(
           columnChanges.push({
             column: colName,
             change: changes.join(', '),
+            current: {
+              dataType: curCol.dataType,
+              columnType: curCol.columnType,
+              maxLength: curCol.maxLength,
+              extra: curCol.extra,
+              generationExpression: curCol.generationExpression,
+              isVisible: curCol.isVisible,
+              characterSet: curCol.characterSet,
+              collation: curCol.collation,
+              comment: curCol.comment,
+              isNullable: curCol.isNullable,
+              defaultValue: curCol.defaultValue,
+            },
           });
         }
       }
@@ -235,13 +430,150 @@ export function diffTables(
       }
     }
 
-    if (missingColumns.length > 0 || extraColumns.length > 0 || columnChanges.length > 0) {
+    const changedMySqlColumns = new Set(
+      columnChanges
+        .filter((change) =>
+          change.current &&
+          curColMap.get(change.column)?.dialect === 'mysql' &&
+          /(?:^|, )(?:type|maxLength) changed/.test(change.change)
+        )
+        .map((change) => change.column),
+    );
+    const changedIndexNames = new Set(changedIndexes.map((index) => index.name));
+    const unpreservedIndexDependencies = curTable.indexes.filter((index) =>
+      index.columns.some((column) => changedMySqlColumns.has(column)) &&
+      (
+        index.name.toUpperCase() === 'PRIMARY' ||
+        !requiredIndexes.some((requiredIndex) => requiredIndex.name === index.name)
+      )
+    );
+    if (unpreservedIndexDependencies.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: dependent indexes are not safely represented by the required schema: ${unpreservedIndexDependencies
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
+    const foreignKeyDependencies = curTable.constraints.filter((constraint) =>
+      (
+        (
+          isLocalForeignKey(constraint) &&
+          constraint.columns.some((column) => changedMySqlColumns.has(column))
+        ) ||
+        (
+          isInboundForeignKey(constraint) &&
+          (constraint.referencedColumns ?? []).some(
+            (column) => changedMySqlColumns.has(column),
+          )
+        )
+      )
+    );
+    if (foreignKeyDependencies.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: foreign-key dependencies must be migrated explicitly: ${foreignKeyDependencies
+          .map((constraint) => `${constraint.tableName}.${constraint.name}`)
+          .join(', ')}`,
+      );
+    }
+    const rebuiltIndexes: NonNullable<TableDiff['rebuiltIndexes']> =
+      changedMySqlColumns.size === 0
+        ? []
+        : requiredIndexes.flatMap((requiredIndex) => {
+            if (changedIndexNames.has(requiredIndex.name)) return [];
+            const currentIndex = curTable.indexes.find(
+              (candidate) => candidate.name === requiredIndex.name,
+            );
+            if (
+              !currentIndex ||
+              !currentIndex.columns.some((column) => changedMySqlColumns.has(column))
+            ) return [];
+
+            const currentTextColumns = currentIndex.columns.filter((column) => {
+              const currentColumn = curTable.columns.find(
+                (candidate) => candidate.columnName === column,
+              );
+              return currentColumn
+                ? isUnboundedMySqlTextType(currentColumn.dataType)
+                : false;
+            });
+            const currentColumnMetadata = currentIndex.columns.map((column) => {
+              const currentColumn = curTable.columns.find(
+                (candidate) => candidate.columnName === column,
+              );
+              return currentColumn
+                ? {
+                    dataType: currentColumn.dataType,
+                    ...(currentColumn.columnType
+                      ? { columnType: currentColumn.columnType }
+                      : {}),
+                    ...(currentColumn.maxLength !== undefined
+                      ? { maxLength: currentColumn.maxLength }
+                      : {}),
+                  }
+                : null;
+            });
+
+            return [{
+              name: requiredIndex.name,
+              current: {
+                columns: [...currentIndex.columns],
+                unique: currentIndex.isUnique,
+                ...(currentTextColumns.length > 0
+                  ? { textColumns: currentTextColumns }
+                  : {}),
+                ...(currentIndex.prefixLengths?.some((length) => length !== null)
+                  ? { prefixLengths: [...currentIndex.prefixLengths] }
+                  : {}),
+                ...(currentIndex.indexType
+                  ? { indexType: currentIndex.indexType }
+                  : {}),
+                ...(currentColumnMetadata.some((metadata) => metadata !== null)
+                  ? { columnMetadata: currentColumnMetadata }
+                  : {}),
+              },
+              required: {
+                columns: [...requiredIndex.columns],
+                unique: requiredIndex.unique,
+              },
+            }];
+          });
+    const constrainedRebuiltIndexes = rebuiltIndexes.filter((index) =>
+      curTable.constraints.some(
+        (constraint) =>
+          (isLocalForeignKey(constraint) &&
+            indexStartsWith(index.current.columns, constraint.columns)) ||
+          (isInboundForeignKey(constraint) &&
+            indexStartsWith(
+              index.current.columns,
+              constraint.referencedColumns ?? [],
+            )),
+      ),
+    );
+    if (constrainedRebuiltIndexes.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: foreign-key supporting indexes must be migrated explicitly: ${constrainedRebuiltIndexes
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
+
+    if (
+      missingColumns.length > 0 ||
+      extraColumns.length > 0 ||
+      columnChanges.length > 0 ||
+      missingIndexes.length > 0 ||
+      changedIndexes.length > 0 ||
+      rebuiltIndexes.length > 0
+    ) {
       diffs.push({
         tableName: dbName,
         action: 'alter',
         missingColumns,
         extraColumns,
         columnChanges,
+        missingIndexes,
+        changedIndexes,
+        rebuiltIndexes,
       });
     }
   }

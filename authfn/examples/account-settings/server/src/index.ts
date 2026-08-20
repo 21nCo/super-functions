@@ -26,12 +26,14 @@ const HOST = process.env.HOST ?? '127.0.0.1';
 const PORT = Number(process.env.PORT ?? '4313');
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://127.0.0.1:4013';
 const SERVER_BASE_URL = process.env.SERVER_BASE_URL ?? `http://${HOST}:${PORT}`;
+const TWO_FACTOR_ENCRYPTION_KEY = readTwoFactorEncryptionKey();
 
 export async function createAccountSettingsServer() {
   const database = createAccountSettingsDatabase();
   const eventBuffer = new ExampleEventBuffer();
   const auth = createAccountSettingsAuth({
     database: database.adapter,
+    twoFactorEncryptionKeyResolver: () => TWO_FACTOR_ENCRYPTION_KEY,
     onEvent: createEventEmitter(eventBuffer)
   });
 
@@ -86,6 +88,29 @@ void main().catch((error: unknown) => {
   console.error(error);
   process.exit(1);
 });
+
+function readTwoFactorEncryptionKey(): Buffer {
+  const encoded = process.env.AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64;
+  if (!encoded) {
+    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must be configured');
+  }
+
+  const normalized = encoded.replace(/\s+/g, '');
+  const unpadded = normalized.replace(/=+$/, '');
+  const hasValidAlphabet = /^[A-Za-z0-9+/]+={0,2}$/.test(normalized);
+  const hasValidLength = normalized.length % 4 !== 1;
+  const padded = unpadded.padEnd(Math.ceil(unpadded.length / 4) * 4, '=');
+  const key = Buffer.from(padded, 'base64');
+  if (
+    !hasValidAlphabet ||
+    !hasValidLength ||
+    key.length !== 32 ||
+    key.toString('base64').replace(/=+$/, '') !== unpadded
+  ) {
+    throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must be valid base64 encoding of exactly 32 bytes');
+  }
+  return key;
+}
 
 function createCorsMiddleware(allowedOrigin: string): RequestHandler {
   return (request, response, next) => {

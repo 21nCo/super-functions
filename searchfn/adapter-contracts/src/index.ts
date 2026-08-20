@@ -64,6 +64,8 @@ export interface SearchAdapterCapabilities {
   fuzzy?: boolean;
   prefix?: boolean;
   fieldBoosts?: boolean;
+  /** Adapter enforces namespaceFilter and regionFilter against indexed metadata. */
+  metadataFilters?: boolean;
   maxBatchSize?: number;
 }
 

@@ -12,6 +12,7 @@
 import type { WhereClause, OrderBy } from "@superfunctions/db";
 import { endpointIncludes } from "@datafn/core";
 import { parseSortTerms } from "./sort.js";
+import type { SortInputTerm } from "@datafn/core";
 
 // ---------------------------------------------------------------------------
 // Extended types
@@ -306,7 +307,7 @@ export function extractPushableFilters(
  * @param sort  Optional DFQL sort array (e.g. `["name:asc", "-priority", "id"]`)
  * @returns     OrderBy[] — never empty (defaults to `[{ field: "id", direction: "asc" }]`)
  */
-export function convertDfqlSort(sort?: string[]): OrderBy[] {
+export function convertDfqlSort(sort?: SortInputTerm[]): OrderBy[] {
   // parseSortTerms from sort.ts already applies the id:asc default.
   // SortTerm = { field: string; direction: "asc" | "desc" } is structurally
   // identical to OrderBy, so the cast is safe.
@@ -360,6 +361,7 @@ export function classifyQuery(
   query: Record<string, unknown>,
   schema?: unknown,
 ): QueryStrategy {
+  if (Object.prototype.hasOwnProperty.call(query, "temporal")) return "IN_MEMORY";
   // --- Rule 1: search ---
   if (query.search) return "IN_MEMORY";
 
@@ -501,6 +503,22 @@ function convertSingleFilter(
     if (!(op in DFQL_TO_ADAPTER_OP)) return null;
     const adapterOp = DFQL_TO_ADAPTER_OP[op];
     if (adapterOp === null) return null;
+    if (op === "$is_null" || op === "is_null") {
+      result.push({
+        field: key,
+        operator: opVal === false ? "ne" : "eq",
+        value: null,
+      });
+      continue;
+    }
+    if (op === "$is_not_null" || op === "is_not_null") {
+      result.push({
+        field: key,
+        operator: opVal === false ? "eq" : "ne",
+        value: null,
+      });
+      continue;
+    }
     result.push({ field: key, operator: adapterOp, value: opVal });
   }
 

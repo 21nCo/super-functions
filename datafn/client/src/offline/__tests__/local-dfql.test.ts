@@ -51,7 +51,7 @@ const schema: DatafnSchema = {
       relation: "project",
       to: "projects",
       type: "many-one",
-      fkField: "projectId",
+      foreignKey: "projectId",
     },
     {
       from: "projects",
@@ -73,7 +73,7 @@ const schema: DatafnSchema = {
       to: "goals",
       type: "htree",
       inverse: "parent",
-      fkField: "parentId",
+      foreignKey: "parentId",
       pathField: "parentPath",
       inheritsInactive: true,
     },

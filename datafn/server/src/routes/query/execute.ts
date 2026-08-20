@@ -70,15 +70,17 @@ function isMetadataOnlyRelationSelect(select: unknown): boolean {
 function relatedResourceForRow(
   row: Record<string, unknown>,
   match: NonNullable<ReturnType<typeof findRelationMatch>>,
+  schema: DatafnSchema,
 ): string | undefined {
   const targetEndpoint = relationTargetEndpoint(match.relation, match.direction);
   const relatedId = match.direction === "forward" ? row.to : row.from;
-  return resolveEndpointResource(targetEndpoint, relatedId) ?? resourceNameFromId(relatedId);
+  return resolveEndpointResource(targetEndpoint, relatedId, schema) ?? resourceNameFromId(relatedId);
 }
 
 function filterVisibleRelationRows(
   rows: Record<string, unknown>[],
   match: NonNullable<ReturnType<typeof findRelationMatch>>,
+  schema: DatafnSchema,
   store: DbDataStore,
 ): Record<string, unknown>[] {
   return rows.filter((row) => {
@@ -86,7 +88,7 @@ function filterVisibleRelationRows(
     if (typeof relatedId !== "string") {
       return false;
     }
-    const relatedResource = relatedResourceForRow(row, match);
+    const relatedResource = relatedResourceForRow(row, match, schema);
     if (!relatedResource) {
       return false;
     }
@@ -193,10 +195,10 @@ async function executeRelationQuery(
   const relationValue = materialized[relationName];
   let data = normalizeRelationQueryValue(relationValue);
   if (match.relation.type === "many-many" && isMetadataOnlyRelationSelect(query.select)) {
-    data = filterVisibleRelationRows(data, match, store);
+    data = filterVisibleRelationRows(data, match, schema, store);
   }
   if (Array.isArray(query.sort)) {
-    data = sortRecords(data, parseSortTerms(query.sort as string[]));
+    data = sortRecords(data, parseSortTerms(query.sort as import("@datafn/core").SortInputTerm[]));
   }
 
   const count = query.count === true ? data.length : undefined;

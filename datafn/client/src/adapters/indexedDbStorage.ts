@@ -72,6 +72,7 @@ function deepMergeOneLevel(
 }
 
 export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
   private dbPromise: Promise<IDBDatabase>;
   private validResources?: Set<string>;
   private schema?: DatafnSchema;
@@ -301,13 +302,13 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
               if (this.schema.relations) {
                 for (const rel of this.schema.relations) {
                   if (rel.type === "many-one" && endpointIncludes(rel.from, resource.name)) {
-                     const fk = rel.fkField || `${rel.relation}Id`;
+                     const fk = rel.fkField || rel.foreignKey || `${rel.relation}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }
                   } else if (rel.type === "one-many" && endpointIncludes(rel.to, resource.name)) {
                      // For one-many, 'to' has the FK back to 'from'
-                     const fk = rel.fkField || rel.inverse || `${firstEndpoint(rel.from)}Id`;
+                     const fk = rel.fkField || rel.foreignKey || rel.inverse || `${firstEndpoint(rel.from)}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }
@@ -562,6 +563,7 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     resource: string,
     id: string,
     partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>> {
     this.validateTableName(resource);
     const db = await this.dbPromise;
@@ -578,7 +580,7 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
         // Merge with deep merge logic
         const merged = existing
           ? deepMergeOneLevel(existing, partial)
-          : { ...partial, id };
+          : { ...(options?.ifMissing ?? partial), id };
         
         merged.id = id;
         const storageRecord = cloneForStorage(merged);

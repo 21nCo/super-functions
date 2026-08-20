@@ -6209,7 +6209,7 @@ const client = createDatafnClient({
   schema,
   clientId,
   storage,
-  plugins: [createTemporalPlugin({ timezone: "user", weekStartsOn: 1 })],
+  plugins: [createTemporalPlugin({ timezone: "UTC", weekStartsOn: 1 })],
 });
 ```
 
@@ -16453,6 +16453,8 @@ function resolveColumns(resource: string, columns: string[]): string {
 }
 
 class CustomStorageAdapter implements DatafnStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
+
   // Records
   async getRecord(resource: string, id: string): Promise<Record<string, unknown> | null> {
     const table = resolveTable(resource);
@@ -16461,7 +16463,12 @@ class CustomStorageAdapter implements DatafnStorageAdapter {
   async listRecords(resource: string): Promise<Record<string, unknown>[]> { /* ... */ }
   async upsertRecord(resource: string, record: Record<string, unknown>): Promise<void> { /* ... */ }
   async deleteRecord(resource: string, id: string): Promise<void> { /* ... */ }
-  async mergeRecord(resource: string, id: string, partial: Record<string, unknown>): Promise<Record<string, unknown>> { /* ... */ }
+  async mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> { /* ... */ }
 
   // Join rows
   async listJoinRows(relationKey: string): Promise<Array<Record<string, unknown>>> { /* ... */ }
@@ -16512,10 +16519,11 @@ async mergeRecord(
   resource: string,
   id: string,
   partial: Record<string, unknown>,
+  options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
   // Begin transaction
   const existing = await this.getRecord(resource, id);
-  const merged = existing ? { ...existing } : { id };
+  const merged = existing ? { ...existing } : { ...(options?.ifMissing ?? {}), id };
 
   for (const [key, value] of Object.entries(partial)) {
     if (
@@ -16850,6 +16858,10 @@ Every storage adapter implements the `DatafnStorageAdapter` interface:
 
 ```typescript
 interface DatafnStorageAdapter {
+  readonly capabilities?: {
+    atomicMergeIfMissing?: boolean;
+  };
+
   // Records
   getRecord(resource: string, id: string): Promise<Record<string, unknown> | null>;
   listRecords(resource: string): Promise<Record<string, unknown>[]>;
@@ -16859,6 +16871,7 @@ interface DatafnStorageAdapter {
     resource: string,
     id: string,
     partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>>;
 
   // Join rows (many-many relations)
@@ -16898,7 +16911,7 @@ interface DatafnStorageAdapter {
 
 ### Merge Record
 
-The `mergeRecord` method performs an atomic read-modify-write operation. It reads the existing record, shallow-merges the provided fields, and writes the result back in a single transaction. For object-type fields, it performs one-level-deep merge.
+The `mergeRecord` method performs an atomic read-modify-write operation. It reads the existing record, shallow-merges the provided fields, and writes the result back in a single transaction. For object-type fields, it performs one-level-deep merge. Adapters that atomically apply `options.ifMissing` when the record does not exist must declare `capabilities.atomicMergeIfMissing: true`; older adapters remain compatible through the client's legacy fallback.
 
 ```typescript
 // Existing record: { id: "t1", title: "Buy milk", meta: { color: "red", size: 3 } }
@@ -23585,12 +23598,21 @@ Complete interface for local persistence.
 
 ```typescript
 interface DatafnStorageAdapter {
+  readonly capabilities?: {
+    atomicMergeIfMissing?: boolean;
+  };
+
   // Record operations
   getRecord(resource: string, id: string): Promise<Record<string, unknown> | null>;
   listRecords(resource: string): Promise<Record<string, unknown>[]>;
   upsertRecord(resource: string, record: Record<string, unknown>): Promise<void>;
   deleteRecord(resource: string, id: string): Promise<void>;
-  mergeRecord(resource: string, id: string, partial: Record<string, unknown>): Promise<Record<string, unknown>>;
+  mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>>;
   findRecords(resource: string, field: string, value: unknown): Promise<Record<string, unknown>[]>;
 
   // Join row operations (many-many relations)

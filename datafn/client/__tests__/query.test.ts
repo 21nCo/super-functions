@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDatafnClient } from "../src/client.js";
 import { DefaultHttpTransport } from "../src/transport/http.js";
+import { MemoryStorageAdapter } from "../src/adapters/memoryStorage.js";
 import type { DatafnClientError } from "../src/errors.js";
 
 // Default schema for testing
@@ -161,6 +162,37 @@ describe("@datafn/client query", () => {
     });
 
     expect(result).toEqual({ data: [{ id: "task:1" }], nextCursor: null });
+  });
+
+  it("treats offset zero as the first page and overlays pending local rows", async () => {
+    vi.spyOn(DefaultHttpTransport.prototype, "query").mockResolvedValue({
+      ok: true,
+      result: {
+        data: [
+          { id: "task:1", title: "Remote one" },
+          { id: "task:2", title: "Remote two" },
+        ],
+        nextCursor: null,
+      },
+    });
+    const storage = new MemoryStorageAdapter(["task", "goal"]);
+    await storage.upsertRecord("task", { id: "task:0", title: "Local pending" });
+    await storage.setHydrationState("task", "hydrating");
+    const client = createDatafnClient({
+      schema: defaultSchema,
+      sync: { remote: "http://example.com" },
+      storage,
+      clientId: "query-pagination",
+      getTimestamp: () => 0,
+    });
+
+    const result = await client.task.query({
+      sort: ["id:asc"],
+      offset: 0,
+      limit: 2,
+    });
+
+    expect(result.data.map((record) => record.id)).toEqual(["task:0", "task:1"]);
   });
 });
 

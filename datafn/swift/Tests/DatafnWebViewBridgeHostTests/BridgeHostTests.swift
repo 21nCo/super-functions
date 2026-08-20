@@ -69,7 +69,10 @@ struct BridgeHostTests {
         #expect(result["syncOwner"] == "native")
         #expect(result["remoteMode"] == "datafn-server")
         #expect(result["indexedDbDisabled"] == true)
-        #expect(result["capabilities"] == ["storage", "remote", "sync", "events", "health"])
+        #expect(
+            result["capabilities"]
+                == ["storage", "storage.atomicMergeIfMissing", "remote", "sync", "events", "health"]
+        )
         #expect(extractEventNames(from: outbound.get()) == ["bridge.ready"])
     }
 
@@ -224,6 +227,37 @@ struct BridgeHostTests {
         let storageChanged = try #require(extractEvent(named: "storage.changed", from: outbound.get()))
         #expect(storageChanged["resource"] == "tasks")
         #expect(storageChanged["ids"] == ["task:1"])
+    }
+
+    @Test("Native merge preserves the atomic missing-record payload")
+    func nativeMergePreservesMissingRecordPayload() async throws {
+        let store = try makeStore(namespace: "org-1:user-merge")
+        let host = makeHost(store: store)
+
+        let response = await host.handleMessageForTesting([
+            "protocol": DATAFN_BRIDGE_PROTOCOL,
+            "id": "req-merge",
+            "method": "storage.mergeRecord",
+            "payload": [
+                "resource": "tasks",
+                "id": "task:new",
+                "partial": ["title": "Patch"],
+                "options": [
+                    "ifMissing": [
+                        "id": "task:new",
+                        "title": "Patch",
+                        "status": "draft",
+                        "createdBy": "user:1",
+                    ],
+                ],
+            ],
+        ])
+
+        #expect(response.ok)
+        let result = try #require(response.result?.objectValue)
+        #expect(result["status"] == "draft")
+        #expect(result["createdBy"] == "user:1")
+        #expect(try store.getRecord(resource: "tasks", id: "task:new")?["status"] == "draft")
     }
 
     @Test("TV-SEC-001: Sensitive auth headers are redacted before events leave native code")

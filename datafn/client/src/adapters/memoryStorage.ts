@@ -25,6 +25,7 @@ function isInternalCursorKey(resource: string): boolean {
 }
 
 export class MemoryStorageAdapter implements DatafnStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
   private records = new Map<string, Map<string, Record<string, unknown>>>();
   private joinRows = new Map<string, Map<string, Record<string, unknown>>>();
   private cursors = new Map<string, string>();
@@ -105,17 +106,24 @@ export class MemoryStorageAdapter implements DatafnStorageAdapter {
     resource: string,
     id: string,
     partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>> {
     this.validateTableName(resource);
-    const existing = await this.getRecord(resource, id);
+    if (!id) throw new Error("Record missing id");
+    let table = this.records.get(resource);
+    if (!table) {
+      table = new Map();
+      this.records.set(resource, table);
+    }
+    const existing = table.get(id);
     
     // One-level deep merge
     const merged = existing
       ? this.deepMergeOneLevel(existing, partial)
-      : { ...partial, id };
+      : { ...(options?.ifMissing ?? partial), id };
     
     merged.id = id;
-    await this.upsertRecord(resource, merged);
+    table.set(id, merged);
     return merged;
   }
 

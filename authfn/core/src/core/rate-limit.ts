@@ -38,6 +38,7 @@ export function createAuthFnRateLimitMiddleware(config: AuthFnRuntimeConfig): Mi
   if (mode === 'strict' && !config.stores?.atomicKv) {
     throw new Error('AUTHFN_ATOMIC_STORE_REQUIRED: rateLimit strict mode requires stores.atomicKv');
   }
+  const localState = createLocalRateLimitState();
 
   return async (request, _context, next) => {
     const path = new URL(request.url).pathname;
@@ -48,7 +49,7 @@ export function createAuthFnRateLimitMiddleware(config: AuthFnRuntimeConfig): Mi
     const checks = await buildChecks(scope, policy, ip, identifier);
 
     for (const check of checks) {
-      const count = await incrementCheck(config, mode, check);
+      const count = await incrementCheck(config, mode, check, localState);
       if (count > check.limit) {
         throw new AuthFnRateLimitedError(undefined, {
           path,
@@ -127,7 +128,8 @@ async function buildChecks(
 async function incrementCheck(
   config: AuthFnRuntimeConfig,
   mode: AuthFnRateLimitMode,
-  check: RateLimitCheck
+  check: RateLimitCheck,
+  localState: LocalRateLimitState,
 ): Promise<number> {
   const windowId = Math.floor(Date.now() / (check.windowSeconds * 1000));
   const key = `authfn:${config.namespace ?? 'authfn'}:ratelimit:${check.scope}:${check.key}:${windowId}`;
@@ -137,7 +139,7 @@ async function incrementCheck(
   if (mode === 'best-effort' && config.stores?.kv) {
     return incrementCache(config.stores.kv, key, check.windowSeconds);
   }
-  return incrementLocal(key, check.windowSeconds);
+  return incrementLocal(localState, key, check.windowSeconds);
 }
 
 async function incrementAtomic(
@@ -148,7 +150,17 @@ async function incrementAtomic(
   return (await store.incr({ key, by: 1, ttlSeconds: windowSeconds })).value;
 }
 
-const localWindows = new Map<string, { count: number; expiresAt: number }>();
+const MAX_LOCAL_RATE_LIMIT_WINDOWS = 10_000;
+const LOCAL_SWEEP_INTERVAL = 128;
+
+interface LocalRateLimitState {
+  windows: Map<string, { count: number; expiresAt: number }>;
+  incrementCount: number;
+}
+
+function createLocalRateLimitState(): LocalRateLimitState {
+  return { windows: new Map(), incrementCount: 0 };
+}
 
 async function incrementCache(
   store: KVStoreAdapter,
@@ -165,15 +177,40 @@ async function incrementCache(
   return next;
 }
 
-function incrementLocal(key: string, windowSeconds: number): number {
+function incrementLocal(
+  state: LocalRateLimitState,
+  key: string,
+  windowSeconds: number,
+): number {
   const now = Date.now();
-  const existing = localWindows.get(key);
+  state.incrementCount += 1;
+  if (state.incrementCount % LOCAL_SWEEP_INTERVAL === 0) {
+    sweepExpiredLocalWindows(state, now);
+  }
+  const existing = state.windows.get(key);
   if (!existing || existing.expiresAt <= now) {
-    localWindows.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
+    if (!existing && state.windows.size >= MAX_LOCAL_RATE_LIMIT_WINDOWS) {
+      sweepExpiredLocalWindows(state, now);
+      if (state.windows.size >= MAX_LOCAL_RATE_LIMIT_WINDOWS) {
+        // Preserve every active counter. Admitting an untracked key here would
+        // let key churn reset a victim's limit, so local mode fails closed
+        // until an existing window expires.
+        return Number.POSITIVE_INFINITY;
+      }
+    }
+    state.windows.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
     return 1;
   }
   existing.count += 1;
   return existing.count;
+}
+
+function sweepExpiredLocalWindows(state: LocalRateLimitState, now: number): void {
+  for (const [key, window] of state.windows) {
+    if (window.expiresAt <= now) {
+      state.windows.delete(key);
+    }
+  }
 }
 
 function hashKeyPart(value: string): string {

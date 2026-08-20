@@ -2,6 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MemoryStorageAdapter } from "../memoryStorage.js";
 import { IndexedDbStorageAdapter } from "../indexedDbStorage.js";
 import "fake-indexeddb/auto"; // Use fake-indexeddb for IDB tests in Node/Vitest
+import { cloneForStorage } from "../shared.js";
+
+describe("cloneForStorage", () => {
+  it("removes non-cloneable function and symbol array elements recursively", () => {
+    expect(cloneForStorage({
+      values: ["safe", () => "unsafe", Symbol("unsafe"), [1, () => 2]],
+    })).toEqual({ values: ["safe", [1]] });
+  });
+});
 
 // Helper to run tests against both adapters
 function runAdapterTests(

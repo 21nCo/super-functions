@@ -23,6 +23,8 @@ import {
   normalizeFilterOps,
   hasTemporalGrouping,
   normalizeTemporalQuery,
+  relationFkFieldForManyOne,
+  relationFkFieldForOneMany,
   TIMEZONE_CHANGE_RESOURCE_NAME,
 } from "@datafn/core";
 import type { DatafnStorageAdapter } from "../storage.js";
@@ -333,9 +335,13 @@ async function applyFilter(
   return true;
 }
 
-function recordResourceName(id: unknown, fallback: string | readonly string[]): string {
+function recordResourceName(
+  schema: DatafnSchema,
+  id: unknown,
+  fallback: string | readonly string[],
+): string {
   return (
-    resolveEndpointResource(fallback, id) ??
+    resolveEndpointResource(fallback, id, schema) ??
     resourceNameFromId(id) ??
     firstEndpoint(fallback)
   );
@@ -393,6 +399,7 @@ function findRelationIdFilter(
 
 async function resolveManyManyRelationSeedIds(
   storage: DatafnStorageAdapter,
+  schema: DatafnSchema,
   resource: string,
   relationName: string,
   ids: string[],
@@ -403,7 +410,7 @@ async function resolveManyManyRelationSeedIds(
   const targetEndpoint = relationTargetEndpoint(relation, direction);
   if (direction === "forward") {
     for (const id of ids) {
-      const targetResource = recordResourceName(id, targetEndpoint);
+      const targetResource = recordResourceName(schema, id, targetEndpoint);
       const joinStore = getJoinStoreKey(resource, relationName, targetResource);
       const rows = await storage.getJoinRowsInverse(joinStore, id);
       rows.forEach((row) => {
@@ -415,7 +422,7 @@ async function resolveManyManyRelationSeedIds(
 
   for (const id of ids) {
     const sourceResource =
-      resolveEndpointResource(relation.from, id) ?? resourceNameFromId(id);
+      resolveEndpointResource(relation.from, id, schema) ?? resourceNameFromId(id);
     const fromResources = sourceResource ? [sourceResource] : endpointList(relation.from);
     for (const fromResource of fromResources) {
       const joinStore = getJoinStoreKey(fromResource, relationName, resource);
@@ -441,6 +448,7 @@ async function resolveRelationSeedIds(
   if (match.relation.type === "many-many") {
     return resolveManyManyRelationSeedIds(
       storage,
+      schema,
       resource,
       match.relation.relation || relationFilter.relationName,
       relationFilter.ids,
@@ -466,13 +474,13 @@ async function getRelatedRecords(
 
   if (relation.type === "many-one") {
     if (isForward) {
-      const fk = relation.fkField || `${relation.relation}Id`;
+      const fk = relationFkFieldForManyOne(relation);
       const targetId = record[fk];
       if (typeof targetId !== "string") return [];
-      const target = await storage.getRecord(recordResourceName(targetId, targetEndpoint), targetId);
+      const target = await storage.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId);
       return target ? [target] : [];
     }
-    const fk = relation.fkField || `${relation.relation}Id`;
+    const fk = relationFkFieldForManyOne(relation);
     const records = [];
     for (const targetResource of endpointList(targetEndpoint)) {
       records.push(...await storage.findRecords(targetResource, fk, record.id));
@@ -482,17 +490,17 @@ async function getRelatedRecords(
 
   if (relation.type === "one-many") {
     if (isForward) {
-      const fk = relation.fkField || relation.inverse || `${resource}Id`;
+      const fk = relation.fkField || relation.foreignKey || relation.inverse || `${resource}Id`;
       const records = [];
       for (const targetResource of endpointList(targetEndpoint)) {
         records.push(...await storage.findRecords(targetResource, fk, record.id));
       }
       return records;
     }
-    const fk = relation.fkField || relation.inverse || `${relation.relation}Id`;
+    const fk = relationFkFieldForOneMany(relation);
     const targetId = record[fk];
     if (typeof targetId !== "string") return [];
-    const target = await storage.getRecord(recordResourceName(targetId, targetEndpoint), targetId);
+    const target = await storage.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId);
     return target ? [target] : [];
   }
 
@@ -505,7 +513,7 @@ async function getRelatedRecords(
         const rows = await storage.getJoinRows(joinStore, record.id as string);
         for (const row of rows) {
           if (typeof row.to !== "string") continue;
-          const target = await storage.getRecord(recordResourceName(row.to, targetEndpoint), row.to);
+          const target = await storage.getRecord(recordResourceName(schema, row.to, targetEndpoint), row.to);
           if (target) targetRecords.push(target);
         }
       }
@@ -517,7 +525,7 @@ async function getRelatedRecords(
       const rows = await storage.getJoinRowsInverse(joinStore, record.id as string);
       for (const row of rows) {
         if (typeof row.from !== "string") continue;
-        const target = await storage.getRecord(recordResourceName(row.from, targetEndpoint), row.from);
+        const target = await storage.getRecord(recordResourceName(schema, row.from, targetEndpoint), row.from);
         if (target) targetRecords.push(target);
       }
     }
@@ -539,7 +547,7 @@ async function evaluateRelatedRecords(
   if (mode === "$none" && relatedRecords.length === 0) return true;
   let matchedCount = 0;
   for (const relatedRecord of relatedRecords) {
-    const relatedResource = recordResourceName(relatedRecord.id, targetEndpoint);
+    const relatedResource = recordResourceName(schema, relatedRecord.id, targetEndpoint);
     if (
       await applyFilter(
         storage,
@@ -630,7 +638,7 @@ async function evaluateRelationPathFilter(
   const subFilter: Record<string, unknown> = { [subPath]: value };
   const targetEndpoint = relationTargetEndpoint(match.relation, match.direction);
   for (const relatedRecord of relatedRecords) {
-    const relatedResource = recordResourceName(relatedRecord.id, targetEndpoint);
+    const relatedResource = recordResourceName(schema, relatedRecord.id, targetEndpoint);
     if (
       await applyFilter(
         storage,

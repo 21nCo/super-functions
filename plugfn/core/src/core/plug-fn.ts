@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { PlugFnConfig, MetricsOptions, PlugFnPrincipal } from '../types/config.js';
 import type { AuthSession } from '@superfunctions/auth';
 import { wrapWithSchema } from '@superfunctions/db';
@@ -658,7 +659,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
   ): Promise<PlugFnSyncJob> {
     let claimToken = job.claimToken;
     if (!options.claimed) {
-      claimToken = `direct:${job.id}:${Date.now()}`;
+      claimToken = `claim_${randomBytes(24).toString('hex')}`;
       job = await runtimeStorage.updateSyncJob(job.id, { status: 'running', claimToken });
     }
     if (!claimToken) throw syncJobClaimLostError(job.id);

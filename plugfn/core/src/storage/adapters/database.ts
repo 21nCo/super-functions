@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { NotFoundError, type Adapter as DbAdapter, type WhereClause } from '@superfunctions/db';
 import type { Connection } from '../../types/connection.js';
 import type {
@@ -703,7 +704,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
         if (job.status === 'running') {
           where.push({ field: 'updatedAt', operator: 'lte', value: staleBefore });
         }
-        const claimToken = `${workerId}:${job.id}:${claimedAt.getTime()}`;
+        const claimToken = `claim_${randomBytes(24).toString('hex')}`;
         const updated = await this.database.update<PlugFnSyncJob>({
           model: this.models.syncJobs,
           where,

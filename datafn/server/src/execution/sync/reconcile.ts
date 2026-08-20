@@ -12,12 +12,7 @@ import { ChangeTrackingService } from "./change-tracking.js";
 import type { SequenceStore } from "./sequence-store.js";
 import type { DatafnLogger } from "../../logger.js";
 import { isPrivateShareableResource, resolveAccessLevel } from "../../validation/authz.js";
-
-function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
-  const resource = schema.resources.find((item) => item.name === resourceName);
-  const prefix = resource?.idPrefix ?? resourceName;
-  return id === prefix || id.startsWith(`${prefix}:`);
-}
+import { resourceIdMatches } from "./resource-id.js";
 
 function shouldIncludeJoinRowForStore(
   row: Record<string, unknown>,
@@ -37,9 +32,13 @@ function shouldIncludeJoinRowForStore(
   const fromValue = typeof row.from === "string" ? row.from : undefined;
   const toValue = typeof row.to === "string" ? row.to : undefined;
   const fromMatches =
-    froms.length === 1 || !fromValue || resourceIdMatches(schema, from, fromValue);
+    froms.length === 1 ||
+    !fromValue ||
+    resourceIdMatches(schema, froms, from, fromValue);
   const toMatches =
-    tos.length === 1 || !toValue || resourceIdMatches(schema, to, toValue);
+    tos.length === 1 ||
+    !toValue ||
+    resourceIdMatches(schema, tos, to, toValue);
   return fromMatches && toMatches;
 }
 
@@ -209,6 +208,37 @@ export async function executeReconcile(
 
       const fromCol = relation.joinColumns?.from || "from";
       const toCol = relation.joinColumns?.to || "to";
+      if (fromResources.length === 1 && toResources.length === 1) {
+        const fromResource = fromResources[0];
+        const toResource = toResources[0];
+        const relationTouchesPrivateResource =
+          isPrivateShareableResource(schema, fromResource) ||
+          isPrivateShareableResource(schema, toResource);
+        if (
+          !relation.joinTable &&
+          !relationTouchesPrivateResource &&
+          typeof db.count === "function"
+        ) {
+          const joinTableName = getRelationJoinTableName(relation, fromResource);
+          const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
+          let countSucceeded = false;
+          try {
+            joinCounts[joinStoreKey] = await db.count({
+              model: joinTableName,
+              where: [],
+              namespace,
+            });
+            countSucceeded = true;
+          } catch (error) {
+            logger?.warn("Reconcile: join count failed", {
+              error: String(error),
+              joinTable: joinTableName,
+              operation: "reconcile-join-count",
+            });
+          }
+          if (countSucceeded) continue;
+        }
+      }
 
       for (const fromResource of fromResources) {
         const joinTableName = getRelationJoinTableName(relation, fromResource);

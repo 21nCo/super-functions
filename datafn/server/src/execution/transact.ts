@@ -12,6 +12,13 @@ import { executeQuery } from "./query/execute.js";
 import { DbDataStore } from "./db-store.js";
 import { ChangeTrackingService } from "./sync/change-tracking.js";
 import type { DatafnLogger } from "../logger.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
+import {
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  ensurePermissionDirectoryOutbox,
+  markPermissionDirectorySyncReady,
+} from "./mutation/permission-directory-outbox.js";
 
 export interface TransactStep {
   query?: any;
@@ -53,15 +60,115 @@ export async function executeTransaction(
   const steps = request.steps;
   const isAtomic = request.atomic !== false; // Default true
   const hasMutations = steps.some((step) => Boolean(step.mutation));
+  const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  const needsPermissionDirectoryOutbox = Boolean(
+    hasMutations &&
+    multiRegionRuntime &&
+    steps.some((step) =>
+      step.mutation?.operation === "share" ||
+      step.mutation?.operation === "unshare"
+    ),
+  );
+  const prequeuedUnshareTaskIds: string[] = [];
+  const prequeuedUnshareTasks = new Map<DFQLMutation, string>();
+  const prequeuedUnshareMutationsByTaskId = new Map<string, DFQLMutation>();
+  try {
+    if (needsPermissionDirectoryOutbox) {
+      // Sequential steps are marked insideTransaction to avoid nested database
+      // transactions, so durable DDL must also be initialized up front there.
+      await ensurePermissionDirectoryOutbox(db);
+    }
+    if (multiRegionRuntime) {
+      for (const step of steps) {
+        if (step.mutation?.operation !== "unshare") continue;
+        // Atomic unshare removes the external grant before its transaction
+        // settles. Queue repair on the outer adapter before entering the
+        // transaction so enqueue failure aborts before invalidation.
+        const taskId = await enqueuePermissionDirectorySync(
+          db,
+          step.mutation,
+          namespace,
+          multiRegionRuntime.regionId,
+          { pending: true },
+        );
+        prequeuedUnshareTaskIds.push(taskId);
+        prequeuedUnshareTasks.set(step.mutation, taskId);
+        prequeuedUnshareMutationsByTaskId.set(taskId, step.mutation);
+      }
+    }
+  } catch (error: any) {
+    if (multiRegionRuntime) {
+      // A later enqueue can fail after earlier pending tasks started renewable
+      // owner leases. Release every task already created without waiting on an
+      // external directory. They remain durable and immediately eligible for
+      // the regular background reconciler.
+      const releases = await Promise.allSettled(prequeuedUnshareTaskIds.map(async (taskId) => {
+        const release = await markPermissionDirectorySyncReady(db, taskId);
+        if (release === "ownership-lost") {
+          await enqueuePermissionDirectorySync(
+            db,
+            prequeuedUnshareMutationsByTaskId.get(taskId)!,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+        }
+      }));
+      releases.forEach((release, index) => {
+        if (release.status === "rejected") {
+          logger?.error("Permission directory task release deferred", {
+            error: String(release.reason),
+            operation: "permission-directory",
+            taskId: prequeuedUnshareTaskIds[index],
+          });
+        }
+      });
+    }
+    return {
+      ok: false,
+      error: {
+        code: "INTERNAL",
+        message: `Transaction setup failed: ${error?.message || String(error)}`,
+        details: { path: "$" },
+      },
+    };
+  }
 
   // SRV-012: Step limit check moved to route handler; skip duplicate check here
   // (createTransactHandler validates before calling executeTransaction)
 
   const results: Array<any> = [];
   const changeTracking = new ChangeTrackingService(db, namespace, sequenceStore);
+  type DeferredPermissionDirectorySync = (
+    committedDb: Adapter,
+  ) => Promise<void>;
+  const drainPrequeuedUnshareTasks = async () => {
+    if (!multiRegionRuntime) return;
+    for (const taskId of prequeuedUnshareTaskIds) {
+      try {
+        await drainPermissionDirectorySync(
+          db,
+          taskId,
+          multiRegionRuntime,
+          logger,
+        );
+      } catch (error) {
+        // The task is already durable. Startup/interval draining owns retry.
+        logger?.error("Prequeued unshare reconciliation deferred", {
+          error: String(error),
+          operation: "permission-directory",
+          taskId,
+        });
+      }
+    }
+  };
 
   // Helper to execute a single step
-  const executeStep = async (step: TransactStep, stepDb: Adapter) => {
+  const executeStep = async (
+    step: TransactStep,
+    stepDb: Adapter,
+    deferredPermissionDirectorySyncs?: DeferredPermissionDirectorySync[],
+    insideDatabaseTransaction = false,
+  ) => {
     if (step.query) {
       // Create store for query
       const store = await DbDataStore.forQuery(
@@ -89,6 +196,13 @@ export async function executeTransaction(
         plugins,
         namespace,
         actorId,
+        logger,
+        undefined,
+        insideDatabaseTransaction,
+        insideDatabaseTransaction && deferredPermissionDirectorySyncs
+          ? (sync) => deferredPermissionDirectorySyncs.push(sync)
+          : undefined,
+        prequeuedUnshareTasks.get(step.mutation),
       );
       // Expose the first error as a top-level `.error` property so that
       // transact callers can access result.results[i].error.code directly
@@ -107,6 +221,20 @@ export async function executeTransaction(
 
   if (isAtomic && typeof (db as any).transaction === "function") {
     // REL-001: Atomic execution with DB transaction support
+    const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
+    const reconcilePermissionDirectoryAfterSettlement = async () => {
+      await drainPrequeuedUnshareTasks();
+      for (const sync of deferredPermissionDirectorySyncs) {
+        try {
+          await sync(db);
+        } catch (error) {
+          logger?.error("Permission directory reconciliation failed after settlement", {
+            error: String(error),
+            operation: "permission-directory",
+          });
+        }
+      }
+    };
     try {
       if (hasMutations) {
         // Initialize durable mutation storage on the outer adapter. Some
@@ -117,9 +245,15 @@ export async function executeTransaction(
         await changeTracking.ensureReady();
       }
       await (db as any).transaction(async (tx: Adapter) => {
+        deferredPermissionDirectorySyncs.length = 0;
         for (let i = 0; i < steps.length; i++) {
           const step = steps[i];
-          const result = await executeStep(step, tx);
+          const result = await executeStep(
+            step,
+            tx,
+            deferredPermissionDirectorySyncs,
+            true,
+          );
           results.push(result);
 
           if (step.mutation) {
@@ -143,10 +277,15 @@ export async function executeTransaction(
           }
         }
       });
+      await reconcilePermissionDirectoryAfterSettlement();
       // If we got here, commit happened — TV-REL-006: no rolledBack field
       return { ok: true, result: { ok: true, results } };
     } catch (error: any) {
       if (error && error.__transactionFailed) {
+        // Unshare invalidates the external directory before deleting the
+        // database grant. A rollback restores the database row, so reconcile
+        // again against settled state to compensate the external deletion.
+        await reconcilePermissionDirectoryAfterSettlement();
         // REL-003: Application-level step failure — results already annotated
         return {
           ok: true,
@@ -168,6 +307,7 @@ export async function executeTransaction(
         results.length = 0; // Clear any partial results
         // Fall through to sequential execution below
       } else {
+        await reconcilePermissionDirectoryAfterSettlement();
         // DB-level error (serialization, timeout, constraint) → INTERNAL error
         // NEVER fall through to sequential execution when adapter HAS transaction support
         return {
@@ -216,6 +356,7 @@ export async function executeTransaction(
         const mutRes = result as any;
         if (mutRes?.ok === false) {
           // Stop on first failure if atomic (even without rollback support we stop)
+          await drainPrequeuedUnshareTasks();
           return { ok: true, result: { ok: false, results } };
         }
       }
@@ -234,7 +375,10 @@ export async function executeTransaction(
         ok: false,
         error: { code: errorCode, message: e?.message || String(e) }
       });
-      if (isAtomic) return { ok: true, result: { ok: false, results } };
+      if (isAtomic) {
+        await drainPrequeuedUnshareTasks();
+        return { ok: true, result: { ok: false, results } };
+      }
     }
   }
 
@@ -245,5 +389,6 @@ export async function executeTransaction(
     return false;
   });
 
+  await drainPrequeuedUnshareTasks();
   return { ok: true, result: { ok: !anyFailed, results } };
 }

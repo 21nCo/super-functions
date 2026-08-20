@@ -295,20 +295,22 @@ export function createQueryHandler(
         principalId,
         resourceType: resource,
       }, multiRegionRuntime);
-      const rows: Record<string, unknown>[] = directoryRows.map((grant) => ({
-        id: grant.id,
-        resourceType: grant.resourceType,
-        resourceNs: grant.resourceNs,
-        resourceId: grant.resourceId,
-        principalId: grant.principalId,
-        level: grant.level,
-        grantKind: grant.grantKind,
-        sourceRef: grant.sourceRef,
-        grantedBy: grant.grantedBy,
-        grantedAt: grant.grantedAt,
-        revokedAt: grant.revokedAt,
-        resourceRegion: grant.resourceRegion,
-      }));
+      const rows: Record<string, unknown>[] = directoryRows
+        .filter((grant) => grant.resourceRegion === multiRegionRuntime?.regionId)
+        .map((grant) => ({
+          id: grant.id,
+          resourceType: grant.resourceType,
+          resourceNs: grant.resourceNs,
+          resourceId: grant.resourceId,
+          principalId: grant.principalId,
+          level: grant.level,
+          grantKind: grant.grantKind,
+          sourceRef: grant.sourceRef,
+          grantedBy: grant.grantedBy,
+          grantedAt: grant.grantedAt,
+          revokedAt: grant.revokedAt,
+          resourceRegion: grant.resourceRegion,
+        }));
       if (rows.length > 0) {
         return rows;
       }
@@ -351,7 +353,14 @@ export function createQueryHandler(
           ).map((row) => normalizePermissionGrantRow(row as Record<string, unknown>)),
         );
       }
-      return rows;
+      return multiRegionRuntime
+        ? rows.filter(
+            (row) =>
+              row.resourceRegion === undefined ||
+              row.resourceRegion === null ||
+              row.resourceRegion === multiRegionRuntime.regionId,
+          )
+        : rows;
     };
     const seenGrantIds = new Set<string>();
     for (const principalId of principals) {

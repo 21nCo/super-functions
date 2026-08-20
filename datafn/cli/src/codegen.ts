@@ -182,11 +182,11 @@ function firstEndpoint(endpoint: string | readonly string[]): string {
 }
 
 function fkFieldForOneMany(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+  return relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpoint(relation.from)}Id`;
 }
 
 function htreeFkField(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || "parentId";
+  return relation.fkField || relation.foreignKey || relation.inverse || "parentId";
 }
 
 function htreePathField(relation: DatafnRelationSchema): string {
@@ -237,7 +237,11 @@ function buildRelationFieldsByResource(schema: DatafnSchema): Map<string, Datafn
         ? fkResourceFieldForRelation(relation, "to")
         : undefined;
       for (const resource of endpointList(relation.from)) {
-        addRelationField(byResource, resource, stringField(relation.fkField || `${relation.relation}Id`));
+        addRelationField(
+          byResource,
+          resource,
+          stringField(relation.fkField || relation.foreignKey || `${relation.relation ?? endpointList(relation.to)[0]}Id`),
+        );
         if (resourceField) addRelationField(byResource, resource, stringField(resourceField));
       }
     } else if (relation.type === "one-many") {

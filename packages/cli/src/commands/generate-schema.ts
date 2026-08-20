@@ -5,8 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { loadConfig } from "../utils/config.js";
+import { loadConfigModule } from "../utils/load-config-module.js";
 import { parseLibraryInitializations } from "../utils/parse-library-init.js";
 import {
   getSuperfunctionsRegistry,
@@ -254,7 +254,12 @@ async function importLibrarySchemaInstances(
   location: { line: number; column: number };
 }>> {
   try {
-    const mod = await import(pathToFileURL(filePath).href);
+    const loaded = await loadConfigModule(filePath, {
+      resolveFunctions: false,
+      fallbackToModule: true,
+      transform: (_value, context) => context.module,
+    });
+    const mod = loaded.value;
     return Object.values(mod)
       .map(resolveExecutableSchemaSource)
       .filter((source): source is ExecutableSchemaSource => Boolean(source))

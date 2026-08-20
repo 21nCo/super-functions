@@ -171,9 +171,15 @@ export function injectCapabilityFieldsForOptimisticRecord(
       ? next
       : applySchemaDefaults(schema, resourceName, next);
     if (context.hasTimestamps) {
+      if (!opts.existingRecord) {
+        defaulted.createdAt = opts.timestampMs;
+      }
       defaulted.updatedAt = opts.timestampMs;
     }
     if (context.hasAudit) {
+      if (!opts.existingRecord) {
+        defaulted.createdBy = opts.actorId ?? null;
+      }
       defaulted.updatedBy = opts.actorId ?? null;
     }
     return defaulted;

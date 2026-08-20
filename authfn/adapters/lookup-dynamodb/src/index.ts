@@ -115,16 +115,19 @@ export function createDynamoDbRegionLookupStore(
       }
 
       try {
+        const rejectExpired = typeof ttlAttributeName === 'string';
         await client.send(new PutCommand({
           TableName: options.tableName,
           Item: toItem(input, ttlAttributeName, now),
-          ConditionExpression: '#value = :expected',
-          ExpressionAttributeNames: {
-            '#value': 'value'
-          },
-          ExpressionAttributeValues: {
-            ':expected': input.expected
-          }
+          ConditionExpression: rejectExpired
+            ? '#value = :expected AND (attribute_not_exists(#expiresAt) OR #expiresAt > :now)'
+            : '#value = :expected',
+          ExpressionAttributeNames: rejectExpired
+            ? { '#value': 'value', '#expiresAt': ttlAttributeName }
+            : { '#value': 'value' },
+          ExpressionAttributeValues: rejectExpired
+            ? { ':expected': input.expected, ':now': Math.floor(now().getTime() / 1000) }
+            : { ':expected': input.expected }
         }));
         return { updated: true };
       } catch (error) {

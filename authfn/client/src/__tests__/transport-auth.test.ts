@@ -29,6 +29,16 @@ describe('createAuthFnTransportAuth', () => {
       'x-custom-auth-context': 'custom',
       'x-plugin-auth-context': 'plugin'
     });
+    expect(await auth.getCredentials?.()).toBe('omit');
+  });
+
+  it('keeps explicit bearer-token credential overrides', async () => {
+    const auth = createAuthFnSessionTransportAuth({
+      bearerToken: 'session-token',
+      credentials: 'include'
+    });
+
+    expect(await auth.getCredentials?.()).toBe('include');
   });
 
   it('delegates unauthorized handling when provided', async () => {

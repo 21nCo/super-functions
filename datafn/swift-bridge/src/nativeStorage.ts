@@ -4,6 +4,8 @@ import type {
   DatafnStorageAdapter,
 } from "@datafn/client";
 import {
+  DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
+  hasNegotiatedBridgeCapability,
   requestBridgeMethod,
   type DatafnBridgeBus,
   type NativeBridgeMarker,
@@ -14,6 +16,14 @@ export function createNativeBackedStorageAdapter(
 ): DatafnStorageAdapter & NativeBridgeMarker {
   return {
     __datafnNativeBacked: true,
+    capabilities: {
+      get atomicMergeIfMissing() {
+        return hasNegotiatedBridgeCapability(
+          bus,
+          DATAFN_BRIDGE_CAPABILITY_ATOMIC_MERGE_IF_MISSING,
+        );
+      },
+    },
     getRecord(resource, id) {
       return requestBridgeMethod<Record<string, unknown> | null>(
         bus,
@@ -40,11 +50,11 @@ export function createNativeBackedStorageAdapter(
         id,
       });
     },
-    mergeRecord(resource, id, partial) {
+    mergeRecord(resource, id, partial, options) {
       return requestBridgeMethod<Record<string, unknown>>(
         bus,
         "storage.mergeRecord",
-        { resource, id, partial },
+        { resource, id, partial, ...(options ? { options } : {}) },
       );
     },
     listJoinRows(relationKey) {

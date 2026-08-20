@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { executeReconcile } from "../src/execution/sync/reconcile.js";
 import { executeClone } from "../src/execution/sync/clone.js";
+import { resourceIdMatches } from "../src/execution/sync/resource-id.js";
 import { MemoryIdempotencyStore } from "../src/execution/idempotency.js";
 import { ChangeTrackingService } from "../src/execution/sync/change-tracking.js";
 import { memoryAdapter } from "@superfunctions/db/adapters";
@@ -46,6 +47,232 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     expect(countSpy).toHaveBeenCalledWith(expect.objectContaining({ model: "tasks" }));
 
     vi.restoreAllMocks();
+  });
+
+  it("counts non-polymorphic public join stores without loading their rows", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+      }],
+    };
+    await db.create({
+      model: "__datafn_join_tasks_assignees",
+      data: { id: "t1:u1", from: "t1", to: "u1" },
+      namespace: "default",
+    });
+    const countSpy = vi.spyOn(db, "count");
+    const findManySpy = vi.spyOn(db, "findMany");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(countSpy).toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    expect(findManySpy).not.toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to loading join rows when db.count() fails", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+      }],
+    };
+    await db.create({
+      model: "__datafn_join_tasks_assignees",
+      data: { id: "t1:u1", from: "t1", to: "u1" },
+      namespace: "default",
+    });
+    const originalCount = db.count.bind(db);
+    vi.spyOn(db, "count").mockImplementation(async (input) => {
+      if (input.model === "__datafn_join_tasks_assignees") {
+        throw new Error("count unavailable");
+      }
+      return originalCount(input);
+    });
+    const findManySpy = vi.spyOn(db, "findMany");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(findManySpy).toHaveBeenCalledWith(expect.objectContaining({
+      model: "__datafn_join_tasks_assignees",
+    }));
+    vi.restoreAllMocks();
+  });
+
+  it("filters discriminator rows in explicitly shared join tables", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+        joinTable: "shared_assignments",
+      }],
+    };
+    await db.create({
+      model: "shared_assignments",
+      data: {
+        id: "task:user",
+        from: "t1",
+        to: "u1",
+        fromResource: "tasks",
+        toResource: "users",
+      },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: {
+        id: "project:user",
+        from: "p1",
+        to: "u1",
+        fromResource: "projects",
+        toResource: "users",
+      },
+      namespace: "default",
+    });
+    const countSpy = vi.spyOn(db, "count");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(countSpy).not.toHaveBeenCalledWith(expect.objectContaining({
+      model: "shared_assignments",
+    }));
+    vi.restoreAllMocks();
+  });
+
+  it("matches configured prefixes directly in polymorphic clone and reconcile joins", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: [
+        { name: "tasks", version: 1, fields: [] },
+        { name: "projects", version: 1, idPrefix: "project:", fields: [] },
+        { name: "documents", version: 1, idPrefix: "doc", fields: [] },
+        { name: "documentArchives", version: 1, idPrefix: "document", fields: [] },
+        { name: "users", version: 1, idPrefix: "user:", fields: [] },
+      ],
+      relations: [{
+        from: ["tasks", "projects", "documents", "documentArchives"],
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+        joinTable: "shared_assignments",
+      }],
+    };
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "task:user", from: "tasks", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "project:user", from: "project:1", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "project-prefix:user", from: "project", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "document:user", from: "doc42", to: "user:1" },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "archive:user", from: "document42", to: "user:1" },
+      namespace: "default",
+    });
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+    vi.spyOn(ChangeTrackingService.prototype, "getLatestServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_projects_assignees_users).toBe(2);
+    expect(result.joinCounts?.join_documents_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_documentArchives_assignees_users).toBe(1);
+
+    const clone = await executeClone(
+      { clientId: "c1", includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+    expect(clone.joins?.join_documents_assignees_users).toEqual([
+      expect.objectContaining({ from: "doc42", to: "user:1" }),
+    ]);
+    expect(clone.joins?.join_tasks_assignees_users).toEqual([
+      expect.objectContaining({ from: "tasks", to: "user:1" }),
+    ]);
+    expect(clone.joins?.join_projects_assignees_users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: "project:1", to: "user:1" }),
+      expect.objectContaining({ from: "project", to: "user:1" }),
+    ]));
+    expect(clone.joins?.join_documentArchives_assignees_users).toEqual([
+      expect.objectContaining({ from: "document42", to: "user:1" }),
+    ]);
+    vi.restoreAllMocks();
+  });
+
+  it("does not override an endpoint already resolved by an overlapping prefix", () => {
+    const relationSchema: DatafnSchema = {
+      resources: [
+        { name: "short", version: 1, idPrefix: "fo", fields: [] },
+        { name: "exact", version: 1, idPrefix: "foo:", fields: [] },
+      ],
+      relations: [],
+    };
+    const candidates = ["short", "exact"];
+
+    expect(resourceIdMatches(relationSchema, candidates, "short", "foo"))
+      .toBe(true);
+    expect(resourceIdMatches(relationSchema, candidates, "exact", "foo"))
+      .toBe(false);
+    expect(resourceIdMatches(relationSchema, candidates, "exact", "foo:1"))
+      .toBe(true);
   });
 });
 

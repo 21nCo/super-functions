@@ -55,6 +55,28 @@ describe('tenant matching', () => {
     ).toBe(true);
   });
 
+  it('does not let a delegated connection userId bypass grants', () => {
+    const connection = {
+      id: 'conn-delegated-user-id',
+      userId: 'delegate',
+      provider: 'gmail',
+      ownerKind: 'delegated' as const,
+      ownerId: 'delegate',
+      installedByUserId: 'installer',
+      delegatedToUserId: 'delegate',
+      grants: ['sync'],
+      tenantId: 'tenant-1',
+      status: ConnectionStatus.Active,
+      credentials: { encrypted: '{}', algorithm: 'none' },
+      connectedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    expect(connectionMatchesActor(connection, { userId: 'delegate', tenantId: 'tenant-1' }, 'sync')).toBe(true);
+    expect(connectionMatchesActor(connection, { userId: 'delegate', tenantId: 'tenant-1' }, 'disconnect')).toBe(false);
+  });
+
   it('requires organization equality for indirect delegated grants', () => {
     const connection = {
       id: 'conn-delegated-org',

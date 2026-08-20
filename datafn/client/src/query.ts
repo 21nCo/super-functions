@@ -300,8 +300,25 @@ async function overlayLocalQueryResult(
   schemaIndex?: SchemaIndex,
   temporal?: DatafnTemporalConfig,
 ): Promise<unknown> {
+  const cursor = query.cursor;
+  const hasActiveCursor =
+    typeof cursor === "object" &&
+    cursor !== null &&
+    ((cursor as Record<string, unknown>).after != null ||
+      (cursor as Record<string, unknown>).before != null);
+  if (
+    (typeof query.offset === "number" && query.offset > 0) ||
+    hasActiveCursor
+  ) {
+    return remoteResult;
+  }
   try {
-    const { limit: _limit, offset: _offset, ...unpaginatedQuery } = query;
+    const {
+      limit: _limit,
+      offset: _offset,
+      cursor: _cursor,
+      ...unpaginatedQuery
+    } = query;
     const localQuery = injectLocalCapabilityAutoFilters(unpaginatedQuery, schema);
     const [localResult, pendingChanges] = await Promise.all([
       executeLocalQuery(

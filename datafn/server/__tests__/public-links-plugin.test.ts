@@ -3,6 +3,7 @@ import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
 } from "@superfunctions/db/adapters";
+import type { TransactionAdapter } from "@superfunctions/db";
 import type { DatafnSchema } from "@datafn/core";
 import {
   createDatafnPublicLinksPlugin,
@@ -12,6 +13,11 @@ import {
   type DatafnServer,
   type SearchProvider,
 } from "../src/index.js";
+import {
+  drainPermissionDirectoryOutbox,
+  drainPermissionDirectorySync,
+} from
+  "../src/execution/mutation/permission-directory-outbox.js";
 
 type TestContext = {
   ownerActorId: string | null;
@@ -271,6 +277,287 @@ describe("DataFn public-links plugin", () => {
       select: ["id"],
     }, tokenHeaders);
     expect(revokedRead.status).toBe(403);
+  });
+
+  it("keeps directory work pending until a public-link share is committed", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:public-links", directory };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: runtime.regionId,
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    let releasePermissionCreate!: () => void;
+    const permissionCreateReleased = new Promise<void>((resolve) => {
+      releasePermissionCreate = resolve;
+    });
+    let permissionCreateStarted!: () => void;
+    const permissionCreateReached = new Promise<void>((resolve) => {
+      permissionCreateStarted = resolve;
+    });
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:pending-link",
+        clientId: "public-link-pending",
+        mutationId: "public-link-pending-insert",
+        record: { id: "tag:pending-link", label: "Pending link" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+
+      const originalCreate = db.create.bind(db);
+      db.create = async (input) => {
+        if (input.model === "__datafn_permissions_global") {
+          permissionCreateStarted();
+          await permissionCreateReleased;
+        }
+        return originalCreate(input);
+      };
+
+      const creating = post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:pending-link",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+      await permissionCreateReached;
+
+      await expect(drainPermissionDirectoryOutbox(db, runtime))
+        .resolves.toEqual({ processed: 0, pending: 0 });
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(1);
+
+      releasePermissionCreate();
+      const created = await creating;
+      expect(created.status).toBe(200);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: `${readString(created.body.result.principalId)}#linkTag`,
+      });
+      expect(indexed.records).toHaveLength(1);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(0);
+    } finally {
+      releasePermissionCreate();
+      await server.close();
+    }
+  });
+
+  it("removes public-link and canonical grant rows when sharing throws after the grant write", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:throwing-link",
+        clientId: "public-link-throw",
+        mutationId: "public-link-throw-insert",
+        record: { id: "tag:throwing-link", label: "Throwing link" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+
+      const originalCreate = db.create.bind(db);
+      db.create = async (input) => {
+        if (input.model === "__datafn_permissions_global") {
+          await originalCreate(input);
+          throw new Error("post-permission write failure");
+        }
+        return originalCreate(input);
+      };
+
+      const created = await post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:throwing-link",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+
+      expect(created.status).toBeGreaterThanOrEqual(500);
+      await expect(db.findMany({
+        model: "publicLink",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+      await expect(db.findMany({
+        model: "__datafn_permissions_global",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("durably retries failed share compensation", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:compensation", directory };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: runtime.regionId,
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    const originalCreate = db.create.bind(db);
+    const originalTransaction = db.transaction.bind(db);
+    const originalInternalUpdate = db.internal.update.bind(db.internal);
+    let failCompensation = true;
+    let lostOriginalTask = false;
+    db.internal.update = async (table, where, data) => {
+      if (
+        table === "__datafn_permission_directory_outbox" &&
+        String(data.mutation ?? "").includes("compensate-failed-share")
+      ) {
+        lostOriginalTask = true;
+        return 0;
+      }
+      return originalInternalUpdate(table, where, data);
+    };
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:compensation",
+        clientId: "public-link-compensation",
+        mutationId: "public-link-compensation-insert",
+        record: { id: "tag:compensation", label: "Compensation" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+      db.create = async (input) => {
+        const result = await originalCreate(input);
+        if (input.model === "__datafn_permissions_global") {
+          throw new Error("post-permission write failure");
+        }
+        return result;
+      };
+      db.transaction = async <R>(
+        callback: (trx: TransactionAdapter) => Promise<R>,
+      ) => originalTransaction(async (trx) => {
+        const originalTransactionDeleteMany = trx.deleteMany.bind(trx);
+        trx.deleteMany = async (input) => {
+          if (
+            failCompensation &&
+            input.model === "__datafn_permissions_global"
+          ) {
+            throw new Error("canonical cleanup unavailable");
+          }
+          return originalTransactionDeleteMany(input);
+        };
+        return callback(trx);
+      });
+
+      const created = await post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:compensation",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+      expect(created.status).toBeGreaterThanOrEqual(500);
+      const tasksAfterOwnershipLoss = await db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(lostOriginalTask).toBe(true);
+      expect(tasksAfterOwnershipLoss).toHaveLength(1);
+      const replacement = tasksAfterOwnershipLoss.find((task) =>
+        String(task.mutation).includes("compensate-failed-share")
+      );
+      expect(replacement).toBeDefined();
+      const pending = await db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(pending).toHaveLength(1);
+      expect(String(pending[0].mutation)).toContain("compensate-failed-share");
+
+      failCompensation = false;
+      db.internal.update = originalInternalUpdate;
+      await expect(drainPermissionDirectorySync(
+        db,
+        String(replacement!.id),
+        runtime,
+      )).resolves.toBe(true);
+      await expect(db.findMany({
+        model: "__datafn_permissions_global",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toEqual([]);
+    } finally {
+      failCompensation = false;
+      db.transaction = originalTransaction;
+      db.internal.update = originalInternalUpdate;
+      await server.close();
+    }
   });
 });
 

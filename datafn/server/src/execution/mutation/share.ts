@@ -1,8 +1,14 @@
-import type { Adapter } from "@superfunctions/db";
+import type {
+  Adapter,
+  TransactionAdapter,
+  WhereClause,
+} from "@superfunctions/db";
 import type { DatafnLogger } from "../../logger.js";
 import { hasResourceScopeOwnerAccess } from "../../validation/authz.js";
 import {
   emitLegacyShareDeprecationWarning,
+  getLegacyPermissionsTable,
+  getSpv2MigrationRuntimeConfig,
   mirrorGrantToLegacyV1,
   removeLegacyV1Grant,
 } from "../migration/spv2.js";
@@ -128,6 +134,297 @@ function getPermissionEntryId(
   principalId: string,
 ): string {
   return `${resourceType}:${resourceNs}:${resourceId ?? "*"}:${principalId}`;
+}
+
+export interface DatafnPermissionGrantSnapshot {
+  permissionId: string;
+  resource: string;
+  resourceId: string | null;
+  principalId: string;
+  canonical: Record<string, unknown> | null;
+  legacyManaged: boolean;
+  legacy: Record<string, unknown> | null;
+  /** Canonical row written by the failed share and therefore owned by compensation. */
+  compensationExpectedCanonical?: Record<string, unknown>;
+}
+
+const FAILED_SHARE_PERMISSION_RECORD = "datafnFailedSharePermissionRecord";
+const FAILED_SHARE_COMPENSATION = "datafnFailedShareCompensation";
+
+export interface FailedShareCompensation {
+  snapshot: DatafnPermissionGrantSnapshot;
+  error: unknown;
+}
+
+export function getFailedSharePermissionRecord(
+  error: unknown,
+): Record<string, unknown> | null {
+  if (typeof error !== "object" || error === null) return null;
+  const record = (error as Record<string, unknown>)[FAILED_SHARE_PERMISSION_RECORD];
+  return typeof record === "object" && record !== null && !Array.isArray(record)
+    ? record as Record<string, unknown>
+    : null;
+}
+
+export function getFailedShareCompensation(
+  error: unknown,
+): FailedShareCompensation | null {
+  if (typeof error !== "object" || error === null) return null;
+  const compensation = (error as Record<string, unknown>)[FAILED_SHARE_COMPENSATION];
+  if (typeof compensation !== "object" || compensation === null) return null;
+  const snapshot = (compensation as Record<string, unknown>).snapshot;
+  if (typeof snapshot !== "object" || snapshot === null) return null;
+  return compensation as unknown as FailedShareCompensation;
+}
+
+function attachFailedSharePermissionRecord(
+  error: unknown,
+  record: Record<string, unknown>,
+): Error {
+  const failure = error instanceof Error ? error : new Error(String(error));
+  try {
+    Object.defineProperty(failure, FAILED_SHARE_PERMISSION_RECORD, {
+      configurable: true,
+      value: record,
+    });
+    return failure;
+  } catch {
+    const wrapped = new Error(String(error));
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    Object.defineProperty(wrapped, FAILED_SHARE_PERMISSION_RECORD, {
+      value: record,
+    });
+    return wrapped;
+  }
+}
+
+function attachFailedShareCompensation(
+  error: Error,
+  compensation: FailedShareCompensation,
+): Error {
+  Object.defineProperty(error, FAILED_SHARE_COMPENSATION, {
+    configurable: true,
+    value: compensation,
+  });
+  return error;
+}
+
+export async function snapshotDatafnPermissionGrantBeforeShare(
+  db: Adapter,
+  mutation: {
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+  },
+  namespace: string,
+): Promise<DatafnPermissionGrantSnapshot> {
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) {
+    throw new Error("Cannot snapshot a share with an invalid principal");
+  }
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const permissionId = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  const canonical = await db.findOne({
+    model: getPermissionsTableName(),
+    where: [{ field: "id", operator: "eq", value: permissionId }],
+    namespace,
+  });
+  const legacyManaged = getSpv2MigrationRuntimeConfig().writeMode === "dual";
+  const legacyId = `${mutation.resource}:${resourceId ?? "*"}:${principal.principalId}`;
+  const legacy = legacyManaged
+    ? await db.findOne({
+        model: getLegacyPermissionsTable(mutation.resource),
+        where: [{ field: "id", operator: "eq", value: legacyId }],
+        namespace,
+      })
+    : null;
+  return {
+    permissionId,
+    resource: mutation.resource,
+    resourceId,
+    principalId: principal.principalId,
+    canonical: canonical as Record<string, unknown> | null,
+    legacyManaged,
+    legacy: legacy as Record<string, unknown> | null,
+  };
+}
+
+async function restoreGrantRecord(
+  db: Adapter,
+  model: string,
+  id: string,
+  record: Record<string, unknown>,
+  namespace: string,
+): Promise<void> {
+  const update = { ...record };
+  delete update.id;
+  await db.upsert({
+    model,
+    where: [{ field: "id", operator: "eq", value: id }],
+    create: { ...record, id },
+    update,
+    namespace,
+    conflictTarget: "id",
+  });
+}
+
+const CANONICAL_GRANT_OWNERSHIP_FIELDS = [
+  "id",
+  "resourceType",
+  "resourceNs",
+  "resourceId",
+  "principalId",
+  "level",
+  "grantKind",
+  "sourceRef",
+  "grantedBy",
+  "grantedAt",
+  "revokedAt",
+  "resourceRegion",
+] as const;
+
+const LEGACY_GRANT_OWNERSHIP_FIELDS = [
+  "id",
+  "resourceId",
+  "userId",
+  "level",
+  "grantedBy",
+  "grantedAt",
+  "revokedAt",
+] as const;
+
+function grantOwnershipWhere(
+  record: Record<string, unknown>,
+  fields: readonly string[],
+): WhereClause[] {
+  return fields.map((field) => ({
+    field,
+    operator: "eq" as const,
+    value: record[field] ?? null,
+  }));
+}
+
+async function conditionallyRestoreGrantRecord(
+  db: Adapter | TransactionAdapter,
+  model: string,
+  expected: Record<string, unknown>,
+  desired: Record<string, unknown> | null,
+  ownershipFields: readonly string[],
+  namespace: string,
+): Promise<boolean> {
+  const current = await db.findOne({
+    model,
+    where: [{ field: "id", operator: "eq", value: expected.id }],
+    namespace,
+  });
+  if (!current && !desired) return true;
+  if (
+    current &&
+    desired &&
+    ownershipFields.every(
+      (field) => (current[field] ?? null) === (desired[field] ?? null),
+    )
+  ) {
+    return true;
+  }
+  const where = grantOwnershipWhere(expected, ownershipFields);
+  if (!desired) {
+    return (await db.deleteMany({ model, where, namespace })) > 0;
+  }
+  const update = { ...desired };
+  delete update.id;
+  return (await db.updateMany({ model, where, data: update, namespace })) > 0;
+}
+
+const COMPENSATION_OWNERSHIP_LOST = Symbol("compensation-ownership-lost");
+
+function expectedLegacyGrantFromCanonical(
+  snapshot: DatafnPermissionGrantSnapshot,
+  canonical: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    id: `${snapshot.resource}:${snapshot.resourceId ?? "*"}:${snapshot.principalId}`,
+    resourceId: snapshot.resourceId,
+    userId: snapshot.principalId,
+    level: canonical.level,
+    grantedBy: canonical.grantedBy,
+    grantedAt: canonical.grantedAt,
+    revokedAt: canonical.revokedAt ?? null,
+  };
+}
+
+async function reconcileCompensatedGrantDirectory(
+  db: Adapter,
+  snapshot: DatafnPermissionGrantSnapshot,
+  namespace: string,
+  multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = (await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
+      namespace,
+    })) ?? null;
+    if (current) {
+      await indexDatafnPermissionGrant(
+        current as Record<string, unknown>,
+        multiRegionRuntime,
+      );
+    } else {
+      await deleteDatafnPermissionGrant({
+        id: snapshot.permissionId,
+        resourceType: snapshot.resource,
+        resourceNs: namespace,
+        resourceId: snapshot.resourceId,
+        principalId: snapshot.principalId,
+      }, multiRegionRuntime);
+    }
+    const settled = (await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: snapshot.permissionId }],
+      namespace,
+    })) ?? null;
+    if (
+      (current === null && settled === null) ||
+      (current !== null && settled !== null &&
+        permissionDirectoryGrantSignature(current) ===
+          permissionDirectoryGrantSignature(settled))
+    ) {
+      return;
+    }
+  }
+  throw new Error(
+    "Permission grant changed repeatedly during compensation reconciliation",
+  );
+}
+
+async function removeLegacyGrantWithRetries(input: {
+  db: Adapter;
+  namespace: string;
+  resource: string;
+  resourceId: string | null;
+  principalId: string;
+}): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await removeLegacyV1Grant(input);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function isPrincipalInNamespace(
@@ -334,6 +631,11 @@ export async function executeShare(
     where: [{ field: "id", operator: "eq", value: permissionEntryId }],
     namespace,
   });
+  const priorSnapshot = await snapshotDatafnPermissionGrantBeforeShare(
+    db,
+    mutation,
+    namespace,
+  );
 
   const permissionRecord: Record<string, unknown> = existingPermission
     ? {
@@ -348,6 +650,7 @@ export async function executeShare(
         grantedBy: actorId ?? "system",
         grantedAt: now,
         revokedAt: null,
+        ...(multiRegionRuntime ? { resourceRegion: multiRegionRuntime.regionId } : {}),
       }
     : {
         id: permissionEntryId,
@@ -361,54 +664,82 @@ export async function executeShare(
         grantedBy: actorId ?? "system",
         grantedAt: now,
         revokedAt: null,
+        ...(multiRegionRuntime ? { resourceRegion: multiRegionRuntime.regionId } : {}),
       };
 
-  if (existingPermission) {
-    await db.update({
-      model: permissionsTable,
-      where: [{ field: "id", operator: "eq", value: permissionRecord.id }],
-      data: {
-        resourceType: permissionRecord.resourceType,
-        resourceNs: permissionRecord.resourceNs,
-        resourceId: permissionRecord.resourceId,
-        principalId: permissionRecord.principalId,
-        level: permissionRecord.level,
-        grantKind: permissionRecord.grantKind,
-        sourceRef: permissionRecord.sourceRef,
-        grantedBy: permissionRecord.grantedBy,
-        grantedAt: permissionRecord.grantedAt,
-        revokedAt: permissionRecord.revokedAt,
-      },
-      namespace,
-    });
-  } else {
-    await db.create({
-      model: permissionsTable,
-      data: permissionRecord,
-      namespace,
-    });
-  }
+  try {
+    if (existingPermission) {
+      await db.update({
+        model: permissionsTable,
+        where: [{ field: "id", operator: "eq", value: permissionRecord.id }],
+        data: {
+          resourceType: permissionRecord.resourceType,
+          resourceNs: permissionRecord.resourceNs,
+          resourceId: permissionRecord.resourceId,
+          principalId: permissionRecord.principalId,
+          level: permissionRecord.level,
+          grantKind: permissionRecord.grantKind,
+          sourceRef: permissionRecord.sourceRef,
+          grantedBy: permissionRecord.grantedBy,
+          grantedAt: permissionRecord.grantedAt,
+          revokedAt: permissionRecord.revokedAt,
+          ...(multiRegionRuntime ? { resourceRegion: permissionRecord.resourceRegion } : {}),
+        },
+        namespace,
+      });
+    } else {
+      await db.create({
+        model: permissionsTable,
+        data: permissionRecord,
+        namespace,
+      });
+    }
 
-  const mirrorLevel =
-    requestedLevel === "viewer" ||
-    requestedLevel === "editor" ||
-    requestedLevel === "owner"
-      ? requestedLevel
-      : null;
-  if (mirrorLevel) {
-    await mirrorGrantToLegacyV1({
-      db,
-      namespace,
-      resource: mutation.resource,
-      resourceId,
-      principalId: sharePrincipalId,
-      level: mirrorLevel,
-      grantedBy: actorId ?? "system",
-      grantedAt: now,
-    });
+    const mirrorLevel =
+      requestedLevel === "viewer" ||
+      requestedLevel === "editor" ||
+      requestedLevel === "owner"
+        ? requestedLevel
+        : null;
+    if (mirrorLevel) {
+      await mirrorGrantToLegacyV1({
+        db,
+        namespace,
+        resource: mutation.resource,
+        resourceId,
+        principalId: sharePrincipalId,
+        level: mirrorLevel,
+        grantedBy: actorId ?? "system",
+        grantedAt: now,
+      });
+    }
+  } catch (error) {
+    const failure = attachFailedSharePermissionRecord(error, permissionRecord);
+    const compensationSnapshot = {
+      ...priorSnapshot,
+      compensationExpectedCanonical: permissionRecord,
+    };
+    if (
+      db.capabilities?.transactions?.supported === false ||
+      typeof db.transaction !== "function"
+    ) {
+      try {
+        await rollbackDatafnPermissionGrantAfterFailedShare(
+          db,
+          mutation,
+          namespace,
+          multiRegionRuntime ?? null,
+          compensationSnapshot,
+        );
+      } catch (compensationError) {
+        throw attachFailedShareCompensation(failure, {
+          snapshot: compensationSnapshot,
+          error: compensationError,
+        });
+      }
+    }
+    throw failure;
   }
-
-  await indexDatafnPermissionGrant(permissionRecord, multiRegionRuntime ?? null);
 
   return { ok: true, permissionRecord };
 }
@@ -528,11 +859,11 @@ export async function executeUnshare(
     namespace,
   });
 
-  // Remove the distributed authorization entry before deleting the
-  // authoritative database grant. If directory invalidation fails, the
-  // database row remains active and the unshare fails without creating a
-  // revoked-database/stale-directory authorization bypass. This also cleans a
-  // stale directory entry when an earlier database deletion already happened.
+  // Invalidate the distributed authorization entry before deleting the
+  // authoritative grant. If invalidation fails, the database grant remains
+  // active, preventing a revoked-database/stale-directory authorization gap.
+  // Share indexing is deliberately post-commit; unshare invalidation is
+  // deliberately fail-closed before the database delete.
   await deleteDatafnPermissionGrant({
     id: changeId,
     resourceType: mutation.resource,
@@ -566,6 +897,296 @@ export async function executeUnshare(
     deleted: true,
     changeId,
   };
+}
+
+/**
+ * Removes every grant representation that may have been written before a
+ * share operation threw. This deliberately bypasses owner re-validation: the
+ * caller is compensating a grant that never became a successful operation.
+ */
+export async function rollbackDatafnPermissionGrantAfterFailedShare(
+  db: Adapter,
+  mutation: {
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+  },
+  namespace: string,
+  multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
+  priorSnapshot?: DatafnPermissionGrantSnapshot,
+): Promise<void> {
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) {
+    throw new Error("Cannot compensate a failed share with an invalid principal");
+  }
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const permissionId = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  const snapshot = priorSnapshot ?? {
+    permissionId,
+    resource: mutation.resource,
+    resourceId,
+    principalId: principal.principalId,
+    canonical: null,
+    legacyManaged: getSpv2MigrationRuntimeConfig().writeMode === "dual",
+    legacy: null,
+  };
+  if (
+    snapshot.permissionId !== permissionId ||
+    snapshot.resource !== mutation.resource ||
+    snapshot.resourceId !== resourceId ||
+    snapshot.principalId !== principal.principalId
+  ) {
+    throw new Error("Cannot compensate a failed share with a mismatched snapshot");
+  }
+
+  if (snapshot.compensationExpectedCanonical) {
+    if (
+      db.capabilities?.transactions?.supported === false ||
+      typeof db.transaction !== "function"
+    ) {
+      // Transaction-disabled adapters still provide conditional bulk writes.
+      // Restore canonical state first; only touch the legacy mirror while the
+      // exact failed canonical state is still owned by this compensation.
+      const canonicalRestored = await conditionallyRestoreGrantRecord(
+        db,
+        getPermissionsTableName(),
+        snapshot.compensationExpectedCanonical,
+        snapshot.canonical,
+        CANONICAL_GRANT_OWNERSHIP_FIELDS,
+        namespace,
+      );
+      if (canonicalRestored && snapshot.legacyManaged) {
+        const expectedLegacy = expectedLegacyGrantFromCanonical(
+          snapshot,
+          snapshot.compensationExpectedCanonical,
+        );
+        await conditionallyRestoreGrantRecord(
+          db,
+          getLegacyPermissionsTable(mutation.resource),
+          expectedLegacy,
+          snapshot.legacy,
+          LEGACY_GRANT_OWNERSHIP_FIELDS,
+          namespace,
+        );
+      }
+    } else {
+      try {
+        await db.transaction(async (trx) => {
+          if (snapshot.legacyManaged) {
+            const expectedLegacy = expectedLegacyGrantFromCanonical(
+              snapshot,
+              snapshot.compensationExpectedCanonical!,
+            );
+            const legacyRestored = await conditionallyRestoreGrantRecord(
+              trx,
+              getLegacyPermissionsTable(mutation.resource),
+              expectedLegacy,
+              snapshot.legacy,
+              LEGACY_GRANT_OWNERSHIP_FIELDS,
+              namespace,
+            );
+            if (!legacyRestored) throw COMPENSATION_OWNERSHIP_LOST;
+          }
+          const canonicalRestored = await conditionallyRestoreGrantRecord(
+            trx,
+            getPermissionsTableName(),
+            snapshot.compensationExpectedCanonical!,
+            snapshot.canonical,
+            CANONICAL_GRANT_OWNERSHIP_FIELDS,
+            namespace,
+          );
+          if (!canonicalRestored) throw COMPENSATION_OWNERSHIP_LOST;
+        });
+      } catch (error) {
+        if (error !== COMPENSATION_OWNERSHIP_LOST) throw error;
+        // A newer share or unshare owns at least one representation. The
+        // transaction rolls back every partial restore before the directory is
+        // reconciled from the current authoritative canonical row.
+      }
+    }
+    await reconcileCompensatedGrantDirectory(
+      db,
+      snapshot,
+      namespace,
+      multiRegionRuntime ?? null,
+    );
+    return;
+  }
+
+  if (snapshot.legacyManaged) {
+    const legacyId = `${mutation.resource}:${resourceId ?? "*"}:${principal.principalId}`;
+    if (snapshot.legacy) {
+      await restoreGrantRecord(
+        db,
+        getLegacyPermissionsTable(mutation.resource),
+        legacyId,
+        snapshot.legacy,
+        namespace,
+      );
+    } else {
+      // A failed dual-write share must not leave its legacy representation
+      // active. Immediate retries handle transient failures; a caller-owned
+      // durable compensation task can retry this idempotent routine later.
+      await removeLegacyGrantWithRetries({
+        db,
+        namespace,
+        resource: mutation.resource,
+        resourceId,
+        principalId: principal.principalId,
+      });
+    }
+  }
+
+  if (snapshot.canonical) {
+    await restoreGrantRecord(
+      db,
+      getPermissionsTableName(),
+      permissionId,
+      snapshot.canonical,
+      namespace,
+    );
+  } else {
+    await db.delete({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: permissionId }],
+      namespace,
+    });
+  }
+
+  if (snapshot.canonical) {
+    await indexDatafnPermissionGrant(
+      snapshot.canonical,
+      multiRegionRuntime ?? null,
+    );
+  } else {
+    await deleteDatafnPermissionGrant({
+      id: permissionId,
+      resourceType: mutation.resource,
+      resourceNs: namespace,
+      resourceId,
+      principalId: principal.principalId,
+    }, multiRegionRuntime ?? null);
+  }
+}
+
+/** Reconciles the distributed permission directory from committed database state. */
+export async function syncDatafnPermissionGrantAfterCommit(
+  db: Adapter,
+  mutation: {
+    operation: string;
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+    compensationSnapshot?: DatafnPermissionGrantSnapshot;
+  },
+  namespace: string,
+  multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
+): Promise<void> {
+  if (
+    mutation.operation === "compensate-failed-share" &&
+    mutation.compensationSnapshot
+  ) {
+    await rollbackDatafnPermissionGrantAfterFailedShare(
+      db,
+      mutation,
+      namespace,
+      multiRegionRuntime,
+      mutation.compensationSnapshot,
+    );
+    return;
+  }
+  if (
+    !multiRegionRuntime ||
+    (mutation.operation !== "share" && mutation.operation !== "unshare")
+  ) {
+    return;
+  }
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) return;
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const id = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  let permission = await db.findOne({
+    model: getPermissionsTableName(),
+    where: [{ field: "id", operator: "eq", value: id }],
+    namespace,
+  });
+  if (permission) {
+    // Fence delayed retries against both revocation and a newer grant update.
+    // Once the post-write read matches what was indexed, any later mutation
+    // owns its own post-commit reconciliation. Repeated churn keeps the outbox
+    // task pending instead of acknowledging an unstable snapshot.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await indexDatafnPermissionGrant(
+        permission as Record<string, unknown>,
+        multiRegionRuntime,
+      );
+      const currentPermission = await db.findOne({
+        model: getPermissionsTableName(),
+        where: [{ field: "id", operator: "eq", value: id }],
+        namespace,
+      });
+      if (!currentPermission) {
+        await deleteDatafnPermissionGrant({
+          id,
+          resourceType: mutation.resource,
+          resourceNs: namespace,
+          resourceId,
+          principalId: principal.principalId,
+        }, multiRegionRuntime);
+        return;
+      }
+      if (permissionDirectoryGrantSignature(currentPermission) ===
+        permissionDirectoryGrantSignature(permission)) {
+        return;
+      }
+      permission = currentPermission;
+    }
+    throw new Error("Permission grant changed repeatedly during directory reconciliation");
+  }
+  await deleteDatafnPermissionGrant({
+    id,
+    resourceType: mutation.resource,
+    resourceNs: namespace,
+    resourceId,
+    principalId: principal.principalId,
+  }, multiRegionRuntime);
+}
+
+function permissionDirectoryGrantSignature(grant: Record<string, unknown>): string {
+  return JSON.stringify([
+    grant.id,
+    grant.resourceType,
+    grant.resourceNs,
+    grant.resourceId ?? null,
+    grant.principalId,
+    grant.level,
+    grant.grantKind,
+    grant.sourceRef,
+    grant.grantedBy,
+    grant.grantedAt,
+    grant.revokedAt ?? null,
+    grant.resourceRegion ?? null,
+  ]);
 }
 
 export function getPermissionsTable(resource: string): string {

@@ -85,6 +85,7 @@ export function createSearchProvider(
     },
 
     async search(params: SearchProviderSearchParams) {
+      assertMetadataFiltersSupported(adapter, params);
       const ids = await adapter.search({
         resource: params.resource,
         query: params.query,
@@ -122,6 +123,7 @@ export function createSearchProvider(
     },
 
     async searchAll(params: SearchProviderSearchAllParams) {
+      assertMetadataFiltersSupported(adapter, params);
       if (adapter.searchAll) {
         const results = await adapter.searchAll({
           query: params.query,
@@ -231,6 +233,21 @@ export function createSearchProvider(
       };
     },
   });
+}
+
+function assertMetadataFiltersSupported(
+  adapter: SearchAdapter,
+  params: { namespaceFilter?: string[]; regionFilter?: string[] },
+): void {
+  if (
+    (params.namespaceFilter?.length || params.regionFilter?.length) &&
+    adapter.capabilities?.metadataFilters !== true
+  ) {
+    throw new SearchProviderError(
+      "DFQL_UNSUPPORTED",
+      `Search adapter ${adapter.name} does not enforce namespace or region metadata filters`,
+    );
+  }
 }
 
 function extractFields(

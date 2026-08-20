@@ -237,6 +237,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
   }
 
   const resourceNames = new Set<string>();
+  const normalizedIdPrefixes = new Map<string, string>();
   const normalizedResources: DatafnResourceSchema[] = [];
 
   for (const resource of s.resources) {
@@ -270,6 +271,44 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
       );
     }
     resourceNames.add(r.name);
+
+    let effectiveIdPrefix = `${r.name}:`;
+    if (r.idPrefix !== undefined) {
+      if (typeof r.idPrefix !== "string") {
+        return err(
+          "SCHEMA_INVALID",
+          "Invalid schema: resource.idPrefix must be string",
+          { path: `resources.${r.name}.idPrefix` },
+        );
+      }
+      if (r.idPrefix.length === 0) {
+        return err(
+          "SCHEMA_INVALID",
+          "Invalid schema: resource.idPrefix must not be empty",
+          { path: `resources.${r.name}.idPrefix` },
+        );
+      }
+      effectiveIdPrefix = r.idPrefix;
+    }
+    const normalizedIdPrefix = effectiveIdPrefix.endsWith(":")
+      ? effectiveIdPrefix.slice(0, -1)
+      : effectiveIdPrefix;
+    if (normalizedIdPrefix.length === 0) {
+      return err(
+        "SCHEMA_INVALID",
+        "Invalid schema: resource.idPrefix must not normalize to empty",
+        { path: `resources.${r.name}.idPrefix` },
+      );
+    }
+    const conflictingResource = normalizedIdPrefixes.get(normalizedIdPrefix);
+    if (conflictingResource !== undefined) {
+      return err(
+        "SCHEMA_INVALID",
+        `Invalid schema: resource idPrefix "${effectiveIdPrefix}" conflicts with resource "${conflictingResource}" after normalization`,
+        { path: `resources.${r.name}.idPrefix` },
+      );
+    }
+    normalizedIdPrefixes.set(normalizedIdPrefix, r.name);
 
     // Validate version
     if (typeof r.version !== "number" || !Number.isInteger(r.version)) {
@@ -529,6 +568,11 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     if (r.fkField !== undefined && typeof r.fkField !== "string") {
       return err("SCHEMA_INVALID", "Invalid schema: relation.fkField must be string", {
         path: "relations.fkField",
+      });
+    }
+    if (r.foreignKey !== undefined && typeof r.foreignKey !== "string") {
+      return err("SCHEMA_INVALID", "Invalid schema: relation.foreignKey must be string", {
+        path: "relations.foreignKey",
       });
     }
     if (r.fkResourceField !== undefined && typeof r.fkResourceField !== "string") {

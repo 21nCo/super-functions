@@ -66,6 +66,7 @@ export async function indexDatafnPermissionGrant(
   const normalized = normalizeGrant(grant, config?.regionId);
   if (!config || !normalized) return;
   await config.directory.put(permissionGrantRecord(normalized));
+  await deleteMatchingLegacyPermissionGrant(normalized.id, config);
 }
 
 export async function deleteDatafnPermissionGrant(
@@ -79,7 +80,8 @@ export async function deleteDatafnPermissionGrant(
   config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
   if (!config) return;
-  await config.directory.delete(permissionDirectoryKey(input.id));
+  await config.directory.delete(permissionDirectoryKey(config.regionId, input.id));
+  await deleteMatchingLegacyPermissionGrant(input.id, config);
 }
 
 export async function queryDatafnPermissionGrants(
@@ -90,11 +92,21 @@ export async function queryDatafnPermissionGrants(
   config: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<DatafnPermissionDirectoryGrant[]> {
   if (!config) return [];
-  const result = await config.directory.query({
-    index: 'datafn.permission.principalResource',
-    value: `${input.principalId}#${input.resourceType}`,
-  });
-  return result.records
+  const records: IndexedDirectoryRecord[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const result = await config.directory.query({
+      index: 'datafn.permission.principalResource',
+      value: `${input.principalId}#${input.resourceType}`,
+      ...(cursor ? { cursor } : {}),
+    });
+    records.push(...result.records);
+    cursor = result.cursor;
+    if (cursor && seenCursors.has(cursor)) break;
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return records
     .map((record) => parseGrant(record.value))
     .filter((grant): grant is DatafnPermissionDirectoryGrant => Boolean(grant));
 }
@@ -132,7 +144,7 @@ function normalizeGrant(
 
 function permissionGrantRecord(grant: DatafnPermissionDirectoryGrant): IndexedDirectoryRecord {
   return {
-    key: permissionDirectoryKey(grant.id),
+    key: permissionDirectoryKey(grant.resourceRegion, grant.id),
     value: JSON.stringify(grant),
     indexes: {
       'datafn.permission.principal': grant.principalId,
@@ -171,6 +183,30 @@ function parseGrant(value: string): DatafnPermissionDirectoryGrant | null {
   }
 }
 
-function permissionDirectoryKey(id: string): string {
+function permissionDirectoryKey(regionId: string, id: string): string {
+  return `datafn:permission:${encodeURIComponent(regionId)}:${id}`;
+}
+
+function legacyPermissionDirectoryKey(id: string): string {
   return `datafn:permission:${id}`;
+}
+
+async function deleteMatchingLegacyPermissionGrant(
+  id: string,
+  config: DatafnMultiRegionRuntimeConfig,
+): Promise<void> {
+  const currentKey = permissionDirectoryKey(config.regionId, id);
+  const candidateKeys = new Set([
+    legacyPermissionDirectoryKey(id),
+    `datafn:permission:${config.regionId}:${id}`,
+  ]);
+  candidateKeys.delete(currentKey);
+  for (const legacyKey of candidateKeys) {
+    const legacyRecord = await config.directory.get(legacyKey);
+    if (!legacyRecord) continue;
+    const legacyGrant = parseGrant(legacyRecord.value);
+    if (legacyGrant?.id === id && legacyGrant.resourceRegion === config.regionId) {
+      await config.directory.delete(legacyKey);
+    }
+  }
 }

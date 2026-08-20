@@ -181,6 +181,39 @@ describe("Drizzle Schema Codegen", () => {
     });
   });
 
+  describe("legacy relation aliases", () => {
+    it("uses foreignKey when fkField is absent", () => {
+      const result = generateDrizzleSchema({
+        namespaced: false,
+        resources: [
+          {
+            name: "project",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+          {
+            name: "task",
+            version: 1,
+            fields: [{ name: "id", type: "string", required: true }],
+          },
+        ],
+        relations: [
+          {
+            from: "task",
+            to: "project",
+            type: "many-one",
+            relation: "project",
+            foreignKey: "legacyProjectId",
+          },
+        ],
+      }, "postgres");
+
+      const taskTable = readTableBlock(result, "task");
+      expect(taskTable).toContain('legacyProjectId: text("legacy_project_id")');
+      expect(taskTable).not.toContain('projectId: text("project_id")');
+    });
+  });
+
   describe("TV-DRZ-IDX-001: Index Generation", () => {
     it("should generate indices from indices.base", () => {
       const schema = {
@@ -302,7 +335,7 @@ describe("Drizzle Schema Codegen", () => {
   });
 
   describe("TV-DRZ-REL-INTEGRITY-001: Relation Integrity DDL", () => {
-    it("should generate FK indexes and constraints for non-polymorphic relations when requested", () => {
+    it("keeps namespaced set-null policies in application code", () => {
       const schema = {
         namespaced: true,
         relationIntegrity: "database",
@@ -338,8 +371,9 @@ describe("Drizzle Schema Codegen", () => {
       expect(result).toContain("foreignKey");
       expect(result).toContain('  index("task_project_id_rel_idx").on(table.__ns, table.projectId),');
       expect(result).toContain(
-        '  foreignKey({ columns: [table.__ns, table.projectId], foreignColumns: [project.__ns, project.id] }).onDelete("set null"),',
+        '  foreignKey({ columns: [table.__ns, table.projectId], foreignColumns: [project.__ns, project.id] }),',
       );
+      expect(result).not.toContain('.onDelete("set null")');
     });
 
     it("should generate discriminator columns for polymorphic many-many relations", () => {

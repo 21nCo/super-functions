@@ -6,6 +6,7 @@ import {
   firstEndpoint,
   getTemporalGroups,
   relationTargetEndpoint,
+  relationFkFieldForManyOne,
   resolveEndpointResource,
   resolveTemporalBucketValue,
   resourceNameFromId,
@@ -228,12 +229,12 @@ function resolveValue(
     const isForward = match.direction === "forward";
 
     if (rel.type === "many-one" && isForward) {
-      const fk = (rel.fkField || rel.foreignKey) as string;
+      const fk = relationFkFieldForManyOne(match.relation as any);
       const targetId = currentRecord[fk];
       if (!targetId) return null;
       const targetEndpoint = relationTargetEndpoint(match.relation as any, match.direction);
       const targetResource =
-        resolveEndpointResource(targetEndpoint, targetId) ??
+        resolveEndpointResource(targetEndpoint, targetId, schema) ??
         resourceNameFromId(targetId) ??
         firstEndpoint(targetEndpoint);
       const target = store.getRecord(targetResource, targetId as string);

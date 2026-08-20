@@ -68,6 +68,64 @@ const fixtureF1Schema = {
 };
 
 describe("Query Validation - VALID-001", () => {
+  it("rejects an explicitly supplied falsy temporal value", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: fixtureF1Schema,
+      database: db,
+    });
+
+    try {
+      const response = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resource: "task", temporal: false }),
+        },
+      ));
+      const body = await readJson(response);
+
+      expect(response.status).toBe(400);
+      expect(body.error.code).toBe("DFQL_INVALID");
+      expect(body.error.details.path).toBe("temporal");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects non-boolean null-predicate operands", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: fixtureF1Schema,
+      database: db,
+    });
+
+    try {
+      const response = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            filters: { label: { is_null: "yes" } },
+          }),
+        },
+      ));
+      const body = await readJson(response);
+      expect(response.status).toBe(400);
+      expect(body.error.code).toBe("DFQL_INVALID");
+      expect(body.error.details.path).toBe("filters.label.is_null");
+    } finally {
+      await server.close();
+    }
+  });
+
   describe("Resource validation", () => {
     it("TV-VALID-RESOURCE-001: unknown resource returns DFQL_UNKNOWN_RESOURCE", async () => {
       const db = memoryAdapter();
@@ -193,6 +251,45 @@ describe("Query Validation - VALID-001", () => {
       expect(body.ok).toBe(false);
       expect(body.error.code).toBe("DFQL_UNKNOWN_FIELD");
       expect(body.error.details.path).toBe("sort[0]");
+    });
+
+    it("validates structured sort terms against the resource schema", async () => {
+      const server = await createDatafnServer({
+        allowUnknownResources: true,
+        schema: fixtureF1Schema,
+        limits: { maxLimit: 100 },
+      });
+
+      const accepted = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            version: 1,
+            sort: [{ field: "updatedAt", direction: "desc" }],
+          }),
+        },
+      ));
+      expect(accepted.status).toBe(200);
+
+      const rejected = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            version: 1,
+            sort: [{ field: "unknown_field", direction: "asc" }],
+          }),
+        },
+      ));
+      expect(rejected.status).toBe(400);
+      await expect(readJson(rejected)).resolves.toMatchObject({
+        error: { code: "DFQL_UNKNOWN_FIELD", details: { path: "sort[0]" } },
+      });
     });
 
     it("unknown field in omit returns DFQL_UNKNOWN_FIELD", async () => {

@@ -151,6 +151,33 @@ describe('@authfn/lookup-dynamodb', () => {
     });
   });
 
+  it('does not compare-and-set an expired lookup item', async () => {
+    const sent: any[] = [];
+    const store = createDynamoDbRegionLookupStore({
+      tableName: 'authfn-region-lookup',
+      now: () => new Date('2026-08-19T00:00:00.000Z'),
+      documentClient: {
+        async send(command: any) {
+          sent.push(command.input);
+          return {};
+        }
+      } as any
+    });
+
+    await store.compareAndSet({ key: 'lookup', expected: 'old', value: 'new' });
+    expect(sent[0]).toMatchObject({
+      ConditionExpression: '#value = :expected AND (attribute_not_exists(#expiresAt) OR #expiresAt > :now)',
+      ExpressionAttributeNames: {
+        '#value': 'value',
+        '#expiresAt': 'expiresAt'
+      },
+      ExpressionAttributeValues: {
+        ':expected': 'old',
+        ':now': 1787097600
+      }
+    });
+  });
+
   it('wraps unavailable DynamoDB errors in a typed adapter error', async () => {
     const store = createDynamoDbRegionLookupStore({
       tableName: 'authfn-region-lookup',

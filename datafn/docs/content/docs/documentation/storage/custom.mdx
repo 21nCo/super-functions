@@ -47,7 +47,12 @@ class CustomStorageAdapter implements DatafnStorageAdapter {
   async listRecords(resource: string): Promise<Record<string, unknown>[]> { /* ... */ }
   async upsertRecord(resource: string, record: Record<string, unknown>): Promise<void> { /* ... */ }
   async deleteRecord(resource: string, id: string): Promise<void> { /* ... */ }
-  async mergeRecord(resource: string, id: string, partial: Record<string, unknown>): Promise<Record<string, unknown>> { /* ... */ }
+  async mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> { /* ... */ }
 
   // Join rows
   async listJoinRows(relationKey: string): Promise<Array<Record<string, unknown>>> { /* ... */ }
@@ -98,10 +103,19 @@ async mergeRecord(
   resource: string,
   id: string,
   partial: Record<string, unknown>,
+  options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
-  // Begin transaction
+  // Begin a real database transaction or optimistic-concurrency operation.
   const existing = await this.getRecord(resource, id);
-  const merged = existing ? { ...existing } : { id };
+  if (!existing && options?.ifMissing) {
+    // ifMissing is the complete create payload. Insert it atomically only if
+    // the row is still absent; do not merge partial over it.
+    const created = { ...options.ifMissing, id };
+    await this.upsertRecord(resource, created);
+    // Commit transaction
+    return created;
+  }
+  const merged = existing ? { ...existing } : { ...partial, id };
 
   for (const [key, value] of Object.entries(partial)) {
     if (
@@ -120,6 +134,11 @@ async mergeRecord(
   return merged;
 }
 ```
+
+Only declare `readonly capabilities = { atomicMergeIfMissing: true }` when the
+existence check and write above are protected by a real transaction, mutex, or
+optimistic-concurrency primitive. Without that capability, DataFn uses a
+merge-safe legacy fallback that does not apply create-only defaults.
 
 ### Monotonic Changelog Sequence
 

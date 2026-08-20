@@ -13,6 +13,7 @@ const REQUIRED_PUBLIC_LINK_FIELDS = new Map([
   ["id", { type: "string", required: true }],
   ["principalId", { type: "string", required: true }],
   ["resource", { type: "string", required: true }],
+  ["resourceRegion", { type: "string", required: false }],
   ["recordId", { type: "string", required: false }],
   ["scope", { type: "string", required: true }],
   ["level", { type: "string", required: true }],
@@ -32,13 +33,14 @@ export function createBuiltinPublicLinkResource(
   const name = options.modelName ?? PUBLIC_LINK_RESOURCE_NAME;
   return {
     name,
-    version: 1,
+    version: 2,
     idPrefix: "publicLink",
     capabilities: ["timestamps", "audit"],
     fields: [
       { name: "id", type: "string", required: true, unique: true },
       { name: "principalId", type: "string", required: true },
       { name: "resource", type: "string", required: true },
+      { name: "resourceRegion", type: "string", required: false },
       { name: "recordId", type: "string", required: false },
       { name: "scope", type: "string", required: true },
       { name: "level", type: "string", required: true },
@@ -47,7 +49,7 @@ export function createBuiltinPublicLinkResource(
       { name: "revokedAt", type: "date", required: false },
     ],
     indices: {
-      base: ["principalId", "resource", "recordId", "scope", "revokedAt"],
+      base: ["principalId", "resource", "resourceRegion", "recordId", "scope", "revokedAt"],
     },
     permissions: {
       read: { fields: [] },
@@ -76,8 +78,8 @@ export function ensureBuiltinPublicLinks(
 }
 
 function validateBuiltinPublicLink(resource: DatafnResourceSchema, name: string): void {
-  if (resource.version !== 1) {
-    throw new Error(`Public-link resource version mismatch: expected 1, got ${resource.version}`);
+  if (resource.version !== 2) {
+    throw new Error(`Public-link resource version mismatch: expected 2, got ${resource.version}`);
   }
 
   for (const [fieldName, expected] of REQUIRED_PUBLIC_LINK_FIELDS) {
@@ -97,7 +99,7 @@ function validateBuiltinPublicLink(resource: DatafnResourceSchema, name: string)
     : resource.indices && !Array.isArray(resource.indices)
       ? (resource.indices as DatafnIndexCategories).base ?? []
       : [];
-  for (const fieldName of ["principalId", "resource", "recordId", "scope", "revokedAt"]) {
+  for (const fieldName of ["principalId", "resource", "resourceRegion", "recordId", "scope", "revokedAt"]) {
     if (!baseIndices.includes(fieldName)) {
       throw new Error(`Public-link resource "${name}" must include a "${fieldName}" base index`);
     }

@@ -13,6 +13,7 @@ import {
   normalizeRelationPayload,
   RELATION_CAPABILITY_FIELD_DEFS,
   relationTargetEndpoint,
+  relationFkFieldForManyOne,
   resolveEndpointResource,
   type DatafnRelationDirection,
   type DatafnRelationMatch,
@@ -38,12 +39,17 @@ function pickResourceName(name: string | readonly string[]): string {
   return typeof name === "string" ? name : name[0];
 }
 
-function resourceNameForId(endpoint: string | readonly string[], id: string): string | undefined {
-  return resolveEndpointResource(endpoint, id);
+function resourceNameForId(
+  schema: DatafnSchema,
+  endpoint: string | readonly string[],
+  id: string,
+): string | undefined {
+  return resolveEndpointResource(endpoint, id, schema);
 }
 
 async function validateRelationTargets(
   adapter: Adapter,
+  schema: DatafnSchema,
   endpoint: string | readonly string[],
   items: NormalizedRelation[],
   namespace: string,
@@ -51,7 +57,7 @@ async function validateRelationTargets(
 ): Promise<{ ok: true } | { ok: false; code: string; message: string; path: string }> {
   const targetsByResource = new Map<string, string[]>();
   for (const item of items) {
-    const resource = resourceNameForId(endpoint, item.toId);
+    const resource = resourceNameForId(schema, endpoint, item.toId);
     if (!resource) {
       return {
         ok: false,
@@ -87,7 +93,7 @@ async function validateRelationTargets(
 }
 
 function htreeFkField(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || "parentId";
+  return relation.fkField || relation.foreignKey || relation.inverse || "parentId";
 }
 
 function htreePathField(relation: DatafnRelationSchema): string {
@@ -190,27 +196,27 @@ async function resolveAncestorInactive(
       if (typeof parentId !== "string" || parentId.length === 0) continue;
       const parent = await findOneRecord(
         adapter,
-        resolveEndpointResource(relation.from, parentId) ?? resource,
+        resolveEndpointResource(relation.from, parentId, schema) ?? resource,
         parentId,
         namespace,
       );
       if (isRecordEffectivelyInactive(parent)) return true;
     } else if (relation.type === "many-one") {
-      const parentId = record[relation.fkField || `${relation.relation}Id`];
+      const parentId = record[relationFkFieldForManyOne(relation)];
       if (typeof parentId !== "string" || parentId.length === 0) continue;
       const parent = await findOneRecord(
         adapter,
-        resolveEndpointResource(relation.to, parentId) ?? firstEndpoint(relation.to),
+        resolveEndpointResource(relation.to, parentId, schema) ?? firstEndpoint(relation.to),
         parentId,
         namespace,
       );
       if (isRecordEffectivelyInactive(parent)) return true;
     } else if (relation.type === "one-many") {
-      const parentId = record[relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`];
+      const parentId = record[relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpoint(relation.from)}Id`];
       if (typeof parentId !== "string" || parentId.length === 0) continue;
       const parent = await findOneRecord(
         adapter,
-        resolveEndpointResource(relation.from, parentId) ?? firstEndpoint(relation.from),
+        resolveEndpointResource(relation.from, parentId, schema) ?? firstEndpoint(relation.from),
         parentId,
         namespace,
       );
@@ -280,7 +286,7 @@ export async function applyInactivePropagation(
           }
         }
       } else if (relation.type === "many-one" && endpointIncludes(relation.to, seed.resource)) {
-        const fkField = relation.fkField || `${relation.relation}Id`;
+        const fkField = relationFkFieldForManyOne(relation);
         for (const childResource of endpointList(relation.from)) {
           const children = await adapter.findMany({
             model: childResource,
@@ -296,7 +302,7 @@ export async function applyInactivePropagation(
           }
         }
       } else if (relation.type === "one-many" && endpointIncludes(relation.from, seed.resource)) {
-        const fkField = relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+        const fkField = relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpoint(relation.from)}Id`;
         for (const childResource of endpointList(relation.to)) {
           const children = await adapter.findMany({
             model: childResource,
@@ -474,7 +480,7 @@ function findRelation(
 }
 
 function fkFieldForOneMany(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+  return relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpoint(relation.from)}Id`;
 }
 
 function relationNameFor(relation: DatafnRelationSchema): string {
@@ -482,6 +488,7 @@ function relationNameFor(relation: DatafnRelationSchema): string {
 }
 
 function resolveManyManyPair(
+  schema: DatafnSchema,
   relation: DatafnRelationSchema,
   direction: DatafnRelationDirection,
   mutationResource: string,
@@ -499,9 +506,9 @@ function resolveManyManyPair(
   const toId = direction === "forward" ? item.toId : mutationId;
   const fromResource = direction === "forward"
     ? mutationResource
-    : resourceNameForId(relation.from, fromId);
+    : resourceNameForId(schema, relation.from, fromId);
   const toResource = direction === "forward"
-    ? resourceNameForId(relation.to, toId)
+    ? resourceNameForId(schema, relation.to, toId)
     : mutationResource;
   if (!fromResource || !toResource) return null;
   return {
@@ -845,9 +852,16 @@ async function validateRelationDeletePolicies(
         ? relation.joinColumns?.from || "from"
         : relation.joinColumns?.to || "to";
       for (const tableName of joinTablesForDeletedResource(relation, resource, side)) {
+        const discriminatorField = side === "from" ? "fromResource" : "toResource";
+        const sideEndpoint = side === "from" ? relation.from : relation.to;
         const rows = await adapter.findMany({
           model: tableName,
-          where: [{ field: filterField, operator: "eq", value: id }],
+          where: [
+            { field: filterField, operator: "eq", value: id },
+            ...(endpointIsPolymorphic(sideEndpoint)
+              ? [{ field: discriminatorField, operator: "eq" as const, value: resource }]
+              : []),
+          ],
           namespace,
         });
         if (rows.length > 0) {
@@ -868,7 +882,7 @@ async function validateRelationDeletePolicies(
         relation,
         policy,
         resources: endpointList(relation.from),
-        fkField: relation.fkField || `${relation.relation}Id`,
+        fkField: relationFkFieldForManyOne(relation),
         deletedId: id,
         namespace,
         visited,
@@ -963,9 +977,16 @@ export async function applyRelationDeletePolicies(
       const filterField = side === "from" ? fromCol : toCol;
 
       for (const tableName of joinTablesForDeletedResource(relation, resource, side)) {
+        const discriminatorField = side === "from" ? "fromResource" : "toResource";
+        const sideEndpoint = side === "from" ? relation.from : relation.to;
         const rows = await adapter.findMany({
           model: tableName,
-          where: [{ field: filterField, operator: "eq", value: id }],
+          where: [
+            { field: filterField, operator: "eq", value: id },
+            ...(endpointIsPolymorphic(sideEndpoint)
+              ? [{ field: discriminatorField, operator: "eq" as const, value: resource }]
+              : []),
+          ],
           namespace,
         });
 
@@ -983,8 +1004,8 @@ export async function applyRelationDeletePolicies(
             const fromId = String(row[fromCol] ?? "");
             const toId = String(row[toCol] ?? "");
             if (!fromId || !toId) continue;
-            const fromResource = resolveEndpointResource(relation.from, fromId);
-            const toResource = resolveEndpointResource(relation.to, toId);
+            const fromResource = resolveEndpointResource(relation.from, fromId, schema);
+            const toResource = resolveEndpointResource(relation.to, toId, schema);
             if (!fromResource || !toResource) continue;
             const rowId = String(row.id ?? `${fromId}:${toId}`);
             await adapter.delete({
@@ -1010,7 +1031,7 @@ export async function applyRelationDeletePolicies(
         relation,
         policy,
         resources: endpointList(relation.from),
-        fkField: relation.fkField || `${relation.relation}Id`,
+        fkField: relation.fkField || relation.foreignKey || `${relation.relation ?? firstEndpoint(relation.to)}Id`,
         deletedId: id,
         namespace,
         visited,
@@ -1105,6 +1126,7 @@ export async function executeRelate(
     if (items.length > 0) {
       const validation = await validateRelationTargets(
         adapter,
+        schema,
         relationTargetEndpoint(relation, direction),
         items,
         namespace,
@@ -1124,8 +1146,8 @@ export async function executeRelate(
           path: `relations.${relName}`,
         };
       }
-      const fkField = relation.fkField || `${relName}Id`; // Default convention or schema
-      const targetResource = resourceNameForId(relation.to, items[0].toId);
+      const fkField = relation.fkField || relation.foreignKey || `${relName}Id`; // Default convention or schema
+      const targetResource = resourceNameForId(schema, relation.to, items[0].toId);
       // We assume adapter update handles simple field update
       await adapter.update({
         model: mutation.resource,
@@ -1137,9 +1159,9 @@ export async function executeRelate(
         namespace,
       });
     } else if (relation.type === "many-one" && direction === "inverse") {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       for (const item of items) {
-        const targetResource = resourceNameForId(relation.from, item.toId);
+        const targetResource = resourceNameForId(schema, relation.from, item.toId);
         if (!targetResource) {
           return {
             ok: false,
@@ -1164,7 +1186,7 @@ export async function executeRelate(
       // PER-004: Batch update when adapter supports it and there are multiple items
       const targetIdsByResource = new Map<string, string[]>();
       for (const item of items) {
-        const targetResource = resourceNameForId(relation.to, item.toId);
+        const targetResource = resourceNameForId(schema, relation.to, item.toId);
         if (!targetResource) {
           return {
             ok: false,
@@ -1212,7 +1234,7 @@ export async function executeRelate(
         };
       }
       const fkField = fkFieldForOneMany(relation);
-      const targetResource = resourceNameForId(relation.from, items[0].toId);
+      const targetResource = resourceNameForId(schema, relation.from, items[0].toId);
       await adapter.update({
         model: mutation.resource,
         where: [{ field: "id", operator: "eq", value: mutation.id }],
@@ -1236,7 +1258,7 @@ export async function executeRelate(
           treeResource,
           isForward ? item.toId : mutation.id,
           isForward ? mutation.id : item.toId,
-          isForward ? mutation.resource : resourceNameForId(relation.from, item.toId) ?? null,
+          isForward ? mutation.resource : resourceNameForId(schema, relation.from, item.toId) ?? null,
           namespace,
         );
       }
@@ -1252,6 +1274,7 @@ export async function executeRelate(
       // The composite id `${from}:${to}` guarantees the same uniqueness semantics.
       for (const item of items) {
         const pair = resolveManyManyPair(
+          schema,
           relation,
           direction,
           mutation.resource,
@@ -1357,6 +1380,7 @@ export async function executeModifyRelation(
 
     for (const item of items) {
       const pair = resolveManyManyPair(
+        schema,
         relation,
         direction,
         mutation.resource,
@@ -1453,7 +1477,7 @@ export function collectInactivePropagationSeeds(
     const relation = match.relation;
     const targetEndpoint = match.direction === "forward" ? relation.to : relation.from;
     for (const item of normalizeRelationPayload(payload)) {
-      addSeed(resourceNameForId(targetEndpoint, item.toId) ?? pickResourceName(targetEndpoint), item.toId);
+      addSeed(resourceNameForId(schema, targetEndpoint, item.toId) ?? pickResourceName(targetEndpoint), item.toId);
     }
   }
   return [...seeds.values()];
@@ -1501,6 +1525,7 @@ export function extractJoinDeltas(
 
     for (const item of items) {
       const pair = resolveManyManyPair(
+        schema,
         relation,
         direction,
         mutation.resource,
@@ -1590,11 +1615,11 @@ export function extractRelationFkDeltas(
 
     if (relation.type === "many-one" && direction === "forward") {
       // FK lives on the source record (mutation.resource)
-      const fkField = relation.fkField || `${relName}Id`;
+      const fkField = relation.fkField || relation.foreignKey || `${relName}Id`;
       const fkValue = mutation.operation === "unrelate" ? null : (items[0]?.toId ?? null);
       const targetResource = mutation.operation === "unrelate"
         ? null
-        : (typeof fkValue === "string" ? resourceNameForId(relation.to, fkValue) : null);
+        : (typeof fkValue === "string" ? resourceNameForId(schema, relation.to, fkValue) : null);
       deltas.push({
         resource: mutation.resource,
         id: mutation.id,
@@ -1606,10 +1631,10 @@ export function extractRelationFkDeltas(
         },
       });
     } else if (relation.type === "many-one" && direction === "inverse") {
-      const fkField = relation.fkField || `${relation.relation}Id`;
+      const fkField = relationFkFieldForManyOne(relation);
       const fkValue = mutation.operation === "unrelate" ? null : mutation.id;
       for (const item of items) {
-        const targetResource = resourceNameForId(relation.from, item.toId);
+        const targetResource = resourceNameForId(schema, relation.from, item.toId);
         if (!targetResource) continue;
         deltas.push({
           resource: targetResource,
@@ -1627,7 +1652,7 @@ export function extractRelationFkDeltas(
       const fkField = fkFieldForOneMany(relation);
       const fkValue = mutation.operation === "unrelate" ? null : mutation.id;
       for (const item of items) {
-        const targetResource = resourceNameForId(relation.to, item.toId);
+        const targetResource = resourceNameForId(schema, relation.to, item.toId);
         if (!targetResource) continue;
         deltas.push({
           resource: targetResource,
@@ -1645,7 +1670,7 @@ export function extractRelationFkDeltas(
       const fkValue = mutation.operation === "unrelate" ? null : (items[0]?.toId ?? null);
       const targetResource = mutation.operation === "unrelate"
         ? null
-        : (typeof fkValue === "string" ? resourceNameForId(relation.from, fkValue) : null);
+        : (typeof fkValue === "string" ? resourceNameForId(schema, relation.from, fkValue) : null);
       deltas.push({
         resource: mutation.resource,
         id: mutation.id,
@@ -1669,7 +1694,7 @@ export function extractRelationFkDeltas(
           : isForward ? mutation.id : item.toId;
         const parentResource = mutation.operation === "unrelate"
           ? null
-          : isForward ? mutation.resource : resourceNameForId(relation.from, item.toId) ?? null;
+          : isForward ? mutation.resource : resourceNameForId(schema, relation.from, item.toId) ?? null;
         deltas.push({
           resource,
           id,
@@ -1799,6 +1824,7 @@ export async function extractJoinDeltasFromDB(
 
     for (const item of items) {
       const pair = resolveManyManyPair(
+        schema,
         relation,
         direction,
         mutation.resource,
@@ -1878,7 +1904,7 @@ export async function executeUnrelate(
   
       if (relation.type === "many-one" && direction === "forward") {
         // Clear FK on source
-        const fkField = relation.fkField || `${relName}Id`;
+        const fkField = relation.fkField || relation.foreignKey || `${relName}Id`;
         await adapter.update({
           model: mutation.resource,
           where: [{ field: "id", operator: "eq", value: mutation.id }],
@@ -1889,9 +1915,9 @@ export async function executeUnrelate(
           namespace,
         });
       } else if (relation.type === "many-one" && direction === "inverse") {
-        const fkField = relation.fkField || `${relation.relation}Id`;
+        const fkField = relationFkFieldForManyOne(relation);
         for (const item of items) {
-          const targetResource = resourceNameForId(relation.from, item.toId);
+          const targetResource = resourceNameForId(schema, relation.from, item.toId);
           if (!targetResource) {
             return {
               ok: false,
@@ -1916,7 +1942,7 @@ export async function executeUnrelate(
         // PER-004: Batch update when adapter supports it and there are multiple items
         const targetIdsByResource = new Map<string, string[]>();
         for (const item of items) {
-          const targetResource = resourceNameForId(relation.to, item.toId);
+          const targetResource = resourceNameForId(schema, relation.to, item.toId);
           if (!targetResource) {
             return {
               ok: false,
@@ -1989,6 +2015,7 @@ export async function executeUnrelate(
 
         for (const item of items) {
           const pair = resolveManyManyPair(
+            schema,
             relation,
             direction,
             mutation.resource,

@@ -336,6 +336,262 @@ describe("SyncEngine push", () => {
     expect(await storage.changelogList()).toEqual([]);
   });
 
+  it("resends compacted writes when the replacing delete is rejected", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:merge",
+      timestampMs: 1,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "merge",
+        id: "goal:missing",
+        record: { label: "recoverable write" },
+        clientId: "client:1",
+      },
+    });
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:delete",
+      timestampMs: 2,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "delete",
+        id: "goal:missing",
+        clientId: "client:1",
+      },
+    });
+
+    const failedDelete = {
+      ok: false,
+      error: {
+        code: "RELATION_RESTRICTED",
+        message: "Delete restricted",
+      },
+      result: {
+        ok: false,
+        applied: [] as string[],
+        errors: [{
+          mutationId: "mut:delete",
+          code: "RELATION_RESTRICTED",
+          message: "Delete restricted",
+          path: "operation",
+          retryable: false,
+        }],
+        cursor: "0",
+        cursorBefore: "0",
+      },
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(failedDelete)
+      .mockResolvedValueOnce({
+        ...failedDelete,
+        result: {
+          ...failedDelete.result,
+          applied: ["mut:merge"],
+        },
+      });
+    const remote: any = {
+      push,
+      pull: vi.fn(),
+      clone: vi.fn(),
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete"]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:merge", "mut:delete"]);
+    expect(await storage.changelogList()).toEqual([]);
+  });
+
+  it("does not replay a compacted write after its replacing delete applied", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    for (const [seq, mutation] of [
+      [1, {
+        resource: "goal",
+        version: 1,
+        operation: "merge",
+        id: "goal:deleted",
+        record: { label: "must stay deleted" },
+        clientId: "client:1",
+        mutationId: "mut:merge-deleted",
+      }],
+      [2, {
+        resource: "goal",
+        version: 1,
+        operation: "delete",
+        id: "goal:deleted",
+        clientId: "client:1",
+        mutationId: "mut:delete-applied",
+      }],
+      [3, {
+        resource: "goal",
+        version: 1,
+        operation: "insert",
+        id: "goal:unrelated",
+        record: { type: "INDEFINITE", status: "NOT_STARTED" },
+        clientId: "client:1",
+        mutationId: "mut:unrelated-terminal",
+      }],
+    ] as const) {
+      await storage.changelogAppend({
+        clientId: "client:1",
+        mutationId: mutation.mutationId,
+        timestampMs: seq,
+        mutation,
+      });
+    }
+    const push = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { code: "DFQL_INVALID", message: "Unrelated failure" },
+      result: {
+        ok: false,
+        applied: ["mut:delete-applied"],
+        errors: [{
+          mutationId: "mut:unrelated-terminal",
+          code: "DFQL_INVALID",
+          message: "Unrelated failure",
+          path: "mutations[mut:unrelated-terminal]",
+          retryable: false,
+        }],
+        cursor: "1",
+        cursorBefore: "0",
+      },
+    });
+    const remote: any = {
+      push,
+      pull: vi.fn(),
+      clone: vi.fn(),
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete-applied", "mut:unrelated-terminal"]);
+    expect(await storage.changelogList()).toEqual([]);
+  });
+
+  it("does not replay a write when any of multiple replacing deletes applied", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    const mutations = [
+      {
+        resource: "goal", version: 1, operation: "merge",
+        id: "goal:x", record: { label: "must stay deleted" },
+        clientId: "client:1", mutationId: "mut:merge-x",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:x", clientId: "client:1", mutationId: "mut:delete-x-1",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:x", clientId: "client:1", mutationId: "mut:delete-x-2",
+      },
+      {
+        resource: "goal", version: 1, operation: "merge",
+        id: "goal:y", record: { label: "retry independently" },
+        clientId: "client:1", mutationId: "mut:merge-y",
+      },
+      {
+        resource: "goal", version: 1, operation: "delete",
+        id: "goal:y", clientId: "client:1", mutationId: "mut:delete-y",
+      },
+    ];
+    for (const [index, mutation] of mutations.entries()) {
+      await storage.changelogAppend({
+        clientId: "client:1",
+        mutationId: mutation.mutationId,
+        timestampMs: index + 1,
+        mutation,
+      });
+    }
+    const failedResult = {
+      ok: false,
+      error: { code: "MUTATION_FAILED", message: "Retryable deletes" },
+      result: {
+        ok: false,
+        applied: ["mut:delete-x-1"],
+        errors: [
+          {
+            mutationId: "mut:delete-x-2", code: "MUTATION_FAILED",
+            message: "Retry delete x", path: "mutations[mut:delete-x-2]",
+            retryable: true,
+          },
+          {
+            mutationId: "mut:delete-y", code: "MUTATION_FAILED",
+            message: "Retry delete y", path: "mutations[mut:delete-y]",
+            retryable: false,
+          },
+        ],
+        cursor: "1",
+        cursorBefore: "0",
+      },
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(failedResult)
+      .mockResolvedValueOnce(failedResult);
+    const remote: any = {
+      push,
+      pull: vi.fn(), clone: vi.fn(), query: vi.fn(), mutation: vi.fn(),
+      transact: vi.fn(), seed: vi.fn(), reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(push.mock.calls[0][0].mutations.map((item: any) => item.mutationId))
+      .toEqual(["mut:delete-x-1", "mut:delete-x-2", "mut:delete-y"]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .toEqual([
+        "mut:delete-x-1",
+        "mut:delete-x-2",
+        "mut:merge-y",
+        "mut:delete-y",
+      ]);
+    expect(push.mock.calls[1][0].mutations.map((item: any) => item.mutationId))
+      .not.toContain("mut:merge-x");
+  });
+
   it("keeps retryable failed push mutations queued", async () => {
     const storage = new MemoryStorageAdapter(["goal"]);
     await storage.changelogAppend({
@@ -611,6 +867,95 @@ describe("SyncEngine push", () => {
       }),
     ]);
     expect(await storage.changelogList()).toEqual([]);
+  });
+
+  it("resends and acks a compacted mutation before a retryable delete failure", async () => {
+    const storage = new MemoryStorageAdapter(["goal"]);
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:stale-merge",
+      timestampMs: 1,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "merge",
+        id: "goal:deleted-before-push",
+        record: { label: "stale" },
+        clientId: "client:1",
+        mutationId: "mut:stale-merge",
+      },
+    });
+    await storage.changelogAppend({
+      clientId: "client:1",
+      mutationId: "mut:retry-delete",
+      timestampMs: 2,
+      mutation: {
+        resource: "goal",
+        version: 1,
+        operation: "delete",
+        id: "goal:deleted-before-push",
+        clientId: "client:1",
+        mutationId: "mut:retry-delete",
+      },
+    });
+
+    const firstFailure = {
+      ok: true,
+      error: { code: "MUTATION_FAILED", message: "retry", details: {} },
+      result: {
+        ok: false,
+        applied: [],
+        errors: [{
+          mutationId: "mut:retry-delete",
+          code: "MUTATION_FAILED",
+          message: "retry",
+          path: "mutations[mut:retry-delete]",
+          retryable: true,
+        }],
+        cursor: "0",
+        cursorBefore: "0",
+      },
+    };
+    const push = vi.fn()
+      .mockResolvedValueOnce(firstFailure)
+      .mockResolvedValueOnce({
+        ...firstFailure,
+        result: {
+          ...firstFailure.result,
+          applied: ["mut:stale-merge"],
+        },
+      });
+    const remote: any = {
+      push,
+      pull: vi.fn(),
+      clone: vi.fn(),
+      query: vi.fn(),
+      mutation: vi.fn(),
+      transact: vi.fn(),
+      seed: vi.fn(),
+      reconcile: vi.fn(),
+    };
+    const engine = new SyncEngine(
+      storage,
+      remote,
+      new EventBus(),
+      "client:1",
+      schema,
+      { pushMaxRetries: 0 },
+    );
+
+    await engine.processPush();
+
+    expect(push.mock.calls[0][0].mutations).toEqual([
+      expect.objectContaining({ mutationId: "mut:retry-delete" }),
+    ]);
+    expect(push.mock.calls[1][0].mutations).toEqual([
+      expect.objectContaining({ mutationId: "mut:stale-merge" }),
+      expect.objectContaining({ mutationId: "mut:retry-delete" }),
+    ]);
+    expect(
+      (await storage.changelogList()).map((entry) => entry.mutationId),
+    ).toEqual(["mut:retry-delete"]);
   });
 
   it("sanitizes stale changelog record fields against the current schema before push", async () => {

@@ -68,6 +68,10 @@ import type {
   DataFnRequestEventMetadata,
   DataFnRequestFailedMetadata,
 } from "./events.js";
+import {
+  drainPermissionDirectoryOutbox,
+  ensurePermissionDirectoryOutbox,
+} from "./execution/mutation/permission-directory-outbox.js";
 
 type IndexConfig = { search?: readonly string[] };
 
@@ -119,6 +123,7 @@ type DatafnServerComposablePlugin = DatafnPlugin & {
   internalResources?: readonly string[];
   modelName?: string;
   withSchema?: (schema: DatafnSchema) => DatafnSchema;
+  permissionDirectoryRuntime?: import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig;
   routes?: (input: {
     database: Adapter;
     crossNamespaceDatabase?: Adapter;
@@ -421,6 +426,28 @@ export async function createDatafnServer<TContext = any>(
     plugins.push(config.publicLinks);
   }
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  const permissionDirectoryRuntimeCandidates = [
+    multiRegionRuntime,
+    ...plugins.map((plugin) => plugin.permissionDirectoryRuntime ?? null),
+  ].filter((runtime): runtime is import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig =>
+    runtime !== null
+  );
+  const permissionDirectoryRuntimesByRegion = new Map<
+    string,
+    import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig
+  >();
+  for (const runtime of permissionDirectoryRuntimeCandidates) {
+    const existing = permissionDirectoryRuntimesByRegion.get(runtime.regionId);
+    if (existing && existing.directory !== runtime.directory) {
+      throw new Error(
+        `Permission directory configuration conflict: region ${runtime.regionId} uses multiple directory adapters`,
+      );
+    }
+    permissionDirectoryRuntimesByRegion.set(runtime.regionId, runtime);
+  }
+  const permissionDirectoryRetryRuntimes = [
+    ...permissionDirectoryRuntimesByRegion.values(),
+  ];
   const schemaWithPluginResources = plugins.reduce(
     (schema, plugin) => plugin.withSchema ? plugin.withSchema(schema) : schema,
     config.schema,
@@ -525,6 +552,29 @@ export async function createDatafnServer<TContext = any>(
       : config.stores?.atomicKv,
     directory: config.stores?.directory,
   };
+
+  let permissionDirectoryRetryInterval: ReturnType<typeof setInterval> | null = null;
+  if (db && permissionDirectoryRetryRuntimes.length > 0) {
+    try {
+      await ensurePermissionDirectoryOutbox(db);
+    } catch (error) {
+      logger.warn("Permission directory retry startup initialization failed", {
+        error: String(error),
+        operation: "permission-directory-outbox",
+      });
+    }
+    for (const runtime of permissionDirectoryRetryRuntimes) {
+      try {
+        await drainPermissionDirectoryOutbox(db, runtime, logger);
+      } catch (error) {
+        logger.warn("Permission directory retry startup drain failed", {
+          error: String(error),
+          operation: "permission-directory-outbox",
+          regionId: runtime.regionId,
+        });
+      }
+    }
+  }
 
   // Startup pruning (RET-004)
   if (config.retention?.pruneOnStartup && db) {
@@ -1498,6 +1548,10 @@ export async function createDatafnServer<TContext = any>(
       clearInterval(pruneInterval);
       pruneInterval = null;
     }
+    if (permissionDirectoryRetryInterval) {
+      clearInterval(permissionDirectoryRetryInterval);
+      permissionDirectoryRetryInterval = null;
+    }
     if (memoryRateLimiter) {
       memoryRateLimiter.destroy();
       memoryRateLimiter = null;
@@ -1575,6 +1629,23 @@ export async function createDatafnServer<TContext = any>(
       logger,
     );
   };
+
+  // Start recurring work only after every fallible construction step has
+  // completed and the close path is available to own the timer.
+  if (db && permissionDirectoryRetryRuntimes.length > 0) {
+    permissionDirectoryRetryInterval = setInterval(() => {
+      for (const runtime of permissionDirectoryRetryRuntimes) {
+        void drainPermissionDirectoryOutbox(db!, runtime, logger).catch((error) => {
+          logger.warn("Permission directory retry drain failed", {
+            error: String(error),
+            operation: "permission-directory-outbox",
+            regionId: runtime.regionId,
+          });
+        });
+      }
+    }, 60_000);
+    permissionDirectoryRetryInterval.unref?.();
+  }
 
   return {
     router,

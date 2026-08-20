@@ -48,6 +48,7 @@ export class MemoryAdapter implements SearchAdapter {
     fuzzy: true,
     fieldBoosts: true,
     prefix: true,
+    metadataFilters: true,
   };
   private static readonly MAX_INDEX_BATCH_SIZE = 10_000;
 

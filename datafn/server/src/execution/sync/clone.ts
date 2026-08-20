@@ -9,6 +9,7 @@ import type { SequenceStore } from "./sequence-store.js";
 import { ChangeTrackingService } from "./change-tracking.js";
 import type { DatafnLogger } from "../../logger.js";
 import { isPrivateShareableResource, resolveAccessLevel } from "../../validation/authz.js";
+import { resourceIdMatches } from "./resource-id.js";
 
 export interface CloneRequest {
   clientId: string;
@@ -392,14 +393,12 @@ function shouldIncludeJoinRowForStore(
   const toValue = typeof row.to === "string" ? row.to : undefined;
 
   const fromMatches =
-    froms.length === 1 || !fromValue || resourceIdMatches(schema, from, fromValue);
+    froms.length === 1 ||
+    !fromValue ||
+    resourceIdMatches(schema, froms, from, fromValue);
   const toMatches =
-    tos.length === 1 || !toValue || resourceIdMatches(schema, to, toValue);
+    tos.length === 1 ||
+    !toValue ||
+    resourceIdMatches(schema, tos, to, toValue);
   return fromMatches && toMatches;
-}
-
-function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
-  const resource = schema.resources.find((item) => item.name === resourceName);
-  const prefix = resource?.idPrefix ?? resourceName;
-  return id === prefix || id.startsWith(`${prefix}:`);
 }

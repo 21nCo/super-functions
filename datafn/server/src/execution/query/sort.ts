@@ -3,6 +3,7 @@
  */
 
 import {
+  type SortInputTerm,
   parseSortTerms as coreParseSort,
   sortRecords as coreSortRecords,
 } from "@datafn/core";
@@ -16,7 +17,7 @@ export { coreSortRecords as sortRecords };
  * Parse sort terms, defaulting to id:asc when sort is undefined or empty
  * (server requirement: queries always have a deterministic default order).
  */
-export function parseSortTerms(sort: string[] | undefined): SortTerm[] {
+export function parseSortTerms(sort: SortInputTerm[] | undefined): SortTerm[] {
   const terms = coreParseSort(sort);
   return terms.length > 0 ? terms : [{ field: "id", direction: "asc" }];
 }

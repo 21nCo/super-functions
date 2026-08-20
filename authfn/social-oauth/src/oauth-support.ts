@@ -1,4 +1,8 @@
-import type { OAuthClientSecretResolver, OAuthFetchLike } from '@superfunctions/oauth-http';
+import {
+  createOAuthFetchLike,
+  type OAuthClientSecretResolver,
+  type OAuthFetchLike
+} from '@superfunctions/oauth-http';
 import type { SuperfunctionObservability } from '@superfunctions/observability';
 import type {
   AuthFnEvent,
@@ -17,6 +21,8 @@ export interface OAuthTokenDiagnosticFetcherInput {
   observability?: SuperfunctionObservability<AuthFnEvent>;
   requestId?: string;
   diagnostics?: false | OAuthTokenExchangeDiagnosticsConfig;
+  /** Timeout for the shared global OAuth fetcher. Ignored when fetcher is provided. */
+  timeoutMs?: number;
 }
 
 export interface AppleClientSecretResolverInput {
@@ -39,7 +45,7 @@ interface AppleClientSecretSignerInput {
 export function createOAuthTokenDiagnosticFetcher(
   input: OAuthTokenDiagnosticFetcherInput
 ): OAuthFetchLike {
-  const fetcher = input.fetcher ?? createGlobalOAuthFetchLike();
+  const fetcher = input.fetcher ?? createOAuthFetchLike(input.timeoutMs);
   const diagnostics = input.diagnostics === false ? undefined : input.diagnostics;
   return async (url, init) => {
     const response = await fetcher(url, init);
@@ -59,23 +65,35 @@ export function createOAuthTokenDiagnosticFetcher(
         request: summarizeOAuthTokenRequest(provider, init.body),
         response: summarizeOAuthTokenResponse(response.status, rawBody)
       };
-      input.observability?.logger?.[response.ok ? 'info' : 'warn']?.(
-        `${provider} oauth token exchange`,
-        {
-          request: diagnostic.request,
-          response: diagnostic.response
-        }
-      );
-      await input.observability?.events.emit({
-        domain: 'authfn',
-        type: 'authfn.oauth.token_exchange',
-        requestId: input.requestId ?? '',
-        provider,
-        severity: response.ok ? 'info' : 'warn',
-        outcome: response.ok ? 'ok' : 'error',
-        metadata: diagnostic as unknown as Record<string, unknown>
-      });
-      await diagnostics?.sink?.(diagnostic);
+      try {
+        input.observability?.logger?.[response.ok ? 'info' : 'warn']?.(
+          `${provider} oauth token exchange`,
+          {
+            request: diagnostic.request,
+            response: diagnostic.response
+          }
+        );
+      } catch {
+        // Diagnostics must never change the outcome of a successful token exchange.
+      }
+      try {
+        await input.observability?.events.emit({
+          domain: 'authfn',
+          type: 'authfn.oauth.token_exchange',
+          requestId: input.requestId ?? '',
+          provider,
+          severity: response.ok ? 'info' : 'warn',
+          outcome: response.ok ? 'ok' : 'error',
+          metadata: diagnostic as unknown as Record<string, unknown>
+        });
+      } catch {
+        // Diagnostics must never change the outcome of a successful token exchange.
+      }
+      try {
+        await diagnostics?.sink?.(diagnostic);
+      } catch {
+        // Diagnostics must never change the outcome of a successful token exchange.
+      }
     }
 
     return {
@@ -339,24 +357,4 @@ function base64UrlBytes(bytes: Uint8Array) {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
-}
-
-function createGlobalOAuthFetchLike(): OAuthFetchLike {
-  return async (url, init) => {
-    const response = await fetch(url, {
-      method: init.method,
-      headers: init.headers,
-      body: init.body
-    });
-    return {
-      ok: response.ok,
-      status: response.status,
-      headers: {
-        get(name: string) {
-          return response.headers.get(name);
-        }
-      },
-      text: () => response.text()
-    };
-  };
 }

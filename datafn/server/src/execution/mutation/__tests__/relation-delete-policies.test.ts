@@ -318,4 +318,48 @@ describe("relation delete policies", () => {
     expect(joinRow?.fromResource).toBe("node");
     expect(joinRow?.to).toBe("tag:1");
   });
+
+  it("detach scopes shared polymorphic join deletes by discriminator", async () => {
+    await db.create({ model: "node", data: { id: "node:1", label: "Node" }, namespace: NS });
+    await db.create({
+      model: "resource_labels",
+      data: {
+        id: "node-row",
+        from: "node:1",
+        to: "tag:1",
+        fromResource: "node",
+        toResource: "tag",
+      },
+      namespace: NS,
+    });
+    await db.create({
+      model: "resource_labels",
+      data: {
+        id: "task-row-with-overlapping-id",
+        from: "node:1",
+        to: "tag:1",
+        fromResource: "task",
+        toResource: "tag",
+      },
+      namespace: NS,
+    });
+
+    const result = await runMutation(server, {
+      resource: "node",
+      operation: "delete",
+      id: "node:1",
+    });
+
+    expect(result.body.result.ok).toBe(true);
+    await expect(db.findOne({
+      model: "resource_labels",
+      where: [{ field: "id", operator: "eq", value: "node-row" }],
+      namespace: NS,
+    })).resolves.toBeNull();
+    await expect(db.findOne({
+      model: "resource_labels",
+      where: [{ field: "id", operator: "eq", value: "task-row-with-overlapping-id" }],
+      namespace: NS,
+    })).resolves.toBeDefined();
+  });
 });

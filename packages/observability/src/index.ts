@@ -461,11 +461,10 @@ export function instrumentMethods<TTarget extends object>(
         return value;
       }
 
-      return async (...args: unknown[]) => {
+      return (...args: unknown[]) => {
         const extracted = extract?.({ property, args }) ?? {};
         const startedAt = now();
-        try {
-          const result = await value.apply(currentTarget, args);
+        const record = (ok: boolean) => {
           observability.metrics.record({
             kind,
             component,
@@ -473,24 +472,50 @@ export function instrumentMethods<TTarget extends object>(
             resource: extracted.resource,
             labels: extracted.labels,
             durationMs: now() - startedAt,
-            ok: true,
+            ok,
           });
+        };
+        try {
+          const result = value.apply(currentTarget, args);
+          const then = readThen(result);
+          if (then) {
+            const assimilated = new Promise<unknown>((resolve, reject) => {
+              void Promise.resolve()
+                .then(() => Reflect.apply(then, result, [resolve, reject]))
+                .catch(reject);
+            });
+            return assimilated.then(
+              (resolved) => {
+                record(true);
+                return resolved;
+              },
+              (error) => {
+                record(false);
+                throw error;
+              },
+            );
+          }
+          record(true);
           return result;
         } catch (error) {
-          observability.metrics.record({
-            kind,
-            component,
-            operation: extracted.operation ?? String(property),
-            resource: extracted.resource,
-            labels: extracted.labels,
-            durationMs: now() - startedAt,
-            ok: false,
-          });
+          record(false);
           throw error;
         }
       };
     },
   }) as TTarget;
+}
+
+function readThen(
+  value: unknown,
+): ((resolve: (value: unknown) => void, reject: (reason?: unknown) => void) => void) | null {
+  if (!((typeof value === "object" && value !== null) || typeof value === "function")) {
+    return null;
+  }
+  const then = (value as { then?: unknown }).then;
+  return typeof then === "function"
+    ? then as (resolve: (value: unknown) => void, reject: (reason?: unknown) => void) => void
+    : null;
 }
 
 export function readObservationGroup(

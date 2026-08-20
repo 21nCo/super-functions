@@ -41,14 +41,14 @@ const schema: DatafnSchema = {
   ],
 };
 
-function createProvider(): DatafnE2eeProvider {
+function createProvider(keyRef = "test-key"): DatafnE2eeProvider {
   return {
-    keyRef: "test-key",
+    keyRef,
     async encrypt({ plaintext, resource, id, field, aad }) {
       return {
         __datafnE2ee: 1,
         alg: "AES-GCM",
-        keyRef: "test-key",
+        keyRef,
         iv: `${resource}:${id}:${field}`,
         data: JSON.stringify({
           plaintext: [...plaintext],
@@ -122,6 +122,67 @@ describe("DataFn E2EE client transforms", () => {
     );
 
     expect(decrypted.data.task?.[0]).toEqual(record);
+  });
+
+  it("encrypts user data that merely resembles an E2EE envelope", async () => {
+    const collidingValue = {
+      __datafnE2ee: 1 as const,
+      alg: "AES-GCM",
+      keyRef: "user-controlled",
+      iv: "not-provider-output",
+      data: "not-ciphertext",
+    };
+
+    const encrypted = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      {
+        operation: "insert",
+        resource: "task",
+        id: "task:collision",
+        record: { id: "task:collision", notes: collidingValue },
+      },
+    )) as { record: Record<string, unknown> };
+
+    expect(encrypted.record.notes).not.toBe(collidingValue);
+    expect(isDatafnE2eeEnvelope(encrypted.record.notes)).toBe(true);
+    const decrypted = await decryptCloneResultForE2ee(
+      schema,
+      { enabled: true, provider: createProvider() },
+      { ok: true, data: { task: [encrypted.record] }, cursors: {}, next: {} },
+    );
+    expect(decrypted.data.task?.[0]?.notes).toEqual(collidingValue);
+  });
+
+  it("does not reuse an envelope across provider key contexts", async () => {
+    const firstProvider = createProvider();
+    const first = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: firstProvider },
+      {
+        operation: "insert",
+        resource: "task",
+        id: "task:rekey",
+        record: { id: "task:rekey", notes: "secret" },
+      },
+    )) as { record: Record<string, unknown> };
+    const nextProvider = createProvider("next-key");
+    const encrypt = vi.spyOn(nextProvider, "encrypt");
+
+    const reencrypted = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: nextProvider },
+      {
+        operation: "merge",
+        resource: "task",
+        id: "task:rekey",
+        record: { id: "task:rekey", notes: first.record.notes },
+      },
+    )) as { record: Record<string, unknown> };
+
+    expect(encrypt).toHaveBeenCalledOnce();
+    expect(reencrypted.record.notes).not.toBe(first.record.notes);
+    expect((reencrypted.record.notes as { keyRef: string }).keyRef).toBe("next-key");
   });
 
   it("blocks direct remote query and search while allowing plaintext KV query", () => {

@@ -493,6 +493,46 @@ describe("Partial push-down query execution", () => {
     // Only c1 and c2 — NOT c3 (task t3 is done, filtered by push-down)
     expect((catWhere[0].value as string[]).sort()).toEqual(["c1", "c2"]);
   });
+
+  it("uses the generated many-one FK when a legacy foreignKey alias is empty", async () => {
+    const schema = structuredClone(TASK_CATEGORY_SCHEMA);
+    schema.relations[0].fkField = undefined;
+    schema.relations[0].foreignKey = "";
+    const db = memoryAdapter();
+    await db.initialize();
+    await db.create({
+      model: "task",
+      data: { id: "t1", title: "Alpha", status: "active", categoryId: "c1" },
+      namespace: "datafn",
+    });
+    await db.create({
+      model: "category",
+      data: { id: "c1", name: "Alpha" },
+      namespace: "datafn",
+    });
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: db,
+    });
+
+    try {
+      const response = await server.router.handle(queryReq({
+        resource: "task",
+        version: 1,
+        select: ["title", "category.*"],
+      }), {});
+      const body = await response.json();
+
+      expect(body.result.data).toEqual([{
+        id: "t1",
+        title: "Alpha",
+        category: { id: "c1", name: "Alpha" },
+      }]);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 describe("IN_MEMORY pre-filter optimisation", () => {

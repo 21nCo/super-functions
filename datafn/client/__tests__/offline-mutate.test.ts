@@ -209,6 +209,26 @@ class MockStorageAdapter implements DatafnStorageAdapter {
   }
 }
 
+class AtomicIfMissingMockStorageAdapter extends MockStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
+  lastMergeOptions: { ifMissing?: Record<string, unknown> } | undefined;
+
+  override async mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options: { ifMissing?: Record<string, unknown> } = {},
+  ): Promise<Record<string, unknown>> {
+    this.lastMergeOptions = options;
+    const existing = await this.getRecord(resource, id);
+    return super.mergeRecord(
+      resource,
+      id,
+      existing ? partial : (options.ifMissing ?? partial),
+    );
+  }
+}
+
 // Test schema
 const testSchema = {
   resources: [
@@ -344,6 +364,112 @@ describe("Offline Mutation Tests", () => {
       seq: 1,
       clientId: "client:1",
       mutationId: "m-off-1",
+    });
+  });
+
+  it("offline merge preserves omitted existing fields instead of reapplying defaults", async () => {
+    const storage = new MockStorageAdapter();
+    await storage.upsertRecord("task", {
+      id: "task:existing",
+      title: "Before",
+      status: "done",
+    });
+    const schemaWithDefault = {
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithDefault,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:merge-default",
+      storage,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:existing",
+      record: { title: "After" },
+    });
+
+    await expect(storage.getRecord("task", "task:existing")).resolves.toMatchObject({
+      title: "After",
+      status: "done",
+    });
+  });
+
+  it("uses a merge-safe patch for legacy three-argument storage adapters", async () => {
+    const storage = new MockStorageAdapter();
+    const timestampMs = 1_726_000_000_000;
+    const schemaWithCreateFields = {
+      capabilities: ["timestamps", "audit"],
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithCreateFields,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:legacy-merge",
+      storage,
+      getTimestamp: () => timestampMs,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:new",
+      record: { title: "Created by merge" },
+    });
+
+    await expect(storage.getRecord("task", "task:new")).resolves.toMatchObject({
+      id: "task:new",
+      title: "Created by merge",
+      updatedAt: timestampMs,
+      updatedBy: "client:legacy-merge",
+    });
+    await expect(storage.getRecord("task", "task:new")).resolves.not.toHaveProperty("status");
+    await expect(storage.getRecord("task", "task:new")).resolves.not.toHaveProperty("createdAt");
+  });
+
+  it("uses explicit capability detection for atomic merge adapters with default parameters", async () => {
+    const storage = new AtomicIfMissingMockStorageAdapter();
+    expect(storage.mergeRecord.length).toBe(3);
+    const schemaWithDefault = {
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithDefault,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:atomic-merge",
+      storage,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:atomic",
+      record: { title: "Atomic create" },
+    });
+
+    expect(storage.lastMergeOptions?.ifMissing).toMatchObject({
+      title: "Atomic create",
+      status: "open",
     });
   });
 

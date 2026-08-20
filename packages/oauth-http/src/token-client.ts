@@ -80,7 +80,7 @@ export class DefaultOAuthTokenHttpClient implements OAuthTokenHttpClient {
   private readonly sleep: (delayMs: number) => Promise<void>;
 
   constructor(options: OAuthTokenClientOptions = {}) {
-    this.fetcher = options.fetcher ?? getGlobalFetch(options.timeoutMs ?? DEFAULT_OAUTH_REQUEST_TIMEOUT_MS);
+    this.fetcher = options.fetcher ?? createOAuthFetchLike(options.timeoutMs);
     this.retryPolicy = options.retryPolicy ?? DEFAULT_OAUTH_RETRY_POLICY;
     this.sleep = options.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
   }
@@ -699,7 +699,10 @@ function ensureOAuthHttpError(error: unknown): OAuthHttpError {
   });
 }
 
-function getGlobalFetch(timeoutMs: number): OAuthFetchLike {
+/** Creates the shared timeout-aware global fetch adapter used by OAuth transports. */
+export function createOAuthFetchLike(
+  timeoutMs: number = DEFAULT_OAUTH_REQUEST_TIMEOUT_MS
+): OAuthFetchLike {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
     throw new OAuthHttpError("OAuth HTTP timeout must be a finite non-negative number", {
       code: "VALIDATION_ERROR",

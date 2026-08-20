@@ -27,7 +27,8 @@ export function connectionMatchesActor(
   }
 
   if (
-    connection.userId === actor.userId ||
+    ((connection.ownerKind === undefined || connection.ownerKind === 'user') &&
+      connection.userId === actor.userId) ||
     (connection.ownerKind === 'user' && connection.ownerId === actor.userId)
   ) {
     return true;

@@ -172,7 +172,7 @@ async function getChildIdsForParentRelation(input: {
 
   if (relation.type === "one-many") {
     const childResource = pickResourceName(relation.to);
-    const fkField = relation.fkField || relation.inverse || `${parentResource}Id`;
+    const fkField = relation.fkField || relation.foreignKey || relation.inverse || `${parentResource}Id`;
     const rows = await db.findMany({
       model: childResource,
       where: [{ field: fkField, operator: "eq", value: parentId }],
@@ -206,7 +206,7 @@ async function getChildIdsForParentRelation(input: {
     if (!parent) {
       return [];
     }
-    const fkField = relation.fkField || `${relationName}Id`;
+    const fkField = relation.fkField || relation.foreignKey || `${relationName}Id`;
     const childId = normalizeNonEmptyString((parent as Record<string, unknown>)[fkField]);
     if (!childId) {
       return [];
@@ -633,7 +633,9 @@ export async function collectRelationInheritanceTargetsForUnrelate(input: {
 
     if (relationConfig.relation.type === "many-one") {
       const fkField =
-        relationConfig.relation.fkField || `${relationConfig.relationName}Id`;
+        relationConfig.relation.fkField ||
+        relationConfig.relation.foreignKey ||
+        `${relationConfig.relationName}Id`;
       const parent = await input.db.findOne({
         model: input.mutation.resource,
         where: [{ field: "id", operator: "eq", value: input.mutation.id }],

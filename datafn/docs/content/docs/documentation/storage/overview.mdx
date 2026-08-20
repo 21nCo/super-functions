@@ -13,6 +13,10 @@ Every storage adapter implements the `DatafnStorageAdapter` interface:
 
 ```typescript
 interface DatafnStorageAdapter {
+  readonly capabilities?: {
+    atomicMergeIfMissing?: boolean;
+  };
+
   // Records
   getRecord(resource: string, id: string): Promise<Record<string, unknown> | null>;
   listRecords(resource: string): Promise<Record<string, unknown>[]>;
@@ -22,6 +26,7 @@ interface DatafnStorageAdapter {
     resource: string,
     id: string,
     partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>>;
 
   // Join rows (many-many relations)
@@ -61,7 +66,7 @@ interface DatafnStorageAdapter {
 
 ### Merge Record
 
-The `mergeRecord` method performs an atomic read-modify-write operation. It reads the existing record, shallow-merges the provided fields, and writes the result back in a single transaction. For object-type fields, it performs one-level-deep merge.
+The `mergeRecord` method performs an atomic read-modify-write operation. It reads the existing record, shallow-merges the provided fields, and writes the result back in a single transaction. For object-type fields, it performs one-level-deep merge. When no record exists, `options.ifMissing` is the complete creation payload selected instead of `partial`; it is not a base to merge `partial` over. Adapters that make this choice atomically must declare `capabilities.atomicMergeIfMissing: true`. Older adapters remain compatible through a merge-safe fallback, but create-only defaults require the atomic capability.
 
 ```typescript
 // Existing record: { id: "t1", title: "Buy milk", meta: { color: "red", size: 3 } }

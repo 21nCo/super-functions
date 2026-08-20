@@ -176,6 +176,30 @@ describe("@datafn/swift-bridge native storage adapter", () => {
     ]);
   });
 
+  it("forwards the atomic missing-record merge payload", async () => {
+    const { calls } = installStorageHost();
+    const storage = createNativeBackedStorageAdapter(createWKWebViewBridgeBus());
+
+    await storage.mergeRecord(
+      "tasks",
+      "task:new",
+      { title: "patch" },
+      { ifMissing: { id: "task:new", title: "patch", status: "draft" } },
+    );
+
+    expect(calls.at(-1)).toMatchObject({
+      method: "storage.mergeRecord",
+      payload: {
+        resource: "tasks",
+        id: "task:new",
+        partial: { title: "patch" },
+        options: {
+          ifMissing: { id: "task:new", title: "patch", status: "draft" },
+        },
+      },
+    });
+  });
+
   it("fails fast when the native bridge is unavailable", async () => {
     (globalThis as any).window = {};
     const storage = createNativeBackedStorageAdapter(createWKWebViewBridgeBus());

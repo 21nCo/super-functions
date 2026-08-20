@@ -17,6 +17,8 @@ export interface AuthFnBundledPluginConfig {
 export interface PasswordPluginConfig extends AuthFnBundledPluginConfig {
   compromisedPasswordChecker?: AuthFnPasswordCompromiseChecker;
   requireEmailVerifiedForSignIn?: boolean;
+  /** @deprecated Configure password OTP delivery through pluginRuntime.password.otp. */
+  otp?: Partial<EmailOtpPluginRuntimeConfig>;
 }
 export interface PasswordPluginRuntimeConfig {
   /** OTP delivery and challenge settings used by password sign-up, sign-in, and reset flows. */

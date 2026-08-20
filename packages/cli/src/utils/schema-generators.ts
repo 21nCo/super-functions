@@ -4,6 +4,7 @@
 
 import type { TableSchema, FieldSchema } from '@superfunctions/db';
 import { resolvePhysicalTableName } from './schema-diff.js';
+import { mysqlVarcharLength } from './mysql-types.js';
 
 interface AbstractSchema {
   version: number;
@@ -230,6 +231,12 @@ function mapFieldToDrizzle(
 
   switch (field.type) {
     case 'string':
+      if (dialect === 'mysql') {
+        const length = mysqlVarcharLength(field);
+        if (length !== null) {
+          return { type: 'varchar', config: `{ length: ${length} }` };
+        }
+      }
       return { type: 'text' };
     case 'number':
       return { type: 'integer' };

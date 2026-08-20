@@ -211,7 +211,10 @@ export function dynamoDbIndexedDirectoryStore(
       const result = await client.send(new GetCommand({
         TableName: options.tableName,
         Key: { PK: directoryRecordPk(key), SK: DIRECTORY_RECORD_SORT_KEY },
-        ConsistentRead: options.consistentRead,
+        // Directory reads gate authorization and legacy-key cleanup. Default
+        // to strong consistency so a just-written legacy grant cannot be
+        // missed while an unshare commits.
+        ConsistentRead: true,
       }));
       return fromDirectoryItem(result.Item);
     },
