@@ -281,6 +281,13 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
           { path: `resources.${r.name}.idPrefix` },
         );
       }
+      if (r.idPrefix.length === 0) {
+        return err(
+          "SCHEMA_INVALID",
+          "Invalid schema: resource.idPrefix must not be empty",
+          { path: `resources.${r.name}.idPrefix` },
+        );
+      }
       effectiveIdPrefix = r.idPrefix;
     }
     const normalizedIdPrefix = effectiveIdPrefix.endsWith(":")
