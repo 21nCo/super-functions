@@ -486,7 +486,7 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
-  it("keeps failed-share compensation fail-closed when task persistence is temporarily unavailable", async () => {
+  it("does not return failed-share handling before compensation is durable", async () => {
     vi.useFakeTimers();
     const taskDb = memoryAdapter();
     await taskDb.initialize();
@@ -533,7 +533,8 @@ describe("share SPV2 mutation semantics", () => {
     );
 
     try {
-      await expect(deferFailedShareCompensation(
+      let deferred = false;
+      const deferPromise = deferFailedShareCompensation(
         heartbeatDb,
         taskId,
         mutation,
@@ -549,7 +550,12 @@ describe("share SPV2 mutation semantics", () => {
         new Error("failed share"),
         namespace,
         "region:test",
-      )).resolves.toBeNull();
+      ).then((durableTaskId) => {
+        deferred = true;
+        return durableTaskId;
+      });
+      await Promise.resolve();
+      expect(deferred).toBe(false);
 
       const leased = await taskDb.internal.findMany(
         "__datafn_permission_directory_outbox",
@@ -561,16 +567,19 @@ describe("share SPV2 mutation semantics", () => {
       });
 
       rejectCompensationPersistence = false;
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(25);
+      const durableTaskId = await deferPromise;
+      expect(durableTaskId).toEqual(expect.any(String));
 
       const converted = await taskDb.internal.findMany(
         "__datafn_permission_directory_outbox",
         [],
       );
-      expect(converted).toHaveLength(1);
-      expect(JSON.parse(String(converted[0].mutation))).toMatchObject({
-        operation: "compensate-failed-share",
-      });
+      expect(converted.length).toBeGreaterThanOrEqual(1);
+      expect(converted.every((task) =>
+        JSON.parse(String(task.mutation)).operation ===
+          "compensate-failed-share"
+      )).toBe(true);
     } finally {
       vi.useRealTimers();
       await taskDb.close();

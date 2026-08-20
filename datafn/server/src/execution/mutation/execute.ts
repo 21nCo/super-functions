@@ -1394,7 +1394,7 @@ export async function executeMutation(
     if (!guardResult.match) {
       await releasePermissionDirectoryTask();
       if (permissionDirectoryTaskId) {
-        await syncPermissionDirectoryAfterCommit(db);
+        await reconcilePermissionDirectoryAfterCommit();
       }
       const result: MutationResult = {
         ok: false,

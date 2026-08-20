@@ -18,10 +18,6 @@ interface PrecommitLeaseHeartbeat {
   timer: ReturnType<typeof setTimeout> | null;
   leaseValue: string;
   inFlight: Promise<void> | null;
-  settlement?: {
-    mutation: string;
-    lastError: string;
-  };
 }
 
 const precommitLeaseHeartbeats = new Map<string, PrecommitLeaseHeartbeat>();
@@ -54,7 +50,6 @@ function startPrecommitLeaseHeartbeat(
   db: Adapter,
   taskId: string,
   initialLeaseValue: string,
-  settlement?: PrecommitLeaseHeartbeat["settlement"],
 ): void {
   detachPrecommitLeaseHeartbeat(taskId);
   const heartbeat: PrecommitLeaseHeartbeat = {
@@ -62,7 +57,6 @@ function startPrecommitLeaseHeartbeat(
     timer: null,
     leaseValue: initialLeaseValue,
     inFlight: null,
-    settlement,
   };
   const schedule = () => {
     if (heartbeat.stopped) return;
@@ -73,34 +67,20 @@ function startPrecommitLeaseHeartbeat(
       void inFlight.finally(() => {
         if (heartbeat.inFlight === inFlight) heartbeat.inFlight = null;
       });
-    }, heartbeat.settlement ? 1_000 : PRECOMMIT_TASK_RENEWAL_MS);
+    }, PRECOMMIT_TASK_RENEWAL_MS);
     heartbeat.timer.unref?.();
   };
   const renew = async () => {
     const expectedLeaseValue = heartbeat.leaseValue;
-    const settlement = heartbeat.settlement;
-    const renewedLeaseValue = settlement
-      ? new Date().toISOString()
-      : nextPrecommitLeaseExpiry();
+    const renewedLeaseValue = nextPrecommitLeaseExpiry();
     try {
       const updated = await db.internal.update(OUTBOX_TABLE, [
         { field: "id", op: "eq", value: taskId },
         { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
-      ], settlement
-        ? {
-            mutation: settlement.mutation,
-            last_error: settlement.lastError,
-            next_attempt_at: renewedLeaseValue,
-          }
-        : {
-            next_attempt_at: renewedLeaseValue,
-          });
+      ], {
+        next_attempt_at: renewedLeaseValue,
+      });
       if (updated > 0) {
-        if (settlement) {
-          heartbeat.stopped = true;
-          precommitLeaseHeartbeats.delete(taskId);
-          return;
-        }
         heartbeat.leaseValue = renewedLeaseValue;
       }
     } catch {
@@ -203,7 +183,7 @@ export async function deferFailedShareCompensation(
   error: unknown,
   namespace: string,
   regionId: string,
-): Promise<string | null> {
+): Promise<string> {
   const expectedLeaseValue = await stopPrecommitLeaseHeartbeat(taskId);
   const compensationMutation = {
     ...mutation,
@@ -212,6 +192,7 @@ export async function deferFailedShareCompensation(
   } satisfies PermissionDirectorySyncMutation;
   const serializedMutation = JSON.stringify(compensationMutation);
   const lastError = String(error);
+  const readyAt = () => new Date().toISOString();
   let updated = 0;
   if (expectedLeaseValue) {
     try {
@@ -221,54 +202,67 @@ export async function deferFailedShareCompensation(
         ], {
           mutation: serializedMutation,
           last_error: lastError,
-          next_attempt_at: new Date().toISOString(),
+          next_attempt_at: readyAt(),
         });
     } catch {
-      // Fall through to a replacement task. If that also cannot be persisted,
-      // keep the original task leased and retry its fail-closed conversion in
-      // the background instead of abandoning it as a runnable share task.
+      // Fall through to durable replacement persistence. This function does
+      // not return while conversion intent exists only in process memory.
     }
   }
   if (updated > 0) return taskId;
 
-  try {
-    // Ownership was already transferred to a drainer (or the original row was
-    // deleted), or its conditional update failed. A fresh ready task preserves
-    // the failed compensation instead of mutating work another owner may hold.
-    const replacementTaskId = await enqueuePermissionDirectorySync(
-      db,
-      compensationMutation,
-      namespace,
-      regionId,
-    );
-    if (expectedLeaseValue) {
-      try {
-        const deleted = await db.internal.delete(OUTBOX_TABLE, [
-          { field: "id", op: "eq", value: taskId },
-          { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
-        ]);
-        if (deleted === 0) {
-          startPrecommitLeaseHeartbeat(db, taskId, expectedLeaseValue, {
-            mutation: serializedMutation,
-            lastError,
-          });
-        }
-      } catch {
-        startPrecommitLeaseHeartbeat(db, taskId, expectedLeaseValue, {
-          mutation: serializedMutation,
-          lastError,
-        });
-      }
+  let replacementTaskId: string | null = null;
+  while (!replacementTaskId) {
+    try {
+      replacementTaskId = await enqueuePermissionDirectorySync(
+        db,
+        compensationMutation,
+        namespace,
+        regionId,
+      );
+    } catch {
+      // A failed share must not return while its only durable task can still
+      // execute as a share. Keep the request fail-closed until persistence
+      // recovers; an ambiguous create may leave harmless duplicate repairs.
+      await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    return replacementTaskId;
-  } catch {
-    if (expectedLeaseValue) {
-      startPrecommitLeaseHeartbeat(db, taskId, expectedLeaseValue, {
-        mutation: serializedMutation,
-        lastError,
-      });
+  }
+
+  // A replacement guarantees compensation survives even if another drainer
+  // already claimed the original. Before returning, also fence every durable
+  // copy of the original task away from the failed `share` operation.
+  while (true) {
+    let originalTask: Record<string, unknown> | null;
+    try {
+      originalTask = await db.internal.findOne(OUTBOX_TABLE, [
+        { field: "id", op: "eq", value: taskId },
+      ]);
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      continue;
     }
-    return null;
+    if (!originalTask) return replacementTaskId;
+
+    let originalOperation: unknown;
+    try {
+      originalOperation = JSON.parse(String(originalTask.mutation)).operation;
+    } catch {
+      originalOperation = "share";
+    }
+    if (originalOperation !== "share") return replacementTaskId;
+
+    const observedLeaseValue = String(originalTask.next_attempt_at);
+    try {
+      const deleted = await db.internal.delete(OUTBOX_TABLE, [
+        { field: "id", op: "eq", value: taskId },
+        { field: "next_attempt_at", op: "eq", value: observedLeaseValue },
+      ]);
+      if (deleted > 0) return replacementTaskId;
+    } catch {
+      // Re-read and retry. We return only after the original is gone or its
+      // durable mutation has been fenced to compensation.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
 
