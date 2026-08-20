@@ -6,6 +6,7 @@ import {
 import { createDatafnServer } from "../../../server.js";
 import type { DatafnSchema } from "../../../core-types.js";
 import { datafnMultiRegionPlugin } from "../../../plugins/multi-region.js";
+import { drainPermissionDirectoryOutbox } from "../permission-directory-outbox.js";
 
 const namespace = "user:owner";
 const globalPermissionsTable = "__datafn_permissions_global";
@@ -481,6 +482,85 @@ describe("share SPV2 mutation semantics", () => {
       })).resolves.toEqual({ records: [] });
     } finally {
       await localServer.close?.();
+    }
+  });
+
+  it("durably retries a committed share when directory indexing fails", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const backingDirectory = createMemoryIndexedDirectoryStore();
+    let rejectPut = true;
+    const directory = {
+      ...backingDirectory,
+      put: async (record: Parameters<typeof backingDirectory.put>[0]) => {
+        if (rejectPut) throw new Error("directory unavailable");
+        return backingDirectory.put(record);
+      },
+    };
+    const runtime = { regionId: "region:test", directory };
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin(runtime)],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "directory-retry",
+        mutationId: "directory-retry-insert",
+        id: "note:directory-retry",
+        record: { title: "Directory retry" },
+      });
+      const shared = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "directory-retry",
+        mutationId: "directory-retry-share",
+        id: "note:directory-retry",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+      expect(shared.result.ok).toBe(true);
+      await expect(localDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(1);
+
+      rejectPut = false;
+      await expect(drainPermissionDirectoryOutbox(localDb, runtime)).resolves.toEqual({
+        processed: 1,
+        pending: 0,
+      });
+      await expect(localDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(0);
+      const indexed = await backingDirectory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
     }
   });
 

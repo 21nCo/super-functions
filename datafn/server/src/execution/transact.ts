@@ -12,6 +12,8 @@ import { executeQuery } from "./query/execute.js";
 import { DbDataStore } from "./db-store.js";
 import { ChangeTrackingService } from "./sync/change-tracking.js";
 import type { DatafnLogger } from "../logger.js";
+import { getDatafnMultiRegionRuntimeConfig } from "../plugins/multi-region.js";
+import { ensurePermissionDirectoryOutbox } from "./mutation/permission-directory-outbox.js";
 
 export interface TransactStep {
   query?: any;
@@ -128,6 +130,12 @@ export async function executeTransaction(
         // not need these tables and must not perform mutation-side DDL.
         await idempotencyStore.ensureReady?.();
         await changeTracking.ensureReady();
+        if (
+          getDatafnMultiRegionRuntimeConfig(plugins) &&
+          steps.some((step) => step.mutation?.operation === "share")
+        ) {
+          await ensurePermissionDirectoryOutbox(db);
+        }
       }
       const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
       await (db as any).transaction(async (tx: Adapter) => {

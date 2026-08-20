@@ -1,0 +1,97 @@
+import { randomUUID } from "crypto";
+import type { Adapter } from "@superfunctions/db";
+
+import type { DatafnLogger } from "../../logger.js";
+import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
+import { ensureInternalTable } from "../internal-tables.js";
+import { syncDatafnPermissionGrantAfterCommit } from "./share.js";
+
+const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
+
+export interface PermissionDirectorySyncMutation {
+  operation: string;
+  resource: string;
+  id?: string;
+  scope?: "record" | "resource";
+  shareWith?: { principalId?: string; userId?: string };
+}
+
+export async function ensurePermissionDirectoryOutbox(db: Adapter): Promise<void> {
+  await ensureInternalTable(db, OUTBOX_TABLE);
+}
+
+export async function enqueuePermissionDirectorySync(
+  db: Adapter,
+  mutation: PermissionDirectorySyncMutation,
+  namespace: string,
+): Promise<string> {
+  const id = randomUUID();
+  await db.internal.create(OUTBOX_TABLE, {
+    id,
+    namespace,
+    mutation: JSON.stringify(mutation),
+    attempts: 0,
+    last_error: "",
+    created_at: new Date().toISOString(),
+  });
+  return id;
+}
+
+export async function drainPermissionDirectorySync(
+  db: Adapter,
+  taskId: string,
+  runtime: DatafnMultiRegionRuntimeConfig,
+  logger?: DatafnLogger,
+): Promise<boolean> {
+  const task = await db.internal.findOne(OUTBOX_TABLE, [
+    { field: "id", op: "eq", value: taskId },
+  ]);
+  if (!task) return true;
+
+  try {
+    const mutation = JSON.parse(String(task.mutation)) as PermissionDirectorySyncMutation;
+    await syncDatafnPermissionGrantAfterCommit(
+      db,
+      mutation,
+      String(task.namespace),
+      runtime,
+    );
+    await db.internal.delete(OUTBOX_TABLE, [
+      { field: "id", op: "eq", value: taskId },
+    ]);
+    return true;
+  } catch (error) {
+    await db.internal.update(OUTBOX_TABLE, [
+      { field: "id", op: "eq", value: taskId },
+    ], {
+      attempts: Number(task.attempts ?? 0) + 1,
+      last_error: String(error),
+    });
+    logger?.error("Permission directory reconciliation deferred for retry", {
+      error: String(error),
+      operation: "permission-directory-outbox",
+      taskId,
+    });
+    return false;
+  }
+}
+
+export async function drainPermissionDirectoryOutbox(
+  db: Adapter,
+  runtime: DatafnMultiRegionRuntimeConfig,
+  logger?: DatafnLogger,
+  limit = 100,
+): Promise<{ processed: number; pending: number }> {
+  await ensurePermissionDirectoryOutbox(db);
+  const tasks = await db.internal.findMany(OUTBOX_TABLE, [], {
+    orderBy: "created_at",
+    limit,
+  });
+  let processed = 0;
+  for (const task of tasks) {
+    if (await drainPermissionDirectorySync(db, String(task.id), runtime, logger)) {
+      processed += 1;
+    }
+  }
+  return { processed, pending: tasks.length - processed };
+}

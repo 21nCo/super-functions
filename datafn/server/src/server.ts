@@ -68,6 +68,10 @@ import type {
   DataFnRequestEventMetadata,
   DataFnRequestFailedMetadata,
 } from "./events.js";
+import {
+  drainPermissionDirectoryOutbox,
+  ensurePermissionDirectoryOutbox,
+} from "./execution/mutation/permission-directory-outbox.js";
 
 type IndexConfig = { search?: readonly string[] };
 
@@ -525,6 +529,28 @@ export async function createDatafnServer<TContext = any>(
       : config.stores?.atomicKv,
     directory: config.stores?.directory,
   };
+
+  let permissionDirectoryRetryInterval: ReturnType<typeof setInterval> | null = null;
+  if (db && multiRegionRuntime) {
+    try {
+      await ensurePermissionDirectoryOutbox(db);
+      await drainPermissionDirectoryOutbox(db, multiRegionRuntime, logger);
+    } catch (error) {
+      logger.warn("Permission directory retry startup drain failed", {
+        error: String(error),
+        operation: "permission-directory-outbox",
+      });
+    }
+    permissionDirectoryRetryInterval = setInterval(() => {
+      void drainPermissionDirectoryOutbox(db!, multiRegionRuntime, logger).catch((error) => {
+        logger.warn("Permission directory retry drain failed", {
+          error: String(error),
+          operation: "permission-directory-outbox",
+        });
+      });
+    }, 60_000);
+    permissionDirectoryRetryInterval.unref?.();
+  }
 
   // Startup pruning (RET-004)
   if (config.retention?.pruneOnStartup && db) {
@@ -1497,6 +1523,10 @@ export async function createDatafnServer<TContext = any>(
     if (pruneInterval) {
       clearInterval(pruneInterval);
       pruneInterval = null;
+    }
+    if (permissionDirectoryRetryInterval) {
+      clearInterval(permissionDirectoryRetryInterval);
+      permissionDirectoryRetryInterval = null;
     }
     if (memoryRateLimiter) {
       memoryRateLimiter.destroy();

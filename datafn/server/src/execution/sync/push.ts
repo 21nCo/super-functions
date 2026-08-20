@@ -34,6 +34,11 @@ import {
 import type { DatafnLogger } from "../../logger.js";
 import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
+import {
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  ensurePermissionDirectoryOutbox,
+} from "../mutation/permission-directory-outbox.js";
 
 export interface PushRequest {
   clientId: string;
@@ -282,6 +287,13 @@ export async function executePush(
   let latestSeq = 0;
   // Track per-resource max serverSeq so the client can advance per-table cursors (FIX-B)
   const resourceSeqs: Record<string, number> = {};
+
+  if (
+    multiRegionRuntime &&
+    request.mutations.some((mutation) => mutation.operation === "share")
+  ) {
+    await ensurePermissionDirectoryOutbox(db);
+  }
 
   // FIX-REL-011: Detect transaction support for atomic mutation units
   let hasTransaction =
@@ -944,6 +956,7 @@ export async function executePush(
   // ---- Process each mutation ----
   for (const mutation of request.mutations) {
     const mut = mutation as any;
+    let permissionDirectoryTaskId: string | null = null;
 
     // Validate required fields
     if (!mut.clientId || !mut.mutationId) {
@@ -1019,6 +1032,13 @@ export async function executePush(
             // Signal failure without aborting transaction (we handle it below)
             throw { __opFailed: true, ...opResult };
           }
+          if (multiRegionRuntime && mut.operation === "share") {
+            permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+              txDb,
+              mut,
+              namespace,
+            );
+          }
 
           // Build and record changes inside the same transaction
           const changes = opResult.changes;
@@ -1069,18 +1089,27 @@ export async function executePush(
       }
 
       if (mutationSucceeded) {
-        await syncDatafnPermissionGrantAfterCommit(
-          db,
-          mut,
-          namespace,
-          multiRegionRuntime ?? null,
-        ).catch((error) => {
-          logger?.error("Push permission directory reconciliation failed after commit", {
-            error: String(error),
-            operation: mut.operation,
-            resource: mut.resource,
+        if (multiRegionRuntime && permissionDirectoryTaskId) {
+          await drainPermissionDirectorySync(
+            db,
+            permissionDirectoryTaskId,
+            multiRegionRuntime,
+            logger,
+          );
+        } else {
+          await syncDatafnPermissionGrantAfterCommit(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime ?? null,
+          ).catch((error) => {
+            logger?.error("Push permission directory reconciliation failed after commit", {
+              error: String(error),
+              operation: mut.operation,
+              resource: mut.resource,
+            });
           });
-        });
+        }
         await recordMutationSuccess(mut);
       }
     } else {
@@ -1099,6 +1128,28 @@ export async function executePush(
       }
 
       if (opResult.ok) {
+        if (multiRegionRuntime && mut.operation === "share") {
+          try {
+            permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+              db,
+              mut,
+              namespace,
+            );
+          } catch (error) {
+            logger?.error("Push permission directory retry could not be persisted", {
+              error: String(error),
+              operation: mut.operation,
+              resource: mut.resource,
+            });
+            await recordMutationFailure(
+              mut,
+              "INTERNAL",
+              "Permission directory retry could not be persisted",
+              "$",
+            );
+            continue;
+          }
+        }
         // Record changes (non-atomic — best-effort with retry)
         const changes = opResult.changes;
         let changeTrackingFailed = false;
@@ -1119,18 +1170,27 @@ export async function executePush(
         if (changeTrackingFailed) {
           await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
         } else {
-          await syncDatafnPermissionGrantAfterCommit(
-            db,
-            mut,
-            namespace,
-            multiRegionRuntime ?? null,
-          ).catch((error) => {
-            logger?.error("Push permission directory reconciliation failed after commit", {
-              error: String(error),
-              operation: mut.operation,
-              resource: mut.resource,
+          if (multiRegionRuntime && permissionDirectoryTaskId) {
+            await drainPermissionDirectorySync(
+              db,
+              permissionDirectoryTaskId,
+              multiRegionRuntime,
+              logger,
+            );
+          } else {
+            await syncDatafnPermissionGrantAfterCommit(
+              db,
+              mut,
+              namespace,
+              multiRegionRuntime ?? null,
+            ).catch((error) => {
+              logger?.error("Push permission directory reconciliation failed after commit", {
+                error: String(error),
+                operation: mut.operation,
+                resource: mut.resource,
+              });
             });
-          });
+          }
           await recordMutationSuccess(mut);
         }
       } else {

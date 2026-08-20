@@ -40,6 +40,11 @@ import { evaluateGuard } from "./guards.js";
 import type { DatafnLogger } from "../../logger.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
 import type { SearchProvider } from "../../search-provider.js";
+import {
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  ensurePermissionDirectoryOutbox,
+} from "./permission-directory-outbox.js";
 
 const SEARCH_UPSERT_OPS = new Set(["insert", "merge", "replace", "trash", "restore", "archive", "unarchive"]);
 
@@ -1012,7 +1017,28 @@ export async function executeMutation(
   ) => void,
 ): Promise<MutationResult> {
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  let permissionDirectoryTaskId: string | null = null;
+  const shouldQueuePermissionDirectorySync = Boolean(
+    multiRegionRuntime && mutation.operation === "share",
+  );
+  const queuePermissionDirectorySync = async (targetDb: Adapter) => {
+    if (!shouldQueuePermissionDirectorySync) return;
+    permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+      targetDb,
+      mutation,
+      namespace,
+    );
+  };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
+    if (multiRegionRuntime && permissionDirectoryTaskId) {
+      await drainPermissionDirectorySync(
+        committedDb,
+        permissionDirectoryTaskId,
+        multiRegionRuntime,
+        logger,
+      );
+      return;
+    }
     try {
       await syncDatafnPermissionGrantAfterCommit(
         committedDb,
@@ -1122,6 +1148,12 @@ export async function executeMutation(
     }
   }
 
+  if (shouldQueuePermissionDirectorySync && !insideTransaction) {
+    // DDL must happen before any enclosing transaction; the task itself is
+    // inserted with the grant so a committed share always has a durable retry.
+    await ensurePermissionDirectoryOutbox(db);
+  }
+
   // DI-002: Guard evaluation + operation MUST run in same transaction to prevent TOCTOU.
   // When db.transaction is available and a guard is present, wrap the guard check +
   // the entire operation + change tracking in a single transaction.
@@ -1176,6 +1208,9 @@ export async function executeMutation(
           logger,
           multiRegionRuntime,
         );
+        if (txMutationResult.ok) {
+          await queuePermissionDirectorySync(txDb);
+        }
         if (!txMutationResult.ok) {
           // A returned mutation failure is still an aborted transaction. Throw
           // after retaining the public result so adapters roll back relation
@@ -1280,6 +1315,9 @@ export async function executeMutation(
           logger,
           multiRegionRuntime,
         );
+        if (txMutationResult.ok) {
+          await queuePermissionDirectorySync(txDb);
+        }
         if (!txMutationResult.ok) {
           throw { __datafnMutationFailed: true };
         }
@@ -1326,6 +1364,7 @@ export async function executeMutation(
   );
 
   if (result.ok) {
+    await queuePermissionDirectorySync(db);
     await reconcilePermissionDirectoryAfterCommit();
   }
 
