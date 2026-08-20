@@ -790,6 +790,7 @@ export async function executePush(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!shareResult.ok) {
           return {

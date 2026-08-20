@@ -531,6 +531,11 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
         path: "relations.fkField",
       });
     }
+    if (r.foreignKey !== undefined && typeof r.foreignKey !== "string") {
+      return err("SCHEMA_INVALID", "Invalid schema: relation.foreignKey must be string", {
+        path: "relations.foreignKey",
+      });
+    }
     if (r.fkResourceField !== undefined && typeof r.fkResourceField !== "string") {
       return err("SCHEMA_INVALID", "Invalid schema: relation.fkResourceField must be string", {
         path: "relations.fkResourceField",

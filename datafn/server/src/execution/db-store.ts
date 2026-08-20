@@ -239,7 +239,7 @@ export class DbDataStore implements DataStore {
 
         if (rel.type === "many-one" && isForward) {
           // FK is on the primary (from) side — load the single related record per primary
-          const fkField = rel.fkField ?? `${rel.relation}Id`;
+          const fkField = rel.fkField ?? rel.foreignKey ?? `${rel.relation}Id`;
           const fkIds = [
             ...new Set(
               primaryRecords
@@ -255,7 +255,7 @@ export class DbDataStore implements DataStore {
           }
         } else if (rel.type === "many-one" && isInverse) {
           // Inverse many-one = one-many from primary: FK on rel.from pointing to primary
-          const fkField = rel.fkField ?? `${rel.inverse}Id`;
+          const fkField = rel.fkField ?? rel.foreignKey ?? `${rel.inverse}Id`;
           try {
             for (const fromResource of endpointList(rel.from)) {
               const rows = primaryIds.length > 0
@@ -273,7 +273,7 @@ export class DbDataStore implements DataStore {
           }
         } else if (rel.type === "one-many" && isForward) {
           // One-many forward: FK on rel.to side pointing back to primary
-          const fkField = rel.fkField ?? `${rel.inverse}Id`;
+          const fkField = rel.fkField ?? rel.foreignKey ?? `${rel.inverse}Id`;
           try {
             for (const toResource of endpointList(rel.to)) {
               const rows = primaryIds.length > 0
@@ -291,7 +291,7 @@ export class DbDataStore implements DataStore {
           }
         } else if (rel.type === "one-many" && isInverse) {
           // Inverse one-many = many-one from primary: primary has FK pointing to rel.from
-          const fkField = rel.fkField ?? `${rel.relation}Id`;
+          const fkField = rel.fkField ?? rel.foreignKey ?? `${rel.relation}Id`;
           const fkIds = [
             ...new Set(
               primaryRecords
@@ -440,7 +440,7 @@ export class DbDataStore implements DataStore {
             }
           }
         } else if (rel2.type === "one-many" && isF2) {
-          const fkField2 = rel2.fkField ?? `${rel2.inverse}Id`;
+          const fkField2 = rel2.fkField ?? rel2.foreignKey ?? `${rel2.inverse}Id`;
           try {
             for (const targetResource of endpointList(rel2.to)) {
               const rows2 = intermediateIds.length > 0
@@ -457,7 +457,7 @@ export class DbDataStore implements DataStore {
             endpointList(rel2.to).forEach((resource) => store.recordsCache.set(resource, []));
           }
         } else if (rel2.type === "many-one" && isF2) {
-          const fkField2 = rel2.fkField ?? `${rel2.relation}Id`;
+          const fkField2 = rel2.fkField ?? rel2.foreignKey ?? `${rel2.relation}Id`;
           const fkIds2 = [...new Set(
             intermediateRecords.map((r) => r[fkField2] as string).filter((v) => v != null && v !== ""),
           )];
@@ -902,7 +902,7 @@ export class DbDataStore implements DataStore {
         if ((rel as any).type === "many-one" && isForward) {
           // FK on primary records → load secondary by FK values
           const fkField =
-            (rel as any).fkField ?? `${(rel as any).relation}Id`;
+            (rel as any).fkField ?? (rel as any).foreignKey ?? `${(rel as any).relation}Id`;
           const fkValues = [
             ...new Set(
               primaryRecords
@@ -920,7 +920,7 @@ export class DbDataStore implements DataStore {
         } else if ((rel as any).type === "many-one" && !isForward) {
           // Inverse many-one: secondary records have FK pointing to primary
           const fkField =
-            (rel as any).fkField ?? `${(rel as any).relation}Id`;
+            (rel as any).fkField ?? (rel as any).foreignKey ?? `${(rel as any).relation}Id`;
           if (primaryIds.length > 0) {
             records = await db.findMany({
               model: secondaryResource,
@@ -932,6 +932,7 @@ export class DbDataStore implements DataStore {
           // FK on secondary records pointing to primary
           const fkField =
             (rel as any).fkField ??
+            (rel as any).foreignKey ??
             (rel as any).inverse ??
             `${query.resource}Id`;
           if (primaryIds.length > 0) {
@@ -945,6 +946,7 @@ export class DbDataStore implements DataStore {
           // Inverse one-many: primary has FK pointing to secondary (one side)
           const fkField =
             (rel as any).fkField ??
+            (rel as any).foreignKey ??
             (rel as any).relation ??
             `${secondaryResource}Id`;
           const fkValues = [

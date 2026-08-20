@@ -138,6 +138,36 @@ describe("TypeScript Codegen Tests", () => {
     expect(output).not.toContain("__datafn_join_");
   });
 
+  it("uses the legacy foreignKey alias for generated relation fields", () => {
+    const output = generateTypes({
+      resources: [
+        {
+          name: "project",
+          version: 1,
+          fields: [{ name: "id", type: "string", required: true }],
+        },
+        {
+          name: "task",
+          version: 1,
+          fields: [{ name: "id", type: "string", required: true }],
+        },
+      ],
+      relations: [
+        {
+          from: "task",
+          to: "project",
+          type: "many-one",
+          relation: "project",
+          foreignKey: "legacyProjectId",
+        },
+      ],
+    });
+
+    const taskBlock = output.slice(output.indexOf("export interface Task"));
+    expect(taskBlock).toContain("legacyProjectId?: string | null;");
+    expect(taskBlock).not.toContain("projectId: string;");
+  });
+
   it("TV-CODEGEN-002: Invalid schema input is rejected deterministically", () => {
     try {
       generateTypes(invalidSchema);

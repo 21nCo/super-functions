@@ -490,7 +490,7 @@ async function getRelatedRecords(
 
   if (relation.type === "one-many") {
     if (isForward) {
-      const fk = relation.fkField || relation.inverse || `${resource}Id`;
+      const fk = relation.fkField || relation.foreignKey || relation.inverse || `${resource}Id`;
       const records = [];
       for (const targetResource of endpointList(targetEndpoint)) {
         records.push(...await storage.findRecords(targetResource, fk, record.id));

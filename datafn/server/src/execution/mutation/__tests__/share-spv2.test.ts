@@ -490,6 +490,84 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("restores a directory grant when a direct unshare transaction rolls back", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "direct-unshare-rollback",
+        mutationId: "direct-unshare-rollback-insert",
+        id: "note:direct-unshare-rollback",
+        record: { title: "Direct unshare rollback" },
+      });
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "direct-unshare-rollback",
+        mutationId: "direct-unshare-rollback-share",
+        id: "note:direct-unshare-rollback",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+      const originalTransaction = localDb.transaction.bind(localDb);
+      localDb.transaction = async (callback: (tx: any) => Promise<unknown>) =>
+        originalTransaction(async (tx: any) => {
+          await callback(tx);
+          throw new Error("commit failed");
+        });
+
+      const result = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "unshare",
+        clientId: "direct-unshare-rollback",
+        mutationId: "direct-unshare-rollback-unshare",
+        id: "note:direct-unshare-rollback",
+        shareWith: { principalId: "user:partner" },
+      });
+
+      expect(result.result.ok).toBe(false);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(1);
+      const indexed = await directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      });
+      expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("durably retries a committed share when directory indexing fails", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -503,6 +581,7 @@ describe("share SPV2 mutation semantics", () => {
       },
     };
     const runtime = { regionId: "region:test", directory };
+    let currentActor = "user:owner";
     const localServer = await createDatafnServer({
       allowUnknownResources: true,
       schema,
@@ -510,7 +589,7 @@ describe("share SPV2 mutation semantics", () => {
       plugins: [datafnMultiRegionPlugin(runtime)],
       namespaceProvider: {
         getNamespace: () => namespace,
-        getActorId: () => "user:owner",
+        getActorId: () => currentActor,
       },
     });
     const localMutation = async (payload: Record<string, unknown>) => {
@@ -545,6 +624,34 @@ describe("share SPV2 mutation semantics", () => {
         shareWith: { principalId: "user:partner", level: "viewer" },
       });
       expect(shared.result.ok).toBe(true);
+      const [grant] = await localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      });
+      await localDb.update({
+        model: globalPermissionsTable,
+        where: [{ field: "id", operator: "eq", value: grant.id }],
+        data: { resourceRegion: undefined },
+        namespace,
+      });
+      currentActor = "user:partner";
+      const sharedWithMeResponse = await localServer.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            resource: "notes",
+            version: 1,
+            metadata: { accessMode: "sharedWithMe" },
+          }),
+        },
+      ));
+      const sharedWithMe = await sharedWithMeResponse.json() as any;
+      expect(sharedWithMe.result.data.map((row: any) => row.id)).toContain(
+        "note:directory-retry",
+      );
       await expect(localDb.internal.findMany(
         "__datafn_permission_directory_outbox",
         [],

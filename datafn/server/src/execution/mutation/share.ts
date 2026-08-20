@@ -348,6 +348,7 @@ export async function executeShare(
         grantedBy: actorId ?? "system",
         grantedAt: now,
         revokedAt: null,
+        ...(multiRegionRuntime ? { resourceRegion: multiRegionRuntime.regionId } : {}),
       }
     : {
         id: permissionEntryId,
@@ -361,6 +362,7 @@ export async function executeShare(
         grantedBy: actorId ?? "system",
         grantedAt: now,
         revokedAt: null,
+        ...(multiRegionRuntime ? { resourceRegion: multiRegionRuntime.regionId } : {}),
       };
 
   if (existingPermission) {
@@ -378,6 +380,7 @@ export async function executeShare(
         grantedBy: permissionRecord.grantedBy,
         grantedAt: permissionRecord.grantedAt,
         revokedAt: permissionRecord.revokedAt,
+        ...(multiRegionRuntime ? { resourceRegion: permissionRecord.resourceRegion } : {}),
       },
       namespace,
     });

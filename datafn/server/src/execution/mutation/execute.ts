@@ -1261,6 +1261,11 @@ export async function executeMutation(
     if (txMutationResult) {
       if ((txMutationResult as MutationResult).ok) {
         await reconcilePermissionDirectoryAfterCommit();
+      } else if (mutation.operation === "unshare") {
+        // Fail-closed unshare invalidates the directory before the database
+        // delete. A rolled-back transaction restores the grant, so restore its
+        // directory entry from settled outer-adapter state as compensation.
+        await syncPermissionDirectoryAfterCommit(db);
       }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);
@@ -1348,6 +1353,8 @@ export async function executeMutation(
     if (txMutationResult) {
       if ((txMutationResult as MutationResult).ok) {
         await reconcilePermissionDirectoryAfterCommit();
+      } else if (mutation.operation === "unshare") {
+        await syncPermissionDirectoryAfterCommit(db);
       }
       if (searchProvider && (txMutationResult as MutationResult).ok) {
         await tryUpdateSearchIndex(searchProvider, mutation, db, namespace, logger, multiRegionRuntime);

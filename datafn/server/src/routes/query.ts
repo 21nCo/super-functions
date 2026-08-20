@@ -355,7 +355,10 @@ export function createQueryHandler(
       }
       return multiRegionRuntime
         ? rows.filter(
-            (row) => row.resourceRegion === multiRegionRuntime.regionId,
+            (row) =>
+              row.resourceRegion === undefined ||
+              row.resourceRegion === null ||
+              row.resourceRegion === multiRegionRuntime.regionId,
           )
         : rows;
     };

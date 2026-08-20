@@ -8,11 +8,11 @@ export type DatafnRelationFkField = {
 };
 
 function htreeFkField(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || "parentId";
+  return relation.fkField || relation.foreignKey || relation.inverse || "parentId";
 }
 
 export function relationFkFieldForOneMany(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || `${firstEndpoint(relation.from)}Id`;
+  return relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpoint(relation.from)}Id`;
 }
 
 export function relationFkFieldForManyOne(relation: DatafnRelationSchema): string {

@@ -542,10 +542,10 @@ function getRelationIds(
 
   if (relation.type === "one-many") {
     if (!isForward) {
-      const fkField = relation.fkField || `${relation.inverse}Id`;
+      const fkField = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
       return (record[fkField] as string | undefined) || null;
     }
-    const fkField = relation.fkField || `${relation.inverse}Id`;
+    const fkField = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
     const relatedRecords = endpointList(relation.to).flatMap((targetResource) =>
       store.findRecords(targetResource, fkField, record.id),
     );
@@ -615,12 +615,12 @@ function expandRelationToRecords(
 
   if (relation.type === "one-many") {
     if (!isForward) {
-      const fkField = relation.fkField || `${relation.inverse}Id`;
+      const fkField = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
       const relatedId = record[fkField] as string | undefined;
       if (!relatedId) return null;
       return store.getRecord(recordResourceName(schema, relatedId, targetEndpoint), relatedId);
     }
-    const fkField = relation.fkField || `${relation.inverse}Id`;
+    const fkField = relation.fkField || relation.foreignKey || `${relation.inverse}Id`;
     const relatedRecords = endpointList(targetEndpoint).flatMap((targetResource) =>
       store.findRecords(targetResource, fkField, record.id),
     );

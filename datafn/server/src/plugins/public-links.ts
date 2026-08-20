@@ -652,7 +652,9 @@ async function createDatafnPublicLink(input: {
     },
     validation.capabilities,
     input.namespace,
-    input.actorId
+    input.actorId,
+    undefined,
+    permissionDirectoryRuntime,
   );
   if (!shareResult.ok) {
     await input.database.delete({

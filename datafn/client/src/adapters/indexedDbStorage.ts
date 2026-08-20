@@ -301,13 +301,13 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
               if (this.schema.relations) {
                 for (const rel of this.schema.relations) {
                   if (rel.type === "many-one" && endpointIncludes(rel.from, resource.name)) {
-                     const fk = rel.fkField || `${rel.relation}Id`;
+                     const fk = rel.fkField || rel.foreignKey || `${rel.relation}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }
                   } else if (rel.type === "one-many" && endpointIncludes(rel.to, resource.name)) {
                      // For one-many, 'to' has the FK back to 'from'
-                     const fk = rel.fkField || rel.inverse || `${firstEndpoint(rel.from)}Id`;
+                     const fk = rel.fkField || rel.foreignKey || rel.inverse || `${firstEndpoint(rel.from)}Id`;
                      if (!store.indexNames.contains(`by_${fk}`)) {
                         store.createIndex(`by_${fk}`, fk, { unique: false });
                      }

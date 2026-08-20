@@ -210,7 +210,7 @@ export async function expandRelation(
     );
   } else if (relation.type === "many-one") {
     if (isForward) {
-      const fk = relation.fkField || `${relationName}Id`;
+      const fk = relation.fkField || relation.foreignKey || `${relationName}Id`;
       const val = record[fk] as string;
       if (val) targetIds.push(val);
     } else {
@@ -221,7 +221,7 @@ export async function expandRelation(
       }
     }
   } else if (relation.type === "one-many") {
-    const fk = relation.fkField || relation.inverse || `${resource}Id`;
+    const fk = relation.fkField || relation.foreignKey || relation.inverse || `${resource}Id`;
     if (isForward) {
       for (const targetResource of endpointList(targetEndpoint)) {
         const records = await storage.findRecords(targetResource, fk, record.id);

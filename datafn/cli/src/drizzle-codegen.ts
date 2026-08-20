@@ -847,11 +847,11 @@ function shouldEmitForeignKey(
 }
 
 function fkFieldForOneMany(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || `${firstEndpointOf(relation.from)}Id`;
+  return relation.fkField || relation.foreignKey || relation.inverse || `${firstEndpointOf(relation.from)}Id`;
 }
 
 function htreeFkField(relation: DatafnRelationSchema): string {
-  return relation.fkField || relation.inverse || "parentId";
+  return relation.fkField || relation.foreignKey || relation.inverse || "parentId";
 }
 
 function htreePathField(relation: DatafnRelationSchema): string {
@@ -894,7 +894,7 @@ function buildRelationFkColumnsByResource(
       for (const resource of endpointListOf(relation.from)) {
         add({
           resource,
-          field: relation.fkField || `${relation.relation ?? toResources[0]}Id`,
+          field: relation.fkField || relation.foreignKey || `${relation.relation ?? toResources[0]}Id`,
           relation,
           targetResource,
           targetSide: "to",
