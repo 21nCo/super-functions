@@ -12,6 +12,12 @@ import {
   syncDatafnPermissionGrantAfterCommit,
 } from "../execution/mutation/share.js";
 import type { DataFnAction } from "../events.js";
+import type { DatafnMultiRegionRuntimeConfig } from "./multi-region.js";
+import {
+  drainPermissionDirectorySync,
+  enqueuePermissionDirectorySync,
+  ensurePermissionDirectoryOutbox,
+} from "../execution/mutation/permission-directory-outbox.js";
 
 export type DatafnPublicLinkShareLevel = "viewer" | "editor" | "owner";
 export type DatafnPublicLinkShareScope = "record" | "resource";
@@ -86,6 +92,7 @@ export interface DatafnPublicLinksPlugin<TSession = unknown> extends DatafnPlugi
   readonly modelName: string;
   readonly tokenHeader: string;
   readonly internalResources: readonly string[];
+  readonly permissionDirectoryRuntime?: DatafnMultiRegionRuntimeConfig;
   readToken(request: Request): string | null;
   principalId(linkId: string): string;
   withSchema(schema: DatafnSchema): DatafnSchema;
@@ -137,6 +144,14 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
     modelName,
     tokenHeader,
     internalResources: [modelName],
+    ...(config.directory && config.resourceRegion
+      ? {
+          permissionDirectoryRuntime: {
+            directory: config.directory,
+            regionId: config.resourceRegion,
+          },
+        }
+      : {}),
     authorize(input) {
       const publicLink = resolvePublicLinkFromContext(input.context);
       return publicLink ? authorizePublicLinkAction(input.action, publicLink) : undefined;
@@ -579,6 +594,12 @@ async function createDatafnPublicLink(input: {
   if (!validation.ok) {
     throw new DatafnPublicLinkInputError(validation.message, validation.path);
   }
+  const permissionDirectoryRuntime = input.directory && input.resourceRegion
+    ? { directory: input.directory, regionId: input.resourceRegion }
+    : null;
+  if (permissionDirectoryRuntime) {
+    await ensurePermissionDirectoryOutbox(input.database);
+  }
 
   const id = `plink:${crypto.randomUUID()}`;
   const secret = randomSecret();
@@ -602,6 +623,15 @@ async function createDatafnPublicLink(input: {
     updatedAt: now,
     updatedBy: input.actorId
   };
+  const permissionDirectoryTaskId = permissionDirectoryRuntime
+    ? await enqueuePermissionDirectorySync(input.database, {
+        operation: "share",
+        resource: validation.resource,
+        id: validation.recordId ?? undefined,
+        scope: validation.scope,
+        shareWith: { principalId },
+      }, input.namespace, permissionDirectoryRuntime.regionId)
+    : null;
 
   await input.database.create({
     model: input.modelName,
@@ -630,22 +660,41 @@ async function createDatafnPublicLink(input: {
       where: [{ field: "id", operator: "eq", value: id }],
       namespace: input.namespace
     });
+    if (permissionDirectoryRuntime && permissionDirectoryTaskId) {
+      await drainPermissionDirectorySync(
+        input.database,
+        permissionDirectoryTaskId,
+        permissionDirectoryRuntime,
+      );
+    }
     throw new DatafnPublicLinkInputError(shareResult.message, shareResult.path);
   }
-  await syncDatafnPermissionGrantAfterCommit(
-    input.database,
-    {
-      operation: "share",
-      resource: validation.resource,
-      id: validation.recordId ?? undefined,
-      scope: validation.scope,
-      shareWith: { principalId },
-    },
-    input.namespace,
-    input.directory && input.resourceRegion
-      ? { directory: input.directory, regionId: input.resourceRegion }
-      : null,
-  ).catch(() => undefined);
+  if (permissionDirectoryRuntime) {
+    const reconciled = await drainPermissionDirectorySync(
+      input.database,
+      permissionDirectoryTaskId!,
+      permissionDirectoryRuntime,
+    );
+    if (!reconciled) {
+      console.warn("Public-link permission directory reconciliation deferred", {
+        operation: "public-link-permission-directory",
+        taskId: permissionDirectoryTaskId,
+      });
+    }
+  } else {
+    await syncDatafnPermissionGrantAfterCommit(
+      input.database,
+      {
+        operation: "share",
+        resource: validation.resource,
+        id: validation.recordId ?? undefined,
+        scope: validation.scope,
+        shareWith: { principalId },
+      },
+      input.namespace,
+      null,
+    );
+  }
   await input.directory?.put(publicLinkDirectoryRecord(record));
 
   return {

@@ -224,7 +224,7 @@ function getFkFieldsToOmit(schema: DatafnSchema, targetResource: string): Set<st
   if (schema.relations) {
     for (const rel of schema.relations) {
       if (endpointIncludes(rel.from, targetResource) && rel.type === "many-one") {
-        const fkField = rel.fkField || `${rel.relation}Id`;
+        const fkField = relationFkFieldForManyOne(rel);
         cached.add(fkField);
         if (Array.isArray(rel.to) && rel.to.length > 1) {
           cached.add(rel.fkResourceField || `${(rel.relation || "target").replace(/Id$/, "")}Resource`);

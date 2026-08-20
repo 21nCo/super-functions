@@ -1027,6 +1027,7 @@ export async function executeMutation(
       targetDb,
       mutation,
       namespace,
+      multiRegionRuntime!.regionId,
     );
   };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
@@ -1351,6 +1352,13 @@ export async function executeMutation(
   // REL-011: Execute operation + change tracking using executeMutationCore.
   // changeTracking.withDb(db) ensures the change tracking uses the same db as the
   // operation — when db is a tx adapter (from transact.ts), both are in the transaction.
+  if (shouldQueuePermissionDirectorySync && !insideTransaction) {
+    // Non-transactional adapters cannot atomically insert the grant and its
+    // retry task. Persist the retry first so a committed grant is never left
+    // without durable reconciliation if the next write fails.
+    await queuePermissionDirectorySync(db);
+  }
+
   const result = await executeMutationCore(
     mutation,
     db,
@@ -1364,8 +1372,13 @@ export async function executeMutation(
   );
 
   if (result.ok) {
-    await queuePermissionDirectorySync(db);
+    if (insideTransaction) {
+      await queuePermissionDirectorySync(db);
+    }
     await reconcilePermissionDirectoryAfterCommit();
+  } else if (permissionDirectoryTaskId) {
+    // Clear the precommitted retry against authoritative missing state.
+    await syncPermissionDirectoryAfterCommit();
   }
 
   if (searchProvider && result.ok) {

@@ -37,9 +37,11 @@ const SEED_COLUMNS: InternalColumnDef[] = [
 const PERMISSION_DIRECTORY_OUTBOX_COLUMNS: InternalColumnDef[] = [
   { name: "id", type: "text", primaryKey: true },
   { name: "namespace", type: "text" },
+  { name: "region_id", type: "text" },
   { name: "mutation", type: "text" },
   { name: "attempts", type: "integer" },
   { name: "last_error", type: "text" },
+  { name: "next_attempt_at", type: "text" },
   { name: "created_at", type: "text" },
 ];
 

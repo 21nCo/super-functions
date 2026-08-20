@@ -119,13 +119,13 @@ function getRelatedRecords(
 
   if (relation.type === "many-one") {
     if (isForward) {
-      const fk = relation.foreignKey || relationFkFieldForManyOne(relation);
+      const fk = relationFkFieldForManyOne(relation);
       const targetId = record[fk];
       if (!targetId) return [];
       const target = store.getRecord(recordResourceName(schema, targetId, targetEndpoint), targetId as string);
       return target ? [target] : [];
     } else {
-      const fk = relation.foreignKey || relationFkFieldForManyOne(relation);
+      const fk = relationFkFieldForManyOne(relation);
       return endpointList(targetEndpoint).flatMap((targetResource) =>
         store.findRecords(targetResource, fk, record.id),
       );

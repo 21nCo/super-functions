@@ -96,7 +96,7 @@ function readTwoFactorEncryptionKey(): Buffer {
   }
 
   const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32) {
+  if (key.length !== 32 || key.toString('base64') !== encoded) {
     throw new Error('AUTHFN_TWO_FACTOR_ENCRYPTION_KEY_BASE64 must decode to exactly 32 bytes');
   }
   return key;

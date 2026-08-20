@@ -126,6 +126,8 @@ export type DatafnRelationSchema = {
   }[];
   identityMetadata?: readonly string[];
   fkField?: string;
+  /** @deprecated Use fkField. Retained for legacy schema compatibility. */
+  foreignKey?: string;
   fkResourceField?: string;
   pathField?: string;
   joinTable?: string;

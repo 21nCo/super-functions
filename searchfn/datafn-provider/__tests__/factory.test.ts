@@ -247,6 +247,35 @@ describe("createSearchProvider — updateIndices", () => {
 });
 
 describe("createSearchProvider — searchAll native delegation", () => {
+  it("rejects scope filters when searchAll cannot enforce them", async () => {
+    const searchAll = vi.fn().mockResolvedValue([]);
+    const provider = createSearchProvider(makeAdapter({ searchAll }));
+
+    await expect(provider.searchAll({
+      query: "private",
+      namespaceFilter: ["tenant:1"],
+    })).rejects.toMatchObject({ code: "DFQL_UNSUPPORTED" });
+    expect(searchAll).not.toHaveBeenCalled();
+  });
+
+  it("forwards scope filters to a capable native searchAll adapter", async () => {
+    const searchAll = vi.fn().mockResolvedValue([]);
+    const provider = createSearchProvider(makeAdapter({
+      searchAll,
+      capabilities: { metadataFilters: true },
+    }));
+
+    await provider.searchAll({
+      query: "private",
+      namespaceFilter: ["tenant:1"],
+      regionFilter: ["eu-west"],
+    });
+    expect(searchAll).toHaveBeenCalledWith(expect.objectContaining({
+      namespaceFilter: ["tenant:1"],
+      regionFilter: ["eu-west"],
+    }));
+  });
+
   it("forwards AbortSignal to adapter.searchAll when available", async () => {
     const searchAll = vi.fn().mockResolvedValue([]);
     const adapter = makeAdapter({ searchAll });

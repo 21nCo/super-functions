@@ -154,6 +154,37 @@ describe("DataFn E2EE client transforms", () => {
     expect(decrypted.data.task?.[0]?.notes).toEqual(collidingValue);
   });
 
+  it("does not reuse an envelope across provider key contexts", async () => {
+    const firstProvider = createProvider();
+    const first = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: firstProvider },
+      {
+        operation: "insert",
+        resource: "task",
+        id: "task:rekey",
+        record: { id: "task:rekey", notes: "secret" },
+      },
+    )) as { record: Record<string, unknown> };
+    const nextProvider = createProvider();
+    nextProvider.keyRef = "next-key";
+    const encrypt = vi.spyOn(nextProvider, "encrypt");
+
+    const reencrypted = (await encryptMutationPayloadForE2ee(
+      schema,
+      { enabled: true, provider: nextProvider },
+      {
+        operation: "merge",
+        resource: "task",
+        id: "task:rekey",
+        record: { id: "task:rekey", notes: first.record.notes },
+      },
+    )) as { record: Record<string, unknown> };
+
+    expect(encrypt).toHaveBeenCalledOnce();
+    expect(reencrypted.record.notes).not.toBe(first.record.notes);
+  });
+
   it("blocks direct remote query and search while allowing plaintext KV query", () => {
     const e2ee = { enabled: true, provider: createProvider() };
 

@@ -992,6 +992,17 @@ function validateFilterOperators(
         `filters.${fieldKey}.${opKey}`,
       );
     }
+    if (
+      (opKey === "is_null" || opKey === "$is_null" ||
+        opKey === "is_not_null" || opKey === "$is_not_null") &&
+      typeof ops[opKey] !== "boolean"
+    ) {
+      return vErr(
+        "DFQL_INVALID",
+        `Null predicate must be boolean: filters.${fieldKey}.${opKey}`,
+        `filters.${fieldKey}.${opKey}`,
+      );
+    }
     // SEC-015: LIKE/ILIKE pattern length cap
     if (opKey === "$like" || opKey === "$ilike" || opKey === "like" || opKey === "ilike") {
       const patternValue = ops[opKey];

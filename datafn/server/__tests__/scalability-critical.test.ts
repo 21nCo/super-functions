@@ -124,6 +124,57 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     }));
     vi.restoreAllMocks();
   });
+
+  it("filters discriminator rows in explicitly shared join tables", async () => {
+    const db = memoryAdapter({ libraryNamespace: "datafn" });
+    const relationSchema: DatafnSchema = {
+      resources: testSchema.resources,
+      relations: [{
+        from: "tasks",
+        to: "users",
+        type: "many-many",
+        relation: "assignees",
+        joinTable: "shared_assignments",
+      }],
+    };
+    await db.create({
+      model: "shared_assignments",
+      data: {
+        id: "task:user",
+        from: "t1",
+        to: "u1",
+        fromResource: "tasks",
+        toResource: "users",
+      },
+      namespace: "default",
+    });
+    await db.create({
+      model: "shared_assignments",
+      data: {
+        id: "project:user",
+        from: "p1",
+        to: "u1",
+        fromResource: "projects",
+        toResource: "users",
+      },
+      namespace: "default",
+    });
+    const countSpy = vi.spyOn(db, "count");
+    vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+
+    const result = await executeReconcile(
+      { clientId: "c1", resources: ["tasks"], includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+
+    expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
+    expect(countSpy).not.toHaveBeenCalledWith(expect.objectContaining({
+      model: "shared_assignments",
+    }));
+    vi.restoreAllMocks();
+  });
 });
 
 // ─── SCA-002: Clone auto-pagination ───────────────────────────────────

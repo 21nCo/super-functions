@@ -53,7 +53,8 @@ export interface DatafnStorageAdapter {
   mergeRecord(
     resource: string, 
     id: string, 
-    partial: Record<string, unknown>
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>>;
 
   // Join rows (many-many)

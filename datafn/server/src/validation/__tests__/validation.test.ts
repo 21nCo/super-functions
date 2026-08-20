@@ -92,6 +92,36 @@ describe("Query Validation - VALID-001", () => {
     expect(body.error.details.path).toBe("temporal");
   });
 
+  it("rejects non-boolean null-predicate operands", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: fixtureF1Schema,
+      database: db,
+    });
+
+    try {
+      const response = await server.router.handle(new Request(
+        "http://localhost/datafn/query",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource: "task",
+            filters: { label: { is_null: "yes" } },
+          }),
+        },
+      ));
+      const body = await readJson(response);
+      expect(response.status).toBe(400);
+      expect(body.error.code).toBe("DFQL_INVALID");
+      expect(body.error.details.path).toBe("filters.label.is_null");
+    } finally {
+      await server.close();
+    }
+  });
+
   describe("Resource validation", () => {
     it("TV-VALID-RESOURCE-001: unknown resource returns DFQL_UNKNOWN_RESOURCE", async () => {
       const db = memoryAdapter();

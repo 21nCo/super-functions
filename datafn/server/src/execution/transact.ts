@@ -122,6 +122,12 @@ export async function executeTransaction(
 
   if (isAtomic && typeof (db as any).transaction === "function") {
     // REL-001: Atomic execution with DB transaction support
+    const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
+    const reconcilePermissionDirectoryAfterSettlement = async () => {
+      for (const sync of deferredPermissionDirectorySyncs) {
+        await sync(db);
+      }
+    };
     try {
       if (hasMutations) {
         // Initialize durable mutation storage on the outer adapter. Some
@@ -137,7 +143,6 @@ export async function executeTransaction(
           await ensurePermissionDirectoryOutbox(db);
         }
       }
-      const deferredPermissionDirectorySyncs: DeferredPermissionDirectorySync[] = [];
       await (db as any).transaction(async (tx: Adapter) => {
         deferredPermissionDirectorySyncs.length = 0;
         for (let i = 0; i < steps.length; i++) {
@@ -170,13 +175,15 @@ export async function executeTransaction(
           }
         }
       });
-      for (const sync of deferredPermissionDirectorySyncs) {
-        await sync(db);
-      }
+      await reconcilePermissionDirectoryAfterSettlement();
       // If we got here, commit happened — TV-REL-006: no rolledBack field
       return { ok: true, result: { ok: true, results } };
     } catch (error: any) {
       if (error && error.__transactionFailed) {
+        // Unshare invalidates the external directory before deleting the
+        // database grant. A rollback restores the database row, so reconcile
+        // again against settled state to compensate the external deletion.
+        await reconcilePermissionDirectoryAfterSettlement();
         // REL-003: Application-level step failure — results already annotated
         return {
           ok: true,
@@ -198,6 +205,7 @@ export async function executeTransaction(
         results.length = 0; // Clear any partial results
         // Fall through to sequential execution below
       } else {
+        await reconcilePermissionDirectoryAfterSettlement();
         // DB-level error (serialization, timeout, constraint) → INTERNAL error
         // NEVER fall through to sequential execution when adapter HAS transaction support
         return {

@@ -24,15 +24,19 @@ export async function enqueuePermissionDirectorySync(
   db: Adapter,
   mutation: PermissionDirectorySyncMutation,
   namespace: string,
+  regionId: string,
 ): Promise<string> {
   const id = randomUUID();
+  const now = new Date().toISOString();
   await db.internal.create(OUTBOX_TABLE, {
     id,
     namespace,
+    region_id: regionId,
     mutation: JSON.stringify(mutation),
     attempts: 0,
     last_error: "",
-    created_at: new Date().toISOString(),
+    next_attempt_at: now,
+    created_at: now,
   });
   return id;
 }
@@ -47,6 +51,7 @@ export async function drainPermissionDirectorySync(
     { field: "id", op: "eq", value: taskId },
   ]);
   if (!task) return true;
+  if (String(task.region_id) !== runtime.regionId) return false;
 
   try {
     const mutation = JSON.parse(String(task.mutation)) as PermissionDirectorySyncMutation;
@@ -61,11 +66,14 @@ export async function drainPermissionDirectorySync(
     ]);
     return true;
   } catch (error) {
+    const attempts = Number(task.attempts ?? 0) + 1;
+    const retryDelaySeconds = Math.min(15 * (2 ** Math.min(attempts - 1, 5)), 300);
     await db.internal.update(OUTBOX_TABLE, [
       { field: "id", op: "eq", value: taskId },
     ], {
-      attempts: Number(task.attempts ?? 0) + 1,
+      attempts,
       last_error: String(error),
+      next_attempt_at: new Date(Date.now() + retryDelaySeconds * 1000).toISOString(),
     });
     logger?.error("Permission directory reconciliation deferred for retry", {
       error: String(error),
@@ -83,8 +91,11 @@ export async function drainPermissionDirectoryOutbox(
   limit = 100,
 ): Promise<{ processed: number; pending: number }> {
   await ensurePermissionDirectoryOutbox(db);
-  const tasks = await db.internal.findMany(OUTBOX_TABLE, [], {
-    orderBy: "created_at",
+  const tasks = await db.internal.findMany(OUTBOX_TABLE, [
+    { field: "region_id", op: "eq", value: runtime.regionId },
+    { field: "next_attempt_at", op: "lte", value: new Date().toISOString() },
+  ], {
+    orderBy: "next_attempt_at",
     limit,
   });
   let processed = 0;

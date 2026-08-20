@@ -123,6 +123,7 @@ type DatafnServerComposablePlugin = DatafnPlugin & {
   internalResources?: readonly string[];
   modelName?: string;
   withSchema?: (schema: DatafnSchema) => DatafnSchema;
+  permissionDirectoryRuntime?: import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig;
   routes?: (input: {
     database: Adapter;
     crossNamespaceDatabase?: Adapter;
@@ -425,6 +426,14 @@ export async function createDatafnServer<TContext = any>(
     plugins.push(config.publicLinks);
   }
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
+  const permissionDirectoryRetryRuntimes = [
+    multiRegionRuntime,
+    ...plugins.map((plugin) => plugin.permissionDirectoryRuntime ?? null),
+  ].filter((runtime): runtime is import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig =>
+    runtime !== null
+  ).filter((runtime, index, runtimes) =>
+    runtimes.findIndex((candidate) => candidate.regionId === runtime.regionId) === index
+  );
   const schemaWithPluginResources = plugins.reduce(
     (schema, plugin) => plugin.withSchema ? plugin.withSchema(schema) : schema,
     config.schema,
@@ -531,10 +540,12 @@ export async function createDatafnServer<TContext = any>(
   };
 
   let permissionDirectoryRetryInterval: ReturnType<typeof setInterval> | null = null;
-  if (db && multiRegionRuntime) {
+  if (db && permissionDirectoryRetryRuntimes.length > 0) {
     try {
       await ensurePermissionDirectoryOutbox(db);
-      await drainPermissionDirectoryOutbox(db, multiRegionRuntime, logger);
+      for (const runtime of permissionDirectoryRetryRuntimes) {
+        await drainPermissionDirectoryOutbox(db, runtime, logger);
+      }
     } catch (error) {
       logger.warn("Permission directory retry startup drain failed", {
         error: String(error),
@@ -542,12 +553,15 @@ export async function createDatafnServer<TContext = any>(
       });
     }
     permissionDirectoryRetryInterval = setInterval(() => {
-      void drainPermissionDirectoryOutbox(db!, multiRegionRuntime, logger).catch((error) => {
-        logger.warn("Permission directory retry drain failed", {
-          error: String(error),
-          operation: "permission-directory-outbox",
+      for (const runtime of permissionDirectoryRetryRuntimes) {
+        void drainPermissionDirectoryOutbox(db!, runtime, logger).catch((error) => {
+          logger.warn("Permission directory retry drain failed", {
+            error: String(error),
+            operation: "permission-directory-outbox",
+            regionId: runtime.regionId,
+          });
         });
-      });
+      }
     }, 60_000);
     permissionDirectoryRetryInterval.unref?.();
   }

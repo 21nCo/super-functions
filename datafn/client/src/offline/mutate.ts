@@ -779,18 +779,30 @@ export async function applyOptimisticMutationToStorage(
     });
     await applyInactivePropagation(storage, schema, [{ resource, id }]);
   } else if (operation === "merge") {
-    // Merge: Use atomic mergeRecord with one-level-deep merge
-    const existing = await storage.getRecord(resource, id);
-    const optimisticRecord = injectCapabilityFieldsForOptimisticRecord(
+    // Keep the existence decision and default application inside the adapter's
+    // atomic read-modify-write. Concurrent creates must not receive defaults
+    // computed from an earlier missing-record read.
+    const optimisticPatch = injectCapabilityFieldsForOptimisticRecord(
       schema,
       sanitizedMutation,
       {
         timestampMs,
         actorId,
-        existingRecord: existing,
+        existingRecord: {},
       },
     );
-    await storage.mergeRecord(resource, id, optimisticRecord);
+    const optimisticCreate = injectCapabilityFieldsForOptimisticRecord(
+      schema,
+      sanitizedMutation,
+      {
+        timestampMs,
+        actorId,
+        existingRecord: null,
+      },
+    );
+    await storage.mergeRecord(resource, id, optimisticPatch, {
+      ifMissing: optimisticCreate,
+    });
     await applyInactivePropagation(storage, schema, [{ resource, id }]);
   } else if (operation === "insert" || operation === "replace") {
     // Insert/Replace: Overwrite (simple upsert)

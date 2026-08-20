@@ -233,6 +233,13 @@ function generateAlterTableSQL(
   for (const index of diff.missingIndexes ?? []) {
     statements.push(generateCreateIndexSQL(diff.tableName, index, dialect));
   }
+  for (const index of diff.changedIndexes ?? []) {
+    statements.push(generateDropIndexSQL(diff.tableName, index.name, dialect));
+    statements.push(generateCreateIndexSQL(diff.tableName, {
+      name: index.name,
+      ...index.required,
+    }, dialect));
+  }
 
   return statements;
 }
@@ -244,6 +251,16 @@ function generateCreateIndexSQL(
 ): string {
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
   return `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX ${ifNotExists}${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+}
+
+function generateDropIndexSQL(
+  tableName: string,
+  indexName: string,
+  dialect: Dialect,
+): string {
+  return dialect === 'mysql'
+    ? `DROP INDEX ${indexName} ON ${tableName};`
+    : `DROP INDEX IF EXISTS ${indexName};`;
 }
 
 function schemaIndexes(schema: TableSchema): Array<{ name: string; columns: string[]; unique: boolean }> {
@@ -465,6 +482,21 @@ export function generateKyselyMigration(
           dialect === 'mysql'
             ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
             : `  await db.schema.dropIndex('${index.name}').execute();`,
+        );
+      }
+      for (const index of diff.changedIndexes ?? []) {
+        const requiredUnique = index.required.unique ? `.unique()` : '';
+        const currentUnique = index.current.unique ? `.unique()` : '';
+        const drop = dialect === 'mysql'
+          ? `  await db.schema.dropIndex('${index.name}').on('${diff.tableName}').execute();`
+          : `  await db.schema.dropIndex('${index.name}').execute();`;
+        upStatements.push(drop);
+        upStatements.push(
+          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.required.columns)})${requiredUnique}.execute();`,
+        );
+        downStatements.push(drop);
+        downStatements.push(
+          `  await db.schema.createIndex('${index.name}').on('${diff.tableName}').columns(${JSON.stringify(index.current.columns)})${currentUnique}.execute();`,
         );
       }
     } else if (diff.action === 'drop') {

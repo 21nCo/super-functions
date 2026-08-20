@@ -562,6 +562,7 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
     resource: string,
     id: string,
     partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>> {
     this.validateTableName(resource);
     const db = await this.dbPromise;
@@ -578,7 +579,7 @@ export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
         // Merge with deep merge logic
         const merged = existing
           ? deepMergeOneLevel(existing, partial)
-          : { ...partial, id };
+          : { ...(options?.ifMissing ?? partial), id };
         
         merged.id = id;
         const storageRecord = cloneForStorage(merged);

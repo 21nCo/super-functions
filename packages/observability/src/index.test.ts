@@ -61,6 +61,29 @@ describe("superfunction observability", () => {
     expect(snapshot.metrics[0]?.resource).toBe("users");
   });
 
+  it("reads a thenable accessor only once", async () => {
+    const observability = createObservability({ service: "test-service" });
+    let reads = 0;
+    const observed = instrumentMethods({
+      target: {
+        load() {
+          return {
+            get then() {
+              reads += 1;
+              return (resolve: (value: string) => void) => resolve("loaded");
+            },
+          };
+        },
+      },
+      observability,
+      kind: "db",
+      component: "test.db",
+    });
+
+    await expect(observed.load()).resolves.toBe("loaded");
+    expect(reads).toBe(1);
+  });
+
   it("shares active request state across child scopes", async () => {
     const observability = createObservability({
       service: "test-service",

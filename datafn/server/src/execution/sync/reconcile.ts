@@ -215,7 +215,11 @@ export async function executeReconcile(
         const relationTouchesPrivateResource =
           isPrivateShareableResource(schema, fromResource) ||
           isPrivateShareableResource(schema, toResource);
-        if (!relationTouchesPrivateResource && typeof db.count === "function") {
+        if (
+          !relation.joinTable &&
+          !relationTouchesPrivateResource &&
+          typeof db.count === "function"
+        ) {
           const joinTableName = getRelationJoinTableName(relation, fromResource);
           const joinStoreKey = getJoinStoreKey(fromResource, relation.relation!, toResource);
           let countSucceeded = false;

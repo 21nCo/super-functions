@@ -819,6 +819,7 @@ export async function executePush(
           namespace,
           actorId,
           logger,
+          multiRegionRuntime,
         );
         if (!unshareResult.ok) {
           return {
@@ -1037,6 +1038,7 @@ export async function executePush(
               txDb,
               mut,
               namespace,
+              multiRegionRuntime.regionId,
             );
           }
 
@@ -1116,6 +1118,17 @@ export async function executePush(
       // Non-transaction path: execute operation, then record changes separately (best-effort)
       let opResult: ExecuteMutationResult;
       try {
+        if (multiRegionRuntime && mut.operation === "share") {
+          // With no transaction available, persist the reconciliation task
+          // before the grant. A task for a failed operation safely drains as
+          // a no-op; a committed grant can never lose its only retry record.
+          permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+        }
         opResult = await executeMutationOp(mut, db);
       } catch (error) {
         logger?.error("Push operation failed", { error: String(error), operation: mut.operation, resource: mut.resource, id: mut.id });
@@ -1128,28 +1141,6 @@ export async function executePush(
       }
 
       if (opResult.ok) {
-        if (multiRegionRuntime && mut.operation === "share") {
-          try {
-            permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
-              db,
-              mut,
-              namespace,
-            );
-          } catch (error) {
-            logger?.error("Push permission directory retry could not be persisted", {
-              error: String(error),
-              operation: mut.operation,
-              resource: mut.resource,
-            });
-            await recordMutationFailure(
-              mut,
-              "INTERNAL",
-              "Permission directory retry could not be persisted",
-              "$",
-            );
-            continue;
-          }
-        }
         // Record changes (non-atomic — best-effort with retry)
         const changes = opResult.changes;
         let changeTrackingFailed = false;
@@ -1194,6 +1185,14 @@ export async function executePush(
           await recordMutationSuccess(mut);
         }
       } else {
+        if (multiRegionRuntime && permissionDirectoryTaskId) {
+          await drainPermissionDirectorySync(
+            db,
+            permissionDirectoryTaskId,
+            multiRegionRuntime,
+            logger,
+          );
+        }
         await recordMutationFailure(mut, opResult.code, opResult.message, opResult.path);
       }
     }

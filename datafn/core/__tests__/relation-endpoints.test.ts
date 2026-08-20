@@ -30,4 +30,23 @@ describe("relation endpoint resolution", () => {
       resolveEndpointResource(["short", "long"], "item-special:42", overlapping),
     ).toBe("long");
   });
+
+  it("does not treat a partial alphanumeric prefix as a resource match", () => {
+    const boundarySchema = {
+      resources: [
+        { name: "tasks", idPrefix: "task" },
+        { name: "taskforces", idPrefix: "taskforce" },
+      ],
+    };
+    expect(
+      resolveEndpointResource(
+        ["tasks", "taskforces"],
+        "taskforce:1",
+        boundarySchema,
+      ),
+    ).toBe("taskforces");
+    expect(
+      resolveEndpointResource(["tasks", "taskforces"], "taskforceful:1", boundarySchema),
+    ).toBeUndefined();
+  });
 });

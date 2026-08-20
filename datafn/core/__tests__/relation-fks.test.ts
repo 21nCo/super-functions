@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRelationFkRecord } from "../src/relation-fks.js";
+import {
+  normalizeRelationFkRecord,
+  relationFkFieldForManyOne,
+} from "../src/relation-fks.js";
 import type { DatafnSchema } from "../src/types.js";
 
 describe("relation FK normalization", () => {
+  it("keeps fkField precedence over the legacy foreignKey alias", () => {
+    expect(relationFkFieldForManyOne({
+      from: "task",
+      to: "project",
+      type: "many-one",
+      relation: "project",
+      fkField: "projectId",
+      foreignKey: "legacyProjectId",
+    })).toBe("projectId");
+  });
   it("normalizes optional empty relation FK values to null", () => {
     const schema: DatafnSchema = {
       resources: [

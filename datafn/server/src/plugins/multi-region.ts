@@ -184,7 +184,7 @@ function parseGrant(value: string): DatafnPermissionDirectoryGrant | null {
 }
 
 function permissionDirectoryKey(regionId: string, id: string): string {
-  return `datafn:permission:${regionId}:${id}`;
+  return `datafn:permission:${encodeURIComponent(regionId)}:${id}`;
 }
 
 function legacyPermissionDirectoryKey(id: string): string {
@@ -195,11 +195,18 @@ async function deleteMatchingLegacyPermissionGrant(
   id: string,
   config: DatafnMultiRegionRuntimeConfig,
 ): Promise<void> {
-  const legacyKey = legacyPermissionDirectoryKey(id);
-  const legacyRecord = await config.directory.get(legacyKey);
-  if (!legacyRecord) return;
-  const legacyGrant = parseGrant(legacyRecord.value);
-  if (legacyGrant?.id === id && legacyGrant.resourceRegion === config.regionId) {
-    await config.directory.delete(legacyKey);
+  const currentKey = permissionDirectoryKey(config.regionId, id);
+  const candidateKeys = new Set([
+    legacyPermissionDirectoryKey(id),
+    `datafn:permission:${config.regionId}:${id}`,
+  ]);
+  candidateKeys.delete(currentKey);
+  for (const legacyKey of candidateKeys) {
+    const legacyRecord = await config.directory.get(legacyKey);
+    if (!legacyRecord) continue;
+    const legacyGrant = parseGrant(legacyRecord.value);
+    if (legacyGrant?.id === id && legacyGrant.resourceRegion === config.regionId) {
+      await config.directory.delete(legacyKey);
+    }
   }
 }

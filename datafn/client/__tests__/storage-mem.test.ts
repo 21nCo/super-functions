@@ -44,6 +44,24 @@ describe("MemoryStorageAdapter", () => {
       const r3 = await storage.getRecord("task", "t1");
       expect(r3).toBeNull();
     });
+
+    it("applies missing-record defaults atomically without overwriting a concurrent create", async () => {
+      await Promise.all([
+        storage.mergeRecord("task", "t1", { title: "first" }, {
+          ifMissing: { title: "first", status: "default" },
+        }),
+        storage.mergeRecord("task", "t1", { priority: "high" }, {
+          ifMissing: { priority: "high", status: "other-default" },
+        }),
+      ]);
+
+      expect(await storage.getRecord("task", "t1")).toEqual({
+        id: "t1",
+        title: "first",
+        status: "default",
+        priority: "high",
+      });
+    });
   });
 
   describe("Join Rows", () => {

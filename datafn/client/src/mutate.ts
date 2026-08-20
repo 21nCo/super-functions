@@ -750,9 +750,13 @@ export async function executeMutation(
         result,
         getTimestamp,
       );
-    } catch {
+    } catch (error) {
       // The remote mutation is already committed. Local reconciliation is
       // best-effort and the next pull remains the source of repair.
+      console.warn("Local storage reconciliation failed after remote mutation", {
+        operation: "apply-remote-success-to-local-storage",
+        error: String(error),
+      });
     }
     // Run afterMutation hooks (fail-open)
     result = schema

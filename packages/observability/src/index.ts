@@ -477,8 +477,12 @@ export function instrumentMethods<TTarget extends object>(
         };
         try {
           const result = value.apply(currentTarget, args);
-          if (isPromiseLike(result)) {
-            return Promise.resolve(result).then(
+          const then = readThen(result);
+          if (then) {
+            const assimilated = new Promise<unknown>((resolve, reject) => {
+              then.call(result, resolve, reject);
+            });
+            return assimilated.then(
               (resolved) => {
                 record(true);
                 return resolved;
@@ -500,10 +504,16 @@ export function instrumentMethods<TTarget extends object>(
   }) as TTarget;
 }
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === "object" && value !== null) || typeof value === "function"
-  ) && typeof (value as PromiseLike<unknown>).then === "function";
+function readThen(
+  value: unknown,
+): ((resolve: (value: unknown) => void, reject: (reason?: unknown) => void) => void) | null {
+  if (!((typeof value === "object" && value !== null) || typeof value === "function")) {
+    return null;
+  }
+  const then = (value as { then?: unknown }).then;
+  return typeof then === "function"
+    ? then as (resolve: (value: unknown) => void, reject: (reason?: unknown) => void) => void
+    : null;
 }
 
 export function readObservationGroup(

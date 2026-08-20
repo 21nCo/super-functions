@@ -63,6 +63,69 @@ describe("schema index migrations", () => {
     ]);
   });
 
+  it("replaces a same-name index whose columns or uniqueness do not match", () => {
+    const diffs = diffTables(
+      [syncJobs],
+      [{
+        name: "plugfn_sync_jobs",
+        columns: [
+          {
+            tableName: "plugfn_sync_jobs",
+            columnName: "id",
+            dataType: "text",
+            isNullable: false,
+            defaultValue: null,
+            isPrimaryKey: true,
+            isUnique: true,
+          },
+          {
+            tableName: "plugfn_sync_jobs",
+            columnName: "claim_token",
+            dataType: "text",
+            isNullable: true,
+            defaultValue: null,
+            isPrimaryKey: false,
+            isUnique: false,
+          },
+        ],
+        indexes: [{
+          name: "plugfn_sync_jobs_claim_token_idx",
+          tableName: "plugfn_sync_jobs",
+          columns: ["id"],
+          isUnique: false,
+        }],
+        constraints: [],
+      }],
+      "plugfn",
+    );
+
+    expect(diffs).toEqual([
+      expect.objectContaining({
+        changedIndexes: [{
+          name: "plugfn_sync_jobs_claim_token_idx",
+          current: { columns: ["id"], unique: false },
+          required: { columns: ["claim_token"], unique: true },
+        }],
+      }),
+    ]);
+
+    const plan = createMigrationPlan("plugfn", 5, 6, diffs);
+    const mysqlSql = generateDrizzleMigration(plan, [syncJobs], "mysql").content;
+    expect(mysqlSql).toContain(
+      "DROP INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs;",
+    );
+    expect(mysqlSql).toContain(
+      "CREATE UNIQUE INDEX plugfn_sync_jobs_claim_token_idx ON plugfn_sync_jobs (claim_token);",
+    );
+    const kysely = generateKyselyMigration(plan, [syncJobs], "mysql").content;
+    expect(kysely).toContain(
+      "dropIndex('plugfn_sync_jobs_claim_token_idx').on('plugfn_sync_jobs').execute()",
+    );
+    expect(kysely).toContain(
+      "columns([\"claim_token\"]).unique().execute()",
+    );
+  });
+
   it("emits missing indexes for SQL and Kysely migrations", () => {
     const plan = createMigrationPlan("plugfn", 5, 6, [{
       tableName: "plugfn_sync_jobs",

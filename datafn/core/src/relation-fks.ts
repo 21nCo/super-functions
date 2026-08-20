@@ -16,7 +16,7 @@ export function relationFkFieldForOneMany(relation: DatafnRelationSchema): strin
 }
 
 export function relationFkFieldForManyOne(relation: DatafnRelationSchema): string {
-  return relation.fkField || `${relation.relation ?? firstEndpoint(relation.to)}Id`;
+  return relation.fkField || relation.foreignKey || `${relation.relation ?? firstEndpoint(relation.to)}Id`;
 }
 
 function fkResourceFieldForRelation(

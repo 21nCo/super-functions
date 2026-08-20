@@ -19,11 +19,10 @@ describe("built-in public-link schema", () => {
     expect(() => ensureBuiltinPublicLinks({
       resources: [{
         ...createBuiltinPublicLinkResource(),
-        version: 1,
         fields: createBuiltinPublicLinkResource().fields.filter(
           (field) => field.name !== "resourceRegion",
         ),
       }],
-    })).toThrow("expected 2");
+    })).toThrow('missing required field "resourceRegion"');
   });
 });

@@ -114,6 +114,11 @@ export interface TableDiff {
     columns: string[];
     unique: boolean;
   }>;
+  changedIndexes?: Array<{
+    name: string;
+    current: { columns: string[]; unique: boolean };
+    required: { columns: string[]; unique: boolean };
+  }>;
 }
 
 export interface MigrationPlan {
@@ -191,15 +196,41 @@ export function diffTables(
     const missingColumns: string[] = [];
     const extraColumns: string[] = [];
     const columnChanges: Array<{ column: string; change: string }> = [];
-    const missingIndexes = (reqTable.indexes ?? [])
-      .filter((requiredIndex) => !curTable.indexes.some((currentIndex) => currentIndex.name === requiredIndex.name))
-      .map((requiredIndex) => ({
+    const requiredIndexes = (reqTable.indexes ?? []).map((requiredIndex) => ({
         name: requiredIndex.name,
         columns: requiredIndex.fields.map((fieldName) =>
           reqTable.fields[fieldName]?.fieldName ?? fieldName
         ),
         unique: requiredIndex.unique === true,
       }));
+    const missingIndexes = requiredIndexes.filter(
+      (requiredIndex) => !curTable.indexes.some(
+        (currentIndex) => currentIndex.name === requiredIndex.name,
+      ),
+    );
+    const changedIndexes = requiredIndexes.flatMap((requiredIndex) => {
+      const currentIndex = curTable.indexes.find(
+        (candidate) => candidate.name === requiredIndex.name,
+      );
+      if (!currentIndex) return [];
+      const sameColumns =
+        currentIndex.columns.length === requiredIndex.columns.length &&
+        currentIndex.columns.every(
+          (column, index) => column === requiredIndex.columns[index],
+        );
+      if (sameColumns && currentIndex.isUnique === requiredIndex.unique) return [];
+      return [{
+        name: requiredIndex.name,
+        current: {
+          columns: [...currentIndex.columns],
+          unique: currentIndex.isUnique,
+        },
+        required: {
+          columns: [...requiredIndex.columns],
+          unique: requiredIndex.unique,
+        },
+      }];
+    });
 
     const curColMap = new Map(curTable.columns.map((c) => [c.columnName, c]));
     const reqFieldMap = reqTable.fields;
@@ -253,7 +284,8 @@ export function diffTables(
       missingColumns.length > 0 ||
       extraColumns.length > 0 ||
       columnChanges.length > 0 ||
-      missingIndexes.length > 0
+      missingIndexes.length > 0 ||
+      changedIndexes.length > 0
     ) {
       diffs.push({
         tableName: dbName,
@@ -262,6 +294,7 @@ export function diffTables(
         extraColumns,
         columnChanges,
         missingIndexes,
+        changedIndexes,
       });
     }
   }

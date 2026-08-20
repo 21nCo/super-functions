@@ -255,6 +255,7 @@ async function importLibrarySchemaInstances(
 }>> {
   try {
     const loaded = await loadConfigModule(filePath, {
+      resolveFunctions: false,
       fallbackToModule: true,
       transform: (_value, context) => context.module,
     });

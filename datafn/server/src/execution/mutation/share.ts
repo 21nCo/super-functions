@@ -608,6 +608,24 @@ export async function syncDatafnPermissionGrantAfterCommit(
       permission as Record<string, unknown>,
       multiRegionRuntime,
     );
+    // Fence a delayed share retry against a concurrent revocation. Unshare
+    // deletes before its database write and reconciles again afterwards; this
+    // post-write authoritative read covers the inverse ordering where the
+    // delayed put lands only after unshare's final delete.
+    const stillGranted = await db.findOne({
+      model: getPermissionsTableName(),
+      where: [{ field: "id", operator: "eq", value: id }],
+      namespace,
+    });
+    if (!stillGranted) {
+      await deleteDatafnPermissionGrant({
+        id,
+        resourceType: mutation.resource,
+        resourceNs: namespace,
+        resourceId,
+        principalId: principal.principalId,
+      }, multiRegionRuntime);
+    }
     return;
   }
   await deleteDatafnPermissionGrant({
