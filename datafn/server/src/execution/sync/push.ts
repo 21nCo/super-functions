@@ -28,6 +28,7 @@ import { stripReadonlyCapabilityFields } from "../mutation/execute.js";
 import {
   executeShare,
   executeUnshare,
+  getFailedShareCompensation,
   getPermissionsTable,
   syncDatafnPermissionGrantAfterCommit,
 } from "../mutation/share.js";
@@ -35,6 +36,8 @@ import type { DatafnLogger } from "../../logger.js";
 import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
 import {
+  deferFailedShareCompensation,
+  discardPermissionDirectorySync,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
@@ -1189,6 +1192,7 @@ export async function executePush(
     } else {
       // Non-transaction path: execute operation, then record changes separately (best-effort)
       let opResult: ExecuteMutationResult;
+      let failedShareCompensationDeferred = false;
       try {
         if (multiRegionRuntime && mut.operation === "share") {
           // With no transaction available, persist the reconciliation task
@@ -1204,6 +1208,32 @@ export async function executePush(
         }
         opResult = await executeMutationOp(mut, db);
       } catch (error) {
+        const failedShareCompensation = getFailedShareCompensation(error);
+        if (
+          failedShareCompensation &&
+          permissionDirectoryTaskId &&
+          multiRegionRuntime
+        ) {
+          try {
+            await deferFailedShareCompensation(
+              db,
+              permissionDirectoryTaskId,
+              mut,
+              failedShareCompensation.snapshot,
+              failedShareCompensation.error,
+              namespace,
+              multiRegionRuntime.regionId,
+            );
+            failedShareCompensationDeferred = true;
+          } catch (schedulingError) {
+            logger?.error("Push failed-share compensation could not be made durable", {
+              error: String(schedulingError),
+              operation: mut.operation,
+              resource: mut.resource,
+              taskId: permissionDirectoryTaskId,
+            });
+          }
+        }
         logger?.error("Push operation failed", { error: String(error), operation: mut.operation, resource: mut.resource, id: mut.id });
         opResult = {
           ok: false,
@@ -1238,9 +1268,25 @@ export async function executePush(
           await recordMutationSuccess(mut);
         }
       } else {
-        await reconcilePermissionDirectoryAfterSettlement(
-          mut.operation === "unshare",
-        );
+        if (mut.operation === "share" && !failedShareCompensationDeferred) {
+          if (permissionDirectoryTaskId) {
+            await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
+              .catch((error) => {
+                logger?.error("Push failed-share directory task could not be discarded", {
+                  error: String(error),
+                  operation: mut.operation,
+                  resource: mut.resource,
+                  taskId: permissionDirectoryTaskId,
+                });
+                return false;
+              });
+            permissionDirectoryTaskId = null;
+          }
+        } else {
+          await reconcilePermissionDirectoryAfterSettlement(
+            mut.operation === "unshare",
+          );
+        }
         await recordMutationFailure(mut, opResult.code, opResult.message, opResult.path);
       }
     }

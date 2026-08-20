@@ -398,6 +398,42 @@ export function diffTables(
         .map((change) => change.column),
     );
     const changedIndexNames = new Set(changedIndexes.map((index) => index.name));
+    const unpreservedIndexDependencies = curTable.indexes.filter((index) =>
+      index.columns.some((column) => changedMySqlColumns.has(column)) &&
+      (
+        index.name.toUpperCase() === 'PRIMARY' ||
+        !requiredIndexes.some((requiredIndex) => requiredIndex.name === index.name)
+      )
+    );
+    if (unpreservedIndexDependencies.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: dependent indexes are not safely represented by the required schema: ${unpreservedIndexDependencies
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
+    const foreignKeyDependencies = curTable.constraints.filter((constraint) =>
+      constraint.type === 'FOREIGN KEY' &&
+      (
+        (
+          constraint.tableName === dbName &&
+          constraint.columns.some((column) => changedMySqlColumns.has(column))
+        ) ||
+        (
+          constraint.referencedTable === dbName &&
+          (constraint.referencedColumns ?? []).some(
+            (column) => changedMySqlColumns.has(column),
+          )
+        )
+      )
+    );
+    if (foreignKeyDependencies.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL column change for ${dbName}: foreign-key dependencies must be migrated explicitly: ${foreignKeyDependencies
+          .map((constraint) => `${constraint.tableName}.${constraint.name}`)
+          .join(', ')}`,
+      );
+    }
     const rebuiltIndexes: NonNullable<TableDiff['rebuiltIndexes']> =
       changedMySqlColumns.size === 0
         ? []

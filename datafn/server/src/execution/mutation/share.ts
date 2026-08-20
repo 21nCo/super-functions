@@ -149,6 +149,12 @@ export interface DatafnPermissionGrantSnapshot {
 }
 
 const FAILED_SHARE_PERMISSION_RECORD = "datafnFailedSharePermissionRecord";
+const FAILED_SHARE_COMPENSATION = "datafnFailedShareCompensation";
+
+export interface FailedShareCompensation {
+  snapshot: DatafnPermissionGrantSnapshot;
+  error: unknown;
+}
 
 export function getFailedSharePermissionRecord(
   error: unknown,
@@ -158,6 +164,17 @@ export function getFailedSharePermissionRecord(
   return typeof record === "object" && record !== null && !Array.isArray(record)
     ? record as Record<string, unknown>
     : null;
+}
+
+export function getFailedShareCompensation(
+  error: unknown,
+): FailedShareCompensation | null {
+  if (typeof error !== "object" || error === null) return null;
+  const compensation = (error as Record<string, unknown>)[FAILED_SHARE_COMPENSATION];
+  if (typeof compensation !== "object" || compensation === null) return null;
+  const snapshot = (compensation as Record<string, unknown>).snapshot;
+  if (typeof snapshot !== "object" || snapshot === null) return null;
+  return compensation as unknown as FailedShareCompensation;
 }
 
 function attachFailedSharePermissionRecord(
@@ -179,6 +196,17 @@ function attachFailedSharePermissionRecord(
     });
     return wrapped;
   }
+}
+
+function attachFailedShareCompensation(
+  error: Error,
+  compensation: FailedShareCompensation,
+): Error {
+  Object.defineProperty(error, FAILED_SHARE_COMPENSATION, {
+    configurable: true,
+    value: compensation,
+  });
+  return error;
 }
 
 export async function snapshotDatafnPermissionGrantBeforeShare(
@@ -603,6 +631,11 @@ export async function executeShare(
     where: [{ field: "id", operator: "eq", value: permissionEntryId }],
     namespace,
   });
+  const priorSnapshot = await snapshotDatafnPermissionGrantBeforeShare(
+    db,
+    mutation,
+    namespace,
+  );
 
   const permissionRecord: Record<string, unknown> = existingPermission
     ? {
@@ -681,7 +714,31 @@ export async function executeShare(
       });
     }
   } catch (error) {
-    throw attachFailedSharePermissionRecord(error, permissionRecord);
+    const failure = attachFailedSharePermissionRecord(error, permissionRecord);
+    const compensationSnapshot = {
+      ...priorSnapshot,
+      compensationExpectedCanonical: permissionRecord,
+    };
+    if (
+      db.capabilities?.transactions?.supported === false ||
+      typeof db.transaction !== "function"
+    ) {
+      try {
+        await rollbackDatafnPermissionGrantAfterFailedShare(
+          db,
+          mutation,
+          namespace,
+          multiRegionRuntime ?? null,
+          compensationSnapshot,
+        );
+      } catch (compensationError) {
+        throw attachFailedShareCompensation(failure, {
+          snapshot: compensationSnapshot,
+          error: compensationError,
+        });
+      }
+    }
+    throw failure;
   }
 
   return { ok: true, permissionRecord };
@@ -893,7 +950,10 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
   }
 
   if (snapshot.compensationExpectedCanonical) {
-    if (db.capabilities?.transactions?.supported === false) {
+    if (
+      db.capabilities?.transactions?.supported === false ||
+      typeof db.transaction !== "function"
+    ) {
       // Transaction-disabled adapters still provide conditional bulk writes.
       // Restore canonical state first; only touch the legacy mirror while the
       // exact failed canonical state is still owned by this compensation.

@@ -907,6 +907,95 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("does not publish a failed nontransactional dual-write share", async () => {
+    setSpv2MigrationRuntimeConfig({
+      readMode: "dual",
+      writeMode: "dual",
+      warnOnLegacyApi: true,
+    });
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    (localDb.capabilities.transactions as { supported: boolean }).supported = false;
+    const originalUpsert = localDb.upsert.bind(localDb);
+    let rejectLegacyMirror = false;
+    localDb.upsert = async (input: any) => {
+      if (
+        rejectLegacyMirror &&
+        input.model === getLegacyPermissionsTable("notes")
+      ) {
+        throw new Error("legacy mirror unavailable");
+      }
+      return originalUpsert(input);
+    };
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      spv2Migration: {
+        readMode: "dual",
+        writeMode: "dual",
+        warnOnLegacyApi: true,
+      },
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const localMutation = async (payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        "http://localhost/datafn/mutation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "direct-failed-share",
+        mutationId: "direct-failed-share-insert",
+        id: "note:direct-failed-share",
+        record: { title: "Failed share" },
+      });
+      rejectLegacyMirror = true;
+
+      const result = await localMutation({
+        resource: "notes",
+        version: 1,
+        operation: "share",
+        clientId: "direct-failed-share",
+        mutationId: "direct-failed-share-share",
+        id: "note:direct-failed-share",
+        shareWith: { principalId: "user:partner", level: "viewer" },
+      });
+
+      expect(result.result.ok).toBe(false);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+      await expect(localDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toHaveLength(0);
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("restores a directory grant when a direct unshare transaction rolls back", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();

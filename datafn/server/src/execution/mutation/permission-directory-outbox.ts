@@ -162,6 +162,19 @@ export async function markPermissionDirectorySyncReady(
   return "ready";
 }
 
+export async function discardPermissionDirectorySync(
+  db: Adapter,
+  taskId: string,
+): Promise<boolean> {
+  const expectedLeaseValue = await stopPrecommitLeaseHeartbeat(taskId);
+  if (!expectedLeaseValue) return false;
+  const deleted = await db.internal.delete(OUTBOX_TABLE, [
+    { field: "id", op: "eq", value: taskId },
+    { field: "next_attempt_at", op: "eq", value: expectedLeaseValue },
+  ]);
+  return deleted > 0;
+}
+
 export async function deferFailedShareCompensation(
   db: Adapter,
   taskId: string,

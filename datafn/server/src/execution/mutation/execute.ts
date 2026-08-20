@@ -22,8 +22,10 @@ import { executeSchemaAwareMerge } from "./merge-decision.js";
 import {
   executeShare,
   executeUnshare,
+  getFailedShareCompensation,
   getPermissionsTable,
   syncDatafnPermissionGrantAfterCommit,
+  type FailedShareCompensation,
 } from "./share.js";
 import { getDatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
@@ -41,11 +43,18 @@ import type { DatafnLogger } from "../../logger.js";
 import { validateShareableOperationAccess } from "../../validation/authz.js";
 import type { SearchProvider } from "../../search-provider.js";
 import {
+  deferFailedShareCompensation,
+  discardPermissionDirectorySync,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
   markPermissionDirectorySyncReady,
 } from "./permission-directory-outbox.js";
+
+const FAILED_SHARE_COMPENSATION_RESULT = Symbol("failedShareCompensation");
+type InternalMutationResult = MutationResult & {
+  [FAILED_SHARE_COMPENSATION_RESULT]?: FailedShareCompensation;
+};
 
 const SEARCH_UPSERT_OPS = new Set(["insert", "merge", "replace", "trash", "restore", "archive", "unarchive"]);
 
@@ -220,6 +229,7 @@ async function executeMutationCore(
   }> = [];
   // EXE-008: flag to skip change tracking when deleting a non-existent record
   let skipChangeTracking = false;
+  let failedShareCompensation: FailedShareCompensation | null = null;
 
   try {
     switch (mutation.operation) {
@@ -892,6 +902,9 @@ async function executeMutationCore(
         };
     }
   } catch (error: any) {
+    if (mutation.operation === "share") {
+      failedShareCompensation = getFailedShareCompensation(error);
+    }
     logger?.error("Unexpected mutation error", {
       error: String(error),
       operation: (mutation as any).operation,
@@ -909,6 +922,11 @@ async function executeMutationCore(
         errors: [{ code: opResult.code, message: opResult.message, path: opResult.path, retryable: false }],
         deduped: false,
       };
+  if (failedShareCompensation) {
+    Object.defineProperty(result, FAILED_SHARE_COMPENSATION_RESULT, {
+      value: failedShareCompensation,
+    });
+  }
 
   // REL-011: Record change tracking using the provided changeTracking instance
   // (which uses the same db adapter as the operation — ensures atomicity when in a transaction)
@@ -1481,7 +1499,58 @@ export async function executeMutation(
       logger,
       multiRegionRuntime,
     );
-  } finally {
+  } catch (error) {
+    await releasePermissionDirectoryTask();
+    throw error;
+  }
+
+  const failedShareCompensation = (result as InternalMutationResult)[
+    FAILED_SHARE_COMPENSATION_RESULT
+  ];
+  if (!result.ok && mutation.operation === "share") {
+    if (
+      failedShareCompensation &&
+      permissionDirectoryTaskId &&
+      multiRegionRuntime
+    ) {
+      try {
+        await deferFailedShareCompensation(
+          db,
+          permissionDirectoryTaskId,
+          mutation,
+          failedShareCompensation.snapshot,
+          failedShareCompensation.error,
+          namespace,
+          multiRegionRuntime.regionId,
+        );
+        permissionDirectoryTaskPending = false;
+      } catch (error) {
+        logger?.error("Failed share compensation could not be made durable", {
+          error: String(error),
+          operation: mutation.operation,
+          resource: mutation.resource,
+          taskId: permissionDirectoryTaskId,
+        });
+        await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
+          .catch(() => false);
+        permissionDirectoryTaskId = null;
+        permissionDirectoryTaskPending = false;
+      }
+    } else if (permissionDirectoryTaskId) {
+      await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
+        .catch((error) => {
+          logger?.error("Failed share directory task could not be discarded", {
+            error: String(error),
+            operation: mutation.operation,
+            resource: mutation.resource,
+            taskId: permissionDirectoryTaskId,
+          });
+          return false;
+        });
+      permissionDirectoryTaskId = null;
+      permissionDirectoryTaskPending = false;
+    }
+  } else {
     await releasePermissionDirectoryTask();
   }
 

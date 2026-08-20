@@ -222,6 +222,28 @@ export async function introspectMySQL(
     `;
     const [indexRows] = await db.query(indexesQuery, [database, table_name]);
 
+    // Query both foreign keys declared by this table and inbound foreign keys
+    // that reference it. MySQL can reject a column type/width change while
+    // either dependency remains active, so migration planning must be able to
+    // refuse changes it cannot safely sequence.
+    const constraintsQuery = `
+      SELECT
+        CONSTRAINT_NAME as name,
+        TABLE_NAME as table_name,
+        COLUMN_NAME as column_name,
+        REFERENCED_TABLE_NAME as referenced_table,
+        REFERENCED_COLUMN_NAME as referenced_column
+      FROM information_schema.KEY_COLUMN_USAGE
+      WHERE CONSTRAINT_SCHEMA = ?
+        AND REFERENCED_TABLE_NAME IS NOT NULL
+        AND (TABLE_NAME = ? OR REFERENCED_TABLE_NAME = ?)
+      ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+    `;
+    const [constraintRows] = await db.query(
+      constraintsQuery,
+      [database, table_name, table_name],
+    );
+
     // Group indexes by name
     const indexMap = new Map<string, DatabaseIndex>();
     for (const row of indexRows as any[]) {
@@ -239,6 +261,24 @@ export async function introspectMySQL(
       indexMap.get(row.name)!.prefixLengths!.push(
         row.sub_part == null ? null : Number(row.sub_part),
       );
+    }
+
+    const constraintMap = new Map<string, DatabaseConstraint>();
+    for (const row of constraintRows as any[]) {
+      const key = `${row.table_name}:${row.name}`;
+      if (!constraintMap.has(key)) {
+        constraintMap.set(key, {
+          name: row.name,
+          type: 'FOREIGN KEY',
+          tableName: row.table_name,
+          columns: [],
+          referencedTable: row.referenced_table,
+          referencedColumns: [],
+        });
+      }
+      const constraint = constraintMap.get(key)!;
+      constraint.columns.push(row.column_name);
+      constraint.referencedColumns!.push(row.referenced_column);
     }
 
     result.push({
@@ -264,7 +304,7 @@ export async function introspectMySQL(
         isUnique: c.column_key === 'UNI',
       })),
       indexes: Array.from(indexMap.values()),
-      constraints: [],
+      constraints: Array.from(constraintMap.values()),
     });
   }
 

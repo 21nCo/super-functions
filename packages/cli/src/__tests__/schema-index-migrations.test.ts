@@ -95,6 +95,15 @@ describe("schema index migrations", () => {
             index_type: "FULLTEXT",
           }]];
         }
+        if (query.includes("information_schema.KEY_COLUMN_USAGE")) {
+          return [[{
+            name: "jobs_owner_fk",
+            table_name: "plugfn_jobs",
+            column_name: "owner_id",
+            referenced_table: "plugfn_users",
+            referenced_column: "id",
+          }]];
+        }
         throw new Error(`Unexpected query: ${query}`);
       },
     };
@@ -104,6 +113,14 @@ describe("schema index migrations", () => {
     expect(table.columns[0].isVisible).toBe(false);
     expect(table.indexes[0].prefixLengths).toEqual([50]);
     expect(table.indexes[0].indexType).toBe("FULLTEXT");
+    expect(table.constraints).toEqual([{
+      name: "jobs_owner_fk",
+      type: "FOREIGN KEY",
+      tableName: "plugfn_jobs",
+      columns: ["owner_id"],
+      referencedTable: "plugfn_users",
+      referencedColumns: ["id"],
+    }]);
   });
 
   it("preserves SQLite index uniqueness during introspection", async () => {
@@ -699,6 +716,114 @@ describe("schema index migrations", () => {
     expect(kysely.indexOf(kyselyDrop)).toBeGreaterThanOrEqual(0);
     expect(kysely.indexOf(alter)).toBeGreaterThan(kysely.indexOf(kyselyDrop));
     expect(kysely.indexOf(create)).toBeGreaterThan(kysely.indexOf(alter));
+  });
+
+  it("refuses MySQL type changes with undeclared or primary index dependencies", () => {
+    const unbounded = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+        },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const currentTable = {
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql" as const,
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(100)",
+        maxLength: 100,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      constraints: [],
+    };
+
+    expect(() => diffTables([unbounded], [{
+      ...currentTable,
+      indexes: [{
+        name: "legacy_claim_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: false,
+      }],
+    }], "plugfn")).toThrow(/dependent indexes.*legacy_claim_idx/);
+    expect(() => diffTables([unbounded], [{
+      ...currentTable,
+      indexes: [{
+        name: "PRIMARY",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: true,
+      }],
+    }], "plugfn")).toThrow(/dependent indexes.*PRIMARY/);
+  });
+
+  it("refuses MySQL type changes with local or inbound foreign keys", () => {
+    const unbounded = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: {
+          type: "string",
+          required: false,
+          fieldName: "claim_token",
+        },
+      },
+    } as unknown as TableSchema;
+    const baseTable = {
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql" as const,
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(100)",
+        maxLength: 100,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: true,
+      }],
+    };
+
+    expect(() => diffTables([unbounded], [{
+      ...baseTable,
+      constraints: [{
+        name: "sync_jobs_claim_fk",
+        type: "FOREIGN KEY" as const,
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        referencedTable: "plugfn_claims",
+        referencedColumns: ["token"],
+      }],
+    }], "plugfn")).toThrow(/foreign-key dependencies.*sync_jobs_claim_fk/);
+    expect(() => diffTables([unbounded], [{
+      ...baseTable,
+      constraints: [{
+        name: "audit_claim_fk",
+        type: "FOREIGN KEY" as const,
+        tableName: "plugfn_audit",
+        columns: ["claim_token"],
+        referencedTable: "plugfn_sync_jobs",
+        referencedColumns: ["claim_token"],
+      }],
+    }], "plugfn")).toThrow(/foreign-key dependencies.*audit_claim_fk/);
   });
 
   it("uses dialect-correct Kysely drops for explicit rebuilt-index plans", () => {
