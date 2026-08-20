@@ -58,7 +58,10 @@ export async function executeTransaction(
   const needsPermissionDirectoryOutbox = Boolean(
     hasMutations &&
     getDatafnMultiRegionRuntimeConfig(plugins) &&
-    steps.some((step) => step.mutation?.operation === "share"),
+    steps.some((step) =>
+      step.mutation?.operation === "share" ||
+      step.mutation?.operation === "unshare"
+    ),
   );
   if (needsPermissionDirectoryOutbox) {
     // Sequential steps are marked insideTransaction to avoid nested database

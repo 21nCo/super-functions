@@ -426,14 +426,28 @@ export async function createDatafnServer<TContext = any>(
     plugins.push(config.publicLinks);
   }
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
-  const permissionDirectoryRetryRuntimes = [
+  const permissionDirectoryRuntimeCandidates = [
     multiRegionRuntime,
     ...plugins.map((plugin) => plugin.permissionDirectoryRuntime ?? null),
   ].filter((runtime): runtime is import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig =>
     runtime !== null
-  ).filter((runtime, index, runtimes) =>
-    runtimes.findIndex((candidate) => candidate.regionId === runtime.regionId) === index
   );
+  const permissionDirectoryRuntimesByRegion = new Map<
+    string,
+    import("./plugins/multi-region.js").DatafnMultiRegionRuntimeConfig
+  >();
+  for (const runtime of permissionDirectoryRuntimeCandidates) {
+    const existing = permissionDirectoryRuntimesByRegion.get(runtime.regionId);
+    if (existing && existing.directory !== runtime.directory) {
+      throw new Error(
+        `Permission directory configuration conflict: region ${runtime.regionId} uses multiple directory adapters`,
+      );
+    }
+    permissionDirectoryRuntimesByRegion.set(runtime.regionId, runtime);
+  }
+  const permissionDirectoryRetryRuntimes = [
+    ...permissionDirectoryRuntimesByRegion.values(),
+  ];
   const schemaWithPluginResources = plugins.reduce(
     (schema, plugin) => plugin.withSchema ? plugin.withSchema(schema) : schema,
     config.schema,

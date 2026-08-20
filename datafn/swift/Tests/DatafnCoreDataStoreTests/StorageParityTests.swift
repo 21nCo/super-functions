@@ -56,6 +56,27 @@ struct StorageParityTests {
         #expect(health == DatafnStorageHealthReport(ok: true, issues: []))
     }
 
+    @Test("Missing-record merge atomically applies the complete create payload")
+    func missingRecordMergeUsesIfMissingPayload() throws {
+        let store = try makeStore(namespace: "org-1:user-merge")
+
+        let merged = try store.mergeRecord(
+            resource: "tasks",
+            id: "task:new",
+            partial: ["title": "Patch"],
+            ifMissing: [
+                "id": "task:new",
+                "title": "Patch",
+                "status": "draft",
+                "createdBy": "user:1",
+            ]
+        )
+
+        #expect(merged["status"] == "draft")
+        #expect(merged["createdBy"] == "user:1")
+        #expect(try store.getRecord(resource: "tasks", id: "task:new") == merged)
+    }
+
     @Test("Storage surface covers records, joins, counts, state, changelog, and lifecycle")
     func storageSurfaceCoversRecordsJoinsCountsStateChangelogAndLifecycle() throws {
         let store = try makeStore(namespace: "org-1:user-2")

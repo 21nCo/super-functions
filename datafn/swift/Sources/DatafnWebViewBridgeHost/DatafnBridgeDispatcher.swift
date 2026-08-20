@@ -542,7 +542,13 @@ public final class DatafnBridgeDispatcher: @unchecked Sendable {
             let resource = try requireString(payload, key: "resource", path: "payload.resource")
             let id = try requireString(payload, key: "id", path: "payload.id")
             let partial = try requireObject(payload, key: "partial", path: "payload.partial")
-            return .object(try storage.mergeRecord(resource: resource, id: id, partial: partial))
+            let ifMissing = payload["options"]?.objectValue?["ifMissing"]?.objectValue
+            return .object(try storage.mergeRecord(
+                resource: resource,
+                id: id,
+                partial: partial,
+                ifMissing: ifMissing
+            ))
 
         case "storage.findRecords":
             let payload = try requireObjectPayload(request, path: "payload")

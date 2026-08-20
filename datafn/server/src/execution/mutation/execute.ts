@@ -1018,6 +1018,10 @@ export async function executeMutation(
 ): Promise<MutationResult> {
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   let permissionDirectoryTaskId: string | null = null;
+  const needsPermissionDirectoryOutbox = Boolean(
+    multiRegionRuntime &&
+    (mutation.operation === "share" || mutation.operation === "unshare"),
+  );
   const shouldQueuePermissionDirectorySync = Boolean(
     multiRegionRuntime && mutation.operation === "share",
   );
@@ -1031,6 +1035,30 @@ export async function executeMutation(
     );
   };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
+    if (
+      multiRegionRuntime &&
+      mutation.operation === "unshare" &&
+      !permissionDirectoryTaskId
+    ) {
+      try {
+        // Unshare invalidates before the database settles. Queue repair after
+        // settlement so a rollback restoration is durable if re-indexing is
+        // temporarily unavailable.
+        permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+          committedDb,
+          mutation,
+          namespace,
+          multiRegionRuntime.regionId,
+        );
+      } catch (error) {
+        logger?.error("Permission directory rollback repair could not be queued", {
+          error: String(error),
+          operation: mutation.operation,
+          resource: mutation.resource,
+        });
+        return;
+      }
+    }
     if (multiRegionRuntime && permissionDirectoryTaskId) {
       try {
         await drainPermissionDirectorySync(
@@ -1159,7 +1187,7 @@ export async function executeMutation(
     }
   }
 
-  if (shouldQueuePermissionDirectorySync && !insideTransaction) {
+  if (needsPermissionDirectoryOutbox && !insideTransaction) {
     // DDL must happen before any enclosing transaction; the task itself is
     // inserted with the grant so a committed share always has a durable retry.
     await ensurePermissionDirectoryOutbox(db);
@@ -1393,9 +1421,17 @@ export async function executeMutation(
       await queuePermissionDirectorySync(db);
     }
     await reconcilePermissionDirectoryAfterCommit();
-  } else if (permissionDirectoryTaskId) {
-    // Clear the precommitted retry against authoritative missing state.
-    await syncPermissionDirectoryAfterCommit();
+  } else if (
+    permissionDirectoryTaskId ||
+    (multiRegionRuntime && mutation.operation === "unshare")
+  ) {
+    // Clear or repair against settled authoritative state. Outer transact
+    // calls must defer this work until their enclosing transaction resolves.
+    if (insideTransaction && deferPermissionDirectorySync) {
+      await reconcilePermissionDirectoryAfterCommit();
+    } else {
+      await syncPermissionDirectoryAfterCommit();
+    }
   }
 
   if (searchProvider && result.ok) {

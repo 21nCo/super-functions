@@ -290,7 +290,9 @@ export async function executePush(
 
   if (
     multiRegionRuntime &&
-    request.mutations.some((mutation) => mutation.operation === "share")
+    request.mutations.some((mutation) =>
+      mutation.operation === "share" || mutation.operation === "unshare"
+    )
   ) {
     await ensurePermissionDirectoryOutbox(db);
   }
@@ -959,6 +961,64 @@ export async function executePush(
   for (const mutation of request.mutations) {
     const mut = mutation as any;
     let permissionDirectoryTaskId: string | null = null;
+    const reconcilePermissionDirectoryAfterSettlement = async (
+      durableUnshare = false,
+    ) => {
+      if (!multiRegionRuntime) return;
+      if (
+        durableUnshare &&
+        mut.operation === "unshare" &&
+        !permissionDirectoryTaskId
+      ) {
+        try {
+          permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+            db,
+            mut,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+        } catch (error) {
+          logger?.error("Push permission directory rollback repair could not be queued", {
+            error: String(error),
+            operation: mut.operation,
+            resource: mut.resource,
+          });
+          return;
+        }
+      }
+      if (permissionDirectoryTaskId) {
+        try {
+          await drainPermissionDirectorySync(
+            db,
+            permissionDirectoryTaskId,
+            multiRegionRuntime,
+            logger,
+          );
+        } catch (error) {
+          // The database mutation and durable task have already committed.
+          // Keep the client result stable and let scheduled draining retry.
+          logger?.error("Push permission directory reconciliation deferred", {
+            error: String(error),
+            operation: mut.operation,
+            resource: mut.resource,
+            taskId: permissionDirectoryTaskId,
+          });
+        }
+        return;
+      }
+      await syncDatafnPermissionGrantAfterCommit(
+        db,
+        mut,
+        namespace,
+        multiRegionRuntime,
+      ).catch((error) => {
+        logger?.error("Push permission directory reconciliation failed after commit", {
+          error: String(error),
+          operation: mut.operation,
+          resource: mut.resource,
+        });
+      });
+    };
 
     // Validate required fields
     if (!mut.clientId || !mut.mutationId) {
@@ -1089,30 +1149,13 @@ export async function executePush(
           logger?.error("Push atomic mutation failed", { error: formatUnknownError(err), operation: "push.transaction", resource: mut.resource });
           await recordMutationFailure(mut, "MUTATION_FAILED", "Mutation failed", `mutations[${mut.mutationId}]`);
         }
+        if (mut.operation === "unshare") {
+          await reconcilePermissionDirectoryAfterSettlement(true);
+        }
       }
 
       if (mutationSucceeded) {
-        if (multiRegionRuntime && permissionDirectoryTaskId) {
-          await drainPermissionDirectorySync(
-            db,
-            permissionDirectoryTaskId,
-            multiRegionRuntime,
-            logger,
-          );
-        } else {
-          await syncDatafnPermissionGrantAfterCommit(
-            db,
-            mut,
-            namespace,
-            multiRegionRuntime ?? null,
-          ).catch((error) => {
-            logger?.error("Push permission directory reconciliation failed after commit", {
-              error: String(error),
-              operation: mut.operation,
-              resource: mut.resource,
-            });
-          });
-        }
+        await reconcilePermissionDirectoryAfterSettlement(true);
         await recordMutationSuccess(mut);
       }
     } else {
@@ -1162,38 +1205,13 @@ export async function executePush(
         if (changeTrackingFailed) {
           await recordMutationFailure(mut, "INTERNAL", "Change tracking failed", "$");
         } else {
-          if (multiRegionRuntime && permissionDirectoryTaskId) {
-            await drainPermissionDirectorySync(
-              db,
-              permissionDirectoryTaskId,
-              multiRegionRuntime,
-              logger,
-            );
-          } else {
-            await syncDatafnPermissionGrantAfterCommit(
-              db,
-              mut,
-              namespace,
-              multiRegionRuntime ?? null,
-            ).catch((error) => {
-              logger?.error("Push permission directory reconciliation failed after commit", {
-                error: String(error),
-                operation: mut.operation,
-                resource: mut.resource,
-              });
-            });
-          }
+          await reconcilePermissionDirectoryAfterSettlement(true);
           await recordMutationSuccess(mut);
         }
       } else {
-        if (multiRegionRuntime && permissionDirectoryTaskId) {
-          await drainPermissionDirectorySync(
-            db,
-            permissionDirectoryTaskId,
-            multiRegionRuntime,
-            logger,
-          );
-        }
+        await reconcilePermissionDirectoryAfterSettlement(
+          mut.operation === "unshare",
+        );
         await recordMutationFailure(mut, opResult.code, opResult.message, opResult.path);
       }
     }

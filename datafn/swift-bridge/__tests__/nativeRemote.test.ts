@@ -39,6 +39,9 @@ function installRemoteHost() {
           { id: "task:2", completed: true },
         ];
         break;
+      case "storage.changelogList":
+        result = [];
+        break;
       default:
         result = { ok: true, result: { ok: true } };
         break;
@@ -136,6 +139,8 @@ describe("@datafn/swift-bridge native remote adapter", () => {
 
     expect(calls.map((call) => call.method)).toEqual([
       "storage.getHydrationState",
+      // Local execution loads timezone metadata before the resource rows.
+      "storage.listRecords",
       "storage.listRecords",
     ]);
   });
@@ -156,12 +161,16 @@ describe("@datafn/swift-bridge native remote adapter", () => {
       ),
     ).resolves.toEqual({
       source: "native-remote-adapter",
-      data: [],
+      data: [{ id: "task:1", completed: false }],
     });
 
     expect(calls.map((call) => call.method)).toEqual([
       "storage.getHydrationState",
       "remote.query",
+      // Hydrating reads overlay pending local state onto the remote result.
+      "storage.listRecords",
+      "storage.changelogList",
+      "storage.listRecords",
     ]);
   });
 

@@ -579,10 +579,13 @@ public final class DatafnCoreDataStore: @unchecked Sendable {
     public func mergeRecord(
         resource: String,
         id: String,
-        partial: DatafnJSONObject
+        partial: DatafnJSONObject,
+        ifMissing: DatafnJSONObject? = nil
     ) throws -> DatafnJSONObject {
         let result = try performMutatingOperation { context in
-            let existing = try self.loadRecord(resource: resource, id: id, in: context) ?? ["id": .string(id)]
+            let existing = try self.loadRecord(resource: resource, id: id, in: context)
+                ?? ifMissing
+                ?? ["id": .string(id)]
             let merged = Self.deepMergeOneLevel(base: existing, patch: partial, forcedID: id)
             try self.storeRecord(resource: resource, record: merged, in: context)
             return (merged, Self.makeStorageChangedEvent(resource: resource, ids: [id]))

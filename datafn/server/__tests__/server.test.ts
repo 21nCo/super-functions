@@ -15,6 +15,9 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createDatafnServer } from "../src/server.js";
+import { createDatafnPublicLinksPlugin } from "../src/plugins/public-links.js";
+import { datafnMultiRegionPlugin } from "../src/plugins/multi-region.js";
+import { createMemoryIndexedDirectoryStore } from "@superfunctions/db/adapters";
 import type { WebSocketClient } from "../src/ws.js";
 
 // Minimal schema for testing — no DB required
@@ -52,6 +55,29 @@ describe("DatafnServer graceful shutdown (REL-009 / TV-REL-012)", () => {
     await server.close();
     // Second call should not hang
     await server.close();
+  });
+
+  it("rejects different permission directories configured for the same region", async () => {
+    const publicLinks = createDatafnPublicLinksPlugin({
+      getOwnerActorId: () => "user:owner",
+      getOwnerNamespace: () => "user:owner",
+      directory: createMemoryIndexedDirectoryStore(),
+      resourceRegion: "region:shared",
+    });
+
+    await expect(createDatafnServer({
+      allowUnknownResources: true,
+      schema: minimalSchema,
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "region:shared",
+          directory: createMemoryIndexedDirectoryStore(),
+        }),
+        publicLinks,
+      ],
+    })).rejects.toThrow(
+      "Permission directory configuration conflict: region region:shared uses multiple directory adapters",
+    );
   });
 
   it("TV-REL-012: close() sends WS close frame 1001 to all connected clients", async () => {

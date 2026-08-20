@@ -40,11 +40,11 @@ export function createNativeBackedStorageAdapter(
         id,
       });
     },
-    mergeRecord(resource, id, partial) {
+    mergeRecord(resource, id, partial, options) {
       return requestBridgeMethod<Record<string, unknown>>(
         bus,
         "storage.mergeRecord",
-        { resource, id, partial },
+        { resource, id, partial, ...(options ? { options } : {}) },
       );
     },
     listJoinRows(relationKey) {
