@@ -14,6 +14,7 @@ export function createNativeBackedStorageAdapter(
 ): DatafnStorageAdapter & NativeBridgeMarker {
   return {
     __datafnNativeBacked: true,
+    capabilities: { atomicMergeIfMissing: true },
     getRecord(resource, id) {
       return requestBridgeMethod<Record<string, unknown> | null>(
         bus,

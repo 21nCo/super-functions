@@ -67,6 +67,7 @@ export type {
 } from "./public-links.js";
 export {
   type DatafnStorageAdapter,
+  type DatafnStorageAdapterCapabilities,
   type DatafnStorageFactory,
   type DatafnHydrationState,
   type DatafnChangelogEntry,

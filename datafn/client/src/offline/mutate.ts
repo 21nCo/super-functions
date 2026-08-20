@@ -800,7 +800,7 @@ export async function applyOptimisticMutationToStorage(
         existingRecord: null,
       },
     );
-    if (storage.mergeRecord.length >= 4) {
+    if (storage.capabilities?.atomicMergeIfMissing === true) {
       await storage.mergeRecord(resource, id, optimisticPatch, {
         ifMissing: optimisticCreate,
       });

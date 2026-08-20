@@ -209,6 +209,26 @@ class MockStorageAdapter implements DatafnStorageAdapter {
   }
 }
 
+class AtomicIfMissingMockStorageAdapter extends MockStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
+  lastMergeOptions: { ifMissing?: Record<string, unknown> } | undefined;
+
+  override async mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options: { ifMissing?: Record<string, unknown> } = {},
+  ): Promise<Record<string, unknown>> {
+    this.lastMergeOptions = options;
+    const existing = await this.getRecord(resource, id);
+    return super.mergeRecord(
+      resource,
+      id,
+      existing ? partial : (options.ifMissing ?? partial),
+    );
+  }
+}
+
 // Test schema
 const testSchema = {
   resources: [
@@ -419,6 +439,38 @@ describe("Offline Mutation Tests", () => {
       updatedAt: timestampMs,
       createdBy: "client:legacy-merge",
       updatedBy: "client:legacy-merge",
+    });
+  });
+
+  it("uses explicit capability detection for atomic merge adapters with default parameters", async () => {
+    const storage = new AtomicIfMissingMockStorageAdapter();
+    expect(storage.mergeRecord.length).toBe(3);
+    const schemaWithDefault = {
+      resources: [{
+        name: "task",
+        version: 1,
+        fields: [
+          { name: "title", type: "string" as const, required: true },
+          { name: "status", type: "string" as const, required: true, default: "open" },
+        ],
+      }],
+    } as const;
+    const client = createDatafnClient({
+      schema: schemaWithDefault,
+      sync: { mode: "local-only", offlinability: true },
+      clientId: "client:atomic-merge",
+      storage,
+    });
+
+    await client.task.mutate({
+      operation: "merge",
+      id: "task:atomic",
+      record: { title: "Atomic create" },
+    });
+
+    expect(storage.lastMergeOptions?.ifMissing).toMatchObject({
+      title: "Atomic create",
+      status: "open",
     });
   });
 

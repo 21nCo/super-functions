@@ -32,7 +32,17 @@ export type DatafnChangelogEntry = {
   timestamp?: string;
 };
 
+export interface DatafnStorageAdapterCapabilities {
+  /**
+   * `mergeRecord` applies `options.ifMissing` atomically in the same
+   * read-modify-write transaction used for the merge.
+   */
+  readonly atomicMergeIfMissing?: boolean;
+}
+
 export interface DatafnStorageAdapter {
+  readonly capabilities?: DatafnStorageAdapterCapabilities;
+
   // Records (by resource)
   getRecord(
     resource: string,

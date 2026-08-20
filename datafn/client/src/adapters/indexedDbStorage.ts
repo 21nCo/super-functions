@@ -72,6 +72,7 @@ function deepMergeOneLevel(
 }
 
 export class IndexedDbStorageAdapter implements DatafnStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
   private dbPromise: Promise<IDBDatabase>;
   private validResources?: Set<string>;
   private schema?: DatafnSchema;
