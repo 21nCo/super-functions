@@ -11,12 +11,21 @@ Complete interface for local persistence.
 
 ```typescript
 interface DatafnStorageAdapter {
+  readonly capabilities?: {
+    atomicMergeIfMissing?: boolean;
+  };
+
   // Record operations
   getRecord(resource: string, id: string): Promise<Record<string, unknown> | null>;
   listRecords(resource: string): Promise<Record<string, unknown>[]>;
   upsertRecord(resource: string, record: Record<string, unknown>): Promise<void>;
   deleteRecord(resource: string, id: string): Promise<void>;
-  mergeRecord(resource: string, id: string, partial: Record<string, unknown>): Promise<Record<string, unknown>>;
+  mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>>;
   findRecords(resource: string, field: string, value: unknown): Promise<Record<string, unknown>[]>;
 
   // Join row operations (many-many relations)

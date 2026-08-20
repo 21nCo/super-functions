@@ -44,6 +44,7 @@ import {
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
+  markPermissionDirectorySyncReady,
 } from "./permission-directory-outbox.js";
 
 const SEARCH_UPSERT_OPS = new Set(["insert", "merge", "replace", "trash", "restore", "archive", "unarchive"]);
@@ -1020,6 +1021,9 @@ export async function executeMutation(
   const multiRegionRuntime = getDatafnMultiRegionRuntimeConfig(plugins);
   let permissionDirectoryTaskId: string | null =
     prequeuedPermissionDirectoryTaskId ?? null;
+  let permissionDirectoryTaskPending = Boolean(
+    prequeuedPermissionDirectoryTaskId,
+  );
   const needsPermissionDirectoryOutbox = Boolean(
     multiRegionRuntime &&
     (mutation.operation === "share" || mutation.operation === "unshare"),
@@ -1027,14 +1031,35 @@ export async function executeMutation(
   const shouldQueuePermissionDirectorySync = Boolean(
     multiRegionRuntime && mutation.operation === "share",
   );
-  const queuePermissionDirectorySync = async (targetDb: Adapter) => {
+  const queuePermissionDirectorySync = async (
+    targetDb: Adapter,
+    pending = false,
+  ) => {
     if (!needsPermissionDirectoryOutbox || permissionDirectoryTaskId) return;
     permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
       targetDb,
       mutation,
       namespace,
       multiRegionRuntime!.regionId,
+      { pending },
     );
+    permissionDirectoryTaskPending = pending;
+  };
+  const releasePermissionDirectoryTask = async () => {
+    if (!permissionDirectoryTaskId || !permissionDirectoryTaskPending) return;
+    try {
+      await markPermissionDirectorySyncReady(db, permissionDirectoryTaskId);
+      permissionDirectoryTaskPending = false;
+    } catch (error) {
+      // The pre-commit lease keeps the task durable and makes it eligible for
+      // recovery after expiry even when this best-effort release fails.
+      logger?.error("Permission directory task release deferred", {
+        error: String(error),
+        operation: mutation.operation,
+        resource: mutation.resource,
+        taskId: permissionDirectoryTaskId,
+      });
+    }
   };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
     if (
@@ -1202,7 +1227,7 @@ export async function executeMutation(
     // Unshare invalidates the external directory before the database write.
     // Persist repair work on the outer adapter first so a later rollback can
     // never restore the grant without leaving durable re-index work.
-    await queuePermissionDirectorySync(db);
+    await queuePermissionDirectorySync(db, true);
   }
 
   // DI-002: Guard evaluation + operation MUST run in same transaction to prevent TOCTOU.
@@ -1285,6 +1310,10 @@ export async function executeMutation(
     }
 
     if (guardFailed) {
+      await releasePermissionDirectoryTask();
+      if (permissionDirectoryTaskId) {
+        await syncPermissionDirectoryAfterCommit(db);
+      }
       const result: MutationResult = {
         ok: false,
         mutationId: effectiveMutationId,
@@ -1299,6 +1328,7 @@ export async function executeMutation(
     }
 
     if (txMutationResult) {
+      await releasePermissionDirectoryTask();
       if ((txMutationResult as MutationResult).ok) {
         await reconcilePermissionDirectoryAfterCommit();
       } else if (mutation.operation === "unshare") {
@@ -1391,6 +1421,7 @@ export async function executeMutation(
     }
 
     if (txMutationResult) {
+      await releasePermissionDirectoryTask();
       if ((txMutationResult as MutationResult).ok) {
         await reconcilePermissionDirectoryAfterCommit();
       } else if (mutation.operation === "unshare") {
@@ -1413,20 +1444,25 @@ export async function executeMutation(
     // Non-transactional adapters cannot atomically insert the grant and its
     // retry task. Persist the retry first so a committed grant is never left
     // without durable reconciliation if the next write fails.
-    await queuePermissionDirectorySync(db);
+    await queuePermissionDirectorySync(db, true);
   }
 
-  const result = await executeMutationCore(
-    mutation,
-    db,
-    schema,
-    namespace,
-    effectiveMutationId,
-    changeTracking.withDb(db),
-    actorId,
-    logger,
-    multiRegionRuntime,
-  );
+  let result: MutationResult;
+  try {
+    result = await executeMutationCore(
+      mutation,
+      db,
+      schema,
+      namespace,
+      effectiveMutationId,
+      changeTracking.withDb(db),
+      actorId,
+      logger,
+      multiRegionRuntime,
+    );
+  } finally {
+    await releasePermissionDirectoryTask();
+  }
 
   if (result.ok) {
     if (insideTransaction && shouldQueuePermissionDirectorySync) {

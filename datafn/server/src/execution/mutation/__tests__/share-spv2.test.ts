@@ -11,6 +11,7 @@ import {
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
+  markPermissionDirectorySyncReady,
 } from "../permission-directory-outbox.js";
 
 const namespace = "user:owner";
@@ -997,6 +998,34 @@ describe("share SPV2 mutation semantics", () => {
     )).resolves.toHaveLength(100);
   });
 
+  it("does not let the interval drain consume a pre-commit directory task", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:test", directory };
+    const taskId = await enqueuePermissionDirectorySync(localDb, {
+      operation: "share",
+      resource: "notes",
+      id: "note:precommit",
+      shareWith: { principalId: "user:partner" },
+    }, namespace, runtime.regionId, { pending: true });
+
+    await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+      .resolves.toEqual({ processed: 0, pending: 0 });
+    await expect(localDb.internal.findMany(
+      "__datafn_permission_directory_outbox",
+      [],
+    )).resolves.toHaveLength(1);
+
+    await markPermissionDirectorySyncReady(localDb, taskId);
+    await expect(drainPermissionDirectoryOutbox(localDb, runtime))
+      .resolves.toEqual({ processed: 1, pending: 0 });
+    await expect(localDb.internal.findMany(
+      "__datafn_permission_directory_outbox",
+      [],
+    )).resolves.toHaveLength(0);
+  });
+
   it("does not commit a non-transactional push share when its retry cannot be persisted", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -1534,6 +1563,11 @@ describe("share SPV2 mutation semantics", () => {
       });
 
       expect(response.status).toBeGreaterThanOrEqual(400);
+      const body = await response.json() as any;
+      expect(body.error).toMatchObject({
+        code: "INTERNAL",
+        message: "Transaction setup failed: outbox unavailable",
+      });
       await expect(localDb.findMany({
         model: globalPermissionsTable,
         where: [],

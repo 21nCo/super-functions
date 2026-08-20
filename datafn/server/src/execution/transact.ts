@@ -68,28 +68,40 @@ export async function executeTransaction(
       step.mutation?.operation === "unshare"
     ),
   );
-  if (needsPermissionDirectoryOutbox) {
-    // Sequential steps are marked insideTransaction to avoid nested database
-    // transactions, so durable DDL must also be initialized up front there.
-    await ensurePermissionDirectoryOutbox(db);
-  }
   const prequeuedUnshareTaskIds: string[] = [];
   const prequeuedUnshareTasks = new Map<DFQLMutation, string>();
-  if (multiRegionRuntime) {
-    for (const step of steps) {
-      if (step.mutation?.operation !== "unshare") continue;
-      // Atomic unshare removes the external grant before its transaction
-      // settles. Queue repair on the outer adapter before entering the
-      // transaction so enqueue failure aborts before invalidation.
-      const taskId = await enqueuePermissionDirectorySync(
-        db,
-        step.mutation,
-        namespace,
-        multiRegionRuntime.regionId,
-      );
-      prequeuedUnshareTaskIds.push(taskId);
-      prequeuedUnshareTasks.set(step.mutation, taskId);
+  try {
+    if (needsPermissionDirectoryOutbox) {
+      // Sequential steps are marked insideTransaction to avoid nested database
+      // transactions, so durable DDL must also be initialized up front there.
+      await ensurePermissionDirectoryOutbox(db);
     }
+    if (multiRegionRuntime) {
+      for (const step of steps) {
+        if (step.mutation?.operation !== "unshare") continue;
+        // Atomic unshare removes the external grant before its transaction
+        // settles. Queue repair on the outer adapter before entering the
+        // transaction so enqueue failure aborts before invalidation.
+        const taskId = await enqueuePermissionDirectorySync(
+          db,
+          step.mutation,
+          namespace,
+          multiRegionRuntime.regionId,
+          { pending: true },
+        );
+        prequeuedUnshareTaskIds.push(taskId);
+        prequeuedUnshareTasks.set(step.mutation, taskId);
+      }
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: {
+        code: "INTERNAL",
+        message: `Transaction setup failed: ${error?.message || String(error)}`,
+        details: { path: "$" },
+      },
+    };
   }
 
   // SRV-012: Step limit check moved to route handler; skip duplicate check here

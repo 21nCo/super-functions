@@ -62,6 +62,12 @@ describe("MemoryStorageAdapter", () => {
         priority: "high",
       });
     });
+
+    it("rejects an empty merge id before persisting a record", async () => {
+      await expect(storage.mergeRecord("task", "", { title: "invalid" }))
+        .rejects.toThrow("Record missing id");
+      await expect(storage.listRecords("task")).resolves.toEqual([]);
+    });
   });
 
   describe("Join Rows", () => {

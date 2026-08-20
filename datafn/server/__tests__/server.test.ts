@@ -17,8 +17,12 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { createDatafnServer } from "../src/server.js";
 import { createDatafnPublicLinksPlugin } from "../src/plugins/public-links.js";
 import { datafnMultiRegionPlugin } from "../src/plugins/multi-region.js";
-import { createMemoryIndexedDirectoryStore } from "@superfunctions/db/adapters";
+import {
+  createMemoryIndexedDirectoryStore,
+  memoryAdapter,
+} from "@superfunctions/db/adapters";
 import type { WebSocketClient } from "../src/ws.js";
+import { enqueuePermissionDirectorySync } from "../src/execution/mutation/permission-directory-outbox.js";
 
 // Minimal schema for testing — no DB required
 const minimalSchema = {
@@ -78,6 +82,71 @@ describe("DatafnServer graceful shutdown (REL-009 / TV-REL-012)", () => {
     })).rejects.toThrow(
       "Permission directory configuration conflict: region region:shared uses multiple directory adapters",
     );
+  });
+
+  it("continues startup directory repair after one region fails", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    await enqueuePermissionDirectorySync(db, {
+      operation: "unshare",
+      resource: "items",
+      id: "item:bad",
+      shareWith: { principalId: "user:partner" },
+    }, "user:owner", "region:bad");
+    await enqueuePermissionDirectorySync(db, {
+      operation: "unshare",
+      resource: "items",
+      id: "item:good",
+      shareWith: { principalId: "user:partner" },
+    }, "user:owner", "region:good");
+
+    const badDirectory = createMemoryIndexedDirectoryStore();
+    const goodDirectory = createMemoryIndexedDirectoryStore();
+    const goodDelete = vi.spyOn(goodDirectory, "delete");
+    const originalFindMany = db.internal.findMany.bind(db.internal);
+    const internal = new Proxy(db.internal, {
+      get(target, property, receiver) {
+        if (property !== "findMany") return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof originalFindMany>) => {
+          const where = args[1] ?? [];
+          if (where.some((clause) =>
+            clause.field === "region_id" && clause.value === "region:bad"
+          )) {
+            throw new Error("bad region outbox unavailable");
+          }
+          return originalFindMany(...args);
+        };
+      },
+    });
+    const database = new Proxy(db, {
+      get(target, property, receiver) {
+        return property === "internal"
+          ? internal
+          : Reflect.get(target, property, receiver);
+      },
+    });
+    const publicLinks = createDatafnPublicLinksPlugin({
+      getOwnerActorId: () => "user:owner",
+      getOwnerNamespace: () => "user:owner",
+      directory: goodDirectory,
+      resourceRegion: "region:good",
+    });
+
+    const server = await createDatafnServer({
+      allowUnknownResources: true,
+      schema: minimalSchema,
+      database,
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "region:bad",
+          directory: badDirectory,
+        }),
+        publicLinks,
+      ],
+    });
+
+    expect(goodDelete).toHaveBeenCalled();
+    await server.close();
   });
 
   it("TV-REL-012: close() sends WS close frame 1001 to all connected clients", async () => {

@@ -557,14 +557,22 @@ export async function createDatafnServer<TContext = any>(
   if (db && permissionDirectoryRetryRuntimes.length > 0) {
     try {
       await ensurePermissionDirectoryOutbox(db);
-      for (const runtime of permissionDirectoryRetryRuntimes) {
-        await drainPermissionDirectoryOutbox(db, runtime, logger);
-      }
     } catch (error) {
-      logger.warn("Permission directory retry startup drain failed", {
+      logger.warn("Permission directory retry startup initialization failed", {
         error: String(error),
         operation: "permission-directory-outbox",
       });
+    }
+    for (const runtime of permissionDirectoryRetryRuntimes) {
+      try {
+        await drainPermissionDirectoryOutbox(db, runtime, logger);
+      } catch (error) {
+        logger.warn("Permission directory retry startup drain failed", {
+          error: String(error),
+          operation: "permission-directory-outbox",
+          regionId: runtime.regionId,
+        });
+      }
     }
   }
 

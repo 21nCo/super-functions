@@ -7,6 +7,7 @@ import { ensureInternalTable } from "../internal-tables.js";
 import { syncDatafnPermissionGrantAfterCommit } from "./share.js";
 
 const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
+const PRECOMMIT_TASK_LEASE_MS = 5 * 60 * 1000;
 
 export interface PermissionDirectorySyncMutation {
   operation: string;
@@ -25,9 +26,13 @@ export async function enqueuePermissionDirectorySync(
   mutation: PermissionDirectorySyncMutation,
   namespace: string,
   regionId: string,
+  options: { pending?: boolean } = {},
 ): Promise<string> {
   const id = randomUUID();
   const now = new Date().toISOString();
+  const nextAttemptAt = options.pending
+    ? new Date(Date.now() + PRECOMMIT_TASK_LEASE_MS).toISOString()
+    : now;
   await db.internal.create(OUTBOX_TABLE, {
     id,
     namespace,
@@ -35,10 +40,21 @@ export async function enqueuePermissionDirectorySync(
     mutation: JSON.stringify(mutation),
     attempts: 0,
     last_error: "",
-    next_attempt_at: now,
+    next_attempt_at: nextAttemptAt,
     created_at: now,
   });
   return id;
+}
+
+export async function markPermissionDirectorySyncReady(
+  db: Adapter,
+  taskId: string,
+): Promise<void> {
+  await db.internal.update(OUTBOX_TABLE, [
+    { field: "id", op: "eq", value: taskId },
+  ], {
+    next_attempt_at: new Date().toISOString(),
+  });
 }
 
 export async function drainPermissionDirectorySync(

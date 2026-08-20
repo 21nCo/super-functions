@@ -109,6 +109,7 @@ export class MemoryStorageAdapter implements DatafnStorageAdapter {
     options?: { ifMissing?: Record<string, unknown> },
   ): Promise<Record<string, unknown>> {
     this.validateTableName(resource);
+    if (!id) throw new Error("Record missing id");
     let table = this.records.get(resource);
     if (!table) {
       table = new Map();

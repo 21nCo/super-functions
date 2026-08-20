@@ -1081,6 +1081,7 @@ export async function executePush(
           mut,
           namespace,
           multiRegionRuntime.regionId,
+          { pending: true },
         );
       } catch (error) {
         logger?.error("Push unshare durability prerequisite failed", {
@@ -1198,6 +1199,7 @@ export async function executePush(
             mut,
             namespace,
             multiRegionRuntime.regionId,
+            { pending: true },
           );
         }
         opResult = await executeMutationOp(mut, db);

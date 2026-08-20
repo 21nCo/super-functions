@@ -177,6 +177,7 @@ describe("@datafn/client query", () => {
     });
     const storage = new MemoryStorageAdapter(["task", "goal"]);
     await storage.upsertRecord("task", { id: "task:0", title: "Local pending" });
+    await storage.setHydrationState("task", "hydrating");
     const client = createDatafnClient({
       schema: defaultSchema,
       sync: { remote: "http://example.com" },

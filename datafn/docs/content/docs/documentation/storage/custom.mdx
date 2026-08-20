@@ -39,6 +39,8 @@ function resolveColumns(resource: string, columns: string[]): string {
 }
 
 class CustomStorageAdapter implements DatafnStorageAdapter {
+  readonly capabilities = { atomicMergeIfMissing: true } as const;
+
   // Records
   async getRecord(resource: string, id: string): Promise<Record<string, unknown> | null> {
     const table = resolveTable(resource);
@@ -47,7 +49,12 @@ class CustomStorageAdapter implements DatafnStorageAdapter {
   async listRecords(resource: string): Promise<Record<string, unknown>[]> { /* ... */ }
   async upsertRecord(resource: string, record: Record<string, unknown>): Promise<void> { /* ... */ }
   async deleteRecord(resource: string, id: string): Promise<void> { /* ... */ }
-  async mergeRecord(resource: string, id: string, partial: Record<string, unknown>): Promise<Record<string, unknown>> { /* ... */ }
+  async mergeRecord(
+    resource: string,
+    id: string,
+    partial: Record<string, unknown>,
+    options?: { ifMissing?: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> { /* ... */ }
 
   // Join rows
   async listJoinRows(relationKey: string): Promise<Array<Record<string, unknown>>> { /* ... */ }
@@ -98,10 +105,11 @@ async mergeRecord(
   resource: string,
   id: string,
   partial: Record<string, unknown>,
+  options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
   // Begin transaction
   const existing = await this.getRecord(resource, id);
-  const merged = existing ? { ...existing } : { id };
+  const merged = existing ? { ...existing } : { ...(options?.ifMissing ?? {}), id };
 
   for (const [key, value] of Object.entries(partial)) {
     if (
