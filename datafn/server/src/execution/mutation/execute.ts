@@ -1121,8 +1121,19 @@ export async function executeMutation(
     }
   };
   const reconcilePermissionDirectoryAfterCommit = async () => {
-    if (insideTransaction && deferPermissionDirectorySync) {
-      deferPermissionDirectorySync(syncPermissionDirectoryAfterCommit);
+    if (insideTransaction) {
+      // External directory state must never observe the transaction adapter.
+      // The enclosing transaction owner is the only layer that knows whether
+      // the database committed or rolled back, so it must run reconciliation
+      // against the settled outer adapter.
+      if (deferPermissionDirectorySync) {
+        deferPermissionDirectorySync(syncPermissionDirectoryAfterCommit);
+      } else {
+        logger?.error("Permission directory reconciliation requires settlement deferral", {
+          operation: mutation.operation,
+          resource: mutation.resource,
+        });
+      }
       return;
     }
     await syncPermissionDirectoryAfterCommit();

@@ -1577,6 +1577,92 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("rolls back a transactional push share when its outbox write fails", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({ regionId: "region:test", directory })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return { response, body: await response.json() as any };
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "push-atomic-outbox",
+        mutationId: "push-atomic-outbox-insert",
+        id: "note:push-atomic-outbox",
+        record: { title: "Atomic push outbox" },
+      });
+      await localDb.internal.create("__datafn_idempotency", {
+        id: "datafn:push-atomic-outbox:push-atomic-outbox-share",
+        namespace: "datafn",
+        client_id: "push-atomic-outbox",
+        mutation_id: "push-atomic-outbox-share",
+        result: JSON.stringify({
+          ok: false,
+          mutationId: "push-atomic-outbox-share",
+          affectedIds: [],
+          errors: [{ code: "INTERNAL", message: "retry", path: "$", retryable: true }],
+          deduped: false,
+        }),
+        created_at: new Date().toISOString(),
+      });
+      const originalInternalCreate = localDb.internal.create.bind(localDb.internal);
+      localDb.internal.create = async (table, record) => {
+        if (table === "__datafn_permission_directory_outbox") {
+          throw new Error("outbox unavailable");
+        }
+        return originalInternalCreate(table, record);
+      };
+
+      const pushed = await request("push", {
+        clientId: "push-atomic-outbox",
+        mutations: [{
+          resource: "notes",
+          version: 1,
+          operation: "share",
+          clientId: "push-atomic-outbox",
+          mutationId: "push-atomic-outbox-share",
+          id: "note:push-atomic-outbox",
+          shareWith: { principalId: "user:partner", level: "viewer" },
+        }],
+      });
+
+      expect(pushed.response.status).toBe(400);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(directory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
+    } finally {
+      await localServer.close();
+    }
+  });
+
   it("does not invalidate a push unshare when repair persistence is unavailable", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
@@ -2042,6 +2128,98 @@ describe("share SPV2 mutation semantics", () => {
         value: "user:partner#notes",
       });
       expect(indexed.records).toHaveLength(1);
+    } finally {
+      await localServer.close();
+    }
+  });
+
+  it("does not publish a share from an outer transaction that rolls back", async () => {
+    const localDb = memoryAdapter();
+    await localDb.initialize();
+    const backingDirectory = createMemoryIndexedDirectoryStore();
+    let directoryPutCalls = 0;
+    const directory = {
+      ...backingDirectory,
+      put: async (record: Parameters<typeof backingDirectory.put>[0]) => {
+        directoryPutCalls += 1;
+        return backingDirectory.put(record);
+      },
+    };
+    const localServer = await createDatafnServer({
+      allowUnknownResources: true,
+      schema,
+      database: localDb,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:test",
+        directory,
+      })],
+      namespaceProvider: {
+        getNamespace: () => namespace,
+        getActorId: () => "user:owner",
+      },
+    });
+    const request = async (path: string, payload: Record<string, unknown>) => {
+      const response = await localServer.router.handle(new Request(
+        `http://localhost/datafn/${path}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      ));
+      return response.json() as Promise<any>;
+    };
+
+    try {
+      await request("mutation", {
+        resource: "notes",
+        version: 1,
+        operation: "insert",
+        clientId: "share-outer-rollback",
+        mutationId: "share-outer-rollback-insert",
+        id: "note:share-outer-rollback",
+        record: { title: "Share outer rollback" },
+      });
+
+      const result = await request("transact", {
+        atomic: true,
+        steps: [
+          {
+            mutation: {
+              resource: "notes",
+              version: 1,
+              operation: "share",
+              clientId: "share-outer-rollback",
+              mutationId: "share-outer-rollback-share",
+              id: "note:share-outer-rollback",
+              shareWith: { principalId: "user:partner", level: "viewer" },
+            },
+          },
+          {
+            mutation: {
+              resource: "notes",
+              version: 1,
+              operation: "insert",
+              clientId: "share-outer-rollback",
+              mutationId: "share-outer-rollback-conflict",
+              id: "note:share-outer-rollback",
+              record: { title: "Conflict" },
+            },
+          },
+        ],
+      });
+
+      expect(result.result.ok).toBe(false);
+      expect(directoryPutCalls).toBe(0);
+      await expect(localDb.findMany({
+        model: globalPermissionsTable,
+        where: [],
+        namespace,
+      })).resolves.toHaveLength(0);
+      await expect(backingDirectory.query({
+        index: "datafn.permission.principalResource",
+        value: "user:partner#notes",
+      })).resolves.toEqual({ records: [] });
     } finally {
       await localServer.close();
     }
