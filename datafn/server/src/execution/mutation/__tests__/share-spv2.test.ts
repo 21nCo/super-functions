@@ -252,7 +252,9 @@ describe("share SPV2 mutation semantics", () => {
     });
     const originalDelete = db.delete.bind(db);
     let legacyDeleteAttempts = 0;
-    db.delete = async (input) => {
+    db.delete = async (
+      input: Parameters<ReturnType<typeof memoryAdapter>["delete"]>[0],
+    ) => {
       if (input.model === getLegacyPermissionsTable("notes")) {
         legacyDeleteAttempts += 1;
         if (legacyDeleteAttempts < 3) {
