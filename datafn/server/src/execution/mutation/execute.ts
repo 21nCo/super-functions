@@ -1048,11 +1048,13 @@ export async function executeMutation(
   const releasePermissionDirectoryTask = async () => {
     if (!permissionDirectoryTaskId || !permissionDirectoryTaskPending) return;
     try {
-      await markPermissionDirectorySyncReady(db, permissionDirectoryTaskId, {
-        mutation,
-        namespace,
-        regionId: multiRegionRuntime!.regionId,
-      });
+      const release = await markPermissionDirectorySyncReady(
+        db,
+        permissionDirectoryTaskId,
+      );
+      if (release === "ownership-lost") {
+        permissionDirectoryTaskId = null;
+      }
       permissionDirectoryTaskPending = false;
     } catch (error) {
       // The pre-commit lease keeps the task durable and makes it eligible for
@@ -1067,8 +1069,8 @@ export async function executeMutation(
   };
   const syncPermissionDirectoryAfterCommit = async (committedDb = db) => {
     if (
+      needsPermissionDirectoryOutbox &&
       multiRegionRuntime &&
-      mutation.operation === "unshare" &&
       !permissionDirectoryTaskId
     ) {
       try {

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { executeReconcile } from "../src/execution/sync/reconcile.js";
 import { executeClone } from "../src/execution/sync/clone.js";
+import { resourceIdMatches } from "../src/execution/sync/resource-id.js";
 import { MemoryIdempotencyStore } from "../src/execution/idempotency.js";
 import { ChangeTrackingService } from "../src/execution/sync/change-tracking.js";
 import { memoryAdapter } from "@superfunctions/db/adapters";
@@ -254,6 +255,24 @@ describe("SCA-001: Reconcile uses db.count()", () => {
       expect.objectContaining({ from: "document42", to: "user:1" }),
     ]);
     vi.restoreAllMocks();
+  });
+
+  it("does not override an endpoint already resolved by an overlapping prefix", () => {
+    const relationSchema: DatafnSchema = {
+      resources: [
+        { name: "short", version: 1, idPrefix: "fo", fields: [] },
+        { name: "exact", version: 1, idPrefix: "foo:", fields: [] },
+      ],
+      relations: [],
+    };
+    const candidates = ["short", "exact"];
+
+    expect(resourceIdMatches(relationSchema, candidates, "short", "foo"))
+      .toBe(true);
+    expect(resourceIdMatches(relationSchema, candidates, "exact", "foo"))
+      .toBe(false);
+    expect(resourceIdMatches(relationSchema, candidates, "exact", "foo:1"))
+      .toBe(true);
   });
 });
 

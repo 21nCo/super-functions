@@ -1433,16 +1433,7 @@ describe("share SPV2 mutation semantics", () => {
       [],
     )).resolves.toHaveLength(1);
 
-    await markPermissionDirectorySyncReady(localDb, taskId, {
-      mutation: {
-        operation: "share",
-        resource: "notes",
-        id: "note:precommit",
-        shareWith: { principalId: "user:partner" },
-      },
-      namespace,
-      regionId: runtime.regionId,
-    });
+    await markPermissionDirectorySyncReady(localDb, taskId);
     await expect(drainPermissionDirectoryOutbox(localDb, runtime))
       .resolves.toEqual({ processed: 1, pending: 0 });
     await expect(localDb.internal.findMany(
@@ -1480,16 +1471,7 @@ describe("share SPV2 mutation semantics", () => {
       await expect(drainPermissionDirectoryOutbox(localDb, runtime))
         .resolves.toEqual({ processed: 0, pending: 0 });
 
-      await markPermissionDirectorySyncReady(localDb, taskId, {
-        mutation: {
-          operation: "unshare",
-          resource: "notes",
-          id: "note:long-running",
-          shareWith: { principalId: "user:partner" },
-        },
-        namespace,
-        regionId: runtime.regionId,
-      });
+      await markPermissionDirectorySyncReady(localDb, taskId);
       await expect(drainPermissionDirectoryOutbox(localDb, runtime))
         .resolves.toEqual({ processed: 1, pending: 0 });
     } finally {
@@ -1528,22 +1510,13 @@ describe("share SPV2 mutation semantics", () => {
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
       expect(renewalWhere.some((clause) => clause.field === "next_attempt_at"))
         .toBe(true);
-      await markPermissionDirectorySyncReady(localDb, taskId, {
-        mutation: {
-          operation: "share",
-          resource: "notes",
-          id: "note:renewal-race",
-          shareWith: { principalId: "user:partner" },
-        },
-        namespace,
-        regionId: "region:test",
-      });
+      await markPermissionDirectorySyncReady(localDb, taskId);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("publishes a fresh ready task after losing the pre-commit lease", async () => {
+  it("reports ownership loss without writing through the caller adapter", async () => {
     const localDb = memoryAdapter();
     await localDb.initialize();
     const permissionMutation = {
@@ -1566,23 +1539,18 @@ describe("share SPV2 mutation semantics", () => {
       { next_attempt_at: claimedLease },
     );
 
-    await markPermissionDirectorySyncReady(localDb, taskId, {
-      mutation: permissionMutation,
-      namespace,
-      regionId: "region:test",
-    });
+    await expect(markPermissionDirectorySyncReady(localDb, taskId))
+      .resolves.toBe("ownership-lost");
 
     const tasks = await localDb.internal.findMany(
       "__datafn_permission_directory_outbox",
       [],
     );
-    expect(tasks).toHaveLength(2);
-    expect(tasks.find((task) => task.id === taskId)?.next_attempt_at)
-      .toBe(claimedLease);
-    const replacement = tasks.find((task) => task.id !== taskId);
-    expect(JSON.parse(String(replacement?.mutation))).toEqual(permissionMutation);
-    expect(Date.parse(String(replacement?.next_attempt_at)))
-      .toBeLessThanOrEqual(Date.now());
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      id: taskId,
+      next_attempt_at: claimedLease,
+    });
   });
 
   it("stops a pending lease before a failing explicit drain lookup", async () => {
@@ -1714,16 +1682,7 @@ describe("share SPV2 mutation semantics", () => {
       value: "user:partner#notes",
     })).resolves.toEqual({ records: [] });
 
-    await markPermissionDirectorySyncReady(localDb, taskId, {
-      mutation: {
-        operation: "share",
-        resource: "notes",
-        id: "note:stale-selection",
-        shareWith: { principalId: "user:partner" },
-      },
-      namespace,
-      regionId: runtime.regionId,
-    });
+    await markPermissionDirectorySyncReady(localDb, taskId);
     await expect(drainPermissionDirectoryOutbox(localDb, runtime))
       .resolves.toEqual({ processed: 1, pending: 0 });
   });
@@ -2593,6 +2552,57 @@ describe("share SPV2 mutation semantics", () => {
         id: "note:unshare-rollback",
         shareWith: { principalId: "user:partner", level: "viewer" },
       });
+      const originalTransaction = (localDb as any).transaction.bind(localDb);
+      let lostTaskId: string | undefined;
+      (localDb as any).transaction = async (
+        callback: (tx: TransactionAdapter) => Promise<unknown>,
+      ) => {
+        try {
+          return await originalTransaction(async (tx: TransactionAdapter) => {
+            const interceptedInternal = new Proxy(tx.internal, {
+              get(target, property, receiver) {
+                const value = Reflect.get(target, property, receiver);
+                if (property !== "update") {
+                  return typeof value === "function" ? value.bind(target) : value;
+                }
+                return async (
+                  table: string,
+                  where: Array<{ field: string; op: string; value: unknown }>,
+                  data: Record<string, unknown>,
+                ) => {
+                  if (
+                    table === "__datafn_permission_directory_outbox" &&
+                    where.length === 2 &&
+                    Object.keys(data).length === 1 &&
+                    "next_attempt_at" in data
+                  ) {
+                    lostTaskId = String(
+                      where.find((clause) => clause.field === "id")?.value,
+                    );
+                    return 0;
+                  }
+                  return Reflect.apply(value, target, [table, where, data]);
+                };
+              },
+            });
+            const interceptedTx = new Proxy(tx, {
+              get(target, property, receiver) {
+                if (property === "internal") return interceptedInternal;
+                return Reflect.get(target, property, receiver);
+              },
+            });
+            return callback(interceptedTx);
+          });
+        } catch (error) {
+          if (lostTaskId) {
+            await localDb.internal.delete(
+              "__datafn_permission_directory_outbox",
+              [{ field: "id", op: "eq", value: lostTaskId }],
+            );
+          }
+          throw error;
+        }
+      };
       rejectPut = true;
 
       const result = await request("transact", {
@@ -2624,6 +2634,7 @@ describe("share SPV2 mutation semantics", () => {
       });
 
       expect(result.result.ok).toBe(false);
+      expect(lostTaskId).toBeDefined();
       await expect(localDb.findMany({
         model: globalPermissionsTable,
         where: [],

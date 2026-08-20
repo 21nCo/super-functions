@@ -8,7 +8,7 @@ export function resourceIdMatches(
   id: string,
 ): boolean {
   const resolved = resolveEndpointResource(candidates, id, schema);
-  if (resolved === resourceName) return true;
+  if (resolved !== undefined) return resolved === resourceName;
   const normalizedPrefixMatch = schema.resources
     .filter((item) => candidates.includes(item.name) && item.idPrefix)
     .map((item) => ({

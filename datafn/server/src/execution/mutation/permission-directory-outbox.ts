@@ -143,12 +143,7 @@ export async function enqueuePermissionDirectorySync(
 export async function markPermissionDirectorySyncReady(
   db: Adapter,
   taskId: string,
-  context: {
-    mutation: PermissionDirectorySyncMutation;
-    namespace: string;
-    regionId: string;
-  },
-): Promise<void> {
+): Promise<"ready" | "ownership-lost"> {
   const expectedLeaseValue = await stopPrecommitLeaseHeartbeat(taskId);
   const updated = expectedLeaseValue
     ? await db.internal.update(OUTBOX_TABLE, [
@@ -159,16 +154,12 @@ export async function markPermissionDirectorySyncReady(
       })
     : 0;
   if (updated === 0) {
-    // The pre-commit owner lost its lease or the claimed task was already
-    // removed. Publish a fresh ready task so a grant that commits after a
-    // stale drainer ran cannot disappear from the directory permanently.
-    await enqueuePermissionDirectorySync(
-      db,
-      context.mutation,
-      context.namespace,
-      context.regionId,
-    );
+    // The caller may be using a transaction adapter that can still roll back.
+    // Report ownership loss so its settlement owner can persist replacement
+    // work through the durable outer adapter.
+    return "ownership-lost";
   }
+  return "ready";
 }
 
 export async function deferFailedShareCompensation(

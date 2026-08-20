@@ -272,6 +272,7 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
     }
     resourceNames.add(r.name);
 
+    let effectiveIdPrefix = `${r.name}:`;
     if (r.idPrefix !== undefined) {
       if (typeof r.idPrefix !== "string") {
         return err(
@@ -280,19 +281,20 @@ export function validateSchema(schema: unknown): DatafnEnvelope<DatafnSchema> {
           { path: `resources.${r.name}.idPrefix` },
         );
       }
-      const normalizedIdPrefix = r.idPrefix.endsWith(":")
-        ? r.idPrefix.slice(0, -1)
-        : r.idPrefix;
-      const conflictingResource = normalizedIdPrefixes.get(normalizedIdPrefix);
-      if (conflictingResource) {
-        return err(
-          "SCHEMA_INVALID",
-          `Invalid schema: resource idPrefix "${r.idPrefix}" conflicts with resource "${conflictingResource}" after normalization`,
-          { path: `resources.${r.name}.idPrefix` },
-        );
-      }
-      normalizedIdPrefixes.set(normalizedIdPrefix, r.name);
+      effectiveIdPrefix = r.idPrefix;
     }
+    const normalizedIdPrefix = effectiveIdPrefix.endsWith(":")
+      ? effectiveIdPrefix.slice(0, -1)
+      : effectiveIdPrefix;
+    const conflictingResource = normalizedIdPrefixes.get(normalizedIdPrefix);
+    if (conflictingResource !== undefined) {
+      return err(
+        "SCHEMA_INVALID",
+        `Invalid schema: resource idPrefix "${effectiveIdPrefix}" conflicts with resource "${conflictingResource}" after normalization`,
+        { path: `resources.${r.name}.idPrefix` },
+      );
+    }
+    normalizedIdPrefixes.set(normalizedIdPrefix, r.name);
 
     // Validate version
     if (typeof r.version !== "number" || !Number.isInteger(r.version)) {

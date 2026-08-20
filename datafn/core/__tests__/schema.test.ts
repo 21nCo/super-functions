@@ -89,6 +89,24 @@ describe("validateSchema", () => {
     }
   });
 
+  it("reserves the implicit resource-name prefix during collision checks", () => {
+    const result = validateSchema({
+      resources: [
+        { name: "documents", version: 1, fields: [] },
+        { name: "documentAliases", version: 1, idPrefix: "documents:", fields: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_INVALID");
+      expect(result.error.message).toContain('resource "documents"');
+      expect(result.error.details).toEqual({
+        path: "resources.documentAliases.idPrefix",
+      });
+    }
+  });
+
   it("rejects duplicate field names within a resource", () => {
     const input = {
       resources: [

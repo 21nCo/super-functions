@@ -640,7 +640,7 @@ async function createDatafnPublicLink(input: {
     permissionMutation,
     input.namespace,
   );
-  const permissionDirectoryTaskId = permissionDirectoryRuntime
+  let permissionDirectoryTaskId = permissionDirectoryRuntime
     ? await enqueuePermissionDirectorySync(
         input.database,
         permissionMutation,
@@ -653,15 +653,18 @@ async function createDatafnPublicLink(input: {
   const settlePermissionDirectoryTask = async () => {
     if (!permissionDirectoryRuntime || !permissionDirectoryTaskId) return;
     try {
-      await markPermissionDirectorySyncReady(
+      const release = await markPermissionDirectorySyncReady(
         input.database,
         permissionDirectoryTaskId,
-        {
-          mutation: permissionMutation,
-          namespace: input.namespace,
-          regionId: permissionDirectoryRuntime.regionId,
-        },
       );
+      if (release === "ownership-lost") {
+        permissionDirectoryTaskId = await enqueuePermissionDirectorySync(
+          input.database,
+          permissionMutation,
+          input.namespace,
+          permissionDirectoryRuntime.regionId,
+        );
+      }
       await drainPermissionDirectorySync(
         input.database,
         permissionDirectoryTaskId,
