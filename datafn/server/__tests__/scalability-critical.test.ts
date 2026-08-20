@@ -180,7 +180,7 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const relationSchema: DatafnSchema = {
       resources: [
-        { name: "tasks", version: 1, idPrefix: "task:", fields: [] },
+        { name: "tasks", version: 1, fields: [] },
         { name: "projects", version: 1, idPrefix: "project:", fields: [] },
         { name: "documents", version: 1, idPrefix: "doc", fields: [] },
         { name: "documentArchives", version: 1, idPrefix: "document", fields: [] },
@@ -196,7 +196,7 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     };
     await db.create({
       model: "shared_assignments",
-      data: { id: "task:user", from: "task:1", to: "user:1" },
+      data: { id: "task:user", from: "tasks", to: "user:1" },
       namespace: "default",
     });
     await db.create({
@@ -237,6 +237,9 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     );
     expect(clone.joins?.join_documents_assignees_users).toEqual([
       expect.objectContaining({ from: "doc42", to: "user:1" }),
+    ]);
+    expect(clone.joins?.join_tasks_assignees_users).toEqual([
+      expect.objectContaining({ from: "tasks", to: "user:1" }),
     ]);
     expect(clone.joins?.join_documentArchives_assignees_users).toEqual([
       expect.objectContaining({ from: "document42", to: "user:1" }),

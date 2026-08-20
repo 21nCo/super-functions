@@ -3,6 +3,7 @@ import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
 } from "@superfunctions/db/adapters";
+import type { TransactionAdapter, UpdateManyParams } from "@superfunctions/db";
 import { createDatafnServer } from "../../../server.js";
 import type { DatafnSchema } from "../../../core-types.js";
 import { datafnMultiRegionPlugin } from "../../../plugins/multi-region.js";
@@ -191,19 +192,54 @@ describe("share SPV2 mutation semantics", () => {
       version: 1,
       operation: "share",
       clientId: "share-restore",
-      mutationId: "share-restore-owner",
+      mutationId: "share-restore-editor",
       id: "note:share-restore",
-      shareWith: { principalId: "user:partner", level: "owner" },
+      shareWith: { principalId: "user:partner", level: "editor" },
     });
+    const expectedFailedCanonical = (await listGlobalGrants())[0];
+    const originalTransaction = db.transaction.bind(db);
+    const originalUpdateMany = db.updateMany.bind(db);
+    let interleaved = false;
+    db.transaction = async <R>(
+      callback: (trx: TransactionAdapter) => Promise<R>,
+    ) => callback(db as unknown as TransactionAdapter);
+    db.updateMany = async (
+      input: UpdateManyParams,
+    ) => {
+      if (
+        !interleaved &&
+        input.model === getLegacyPermissionsTable("notes")
+      ) {
+        interleaved = true;
+        await mutation({
+          resource: "notes",
+          version: 1,
+          operation: "share",
+          clientId: "share-restore",
+          mutationId: "share-restore-owner",
+          id: "note:share-restore",
+          shareWith: { principalId: "user:partner", level: "owner" },
+        });
+      }
+      return originalUpdateMany(input);
+    };
+    try {
+      await rollbackDatafnPermissionGrantAfterFailedShare(
+        db,
+        failedMutation,
+        namespace,
+        null,
+        {
+          ...snapshot,
+          compensationExpectedCanonical: expectedFailedCanonical,
+        },
+      );
+    } finally {
+      db.transaction = originalTransaction;
+      db.updateMany = originalUpdateMany;
+    }
 
-    await rollbackDatafnPermissionGrantAfterFailedShare(
-      db,
-      failedMutation,
-      namespace,
-      null,
-      snapshot,
-    );
-
+    expect(interleaved).toBe(true);
     await expect(listGlobalGrants()).resolves.toEqual([
       expect.objectContaining({ level: "owner", principalId: "user:partner" }),
     ]);

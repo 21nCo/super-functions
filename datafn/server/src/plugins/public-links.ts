@@ -9,6 +9,7 @@ import {
 import { errorResponse, okResponse } from "../http/errors.js";
 import {
   executeShare,
+  getFailedSharePermissionRecord,
   rollbackDatafnPermissionGrantAfterFailedShare,
   snapshotDatafnPermissionGrantBeforeShare,
   syncDatafnPermissionGrantAfterCommit,
@@ -698,30 +699,39 @@ async function createDatafnPublicLink(input: {
       permissionDirectoryRuntime,
     );
   } catch (error) {
+    const failedPermissionRecord = getFailedSharePermissionRecord(error);
+    const compensationSnapshot = failedPermissionRecord
+      ? {
+          ...permissionSnapshot,
+          compensationExpectedCanonical: failedPermissionRecord,
+        }
+      : null;
     let compensationError: unknown;
-    try {
-      await rollbackDatafnPermissionGrantAfterFailedShare(
-        input.database,
-        {
-          resource: validation.resource,
-          id: validation.recordId ?? undefined,
-          scope: validation.scope,
-          shareWith: { principalId },
-        },
-        input.namespace,
-        permissionDirectoryRuntime,
-        permissionSnapshot,
-      );
-    } catch (cleanupError) {
-      compensationError = cleanupError;
+    if (compensationSnapshot) {
+      try {
+        await rollbackDatafnPermissionGrantAfterFailedShare(
+          input.database,
+          {
+            resource: validation.resource,
+            id: validation.recordId ?? undefined,
+            scope: validation.scope,
+            shareWith: { principalId },
+          },
+          input.namespace,
+          permissionDirectoryRuntime,
+          compensationSnapshot,
+        );
+      } catch (cleanupError) {
+        compensationError = cleanupError;
+      }
     }
-    if (compensationError && permissionDirectoryTaskId) {
+    if (compensationError && permissionDirectoryTaskId && compensationSnapshot) {
       try {
         await deferFailedShareCompensation(
           input.database,
           permissionDirectoryTaskId,
           permissionMutation,
-          permissionSnapshot,
+          compensationSnapshot,
           compensationError,
           input.namespace,
           permissionDirectoryRuntime!.regionId,

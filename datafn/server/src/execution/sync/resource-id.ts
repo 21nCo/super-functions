@@ -7,5 +7,8 @@ export function resourceIdMatches(
   resourceName: string,
   id: string,
 ): boolean {
-  return resolveEndpointResource(candidates, id, schema) === resourceName;
+  const resolved = resolveEndpointResource(candidates, id, schema);
+  if (resolved === resourceName) return true;
+  const resource = schema.resources.find((item) => item.name === resourceName);
+  return !resource?.idPrefix && id === resourceName;
 }

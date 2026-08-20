@@ -3,6 +3,7 @@ import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
 } from "@superfunctions/db/adapters";
+import type { TransactionAdapter } from "@superfunctions/db";
 import type { DatafnSchema } from "@datafn/core";
 import {
   createDatafnPublicLinksPlugin,
@@ -463,7 +464,7 @@ describe("DataFn public-links plugin", () => {
       },
     });
     const originalCreate = db.create.bind(db);
-    const originalDelete = db.delete.bind(db);
+    const originalTransaction = db.transaction.bind(db);
     const originalInternalUpdate = db.internal.update.bind(db.internal);
     let failCompensation = true;
     let lostOriginalTask = false;
@@ -495,15 +496,21 @@ describe("DataFn public-links plugin", () => {
         }
         return result;
       };
-      db.delete = async (input) => {
-        if (
-          failCompensation &&
-          input.model === "__datafn_permissions_global"
-        ) {
-          throw new Error("canonical cleanup unavailable");
-        }
-        return originalDelete(input);
-      };
+      db.transaction = async <R>(
+        callback: (trx: TransactionAdapter) => Promise<R>,
+      ) => originalTransaction(async (trx) => {
+        const originalTransactionDeleteMany = trx.deleteMany.bind(trx);
+        trx.deleteMany = async (input) => {
+          if (
+            failCompensation &&
+            input.model === "__datafn_permissions_global"
+          ) {
+            throw new Error("canonical cleanup unavailable");
+          }
+          return originalTransactionDeleteMany(input);
+        };
+        return callback(trx);
+      });
 
       const created = await post(server, "/datafn/public-links", {
         resource: "linkTag",
@@ -554,6 +561,7 @@ describe("DataFn public-links plugin", () => {
       )).resolves.toEqual([]);
     } finally {
       failCompensation = false;
+      db.transaction = originalTransaction;
       db.internal.update = originalInternalUpdate;
       await server.close();
     }
