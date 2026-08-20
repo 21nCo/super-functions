@@ -524,18 +524,11 @@ describe("DataFn public-links plugin", () => {
         [],
       );
       expect(lostOriginalTask).toBe(true);
-      expect(tasksAfterOwnershipLoss).toHaveLength(2);
+      expect(tasksAfterOwnershipLoss).toHaveLength(1);
       const replacement = tasksAfterOwnershipLoss.find((task) =>
         String(task.mutation).includes("compensate-failed-share")
       );
       expect(replacement).toBeDefined();
-      for (const task of tasksAfterOwnershipLoss) {
-        if (task.id === replacement?.id) continue;
-        await db.internal.delete(
-          "__datafn_permission_directory_outbox",
-          [{ field: "id", op: "eq", value: task.id }],
-        );
-      }
       const pending = await db.internal.findMany(
         "__datafn_permission_directory_outbox",
         [],

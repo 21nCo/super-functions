@@ -1513,29 +1513,16 @@ export async function executeMutation(
       permissionDirectoryTaskId &&
       multiRegionRuntime
     ) {
-      try {
-        await deferFailedShareCompensation(
-          db,
-          permissionDirectoryTaskId,
-          mutation,
-          failedShareCompensation.snapshot,
-          failedShareCompensation.error,
-          namespace,
-          multiRegionRuntime.regionId,
-        );
-        permissionDirectoryTaskPending = false;
-      } catch (error) {
-        logger?.error("Failed share compensation could not be made durable", {
-          error: String(error),
-          operation: mutation.operation,
-          resource: mutation.resource,
-          taskId: permissionDirectoryTaskId,
-        });
-        await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
-          .catch(() => false);
-        permissionDirectoryTaskId = null;
-        permissionDirectoryTaskPending = false;
-      }
+      permissionDirectoryTaskId = await deferFailedShareCompensation(
+        db,
+        permissionDirectoryTaskId,
+        mutation,
+        failedShareCompensation.snapshot,
+        failedShareCompensation.error,
+        namespace,
+        multiRegionRuntime.regionId,
+      );
+      permissionDirectoryTaskPending = false;
     } else if (permissionDirectoryTaskId) {
       await discardPermissionDirectorySync(db, permissionDirectoryTaskId)
         .catch((error) => {

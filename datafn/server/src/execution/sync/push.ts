@@ -1214,25 +1214,16 @@ export async function executePush(
           permissionDirectoryTaskId &&
           multiRegionRuntime
         ) {
-          try {
-            await deferFailedShareCompensation(
-              db,
-              permissionDirectoryTaskId,
-              mut,
-              failedShareCompensation.snapshot,
-              failedShareCompensation.error,
-              namespace,
-              multiRegionRuntime.regionId,
-            );
-            failedShareCompensationDeferred = true;
-          } catch (schedulingError) {
-            logger?.error("Push failed-share compensation could not be made durable", {
-              error: String(schedulingError),
-              operation: mut.operation,
-              resource: mut.resource,
-              taskId: permissionDirectoryTaskId,
-            });
-          }
+          permissionDirectoryTaskId = await deferFailedShareCompensation(
+            db,
+            permissionDirectoryTaskId,
+            mut,
+            failedShareCompensation.snapshot,
+            failedShareCompensation.error,
+            namespace,
+            multiRegionRuntime.regionId,
+          );
+          failedShareCompensationDeferred = true;
         }
         logger?.error("Push operation failed", { error: String(error), operation: mut.operation, resource: mut.resource, id: mut.id });
         opResult = {

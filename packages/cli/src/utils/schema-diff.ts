@@ -417,10 +417,20 @@ export function diffTables(
       (
         (
           constraint.tableName === dbName &&
+          (
+            !curTable.schema ||
+            !constraint.tableSchema ||
+            constraint.tableSchema === curTable.schema
+          ) &&
           constraint.columns.some((column) => changedMySqlColumns.has(column))
         ) ||
         (
           constraint.referencedTable === dbName &&
+          (
+            !curTable.schema ||
+            !constraint.referencedTableSchema ||
+            constraint.referencedTableSchema === curTable.schema
+          ) &&
           (constraint.referencedColumns ?? []).some(
             (column) => changedMySqlColumns.has(column),
           )

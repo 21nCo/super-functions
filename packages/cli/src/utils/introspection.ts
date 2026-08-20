@@ -27,6 +27,7 @@ export interface DatabaseColumn {
 
 export interface DatabaseTable {
   name: string;
+  schema?: string;
   columns: DatabaseColumn[];
   indexes: DatabaseIndex[];
   constraints: DatabaseConstraint[];
@@ -47,8 +48,10 @@ export interface DatabaseConstraint {
   name: string;
   type: 'PRIMARY KEY' | 'FOREIGN KEY' | 'UNIQUE' | 'CHECK';
   tableName: string;
+  tableSchema?: string;
   columns: string[];
   referencedTable?: string;
+  referencedTableSchema?: string;
   referencedColumns?: string[];
 }
 
@@ -229,19 +232,24 @@ export async function introspectMySQL(
     const constraintsQuery = `
       SELECT
         CONSTRAINT_NAME as name,
+        TABLE_SCHEMA as table_schema,
         TABLE_NAME as table_name,
         COLUMN_NAME as column_name,
+        REFERENCED_TABLE_SCHEMA as referenced_table_schema,
         REFERENCED_TABLE_NAME as referenced_table,
         REFERENCED_COLUMN_NAME as referenced_column
       FROM information_schema.KEY_COLUMN_USAGE
-      WHERE CONSTRAINT_SCHEMA = ?
-        AND REFERENCED_TABLE_NAME IS NOT NULL
-        AND (TABLE_NAME = ? OR REFERENCED_TABLE_NAME = ?)
-      ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+      WHERE REFERENCED_TABLE_NAME IS NOT NULL
+        AND (
+          (TABLE_SCHEMA = ? AND TABLE_NAME = ?)
+          OR
+          (REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?)
+        )
+      ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
     `;
     const [constraintRows] = await db.query(
       constraintsQuery,
-      [database, table_name, table_name],
+      [database, table_name, database, table_name],
     );
 
     // Group indexes by name
@@ -265,13 +273,15 @@ export async function introspectMySQL(
 
     const constraintMap = new Map<string, DatabaseConstraint>();
     for (const row of constraintRows as any[]) {
-      const key = `${row.table_name}:${row.name}`;
+      const key = `${row.table_schema}:${row.table_name}:${row.name}`;
       if (!constraintMap.has(key)) {
         constraintMap.set(key, {
           name: row.name,
           type: 'FOREIGN KEY',
+          tableSchema: row.table_schema,
           tableName: row.table_name,
           columns: [],
+          referencedTableSchema: row.referenced_table_schema,
           referencedTable: row.referenced_table,
           referencedColumns: [],
         });
@@ -283,6 +293,7 @@ export async function introspectMySQL(
 
     result.push({
       name: table_name,
+      schema: database,
       columns: (columns as any[]).map((c) => ({
         dialect: 'mysql' as const,
         tableName: table_name,

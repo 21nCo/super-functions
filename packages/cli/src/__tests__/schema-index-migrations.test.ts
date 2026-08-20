@@ -62,7 +62,7 @@ describe("schema index migrations", () => {
 
   it("reads MySQL visibility from EXTRA and preserves index prefixes", async () => {
     const db = {
-      query: async (query: string) => {
+      query: async (query: string, params?: unknown[]) => {
         if (query.includes("information_schema.TABLES")) {
           return [[{ table_name: "plugfn_jobs" }]];
         }
@@ -96,11 +96,26 @@ describe("schema index migrations", () => {
           }]];
         }
         if (query.includes("information_schema.KEY_COLUMN_USAGE")) {
+          expect(query).toContain("TABLE_SCHEMA = ? AND TABLE_NAME = ?");
+          expect(query).toContain(
+            "REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?",
+          );
+          expect(params).toEqual(["app", "plugfn_jobs", "app", "plugfn_jobs"]);
           return [[{
             name: "jobs_owner_fk",
+            table_schema: "app",
             table_name: "plugfn_jobs",
             column_name: "owner_id",
+            referenced_table_schema: "app",
             referenced_table: "plugfn_users",
+            referenced_column: "id",
+          }, {
+            name: "audit_job_fk",
+            table_schema: "shared",
+            table_name: "audit_log",
+            column_name: "job_id",
+            referenced_table_schema: "app",
+            referenced_table: "plugfn_jobs",
             referenced_column: "id",
           }]];
         }
@@ -113,14 +128,29 @@ describe("schema index migrations", () => {
     expect(table.columns[0].isVisible).toBe(false);
     expect(table.indexes[0].prefixLengths).toEqual([50]);
     expect(table.indexes[0].indexType).toBe("FULLTEXT");
-    expect(table.constraints).toEqual([{
-      name: "jobs_owner_fk",
-      type: "FOREIGN KEY",
-      tableName: "plugfn_jobs",
-      columns: ["owner_id"],
-      referencedTable: "plugfn_users",
-      referencedColumns: ["id"],
-    }]);
+    expect(table.schema).toBe("app");
+    expect(table.constraints).toEqual([
+      {
+        name: "jobs_owner_fk",
+        type: "FOREIGN KEY",
+        tableSchema: "app",
+        tableName: "plugfn_jobs",
+        columns: ["owner_id"],
+        referencedTableSchema: "app",
+        referencedTable: "plugfn_users",
+        referencedColumns: ["id"],
+      },
+      {
+        name: "audit_job_fk",
+        type: "FOREIGN KEY",
+        tableSchema: "shared",
+        tableName: "audit_log",
+        columns: ["job_id"],
+        referencedTableSchema: "app",
+        referencedTable: "plugfn_jobs",
+        referencedColumns: ["id"],
+      },
+    ]);
   });
 
   it("preserves SQLite index uniqueness during introspection", async () => {

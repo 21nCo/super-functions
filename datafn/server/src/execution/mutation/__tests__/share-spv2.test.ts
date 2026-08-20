@@ -486,6 +486,97 @@ describe("share SPV2 mutation semantics", () => {
     }
   });
 
+  it("keeps failed-share compensation fail-closed when task persistence is temporarily unavailable", async () => {
+    vi.useFakeTimers();
+    const taskDb = memoryAdapter();
+    await taskDb.initialize();
+    await ensurePermissionDirectoryOutbox(taskDb);
+    const originalCreate = taskDb.internal.create.bind(taskDb.internal);
+    const originalUpdate = taskDb.internal.update.bind(taskDb.internal);
+    let rejectCompensationPersistence = true;
+    const heartbeatDb = Object.create(taskDb);
+    heartbeatDb.internal = {
+      ...taskDb.internal,
+      create: async (...args: Parameters<typeof originalCreate>) => {
+        const [, data] = args;
+        if (
+          rejectCompensationPersistence &&
+          String(data.mutation ?? "").includes("compensate-failed-share")
+        ) {
+          throw new Error("replacement task unavailable");
+        }
+        return originalCreate(...args);
+      },
+      update: async (...args: Parameters<typeof originalUpdate>) => {
+        const [, , data] = args;
+        if (
+          rejectCompensationPersistence &&
+          String(data.mutation ?? "").includes("compensate-failed-share")
+        ) {
+          throw new Error("task rewrite unavailable");
+        }
+        return originalUpdate(...args);
+      },
+    };
+    const mutation = {
+      operation: "share",
+      resource: "notes",
+      id: "note:persistence-retry",
+      shareWith: { principalId: "user:partner" },
+    };
+    const taskId = await enqueuePermissionDirectorySync(
+      heartbeatDb,
+      mutation,
+      namespace,
+      "region:test",
+      { pending: true },
+    );
+
+    try {
+      await expect(deferFailedShareCompensation(
+        heartbeatDb,
+        taskId,
+        mutation,
+        {
+          permissionId: "notes:user:owner:note:persistence-retry:user:partner",
+          resource: "notes",
+          resourceId: "note:persistence-retry",
+          principalId: "user:partner",
+          canonical: null,
+          legacyManaged: false,
+          legacy: null,
+        },
+        new Error("failed share"),
+        namespace,
+        "region:test",
+      )).resolves.toBeNull();
+
+      const leased = await taskDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(leased).toHaveLength(1);
+      expect(JSON.parse(String(leased[0].mutation))).toMatchObject({
+        operation: "share",
+      });
+
+      rejectCompensationPersistence = false;
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      const converted = await taskDb.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(converted).toHaveLength(1);
+      expect(JSON.parse(String(converted[0].mutation))).toMatchObject({
+        operation: "compensate-failed-share",
+      });
+    } finally {
+      vi.useRealTimers();
+      await taskDb.close();
+    }
+  });
+
   it("retries transient legacy cleanup before completing failed-share compensation", async () => {
     setSpv2MigrationRuntimeConfig({
       readMode: "dual",
