@@ -291,7 +291,7 @@ class DatafnSyncStatusController {
       ? this.input.getOnline()
       : typeof navigator === "undefined"
         ? true
-        : navigator.onLine;
+        : navigator.onLine !== false;
   }
 
   private update(partial: Partial<DatafnSyncStatus>): void {
