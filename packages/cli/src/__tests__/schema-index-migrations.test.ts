@@ -985,6 +985,62 @@ describe("schema index migrations", () => {
     expect(down).not.toContain("legacy_body(191)");
   });
 
+  it("restores introspected MySQL RTREE indexes as SPATIAL indexes", () => {
+    const replacementSchema = {
+      modelName: "places",
+      fields: {
+        sequence: { type: "number", required: false, fieldName: "sequence" },
+      },
+      indexes: [{ name: "places_lookup_idx", fields: ["sequence"] }],
+    } as unknown as TableSchema;
+    const diffs = diffTables([replacementSchema], [{
+      name: "plugfn_places",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_places",
+        columnName: "legacy_location",
+        dataType: "geometry",
+        columnType: "geometry",
+        maxLength: null,
+        isNullable: false,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_places",
+        columnName: "sequence",
+        dataType: "int",
+        columnType: "int",
+        maxLength: null,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "places_lookup_idx",
+        tableName: "plugfn_places",
+        columns: ["legacy_location"],
+        indexType: "RTREE",
+        isUnique: false,
+      }],
+      constraints: [],
+    }], "plugfn");
+
+    expect(diffs[0].changedIndexes?.[0].current.indexType).toBe("RTREE");
+    const content = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [replacementSchema],
+      "mysql",
+    ).content;
+    const down = content.slice(content.indexOf("export async function down"));
+    expect(down).toContain(
+      "CREATE SPATIAL INDEX places_lookup_idx ON plugfn_places (legacy_location);",
+    );
+    expect(down).not.toContain("legacy_location(191)");
+  });
+
   it("preserves removed numeric-column metadata in a Kysely index rollback", () => {
     const replacementSchema = {
       modelName: "jobs",

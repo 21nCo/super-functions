@@ -443,19 +443,24 @@ function generateCreateIndexSQL(
     : '';
   if (
     mysqlIndexType &&
-    !['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL'].includes(mysqlIndexType)
+    !['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL', 'RTREE'].includes(mysqlIndexType)
   ) {
     throw new Error(
       `Unsupported introspected MySQL index type for ${index.name}: ${index.indexType}`,
     );
   }
-  if (mysqlIndexType === 'FULLTEXT' || mysqlIndexType === 'SPATIAL') {
+  if (
+    mysqlIndexType === 'FULLTEXT' ||
+    mysqlIndexType === 'SPATIAL' ||
+    mysqlIndexType === 'RTREE'
+  ) {
     if (index.unique) {
       throw new Error(
         `Unsupported unique MySQL ${mysqlIndexType} index ${index.name}`,
       );
     }
-    return `CREATE ${mysqlIndexType} INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+    const keyword = mysqlIndexType === 'FULLTEXT' ? 'FULLTEXT' : 'SPATIAL';
+    return `CREATE ${keyword} INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
   }
   const mysqlTextColumns = new Set(knownTextColumns);
   const mysqlPrefixLengths = new Map<string, number>();

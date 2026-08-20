@@ -12,15 +12,7 @@ import { ChangeTrackingService } from "./change-tracking.js";
 import type { SequenceStore } from "./sequence-store.js";
 import type { DatafnLogger } from "../../logger.js";
 import { isPrivateShareableResource, resolveAccessLevel } from "../../validation/authz.js";
-
-function resourceIdMatches(schema: DatafnSchema, resourceName: string, id: string) {
-  const resource = schema.resources.find((item) => item.name === resourceName);
-  const configuredPrefix = resource?.idPrefix ?? resourceName;
-  const prefix = configuredPrefix.endsWith(":")
-    ? configuredPrefix.slice(0, -1)
-    : configuredPrefix;
-  return id === prefix || id.startsWith(`${prefix}:`);
-}
+import { resourceIdMatches } from "./resource-id.js";
 
 function shouldIncludeJoinRowForStore(
   row: Record<string, unknown>,

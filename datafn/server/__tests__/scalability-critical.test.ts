@@ -176,16 +176,17 @@ describe("SCA-001: Reconcile uses db.count()", () => {
     vi.restoreAllMocks();
   });
 
-  it("matches colon-terminated prefixes in polymorphic shared join tables", async () => {
+  it("matches configured prefixes directly in polymorphic clone and reconcile joins", async () => {
     const db = memoryAdapter({ libraryNamespace: "datafn" });
     const relationSchema: DatafnSchema = {
       resources: [
         { name: "tasks", version: 1, idPrefix: "task:", fields: [] },
         { name: "projects", version: 1, idPrefix: "project:", fields: [] },
+        { name: "documents", version: 1, idPrefix: "doc", fields: [] },
         { name: "users", version: 1, idPrefix: "user:", fields: [] },
       ],
       relations: [{
-        from: ["tasks", "projects"],
+        from: ["tasks", "projects", "documents"],
         to: "users",
         type: "many-many",
         relation: "assignees",
@@ -202,7 +203,13 @@ describe("SCA-001: Reconcile uses db.count()", () => {
       data: { id: "project:user", from: "project:1", to: "user:1" },
       namespace: "default",
     });
+    await db.create({
+      model: "shared_assignments",
+      data: { id: "document:user", from: "doc42", to: "user:1" },
+      namespace: "default",
+    });
     vi.spyOn(ChangeTrackingService.prototype, "getCurrentServerSeq").mockResolvedValue(0);
+    vi.spyOn(ChangeTrackingService.prototype, "getLatestServerSeq").mockResolvedValue(0);
 
     const result = await executeReconcile(
       { clientId: "c1", resources: ["tasks"], includeJoins: true },
@@ -213,6 +220,17 @@ describe("SCA-001: Reconcile uses db.count()", () => {
 
     expect(result.joinCounts?.join_tasks_assignees_users).toBe(1);
     expect(result.joinCounts?.join_projects_assignees_users).toBe(1);
+    expect(result.joinCounts?.join_documents_assignees_users).toBe(1);
+
+    const clone = await executeClone(
+      { clientId: "c1", includeJoins: true },
+      relationSchema,
+      db,
+      "default",
+    );
+    expect(clone.joins?.join_documents_assignees_users).toEqual([
+      expect.objectContaining({ from: "doc42", to: "user:1" }),
+    ]);
     vi.restoreAllMocks();
   });
 });
