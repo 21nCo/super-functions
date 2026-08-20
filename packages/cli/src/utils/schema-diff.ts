@@ -314,6 +314,48 @@ export function diffTables(
         },
       }];
     });
+    const isLocalForeignKey = (constraint: DatabaseTable['constraints'][number]) =>
+      constraint.type === 'FOREIGN KEY' &&
+      constraint.tableName === dbName &&
+      (
+        !curTable.schema ||
+        !constraint.tableSchema ||
+        constraint.tableSchema === curTable.schema
+      );
+    const isInboundForeignKey = (constraint: DatabaseTable['constraints'][number]) =>
+      constraint.type === 'FOREIGN KEY' &&
+      constraint.referencedTable === dbName &&
+      (
+        !curTable.schema ||
+        !constraint.referencedTableSchema ||
+        constraint.referencedTableSchema === curTable.schema
+      );
+    const indexStartsWith = (indexColumns: string[], dependencyColumns: string[]) =>
+      dependencyColumns.length > 0 &&
+      dependencyColumns.every(
+        (column, position) => indexColumns[position] === column,
+      );
+    const constrainedIndexChanges = curTable.columns.some(
+      (column) => column.dialect === 'mysql',
+    )
+      ? changedIndexes.filter((index) => curTable.constraints.some(
+          (constraint) =>
+            (isLocalForeignKey(constraint) &&
+              indexStartsWith(index.current.columns, constraint.columns)) ||
+            (isInboundForeignKey(constraint) &&
+              indexStartsWith(
+                index.current.columns,
+                constraint.referencedColumns ?? [],
+              )),
+        ))
+      : [];
+    if (constrainedIndexChanges.length > 0) {
+      throw new Error(
+        `Cannot generate MySQL index change for ${dbName}: foreign-key supporting indexes must be migrated explicitly: ${constrainedIndexChanges
+          .map((index) => index.name)
+          .join(', ')}`,
+      );
+    }
 
     const curColMap = new Map(curTable.columns.map((c) => [c.columnName, c]));
     const reqFieldMap = reqTable.fields;
@@ -413,24 +455,13 @@ export function diffTables(
       );
     }
     const foreignKeyDependencies = curTable.constraints.filter((constraint) =>
-      constraint.type === 'FOREIGN KEY' &&
       (
         (
-          constraint.tableName === dbName &&
-          (
-            !curTable.schema ||
-            !constraint.tableSchema ||
-            constraint.tableSchema === curTable.schema
-          ) &&
+          isLocalForeignKey(constraint) &&
           constraint.columns.some((column) => changedMySqlColumns.has(column))
         ) ||
         (
-          constraint.referencedTable === dbName &&
-          (
-            !curTable.schema ||
-            !constraint.referencedTableSchema ||
-            constraint.referencedTableSchema === curTable.schema
-          ) &&
+          isInboundForeignKey(constraint) &&
           (constraint.referencedColumns ?? []).some(
             (column) => changedMySqlColumns.has(column),
           )

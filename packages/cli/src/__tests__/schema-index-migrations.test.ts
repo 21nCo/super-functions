@@ -856,6 +856,40 @@ describe("schema index migrations", () => {
     }], "plugfn")).toThrow(/foreign-key dependencies.*audit_claim_fk/);
   });
 
+  it("refuses changes to MySQL indexes that support foreign keys", () => {
+    expect(() => diffTables([syncJobs], [{
+      name: "plugfn_sync_jobs",
+      columns: [{
+        dialect: "mysql" as const,
+        tableName: "plugfn_sync_jobs",
+        columnName: "claim_token",
+        dataType: "varchar",
+        columnType: "varchar(64)",
+        maxLength: 64,
+        isNullable: true,
+        defaultValue: null,
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [{
+        name: "plugfn_sync_jobs_claim_token_idx",
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        isUnique: false,
+      }],
+      constraints: [{
+        name: "sync_jobs_claim_fk",
+        type: "FOREIGN KEY" as const,
+        tableName: "plugfn_sync_jobs",
+        columns: ["claim_token"],
+        referencedTable: "plugfn_claims",
+        referencedColumns: ["token"],
+      }],
+    }], "plugfn")).toThrow(
+      /foreign-key supporting indexes.*plugfn_sync_jobs_claim_token_idx/,
+    );
+  });
+
   it("uses dialect-correct Kysely drops for explicit rebuilt-index plans", () => {
     const plan = createMigrationPlan("plugfn", 5, 6, [{
       tableName: "plugfn_sync_jobs",
