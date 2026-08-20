@@ -147,6 +147,7 @@ function schemaDefaultClause(field: FieldSchema, dialect: Dialect): string {
 function introspectedMySqlDefaultClause(input: {
   dataType: string;
   defaultValue?: string | null;
+  extra?: string | null;
 }): string {
   if (input.defaultValue == null) return '';
   const type = input.dataType.trim().toLowerCase();
@@ -156,6 +157,12 @@ function introspectedMySqlDefaultClause(input: {
     /^(?:date|datetime|time|timestamp)$/.test(type)
   ) {
     return ` DEFAULT ${value}`;
+  }
+  if (
+    /\bDEFAULT_GENERATED\b/i.test(input.extra ?? '') &&
+    /^\([\s\S]+\)$/.test(value.trim())
+  ) {
+    return ` DEFAULT ${safeMySqlMetadataFragment(value, 'default expression')}`;
   }
   if (/^(?:tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real|bit|boolean|bool|year)$/.test(type)) {
     return ` DEFAULT ${value}`;

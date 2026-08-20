@@ -695,6 +695,12 @@ describe("schema index migrations", () => {
       fields: {
         state: { type: "string", required: true, fieldName: "state", maxLength: 32 },
         marker: { type: "string", required: true, fieldName: "marker", maxLength: 32 },
+        requestId: {
+          type: "string",
+          required: true,
+          fieldName: "request_id",
+          maxLength: 36,
+        },
       },
       indexes: [],
     } as unknown as TableSchema;
@@ -722,6 +728,18 @@ describe("schema index migrations", () => {
         defaultValue: "safe",
         isPrimaryKey: false,
         isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_metadata",
+        columnName: "request_id",
+        dataType: "varchar",
+        columnType: "varchar(36)",
+        maxLength: 36,
+        extra: "DEFAULT_GENERATED",
+        isNullable: true,
+        defaultValue: "(uuid())",
+        isPrimaryKey: false,
+        isUnique: false,
       }],
       indexes: [],
       constraints: [],
@@ -734,6 +752,7 @@ describe("schema index migrations", () => {
 
     expect(content).toContain("varchar(32) NOT NULL DEFAULT 'CURRENT_TIMESTAMP'");
     expect(content).toContain("enum('safe','\\${process.env.SECRET}','--','/*')");
+    expect(content).toContain("varchar(36) NOT NULL DEFAULT (uuid())");
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {
