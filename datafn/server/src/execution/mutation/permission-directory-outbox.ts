@@ -4,7 +4,10 @@ import type { Adapter } from "@superfunctions/db";
 import type { DatafnLogger } from "../../logger.js";
 import type { DatafnMultiRegionRuntimeConfig } from "../../plugins/multi-region.js";
 import { ensureInternalTable } from "../internal-tables.js";
-import { syncDatafnPermissionGrantAfterCommit } from "./share.js";
+import {
+  syncDatafnPermissionGrantAfterCommit,
+  type DatafnPermissionGrantSnapshot,
+} from "./share.js";
 
 const OUTBOX_TABLE = "__datafn_permission_directory_outbox";
 const PRECOMMIT_TASK_LEASE_MS = 5 * 60 * 1000;
@@ -81,6 +84,7 @@ export interface PermissionDirectorySyncMutation {
   id?: string;
   scope?: "record" | "resource";
   shareWith?: { principalId?: string; userId?: string };
+  compensationSnapshot?: DatafnPermissionGrantSnapshot;
 }
 
 export async function ensurePermissionDirectoryOutbox(db: Adapter): Promise<void> {
@@ -128,6 +132,30 @@ export async function markPermissionDirectorySyncReady(
   ], {
     next_attempt_at: new Date().toISOString(),
   });
+}
+
+export async function deferFailedShareCompensation(
+  db: Adapter,
+  taskId: string,
+  mutation: PermissionDirectorySyncMutation,
+  snapshot: DatafnPermissionGrantSnapshot,
+  error: unknown,
+): Promise<void> {
+  stopPrecommitLeaseHeartbeat(taskId);
+  const updated = await db.internal.update(OUTBOX_TABLE, [
+    { field: "id", op: "eq", value: taskId },
+  ], {
+    mutation: JSON.stringify({
+      ...mutation,
+      operation: "compensate-failed-share",
+      compensationSnapshot: snapshot,
+    } satisfies PermissionDirectorySyncMutation),
+    last_error: String(error),
+    next_attempt_at: new Date().toISOString(),
+  });
+  if (updated === 0) {
+    throw new Error(`Permission compensation task ${taskId} is no longer durable`);
+  }
 }
 
 export async function drainPermissionDirectorySync(

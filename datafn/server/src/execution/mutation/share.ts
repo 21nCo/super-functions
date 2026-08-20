@@ -3,6 +3,8 @@ import type { DatafnLogger } from "../../logger.js";
 import { hasResourceScopeOwnerAccess } from "../../validation/authz.js";
 import {
   emitLegacyShareDeprecationWarning,
+  getLegacyPermissionsTable,
+  getSpv2MigrationRuntimeConfig,
   mirrorGrantToLegacyV1,
   removeLegacyV1Grant,
 } from "../migration/spv2.js";
@@ -128,6 +130,104 @@ function getPermissionEntryId(
   principalId: string,
 ): string {
   return `${resourceType}:${resourceNs}:${resourceId ?? "*"}:${principalId}`;
+}
+
+export interface DatafnPermissionGrantSnapshot {
+  permissionId: string;
+  resource: string;
+  resourceId: string | null;
+  principalId: string;
+  canonical: Record<string, unknown> | null;
+  legacyManaged: boolean;
+  legacy: Record<string, unknown> | null;
+}
+
+export async function snapshotDatafnPermissionGrantBeforeShare(
+  db: Adapter,
+  mutation: {
+    resource: string;
+    id?: string;
+    scope?: "record" | "resource";
+    shareWith?: { principalId?: string; userId?: string };
+  },
+  namespace: string,
+): Promise<DatafnPermissionGrantSnapshot> {
+  const principal = canonicalizeSharePrincipal(
+    mutation.shareWith as Record<string, unknown> | undefined,
+  );
+  if (!principal.ok) {
+    throw new Error("Cannot snapshot a share with an invalid principal");
+  }
+  const resourceId = getShareScope(mutation.scope) === "resource"
+    ? null
+    : mutation.id ?? null;
+  const permissionId = getPermissionEntryId(
+    mutation.resource,
+    namespace,
+    resourceId,
+    principal.principalId,
+  );
+  const canonical = await db.findOne({
+    model: getPermissionsTableName(),
+    where: [{ field: "id", operator: "eq", value: permissionId }],
+    namespace,
+  });
+  const legacyManaged = getSpv2MigrationRuntimeConfig().writeMode === "dual";
+  const legacyId = `${mutation.resource}:${resourceId ?? "*"}:${principal.principalId}`;
+  const legacy = legacyManaged
+    ? await db.findOne({
+        model: getLegacyPermissionsTable(mutation.resource),
+        where: [{ field: "id", operator: "eq", value: legacyId }],
+        namespace,
+      })
+    : null;
+  return {
+    permissionId,
+    resource: mutation.resource,
+    resourceId,
+    principalId: principal.principalId,
+    canonical: canonical as Record<string, unknown> | null,
+    legacyManaged,
+    legacy: legacy as Record<string, unknown> | null,
+  };
+}
+
+async function restoreGrantRecord(
+  db: Adapter,
+  model: string,
+  id: string,
+  record: Record<string, unknown>,
+  namespace: string,
+): Promise<void> {
+  const update = { ...record };
+  delete update.id;
+  await db.upsert({
+    model,
+    where: [{ field: "id", operator: "eq", value: id }],
+    create: { ...record, id },
+    update,
+    namespace,
+    conflictTarget: "id",
+  });
+}
+
+async function removeLegacyGrantWithRetries(input: {
+  db: Adapter;
+  namespace: string;
+  resource: string;
+  resourceId: string | null;
+  principalId: string;
+}): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await removeLegacyV1Grant(input);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function isPrincipalInNamespace(
@@ -584,6 +684,7 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
   },
   namespace: string,
   multiRegionRuntime?: DatafnMultiRegionRuntimeConfig | null,
+  priorSnapshot?: DatafnPermissionGrantSnapshot,
 ): Promise<void> {
   const principal = canonicalizeSharePrincipal(
     mutation.shareWith as Record<string, unknown> | undefined,
@@ -600,29 +701,70 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
     resourceId,
     principal.principalId,
   );
-  const failures: unknown[] = [];
+  const snapshot = priorSnapshot ?? {
+    permissionId,
+    resource: mutation.resource,
+    resourceId,
+    principalId: principal.principalId,
+    canonical: null,
+    legacyManaged: getSpv2MigrationRuntimeConfig().writeMode === "dual",
+    legacy: null,
+  };
+  if (
+    snapshot.permissionId !== permissionId ||
+    snapshot.resource !== mutation.resource ||
+    snapshot.resourceId !== resourceId ||
+    snapshot.principalId !== principal.principalId
+  ) {
+    throw new Error("Cannot compensate a failed share with a mismatched snapshot");
+  }
 
-  try {
+  if (snapshot.legacyManaged) {
+    const legacyId = `${mutation.resource}:${resourceId ?? "*"}:${principal.principalId}`;
+    if (snapshot.legacy) {
+      await restoreGrantRecord(
+        db,
+        getLegacyPermissionsTable(mutation.resource),
+        legacyId,
+        snapshot.legacy,
+        namespace,
+      );
+    } else {
+      // A failed dual-write share must not leave its legacy representation
+      // active. Immediate retries handle transient failures; a caller-owned
+      // durable compensation task can retry this idempotent routine later.
+      await removeLegacyGrantWithRetries({
+        db,
+        namespace,
+        resource: mutation.resource,
+        resourceId,
+        principalId: principal.principalId,
+      });
+    }
+  }
+
+  if (snapshot.canonical) {
+    await restoreGrantRecord(
+      db,
+      getPermissionsTableName(),
+      permissionId,
+      snapshot.canonical,
+      namespace,
+    );
+  } else {
     await db.delete({
       model: getPermissionsTableName(),
       where: [{ field: "id", operator: "eq", value: permissionId }],
       namespace,
     });
-  } catch (error) {
-    failures.push(error);
   }
-  try {
-    await removeLegacyV1Grant({
-      db,
-      namespace,
-      resource: mutation.resource,
-      resourceId,
-      principalId: principal.principalId,
-    });
-  } catch (error) {
-    failures.push(error);
-  }
-  try {
+
+  if (snapshot.canonical) {
+    await indexDatafnPermissionGrant(
+      snapshot.canonical,
+      multiRegionRuntime ?? null,
+    );
+  } else {
     await deleteDatafnPermissionGrant({
       id: permissionId,
       resourceType: mutation.resource,
@@ -630,16 +772,6 @@ export async function rollbackDatafnPermissionGrantAfterFailedShare(
       resourceId,
       principalId: principal.principalId,
     }, multiRegionRuntime ?? null);
-  } catch (error) {
-    failures.push(error);
-  }
-
-  if (failures.length > 0) {
-    const error = new Error(
-      `Failed to fully compensate a rejected share (${failures.length} cleanup error${failures.length === 1 ? "" : "s"})`,
-    );
-    (error as Error & { causes?: unknown[] }).causes = failures;
-    throw error;
   }
 }
 
@@ -652,10 +784,24 @@ export async function syncDatafnPermissionGrantAfterCommit(
     id?: string;
     scope?: "record" | "resource";
     shareWith?: { principalId?: string; userId?: string };
+    compensationSnapshot?: DatafnPermissionGrantSnapshot;
   },
   namespace: string,
   multiRegionRuntime: DatafnMultiRegionRuntimeConfig | null,
 ): Promise<void> {
+  if (
+    mutation.operation === "compensate-failed-share" &&
+    mutation.compensationSnapshot
+  ) {
+    await rollbackDatafnPermissionGrantAfterFailedShare(
+      db,
+      mutation,
+      namespace,
+      multiRegionRuntime,
+      mutation.compensationSnapshot,
+    );
+    return;
+  }
   if (
     !multiRegionRuntime ||
     (mutation.operation !== "share" && mutation.operation !== "unshare")

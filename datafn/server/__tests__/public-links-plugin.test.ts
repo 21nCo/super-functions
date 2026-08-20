@@ -433,6 +433,94 @@ describe("DataFn public-links plugin", () => {
       await server.close();
     }
   });
+
+  it("durably retries failed share compensation", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const directory = createMemoryIndexedDirectoryStore();
+    const runtime = { regionId: "region:compensation", directory };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner: (request) => {
+        const actorId = request.headers.get("x-owner-actor");
+        return actorId ? { actorId } : null;
+      },
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: runtime.regionId,
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      allowUnknownResources: false,
+      publicLinks,
+      namespaceProvider: {
+        getNamespace: () => "user:owner",
+        getActorId: () => "owner",
+      },
+    });
+    const originalCreate = db.create.bind(db);
+    const originalDelete = db.delete.bind(db);
+    let failCompensation = true;
+    try {
+      const inserted = await post(server, "/datafn/mutation", {
+        resource: "linkTag",
+        version: 1,
+        operation: "insert",
+        id: "tag:compensation",
+        clientId: "public-link-compensation",
+        mutationId: "public-link-compensation-insert",
+        record: { id: "tag:compensation", label: "Compensation" },
+      }, ownerHeaders());
+      expect(inserted.status).toBe(200);
+      db.create = async (input) => {
+        const result = await originalCreate(input);
+        if (input.model === "__datafn_permissions_global") {
+          throw new Error("post-permission write failure");
+        }
+        return result;
+      };
+      db.delete = async (input) => {
+        if (
+          failCompensation &&
+          input.model === "__datafn_permissions_global"
+        ) {
+          throw new Error("canonical cleanup unavailable");
+        }
+        return originalDelete(input);
+      };
+
+      const created = await post(server, "/datafn/public-links", {
+        resource: "linkTag",
+        recordId: "tag:compensation",
+        scope: "record",
+        level: "viewer",
+      }, ownerHeaders());
+      expect(created.status).toBeGreaterThanOrEqual(500);
+      const pending = await db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      );
+      expect(pending).toHaveLength(1);
+      expect(String(pending[0].mutation)).toContain("compensate-failed-share");
+
+      failCompensation = false;
+      await expect(drainPermissionDirectoryOutbox(db, runtime))
+        .resolves.toEqual({ processed: 1, pending: 0 });
+      await expect(db.findMany({
+        model: "__datafn_permissions_global",
+        where: [],
+        namespace: "user:owner",
+      })).resolves.toEqual([]);
+      await expect(db.internal.findMany(
+        "__datafn_permission_directory_outbox",
+        [],
+      )).resolves.toEqual([]);
+    } finally {
+      failCompensation = false;
+      await server.close();
+    }
+  });
 });
 
 function createTestPublicLinks() {

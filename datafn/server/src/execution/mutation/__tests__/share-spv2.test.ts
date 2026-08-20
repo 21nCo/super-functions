@@ -7,6 +7,14 @@ import { createDatafnServer } from "../../../server.js";
 import type { DatafnSchema } from "../../../core-types.js";
 import { datafnMultiRegionPlugin } from "../../../plugins/multi-region.js";
 import {
+  rollbackDatafnPermissionGrantAfterFailedShare,
+  snapshotDatafnPermissionGrantBeforeShare,
+} from "../share.js";
+import {
+  getLegacyPermissionsTable,
+  setSpv2MigrationRuntimeConfig,
+} from "../../migration/spv2.js";
+import {
   drainPermissionDirectoryOutbox,
   drainPermissionDirectorySync,
   enqueuePermissionDirectorySync,
@@ -102,6 +110,11 @@ describe("share SPV2 mutation semantics", () => {
 
   afterEach(async () => {
     await server?.close?.();
+    setSpv2MigrationRuntimeConfig({
+      readMode: "v2",
+      writeMode: "v2",
+      warnOnLegacyApi: true,
+    });
   });
 
   it("canonicalizes legacy userId to principalId in global grants", async () => {
@@ -137,6 +150,137 @@ describe("share SPV2 mutation semantics", () => {
     expect(grants[0].principalId).toBe("user:bob");
     expect(grants[0].level).toBe("editor");
     expect(grants[0].grantKind).toBe("record");
+  });
+
+  it("restores prior canonical and legacy grants after a failed share update", async () => {
+    setSpv2MigrationRuntimeConfig({
+      readMode: "dual",
+      writeMode: "dual",
+      warnOnLegacyApi: true,
+    });
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "insert",
+      clientId: "share-restore",
+      mutationId: "share-restore-insert",
+      id: "note:share-restore",
+      record: { title: "Restore prior grant" },
+    });
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "share-restore",
+      mutationId: "share-restore-viewer",
+      id: "note:share-restore",
+      shareWith: { principalId: "user:partner", level: "viewer" },
+    });
+    const failedMutation = {
+      resource: "notes",
+      id: "note:share-restore",
+      shareWith: { principalId: "user:partner" },
+    };
+    const snapshot = await snapshotDatafnPermissionGrantBeforeShare(
+      db,
+      failedMutation,
+      namespace,
+    );
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "share-restore",
+      mutationId: "share-restore-editor",
+      id: "note:share-restore",
+      shareWith: { principalId: "user:partner", level: "editor" },
+    });
+
+    await rollbackDatafnPermissionGrantAfterFailedShare(
+      db,
+      failedMutation,
+      namespace,
+      null,
+      snapshot,
+    );
+
+    await expect(listGlobalGrants()).resolves.toEqual([
+      expect.objectContaining({ level: "viewer", principalId: "user:partner" }),
+    ]);
+    await expect(db.findMany({
+      model: getLegacyPermissionsTable("notes"),
+      where: [],
+      namespace,
+    })).resolves.toEqual([
+      expect.objectContaining({ level: "viewer", userId: "user:partner" }),
+    ]);
+  });
+
+  it("retries transient legacy cleanup before completing failed-share compensation", async () => {
+    setSpv2MigrationRuntimeConfig({
+      readMode: "dual",
+      writeMode: "dual",
+      warnOnLegacyApi: true,
+    });
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "insert",
+      clientId: "share-cleanup-retry",
+      mutationId: "share-cleanup-retry-insert",
+      id: "note:share-cleanup-retry",
+      record: { title: "Retry legacy cleanup" },
+    });
+    const failedMutation = {
+      resource: "notes",
+      id: "note:share-cleanup-retry",
+      shareWith: { principalId: "user:partner" },
+    };
+    const snapshot = await snapshotDatafnPermissionGrantBeforeShare(
+      db,
+      failedMutation,
+      namespace,
+    );
+    await mutation({
+      resource: "notes",
+      version: 1,
+      operation: "share",
+      clientId: "share-cleanup-retry",
+      mutationId: "share-cleanup-retry-share",
+      id: "note:share-cleanup-retry",
+      shareWith: { principalId: "user:partner", level: "viewer" },
+    });
+    const originalDelete = db.delete.bind(db);
+    let legacyDeleteAttempts = 0;
+    db.delete = async (input) => {
+      if (input.model === getLegacyPermissionsTable("notes")) {
+        legacyDeleteAttempts += 1;
+        if (legacyDeleteAttempts < 3) {
+          throw new Error("transient legacy cleanup failure");
+        }
+      }
+      return originalDelete(input);
+    };
+
+    try {
+      await rollbackDatafnPermissionGrantAfterFailedShare(
+        db,
+        failedMutation,
+        namespace,
+        null,
+        snapshot,
+      );
+    } finally {
+      db.delete = originalDelete;
+    }
+
+    expect(legacyDeleteAttempts).toBe(3);
+    await expect(listGlobalGrants()).resolves.toEqual([]);
+    await expect(db.findMany({
+      model: getLegacyPermissionsTable("notes"),
+      where: [],
+      namespace,
+    })).resolves.toEqual([]);
   });
 
   it("rejects shareWith payloads missing userId and principalId", async () => {

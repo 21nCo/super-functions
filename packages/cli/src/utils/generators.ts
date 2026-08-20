@@ -129,6 +129,13 @@ function escapeSqlString(value: string, dialect: Dialect): string {
   return `'${escaped}'`;
 }
 
+function escapeJavaScriptTemplateLiteral(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${');
+}
+
 function schemaDefaultClause(field: FieldSchema, dialect: Dialect): string {
   if (field.defaultValue === undefined) return '';
   const value = typeof field.defaultValue === 'string'
@@ -145,7 +152,8 @@ function introspectedMySqlDefaultClause(input: {
   const type = input.dataType.trim().toLowerCase();
   const value = String(input.defaultValue);
   if (
-    /^(?:current_timestamp(?:\(\d*\))?|current_date|current_time(?:\(\d*\))?|localtimestamp(?:\(\d*\))?)$/i.test(value)
+    /^(?:current_timestamp(?:\(\d*\))?|current_date|current_time(?:\(\d*\))?|localtimestamp(?:\(\d*\))?)$/i.test(value) &&
+    /^(?:date|datetime|time|timestamp)$/.test(type)
   ) {
     return ` DEFAULT ${value}`;
   }
@@ -414,29 +422,54 @@ function generateCreateIndexSQL(
   const ifNotExists = dialect === 'mysql' ? '' : 'IF NOT EXISTS ';
   const mysqlTextColumns = new Set(knownTextColumns);
   if (dialect === 'mysql' && schema) {
-    let indexedStringCharacters = 0;
+    let indexedKeyBytes = 0;
     for (const column of index.columns) {
       const field = Object.entries(schema.fields).find(
         ([fieldName, candidate]) => (candidate.fieldName ?? fieldName) === column,
       )?.[1];
+      if (!field) {
+        if (mysqlTextColumns.has(column)) {
+          indexedKeyBytes += 191 * 4;
+          continue;
+        }
+        throw new Error(
+          `Cannot generate MySQL index ${index.name}: no schema field exists for column ${column}`,
+        );
+      }
+      const physicalType = fieldTypeToSQL(field, dialect);
       if (field?.type === 'string') {
         const length = mysqlVarcharLength(field);
         if (length === null) {
           mysqlTextColumns.add(column);
-          indexedStringCharacters += 191;
+          indexedKeyBytes += 191 * 4;
         } else {
           if (length > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH) {
             throw new Error(
               `Cannot generate MySQL index ${index.name} on ${column}: maxLength ${length} exceeds the utf8mb4 full-column index limit ${MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH}`,
             );
           }
-          indexedStringCharacters += length;
+          indexedKeyBytes += length * 4;
         }
+      } else if (physicalType === 'TEXT') {
+        mysqlTextColumns.add(column);
+        indexedKeyBytes += 191 * 4;
+      } else if (/^(?:INT|INTEGER)$/.test(physicalType)) {
+        indexedKeyBytes += 4;
+      } else if (/^BIGINT$/.test(physicalType)) {
+        indexedKeyBytes += 8;
+      } else if (/^BOOLEAN$/.test(physicalType)) {
+        indexedKeyBytes += 1;
+      } else if (/^(?:DATE|DATETIME|TIMESTAMP|TIME)$/.test(physicalType)) {
+        indexedKeyBytes += 8;
+      } else {
+        throw new Error(
+          `Cannot generate MySQL index ${index.name}: encoded key size for ${column} (${physicalType}) cannot be proven safe`,
+        );
       }
     }
-    if (indexedStringCharacters > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH) {
+    if (indexedKeyBytes > MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH * 4) {
       throw new Error(
-        `Cannot generate MySQL index ${index.name}: indexed utf8mb4 string widths total ${indexedStringCharacters}, exceeding ${MYSQL_MAX_SAFE_INDEXED_VARCHAR_LENGTH}`,
+        `Cannot generate MySQL index ${index.name}: encoded key size ${indexedKeyBytes} bytes exceeds the 3072-byte InnoDB limit`,
       );
     }
   }
@@ -482,7 +515,7 @@ function generateKyselyCreateIndex(
   knownTextColumns: readonly string[] = [],
 ): string {
   if (dialect === 'mysql') {
-    return `  await sql\`${generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns)}\`.execute(db);`;
+    return `  await sql\`${escapeJavaScriptTemplateLiteral(generateCreateIndexSQL(tableName, index, dialect, schema, knownTextColumns))}\`.execute(db);`;
   }
   const unique = index.unique ? `.unique()` : '';
   return `  await db.schema.createIndex('${index.name}').on('${tableName}').columns(${JSON.stringify(index.columns)})${unique}.execute();`;
@@ -700,11 +733,13 @@ export function generateKyselyMigration(
           ([name, candidate]) => (candidate.fieldName ?? name) === change.column,
         )?.[1];
         if (dialect === 'mysql' && field && change.current) {
+          const upSql = `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlChangedColumnDefinition(field, change.current)}`;
+          const downSql = `ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlCurrentColumnDefinition(change.current)}`;
           upStatements.push(
-            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlChangedColumnDefinition(field, change.current)}\`.execute(db);`,
+            `  await sql\`${escapeJavaScriptTemplateLiteral(upSql)}\`.execute(db);`,
           );
           revertChangedColumns.push(
-            `  await sql\`ALTER TABLE ${diff.tableName} MODIFY COLUMN ${change.column} ${mysqlCurrentColumnDefinition(change.current)}\`.execute(db);`,
+            `  await sql\`${escapeJavaScriptTemplateLiteral(downSql)}\`.execute(db);`,
           );
         }
       }

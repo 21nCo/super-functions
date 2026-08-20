@@ -428,6 +428,64 @@ describe("schema index migrations", () => {
     }
   });
 
+  it("accounts for non-string columns in composite MySQL index key budgets", () => {
+    const composite = {
+      ...syncJobs,
+      fields: {
+        ...syncJobs.fields,
+        claimToken: { ...syncJobs.fields.claimToken, maxLength: 768 },
+        sequence: { type: "number", required: true, fieldName: "sequence" },
+      },
+      indexes: [{
+        name: "plugfn_sync_jobs_composite_idx",
+        fields: ["claimToken", "sequence"],
+        unique: false,
+      }],
+    } as unknown as TableSchema;
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_sync_jobs",
+      action: "create",
+    }]);
+
+    for (const generate of [
+      generateDrizzleMigration,
+      generatePrismaMigration,
+      generateKyselyMigration,
+    ]) {
+      expect(() => generate(plan, [composite], "mysql"))
+        .toThrow("encoded key size 3076 bytes exceeds the 3072-byte InnoDB limit");
+    }
+  });
+
+  it("prefixes MySQL indexes for date fields stored as ISO text", () => {
+    const dateText = {
+      modelName: "events",
+      fields: {
+        id: { type: "string", required: true, fieldName: "id", maxLength: 64 },
+        occurredAt: {
+          type: "datetime",
+          dateStorageType: "iso-text",
+          required: true,
+          fieldName: "occurred_at",
+        },
+      },
+      indexes: [{
+        name: "plugfn_events_occurred_at_idx",
+        fields: ["occurredAt"],
+        unique: false,
+      }],
+    } as unknown as TableSchema;
+    const plan = createMigrationPlan("plugfn", 0, 1, [{
+      tableName: "plugfn_events",
+      action: "create",
+    }]);
+
+    expect(generateDrizzleMigration(plan, [dateText], "mysql").content)
+      .toContain("plugfn_events_occurred_at_idx ON plugfn_events (occurred_at(191))");
+    expect(generateKyselyMigration(plan, [dateText], "mysql").content)
+      .toContain("plugfn_events_occurred_at_idx ON plugfn_events (occurred_at(191))");
+  });
+
   it("detects an existing MySQL VARCHAR when the schema requires unbounded TEXT", () => {
     const unbounded = {
       ...syncJobs,
@@ -586,6 +644,53 @@ describe("schema index migrations", () => {
     expect(kysely).toContain(
       "MODIFY COLUMN updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP INVISIBLE COMMENT 'update clock'",
     );
+  });
+
+  it("quotes character defaults and escapes introspected types in Kysely templates", () => {
+    const metadataSchema = {
+      modelName: "metadata",
+      fields: {
+        state: { type: "string", required: true, fieldName: "state", maxLength: 32 },
+        marker: { type: "string", required: true, fieldName: "marker", maxLength: 32 },
+      },
+      indexes: [],
+    } as unknown as TableSchema;
+    const diffs = diffTables([metadataSchema], [{
+      name: "plugfn_metadata",
+      columns: [{
+        dialect: "mysql",
+        tableName: "plugfn_metadata",
+        columnName: "state",
+        dataType: "varchar",
+        columnType: "varchar(32)",
+        maxLength: 32,
+        isNullable: true,
+        defaultValue: "CURRENT_TIMESTAMP",
+        isPrimaryKey: false,
+        isUnique: false,
+      }, {
+        dialect: "mysql",
+        tableName: "plugfn_metadata",
+        columnName: "marker",
+        dataType: "enum",
+        columnType: "enum('safe','${process.env.SECRET}','--','/*')",
+        maxLength: 21,
+        isNullable: false,
+        defaultValue: "safe",
+        isPrimaryKey: false,
+        isUnique: false,
+      }],
+      indexes: [],
+      constraints: [],
+    }], "plugfn");
+    const content = generateKyselyMigration(
+      createMigrationPlan("plugfn", 1, 2, diffs),
+      [metadataSchema],
+      "mysql",
+    ).content;
+
+    expect(content).toContain("VARCHAR(32) NOT NULL DEFAULT 'CURRENT_TIMESTAMP'");
+    expect(content).toContain("enum('safe','\\${process.env.SECRET}','--','/*')");
   });
 
   it("preserves removed TEXT-column metadata in a Kysely index rollback", () => {

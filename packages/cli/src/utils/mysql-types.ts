@@ -45,13 +45,11 @@ export function mysqlColumnTypeFromSnapshot(input: {
   if (input.columnType) {
     const completeType = input.columnType.trim();
     // COLUMN_TYPE is database-owned metadata, but generated migrations should
-    // still refuse statement delimiters and SQL comments.
+    // still refuse statement delimiters and SQL comments outside quoted ENUM
+    // and SET values. Comment-looking text inside a quoted value is data.
     if (
       completeType.length === 0 ||
-      /[;\r\n`]/.test(completeType) ||
-      completeType.includes("--") ||
-      completeType.includes("/*") ||
-      completeType.includes("*/")
+      hasUnsafeMySqlTypeSyntax(completeType)
     ) {
       throw new Error(`Unsupported introspected MySQL column type: ${input.columnType}`);
     }
@@ -69,4 +67,40 @@ export function mysqlColumnTypeFromSnapshot(input: {
     throw new Error(`Unsupported introspected MySQL column type: ${input.dataType}`);
   }
   return normalized;
+}
+
+function hasUnsafeMySqlTypeSyntax(value: string): boolean {
+  let quote: "'" | '"' | null = null;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === quote) {
+        if (value[index + 1] === quote) {
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (
+      character === ";" ||
+      character === "\r" ||
+      character === "\n" ||
+      character === "`" ||
+      character === "#" ||
+      value.startsWith("--", index) ||
+      value.startsWith("/*", index) ||
+      value.startsWith("*/", index)
+    ) {
+      return true;
+    }
+  }
+  return quote !== null;
 }

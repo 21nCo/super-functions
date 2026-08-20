@@ -10,12 +10,14 @@ import { errorResponse, okResponse } from "../http/errors.js";
 import {
   executeShare,
   rollbackDatafnPermissionGrantAfterFailedShare,
+  snapshotDatafnPermissionGrantBeforeShare,
   syncDatafnPermissionGrantAfterCommit,
 } from "../execution/mutation/share.js";
 import type { DataFnAction } from "../events.js";
 import type { DatafnMultiRegionRuntimeConfig } from "./multi-region.js";
 import {
   drainPermissionDirectorySync,
+  deferFailedShareCompensation,
   enqueuePermissionDirectorySync,
   ensurePermissionDirectoryOutbox,
   markPermissionDirectorySyncReady,
@@ -625,14 +627,26 @@ async function createDatafnPublicLink(input: {
     updatedAt: now,
     updatedBy: input.actorId
   };
+  const permissionMutation = {
+    operation: "share",
+    resource: validation.resource,
+    id: validation.recordId ?? undefined,
+    scope: validation.scope,
+    shareWith: { principalId },
+  } as const;
+  const permissionSnapshot = await snapshotDatafnPermissionGrantBeforeShare(
+    input.database,
+    permissionMutation,
+    input.namespace,
+  );
   const permissionDirectoryTaskId = permissionDirectoryRuntime
-    ? await enqueuePermissionDirectorySync(input.database, {
-        operation: "share",
-        resource: validation.resource,
-        id: validation.recordId ?? undefined,
-        scope: validation.scope,
-        shareWith: { principalId },
-      }, input.namespace, permissionDirectoryRuntime.regionId, { pending: true })
+    ? await enqueuePermissionDirectorySync(
+        input.database,
+        permissionMutation,
+        input.namespace,
+        permissionDirectoryRuntime.regionId,
+        { pending: true },
+      )
     : null;
 
   const settlePermissionDirectoryTask = async () => {
@@ -696,9 +710,30 @@ async function createDatafnPublicLink(input: {
         },
         input.namespace,
         permissionDirectoryRuntime,
+        permissionSnapshot,
       );
     } catch (cleanupError) {
       compensationError = cleanupError;
+    }
+    if (compensationError && permissionDirectoryTaskId) {
+      try {
+        await deferFailedShareCompensation(
+          input.database,
+          permissionDirectoryTaskId,
+          permissionMutation,
+          permissionSnapshot,
+          compensationError,
+        );
+      } catch (schedulingError) {
+        const combined = new Error(
+          `Permission compensation failed and could not be made durable: ${String(schedulingError)}`,
+        );
+        (combined as Error & { causes?: unknown[] }).causes = [
+          compensationError,
+          schedulingError,
+        ];
+        compensationError = combined;
+      }
     }
     try {
       // The public-link row is created before its permission grant. If grant
@@ -710,7 +745,9 @@ async function createDatafnPublicLink(input: {
         namespace: input.namespace
       });
     } finally {
-      await settlePermissionDirectoryTask();
+      if (!compensationError) {
+        await settlePermissionDirectoryTask();
+      }
     }
     if (compensationError) {
       const cleanupFailure = new Error(
