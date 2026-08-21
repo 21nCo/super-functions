@@ -1,0 +1,1 @@
+export { createSignaturePadController, type UIFnSignaturePoint, type UIFnSignatureStroke, type SignaturePadProps, type SignaturePadState, type SignaturePadActions, type SignaturePadControllerParts, type SignaturePadController } from './range-gesture-controllers';

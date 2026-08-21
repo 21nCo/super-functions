@@ -1,0 +1,337 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  McpFnRegistry,
+  createMcpFnServer,
+  structuredResult,
+} from "../src/index.js";
+
+describe("McpFnServer", () => {
+  const closeables: Array<{ close(): Promise<void> }> = [];
+
+  afterEach(async () => {
+    await Promise.all(closeables.splice(0).map((value) => value.close().catch(() => undefined)));
+  });
+
+  it("round-trips a validated tool over the official in-memory transport", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "add",
+      description: "Add two numbers.",
+      inputSchema: {
+        type: "object",
+        properties: { a: { type: "number" }, b: { type: "number" } },
+        required: ["a", "b"],
+        additionalProperties: false,
+      },
+      outputSchema: {
+        type: "object",
+        properties: { result: { type: "number" } },
+        required: ["result"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      handler: async ({ a, b }) =>
+        structuredResult({ result: Number(a) + Number(b) }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    const tools = await client.listTools();
+    expect(tools.tools).toHaveLength(1);
+    expect(tools.tools[0]).toMatchObject({
+      name: "add",
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    });
+    await expect(
+      client.callTool({ name: "add", arguments: { a: 2, b: 3 } }),
+    ).resolves.toMatchObject({
+      structuredContent: { result: 5 },
+    });
+  });
+
+  it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
+    const invoked: string[] = [];
+    const registry = new McpFnRegistry<{ permissions: readonly string[] }>()
+      .register({
+        name: "visible",
+        description: "Visible to readers.",
+        inputSchema: { type: "object" },
+        metadata: { permission: "records.read" },
+        handler: async () => { invoked.push("visible"); return structuredResult({ ok: true }); },
+      })
+      .register({
+        name: "hidden",
+        description: "Hidden from readers.",
+        inputSchema: { type: "object" },
+        metadata: { permission: "records.delete" },
+        handler: async () => { invoked.push("hidden"); return structuredResult({ ok: true }); },
+      });
+    const server = createMcpFnServer({
+      info: { name: "visibility", version: "1.0.0" },
+      registry,
+      context: () => ({ permissions: ["records.read"] }),
+      toolVisibility: ({ tool, context }) =>
+        context.permissions.includes(String(tool._meta?.permission)),
+    });
+    const client = new Client(
+      { name: "visibility-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    expect((await client.listTools()).tools.map(({ name }) => name)).toEqual(["visible"]);
+    await expect(client.callTool({ name: "hidden" })).rejects.toMatchObject({ code: -32601 });
+    await expect(client.callTool({ name: "missing" })).rejects.toMatchObject({ code: -32601 });
+    expect(invoked).toEqual([]);
+    await expect(client.callTool({ name: "visible" })).resolves.toMatchObject({
+      structuredContent: { ok: true },
+    });
+    expect(invoked).toEqual(["visible"]);
+    expect(server.manifest().tools.map(({ name }) => name)).toEqual(["hidden", "visible"]);
+  });
+
+  it("returns a tool error for invalid arguments without invoking the handler", async () => {
+    let called = false;
+    const registry = new McpFnRegistry().register({
+      name: "required",
+      description: "Require one value.",
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      handler: async () => {
+        called = true;
+        return structuredResult({ ok: true });
+      },
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    const result = await client.callTool({ name: "required", arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      ok: false,
+      error: { code: "MCPFN_INVALID_ARGUMENTS" },
+    });
+    expect(called).toBe(false);
+  });
+
+  it("allows domain packages to retain their stable invalid-argument envelope", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "domain_validation",
+      description: "Map validation failures.",
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      handler: async () => structuredResult({ ok: true }),
+      handleInvalidArguments: async (_args, issues) => ({
+        content: [{ type: "text", text: "domain invalid" }],
+        structuredContent: { ok: false, code: "DOMAIN_INVALID", issues },
+        isError: true,
+      }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    await expect(client.callTool({
+      name: "domain_validation",
+      arguments: {},
+    })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: { ok: false, code: "DOMAIN_INVALID" },
+    });
+  });
+
+  it("keeps error results valid when a tool declares a success output schema", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "success_schema",
+      description: "Declare a success-only schema.",
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      outputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      handler: async ({ value }) => structuredResult({ value }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    const result = await client.callTool({ name: "success_schema", arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({
+      error: { code: "MCPFN_INVALID_ARGUMENTS" },
+    });
+  });
+
+  it("preserves coded plain-object domain errors", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "plain_error",
+      description: "Throw a coded object.",
+      inputSchema: { type: "object" },
+      handler: async () => {
+        throw { code: "DOMAIN_DENIED", message: "Denied", metadata: { policy: "test" } };
+      },
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    await expect(client.callTool({ name: "plain_error" })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: { code: "DOMAIN_DENIED", message: "Denied", details: { policy: "test" } },
+      },
+    });
+  });
+
+  it("serializes circular and bigint error details safely", async () => {
+    const details: Record<string, unknown> = { count: 2n };
+    details.self = details;
+    const registry = new McpFnRegistry().register({
+      name: "complex_error",
+      description: "Throw complex details.",
+      inputSchema: { type: "object" },
+      handler: async () => {
+        throw { code: "COMPLEX", message: "Complex", details };
+      },
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeables.push(client, server);
+
+    await expect(client.callTool({ name: "complex_error" })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: { details: { count: "2", self: "[Circular]" } },
+      },
+    });
+  });
+
+  it("passes validated HTTP authInfo into trusted context", async () => {
+    const registry = new McpFnRegistry<{ clientId: string }>().register({
+      name: "whoami",
+      description: "Return the authenticated client.",
+      inputSchema: { type: "object" },
+      handler: async (_args, context) => structuredResult({ clientId: context.clientId }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "http-auth", version: "1.0.0" },
+      registry,
+      context: (extra) => ({ clientId: extra.authInfo?.clientId ?? "anonymous" }),
+    });
+    const handler = await server.createWebStandardHandler({ enableJsonResponse: true });
+    closeables.push(server);
+    const authInfo = {
+      token: "verified-token",
+      clientId: "client-42",
+      scopes: ["mcp:read"],
+      resource: new URL("https://example.com/mcp"),
+    };
+    const post = (body: unknown) => handler(new Request("https://example.com/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }), { authInfo });
+
+    const initialized = await post({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1.0.0" },
+      },
+    });
+    expect(initialized.status).toBe(200);
+    await post({ jsonrpc: "2.0", method: "notifications/initialized" });
+    const called = await post({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "whoami", arguments: {} },
+    });
+    expect(await called.json()).toMatchObject({
+      result: { structuredContent: { clientId: "client-42" } },
+    });
+  });
+});

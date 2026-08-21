@@ -1,0 +1,44 @@
+{
+  "name": "@billfn/admin",
+  "version": "0.1.0",
+  "description": "Function-owned Super Console administration capability for BillFn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "billfn",
+    "admin",
+    "super-console",
+    "superfunctions"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@billfn/core": "0.0.1",
+    "@superfunctions/admin": "0.1.0"
+  },
+  "devDependencies": {
+    "@superfunctions/db": "0.1.4",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}

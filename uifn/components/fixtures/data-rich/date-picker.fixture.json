@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "component": "DatePicker",
+  "slug": "date-picker",
+  "batch": "data-rich",
+  "behavior": [
+    "calendar-composition",
+    "min-max",
+    "disabled-dates",
+    "form-integration"
+  ],
+  "largeData": null,
+  "emptyState": {
+    "enabled": true
+  },
+  "errorState": {
+    "enabled": true
+  },
+  "keyboard": {
+    "enabled": true
+  },
+  "visual": {
+    "themes": [
+      "light",
+      "dark",
+      "high-contrast"
+    ],
+    "viewports": [
+      "mobile",
+      "desktop"
+    ]
+  }
+}

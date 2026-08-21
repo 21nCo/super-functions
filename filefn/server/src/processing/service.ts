@@ -484,7 +484,8 @@ export function createProcessingService(config: ProcessingServiceConfig) {
 
     async listArtifacts(
       fileId: string,
-      ctx: FileProviderContext
+      ctx: FileProviderContext,
+      page?: { limit?: number; offset?: number },
     ): Promise<FileArtifactRecord[]> {
       void ctx;
 
@@ -492,6 +493,8 @@ export function createProcessingService(config: ProcessingServiceConfig) {
         model: 'fileArtifacts',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
         orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        limit: page?.limit,
+        offset: page?.offset,
         namespace,
       });
 
@@ -501,9 +504,10 @@ export function createProcessingService(config: ProcessingServiceConfig) {
     async listArtifactsForFile(
       fileId: string,
       ctx: FileProviderContext,
+      page?: { limit?: number; offset?: number },
     ): Promise<FileArtifactRecord[]> {
       await requireReadableFile(fileId, ctx);
-      return this.listArtifacts(fileId, ctx);
+      return this.listArtifacts(fileId, ctx, page);
     },
 
     async getArtifactDownloadUrl(

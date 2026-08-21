@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "name": "DataTable",
+  "slug": "data-table",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "sort",
+    "filter",
+    "selection",
+    "pagination",
+    "virtualization"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/data-rich.ts",
+      "exportName": "DataTable"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "exportName": "DataTable"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/data-rich.ts",
+      "exportName": "DataTable"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/data-table.stories.json#default",
+    "uifn/components/stories/data-rich/data-table.stories.json#large-data",
+    "uifn/components/stories/data-rich/data-table.stories.json#keyboard",
+    "uifn/components/stories/data-rich/data-table.stories.json#empty",
+    "uifn/components/stories/data-rich/data-table.stories.json#error",
+    "uifn/components/stories/data-rich/data-table.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/data-table.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
+    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
+    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
+    "uifn/components/src/__tests__/data-rich.test.ts#visual",
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

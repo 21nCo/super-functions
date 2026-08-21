@@ -275,7 +275,11 @@ export function createSharesService(config: SharesServiceConfig) {
       });
     },
 
-    async listShareLinks(fileId: string, ctx: FileProviderContext): Promise<Array<Omit<FileShareRecord, 'tokenHash'> & { tokenHashPrefix: string }>> {
+    async listShareLinks(
+      fileId: string,
+      ctx: FileProviderContext,
+      page?: { limit?: number; offset?: number },
+    ): Promise<Array<Omit<FileShareRecord, 'tokenHash'> & { tokenHashPrefix: string }>> {
       const file = await getFile(fileId);
       if (!file) {
         throw errors.notFound('File');
@@ -289,6 +293,9 @@ export function createSharesService(config: SharesServiceConfig) {
       const shares = await db.findMany<FileShareRecord>({
         model: 'fileShares',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
+        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        limit: page?.limit,
+        offset: page?.offset,
         namespace,
       });
 

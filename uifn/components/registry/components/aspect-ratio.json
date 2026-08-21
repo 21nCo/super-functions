@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "name": "AspectRatio",
+  "slug": "aspect-ratio",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "content"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "AspectRatio"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "AspectRatio"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "AspectRatio"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/aspect-ratio.stories.json#default",
+    "uifn/components/stories/batch-a/aspect-ratio.stories.json#variants",
+    "uifn/components/stories/batch-a/aspect-ratio.stories.json#states",
+    "uifn/components/stories/batch-a/aspect-ratio.stories.json#accessibility",
+    "uifn/components/stories/batch-a/aspect-ratio.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/aspect-ratio.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#render",
+    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-a.test.ts#visual",
+    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

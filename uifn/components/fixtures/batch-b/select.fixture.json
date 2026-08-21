@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "component": "Select",
+  "slug": "select",
+  "batch": "batch-b",
+  "renderMatrix": [
+    {
+      "framework": "react",
+      "openState": false
+    },
+    {
+      "framework": "svelte",
+      "openState": false
+    },
+    {
+      "framework": "solid",
+      "openState": false
+    }
+  ],
+  "states": [
+    "default",
+    "loading",
+    "disabled",
+    "invalid",
+    "active",
+    "selected",
+    "open"
+  ],
+  "a11y": {
+    "keyboard": true,
+    "focusVisible": true,
+    "invalidState": true,
+    "overlayFocus": false
+  },
+  "visual": {
+    "themes": [
+      "light",
+      "dark",
+      "high-contrast"
+    ],
+    "viewports": [
+      "mobile",
+      "desktop"
+    ]
+  }
+}

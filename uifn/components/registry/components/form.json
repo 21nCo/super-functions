@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "name": "Form",
+  "slug": "form",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "field",
+    "label",
+    "control",
+    "description",
+    "message"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Form"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Form"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Form"
+    }
+  },
+  "behavior": [
+    "form-integration",
+    "disabled-invalid-state",
+    "keyboard"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/form.stories.json#default",
+    "uifn/components/stories/batch-b/form.stories.json#variants",
+    "uifn/components/stories/batch-b/form.stories.json#states",
+    "uifn/components/stories/batch-b/form.stories.json#accessibility",
+    "uifn/components/stories/batch-b/form.stories.json#theming",
+    "uifn/components/stories/batch-b/form.stories.json#keyboard",
+    "uifn/components/stories/batch-b/form.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/form.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#render",
+    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
+    "uifn/components/src/__tests__/batch-b.test.ts#visual",
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

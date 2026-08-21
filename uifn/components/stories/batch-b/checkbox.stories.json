@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "component": "Checkbox",
+  "slug": "checkbox",
+  "batch": "batch-b",
+  "stories": [
+    {
+      "id": "default",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "variants",
+      "args": {
+        "variant": "primary",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "states",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "accessibility",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "theming",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ]
+    },
+    {
+      "id": "keyboard",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": true
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "focus",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false,
+        "open": true
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className",
+        "disabled",
+        "invalid",
+        "open"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "Sidebar",
+  "slug": "sidebar",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "responsive-collapse",
+    "keyboard-navigation",
+    "persistent-state"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/data-rich.ts",
+      "exportName": "Sidebar"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "exportName": "Sidebar"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/data-rich.ts",
+      "exportName": "Sidebar"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/sidebar.stories.json#default",
+    "uifn/components/stories/data-rich/sidebar.stories.json#large-data",
+    "uifn/components/stories/data-rich/sidebar.stories.json#keyboard",
+    "uifn/components/stories/data-rich/sidebar.stories.json#empty",
+    "uifn/components/stories/data-rich/sidebar.stories.json#error",
+    "uifn/components/stories/data-rich/sidebar.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/sidebar.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
+    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
+    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
+    "uifn/components/src/__tests__/data-rich.test.ts#visual",
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

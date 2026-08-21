@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "hook": "useCopyToClipboard",
+  "slug": "use-copy-to-clipboard",
+  "kind": "hook-story",
+  "stories": [
+    {
+      "id": "success",
+      "args": {
+        "text": "Copied from uifn",
+        "environment": "client"
+      },
+      "controls": [
+        "text",
+        "environment"
+      ],
+      "testUse": [
+        "interaction",
+        "docs"
+      ],
+      "expected": {
+        "ok": true,
+        "status": "success"
+      }
+    },
+    {
+      "id": "failure",
+      "args": {
+        "text": "Copied from uifn",
+        "environment": "server"
+      },
+      "controls": [
+        "text",
+        "environment"
+      ],
+      "testUse": [
+        "failure",
+        "ssr"
+      ],
+      "expected": {
+        "ok": false,
+        "errorCode": "clipboard-unavailable"
+      }
+    }
+  ]
+}

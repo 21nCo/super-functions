@@ -6,9 +6,12 @@ import {
   authFnMultiRegionPlugin,
 } from '@authfn/multi-region';
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import type { AdminClient } from '@superfunctions/admin';
 import { authFnPasswordPlugin } from '@authfn/password';
 import {
+  authFnAdminCapability,
   createAuthFnAdmin,
+  createAuthFnAdminClient,
   createStaticAdminKeyAuthorizer
 } from '../index.js';
 
@@ -51,6 +54,13 @@ function authHeaders(token = 'top-secret'): Record<string, string> {
 }
 
 describe('@authfn/admin', () => {
+  it('preserves the uniform capability client alongside named methods', () => {
+    const client = createAuthFnAdminClient({} as AdminClient);
+    expect(Object.keys(client.operations)).toHaveLength(authFnAdminCapability.operations.length);
+    expect(typeof client.users.list).toBe('function');
+    expect(typeof client.sessions.revoke).toBe('function');
+  });
+
   it('requires an authorize hook before creating admin routes', () => {
     const config = createConfig();
     expect(() => createAuthFnAdmin({

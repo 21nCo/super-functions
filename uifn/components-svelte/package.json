@@ -1,0 +1,32 @@
+{
+  "name": "@uifn/components-svelte",
+  "version": "0.0.1",
+  "description": "Framework-isolated Svelte styled component boundary for uifn",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "svelte": "./dist/index.js",
+  "exports": { ".": { "types": "./dist/index.d.ts", "svelte": "./dist/index.js", "import": "./dist/index.js", "default": "./dist/index.js" }, "./*": { "types": "./dist/generated/*/index.d.ts", "svelte": "./dist/generated/*/index.js", "import": "./dist/generated/*/index.js", "default": "./dist/generated/*/index.js" } },
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-components.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-components.mjs --check",
+    "build": "svelte-package -i src -o dist --tsconfig ./tsconfig.json",
+    "dev": "svelte-package -i src -o dist --tsconfig ./tsconfig.json --watch",
+    "test": "vitest run --passWithNoTests",
+    "lint": "svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "prepack": "npm run generate:check && npm run build"
+  },
+  "dependencies": { "@uifn/components": "0.0.1", "@uifn/svelte": "0.0.2", "@uifn/recipes": "0.0.1" },
+  "peerDependencies": { "svelte": ">=5.0.0 <6" },
+  "devDependencies": { "@sveltejs/package": "^2.5.8", "svelte": "^5.46.4", "svelte-check": "^4.7.3", "typescript": "^5.0.0", "vitest": "^4.1.10" },
+  "sideEffects": ["**/*.svelte"],
+  "files": ["dist", "README.md"],
+  "author": "21n",
+  "license": "MIT",
+  "engines": { "node": ">=18 <23" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "uifn/components-svelte" },
+  "publishConfig": { "access": "public" },
+  "uifn": { "status": "ga-candidate", "layer": "components-framework", "framework": "svelte", "styling": "styled-open-compounds", "behaviorOwner": "@uifn/svelte", "schemaVersion": 1, "sourcePolicy": "clean-room" }
+}

@@ -5,6 +5,7 @@
   "description": "Building blocks for software development",
   "workspaces": [
     "searchfn/*",
+    "*fn/admin",
     "botfn/*",
     "hostfn/*",
     "authfn/*",
@@ -24,6 +25,9 @@
     "billfn/*",
     "filefn/*",
     "clifn/*",
+    "mcpfn/*",
+    "superconsole",
+    "uifn/*",
     "packages/*",
     "filefn/*",
     "filefn/examples/full-demo/*",

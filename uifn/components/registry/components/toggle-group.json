@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "name": "ToggleGroup",
+  "slug": "toggle-group",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "item"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "ToggleGroup"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "ToggleGroup"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "ToggleGroup"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/toggle-group.stories.json#default",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#variants",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#states",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#accessibility",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#theming",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#keyboard",
+    "uifn/components/stories/batch-b/toggle-group.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/toggle-group.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#render",
+    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
+    "uifn/components/src/__tests__/batch-b.test.ts#visual",
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}
