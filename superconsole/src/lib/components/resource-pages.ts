@@ -78,6 +78,9 @@ function inputSchemaAtPath(
 
 function setInputPath(target: Record<string, unknown>, path: string, value: unknown): void {
   const segments = path.split('.');
+  if (segments.some((segment) => segment === '__proto__' || segment === 'prototype' || segment === 'constructor')) {
+    throw new Error('Administration input paths cannot address object prototype properties.');
+  }
   let current = target;
   segments.forEach((segment, index) => {
     if (index === segments.length - 1) {
@@ -85,7 +88,7 @@ function setInputPath(target: Record<string, unknown>, path: string, value: unkn
       return;
     }
     const existing = current[segment];
-    if (!isAdminRecord(existing)) current[segment] = {};
+    if (!isAdminRecord(existing)) current[segment] = Object.create(null) as Record<string, unknown>;
     current = current[segment] as Record<string, unknown>;
   });
 }

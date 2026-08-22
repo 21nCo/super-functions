@@ -11,6 +11,23 @@ export interface ListSelection<TKey extends CollectionKey> {
   readonly currentKey: TKey | null;
 }
 
+function createReadonlySet<TKey>(values: Iterable<TKey>): ReadonlySet<TKey> {
+  const set = new Set(values);
+  let facade: ReadonlySet<TKey>;
+  facade = {
+    get size() { return set.size; },
+    has: (value) => set.has(value),
+    entries: () => set.entries(),
+    keys: () => set.keys(),
+    values: () => set.values(),
+    forEach(callback, thisArg) {
+      set.forEach((value) => callback.call(thisArg, value, value, facade));
+    },
+    [Symbol.iterator]: () => set[Symbol.iterator](),
+  };
+  return Object.freeze(facade);
+}
+
 export function createListSelection<TKey extends CollectionKey>(options: {
   readonly mode?: SelectionMode;
   readonly behavior?: SelectionBehavior;
@@ -23,7 +40,7 @@ export function createListSelection<TKey extends CollectionKey>(options: {
   return Object.freeze({
     mode,
     behavior: options.behavior ?? 'replace',
-    selectedKeys: new Set(mode === 'none' ? [] : mode === 'single' ? selected.slice(0, 1) : selected),
+    selectedKeys: createReadonlySet(mode === 'none' ? [] : mode === 'single' ? selected.slice(0, 1) : selected),
     anchorKey: options.anchorKey ?? null,
     currentKey: options.currentKey ?? null,
   });
@@ -47,8 +64,9 @@ export function selectCollectionRange<T, TKey extends CollectionKey>(
   selection: ListSelection<TKey>,
   toKey: TKey,
 ): ListSelection<TKey> {
+  if (!collection.keys.includes(toKey)) return selection;
   if (selection.mode !== 'multiple' || collection.isDisabled(toKey)) return selectCollectionKey(collection, selection, toKey);
-  const anchor = selection.anchorKey && collection.keys.includes(selection.anchorKey) ? selection.anchorKey : toKey;
+  const anchor = selection.anchorKey !== null && collection.keys.includes(selection.anchorKey) ? selection.anchorKey : toKey;
   const [start, end] = [collection.indexOf(anchor), collection.indexOf(toKey)].sort((a, b) => a - b);
   const selected = new Set(selection.behavior === 'replace' ? [] : selection.selectedKeys);
   collection.keys.slice(start, end + 1).forEach((key) => {

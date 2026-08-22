@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@docsfn/cli": "0.0.2",
+    "@uifn/core": "0.0.1",
     "@sveltejs/adapter-auto": "^3.0.0",
     "@sveltejs/adapter-cloudflare": "^7.0.0",
     "@sveltejs/kit": "^2.0.0",

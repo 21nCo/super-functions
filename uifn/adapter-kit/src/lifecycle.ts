@@ -15,22 +15,22 @@ export function createLifecycleScope(): LifecycleScope {
   const remove = (cleanup: AdapterCleanup) => {
     cleanups.delete(cleanup);
   };
+  const add = (cleanup: AdapterCleanup): AdapterCleanup => {
+    if (!isActive) {
+      cleanup();
+      return () => undefined;
+    }
+    cleanups.add(cleanup);
+    return () => remove(cleanup);
+  };
 
   return {
-    add(cleanup) {
-      if (!isActive) {
-        cleanup();
-        return () => undefined;
-      }
-
-      cleanups.add(cleanup);
-      return () => remove(cleanup);
-    },
+    add,
     run(createCleanup) {
       const cleanup = createCleanup();
 
       if (typeof cleanup === 'function') {
-        this.add(cleanup as AdapterCleanup);
+        add(cleanup as AdapterCleanup);
       }
 
       return cleanup;
@@ -41,10 +41,18 @@ export function createLifecycleScope(): LifecycleScope {
       }
 
       isActive = false;
-      Array.from(cleanups)
-        .reverse()
-        .forEach((cleanup) => cleanup());
+      const pending = Array.from(cleanups).reverse();
       cleanups.clear();
+      const errors: unknown[] = [];
+      pending.forEach((cleanup) => {
+        try {
+          cleanup();
+        } catch (error) {
+          errors.push(error);
+        }
+      });
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, 'Multiple adapter cleanup callbacks failed.');
     },
     active() {
       return isActive;

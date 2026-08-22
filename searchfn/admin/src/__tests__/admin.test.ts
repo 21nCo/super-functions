@@ -122,6 +122,15 @@ describe("@searchfn/admin", () => {
       query: "Console",
     })).resolves.toEqual([]);
 
+    await adapter.execute("searchfn.documents.index", {
+      id: "docs:001",
+      payload: { fields: { title: "Leading zero" } },
+    }, context);
+    await expect(adapters.get("environment_1")!.search({
+      resource: "docs",
+      query: "Leading",
+    })).resolves.toEqual(["001"]);
+
     await adapter.execute("searchfn.documents.remove-document", {
       id: "docs:doc-1",
     }, context);
@@ -129,5 +138,28 @@ describe("@searchfn/admin", () => {
       resource: "docs",
       query: "Console",
     })).resolves.toEqual([]);
+  });
+
+  it("applies index list search, sorting, limits, and cursors", async () => {
+    const adapter = createSearchFnAdminAdapter(createSearchFnDomainAdminService({
+      adapter: () => new MemoryAdapter(),
+      resources: () => ["zeta", "alpha", "beta"],
+    }));
+    const first = await adapter.execute("searchfn.indexes-collections.list", {
+      search: "a",
+      sort: [{ field: "name", direction: "asc" }],
+      limit: 2,
+    }, context);
+    expect(first.data).toMatchObject({
+      items: [{ id: "alpha" }, { id: "beta" }],
+      nextCursor: expect.any(String),
+    });
+    const second = await adapter.execute("searchfn.indexes-collections.list", {
+      search: "a",
+      sort: [{ field: "name", direction: "asc" }],
+      limit: 2,
+      cursor: (first.data as { nextCursor: string }).nextCursor,
+    }, context);
+    expect(second.data).toEqual({ items: [{ id: "zeta", name: "zeta", status: "available" }], nextCursor: null });
   });
 });

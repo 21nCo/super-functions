@@ -52,7 +52,9 @@ export function createElementRegistry<TElement>(
         elements.set(key, element);
       }
 
-      return () => elements.delete(key);
+      return () => {
+        if (element !== null && elements.get(key) === element) elements.delete(key);
+      };
     },
     unregister(key) {
       elements.delete(key);
@@ -63,7 +65,7 @@ export function createElementRegistry<TElement>(
     require(key) {
       const element = elements.get(key);
 
-      if (!element) {
+      if (!elements.has(key)) {
         throw createUIFnError({
           code: 'UIFN_ERR_CONTEXT_MISSING',
           package: '@uifn/adapter-kit',
@@ -75,7 +77,7 @@ export function createElementRegistry<TElement>(
         });
       }
 
-      return element;
+      return element as TElement;
     },
     has(key) {
       return elements.has(key);

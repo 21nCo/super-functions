@@ -16,16 +16,21 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     equals: (left: string, right: string) => collator.compare(normalize(left), normalize(right)) === 0,
     startsWith(value: string, query: string) {
       const normalizedValue = Array.from(normalize(value));
-      const normalizedQuery = Array.from(normalize(query));
+      const normalizedQuery = normalize(query);
       if (normalizedQuery.length === 0) return true;
-      return collator.compare(normalizedValue.slice(0, normalizedQuery.length).join(''), normalizedQuery.join('')) === 0;
+      for (let end = 1; end <= normalizedValue.length; end += 1) {
+        if (collator.compare(normalizedValue.slice(0, end).join(''), normalizedQuery) === 0) return true;
+      }
+      return false;
     },
     includes(value: string, query: string) {
       const normalizedValue = Array.from(normalize(value));
-      const normalizedQuery = Array.from(normalize(query));
+      const normalizedQuery = normalize(query);
       if (normalizedQuery.length === 0) return true;
-      for (let index = 0; index <= normalizedValue.length - normalizedQuery.length; index += 1) {
-        if (collator.compare(normalizedValue.slice(index, index + normalizedQuery.length).join(''), normalizedQuery.join('')) === 0) return true;
+      for (let start = 0; start < normalizedValue.length; start += 1) {
+        for (let end = start + 1; end <= normalizedValue.length; end += 1) {
+          if (collator.compare(normalizedValue.slice(start, end).join(''), normalizedQuery) === 0) return true;
+        }
       }
       return false;
     },

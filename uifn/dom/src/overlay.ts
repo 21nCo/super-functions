@@ -87,15 +87,16 @@ function elementNode(value: Node | null | undefined): Element | null {
 
 function accessibleNameEvidence(content: HTMLElement) {
   const root = content.getRootNode();
-  const queryRoot = root as Node & { querySelector?: (selector: string) => Element | null };
+  const queryRoot = root as Node & {
+    getElementById?: (id: string) => Element | null;
+    querySelectorAll?: (selector: string) => NodeListOf<Element>;
+  };
   const labelledText = (content.getAttribute('aria-labelledby')?.trim().split(/\s+/).filter(Boolean) ?? [])
     .map((id) => {
-      const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-        ? CSS.escape(id)
-        : id.replace(/"/g, '\\"');
-      return typeof queryRoot.querySelector === 'function'
-        ? queryRoot.querySelector(`#${escaped}`)?.textContent ?? ''
-        : '';
+      const direct = queryRoot.getElementById?.(id);
+      const fallback = direct ?? Array.from(queryRoot.querySelectorAll?.('[id]') ?? [])
+        .find((element) => element.id === id);
+      return fallback?.textContent ?? '';
     });
   return {
     ariaLabel: content.getAttribute('aria-label'),

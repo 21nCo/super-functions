@@ -302,6 +302,8 @@ describe("McpFn manifests", () => {
       expect.objectContaining({ code: "prompt-arguments-changed", severity: "behavioral" }),
     ]);
     expect(canonicalJson({ "ä": 1, z: 2 })).toBe('{"z":2,"ä":1}');
+    expect(canonicalJson({ "2": "two", "10": "ten", a: "letter" })).toBe('{"10":"ten","2":"two","a":"letter"}');
+    expect(canonicalJson({ at: new Date("2026-08-21T00:00:00.000Z") })).toBe('{"at":"2026-08-21T00:00:00.000Z"}');
   });
 
   it("normalizes elicitation requirements and rejects malformed manifest entries", () => {

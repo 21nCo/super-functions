@@ -55,6 +55,12 @@ class AuthFnOperatorResponseError extends Error {
   }
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 function authRequest(original: Request, path: string, body?: unknown): Request {
   const url = new URL(original.url);
   url.pathname = path;
@@ -148,7 +154,7 @@ export function createAuthFnOperatorAuth<
   options: AuthFnOperatorAuthOptions<TPrincipal, TPlugins>,
 ) {
   const authFn = authfn(options.config).createServer(options.config);
-  const basePath = (options.config.basePath ?? '/auth').replace(/\/+$/, '') || '/';
+  const basePath = trimTrailingSlashes(options.config.basePath ?? '/auth') || '/';
   const route = (suffix: string) => `${basePath === '/' ? '' : basePath}${suffix}`;
 
   return {

@@ -65,33 +65,37 @@ function ownerFor(value: PlugFnDomainIdentity): PlugFnConnectionOwner {
     : { kind: "user", userId: value.userId, tenantId: value.tenantId };
 }
 
-function owns(ownerKind: string | undefined, ownerId: string | undefined, value: PlugFnDomainIdentity): boolean {
+function sameTenant(tenantId: string | undefined, value: PlugFnDomainIdentity): boolean {
+  return tenantId === value.tenantId;
+}
+
+function ownsLegacyRecord(ownerKind: string | undefined, ownerId: string | undefined, value: PlugFnDomainIdentity): boolean {
+  if (value.organizationId) return ownerKind === "organization" && ownerId === value.organizationId;
+  return ownerKind === "user" && ownerId === value.userId;
+}
+
+function owns(ownerKind: string | undefined, ownerId: string | undefined, tenantId: string | undefined, value: PlugFnDomainIdentity): boolean {
+  if (!sameTenant(tenantId, value)) return false;
   if (value.organizationId) return ownerKind === "organization" && ownerId === value.organizationId;
   return ownerKind === "user" && ownerId === value.userId;
 }
 
 function assertConnectionOwner(connection: Connection, value: PlugFnDomainIdentity): void {
+  if (!sameTenant(connection.tenantId, value)) throw new AdminError("not_found", "The PlugFn connection was not found in the active project identity.");
   if (!connection.ownerKind && !connection.ownerId && connection.userId === value.userId) return;
   if (connection.ownerKind === "delegated" && value.organizationId && connection.ownerId === value.organizationId && connection.delegatedToUserId === value.userId) return;
-  if (owns(connection.ownerKind, connection.ownerId, value)) return;
+  if (owns(connection.ownerKind, connection.ownerId, connection.tenantId, value)) return;
   throw new AdminError("not_found", "The PlugFn connection was not found in the active project identity.");
 }
 
 function assertInstallationOwner(installation: PlugFnProviderInstallation, value: PlugFnDomainIdentity): void {
+  if (!sameTenant(installation.tenantId, value)) throw new AdminError("not_found", "The PlugFn provider installation was not found in the active project identity.");
   if (installation.ownerKind === "delegated" && value.organizationId && installation.ownerId === value.organizationId && installation.delegatedToUserId === value.userId) return;
-  if (!owns(installation.ownerKind, installation.ownerId, value)) throw new AdminError("not_found", "The PlugFn provider installation was not found in the active project identity.");
+  if (!owns(installation.ownerKind, installation.ownerId, installation.tenantId, value)) throw new AdminError("not_found", "The PlugFn provider installation was not found in the active project identity.");
 }
 
 function assertWorkflowOwner(workflow: Workflow, value: PlugFnDomainIdentity): void {
   if (workflow.userId !== value.userId) throw new AdminError("not_found", "The PlugFn workflow was not found in the active project identity.");
-}
-
-function assertWebhookOwner(receipt: PlugFnWebhookReceipt, value: PlugFnDomainIdentity): void {
-  if (!owns(receipt.ownerKind, receipt.ownerId, value)) throw new AdminError("not_found", "The PlugFn webhook receipt was not found in the active project identity.");
-}
-
-function assertSyncOwner(job: PlugFnSyncJob, value: PlugFnDomainIdentity): void {
-  if (!owns(job.ownerKind, job.ownerId, value)) throw new AdminError("not_found", "The PlugFn sync job was not found in the active project identity.");
 }
 
 function providerView(provider: Provider, configured: boolean): PlugFnProviderView {
@@ -163,18 +167,18 @@ async function ownedReceipt(options: PlugFnDomainAdminServiceOptions, id: string
   const mapped = await identity(options, context);
   const receipt = await options.plugfn.runtime.webhooks.getReceipt(id);
   if (!receipt) throw new AdminError("not_found", "The PlugFn webhook receipt was not found in the active project identity.");
-  if (receipt.ownerKind && receipt.ownerId) assertWebhookOwner(receipt, mapped);
-  else if (receipt.connectionId) await ownedConnection(options, receipt.connectionId, context);
-  else throw new AdminError("not_found", "The PlugFn webhook receipt has no verifiable project owner.");
+  if (receipt.connectionId) await ownedConnection(options, receipt.connectionId, context);
+  else if (!ownsLegacyRecord(receipt.ownerKind, receipt.ownerId, mapped)) {
+    throw new AdminError("not_found", "The PlugFn webhook receipt has no verifiable project owner.");
+  }
   return receipt;
 }
 
 async function ownedSyncJob(options: PlugFnDomainAdminServiceOptions, id: string, context: AdminOperationContext): Promise<PlugFnSyncJob> {
-  const mapped = await identity(options, context);
+  await identity(options, context);
   const job = await options.plugfn.runtime.sync.getJob(id);
   if (!job) throw new AdminError("not_found", "The PlugFn sync job was not found in the active project identity.");
-  if (job.ownerKind && job.ownerId) assertSyncOwner(job, mapped);
-  else await ownedConnection(options, job.connectionId, context);
+  await ownedConnection(options, job.connectionId, context);
   return job;
 }
 

@@ -12,8 +12,8 @@ export interface AdminMutationRiskReview {
   reason: string;
 }
 
-const CREDENTIAL_RESOURCE = /(?:^|\.)(?:credentials?|secrets?|secret-sets?|secret-set-members?|device-tokens?|auth-sessions?|connections?|provider-installations?|variables?|grants?|share-links?)(?:\.|$)/;
-const EXTERNAL_ACTION = /(?:^|\.)(?:send-[a-z0-9-]+|publish|unpublish|deploy|rollback|attach|detach|refund-payment|change-subscription|cancel-subscription|reconcile-provider|manage-domain|create-webhook|expire-inbox|purge|enable|disable|run|enqueue|retry-run|cancel-run)$/;
+const CREDENTIAL_RESOURCE = /(?:^|\.)(?:credentials?|secrets?|secret-sets?|secret-set-members?|device-tokens?|auth-sessions?|sessions?|connections?|provider-installations?|variables?|grants?|share-links?)(?:\.|$)/;
+const EXTERNAL_ACTION = /(?:^|\.)(?:send-[a-z0-9-]+|publish|unpublish|deploy|rollback|attach|detach|connect|disconnect|authorize|refresh|refund-payment|change-subscription|cancel-subscription|reconcile-provider|manage-domain|create-webhook|expire-inbox|purge|enable|disable|run|enqueue|retry-run|cancel-run)$/;
 
 /**
  * Produces deterministic JSON-safe evidence for every mutation whose operation

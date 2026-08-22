@@ -28,7 +28,13 @@ export function createAsyncList<T>(options: {
   const listeners = new Set<(state: AsyncListState<T>) => void>();
   const publish = (next: AsyncListState<T>) => {
     state = Object.freeze(next);
-    listeners.forEach((listener) => listener(state));
+    listeners.forEach((listener) => {
+      try {
+        listener(state);
+      } catch {
+        // Subscriber failures are isolated from list state transitions.
+      }
+    });
   };
   const api: AsyncList<T> = {
     get state() { return state; },
@@ -51,7 +57,18 @@ export function createAsyncList<T>(options: {
       }
       return state;
     },
-    cancel() { controller?.abort(); },
+    cancel() {
+      if (!controller || controller.signal.aborted) return;
+      controller.abort();
+      if (state.status === 'loading') {
+        publish({
+          ...state,
+          status: state.items.length > 0 ? 'loaded' : 'idle',
+          error: null,
+          requestId: state.requestId + 1,
+        });
+      }
+    },
     subscribe(callback) {
       if (destroyed) return () => undefined;
       listeners.add(callback);

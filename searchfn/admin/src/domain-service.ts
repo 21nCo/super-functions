@@ -1,6 +1,9 @@
 import type { SearchAdapter, SearchDocument } from "@searchfn/adapter-contracts";
 import {
   AdminError,
+  decodeAdminCursor,
+  encodeAdminCursor,
+  normalizeAdminPageLimit,
   type AdminOperationContext,
   type AdminOperationResult,
 } from "@superfunctions/admin";
@@ -8,6 +11,7 @@ import type {
   SearchFnAdminRecord,
   SearchFnAdminService,
   SearchFnItemOutput,
+  SearchFnListInput,
   SearchFnListOutput,
   SearchFnMutationOutput,
 } from "./types.js";
@@ -39,21 +43,63 @@ function item(value: object): AdminOperationResult<SearchFnItemOutput> {
   return { ok: true, data: { item: { ...value } } };
 }
 
-function list(values: object[]): AdminOperationResult<SearchFnListOutput> {
-  return { ok: true, data: { items: values.map((value) => ({ ...value })), nextCursor: null } };
+function list(
+  values: object[],
+  input: SearchFnListInput,
+  context: AdminOperationContext,
+): AdminOperationResult<SearchFnListOutput> {
+  let records = values.map((value) => ({ ...value }) as JsonRecord);
+  if (input.search?.trim()) {
+    const query = input.search.trim().toLowerCase();
+    records = records.filter((value) => JSON.stringify(value).toLowerCase().includes(query));
+  }
+  if (input.filter) {
+    records = records.filter((value) =>
+      Object.entries(input.filter!).every(([key, expected]) => Object.is(value[key], expected)));
+  }
+  const sorts = input.sort ?? [];
+  records.sort((left, right) => {
+    for (const descriptor of sorts) {
+      const field = typeof descriptor.field === "string" ? descriptor.field : undefined;
+      if (!field) continue;
+      const direction = descriptor.direction === "desc" ? -1 : 1;
+      const compared = String(left[field] ?? "").localeCompare(String(right[field] ?? ""));
+      if (compared !== 0) return compared * direction;
+    }
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  });
+  const decoded = input.cursor
+    ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope)
+    : { offset: 0 };
+  const offset = decoded.offset ?? 0;
+  if (!Number.isInteger(offset) || (offset as number) < 0) {
+    throw new AdminError("invalid_argument", "The SearchFn cursor is invalid.");
+  }
+  const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 200 });
+  const items = records.slice(offset as number, (offset as number) + limit);
+  const nextOffset = (offset as number) + items.length;
+  return {
+    ok: true,
+    data: {
+      items,
+      nextCursor: nextOffset < records.length
+        ? encodeAdminCursor(context.scope, { offset: nextOffset })
+        : null,
+    },
+  };
 }
 
 function accepted(value: JsonRecord): AdminOperationResult<SearchFnMutationOutput> {
   return { ok: true, data: { accepted: true, ...value } };
 }
 
-function splitDocumentId(value: string): { resource: string; id: string | number } {
+function splitDocumentId(value: string): { resource: string; id: string } {
   const separator = value.indexOf(":");
   if (separator <= 0 || separator === value.length - 1) {
     throw new AdminError("invalid_argument", "SearchFn document targets use the form resource:id.");
   }
   const id = value.slice(separator + 1);
-  return { resource: value.slice(0, separator), id: /^\d+$/.test(id) ? Number(id) : id };
+  return { resource: value.slice(0, separator), id };
 }
 
 function documents(value: unknown): SearchDocument[] {
@@ -95,9 +141,9 @@ export function createSearchFnDomainAdminService(
   };
 
   return {
-    async listAdapters(_input, context) {
+    async listAdapters(input, context) {
       const { adapterInfo } = await state(context);
-      return list([adapterInfo]);
+      return list([adapterInfo], input, context);
     },
     async getAdapter(input, context) {
       const { adapter, adapterInfo } = await state(context);
@@ -106,8 +152,8 @@ export function createSearchFnDomainAdminService(
       }
       return item(adapterInfo);
     },
-    async listIndexes(_input, context) {
-      return list((await state(context)).indexInfo);
+    async listIndexes(input, context) {
+      return list((await state(context)).indexInfo, input, context);
     },
     async getIndex(input, context) {
       const { indexInfo } = await state(context);
@@ -115,9 +161,9 @@ export function createSearchFnDomainAdminService(
       if (!found) throw new AdminError("not_found", "SearchFn index was not found in the active scope.");
       return item(found);
     },
-    async listHealth(_input, context) {
+    async listHealth(input, context) {
       const { adapter } = await state(context);
-      return list([{ id: adapter.name, adapter: adapter.name, state: "ok", capabilities: adapter.capabilities ?? {} }]);
+      return list([{ id: adapter.name, adapter: adapter.name, state: "ok", capabilities: adapter.capabilities ?? {} }], input, context);
     },
     async getHealth(input, context) {
       const { adapter } = await state(context);

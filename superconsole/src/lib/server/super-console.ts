@@ -526,6 +526,9 @@ export class SuperConsole {
   private mcpHandlerPromise?: Promise<SuperConsoleMcpHandler>;
 
   constructor(options: SuperConsoleOptions) {
+    if (options.apiBasePath !== undefined && options.apiBasePath !== '/api/admin/v1') {
+      throw new Error('The bundled Super Console UI currently requires apiBasePath to be /api/admin/v1.');
+    }
     const enabledModules = parseModuleSelection(
       options.enabledModules,
       options.adapters.map((adapter) => adapter.manifest),
@@ -1205,6 +1208,9 @@ export class SuperConsole {
     if (!entry || entry.moduleId !== moduleId) throw new SuperConsoleHttpError('The requested module operation is not enabled.', { status: 404, code: 'OPERATION_NOT_ENABLED' });
     if (!(await this.operationDiscoverable(entry, state))) {
       throw new SuperConsoleHttpError('The requested module operation is not enabled.', { status: 404, code: 'OPERATION_NOT_ENABLED' });
+    }
+    if (entry.operation.safety.classification !== 'read' && READ_METHODS.has(request.method)) {
+      await this.options.auth.authorizeMutation?.({ principal: state.principal, request });
     }
     const input = await operationInput(request, entry, matchedPath);
     const dispatched = await this.dispatcher.dispatch({ operationId: entry.operation.id, input, context: state.context });

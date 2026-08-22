@@ -78,12 +78,14 @@ export function errorResult(
           code: "MCPFN_TOOL_ERROR",
           message: error instanceof Error ? error.message : String(error),
         };
-  const structuredContent = jsonSafe({
+  const structuredContent = {
     ok: false,
     error: Object.fromEntries(
-      Object.entries(normalized).filter(([, value]) => value !== undefined),
+      Object.entries(normalized)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [key, key === "details" ? jsonSafe(value) : value]),
     ),
-  }) as { ok: false; error: Record<string, unknown> };
+  } as { ok: false; error: Record<string, unknown> };
   return {
     content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
     ...(options.includeStructuredContent === false ? {} : { structuredContent }),

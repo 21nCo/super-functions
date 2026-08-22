@@ -33,7 +33,7 @@
         <CardContent>
           <dl class="detail-list">
             {#if view.status}<div><dt>Status</dt><dd><StatusBadge status={view.status} /></dd></div>{/if}
-            {#each view.fields as field (field.label)}
+            {#each view.fields as field, index (index)}
               <div><dt>{field.label}</dt><dd class:code-value={field.format === 'code'}>{formatValue(field.value, field.format)}</dd></div>
             {/each}
           </dl>

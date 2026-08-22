@@ -16,5 +16,7 @@ export const STYLED_PILOT_DEMOS = {
 export type StyledPilotName = keyof typeof STYLED_PILOT_DEMOS;
 
 export function getStyledPilotDemo(component: string): readonly string[] | undefined {
-  return STYLED_PILOT_DEMOS[component as StyledPilotName];
+  return Object.hasOwn(STYLED_PILOT_DEMOS, component)
+    ? STYLED_PILOT_DEMOS[component as StyledPilotName]
+    : undefined;
 }

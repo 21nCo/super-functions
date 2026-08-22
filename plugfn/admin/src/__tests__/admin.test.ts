@@ -120,6 +120,10 @@ describe("@plugfn/admin", () => {
       id: "foreign_connection", userId: "other_user", provider: "github", ownerKind: "user", ownerId: "other_user",
       status: ConnectionStatus.Active, credentials: { encrypted: "foreign-ciphertext", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
     });
+    await database.createConnection({
+      id: "foreign_tenant_connection", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_2",
+      status: ConnectionStatus.Active, credentials: { encrypted: "foreign-tenant-ciphertext", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
     await database.createWorkflow({
       id: "workflow_1", userId: "user_1", name: "Issue workflow", status: WorkflowStatus.Disabled,
       definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, createdAt: now, updatedAt: now,
@@ -129,6 +133,7 @@ describe("@plugfn/admin", () => {
     expect(connection.data).toEqual({ item: expect.objectContaining({ id: "connection_1", hasCredentials: true }) });
     expect(JSON.stringify(connection.data)).not.toContain("ciphertext");
     await expect(adapter.execute("plugfn.connections.get", { id: "foreign_connection" }, context)).rejects.toMatchObject({ code: "not_found" });
+    await expect(adapter.execute("plugfn.connections.get", { id: "foreign_tenant_connection" }, context)).rejects.toMatchObject({ code: "not_found" });
 
     const enabled = await adapter.execute("plugfn.workflows.enable", { id: "workflow_1" }, context);
     expect(enabled.data).toEqual({ accepted: true });

@@ -35,10 +35,30 @@ function embeddedFunctionPackage(identifier) {
  */
 function sourceRegions(source, extension) {
   if (extension !== '.svelte') return [{ source, lineOffset: 0 }];
-  return [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((match) => ({
-    source: match[1] ?? '',
-    lineOffset: source.slice(0, match.index).split('\n').length - 1,
-  }));
+  const regions = [];
+  const lower = source.toLowerCase();
+  let cursor = 0;
+  while (cursor < source.length) {
+    const opening = lower.indexOf('<script', cursor);
+    if (opening < 0) break;
+    const afterName = lower[opening + '<script'.length];
+    if (!['>', ' ', '\t', '\n', '\r'].includes(afterName)) {
+      cursor = opening + '<script'.length;
+      continue;
+    }
+    const openingEnd = source.indexOf('>', opening + '<script'.length);
+    if (openingEnd < 0) break;
+    const closing = lower.indexOf('</script', openingEnd + 1);
+    if (closing < 0) break;
+    const closingEnd = source.indexOf('>', closing + '</script'.length);
+    if (closingEnd < 0) break;
+    regions.push({
+      source: source.slice(openingEnd + 1, closing),
+      lineOffset: source.slice(0, openingEnd + 1).split('\n').length - 1,
+    });
+    cursor = closingEnd + 1;
+  }
+  return regions;
 }
 
 /** @param {string} directory @returns {string[]} */
@@ -94,7 +114,7 @@ export function findFunctionAgnosticIssues(source, file = 'source.ts') {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const findings = [];
   for (const file of files(sourceRoot)) {
-    if (!['.ts', '.svelte'].includes(extname(file))) continue;
+    if (!['.ts', '.js', '.mjs', '.cjs', '.svelte'].includes(extname(file))) continue;
     const source = readFileSync(file, 'utf8');
     findings.push(...findFunctionAgnosticIssues(source, file).map((finding) => `${relative(root, file)}:${finding}`));
   }

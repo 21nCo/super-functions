@@ -492,7 +492,10 @@ export function createProcessingService(config: ProcessingServiceConfig) {
       const artifacts = await db.findMany<FileArtifactRecord>({
         model: 'fileArtifacts',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
-        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        orderBy: [
+          { field: 'createdAt', direction: 'desc' },
+          { field: 'artifactId', direction: 'asc' },
+        ],
         limit: page?.limit,
         offset: page?.offset,
         namespace,

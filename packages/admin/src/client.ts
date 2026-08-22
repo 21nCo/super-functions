@@ -134,7 +134,11 @@ export class AdminClientError extends Error {
 }
 
 function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+  let baseEnd = baseUrl.length;
+  while (baseEnd > 0 && baseUrl.charCodeAt(baseEnd - 1) === 47) baseEnd -= 1;
+  let pathStart = 0;
+  while (pathStart < path.length && path.charCodeAt(pathStart) === 47) pathStart += 1;
+  return `${baseUrl.slice(0, baseEnd)}/${path.slice(pathStart)}`;
 }
 
 function materializeRoutePath(path: string, input: unknown): string {

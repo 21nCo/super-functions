@@ -9,14 +9,12 @@
   "svelte": "./dist/index.js",
   "exports": { ".": { "types": "./dist/index.d.ts", "svelte": "./dist/index.js", "import": "./dist/index.js", "default": "./dist/index.js" }, "./*": { "types": "./dist/generated/*/index.d.ts", "svelte": "./dist/generated/*/index.js", "import": "./dist/generated/*/index.js", "default": "./dist/generated/*/index.js" } },
   "scripts": {
-    "generate": "node ../../scripts/generate-uifn-components.mjs --write",
-    "generate:check": "node ../../scripts/generate-uifn-components.mjs --check",
     "build": "svelte-package -i src -o dist --tsconfig ./tsconfig.json",
     "dev": "svelte-package -i src -o dist --tsconfig ./tsconfig.json --watch",
     "test": "vitest run --passWithNoTests",
     "lint": "svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
-    "prepack": "npm run generate:check && npm run build"
+    "prepack": "npm run build"
   },
   "dependencies": { "@uifn/components": "0.0.1", "@uifn/svelte": "0.0.2", "@uifn/recipes": "0.0.1" },
   "peerDependencies": { "svelte": ">=5.0.0 <6" },

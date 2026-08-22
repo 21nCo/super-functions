@@ -848,7 +848,10 @@ export function createFileService(config: FileServiceConfig) {
       const versions = await db.findMany<FileVersionRecord>({
         model: 'fileVersions',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
-        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        orderBy: [
+          { field: 'createdAt', direction: 'desc' },
+          { field: 'versionId', direction: 'desc' },
+        ],
         limit: page?.limit,
         offset: page?.offset,
         namespace,

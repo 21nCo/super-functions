@@ -3,7 +3,6 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import StatePanel from '$lib/components/StatePanel.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
-  import { formatValue } from '$lib/components/view-models';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -29,9 +28,5 @@
       {#if !data.mcp.tools?.length}<StatePanel kind="empty" title="No MCP tools enabled" message="Enable modules and grant the caller scoped capabilities to expose administration tools." />{:else}<div class="tool-list">{#each data.mcp.tools as tool (tool.name)}<CardRoot class="tool-card"><CardHeader><StatusBadge label={tool.mutation ? 'Mutation' : 'Read'} tone={tool.mutation ? 'warning' : 'info'} /><CardTitle>{tool.name}</CardTitle><CardDescription>{tool.description ?? 'Function-owned administration capability.'}</CardDescription></CardHeader><CardContent>{#if tool.moduleId}<span>{tool.moduleId}</span>{/if}{#if tool.permission}<code>{tool.permission}</code>{/if}</CardContent></CardRoot>{/each}</div>{/if}
     </section>
 
-    <section aria-labelledby="mcp-clients-heading">
-      <div class="section-heading"><div><p class="eyebrow">Authenticated callers</p><h2 id="mcp-clients-heading">Clients</h2></div></div>
-      {#if !data.mcp.clients?.length}<StatePanel kind="empty" title="No active clients" message="Authenticated MCP client activity will appear here." />{:else}<div class="client-list">{#each data.mcp.clients as client (client.id)}<div><StatusBadge status={client.status ?? 'unknown'} /><span><strong>{client.name}</strong>{#if client.lastSeenAt}<small>Last seen {formatValue(client.lastSeenAt, 'datetime')}</small>{/if}</span></div>{/each}</div>{/if}
-    </section>
   </div>
 {/if}

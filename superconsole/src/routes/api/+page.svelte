@@ -17,7 +17,9 @@
   {/snippet}
 </PageHeader>
 
-{#if data.loadError?.status === 403}
+{#if data.loadError?.status === 401}
+  <StatePanel kind="forbidden" title="Authentication required" message="Sign in through the configured operator-auth provider to access administration." actionHref="/sign-in" actionLabel="Sign in" />
+{:else if data.loadError?.status === 403}
   <StatePanel kind="forbidden" error={data.loadError} />
 {:else if data.loadError}
   <StatePanel kind="error" error={data.loadError} actionHref="/api" actionLabel="Retry" />

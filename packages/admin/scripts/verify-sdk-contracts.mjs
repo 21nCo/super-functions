@@ -38,4 +38,4 @@ const report = {
   results,
 };
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-if (report.summary.failed > 0) process.exitCode = 1;
+if (report.summary.failed > 0 || report.summary.reviewed === 0) process.exitCode = 1;

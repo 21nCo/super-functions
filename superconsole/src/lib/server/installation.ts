@@ -37,7 +37,7 @@ export function clearSuperConsoleForTesting(): void {
 export function resolveSuperConsoleInstallationUrl(specifier: string): string {
   const normalized = specifier.trim();
   if (!normalized) throw new Error('SUPERCONSOLE_INSTALLATION must not be empty.');
-  if (normalized.startsWith('file://')) {
+  if (normalized.slice(0, 'file://'.length).toLowerCase() === 'file://') {
     try {
       const url = new URL(normalized);
       if (url.protocol !== 'file:') throw new Error();

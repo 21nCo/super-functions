@@ -293,7 +293,10 @@ export function createSharesService(config: SharesServiceConfig) {
       const shares = await db.findMany<FileShareRecord>({
         model: 'fileShares',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
-        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        orderBy: [
+          { field: 'createdAt', direction: 'desc' },
+          { field: 'tokenHash', direction: 'desc' },
+        ],
         limit: page?.limit,
         offset: page?.offset,
         namespace,

@@ -421,7 +421,6 @@ export class AdminDispatcher {
         !(attemptedAuditAttempted && !domainInvoked)
       ) {
         const failureAuditId = this.createAuditId();
-        auditId = undefined;
         terminalAuditAttempted = true;
         try {
           await this.writeAudit(

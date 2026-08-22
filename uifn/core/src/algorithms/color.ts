@@ -20,8 +20,14 @@ export function parseUIFnColor(value: string): UIFnRgbaColor {
     const alpha = digits.length === 8 ? Number.parseInt(digits.slice(6, 8), 16) / 255 : 1;
     return createUIFnRgba(Number.parseInt(digits.slice(0, 2), 16), Number.parseInt(digits.slice(2, 4), 16), Number.parseInt(digits.slice(4, 6), 16), alpha);
   }
-  const rgb = /^rgba?\(\s*([+-]?[\d.]+)\s+([+-]?[\d.]+)\s+([+-]?[\d.]+)(?:\s*\/\s*([+-]?[\d.]+%?))?\s*\)$/i.exec(value.trim());
-  if (rgb) return createUIFnRgba(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4]?.endsWith('%') ? Number(rgb[4].slice(0, -1)) / 100 : Number(rgb[4] ?? 1));
+  const rgb = /^rgba?\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+))(?:\s*\/\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)%?))?\s*\)$/i.exec(value.trim());
+  if (rgb) {
+    const channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+    const alpha = rgb[4]?.endsWith('%') ? Number(rgb[4].slice(0, -1)) / 100 : Number(rgb[4] ?? 1);
+    if ([...channels, alpha].every(Number.isFinite)) {
+      return createUIFnRgba(channels[0]!, channels[1]!, channels[2]!, alpha);
+    }
+  }
   throw createUIFnError({ code: 'UIFN_COLOR_VALUE_INVALID', component: 'ColorPicker', details: { format: 'hex-or-modern-rgb' } });
 }
 

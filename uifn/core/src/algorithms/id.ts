@@ -27,11 +27,16 @@ export function composeUIFnScopedId(...segments: readonly string[]): string {
   return normalized.join('-');
 }
 
+function encodeUIFnDynamicSegment(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  return `key-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export function createUIFnPartId(scopeId: string, component: string, part: string, key?: string | number): string {
   return composeUIFnScopedId(
     scopeId,
     component,
     part,
-    ...(key === undefined ? [] : [String(key)]),
+    ...(key === undefined ? [] : [encodeUIFnDynamicSegment(String(key))]),
   );
 }

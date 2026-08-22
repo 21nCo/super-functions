@@ -126,7 +126,7 @@ export function createAdminOpenApiDocument(
   if (options.csrfHeader && !options.csrfHeader.name.trim()) {
     throw new AdminError("invalid_argument", "OpenAPI CSRF header metadata must define a nonblank provider header name.");
   }
-  const paths: Record<string, Record<string, unknown>> = {};
+  const paths = Object.create(null) as Record<string, Record<string, unknown>>;
   for (const entry of registry.operations) {
     const { method, path, parameterNames } = route(entry);
     const input = entry.operation.inputSchema;
@@ -216,9 +216,13 @@ export function createAdminOpenApiDocument(
         ...(entry.operation.redaction.allowOutputPaths ? { oneTimeOutputPaths: entry.operation.redaction.allowOutputPaths } : {}),
       } } : {}),
     };
-    paths[path] ??= {};
-    if (paths[path]![method.toLowerCase()]) throw new AdminError("conflict", `OpenAPI operation collision: ${method} ${path}.`);
-    paths[path]![method.toLowerCase()] = operation;
+    const pathItem = Object.hasOwn(paths, path)
+      ? paths[path]!
+      : Object.create(null) as Record<string, unknown>;
+    paths[path] = pathItem;
+    const methodName = method.toLowerCase();
+    if (Object.hasOwn(pathItem, methodName)) throw new AdminError("conflict", `OpenAPI operation collision: ${method} ${path}.`);
+    pathItem[methodName] = operation;
   }
 
   return {

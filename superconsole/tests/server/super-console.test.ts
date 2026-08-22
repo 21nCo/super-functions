@@ -137,7 +137,45 @@ describe('Super Console server composition', () => {
     clearSuperConsoleForTesting();
     expect(resolveSuperConsoleInstallationUrl('/srv/app/installation.js')).toBe('file:///srv/app/installation.js');
     expect(resolveSuperConsoleInstallationUrl('file:///srv/app/installation.js')).toBe('file:///srv/app/installation.js');
+    expect(resolveSuperConsoleInstallationUrl('FILE:///srv/app/installation.js')).toBe('file:///srv/app/installation.js');
     expect(() => resolveSuperConsoleInstallationUrl('https://example.test/installation.js')).toThrow(/absolute filesystem path or file URL/);
+  });
+
+  it('rejects an API base path that the bundled UI and SvelteKit transport cannot mount', () => {
+    expect(() => createSuperConsole({
+      adapters: [],
+      enabledModules: [],
+      apiBasePath: '/internal/admin',
+      auth: auth(),
+      shellPolicy: { authorize: () => true },
+    })).toThrow(/requires apiBasePath to be \/api\/admin\/v1/);
+  });
+
+  it('rejects a safe-method route classified as a mutation before registration', () => {
+    const base = manifest();
+    const operation = {
+      ...base.operations[0]!,
+      id: 'examplefn.records.refresh',
+      route: { method: 'GET' as const, path: '/resources/refresh' },
+      permission: 'examplefn.records.refresh',
+      safety: {
+        classification: 'write' as const,
+        idempotent: false,
+        requiresConfirmation: false,
+        audit: 'optional' as const,
+      },
+    };
+    const capability = { ...base, operations: [operation] };
+    const authorizeMutation = vi.fn(async () => undefined);
+    expect(() => createSuperConsole({
+      adapters: [createAdminCapabilityAdapter(capability, {
+        [operation.id]: async () => ({ ok: true as const, data: { items: [] } }),
+      })],
+      enabledModules: ['examplefn'],
+      auth: auth({ authorizeMutation }),
+      shellPolicy: { authorize: () => true },
+    })).toThrow(/Invalid admin capability manifest/);
+    expect(authorizeMutation).not.toHaveBeenCalled();
   });
 
   it('exposes only explicitly enabled module registry, OpenAPI, navigation and MCP tools', async () => {

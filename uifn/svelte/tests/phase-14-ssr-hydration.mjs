@@ -79,7 +79,8 @@ const server = createHttpServer(async (request, response) => {
   } catch (cause) {
     vite.ssrFixStacktrace(cause);
     response.statusCode = 500;
-    response.end(cause instanceof Error ? cause.stack : String(cause));
+    response.setHeader('content-type', 'text/plain; charset=utf-8');
+    response.end('Internal Server Error');
   }
 });
 

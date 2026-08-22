@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceTypeahead,
   alignRangeValue,
+  createUIFnPartId,
   createAsyncList,
   createListCollection,
   createListSelection,
@@ -11,10 +12,12 @@ import {
   findTypeaheadMatch,
   getNextCollectionKey,
   normalizeRangeValues,
+  parseUIFnColor,
   reconcileCollectionKey,
   reconcileListSelection,
   selectCollectionRange,
   selectCollectionKey,
+  stepRangeValue,
 } from '../algorithms';
 import { UIFnError } from '../errors';
 
@@ -105,6 +108,58 @@ describe('PHASE_06 canonical shared algorithms', () => {
       expect(normalizeRangeValues(normalized, { min: -10, max: 100, step: 0.25 })).toEqual(normalized);
       normalized.forEach((value) => expect(alignRangeValue(value, { min: -10, max: 100, step: 0.25 })).toBe(value));
     }
+  });
+
+  it('handles scientific range steps, aligned End keys, and malformed colors', () => {
+    expect(alignRangeValue(2.5e-13, { min: 0, max: 1e-12, step: 1.25e-13 })).toBe(2.5e-13);
+    expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 3 })).toBe(9);
+    expect(() => alignRangeValue(1, { min: 0, max: 10, step: Number.POSITIVE_INFINITY })).toThrowError(UIFnError);
+    expect(() => parseUIFnColor('rgb(1..2 3 4)')).toThrowError(UIFnError);
+  });
+
+  it('keeps dynamic part IDs Unicode-safe and collision-free', () => {
+    const spaced = createUIFnPartId('scope', 'list', 'item', 'a b');
+    const dashed = createUIFnPartId('scope', 'list', 'item', 'a-b');
+    const unicode = createUIFnPartId('scope', 'list', 'item', '你好');
+    expect(new Set([spaced, dashed, unicode]).size).toBe(3);
+    expect(unicode).toMatch(/^scope-list-item-key-/);
+  });
+
+  it('isolates async subscribers and clears loading state on cancellation', async () => {
+    let resolve!: (items: readonly string[]) => void;
+    const list = createAsyncList<string>({ load: () => new Promise((done) => { resolve = done; }) });
+    const observed: string[] = [];
+    let initial = true;
+    list.subscribe(() => {
+      if (initial) {
+        initial = false;
+        return;
+      }
+      throw new Error('listener failed');
+    });
+    list.subscribe((state) => observed.push(state.status));
+    const pending = list.load();
+    list.cancel();
+    expect(list.state.status).toBe('idle');
+    resolve(['late']);
+    await pending;
+    expect(list.state.items).toEqual([]);
+    expect(observed).toContain('loading');
+  });
+
+  it('supports collation expansions and immutable numeric-key selections', () => {
+    const matcher = createLocaleMatcher('de');
+    expect(matcher.includes('Straße', 'STRASSE')).toBe(true);
+    const numeric = createListCollection({
+      items: [0, 1, 2],
+      getKey: (value) => value,
+      getTextValue: String,
+    });
+    let selection = createListSelection<number>({ mode: 'multiple', anchorKey: 0, selectedKeys: [0] });
+    selection = selectCollectionRange(numeric, selection, 2);
+    expect([...selection.selectedKeys]).toEqual([0, 1, 2]);
+    expect((selection.selectedKeys as Set<number>).add).toBeUndefined();
+    expect(selectCollectionRange(numeric, selection, 99)).toBe(selection);
   });
 
   it('exposes deterministic virtualization without requiring every item in the DOM', () => {

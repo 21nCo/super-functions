@@ -53,4 +53,14 @@
       </CardRoot>
     {/each}
   </div>
+  {#if data.nextCursor}
+    <div class="pagination-bar">
+      <span>More search results are available.</span>
+      <ButtonRoot variant="outline" onclick={() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('cursor', data.nextCursor!);
+        void goto(`${url.pathname}${url.search}`);
+      }}><ButtonLabel>Next page</ButtonLabel><ButtonIcon><ConsoleIcon name="arrow-right" /></ButtonIcon></ButtonRoot>
+    </div>
+  {/if}
 {/if}

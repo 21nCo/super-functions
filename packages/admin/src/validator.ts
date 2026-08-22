@@ -375,9 +375,12 @@ function operationRoutePath(
   operation: AdminOperationDefinition,
 ): string | undefined {
   if (typeof operation.route !== "string") return operation.route.path;
-  return /^(?:GET|POST|PUT|PATCH|DELETE)\s+(.+)$/i.exec(
-    operation.route.trim(),
-  )?.[1];
+  const route = operation.route.trim();
+  let boundary = 0;
+  while (boundary < route.length && !/\s/.test(route[boundary]!)) boundary += 1;
+  const method = route.slice(0, boundary).toUpperCase();
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return undefined;
+  return route.slice(boundary).trimStart() || undefined;
 }
 
 function presentationRecordSchema(

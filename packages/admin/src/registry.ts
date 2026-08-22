@@ -34,15 +34,42 @@ function dependenciesOf(manifest: AdminCapabilityManifest): string[] {
 
 function routeOf(operation: AdminOperationDefinition): { method: string; path: string } {
   if (typeof operation.route === "string") {
-    const match = /^(GET|POST|PUT|PATCH|DELETE)\s+(.+)$/i.exec(operation.route.trim());
-    if (!match) throw new AdminError("invalid_argument", `Invalid route for ${operation.id}.`);
-    return { method: match[1]!.toUpperCase(), path: match[2]! };
+    const route = operation.route.trim();
+    let boundary = 0;
+    while (boundary < route.length && !/\s/.test(route[boundary]!)) boundary += 1;
+    const method = route.slice(0, boundary).toUpperCase();
+    const path = route.slice(boundary).trimStart();
+    if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !path) {
+      throw new AdminError("invalid_argument", `Invalid route for ${operation.id}.`);
+    }
+    return { method, path };
   }
   return operation.route;
 }
 
 export function adminMcpToolName(operationId: string): string {
-  return `superconsole_${operationId.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`.toLowerCase();
+  let normalized = "";
+  let separator = false;
+  for (const character of operationId) {
+    const code = character.charCodeAt(0);
+    const alphaNumeric = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (alphaNumeric) {
+      if (separator && normalized) normalized += "_";
+      normalized += character;
+      separator = false;
+    } else {
+      separator = true;
+    }
+  }
+  return `superconsole_${normalized}`.toLowerCase();
+}
+
+function trimSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 47) start += 1;
+  while (end > start && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(start, end);
 }
 
 function effectiveAdminMcpToolName(operation: AdminOperationDefinition): string {
@@ -75,7 +102,7 @@ export class AdminCapabilityRegistry {
     ) {
       throw new AdminError("invalid_argument", "Admin registry apiBasePath must be a canonical internal absolute path.");
     }
-    const basePath = `/${configuredBasePath.replace(/^\/+|\/+$/g, "")}`;
+    const basePath = `/${trimSlashes(configuredBasePath)}`;
     const supplied = new Map<string, AdminCapabilityAdapter>();
     for (const adapter of options.adapters) {
       assertAdminCapabilityManifest(adapter.manifest);
