@@ -235,12 +235,11 @@ describe("@filefn/admin", () => {
     expect((result.data as { item: object }).item).not.toHaveProperty("storageKey");
   });
 
-  it("preserves provider-issued download URLs and required headers", async () => {
+  it("preserves usable provider download receipts and rejects secret header contracts", async () => {
     const getDownloadUrl = vi.fn(async () => ({
       url: "https://storage.example.test/signed-object?signature=opaque",
       headers: {
         "x-download-key": "required-value",
-        authorization: "Bearer storage-token",
       },
     }));
     const registry = createAdminRegistry({
@@ -263,9 +262,30 @@ describe("@filefn/admin", () => {
           url: "https://storage.example.test/signed-object?signature=opaque",
           headers: {
             "x-download-key": "required-value",
-            authorization: "[REDACTED]",
           },
         },
+      },
+    });
+
+    const secretHeaderRegistry = createAdminRegistry({
+      adapters: [createFileFnAdminAdapter(domain({ files: { getDownloadUrl: async () => ({
+        url: "https://storage.example.test/object",
+        headers: { authorization: "Bearer storage-token" },
+      }) } }))],
+      enabledModules: ["filefn"],
+    });
+    await expect(createAdminDispatcher({
+      registry: secretHeaderRegistry,
+      audit: new MemoryAdminAuditSink(),
+    }).dispatch({
+      operationId: "filefn.files.download",
+      input: { id: "file_1" },
+      context,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "dependency_unavailable",
+        details: { unsupportedHeader: "authorization" },
       },
     });
   });

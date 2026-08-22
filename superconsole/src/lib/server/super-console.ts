@@ -623,7 +623,7 @@ export class SuperConsole {
       if (relative === 'confirmations' && request.method === 'POST') return await this.issueConfirmation(request, state);
       if (relative.startsWith('settings/policies/') && request.method === 'PATCH') {
         await this.authorizeShell('settings', state);
-        return await this.updatePolicy(request, relative.slice('settings/policies/'.length), state);
+        return await this.updatePolicy(request, decodeURIComponent(relative.slice('settings/policies/'.length)), state);
       }
       if (relative.startsWith('operations/') && request.method === 'POST') return await this.invokeOperation(request, decodeURIComponent(relative.slice('operations/'.length)), state);
       if (relative.startsWith('modules/')) return await this.moduleRequest(request, relative, state);

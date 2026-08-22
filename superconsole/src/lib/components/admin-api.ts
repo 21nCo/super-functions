@@ -249,6 +249,9 @@ export function safeAdminDownloadHref(
       options.scope
     );
   }
+  if (sameOrigin && /^\/proxy\/files\/[^/]+\/(?:download|versions\/[^/]+\/download|artifacts\/[^/]+\/download)$/.test(candidate.pathname)) {
+    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+  }
   if (options.signedExternal && candidate.protocol === 'https:') return candidate.href;
   return undefined;
 }
@@ -289,10 +292,11 @@ export async function openSafeAdminDownloadReceipt(
   const headers = new Headers();
   let hasHeaders = false;
   for (const [name, value] of Object.entries(receipt.headers ?? {})) {
-    if (value !== '[REDACTED]') {
-      headers.set(name, value);
-      hasHeaders = true;
+    if (value === '[REDACTED]') {
+      throw new Error('The download requires a credentialed server-side proxy; redacted provider headers cannot be sent from the browser.');
     }
+    headers.set(name, value);
+    hasHeaders = true;
   }
   if (!hasHeaders) {
     return openSafeAdminDownload(safeHref, { signedExternal: receipt.signedExternal ?? true });
@@ -301,7 +305,7 @@ export async function openSafeAdminDownloadReceipt(
   const response = await fetcher(safeHref, {
     headers,
     credentials: 'omit',
-    redirect: 'follow',
+    redirect: 'error',
   });
   if (!response.ok) throw new Error(`The download provider returned HTTP ${response.status}.`);
   const objectUrl = URL.createObjectURL(await response.blob());

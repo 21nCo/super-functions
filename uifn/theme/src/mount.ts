@@ -52,7 +52,7 @@ export interface MountedTheme {
   unmount: () => void;
 }
 
-const UNSAFE_SCOPE_PATTERN = /(^|\s)(html|body)\s+body|html\s+body|\*/i;
+const UNSAFE_SCOPE_PATTERN = /(^|\s)(html|body)\s+body|html\s+body|\*|[{},;@]|\/\*|\*\/|[\u0000-\u001f\u007f]/i;
 
 export function assertSafeThemeScope(scope: string): void {
   if (!scope.trim() || UNSAFE_SCOPE_PATTERN.test(scope)) {

@@ -7,6 +7,7 @@ import {
   AdminError,
   decodeAdminCursor,
   encodeAdminCursor,
+  isImplicitAdminSecretKey,
   normalizeAdminPageLimit,
   type AdminOperationContext,
   type AdminOperationResult,
@@ -21,6 +22,19 @@ import type {
 } from "./index.js";
 
 type JsonRecord = Record<string, unknown>;
+
+function adminDownloadDescriptor(descriptor: { url: string; headers?: Record<string, string> }) {
+  const unsupportedHeader = Object.keys(descriptor.headers ?? {}).find(isImplicitAdminSecretKey);
+  if (unsupportedHeader) {
+    throw new AdminError(
+      "dependency_unavailable",
+      "FileFn administration downloads require a signed URL or same-origin proxy when the storage provider uses secret request headers.",
+      { details: { unsupportedHeader } },
+    );
+  }
+  return descriptor;
+}
+
 type FileFnDomainRequest = {
   [K in FileFnAdminOperationId]: {
     operationId: K;
@@ -155,7 +169,7 @@ export function createFileFnDomainAdminService(options: FileFnDomainAdminService
         case "filefn.files.get":
           return item(record(await options.fileFn.getFile({ fileId: request.input.id }, ctx), "FileFn.getFile"));
         case "filefn.files.download":
-          return item(await files.getDownloadUrl(request.input.id, request.input.versionId, ctx));
+          return item(adminDownloadDescriptor(await files.getDownloadUrl(request.input.id, request.input.versionId, ctx)));
         case "filefn.files.delete-file":
           await options.fileFn.deleteFile({ fileId: request.input.id }, ctx);
           return accepted();
@@ -223,7 +237,7 @@ export function createFileFnDomainAdminService(options: FileFnDomainAdminService
           return item(safeArtifact(findById(artifacts, (value) => value.artifactId === request.input.id, "Artifact")));
         }
         case "filefn.artifacts.download":
-          return item(await processing.getArtifactDownloadUrlForFile(request.input.fileId, request.input.id, ctx));
+          return item(adminDownloadDescriptor(await processing.getArtifactDownloadUrlForFile(request.input.fileId, request.input.id, ctx)));
         case "filefn.artifacts.process-file": {
           const readable = await processing.getReadableVersionForFile(request.input.fileId, ctx, request.input.versionId);
           return accepted(await processing.triggerProcessing({

@@ -1,6 +1,6 @@
 import type { AdminOperationContext, AdminOperationDefinition } from "./types.js";
 
-function isImplicitSecretKey(key: string): boolean {
+export function isImplicitAdminSecretKey(key: string): boolean {
   const normalized = key.replace(/[-_\s]/g, "").toLowerCase();
   if (
     /(?:password|passwd|secret|token|authorization|cookie|credential|privatekey|apikey)/.test(
@@ -109,7 +109,7 @@ function redactValue(
           const explicitlyAllowed = allowed.has(itemPath) || allowed.has(wildcardPath);
           return [
             key,
-            explicit.has(normalizeKey(key)) || ((redactImplicitSecrets && isImplicitSecretKey(key)) && !explicitlyAllowed)
+            explicit.has(normalizeKey(key)) || ((redactImplicitSecrets && isImplicitAdminSecretKey(key)) && !explicitlyAllowed)
               ? "[REDACTED]"
               : visit(item, itemPath),
           ];

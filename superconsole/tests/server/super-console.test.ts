@@ -544,13 +544,13 @@ describe('Super Console server composition', () => {
       idempotency: new MemoryAdminIdempotencyStore(),
       settings: { read: async () => ({}), updatePolicyOperationId: 'examplefn.policies.update' },
     });
-    const result = await console.handle(request('/api/admin/v1/settings/policies/policy_1', {
+    const result = await console.handle(request('/api/admin/v1/settings/policies/policy%2F1', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json', 'idempotency-key': 'policy-idem' },
       body: JSON.stringify({ enabled: true }),
     }));
     expect(result.status).toBe(200);
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ input: { id: 'policy_1', payload: { enabled: true } } }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ input: { id: 'policy/1', payload: { enabled: true } } }));
   });
 
   it('uses manifest presentation metadata for non-conventional generic operations', async () => {
