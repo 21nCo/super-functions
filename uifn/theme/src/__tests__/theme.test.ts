@@ -160,6 +160,9 @@ describe('runtime theme mounting', () => {
 
   it('TV-STYLE-002 negative rejects unsafe global selectors', () => {
     expect(() => themeToCSS('uifn-dark', 'html body *')).toThrowError(UIFnThemeError);
+    expect(() => themeToCSS('uifn-dark', 'html > body')).toThrowError(UIFnThemeError);
+    expect(() => themeToCSS('uifn-dark', 'html>body')).toThrowError(UIFnThemeError);
+    expect(() => themeToCSS('uifn-dark', 'body > body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root, body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root { color: red; } body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', '@media print')).toThrowError(UIFnThemeError);

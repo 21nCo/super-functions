@@ -55,6 +55,36 @@ export interface AdminAuditSink {
   write(event: AdminAuditEvent): Promise<void> | void;
 }
 
+/**
+ * An audit sink may use this error only when it can prove the event was not
+ * durably persisted. Ordinary write errors are acknowledgement-ambiguous and
+ * must not be used as evidence that a domain mutation is safe to compensate.
+ */
+export class AdminAuditNotPersistedError extends Error {
+  readonly definitelyNotPersisted = true;
+
+  constructor(message: string, options: { cause?: unknown } = {}) {
+    super(message, { cause: options.cause });
+    this.name = "AdminAuditNotPersistedError";
+  }
+}
+
+export function auditFailureDefinitelyNotPersisted(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (
+      current instanceof AdminAuditNotPersistedError ||
+      (current as { definitelyNotPersisted?: unknown }).definitelyNotPersisted === true
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export type AdminAuditIdFactory = () => string;
 
 export function createAdminAuditId(): string {

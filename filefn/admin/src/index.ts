@@ -152,7 +152,7 @@ const createShareOutputSchema: AdminObjectSchema = {
       additionalProperties: false,
     },
   },
-  required: ["accepted"],
+  required: ["accepted", "item"],
   additionalProperties: false,
 };
 const pageProperties = { cursor: { type: "string", minLength: 1 }, limit: { type: "integer", minimum: 1, maximum: 100, default: 50 } } as const;

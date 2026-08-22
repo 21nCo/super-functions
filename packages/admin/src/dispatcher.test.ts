@@ -492,6 +492,46 @@ describe("AdminDispatcher", () => {
     expect(await dispatcher.dispatch({ operationId: "examplefn.records.delete", input: { id: "2", apiToken: "different" }, context: baseContext })).toMatchObject({ ok: false, error: { code: "conflict" } });
   });
 
+  it("canonicalizes the deprecated organization scope alias for idempotency", async () => {
+    const read = testManifest().operations[0]!;
+    const manifest = testManifest("examplefn", {
+      operations: [{
+        ...read,
+        id: "examplefn.records.refresh",
+        route: { method: "POST", path: "/records/actions/refresh" },
+        permission: "examplefn.records.refresh",
+        minimumScope: "installation",
+        safety: { classification: "write", idempotent: true, audit: "required" },
+        mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      }],
+    });
+    const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
+    const dispatcher = createAdminDispatcher({
+      registry: createAdminRegistry({
+        adapters: [createAdminCapabilityAdapter(manifest, { "examplefn.records.refresh": handler })],
+        enabledModules: ["examplefn"],
+      }),
+      audit: new MemoryAdminAuditSink(),
+      idempotency: new MemoryAdminIdempotencyStore(),
+    });
+    const base = {
+      actor: { id: "user_1", permissions: ["examplefn.records.refresh"] },
+      idempotencyKey: "canonical-scope",
+    };
+
+    await expect(dispatcher.dispatch({
+      operationId: "examplefn.records.refresh",
+      input: {},
+      context: context({ ...base, scope: { organizationId: "tenant" } }),
+    })).resolves.toMatchObject({ ok: true });
+    await expect(dispatcher.dispatch({
+      operationId: "examplefn.records.refresh",
+      input: {},
+      context: context({ ...base, requestId: "req_alias", scope: { installationId: "tenant" } }),
+    })).resolves.toMatchObject({ ok: true, meta: { idempotencyReplay: true } });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("enforces the operation minimum scope and rejects broken hierarchy chains", async () => {
     const manifest = testManifest();
     const registry = createAdminRegistry({ adapters: [createAdminCapabilityAdapter(manifest, { "examplefn.records.list": async () => ({ ok: true as const, data: { items: [] } }) })], enabledModules: ["examplefn"] });

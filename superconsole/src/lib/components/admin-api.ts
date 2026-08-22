@@ -267,9 +267,8 @@ export function openSafeAdminDownload(
     scope: new URL(window.location.href).searchParams,
   });
   if (!safeHref) return false;
-  const popup = window.open(safeHref, '_blank', 'noopener,noreferrer');
-  if (popup) popup.opener = null;
-  return popup !== null;
+  window.open(safeHref, '_blank', 'noopener,noreferrer');
+  return true;
 }
 
 export interface AdminDownloadReceipt {

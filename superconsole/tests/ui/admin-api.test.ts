@@ -189,8 +189,7 @@ describe('administration API boundary', () => {
   });
 
   it('opens a header-free signed download receipt', async () => {
-    const popup = { opener: window } as unknown as Window;
-    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
     try {
       await expect(openSafeAdminDownloadReceipt({
         url: 'https://storage.example.test/signed-object',
@@ -200,7 +199,6 @@ describe('administration API boundary', () => {
         '_blank',
         'noopener,noreferrer'
       );
-      expect(popup.opener).toBeNull();
     } finally {
       open.mockRestore();
     }

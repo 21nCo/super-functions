@@ -55,6 +55,7 @@ function compiledPattern(schema: AdminJsonSchema): RegExp | undefined {
 function valueType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
+  if (typeof value === "number" && !Number.isFinite(value)) return "non-finite number";
   if (Number.isInteger(value)) return "integer";
   return typeof value;
 }
@@ -188,7 +189,7 @@ export function validateAdminValue(
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     const object = value as Record<string, unknown>;
     for (const key of schema.required ?? []) {
-      if (!(key in object))
+      if (!Object.hasOwn(object, key))
         issues.push({
           path: `${path}.${key}`,
           message: "is required",

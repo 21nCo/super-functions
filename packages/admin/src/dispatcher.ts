@@ -1,4 +1,4 @@
-import { createAdminAuditId, redactAdminOutputValue, redactAdminValue, type AdminAuditIdFactory, type AdminAuditSink } from "./audit.js";
+import { auditFailureDefinitelyNotPersisted, createAdminAuditId, redactAdminOutputValue, redactAdminValue, type AdminAuditIdFactory, type AdminAuditSink } from "./audit.js";
 import { AdminError, normalizeAdminError } from "./errors.js";
 import {
   beginAdminIdempotency,
@@ -7,7 +7,7 @@ import {
   type AdminIdempotencyStore,
 } from "./idempotency.js";
 import type { AdminCapabilityRegistry, AdminRegistryOperation } from "./registry.js";
-import { adminOperationMinimumScope, assertAdminScopeHierarchy, assertAdminScopeMinimum } from "./scope.js";
+import { adminOperationMinimumScope, assertAdminScopeHierarchy, assertAdminScopeMinimum, canonicalAdminScope } from "./scope.js";
 import { assertAdminValue, validateAdminValue } from "./validator.js";
 import type {
   AdminOperationContext,
@@ -165,6 +165,7 @@ export class AdminDispatcher {
     let attemptedAuditAttempted = false;
     let terminalAuditAttempted = false;
     let terminalAuditWritten = false;
+    let terminalAuditId: string | undefined;
     let domainInvoked = false;
     let domainCompleted = false;
     let domainResponse: AdminOperationResult<T> | undefined;
@@ -341,7 +342,7 @@ export class AdminDispatcher {
         correlationId: request.context.correlationId,
         ...(externalMeta ? { meta: externalMeta } : {}),
       };
-      const terminalAuditId = this.shouldAudit(entry) ? this.createAuditId() : undefined;
+      terminalAuditId = this.shouldAudit(entry) ? this.createAuditId() : undefined;
       if (idempotencyClaim && idempotencyIdentity && this.idempotency) {
         try {
           await this.persistDomainOutcome(
@@ -406,7 +407,7 @@ export class AdminDispatcher {
         entry.operation.safety.audit === "required"
       ) {
         const compensator = entry.adapter.compensators?.[entry.operation.id];
-        if (compensator) {
+        if (compensator && auditFailureDefinitelyNotPersisted(error)) {
           try {
             await compensator({
               input: request.input,
@@ -416,6 +417,30 @@ export class AdminDispatcher {
             });
             domainCompleted = false;
             domainResponse = undefined;
+            const rollbackAuditId = terminalAuditId ?? this.createAuditId();
+            try {
+              await this.writeAudit(
+                entry,
+                request,
+                startedAt,
+                rollbackAuditId,
+                "failed",
+                "dependency_unavailable",
+                { ...policyMetadata, compensation: "succeeded" },
+              );
+              terminalAuditWritten = true;
+              auditId = rollbackAuditId;
+            } catch (cause) {
+              dispatchError = new AdminError(
+                "dependency_unavailable",
+                "The domain mutation was rolled back, but its terminal audit requires reconciliation.",
+                {
+                  retryable: false,
+                  details: { outcome: "compensated", reconciliationRequired: true },
+                  cause,
+                },
+              );
+            }
           } catch (cause) {
             dispatchError = new AdminError(
               "dependency_unavailable",
@@ -427,6 +452,20 @@ export class AdminDispatcher {
               },
             );
           }
+        } else if (compensator) {
+          dispatchError = new AdminError(
+            "dependency_unavailable",
+            "The domain operation completed, but the terminal audit acknowledgement is ambiguous.",
+            {
+              retryable: idempotencyPersisted,
+              details: {
+                outcome: "domain_completed",
+                auditAcknowledgement: "unknown",
+                reconciliationRequired: true,
+              },
+              cause: error,
+            },
+          );
         }
       }
       const normalized = normalizeAdminError(dispatchError, {
@@ -526,7 +565,7 @@ export class AdminDispatcher {
 
   private idempotencyIdentity(entry: AdminRegistryOperation, context: AdminOperationContext): AdminIdempotencyIdentity | undefined {
     if (entry.operation.safety.classification === "read" || !context.idempotencyKey || !entry.operation.safety.idempotent) return undefined;
-    return { key: context.idempotencyKey, actorId: context.actor.id, scope: context.scope, operationId: entry.operation.id };
+    return { key: context.idempotencyKey, actorId: context.actor.id, scope: canonicalAdminScope(context.scope), operationId: entry.operation.id };
   }
 
   private shouldAudit(entry: AdminRegistryOperation): boolean {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  AdminAuditNotPersistedError,
   createAdminClient,
   createAdminDispatcher,
   createAdminRegistry,
@@ -129,6 +130,9 @@ describe("@filefn/admin", () => {
     expect(fileFnAdminCapability.operations.find(
       (operation) => operation.id === "filefn.share-links.create-share",
     )?.safety).toMatchObject({ idempotent: false, audit: "required" });
+    expect(fileFnAdminCapability.operations.find(
+      (operation) => operation.id === "filefn.share-links.create-share",
+    )?.outputSchema?.required).toEqual(expect.arrayContaining(["accepted", "item"]));
     for (const operationId of ["filefn.files.download", "filefn.artifacts.download"]) {
       expect(fileFnAdminCapability.operations.find(
         (operation) => operation.id === operationId,
@@ -144,7 +148,7 @@ describe("@filefn/admin", () => {
     })).not.toThrow();
   });
 
-  it("revokes a newly created share when its required terminal audit fails", async () => {
+  it("revokes a newly created share only when its terminal audit is definitively absent", async () => {
     const createShareLink = vi.fn(async () => ({ token: "one-time-share-token", expiresAt: null }));
     const revokeShareLink = vi.fn(async () => undefined);
     const service = domain({ shares: { createShareLink, revokeShareLink } });
@@ -154,10 +158,14 @@ describe("@filefn/admin", () => {
     });
     expect(registry.requireOperation("filefn.share-links.create-share").adapter.compensators)
       .toHaveProperty("filefn.share-links.create-share");
+    const persistedOutcomes: string[] = [];
     const audit = {
       idempotentById: true as const,
       write: vi.fn(async (event: { outcome: string }) => {
-        if (event.outcome === "succeeded") throw new Error("audit unavailable");
+        if (event.outcome === "succeeded") {
+          throw new AdminAuditNotPersistedError("audit unavailable before persistence");
+        }
+        persistedOutcomes.push(event.outcome);
       }),
     };
     const dispatcher = createAdminDispatcher({
@@ -179,6 +187,47 @@ describe("@filefn/admin", () => {
       "one-time-share-token",
       { principalId: "operator_1", tenantId: "project_1", requestId: "request_1" },
     );
+    expect(persistedOutcomes).toEqual(["attempted", "failed"]);
+    expect(result).toHaveProperty("auditId");
+  });
+
+  it("does not revoke a share after an ambiguous terminal audit acknowledgement loss", async () => {
+    const createShareLink = vi.fn(async () => ({ token: "one-time-share-token", expiresAt: null }));
+    const revokeShareLink = vi.fn(async () => undefined);
+    const persistedOutcomes: string[] = [];
+    const registry = createAdminRegistry({
+      adapters: [createFileFnAdminAdapter(domain({ shares: { createShareLink, revokeShareLink } }))],
+      enabledModules: ["filefn"],
+    });
+    const dispatcher = createAdminDispatcher({
+      registry,
+      audit: {
+        idempotentById: true,
+        write: async (event) => {
+          persistedOutcomes.push(event.outcome);
+          if (event.outcome === "succeeded") throw new Error("acknowledgement lost after commit");
+        },
+      },
+      confirmation: { verify: () => true },
+    });
+
+    const result = await dispatcher.dispatch({
+      operationId: "filefn.share-links.create-share",
+      input: { fileId: "file_1" },
+      context: { ...context, confirmationToken: "recent-auth" },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "dependency_unavailable",
+        retryable: false,
+        details: { auditAcknowledgement: "unknown", reconciliationRequired: true },
+      },
+    });
+    expect(createShareLink).toHaveBeenCalledTimes(1);
+    expect(revokeShareLink).not.toHaveBeenCalled();
+    expect(persistedOutcomes).toEqual(["attempted", "succeeded"]);
   });
 
   it("delegates listing to FileFn with the mapped principal, tenant, and request context", async () => {

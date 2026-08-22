@@ -27,6 +27,15 @@ export function adminScopeRootId(scope: AdminScope): string | undefined {
   return scope.installationId ?? scope.organizationId;
 }
 
+export function canonicalAdminScope(scope: AdminScope): AdminScope {
+  const { organizationId: _organizationId, ...canonical } = scope;
+  const installationId = adminScopeRootId(scope);
+  return {
+    ...canonical,
+    ...(installationId === undefined ? {} : { installationId }),
+  };
+}
+
 export function adminScopeId(scope: AdminScope, level: AdminScopeLevel): string | undefined {
   switch (canonicalAdminScopeLevel(level)) {
     case "installation": return adminScopeRootId(scope);
