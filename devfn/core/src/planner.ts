@@ -16,6 +16,17 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
     dependencies(name).forEach(include);
   };
   [...selected].forEach(include);
+  if (profile.proxy) {
+    for (const hostname of Object.values(config.hostnames ?? {})) {
+      if (hostname.profiles && !hostname.profiles.includes(profileName)) continue;
+      const owners = [
+        ...Object.entries(config.processes ?? {}).filter(([, spec]) => spec.ports?.includes(hostname.target)).map(([name]) => name),
+        ...Object.entries(config.services ?? {}).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
+      ];
+      if (owners.length === 0) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has no lifecycle owner.`);
+      owners.forEach(include);
+    }
+  }
 
   const visiting = new Set<string>();
   const visited = new Set<string>();

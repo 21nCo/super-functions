@@ -20,12 +20,13 @@ export function resolvePolicy(policy: DevFnPolicy | null, projectId: string): { 
 }
 
 export function renderPolicyInventory(policy: DevFnPolicy | null): string {
+  const cell = (value: unknown): string => String(value ?? "").replaceAll("|", "\\|").replace(/\r?\n/g, " ");
   return [
     "## Organization port policy",
     "",
     "| Name | Kind | Port or range | Project | Description |",
     "| --- | --- | --- | --- | --- |",
-    ...(policy?.ports ?? []).map((entry) => `| ${entry.name} | ${entry.kind} | ${entry.port ?? `${entry.range?.[0]}-${entry.range?.[1]}`} | ${entry.project ?? "shared"} | ${entry.description ?? ""} |`),
+    ...(policy?.ports ?? []).map((entry) => `| ${cell(entry.name)} | ${cell(entry.kind)} | ${cell(entry.port ?? `${entry.range?.[0]}-${entry.range?.[1]}`)} | ${cell(entry.project ?? "shared")} | ${cell(entry.description)} |`),
     "",
   ].join("\n");
 }

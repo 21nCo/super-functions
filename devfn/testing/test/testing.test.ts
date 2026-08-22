@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { validateDevFnConfig } from "@devfn/config";
 import { createFakeListener, fixtureConfig } from "../src/index.js";
 
 describe("DevFn testing helpers", () => {
@@ -8,5 +9,13 @@ describe("DevFn testing helpers", () => {
     await listener.close();
   });
 
-  it("creates a complete fixture manifest", () => expect(fixtureConfig().profiles.default.processes).toEqual(["app"]));
+  it("creates a complete schema-valid fixture manifest", () => {
+    const config = validateDevFnConfig(fixtureConfig());
+    expect(config).toMatchObject({
+      project: { id: "fixture" },
+      ports: { app: { range: [44000, 44100], env: "PORT" } },
+      processes: { app: { adapter: "command", ports: ["app"], health: { type: "tcp", port: "app" } } },
+      profiles: { default: { processes: ["app"] } },
+    });
+  });
 });

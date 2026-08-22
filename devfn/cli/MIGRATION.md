@@ -8,4 +8,4 @@
 6. Add full, OAuth, test, or docs profiles incrementally. Public tunnels must remain explicit.
 7. Verify `devfn down` preserves databases and volumes before adopting it as the daily command.
 
-Rollback by running `devfn down`, removing the DevFn manifest and ignored `.devfn/` runtime directory, and continuing to use the preserved original scripts. Docker volumes and source configuration are not deleted.
+Rollback by running `devfn down`, then inspect `runtimeDir` and every `environmentOutputs[].path` in the manifest before removing generated files. The default generated location is `.devfn/`, but custom paths may live elsewhere. Preserve any target that existed before DevFn adoption; cleanup does not know whether a configured output replaced user-owned content. Finally remove the DevFn manifest and continue using the preserved original scripts. Docker volumes and source configuration are not deleted.

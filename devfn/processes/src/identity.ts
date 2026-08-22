@@ -7,7 +7,9 @@ export async function processBirthSignature(pid: number): Promise<string | undef
   try {
     if (process.platform === "linux") {
       const stat = await import("node:fs/promises").then((fs) => fs.readFile(`/proc/${pid}/stat`, "utf8"));
-      return `linux:${stat.trim().split(/\s+/)[21]}`;
+      const afterCommand = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
+      const startTime = afterCommand[19];
+      return startTime ? `linux:${startTime}` : undefined;
     }
     if (process.platform === "darwin") {
       const { stdout } = await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)]);
@@ -22,7 +24,8 @@ export async function processBirthSignature(pid: number): Promise<string | undef
 }
 
 export function processExists(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
 export async function matchesProcessIdentity(pid: number, signature?: string): Promise<boolean> {

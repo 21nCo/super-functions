@@ -7,9 +7,8 @@
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md"],
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit -p tsconfig.json", "test": "vitest run", "lint": "echo 'lint not configured'", "clean": "rm -rf dist" },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit -p tsconfig.json", "test": "vitest run", "lint": "echo 'lint not configured'", "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"" },
   "dependencies": {
-    "@clifn/core": "0.1.0",
     "@devfn/compose": "0.1.0",
     "@devfn/config": "0.1.0",
     "@devfn/ports": "0.1.0",

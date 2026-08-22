@@ -22,19 +22,24 @@ export async function discoverProject(root = process.cwd()): Promise<DiscoveryRe
   const packageJson = await readPackage(resolvedRoot);
   const baseName = path.basename(resolvedRoot);
 
-  let packageManager: "npm" | "pnpm" = "npm";
-  if (await exists(path.join(resolvedRoot, "pnpm-lock.yaml"))) packageManager = "pnpm";
-  else if (packageJson && typeof packageJson.packageManager === "string" && packageJson.packageManager.startsWith("pnpm")) packageManager = "pnpm";
+  const unsupportedManager = await exists(path.join(resolvedRoot, "yarn.lock")) ? "yarn"
+    : await exists(path.join(resolvedRoot, "bun.lockb")) || await exists(path.join(resolvedRoot, "bun.lock")) ? "bun"
+      : undefined;
+  let packageManager: "npm" | "pnpm" | undefined = unsupportedManager ? undefined : "npm";
+  if (!unsupportedManager) {
+    if (await exists(path.join(resolvedRoot, "pnpm-lock.yaml"))) packageManager = "pnpm";
+    else if (packageJson && typeof packageJson.packageManager === "string" && packageJson.packageManager.startsWith("pnpm")) packageManager = "pnpm";
+  }
   findings.push({
     kind: "package-manager",
-    confidence: packageJson ? "confirmed" : "proposed",
+    confidence: unsupportedManager ? "proposed" : packageJson ? "confirmed" : "proposed",
     source: packageJson ? "package.json" : "directory contents",
-    detail: packageManager,
+    detail: unsupportedManager ? `${unsupportedManager} is detected but has no native adapter; add an explicit command.` : packageManager!,
   });
 
   const scripts = packageJson && packageJson.scripts && typeof packageJson.scripts === "object" ? packageJson.scripts as Record<string, unknown> : {};
   for (const candidate of ["dev", "start"] as const) {
-    if (typeof scripts[candidate] === "string") {
+    if (packageManager && typeof scripts[candidate] === "string") {
       processes.app = { adapter: packageManager, script: candidate, ports: ["app"] };
       findings.push({ kind: "process", confidence: "confirmed", source: `package.json#scripts.${candidate}`, detail: `${packageManager} run ${candidate}` });
       break;
@@ -68,14 +73,14 @@ export async function discoverProject(root = process.cwd()): Promise<DiscoveryRe
     ports: Object.keys(processes).length ? { app: { preferred: 3000, range: [3000, 3099], env: "PORT" } } : {},
     processes,
     profiles: { default: { processes: Object.keys(processes), services: [] } },
-    prerequisites: [{ command: packageManager, version: packageManager === "pnpm" ? "project-pinned" : undefined }],
+    prerequisites: Object.keys(processes).length && packageManager ? [{ command: packageManager, version: packageManager === "pnpm" ? "project-pinned" : undefined }] : [],
     environmentOutputs: [{ path: ".devfn/runtime.env", format: "dotenv", mode: 0o600 }],
   };
   return { root: resolvedRoot, findings, config };
 }
 
 function quote(value: unknown, indent = 0): string {
-  const json = JSON.stringify(value, null, 2);
+  const json = JSON.stringify(value, null, 2).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
   return json.split("\n").map((line, index) => index === 0 ? line : `${" ".repeat(indent)}${line}`).join("\n");
 }
 

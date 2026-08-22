@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { DevFnConfig, EnvironmentOutput } from "@devfn/config";
+import { resolveContainedPath, type DevFnConfig, type EnvironmentOutput } from "@devfn/config";
 import type { LifecycleReceipt } from "./types.js";
 
 export function runtimeDirectory(config: DevFnConfig, root: string, instanceId: string): string {
   return path.join(root, config.runtimeDir ?? ".devfn", "instances", instanceId);
+}
+
+export async function secureRuntimeDirectory(config: DevFnConfig, root: string, instanceId: string): Promise<string> {
+  return await resolveContainedPath(root, path.join(config.runtimeDir ?? ".devfn", "instances", instanceId), "runtimeDir");
 }
 
 export function receiptPath(config: DevFnConfig, root: string, instanceId: string): string {
@@ -14,7 +18,11 @@ export function receiptPath(config: DevFnConfig, root: string, instanceId: strin
 }
 
 export async function readReceipt(config: DevFnConfig, root: string, instanceId: string): Promise<LifecycleReceipt | null> {
-  try { const value = JSON.parse(await readFile(receiptPath(config, root, instanceId), "utf8")) as LifecycleReceipt; return value.version === 1 ? value : null; }
+  try {
+    const directory = await secureRuntimeDirectory(config, root, instanceId);
+    const value = JSON.parse(await readFile(path.join(directory, "receipt.json"), "utf8")) as LifecycleReceipt;
+    return value.version === 1 && path.resolve(value.runtimeDir) === directory ? value : null;
+  }
   catch { return null; }
 }
 
@@ -29,15 +37,15 @@ export async function writeReceipt(receipt: LifecycleReceipt): Promise<void> {
 function dotenv(value: string): string { return /^[A-Za-z0-9_./:@-]*$/.test(value) ? value : JSON.stringify(value); }
 
 export async function writeEnvironmentOutputs(root: string, runtimeDir: string, outputs: readonly EnvironmentOutput[], environment: Record<string, string>): Promise<string[]> {
-  const effective = outputs.length ? outputs : [{ path: path.relative(root, path.join(runtimeDir, "runtime.env")), format: "dotenv" as const, mode: 0o600 }];
+  const effective = outputs.length
+    ? await Promise.all(outputs.map(async (output) => ({ output, target: await resolveContainedPath(root, output.path, "environmentOutputs.path") })))
+    : [{ output: { path: "runtime.env", format: "dotenv" as const, mode: 0o600 }, target: path.join(runtimeDir, "runtime.env") }];
   const written: string[] = [];
-  for (const output of effective) {
-    const target = path.resolve(root, output.path);
-    const relative = path.relative(root, target);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`Environment output escapes project root: ${output.path}`);
+  for (const { output, target } of effective) {
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
     const content = output.format === "json" ? `${JSON.stringify(environment, null, 2)}\n` : `${Object.entries(environment).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${dotenv(value)}`).join("\n")}\n`;
     await writeFile(target, content, { encoding: "utf8", mode: output.mode ?? 0o600 });
+    await chmod(target, output.mode ?? 0o600);
     written.push(target);
   }
   return written;

@@ -1,6 +1,9 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { discoverProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
   it("validates named ports, processes, services, profiles, and hostnames", () => {
@@ -30,5 +33,20 @@ describe("DevFn configuration", () => {
     const base = { version: 1, project: { id: "x" }, profiles: { default: { processes: ["app"] } } };
     expect(() => validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["API_TOKEN"] } } })).toThrow(/secretEnv/);
     expect(validateDevFnConfig({ ...base, processes: { app: { adapter: "command", command: ["node"], envAllowlist: ["API_TOKEN"], secretEnv: ["API_TOKEN"] } } }).processes?.app.secretEnv).toEqual(["API_TOKEN"]);
+  });
+
+  it("requires an implicit default profile and private output modes", () => {
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { one: {} } })).toThrow(/profiles.default/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: {} }, environmentOutputs: [{ path: ".devfn/out", mode: 0o644 }] })).toThrow(/group or other/);
+  });
+
+  it("does not map unsupported package managers to npm", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-yarn-"));
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
+    await writeFile(path.join(root, "yarn.lock"), "");
+    const result = await discoverProject(root);
+    expect(result.config.processes).toEqual({});
+    expect(result.config.prerequisites).toEqual([]);
+    expect(result.findings).toContainEqual(expect.objectContaining({ kind: "package-manager", confidence: "proposed" }));
   });
 });

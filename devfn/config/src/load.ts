@@ -1,10 +1,13 @@
-import { access, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ConfigLoaderError, loadConfig } from "@clifn/core";
 
 import { DevFnConfigError } from "./errors.js";
+import { resolveContainedPath } from "./paths.js";
 import { validateDevFnConfig, validateDevFnPolicy } from "./schema.js";
+import { defaultStateDir, readTrustedManifest } from "./trust.js";
 import type { DevFnConfig, DevFnPolicy } from "./types.js";
 
 export const DEVFN_CONFIG_CANDIDATES = [
@@ -76,15 +79,37 @@ export async function loadDevFnConfig(options: { cwd?: string; configPath?: stri
   }
 }
 
+export async function loadTrustedDevFnConfig(options: { cwd?: string; configPath?: string; stateDir?: string } = {}): Promise<{ config: DevFnConfig; path: string; root: string }> {
+  const resolved = await resolveDevFnManifestPath(options);
+  if (resolved.path.endsWith(".json")) return await loadDevFnConfig(options);
+  const snapshot = await readTrustedManifest(resolved.root, resolved.path, options.stateDir ?? defaultStateDir());
+  const source = snapshot.bytes.toString("utf8");
+  if (/\b(?:import\s*(?:\(|["'])|import\s+[^;]*?\bfrom\s*["']|export\s+[^;]*?\bfrom\s*["']|require\s*\()/m.test(source)) {
+    throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "Executable DevFn manifests must be self-contained; imports and require() are not permitted.");
+  }
+  const extension = path.extname(resolved.path);
+  const verifiedDir = path.join(options.stateDir ?? defaultStateDir(), "verified-manifests");
+  await mkdir(verifiedDir, { recursive: true, mode: 0o700 });
+  const verifiedPath = path.join(verifiedDir, `${snapshot.digest}.${randomUUID()}${extension}`);
+  await writeFile(verifiedPath, snapshot.bytes, { mode: 0o600, flag: "wx" });
+  try {
+    const loaded = await loadDevFnConfig({ cwd: verifiedDir, configPath: verifiedPath });
+    return { config: loaded.config, path: resolved.path, root: resolved.root };
+  } finally { await rm(verifiedPath, { force: true }); }
+}
+
 export async function loadDevFnPolicy(root: string, configuredPath?: string): Promise<{ policy: DevFnPolicy; path: string } | null> {
   const candidate = configuredPath ?? "devfn.policy.json";
-  const policyPath = path.resolve(root, candidate);
-  if (!await exists(policyPath)) return null;
-  const raw = await readFile(policyPath, "utf8");
   try {
+    const policyPath = await resolveContainedPath(root, candidate, "policy");
+    if (!await exists(policyPath)) {
+      if (configuredPath) throw new DevFnConfigError("DEVFN_CONFIG_NOT_FOUND", `Configured policy file not found: ${policyPath}.`, "policy");
+      return null;
+    }
+    const raw = await readFile(policyPath, "utf8");
     return { policy: validateDevFnPolicy(JSON.parse(raw)), path: policyPath };
   } catch (error) {
     if (error instanceof DevFnConfigError) throw error;
-    throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `Invalid policy JSON at ${policyPath}.`);
+    throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `Unable to read or parse policy ${candidate}.`);
   }
 }

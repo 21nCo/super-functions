@@ -1,19 +1,19 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { ComposeController, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, type DevFnConfig } from "@devfn/config";
-import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListeners, type PortAllocation } from "@devfn/ports";
+import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListeners, withFileLock, type PortAllocation } from "@devfn/ports";
 import { ProcessSupervisor, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
 import { createPlan } from "./planner.js";
-import { readReceipt, runtimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
-import { DevFnError, type CleanupResult, type LifecycleReceipt, type UpOptions } from "./types.js";
+import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeReceipt } from "./runtime.js";
+import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleReceipt, type UpOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,11 +28,25 @@ export class DevFnOrchestrator {
   public async up(options: UpOptions): Promise<LifecycleReceipt> {
     const stateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.upLocked(options, stateDir, identity), { timeoutMs: 30_000 });
+  }
+
+  private async upLocked(options: UpOptions, stateDir: string, identity: InstanceIdentity): Promise<LifecycleReceipt> {
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
-    if (existing?.state === "ready") {
+    if (existing && existing.state !== "stopped") {
       const processRunning = (await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)))).some((state) => state === "running");
       const serviceRunning = (await Promise.all(existing.services.map((item) => new ComposeController().status(item)))).some((state) => state === "running");
-      if (processRunning || serviceRunning) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      if (existing.state === "ready" && (processRunning || serviceRunning)) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      if (processRunning || serviceRunning || existing.state === "starting" || existing.state === "degraded") {
+        const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
+        if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
+        existing.cleanup = recovered;
+        existing.state = "stopped";
+        existing.updatedAt = new Date().toISOString();
+        await writeReceipt(existing);
+      } else await registry.release({ invocationId: existing.invocationId });
     }
     const plan = createPlan(options.config, options.profile);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
@@ -41,8 +55,7 @@ export class DevFnOrchestrator {
       throw new DevFnError("DEVFN_PUBLIC_EXPOSURE_CONFIRMATION_REQUIRED", "This profile declares public exposure. Review it and rerun with --allow-public.", { processes: publicNodes, ports: publicPorts });
     }
     const invocationId = randomUUID();
-    const runtimeDir = runtimeDirectory(options.config, options.root, identity.instanceId);
-    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const runtimeDir = await secureRuntimeDirectory(options.config, options.root, identity.instanceId);
     const loadedPolicy = await loadDevFnPolicy(options.root, options.config.policy);
     const policy = resolvePolicy(loadedPolicy?.policy ?? null, options.config.project.id);
     const suffix = loadedPolicy?.policy.hostnameSuffix ?? ".localhost";
@@ -67,10 +80,15 @@ export class DevFnOrchestrator {
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      allocations, processes: [], services: [], routes: [], urls: {}, environmentOutputs: [],
+      allocations, processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
     };
-    await registry.updateInvocation(invocationId, { state: "starting" });
-    await writeReceipt(receipt);
+    try {
+      await registry.updateInvocation(invocationId, { state: "starting" });
+      await writeReceipt(receipt);
+    } catch (error) {
+      await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
+      throw error;
+    }
     const supervisor = new ProcessSupervisor();
     const compose = new ComposeController();
     const proxy = new CaddyProxyController(stateDir);
@@ -78,10 +96,20 @@ export class DevFnOrchestrator {
       receipt.environmentOutputs = await writeEnvironmentOutputs(options.root, runtimeDir, options.config.environmentOutputs ?? [], environment);
       for (const node of plan.nodes) {
         if (node.kind === "service") {
-          receipt.services.push(await compose.start({ name: node.name, spec: options.config.services![node.name], root: options.root, runtimeDir, instanceId: identity.instanceId, ports, environment }));
+          receipt.services.push(await compose.start({
+            name: node.name, spec: options.config.services![node.name], root: options.root, runtimeDir, instanceId: identity.instanceId, ports,
+            portHosts: Object.fromEntries(allocations.map((item) => [item.service, item.host])),
+            portProtocols: Object.fromEntries(allocations.map((item) => [item.service, item.protocol])), environment,
+          }));
         } else {
           receipt.processes.push(await supervisor.start({ name: node.name, spec: options.config.processes![node.name], root: options.root, runtimeDir, ports, environment }));
+          if (options.config.processes![node.name].exposure !== "public") {
+            const expected = new Set(options.config.processes![node.name].ports?.map((name) => ports[name]) ?? []);
+            const unsafe = (await scanListeners()).find((listener) => expected.has(listener.port) && ["*", "0.0.0.0", "::", "[::]"].includes(listener.host));
+            if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} exposed port ${unsafe.port} beyond loopback.`);
+          }
         }
+        receipt.startedNodes?.push({ name: node.name, kind: node.kind });
         receipt.updatedAt = new Date().toISOString();
         await writeReceipt(receipt);
       }
@@ -121,11 +149,21 @@ export class DevFnOrchestrator {
 
   private async cleanup(receipt: LifecycleReceipt, registry: FilePortRegistry, supervisor: ProcessSupervisor, compose: ComposeController, proxy: CaddyProxyController, failed: boolean): Promise<CleanupResult> {
     const result: CleanupResult = { stoppedProcesses: [], stoppedServices: [], removedProxy: false, releasedPorts: false, errors: [] };
-    for (const managed of [...receipt.processes].reverse()) {
-      try { await supervisor.stop(managed); result.stoppedProcesses.push(managed.name); } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
-    }
-    for (const service of [...receipt.services].reverse()) {
-      try { await compose.stop(service); result.stoppedServices.push(service.name); } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+    const historical = [
+      ...receipt.processes.map((value) => ({ kind: "process" as const, value })),
+      ...receipt.services.map((value) => ({ kind: "service" as const, value })),
+    ];
+    const started = receipt.startedNodes?.length
+      ? [...receipt.startedNodes].reverse().flatMap((node) => {
+        const found = historical.find((item) => item.kind === node.kind && item.value.name === node.name);
+        return found ? [found] : [];
+      })
+      : historical.sort((a, b) => Date.parse(b.value.startedAt) - Date.parse(a.value.startedAt));
+    for (const item of started) {
+      try {
+        if (item.kind === "process") { await supervisor.stop(item.value); result.stoppedProcesses.push(item.value.name); }
+        else { await compose.stop(item.value); result.stoppedServices.push(item.value.name); }
+      } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     }
     try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { if (receipt.routes.length) result.errors.push(error instanceof Error ? error.message : String(error)); }
     if (result.errors.length === 0) {
@@ -137,6 +175,11 @@ export class DevFnOrchestrator {
   public async down(options: { config: DevFnConfig; root: string; stateDir?: string }): Promise<LifecycleReceipt> {
     const stateDir = options.stateDir ?? defaultStateDir();
     const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    return await withFileLock(path.join(stateDir, `lifecycle-${identity.instanceId}.lock`), async () => await this.downLocked(options, stateDir, identity), { timeoutMs: 30_000 });
+  }
+
+  private async downLocked(options: { config: DevFnConfig; root: string; stateDir?: string }, stateDir: string, identity: InstanceIdentity): Promise<LifecycleReceipt> {
     const receipt = await readReceipt(options.config, options.root, identity.instanceId);
     if (!receipt || receipt.state === "stopped") throw new DevFnError("DEVFN_NOT_RUNNING", `DevFn instance ${identity.instanceId} is not running.`);
     const cleanup = await this.cleanup(receipt, new FilePortRegistry(path.join(stateDir, "registry.json")), new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), false);

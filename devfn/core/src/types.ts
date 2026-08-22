@@ -40,6 +40,7 @@ export interface LifecycleReceipt {
   allocations: PortAllocation[];
   processes: ManagedProcess[];
   services: ManagedComposeService[];
+  startedNodes?: Array<{ name: string; kind: "process" | "service" }>;
   routes: ProxyRoute[];
   urls: Record<string, string>;
   environmentOutputs: string[];

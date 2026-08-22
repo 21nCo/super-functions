@@ -71,30 +71,35 @@ function relativePath(value: unknown, field: string): string {
   return result;
 }
 
+function healthTimeout(input: RecordValue, field: string): { timeoutMs?: number } {
+  const timeoutMs = input.timeoutMs === undefined ? undefined : integer(input.timeoutMs, `${field}.timeoutMs`, 1, 3_600_000);
+  return timeoutMs === undefined ? {} : { timeoutMs };
+}
+
+function httpHealth(input: RecordValue, field: string): HealthCheck {
+  if (input.url === undefined && input.port === undefined) fail(`${field} requires url or port.`, field);
+  const url = optionalString(input.url, `${field}.url`);
+  const port = optionalString(input.port, `${field}.port`);
+  const healthPath = optionalString(input.path, `${field}.path`);
+  return { type: "http", ...(url ? { url } : {}), ...(port ? { port } : {}), ...(healthPath ? { path: healthPath } : {}), ...(input.expectedStatus === undefined ? {} : { expectedStatus: integer(input.expectedStatus, `${field}.expectedStatus`, 100, 599) }), ...healthTimeout(input, field) };
+}
+
+function commandHealth(input: RecordValue, field: string): HealthCheck {
+  const command = stringArray(input.command, `${field}.command`);
+  if (!command?.length) fail(`${field}.command cannot be empty.`, `${field}.command`);
+  return { type: "command", command, ...healthTimeout(input, field) };
+}
+
 function health(value: unknown, field: string): HealthCheck | undefined {
   if (value === undefined) return undefined;
   const input = record(value, field);
-  const type = string(input.type, `${field}.type`);
-  const timeoutMs = input.timeoutMs === undefined ? undefined : integer(input.timeoutMs, `${field}.timeoutMs`, 1, 3_600_000);
-  if (type === "http") {
-    if (input.url === undefined && input.port === undefined) fail(`${field} requires url or port.`, field);
-    return {
-      type,
-      ...(optionalString(input.url, `${field}.url`) ? { url: optionalString(input.url, `${field}.url`) } : {}),
-      ...(optionalString(input.port, `${field}.port`) ? { port: optionalString(input.port, `${field}.port`) } : {}),
-      ...(optionalString(input.path, `${field}.path`) ? { path: optionalString(input.path, `${field}.path`) } : {}),
-      ...(input.expectedStatus === undefined ? {} : { expectedStatus: integer(input.expectedStatus, `${field}.expectedStatus`, 100, 599) }),
-      ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    };
+  switch (string(input.type, `${field}.type`)) {
+    case "http": return httpHealth(input, field);
+    case "tcp": return { type: "tcp", port: string(input.port, `${field}.port`), ...healthTimeout(input, field) };
+    case "command": return commandHealth(input, field);
+    case "log": return { type: "log", pattern: string(input.pattern, `${field}.pattern`), ...healthTimeout(input, field) };
+    default: return fail(`${field}.type is unsupported.`, `${field}.type`);
   }
-  if (type === "tcp") return { type, port: string(input.port, `${field}.port`), ...(timeoutMs ? { timeoutMs } : {}) };
-  if (type === "command") {
-    const command = stringArray(input.command, `${field}.command`);
-    if (!command?.length) fail(`${field}.command cannot be empty.`, `${field}.command`);
-    return { type, command, ...(timeoutMs ? { timeoutMs } : {}) };
-  }
-  if (type === "log") return { type, pattern: string(input.pattern, `${field}.pattern`), ...(timeoutMs ? { timeoutMs } : {}) };
-  return fail(`${field}.type is unsupported.`, `${field}.type`);
 }
 
 function portSpec(value: unknown, field: string): PortSpec {
@@ -124,6 +129,16 @@ function portSpec(value: unknown, field: string): PortSpec {
   };
 }
 
+function environmentFields(input: RecordValue, field: string): Pick<ProcessSpec, "env" | "envAllowlist" | "secretEnv"> {
+  const env = stringMap(input.env, `${field}.env`);
+  const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
+  const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
+  for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
+  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
+  for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  return { ...(env ? { env } : {}), ...(envAllowlist ? { envAllowlist } : {}), ...(secretEnv ? { secretEnv } : {}) };
+}
+
 function processSpec(value: unknown, field: string): ProcessSpec {
   const input = record(value, field);
   const adapter = string(input.adapter, `${field}.adapter`) as ProcessSpec["adapter"];
@@ -136,24 +151,19 @@ function processSpec(value: unknown, field: string): ProcessSpec {
   if ((adapter === "npm" || adapter === "pnpm") && !script) fail(`${field}.script is required for ${adapter}.`, field);
   const exposure = input.exposure === undefined ? "local" : string(input.exposure, `${field}.exposure`);
   if (exposure !== "local" && exposure !== "public") fail(`${field}.exposure must be local or public.`, `${field}.exposure`);
-  const env = stringMap(input.env, `${field}.env`);
-  const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
-  const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
-  for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
-  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  const ports = stringArray(input.ports, `${field}.ports`);
+  const dependsOn = stringArray(input.dependsOn, `${field}.dependsOn`);
+  const parsedHealth = health(input.health, `${field}.health`);
   return {
     adapter,
     exposure,
     ...(command ? { command } : {}),
     ...(script ? { script } : {}),
     ...(input.cwd === undefined ? {} : { cwd: relativePath(input.cwd, `${field}.cwd`) }),
-    ...(env ? { env } : {}),
-    ...(envAllowlist ? { envAllowlist } : {}),
-    ...(secretEnv ? { secretEnv } : {}),
-    ...(stringArray(input.ports, `${field}.ports`) ? { ports: stringArray(input.ports, `${field}.ports`) } : {}),
-    ...(stringArray(input.dependsOn, `${field}.dependsOn`) ? { dependsOn: stringArray(input.dependsOn, `${field}.dependsOn`) } : {}),
-    ...(health(input.health, `${field}.health`) ? { health: health(input.health, `${field}.health`) } : {}),
+    ...environmentFields(input, field),
+    ...(ports ? { ports } : {}),
+    ...(dependsOn ? { dependsOn } : {}),
+    ...(parsedHealth ? { health: parsedHealth } : {}),
     ...(input.shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs: integer(input.shutdownTimeoutMs, `${field}.shutdownTimeoutMs`, 1, 3_600_000) }),
   };
 }
@@ -164,24 +174,18 @@ function serviceSpec(value: unknown, field: string): ComposeServiceSpec {
   const ports = input.ports === undefined ? undefined : Object.fromEntries(
     Object.entries(record(input.ports, `${field}.ports`)).map(([name, internal]) => [name, integer(internal, `${field}.ports.${name}`)]),
   );
-  const env = stringMap(input.env, `${field}.env`);
-  const envAllowlist = stringArray(input.envAllowlist, `${field}.envAllowlist`);
-  const secretEnv = stringArray(input.secretEnv, `${field}.secretEnv`);
-  for (const key of Object.keys(env ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.env.${key} must not contain a literal secret; inherit it through envAllowlist and declare it in secretEnv.`, `${field}.env.${key}`);
-  for (const key of secretEnv ?? []) if (!envAllowlist?.includes(key)) fail(`${field}.secretEnv contains ${key}, which is not present in envAllowlist.`, `${field}.secretEnv`);
-  for (const key of envAllowlist ?? []) if (SENSITIVE_KEY.test(key) && !secretEnv?.includes(key)) fail(`${field}.envAllowlist contains sensitive key ${key}; declare it in secretEnv for log redaction.`, `${field}.envAllowlist`);
+  const dependsOn = stringArray(input.dependsOn, `${field}.dependsOn`);
+  const parsedHealth = health(input.health, `${field}.health`);
   return {
     adapter: "compose",
     service: string(input.service, `${field}.service`),
     ...(input.file === undefined ? {} : { file: relativePath(input.file, `${field}.file`) }),
     ...(optionalString(input.projectName, `${field}.projectName`) ? { projectName: optionalString(input.projectName, `${field}.projectName`) } : {}),
     ...(ports ? { ports } : {}),
-    ...(stringArray(input.dependsOn, `${field}.dependsOn`) ? { dependsOn: stringArray(input.dependsOn, `${field}.dependsOn`) } : {}),
-    ...(health(input.health, `${field}.health`) ? { health: health(input.health, `${field}.health`) } : {}),
+    ...(dependsOn ? { dependsOn } : {}),
+    ...(parsedHealth ? { health: parsedHealth } : {}),
     ...(input.persistent === undefined ? {} : { persistent: input.persistent === true }),
-    ...(env ? { env } : {}),
-    ...(envAllowlist ? { envAllowlist } : {}),
-    ...(secretEnv ? { secretEnv } : {}),
+    ...environmentFields(input, field),
   };
 }
 
@@ -201,9 +205,13 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const input = record(value, field);
   const tls = input.tls === undefined ? "off" : string(input.tls, `${field}.tls`);
   if (tls !== "off" && tls !== "internal") fail(`${field}.tls must be off or internal.`, `${field}.tls`);
+  const hostname = optionalString(input.hostname, `${field}.hostname`);
+  if (hostname && (!hostname.endsWith(".localhost") || hostname.includes("*"))) {
+    fail(`${field}.hostname must be a concrete .localhost hostname.`, `${field}.hostname`);
+  }
   return {
     target: string(input.target, `${field}.target`),
-    ...(optionalString(input.hostname, `${field}.hostname`) ? { hostname: optionalString(input.hostname, `${field}.hostname`) } : {}),
+    ...(hostname ? { hostname } : {}),
     tls,
     ...(stringArray(input.profiles, `${field}.profiles`) ? { profiles: stringArray(input.profiles, `${field}.profiles`) } : {}),
   };
@@ -233,7 +241,11 @@ function environmentOutputs(value: unknown): EnvironmentOutput[] | undefined {
     return {
       path: relativePath(input.path, `environmentOutputs[${index}].path`),
       format,
-      ...(input.mode === undefined ? {} : { mode: integer(input.mode, `environmentOutputs[${index}].mode`, 0, 0o777) }),
+      ...(input.mode === undefined ? {} : { mode: (() => {
+        const mode = integer(input.mode, `environmentOutputs[${index}].mode`, 0, 0o777);
+        if ((mode & 0o077) !== 0) fail(`environmentOutputs[${index}].mode must not grant group or other permissions.`, `environmentOutputs[${index}].mode`);
+        return mode;
+      })() }),
     } as EnvironmentOutput;
   });
 }
@@ -242,23 +254,25 @@ function named<T>(value: unknown, field: string, parser: (item: unknown, itemFie
   return Object.fromEntries(Object.entries(record(value, field)).map(([name, item]) => [name, parser(item, `${field}.${name}`)]));
 }
 
-function validateReferences(config: DevFnConfig): void {
-  const ports = new Set(Object.keys(config.ports ?? {}));
-  const processes = new Set(Object.keys(config.processes ?? {}));
-  const services = new Set(Object.keys(config.services ?? {}));
-  const nodes = new Set([...processes, ...services]);
+function validateProcessReferences(config: DevFnConfig, ports: Set<string>, nodes: Set<string>): void {
   for (const [name, process] of Object.entries(config.processes ?? {})) {
     for (const port of process.ports ?? []) if (!ports.has(port)) fail(`processes.${name} references unknown port ${port}.`);
     const healthPort = process.health && (process.health.type === "http" || process.health.type === "tcp") ? process.health.port : undefined;
     if (healthPort && (!ports.has(healthPort) || !process.ports?.includes(healthPort))) fail(`processes.${name}.health references port ${healthPort}, which must also appear in processes.${name}.ports.`);
     for (const dependency of process.dependsOn ?? []) if (!nodes.has(dependency)) fail(`processes.${name} references unknown dependency ${dependency}.`);
   }
+}
+
+function validateServiceReferences(config: DevFnConfig, ports: Set<string>, nodes: Set<string>): void {
   for (const [name, service] of Object.entries(config.services ?? {})) {
     for (const port of Object.keys(service.ports ?? {})) if (!ports.has(port)) fail(`services.${name} references unknown port ${port}.`);
     const healthPort = service.health && (service.health.type === "http" || service.health.type === "tcp") ? service.health.port : undefined;
     if (healthPort && (!ports.has(healthPort) || service.ports?.[healthPort] === undefined)) fail(`services.${name}.health references port ${healthPort}, which must also appear in services.${name}.ports.`);
     for (const dependency of service.dependsOn ?? []) if (!nodes.has(dependency)) fail(`services.${name} references unknown dependency ${dependency}.`);
   }
+}
+
+function validateSelectionReferences(config: DevFnConfig, ports: Set<string>, processes: Set<string>, services: Set<string>): void {
   for (const [name, profile] of Object.entries(config.profiles)) {
     for (const process of profile.processes ?? []) if (!processes.has(process)) fail(`profiles.${name} references unknown process ${process}.`);
     for (const service of profile.services ?? []) if (!services.has(service)) fail(`profiles.${name} references unknown service ${service}.`);
@@ -268,6 +282,16 @@ function validateReferences(config: DevFnConfig): void {
     for (const profile of hostname.profiles ?? []) if (!config.profiles[profile]) fail(`hostnames.${name} references unknown profile ${profile}.`);
   }
   if (config.defaultProfile && !config.profiles[config.defaultProfile]) fail(`defaultProfile references unknown profile ${config.defaultProfile}.`);
+}
+
+function validateReferences(config: DevFnConfig): void {
+  const ports = new Set(Object.keys(config.ports ?? {}));
+  const processes = new Set(Object.keys(config.processes ?? {}));
+  const services = new Set(Object.keys(config.services ?? {}));
+  const nodes = new Set([...processes, ...services]);
+  validateProcessReferences(config, ports, nodes);
+  validateServiceReferences(config, ports, nodes);
+  validateSelectionReferences(config, ports, processes, services);
 }
 
 export function validateDevFnConfig(value: unknown): DevFnConfig {
@@ -290,6 +314,9 @@ export function validateDevFnConfig(value: unknown): DevFnConfig {
     ...(environmentOutputs(input.environmentOutputs) ? { environmentOutputs: environmentOutputs(input.environmentOutputs) } : {}),
     ...(input.policy === undefined ? {} : { policy: relativePath(input.policy, "policy") }),
   };
+  if (!config.defaultProfile && !config.profiles.default) {
+    fail("profiles.default is required when defaultProfile is omitted.", "profiles.default");
+  }
   validateReferences(config);
   return config;
 }

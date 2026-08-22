@@ -2,7 +2,7 @@
 
 ## Configuration
 
-`devfn.config.ts`, JavaScript variants, or JSON define versioned semantic intent: project identity, named ports, native processes, Compose services, dependency-ordered profiles, health checks, prerequisites, environment outputs, and proxy hostnames. TypeScript and JavaScript manifests require digest-bound trust before loading.
+`devfn.config.ts`, JavaScript variants, or JSON define versioned semantic intent: project identity, named ports, native processes, Compose services, dependency-ordered profiles, health checks, prerequisites, environment outputs, and proxy hostnames. TypeScript and JavaScript manifests require digest-bound trust, execute from the verified snapshot, and cannot import executable dependencies.
 
 ## Identity and state
 
@@ -18,7 +18,7 @@ Registry mutations use an exclusive lock plus atomic rename. Allocations disting
 
 ## Adapters and boundaries
 
-Native adapters cover command, npm, pinned pnpm, Turbo, Wrangler, Xcode, and ExtFn workflows. Compose retains conventional container ports and uses generated loopback host mappings. Caddy is a shared singleton with locked explicit routes and safe reloads. Public tunnels remain explicit profile commands.
+Native adapters cover command, npm, Corepack-pinned pnpm, Turbo, Wrangler, Xcode, and ExtFn workflows. Compose retains conventional container ports and uses generated loopback mappings unless public exposure is explicit. Caddy is a DevFn-owned singleton with locked explicit routes and safe reloads; unrelated Caddy instances are never reconfigured. Public tunnels remain explicit profile commands.
 
 ## Output and compatibility
 

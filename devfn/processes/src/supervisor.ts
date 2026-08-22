@@ -4,6 +4,8 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveContainedPath } from "@devfn/config";
+
 import { createProcessEnvironment, resolveAdapterCommand } from "./adapters.js";
 import { matchesProcessIdentity, processBirthSignature, processExists } from "./identity.js";
 import { waitForReadiness } from "./readiness.js";
@@ -11,23 +13,37 @@ import { ProcessError, type ManagedProcess, type StartProcessInput } from "./typ
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function resolveCwd(root: string, relative = "."): string {
-  const cwd = path.resolve(root, relative);
-  const relation = path.relative(root, cwd);
-  if (relation.startsWith("..") || path.isAbsolute(relation)) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Process cwd escapes repository: ${relative}`);
-  return cwd;
+async function terminateProcess(pid: number, force = false): Promise<void> {
+  if (process.platform !== "win32") {
+    process.kill(-pid, force ? "SIGKILL" : "SIGTERM");
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("taskkill", ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`taskkill exited with ${code}`)));
+  });
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && processExists(pid)) await delay(50);
+  return !processExists(pid);
 }
 
 export class ProcessSupervisor {
   public async start(input: StartProcessInput): Promise<ManagedProcess> {
     const command = resolveAdapterCommand(input.spec);
     if (command.length === 0) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Process ${input.name} has no command.`);
-    const cwd = resolveCwd(input.root, input.spec.cwd);
+    const cwd = await resolveContainedPath(input.root, input.spec.cwd ?? ".", `processes.${input.name}.cwd`).catch((error) => {
+      throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Process cwd escapes repository: ${input.spec.cwd ?? "."}`, { cause: error instanceof Error ? error.message : String(error) });
+    });
     const logsDir = path.join(input.runtimeDir, "logs");
     await mkdir(logsDir, { recursive: true, mode: 0o700 });
+    if (!/^[A-Za-z0-9_.-]+$/.test(input.name)) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
     const logPath = path.join(logsDir, `${input.name}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
-    const logFd = openSync(logPath, "a", 0o600);
+    const logFd = openSync(logPath, "w", 0o600);
     const environment = createProcessEnvironment(input.spec, input.environment);
     const wrapperPath = fileURLToPath(new URL("./wrapper.js", import.meta.url));
     const child = spawn(process.execPath, [wrapperPath], {
@@ -79,17 +95,8 @@ export class ProcessSupervisor {
       throw new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${managed.pid} no longer matches the DevFn process identity.`, { name: managed.name, pid: managed.pid });
     }
     try {
-      if (process.platform === "win32") {
-        spawn("taskkill", ["/pid", String(managed.pid), "/T"], { stdio: "ignore", windowsHide: true });
-      } else {
-        process.kill(-managed.pid, "SIGTERM");
-      }
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline && processExists(managed.pid)) await delay(50);
-      if (processExists(managed.pid)) {
-        if (process.platform === "win32") spawn("taskkill", ["/pid", String(managed.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
-        else process.kill(-managed.pid, "SIGKILL");
-      }
+      await terminateProcess(managed.pid);
+      if (!await waitForProcessExit(managed.pid, timeoutMs)) await terminateProcess(managed.pid, true);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Unable to stop ${managed.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }

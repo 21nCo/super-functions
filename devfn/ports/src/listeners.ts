@@ -23,7 +23,19 @@ export async function isPortAvailable(port: number, protocol: "tcp" | "udp" = "t
   });
 }
 
-export async function allocateEphemeralPort(host = "127.0.0.1"): Promise<number> {
+export async function allocateEphemeralPort(host = "127.0.0.1", protocol: "tcp" | "udp" = "tcp"): Promise<number> {
+  if (protocol === "udp") {
+    const dgram = await import("node:dgram");
+    return await new Promise<number>((resolve, reject) => {
+      const socket = dgram.createSocket("udp4");
+      socket.unref();
+      socket.once("error", reject);
+      socket.bind(0, host, () => {
+        const address = socket.address();
+        socket.close(() => resolve(address.port));
+      });
+    });
+  }
   return await new Promise<number>((resolve, reject) => {
     const server = net.createServer();
     server.unref();

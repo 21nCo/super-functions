@@ -47,7 +47,7 @@ describe("devfn CLI", () => {
 
     try {
       const up = await invoke(["up"]);
-      expect(up.code).toBe(0);
+      expect(up.code, JSON.stringify(up.value)).toBe(0);
       expect(up.value.state).toBe("ready");
       const status = await invoke(["status"]);
       expect(status.value.state).toBe("ready");
@@ -68,6 +68,7 @@ describe("devfn CLI", () => {
       project: { id: "public-fixture" },
       processes: { tunnel: { adapter: "command", exposure: "public", command: [process.execPath, "-e", "setInterval(() => {}, 1000)"] } },
       profiles: { oauth: { processes: ["tunnel"] } },
+      defaultProfile: "oauth",
     }), "utf8");
     let stdout = "";
     const code = await runCli(["up", "--profile", "oauth", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
@@ -86,6 +87,21 @@ describe("devfn CLI", () => {
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_MANIFEST_UNTRUSTED");
     expect(JSON.parse(stdout).error.message).toContain("is not trusted");
     await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    stdout = "";
+    const trustedCode = await runCli(["status", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+    expect(trustedCode).toBe(1);
+    expect(JSON.parse(stdout).error.code).toBe("DEVFN_CONFIG_INVALID");
+    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects unsupported ports actions", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-ports-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "ports" }, profiles: { default: {} } }), "utf8");
+    let stdout = "";
+    const code = await runCli(["ports", "wat", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout).error.code).toBe("DEVFN_RUNTIME_INVALID");
   });
 
   it("rolls back a ready dependency when a later process fails", async () => {
@@ -108,7 +124,7 @@ describe("devfn CLI", () => {
     const instance = (await readdir(path.join(cwd, ".devfn", "instances")))[0];
     const receipt = JSON.parse(await readFile(path.join(cwd, ".devfn", "instances", instance, "receipt.json"), "utf8")) as { state: string; cleanup: { stoppedProcesses: string[]; releasedPorts: boolean } };
     expect(receipt.state).toBe("failed");
-    expect(receipt.cleanup.stoppedProcesses).toContain("app");
+    expect(receipt.cleanup.stoppedProcesses, JSON.stringify(receipt)).toContain("app");
     expect(receipt.cleanup.releasedPorts).toBe(true);
   }, 15_000);
 });

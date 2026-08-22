@@ -3,7 +3,7 @@ import { createProcessEnvironment, createStreamingRedactor, resolveAdapterComman
 
 describe("runtime adapters", () => {
   it("preserves pinned package-manager semantics", () => {
-    expect(resolveAdapterCommand({ adapter: "pnpm", script: "dev", command: ["--host", "127.0.0.1"] })).toEqual(["pnpm", "run", "dev", "--host", "127.0.0.1"]);
+    expect(resolveAdapterCommand({ adapter: "pnpm", script: "dev", command: ["--host", "127.0.0.1"] })).toEqual(["corepack", "pnpm", "run", "dev", "--host", "127.0.0.1"]);
     expect(resolveAdapterCommand({ adapter: "wrangler" })).toEqual(["npm", "exec", "--offline", "--", "wrangler", "dev"]);
   });
 

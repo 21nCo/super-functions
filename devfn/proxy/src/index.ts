@@ -11,7 +11,7 @@ export interface ProxyRoute { id: string; instanceId: string; hostname: string; 
 interface ProxyState { version: 1; routes: ProxyRoute[] }
 
 export class ProxyError extends Error {
-  public constructor(public readonly code: "DEVFN_PROXY_UNAVAILABLE" | "DEVFN_PROXY_CONFIG_INVALID" | "DEVFN_PROXY_RELOAD_FAILED", message: string, public readonly details?: Record<string, unknown>) {
+  public constructor(public readonly code: "DEVFN_PROXY_UNAVAILABLE" | "DEVFN_PROXY_CONFIG_INVALID" | "DEVFN_PROXY_RELOAD_FAILED" | "DEVFN_PROXY_OWNERSHIP_CONFLICT", message: string, public readonly details?: Record<string, unknown>) {
     super(message); this.name = "ProxyError";
   }
 }
@@ -19,6 +19,8 @@ export class ProxyError extends Error {
 export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
   const lines = ["{", "  admin 127.0.0.1:2019", "}", ""];
   for (const route of [...routes].sort((a, b) => a.hostname.localeCompare(b.hostname))) {
+    if (!route.hostname.endsWith(".localhost") || route.hostname.includes("*")) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy hostname ${route.hostname} must be a concrete .localhost name.`);
+    if (route.targetHost !== "127.0.0.1" && route.targetHost !== "localhost" && route.targetHost !== "::1") throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Proxy target ${route.targetHost} must be loopback.`);
     lines.push(`${route.tls === "off" ? "http://" : ""}${route.hostname} {`, `  reverse_proxy ${route.targetHost}:${route.targetPort}`, ...(route.tls === "internal" ? ["  tls internal"] : []), "}", "");
   }
   return lines.join("\n");
@@ -28,11 +30,13 @@ export class CaddyProxyController {
   private readonly statePath: string;
   private readonly configPath: string;
   private readonly lockPath: string;
+  private readonly ownerPath: string;
 
   public constructor(private readonly stateDir: string) {
     this.statePath = path.join(stateDir, "proxy-routes.json");
     this.configPath = path.join(stateDir, "Caddyfile");
     this.lockPath = path.join(stateDir, "proxy.lock");
+    this.ownerPath = path.join(stateDir, "proxy-owner.json");
   }
 
   public async available(): Promise<boolean> {
@@ -51,15 +55,40 @@ export class CaddyProxyController {
     await writeFile(candidate, renderCaddyfile(next.routes), { encoding: "utf8", mode: 0o600 });
     try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
-    try {
-      await execFileAsync("caddy", ["reload", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 });
-    } catch {
-      const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile"], { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "ignore"], windowsHide: true });
-      child.once("error", () => undefined);
-      child.unref();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    const owner = await readFile(this.ownerPath, "utf8").then((value) => JSON.parse(value) as { pid: number }).catch(() => null);
+    if (!owner) {
+      const externalAdmin = await fetch("http://127.0.0.1:2019/config/", { signal: AbortSignal.timeout(1000) }).then(() => true).catch(() => false);
+      if (externalAdmin) {
+        await rm(candidate, { force: true });
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A non-DevFn Caddy admin endpoint is already running; refusing to replace its configuration.");
+      }
+    } else {
+      try { process.kill(owner.pid, 0); }
+      catch {
+        await rm(candidate, { force: true });
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy owner is no longer running; remove the stale owner record after verification.");
+      }
+    }
+    if (owner) {
       try { await execFileAsync("caddy", ["reload", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
-      catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to start or reload the shared Caddy proxy.", { cause: error instanceof Error ? error.message : String(error) }); }
+      catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to reload the DevFn-owned Caddy proxy.", { cause: error instanceof Error ? error.message : String(error) }); }
+    } else {
+      const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile"], { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "ignore"], windowsHide: true });
+      const spawnError = new Promise<Error | null>((resolve) => child.once("error", resolve));
+      const deadline = Date.now() + 10_000;
+      let ready = false;
+      while (Date.now() < deadline) {
+        if (await Promise.race([spawnError, new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))])) break;
+        ready = await fetch("http://127.0.0.1:2019/config/", { signal: AbortSignal.timeout(500) }).then(() => true).catch(() => false);
+        if (ready) break;
+      }
+      if (!ready || !child.pid) {
+        try { if (child.pid) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM"); } catch { /* already exited */ }
+        await rm(candidate, { force: true });
+        throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to start the DevFn-owned Caddy proxy.");
+      }
+      await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+      child.unref();
     }
     await rename(candidate, this.configPath);
     const tempState = `${this.statePath}.${process.pid}.tmp`;

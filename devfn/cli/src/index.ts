@@ -7,13 +7,14 @@ import { createOutput, createScaffold, redactValue } from "@clifn/core";
 import {
   DevFnConfigError,
   discoverProject,
-  isProjectTrusted,
   loadDevFnConfig,
+  loadTrustedDevFnConfig,
   renderDevFnConfig,
+  resolveContainedPath,
   resolveDevFnManifestPath,
   trustProject,
 } from "@devfn/config";
-import { DevFnError, DevFnOrchestrator, resolveInstanceIdentity } from "@devfn/core";
+import { DevFnError, DevFnOrchestrator } from "@devfn/core";
 import { FilePortRegistry, renderPortInventory } from "@devfn/ports";
 import { defaultStateDir } from "@devfn/config";
 
@@ -101,7 +102,9 @@ async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
   const manifest = await resolveDevFnManifestPath({ cwd, configPath: args.configPath });
   if (path.extname(manifest.path) !== ".json") {
     if (args.trust) await trustProject(manifest.root, manifest.path, stateDir);
-    if (!await isProjectTrusted(manifest.root, manifest.path, stateDir)) {
+    try { return await loadTrustedDevFnConfig({ cwd, configPath: manifest.path, stateDir }); }
+    catch (error) {
+      if (error instanceof DevFnConfigError) throw error;
       throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} is executable code and is not trusted. Review it, then rerun with --trust.`);
     }
   }
@@ -123,6 +126,72 @@ async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string
   return { ok: true, written: true, manifest: path.join(cwd, configName), findings: discovery.findings };
 }
 
+type LoadedConfig = Awaited<ReturnType<typeof trustedConfig>>;
+
+async function portsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+  const action = args.positionals[0];
+  if (action === "gc") return { ok: true, removed: await registry.gc() };
+  if (action !== undefined && action !== "report") throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown ports action ${action}. Expected gc or report.`);
+  const state = await registry.reconcile();
+  if (action === undefined) return { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
+  const { loadDevFnPolicy } = await import("@devfn/config");
+  const { renderPolicyInventory } = await import("@devfn/ports");
+  const policy = await loadDevFnPolicy(loaded.root, loaded.config.policy);
+  const report = `${renderPolicyInventory(policy?.policy ?? null)}\n${renderPortInventory(state)}`;
+  const reportPath = args.output ? await resolveContainedPath(cwd, args.output, "--output") : undefined;
+  if (reportPath) await writeFile(reportPath, report, { encoding: "utf8", mode: 0o600 });
+  return { ok: true, report, ...(reportPath ? { output: reportPath } : {}) };
+}
+
+async function urlCommand(args: ParsedArgs, orchestrator: DevFnOrchestrator, loaded: LoadedConfig): Promise<unknown> {
+  const status = await orchestrator.status({ config: loaded.config, root: loaded.root }) as { urls?: Record<string, string> };
+  const name = args.positionals[0];
+  if (!name) return { ok: true, urls: status.urls ?? {} };
+  const url = status.urls?.[name];
+  if (!url) throw new DevFnError("DEVFN_URL_NOT_FOUND", `No HTTP or proxy URL is resolved for ${name}. Inspect devfn ports for its transport allocation.`);
+  return { ok: true, name, url };
+}
+
+async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
+  const orchestrator = new DevFnOrchestrator();
+  const lifecycle = { config: loaded.config, root: loaded.root, stateDir };
+  const handlers: Record<string, () => Promise<unknown>> = {
+    up: async () => await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic }),
+    down: async () => await orchestrator.down(lifecycle),
+    restart: async () => {
+      await orchestrator.down(lifecycle).catch((error) => { if (!(error instanceof DevFnError) || error.code !== "DEVFN_NOT_RUNNING") throw error; });
+      return await orchestrator.up({ ...lifecycle, profile: args.profile, allowPublic: args.allowPublic });
+    },
+    status: async () => await orchestrator.status(lifecycle),
+    doctor: async () => await orchestrator.doctor({ ...lifecycle, profile: args.profile }),
+    logs: async () => await orchestrator.logs({ config: loaded.config, root: loaded.root, name: args.positionals[0], tail: args.tail }),
+    ports: async () => await portsCommand(args, cwd, stateDir, loaded),
+    url: async () => await urlCommand(args, orchestrator, loaded),
+  };
+  const handler = handlers[args.command];
+  if (!handler) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown command ${args.command}.`);
+  return await handler();
+}
+
+function renderResult(args: ParsedArgs, result: unknown, output: ReturnType<typeof createOutput>): void {
+  if (args.json) { output.json(redactValue(result)); return; }
+  if (args.command === "logs" && result && typeof result === "object") {
+    for (const [name, log] of Object.entries(result)) output.info(`${name}\n${log}`);
+    return;
+  }
+  if (args.command === "url") {
+    const value = result as { url?: string | null; urls?: Record<string, string> };
+    for (const url of value.url ? [value.url] : Object.values(value.urls ?? {})) output.info(url);
+    return;
+  }
+  if (args.command === "doctor") {
+    for (const diagnostic of (result as { diagnostics: Array<{ severity: string; code: string; message: string }> }).diagnostics) output[diagnostic.severity === "error" ? "error" : diagnostic.severity === "warning" ? "warn" : "info"](`${diagnostic.code}: ${diagnostic.message}`);
+    return;
+  }
+  output.success(`${args.command} completed.`, result);
+}
+
 export async function runCli(argv: readonly string[], options: CliOptions = {}): Promise<number> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   let args: ParsedArgs;
@@ -138,52 +207,8 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
       const result = await initCommand(args, cwd); if (args.json) output.json(result); else { if (!result.written) output.info(String(result.preview)); output.success(result.written ? `Created ${result.manifest}` : String(result.confirmationRequired)); } return 0;
     }
     const loaded = await trustedConfig(args, cwd, stateDir);
-    const orchestrator = new DevFnOrchestrator();
-    let result: unknown;
-    if (args.command === "up") result = await orchestrator.up({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir, allowPublic: args.allowPublic });
-    else if (args.command === "down") result = await orchestrator.down({ config: loaded.config, root: loaded.root, stateDir });
-    else if (args.command === "restart") {
-      await orchestrator.down({ config: loaded.config, root: loaded.root, stateDir }).catch((error) => { if (!(error instanceof DevFnError) || error.code !== "DEVFN_NOT_RUNNING") throw error; });
-      result = await orchestrator.up({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir, allowPublic: args.allowPublic });
-    } else if (args.command === "status") result = await orchestrator.status({ config: loaded.config, root: loaded.root });
-    else if (args.command === "doctor") result = await orchestrator.doctor({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir });
-    else if (args.command === "logs") result = await orchestrator.logs({ config: loaded.config, root: loaded.root, name: args.positionals[0], tail: args.tail });
-    else if (args.command === "ports") {
-      const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
-      const action = args.positionals[0];
-      if (action === "gc") result = { ok: true, removed: await registry.gc() };
-      else {
-        const state = await registry.reconcile();
-        if (action === "report") {
-          const { loadDevFnPolicy } = await import("@devfn/config");
-          const { renderPolicyInventory } = await import("@devfn/ports");
-          const policy = await loadDevFnPolicy(loaded.root, loaded.config.policy);
-          const report = `${renderPolicyInventory(policy?.policy ?? null)}\n${renderPortInventory(state)}`;
-          if (args.output) await writeFile(path.resolve(cwd, args.output), report, "utf8");
-          result = { ok: true, report, ...(args.output ? { output: path.resolve(cwd, args.output) } : {}) };
-        } else result = { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
-      }
-    } else if (args.command === "url") {
-      const status = await orchestrator.status({ config: loaded.config, root: loaded.root }) as { urls?: Record<string, string> };
-      if (args.positionals[0]) {
-        const url = status.urls?.[args.positionals[0]];
-        if (!url) throw new DevFnError("DEVFN_URL_NOT_FOUND", `No HTTP or proxy URL is resolved for ${args.positionals[0]}. Inspect devfn ports for its transport allocation.`);
-        result = { ok: true, name: args.positionals[0], url };
-      } else result = { ok: true, urls: status.urls ?? {} };
-    } else throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown command ${args.command}.`);
-
-    if (args.json) output.json(redactValue(result));
-    else {
-      if (args.command === "logs" && result && typeof result === "object") for (const [name, log] of Object.entries(result)) output.info(`${name}\n${log}`);
-      else if (args.command === "url") {
-        const value = result as { url?: string | null; urls?: Record<string, string> };
-        if (value.url) output.info(value.url);
-        else for (const url of Object.values(value.urls ?? {})) output.info(url);
-      }
-      else if (args.command === "doctor") {
-        for (const diagnostic of (result as { diagnostics: Array<{ severity: string; code: string; message: string }> }).diagnostics) output[diagnostic.severity === "error" ? "error" : diagnostic.severity === "warning" ? "warn" : "info"](`${diagnostic.code}: ${diagnostic.message}`);
-      } else output.success(`${args.command} completed.`, result);
-    }
+    const result = await executeCommand(args, cwd, stateDir, loaded);
+    renderResult(args, result, output);
     return args.command === "doctor" && !(result as { ok?: boolean }).ok ? 1 : 0;
   } catch (error) {
     const failure = errorPayload(error);

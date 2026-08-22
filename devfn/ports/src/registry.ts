@@ -79,15 +79,16 @@ export class FilePortRegistry {
       const planned: PortAllocation[] = [];
 
       const choose = async (name: string, spec: ReservationInput["requests"][number]["spec"]): Promise<{ port: number; source: PortAllocation["source"] }> => {
-        if (spec.ephemeral) return { port: await allocateEphemeralPort(), source: "ephemeral" };
-        const prior = stable.get(name);
-        if (prior && !occupied.has(prior.port) && await isPortAvailable(prior.port, spec.protocol)) return { port: prior.port, source: "stable" };
+        const host = spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1";
+        if (spec.ephemeral) return { port: await allocateEphemeralPort(host, spec.protocol), source: "ephemeral" };
         if (spec.exact && spec.preferred !== undefined) {
-          if (occupied.has(spec.preferred) || !await isPortAvailable(spec.preferred, spec.protocol)) {
+          if (occupied.has(spec.preferred) || !await isPortAvailable(spec.preferred, spec.protocol, host)) {
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
           }
           return { port: spec.preferred, source: "exact" };
         }
+        const prior = stable.get(name);
+        if (prior && !occupied.has(prior.port) && await isPortAvailable(prior.port, spec.protocol, host)) return { port: prior.port, source: "stable" };
         const pools: Array<{ values: number[]; source: PortAllocation["source"] }> = [];
         if (spec.preferred !== undefined) pools.push({ values: [spec.preferred], source: "preferred" });
         if (spec.range) pools.push({ values: candidates(spec.range[0], spec.range[1], `${input.instanceId}:${name}`), source: "range" });
@@ -97,7 +98,7 @@ export class FilePortRegistry {
         for (const pool of pools) {
           for (const port of pool.values) {
             if (occupied.has(port)) continue;
-            if (await isPortAvailable(port, spec.protocol)) return { port, source: pool.source };
+            if (await isPortAvailable(port, spec.protocol, host)) return { port, source: pool.source };
           }
         }
         throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No available port for ${name}.`, { service: name });
@@ -115,20 +116,28 @@ export class FilePortRegistry {
         const exactGroup = group.filter((request) => request.spec.exact);
         if (exactGroup.length > 0 && exactGroup.length !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Port block ${block} cannot mix exact and reallocatable requirements.`);
         const configured = group.map((request) => request.spec.range).filter(Boolean) as [number, number][];
-        const range = configured[0] ?? input.preferredRange ?? input.fallbackRange ?? [4100, 4999];
+        const ranges = [configured[0], input.preferredRange, input.fallbackRange ?? [4100, 4999]]
+          .filter((value, index, all): value is [number, number] => Boolean(value) && all.findIndex((item) => item?.[0] === value?.[0] && item?.[1] === value?.[1]) === index);
         let chosen: number[] | null = null;
         let blockSource: PortAllocation["source"] = "range";
         if (exactGroup.length) {
           const exactPorts = group.map((request) => request.spec.preferred!);
           const sorted = [...new Set(exactPorts)].sort((a, b) => a - b);
           if (sorted.length !== group.length || sorted.at(-1)! - sorted[0] + 1 !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port block ${block} is not contiguous.`);
-          if (!exactPorts.some((port) => occupied.has(port)) && (await Promise.all(exactPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol)))).every(Boolean)) chosen = exactPorts;
+          if (!exactPorts.some((port) => occupied.has(port)) && (await Promise.all(exactPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
           blockSource = "exact";
         } else {
-          for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}`)) {
-            const ports = group.map((_, index) => start + index);
-            if (ports.some((port) => occupied.has(port))) continue;
-            if ((await Promise.all(ports.map((port, index) => isPortAvailable(port, group[index].spec.protocol)))).every(Boolean)) { chosen = ports; break; }
+          for (let rangeIndex = 0; rangeIndex < ranges.length && !chosen; rangeIndex += 1) {
+            const range = ranges[rangeIndex];
+            for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}:${rangeIndex}`)) {
+              const ports = group.map((_, index) => start + index);
+              if (ports.some((port) => occupied.has(port))) continue;
+              if ((await Promise.all(ports.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+                chosen = ports;
+                blockSource = rangeIndex === ranges.length - 1 ? "fallback" : "range";
+                break;
+              }
+            }
           }
         }
         if (!chosen) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No contiguous port block available for ${block}.`);
@@ -203,11 +212,12 @@ export class FilePortRegistry {
     await this.transaction(async (state) => {
       const now = new Date().toISOString();
       for (const allocation of state.allocations.filter(active)) {
-        const available = await isPortAvailable(allocation.port, allocation.protocol);
+        const available = await isPortAvailable(allocation.port, allocation.protocol, allocation.host);
         if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
-        else if (allocation.state === "active" && allocation.process && !isProcessAlive(allocation.process.pid)) allocation.state = available ? "stale" : "externally-occupied";
+        else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && allocation.container && !await isContainerAlive(allocation.container.id)) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = available ? "stale" : "externally-occupied";
+        else if (allocation.state === "externally-occupied" && available) allocation.state = "stale";
         allocation.updatedAt = now;
       }
     });
@@ -225,7 +235,25 @@ export class FilePortRegistry {
 }
 
 export function isProcessAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
+async function processBirthSignature(pid: number): Promise<string | undefined> {
+  try {
+    if (process.platform === "linux") {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+      const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
+      return fields[19] ? `linux:${fields[19]}` : undefined;
+    }
+    if (process.platform === "darwin") return `darwin:${(await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)])).stdout.trim()}`;
+    if (process.platform === "win32") return `win32:${(await execFileAsync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('O')`])).stdout.trim()}`;
+  } catch { return undefined; }
+  return undefined;
+}
+
+async function matchesProcessOwner(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
+  return isProcessAlive(owner.pid) && Boolean(owner.birthSignature) && await processBirthSignature(owner.pid) === owner.birthSignature;
 }
 
 async function isContainerAlive(id: string): Promise<boolean> {

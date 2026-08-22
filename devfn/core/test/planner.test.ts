@@ -19,4 +19,9 @@ describe("lifecycle planner", () => {
     const cyclic = { ...config, services: { db: { ...config.services.db, dependsOn: ["app"] } } };
     expect(() => createPlan(cyclic)).toThrow(/cycle/);
   });
+
+  it("includes the lifecycle owner of a selected proxy hostname", () => {
+    const proxied = { ...config, profiles: { default: { proxy: true } }, hostnames: { app: { target: "app" } } };
+    expect(createPlan(proxied).nodes.map((node) => node.name)).toEqual(["db", "app"]);
+  });
 });
