@@ -24,11 +24,13 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     for (const codePoint of Array.from(value)) {
       const previous = result.at(-1);
       const continuation = /\p{M}|\ufe0e|\ufe0f|\p{Emoji_Modifier}/u.test(codePoint);
-      const joins = codePoint === '\u200d' || previous?.endsWith('\u200d');
+      const pictographic = /\p{Extended_Pictographic}/u;
+      const joinsEmoji = (codePoint === '\u200d' && previous !== undefined && pictographic.test(previous))
+        || (pictographic.test(codePoint) && previous?.endsWith('\u200d') === true && pictographic.test(previous));
       const regionalPair = /\p{Regional_Indicator}/u.test(codePoint)
         && previous !== undefined
         && (previous.match(/\p{Regional_Indicator}/gu)?.length ?? 0) % 2 === 1;
-      if (previous !== undefined && (continuation || joins || regionalPair)) {
+      if (previous !== undefined && (continuation || joinsEmoji || regionalPair)) {
         result[result.length - 1] = previous + codePoint;
       } else {
         result.push(codePoint);

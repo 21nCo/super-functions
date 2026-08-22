@@ -148,4 +148,24 @@ describe('lossless public-tree semantic traces', () => {
     ]);
     expect(() => assertSemanticParity(result)).toThrow(/UIFN_PARITY_FRAMEWORK_MISSING/);
   });
+
+  it('rejects incomplete nested evidence, invalid counters, and unknown results', () => {
+    const malformed = {
+      ...trace('react'),
+      environment: {},
+      actions: [{}],
+      cleanup: { controllerDestroyed: true, listeners: -1 },
+      result: 'skipped',
+    };
+    const paths = validateSemanticTrace(malformed).map((issue) => issue.path);
+    expect(paths).toEqual(expect.arrayContaining([
+      '/result',
+      '/environment/runtime',
+      '/environment/direction',
+      '/actions/0/sequence',
+      '/actions/0/observed',
+      '/cleanup/domReleased',
+      '/cleanup/listeners',
+    ]));
+  });
 });

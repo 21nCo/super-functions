@@ -75,8 +75,13 @@ export function createPhase14Scheduler() {
             .filter(([, entry]) => entry.dueAt <= currentTime)
             .sort(([left], [right]) => schedulerSequence(left) - schedulerSequence(right));
           for (const [handle, entry] of ready) {
-            if (handle.startsWith('timeout-')) timeouts.delete(handle);
-            else pendingIntervals.delete(handle);
+            if (handle.startsWith('timeout-')) {
+              if (!timeouts.has(handle)) continue;
+              timeouts.delete(handle);
+            } else {
+              if (!intervals.has(handle)) continue;
+              pendingIntervals.delete(handle);
+            }
             await entry.callback();
             const interval = intervals.get(handle);
             if (interval) interval.dueAt = currentTime + interval.intervalMs;

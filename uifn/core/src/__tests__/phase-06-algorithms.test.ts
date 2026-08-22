@@ -200,6 +200,7 @@ describe('PHASE_06 canonical shared algorithms', () => {
       expect(matcher.startsWith('👍🏽 ready', '👍🏽')).toBe(true);
       expect(matcher.includes('ready 👍🏽 now', '👍🏽')).toBe(true);
       expect(matcher.includes('family 👨‍👩‍👧‍👦 ready', '👨‍👩‍👧‍👦')).toBe(true);
+      expect(matcher.startsWith('a\u200db', 'a')).toBe(true);
     } finally {
       if (descriptor) Object.defineProperty(Intl, 'Segmenter', descriptor);
       else Reflect.deleteProperty(Intl, 'Segmenter');

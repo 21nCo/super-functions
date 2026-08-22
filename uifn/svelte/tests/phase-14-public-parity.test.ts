@@ -40,6 +40,19 @@ describe('phase-14 deterministic scheduler', () => {
     expect(calls).toBe(2);
   });
 
+  it('does not invoke a same-deadline interval cancelled by an earlier callback', async () => {
+    const scheduler = createPhase14Scheduler();
+    const observed: string[] = [];
+    let secondHandle: string;
+    scheduler.setInterval(() => {
+      observed.push('first');
+      scheduler.clearInterval(secondHandle);
+    }, 5);
+    secondHandle = scheduler.setInterval(() => { observed.push('second'); }, 5);
+    await scheduler.flush();
+    expect(observed).toEqual(['first']);
+  });
+
   it('does not accept an unrelated same-valued state change for a setter', async () => {
     let state = { open: false, unrelated: false };
     const runtime = { callbacks: [], scheduler: createPhase14Scheduler() };

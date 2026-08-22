@@ -45,9 +45,11 @@ export interface BotFnOperatorStore {
   getBot(scope: BotFnOperatorScope, id: string): Promise<BotFnBotRecord | null>;
   putBot(value: BotFnBotRecord): Promise<void>;
   deleteBot(scope: BotFnOperatorScope, id: string): Promise<boolean>;
+  deleteBotIfNoChannels(scope: BotFnOperatorScope, id: string): Promise<"deleted" | "not_found" | "channels_exist">;
   listChannels(scope: BotFnOperatorScope, botId?: string): Promise<BotFnChannelRecord[]>;
   getChannel(scope: BotFnOperatorScope, id: string): Promise<BotFnChannelRecord | null>;
   putChannel(value: BotFnChannelRecord): Promise<void>;
+  putChannelIfBotExists(value: BotFnChannelRecord): Promise<boolean>;
   deleteChannel(scope: BotFnOperatorScope, id: string): Promise<boolean>;
 }
 
@@ -80,6 +82,20 @@ export class MemoryBotFnOperatorStore implements BotFnOperatorStore {
     return this.bots.delete(this.key(scope, id));
   }
 
+  async deleteBotIfNoChannels(
+    scope: BotFnOperatorScope,
+    id: string,
+  ): Promise<"deleted" | "not_found" | "channels_exist"> {
+    const botKey = this.key(scope, id);
+    if (!this.bots.has(botKey)) return "not_found";
+    const prefix = this.key(scope, "");
+    if ([...this.channels.values()].some((value) => this.key(value.scope, "") === prefix && value.botId === id)) {
+      return "channels_exist";
+    }
+    this.bots.delete(botKey);
+    return "deleted";
+  }
+
   async listChannels(scope: BotFnOperatorScope, botId?: string): Promise<BotFnChannelRecord[]> {
     const prefix = this.key(scope, "");
     return [...this.channels.values()]
@@ -94,6 +110,12 @@ export class MemoryBotFnOperatorStore implements BotFnOperatorStore {
 
   async putChannel(value: BotFnChannelRecord): Promise<void> {
     this.channels.set(this.key(value.scope, value.id), structuredClone(value));
+  }
+
+  async putChannelIfBotExists(value: BotFnChannelRecord): Promise<boolean> {
+    if (!this.bots.has(this.key(value.scope, value.botId))) return false;
+    this.channels.set(this.key(value.scope, value.id), structuredClone(value));
+    return true;
   }
 
   async deleteChannel(scope: BotFnOperatorScope, id: string): Promise<boolean> {
@@ -181,10 +203,11 @@ export function createBotFnOperatorService(options: BotFnOperatorServiceOptions)
 
     async deleteBot(input: { id: string }, context: AdminOperationContext) {
       const scope = requireScope(context);
-      if ((await options.store.listChannels(scope, input.id)).length > 0) {
+      const outcome = await options.store.deleteBotIfNoChannels(scope, input.id);
+      if (outcome === "channels_exist") {
         throw new AdminError("precondition_failed", "Disconnect bot channels before deleting the bot.");
       }
-      if (!await options.store.deleteBot(scope, input.id)) {
+      if (outcome === "not_found") {
         throw new AdminError("not_found", "BotFn bot was not found.");
       }
       return { accepted: true as const };
@@ -234,7 +257,9 @@ export function createBotFnOperatorService(options: BotFnOperatorServiceOptions)
         createdAt: previous?.createdAt ?? updatedAt,
         updatedAt,
       };
-      await options.store.putChannel(value);
+      if (!await options.store.putChannelIfBotExists(value)) {
+        throw new AdminError("not_found", "BotFn bot was not found.");
+      }
       return { accepted: true as const, item: channelView(value) };
     },
 

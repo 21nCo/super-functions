@@ -212,6 +212,20 @@ describe("@hostfn/admin", () => {
         { ...context, scope: { ...scope, environmentId: "staging" } },
       ),
     ).rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(
+      adapter.invoke(
+        "hostfn.deployments.list",
+        { cursor: first.data.nextCursor },
+        context,
+      ),
+    ).rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(
+      adapter.invoke(
+        "hostfn.targets.list",
+        { status: "failed", cursor: first.data.nextCursor },
+        context,
+      ),
+    ).rejects.toMatchObject({ code: "invalid_argument" });
   });
 
   it("round-trips cursors for Unicode scope identifiers", async () => {

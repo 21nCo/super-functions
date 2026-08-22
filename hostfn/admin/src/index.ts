@@ -698,13 +698,15 @@ function pageResult(
   items: unknown[],
   input: PageInput,
   context: AdminOperationContext,
+  identity: string,
 ): PageOutput {
   const cursorScope = scope(context);
   let offset = 0;
   if (input.cursor) {
     try {
-      const decoded = decodeAdminCursor<{ offset?: unknown }>(input.cursor, cursorScope);
+      const decoded = decodeAdminCursor<{ identity?: unknown; offset?: unknown }>(input.cursor, cursorScope);
       if (
+        decoded.identity !== identity ||
         typeof decoded.offset !== "number" ||
         !Number.isSafeInteger(decoded.offset) ||
         decoded.offset < 0
@@ -725,9 +727,13 @@ function pageResult(
     items: pageItems,
     nextCursor:
       nextOffset < items.length
-        ? encodeAdminCursor(cursorScope, { offset: nextOffset })
+        ? encodeAdminCursor(cursorScope, { identity, offset: nextOffset })
         : null,
   };
+}
+
+function pageIdentity(operationId: string, filter?: string): string {
+  return JSON.stringify([operationId, filter ?? null]);
 }
 export function createHostFnOperatorAdminService(
   operator: HostFnOperatorService,
@@ -740,6 +746,7 @@ export function createHostFnOperatorAdminService(
         ),
         i,
         c,
+        pageIdentity("hostfn.targets.list", i.status),
       ),
     getTarget: async (i, c) => ({
       item:
@@ -749,7 +756,12 @@ export function createHostFnOperatorAdminService(
       item: await operator.restart(scope(c), i.id),
     }),
     listDeployments: async (i, c) =>
-      pageResult(await operator.listDeployments(scope(c), i.targetId), i, c),
+      pageResult(
+        await operator.listDeployments(scope(c), i.targetId),
+        i,
+        c,
+        pageIdentity("hostfn.deployments.list", i.targetId),
+      ),
     getDeployment: async (i, c) => ({
       item:
         (await operator.getDeployment(scope(c), i.id)) ??
@@ -763,7 +775,12 @@ export function createHostFnOperatorAdminService(
       item: await operator.rollback(scope(c), i.id),
     }),
     listDomains: async (i, c) =>
-      pageResult(await operator.listDomains(scope(c), i.targetId), i, c),
+      pageResult(
+        await operator.listDomains(scope(c), i.targetId),
+        i,
+        c,
+        pageIdentity("hostfn.domains.list", i.targetId),
+      ),
     attachDomain: async (i, c) => ({
       item: await operator.attachDomain(scope(c), i),
     }),
@@ -771,7 +788,12 @@ export function createHostFnOperatorAdminService(
       item: await operator.detachDomain(scope(c), i.id),
     }),
     listVariables: async (i, c) =>
-      pageResult(await operator.listVariables(scope(c), i.targetId), i, c),
+      pageResult(
+        await operator.listVariables(scope(c), i.targetId),
+        i,
+        c,
+        pageIdentity("hostfn.variables.list", i.targetId),
+      ),
     setVariable: async (i, c) => ({
       item: await operator.setVariable(scope(c), i),
     }),

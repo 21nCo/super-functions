@@ -87,6 +87,48 @@ describe("@botfn/admin", () => {
     expect(secondPage.data.nextCursor).toBeNull();
   });
 
+  it("atomically preserves the bot/channel invariant during connect and delete races", async () => {
+    const store = new MemoryBotFnOperatorStore();
+    let releaseVerification!: () => void;
+    let markVerificationStarted!: () => void;
+    const verificationGate = new Promise<void>((resolve) => { releaseVerification = resolve; });
+    const verificationStarted = new Promise<void>((resolve) => { markVerificationStarted = resolve; });
+    const service = createBotFnOperatorService({
+      store,
+      verifyChannel: async () => {
+        markVerificationStarted();
+        await verificationGate;
+        return {};
+      },
+    });
+    const activeContext = context("project-race");
+    await service.upsertBot({ id: "support", name: "Support" }, activeContext);
+    const connecting = service.connectChannel({
+      id: "channel-race",
+      botId: "support",
+      platform: "discord",
+      externalId: "external-race",
+      credentialRef: "vault://botfn/race",
+    }, activeContext);
+    await verificationStarted;
+    await expect(service.deleteBot({ id: "support" }, activeContext)).resolves.toEqual({ accepted: true });
+    releaseVerification();
+    await expect(connecting).rejects.toMatchObject({ code: "not_found" });
+    await expect(service.listChannels({}, activeContext)).resolves.toEqual({ items: [], nextCursor: null });
+
+    await service.upsertBot({ id: "support", name: "Support" }, activeContext);
+    const connectedService = createBotFnOperatorService({ store, verifyChannel: async () => ({}) });
+    await connectedService.connectChannel({
+      id: "channel-live",
+      botId: "support",
+      platform: "discord",
+      externalId: "external-live",
+      credentialRef: "vault://botfn/live",
+    }, activeContext);
+    await expect(connectedService.deleteBot({ id: "support" }, activeContext))
+      .rejects.toMatchObject({ code: "precondition_failed" });
+  });
+
   it("exposes named typed client methods and common capability methods", async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       ok: true,
