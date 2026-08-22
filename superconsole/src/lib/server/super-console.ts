@@ -680,10 +680,11 @@ export class SuperConsole {
         const unsafeDecodedSegment = next === '.' || next === '..'
           || /[\\\u0000-\u001f\u007f]/.test(next)
           || next.split('/').some((part) => part === '.' || part === '..');
-        if (unsafeDecodedSegment || (depth > 0 && next.includes('/'))) {
+        const decodedSeparatorCount = decoded.split('/').length - 1;
+        const nextSeparatorCount = next.split('/').length - 1;
+        if (unsafeDecodedSegment || (depth > 0 && nextSeparatorCount > decodedSeparatorCount)) {
           throw new SuperConsoleHttpError('The administration path contains an unsafe segment.', { status: 400, code: 'INVALID_ADMIN_PATH' });
         }
-        if (depth === 0 && next.includes('/')) return segment;
         if (next === decoded) return segment;
         decoded = next;
       }

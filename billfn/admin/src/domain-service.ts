@@ -6,6 +6,7 @@ import type {
 } from "@billfn/core";
 import {
   AdminError,
+  adminPageIdentity,
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
@@ -65,6 +66,7 @@ function list(
   values: object[],
   input: BillFnAdminListInput,
   context: AdminOperationContext,
+  operationId: string,
 ): AdminOperationResult<JsonRecord> {
   let records = values.map(asJson);
   if (input.search?.trim()) {
@@ -83,16 +85,27 @@ function list(
     }
     return String(left.id ?? "").localeCompare(String(right.id ?? ""));
   });
-  const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+  const identity = adminPageIdentity(
+    operationId,
+    input.search?.trim().toLowerCase(),
+    input.filter,
+    input.sort ?? [],
+  );
+  const decoded = input.cursor
+    ? decodeAdminCursor<{ identity?: unknown; offset?: unknown }>(input.cursor, context.scope)
+    : { identity, offset: 0 };
   if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
     throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
+  }
+  if (decoded.identity !== identity) {
+    throw new AdminError("invalid_argument", "The BillFn cursor does not belong to this collection query.");
   }
   const offset = decoded.offset ?? 0;
   if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
   const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 200 });
   const items = records.slice(offset as number, (offset as number) + limit);
   const nextOffset = (offset as number) + items.length;
-  return { ok: true, data: { items, nextCursor: nextOffset < records.length ? encodeAdminCursor(context.scope, { offset: nextOffset }) : null } };
+  return { ok: true, data: { items, nextCursor: nextOffset < records.length ? encodeAdminCursor(context.scope, { identity, offset: nextOffset }) : null } };
 }
 
 function item(value: object): AdminOperationResult<JsonRecord> {
@@ -144,7 +157,7 @@ export function createBillFnDomainAdminService(
   return {
     async listProducts(input, context) {
       const catalog = await options.billfn.getCatalog();
-      return list(products(catalog.plans), input, context);
+      return list(products(catalog.plans), input, context, "billfn.products.list");
     },
     async getProduct(input) {
       const catalog = await options.billfn.getCatalog();
@@ -154,7 +167,7 @@ export function createBillFnDomainAdminService(
     async listPlans(input, context) {
       const catalog = await options.billfn.getCatalog();
       const plans = catalog.plans.map((plan) => ({ ...plan, id: plan.planKey }));
-      return list(plans, input, context);
+      return list(plans, input, context, "billfn.plans.list");
     },
     async getPlan(input) {
       const catalog = await options.billfn.getCatalog();
@@ -163,7 +176,7 @@ export function createBillFnDomainAdminService(
     },
     async listPrices(input, context) {
       const catalog = await options.billfn.getCatalog();
-      return list(catalog.plans.flatMap((plan) => plan.prices.map((price) => ({ ...price, id: price.priceId, planKey: plan.planKey, productKey: plan.productKey }))), input, context);
+      return list(catalog.plans.flatMap((plan) => plan.prices.map((price) => ({ ...price, id: price.priceId, planKey: plan.planKey, productKey: plan.productKey }))), input, context, "billfn.prices.list");
     },
     async getPrice(input) {
       const catalog = await options.billfn.getCatalog();
@@ -173,7 +186,7 @@ export function createBillFnDomainAdminService(
     async listSubscriptions(input, context) {
       const subject = await options.subject(context);
       const subscription = await options.billfn.subscriptionProvider.getActiveSubscription(subject);
-      return list(subscription ? [subscription] : [], input, context);
+      return list(subscription ? [subscription] : [], input, context, "billfn.subscriptions.list");
     },
     async getSubscription(input, context) {
       const subject = await options.subject(context);
@@ -182,7 +195,7 @@ export function createBillFnDomainAdminService(
     },
     async listEntitlements(input, context) {
       const data = unwrap(await options.billfn.getEntitlements(await options.subject(context)));
-      return list(data.entitlements ? [data.entitlements] : [], input, context);
+      return list(data.entitlements ? [data.entitlements] : [], input, context, "billfn.entitlements.list");
     },
     async getEntitlement(input, context) {
       const data = unwrap(await options.billfn.getEntitlements(await options.subject(context)));
@@ -190,7 +203,7 @@ export function createBillFnDomainAdminService(
     },
     async listUsage(input, context) {
       const data = unwrap(await options.billfn.getUsage(await options.subject(context), optionalString(input.filter?.resource, "filter.resource")));
-      return list(data.usage.map((entry) => ({ ...entry, id: entry.resource })), input, context);
+      return list(data.usage.map((entry) => ({ ...entry, id: entry.resource })), input, context, "billfn.usage.list");
     },
     async getUsage(input, context) {
       const data = unwrap(await options.billfn.getUsage(await options.subject(context), input.id));

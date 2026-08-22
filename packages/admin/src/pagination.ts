@@ -42,6 +42,11 @@ export function decodeAdminCursor<T>(cursor: string, expectedScope: AdminScope):
   }
 }
 
+/** Canonical identity for binding an offset cursor to one operation and query. */
+export function adminPageIdentity(operationId: string, ...query: unknown[]): string {
+  return stableSerialize([operationId, ...query.map((value) => value ?? null)]);
+}
+
 export function normalizeAdminPageLimit(
   value: unknown,
   options: { defaultLimit?: number; maxLimit?: number } = {},

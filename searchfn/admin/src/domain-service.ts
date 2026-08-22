@@ -1,6 +1,7 @@
 import type { SearchAdapter, SearchDocument } from "@searchfn/adapter-contracts";
 import {
   AdminError,
+  adminPageIdentity,
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
@@ -47,6 +48,7 @@ function list(
   values: object[],
   input: SearchFnListInput,
   context: AdminOperationContext,
+  operationId: string,
 ): AdminOperationResult<SearchFnListOutput> {
   let records = values.map((value) => ({ ...value }) as JsonRecord);
   if (input.search?.trim()) {
@@ -68,11 +70,20 @@ function list(
     }
     return String(left.id ?? "").localeCompare(String(right.id ?? ""));
   });
+  const identity = adminPageIdentity(
+    operationId,
+    input.search?.trim().toLowerCase(),
+    input.filter,
+    input.sort ?? [],
+  );
   const decoded = input.cursor
-    ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope)
-    : { offset: 0 };
+    ? decodeAdminCursor<{ identity?: unknown; offset?: unknown }>(input.cursor, context.scope)
+    : { identity, offset: 0 };
   if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
     throw new AdminError("invalid_argument", "The SearchFn cursor is invalid.");
+  }
+  if (decoded.identity !== identity) {
+    throw new AdminError("invalid_argument", "The SearchFn cursor does not belong to this index-list query.");
   }
   const offset = decoded.offset ?? 0;
   if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
@@ -86,7 +97,7 @@ function list(
     data: {
       items,
       nextCursor: nextOffset < records.length
-        ? encodeAdminCursor(context.scope, { offset: nextOffset })
+        ? encodeAdminCursor(context.scope, { identity, offset: nextOffset })
         : null,
     },
   };
@@ -107,9 +118,6 @@ function splitDocumentId(value: string): { resource: string; id: string | number
     decodedResource = decodeURIComponent(resource);
   } catch (error) {
     throw new AdminError("invalid_argument", "SearchFn resource names must be percent-encoded in document targets.", { cause: error });
-  }
-  if (!decodedResource) {
-    throw new AdminError("invalid_argument", "SearchFn document target resource names must be non-empty.");
   }
   const encodedId = value.slice(separator + 1);
   if (encodedId.startsWith("number:")) {
@@ -175,7 +183,7 @@ export function createSearchFnDomainAdminService(
   return {
     async listAdapters(input, context) {
       const { adapterInfo } = await state(context);
-      return list([adapterInfo], input, context);
+      return list([adapterInfo], input, context, "searchfn.adapters.list");
     },
     async getAdapter(input, context) {
       const { adapter, adapterInfo } = await state(context);
@@ -185,7 +193,7 @@ export function createSearchFnDomainAdminService(
       return item(adapterInfo);
     },
     async listIndexes(input, context) {
-      return list((await state(context)).indexInfo, input, context);
+      return list((await state(context)).indexInfo, input, context, "searchfn.indexes-collections.list");
     },
     async getIndex(input, context) {
       const { indexInfo } = await state(context);
@@ -195,7 +203,7 @@ export function createSearchFnDomainAdminService(
     },
     async listHealth(input, context) {
       const { adapter } = await state(context);
-      return list([{ id: adapter.name, adapter: adapter.name, state: "ok", capabilities: adapter.capabilities ?? {} }], input, context);
+      return list([{ id: adapter.name, adapter: adapter.name, state: "ok", capabilities: adapter.capabilities ?? {} }], input, context, "searchfn.health.list");
     },
     async getHealth(input, context) {
       const { adapter } = await state(context);

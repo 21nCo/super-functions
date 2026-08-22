@@ -207,14 +207,22 @@ export function toSemanticJson(value: unknown, key = '', seen = new WeakSet<obje
   if (typeof value !== 'object') return String(value);
   if (seen.has(value)) return '[circular]';
   seen.add(value);
-  if (Array.isArray(value)) return value.map((entry) => toSemanticJson(entry, key, seen));
-  if (value instanceof Date) return value.toISOString();
-  if (!isPlainRecord(value)) return Object.prototype.toString.call(value);
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((entry) => [entry, toSemanticJson(value[entry], entry, seen)]),
-  );
+  let sanitized: SemanticJsonValue;
+  if (Array.isArray(value)) {
+    sanitized = value.map((entry) => toSemanticJson(entry, key, seen));
+  } else if (value instanceof Date) {
+    sanitized = value.toISOString();
+  } else if (!isPlainRecord(value)) {
+    sanitized = Object.prototype.toString.call(value);
+  } else {
+    sanitized = Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((entry) => [entry, toSemanticJson(value[entry], entry, seen)]),
+    );
+  }
+  seen.delete(value);
+  return sanitized;
 }
 
 function addIssue(

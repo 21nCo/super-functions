@@ -5,7 +5,7 @@ import { createAdminClient, createCapabilityAdminClient, AdminClientError } from
 import { createAdminDispatcher } from "./dispatcher.js";
 import { projectAdminMcpTools, registerAdminMcpTools } from "./mcp.js";
 import { createAdminOpenApiDocument } from "./openapi.js";
-import { decodeAdminCursor, encodeAdminCursor, normalizeAdminPageLimit } from "./pagination.js";
+import { adminPageIdentity, decodeAdminCursor, encodeAdminCursor, normalizeAdminPageLimit } from "./pagination.js";
 import { createAdminRegistry } from "./registry.js";
 import { testAdapter, testManifest } from "./test-fixtures.js";
 import type { AdminOperationContext } from "./types.js";
@@ -276,6 +276,8 @@ describe("cursor pagination", () => {
     const cursor = encodeAdminCursor(scope, { updatedAt: "2026-08-13T00:00:00Z", id: "item_1" });
     expect(decodeAdminCursor(cursor, scope)).toEqual({ updatedAt: "2026-08-13T00:00:00Z", id: "item_1" });
     expect(() => decodeAdminCursor(cursor, { ...scope, environmentId: "other" })).toThrowError(/invalid for the active scope/);
+    expect(adminPageIdentity("records.list", { status: "active", owner: "user_1" }))
+      .toBe(adminPageIdentity("records.list", { owner: "user_1", status: "active" }));
     expect(normalizeAdminPageLimit(undefined, { defaultLimit: 25 })).toBe(25);
     expect(() => normalizeAdminPageLimit(201, { maxLimit: 200 })).toThrowError(/between 1 and 200/);
   });

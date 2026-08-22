@@ -9,6 +9,7 @@ import {
 } from "plugfn";
 import {
   AdminError,
+  adminPageIdentity,
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
@@ -37,10 +38,6 @@ function json<T>(value: T): PlugFnAdminJson<T> {
     return Object.fromEntries(Object.entries(current as JsonRecord).filter(([, item]) => item !== undefined).map(([key, item]) => [key, visit(item)]));
   };
   return visit(value) as PlugFnAdminJson<T>;
-}
-
-function pageIdentity(operationId: string, ...filters: unknown[]): string {
-  return JSON.stringify([operationId, ...filters.map((value) => value ?? null)]);
 }
 
 function page<T>(
@@ -177,8 +174,11 @@ async function listAuthorizedSyncJobs(
   const mapped = await identity(options, context);
   const owner = ownerFor(mapped);
   const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
-  const cursorIdentity = pageIdentity(
+  const cursorIdentity = adminPageIdentity(
     "plugfn.sync-jobs.list",
+    mapped.userId,
+    mapped.organizationId,
+    mapped.tenantId,
     input.provider,
     input.connectionId,
     input.resource,
@@ -331,7 +331,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       await identity(options, context);
       const query = input.search?.trim().toLowerCase();
       const values = options.plugfn.providers.list().map((provider) => providerView(provider, Object.hasOwn(options.plugfn.config.integrations, provider.name))).filter((provider) => !query || `${provider.id} ${provider.displayName} ${provider.description}`.toLowerCase().includes(query)).sort((left, right) => left.id.localeCompare(right.id));
-      return page(values, input, context, pageIdentity("plugfn.providers.list", query));
+      return page(values, input, context, adminPageIdentity("plugfn.providers.list", query));
     },
     async getProvider(input, context) {
       await identity(options, context);
@@ -346,7 +346,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.map(connectionView),
         input,
         context,
-        pageIdentity("plugfn.connections.list", input.provider, input.status),
+        adminPageIdentity("plugfn.connections.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getConnection(input, context) { return { item: connectionView((await ownedConnection(options, input.id, context)).connection) }; },
@@ -373,7 +373,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.filter((installation) => installationOwnedForList(installation, mapped)).map(installationView),
         input,
         context,
-        pageIdentity("plugfn.installations.list", input.provider, input.status),
+        adminPageIdentity("plugfn.installations.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getInstallation(input, context) { return { item: installationView(await ownedInstallation(options, input.id, context)) }; },
@@ -394,7 +394,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.map(workflowView),
         input,
         context,
-        pageIdentity("plugfn.workflows.list", input.provider, input.status),
+        adminPageIdentity("plugfn.workflows.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getWorkflow(input, context) { return { item: workflowView((await ownedWorkflow(options, input.id, context)).workflow) }; },
@@ -404,13 +404,14 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
     async deleteWorkflow(input, context) { await ownedWorkflow(options, input.id, context); await options.plugfn.workflows.delete(input.id); return { accepted: true }; },
     async getWebhookReceipt(input, context) { return { item: webhookView(await ownedReceipt(options, input.id, context)) }; },
     async listWebhookDeliveries(input, context) {
+      const mapped = await identity(options, context);
       await ownedReceipt(options, input.receiptId, context);
       const values = (await options.plugfn.runtime.webhooks.listDeliveries(input.receiptId)).map((delivery) => ({ ...json({ id: delivery.id, receiptId: delivery.receiptId, sinkId: delivery.sinkId, handlerName: delivery.handlerName, status: delivery.status, attempts: delivery.attempts, nextAttemptAt: delivery.nextAttemptAt, error: delivery.error, createdAt: delivery.createdAt, updatedAt: delivery.updatedAt }) }));
       return page(
         values,
         input,
         context,
-        pageIdentity("plugfn.webhook-deliveries.list", input.receiptId),
+        adminPageIdentity("plugfn.webhook-deliveries.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.receiptId),
       );
     },
     async listSyncJobs(input, context) { return listAuthorizedSyncJobs(options, input, context); },

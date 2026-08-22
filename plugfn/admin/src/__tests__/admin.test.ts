@@ -11,7 +11,7 @@ import {
   createPlugFnDomainAdminService,
   plugFnAdminCapability,
 } from "../index.js";
-import { encodeAdminCursor } from "@superfunctions/admin";
+import { decodeAdminCursor, encodeAdminCursor } from "@superfunctions/admin";
 
 const context = {
   scope: {
@@ -29,7 +29,7 @@ const context = {
   idempotencyKey: "idempotency_1",
 };
 
-function setup() {
+function setup(identity = () => ({ userId: "user_1", tenantId: "tenant_1" })) {
   const database = new MemoryAdapter();
   const runtime = plugFn({
     database,
@@ -44,10 +44,16 @@ function setup() {
     actions: {},
     capabilities: { actions: true, sync: false },
   });
+  runtime.providers.register({
+    name: "slack", displayName: "Slack", version: "1.0.0", description: "Slack provider", baseUrl: "https://api.slack.test",
+    auth: { type: AuthType.ApiKey, config: { headerName: "authorization" } },
+    actions: {},
+    capabilities: { actions: true, sync: false },
+  });
   const adapter = createPlugFnDomainAdminAdapter({
     plugfn: runtime,
     projectId: "project_1",
-    identity: () => ({ userId: "user_1", tenantId: "tenant_1" }),
+    identity,
   });
   return { adapter, database, runtime };
 }
@@ -206,10 +212,11 @@ describe("@plugfn/admin", () => {
     expect(listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ ownerId: "user_1" }), 101, 100);
 
     const forgedOffset = Number.MAX_SAFE_INTEGER;
+    const validPosition = decodeAdminCursor<{ identity: string; offset: number }>(first.nextCursor!, context.scope);
     await service.listSyncJobs({
       limit: 100,
       cursor: encodeAdminCursor(context.scope, {
-        identity: JSON.stringify(["plugfn.sync-jobs.list", null, null, null, null]),
+        ...validPosition,
         offset: forgedOffset,
       }),
     }, context);
@@ -218,13 +225,30 @@ describe("@plugfn/admin", () => {
 
   it("rejects cursors from another collection or filter", async () => {
     const { adapter } = setup();
-    const providerCursor = encodeAdminCursor(context.scope, {
-      identity: JSON.stringify(["plugfn.providers.list", null]),
-      offset: 0,
-    });
+    const providers = await adapter.execute("plugfn.providers.list", { limit: 1 }, context);
+    const providerCursor = (providers.data as { nextCursor: string }).nextCursor;
     await expect(adapter.execute("plugfn.connections.list", { cursor: providerCursor }, context))
       .rejects.toMatchObject({ code: "invalid_argument" });
     await expect(adapter.execute("plugfn.providers.list", { search: "github", cursor: providerCursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
+  });
+
+  it("binds owner-scoped cursors to the mapped PlugFn identity", async () => {
+    let mapped = { userId: "user_1", tenantId: "tenant_1" };
+    const { adapter, database } = setup(() => mapped);
+    const now = new Date();
+    for (const id of ["connection_1", "connection_2"]) {
+      await database.createConnection({
+        id, userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1",
+        status: ConnectionStatus.Active, credentials: { encrypted: id, algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+      });
+    }
+    const first = await adapter.execute("plugfn.connections.list", { limit: 1 }, context);
+    const cursor = (first.data as { nextCursor: string }).nextCursor;
+    expect(cursor).toEqual(expect.any(String));
+
+    mapped = { userId: "user_2", tenantId: "tenant_1" };
+    await expect(adapter.execute("plugfn.connections.list", { limit: 1, cursor }, context))
       .rejects.toMatchObject({ code: "invalid_argument" });
   });
 

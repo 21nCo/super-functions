@@ -185,6 +185,8 @@ describe("@searchfn/admin", () => {
     await colonAdapter.execute("searchfn.documents.remove-document", {
       id: "orders%3Av2:string:doc-1",
     }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "orders:v2", query: "Versioned" }))
+      .resolves.toEqual([]);
   });
 
   it("applies index list search, sorting, limits, and cursors", async () => {
@@ -208,5 +210,10 @@ describe("@searchfn/admin", () => {
       cursor: (first.data as { nextCursor: string }).nextCursor,
     }, context);
     expect(second.data).toEqual({ items: [{ id: "zeta", name: "zeta", status: "available" }], nextCursor: null });
+    const cursor = (first.data as { nextCursor: string }).nextCursor;
+    await expect(adapter.execute("searchfn.health.list", { cursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(adapter.execute("searchfn.indexes-collections.list", { search: "z", sort: [{ field: "name", direction: "asc" }], cursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
   });
 });

@@ -220,4 +220,25 @@ describe("@datafn/admin", () => {
     await expect(service.listRecords({ filter: { resource: "other" }, cursor: nextCursor! }, context))
       .rejects.toMatchObject({ code: "invalid_argument" });
   });
+
+  it("round-trips resource names containing colons through composite record IDs", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ data: [{ id: "record-1" }], nextCursor: null })
+      .mockResolvedValueOnce({ data: [{ id: "record-1" }], nextCursor: null });
+    const executor = {
+      schema: { version: 1, resources: [{ name: "orders:v2", version: 1 }] },
+      query,
+    } as unknown as DatafnExecutor<{ namespace: string }>;
+    const service = createDataFnDomainAdminService({ executor, context: () => ({ namespace: "tenant_1" }) });
+
+    const listed = await service.listRecords({ filter: { resource: "orders:v2" } }, context);
+    expect(listed.data.items).toEqual([{ id: "orders%3Av2:record-1" }]);
+    await expect(service.getRecord({ id: "orders%3Av2:record-1" }, context)).resolves.toMatchObject({
+      data: { item: { id: "orders%3Av2:record-1" } },
+    });
+    expect(query).toHaveBeenLastCalledWith(expect.objectContaining({
+      resource: "orders:v2",
+      filters: { id: "record-1" },
+    }), { namespace: "tenant_1" });
+  });
 });

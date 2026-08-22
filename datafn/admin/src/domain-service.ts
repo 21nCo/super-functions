@@ -141,7 +141,15 @@ function splitRecordId(value: string): { resource: string; id: string } {
   if (separator <= 0 || separator === value.length - 1) {
     throw new AdminError("invalid_argument", "DataFn record IDs use the form resource:id.");
   }
-  return { resource: value.slice(0, separator), id: value.slice(separator + 1) };
+  try {
+    return { resource: decodeURIComponent(value.slice(0, separator)), id: value.slice(separator + 1) };
+  } catch (error) {
+    throw new AdminError("invalid_argument", "DataFn resource names must be percent-encoded in record IDs.", { cause: error });
+  }
+}
+
+function compositeRecordId(resource: string, id: string | number): string {
+  return `${encodeURIComponent(resource)}:${id}`;
 }
 
 /** Uses DataFn's transport-neutral executor so namespace, policy, hooks, and limits remain authoritative. */
@@ -229,7 +237,7 @@ export function createDataFnDomainAdminService<TContext>(
             if (typeof recordId !== "string" && typeof recordId !== "number") {
               throw new AdminError("dependency_unavailable", "DataFn returned a record without a usable id.");
             }
-            return { ...value, id: `${target}:${recordId}` };
+            return { ...value, id: compositeRecordId(target, recordId) };
           }),
           nextCursor,
         },
@@ -251,7 +259,7 @@ export function createDataFnDomainAdminService<TContext>(
       }, options.context(context));
       const value = Array.isArray(domain.data) ? domain.data[0] : undefined;
       if (!value || typeof value !== "object") throw new AdminError("not_found", "DataFn record was not found.");
-      return resultItem({ ...value, id: `${target.resource}:${target.id}` });
+      return resultItem({ ...value, id: compositeRecordId(target.resource, target.id) });
     },
     async query(input, context) {
       const value = await executor.query<DataFnAdminRecord>(object(input.payload, "payload"), options.context(context));

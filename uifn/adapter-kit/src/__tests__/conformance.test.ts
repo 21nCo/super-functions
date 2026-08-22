@@ -185,6 +185,10 @@ describe('lossless public-tree semantic traces', () => {
       transactions: [{ ...trace('react').transactions[0], state: { left: shared, right: shared } }],
     });
     expect(validateSemanticTrace(reused)).toEqual([]);
+    expect(normalizeSemanticTrace(reused).transactions[0]?.state).toEqual({
+      left: { value: true },
+      right: { value: true },
+    });
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     expect(validateSemanticTrace(trace('react', {

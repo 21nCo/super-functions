@@ -357,6 +357,7 @@ describe('Super Console server composition', () => {
     '/api/admin/v1/modules/examplefn//records',
     '/api/admin/v1/modules/examplefn/%252e%252e/records',
     '/api/admin/v1/modules/examplefn/records%252fother',
+    '/api/admin/v1/modules/examplefn/resources/records/team%2Fsupport%252Fother',
     '/api/admin/v1/modules/examplefn/records%5cother',
     '/api/admin/v1/modules/examplefn/records%255cother',
   ])('rejects ambiguous administration path %s', async (path) => {
@@ -374,6 +375,14 @@ describe('Super Console server composition', () => {
     }));
     expect(result.status).toBe(200);
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ input: { id: 'team/support' } }));
+  });
+
+  it('does not route an encoded separator embedded in a literal segment', async () => {
+    const { console, handler } = installation();
+    const result = await console.handle(request('/api/admin/v1/modules/examplefn/records%2fother'));
+    expect(result.status).toBe(404);
+    expect(await result.json()).toMatchObject({ error: { code: 'OPERATION_NOT_ENABLED' } });
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it('does not claim the URL parser preserved a single-encoded dot segment', async () => {

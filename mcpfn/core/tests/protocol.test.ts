@@ -57,6 +57,11 @@ describe("McpFn protocol primitives", () => {
       name: "account",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "account" }] }),
     })).toThrow("Duplicate MCP resource template URI: docs://users/{name}");
+    expect(() => registry.registerResourceTemplate({
+      uriTemplate: "docs://users/{;name}",
+      name: "matrix-account",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "matrix" }] }),
+    })).not.toThrow();
   });
 
   it("serves paginated resources, templates, prompts, and completions", async () => {

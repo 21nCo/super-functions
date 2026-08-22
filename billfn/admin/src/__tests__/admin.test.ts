@@ -154,12 +154,17 @@ describe("@billfn/admin", () => {
     const first = await service.listPlans({ search: "plan", sort: [{ field: "id", direction: "asc" }], limit: 2 }, context);
     expect(first.data).toMatchObject({ items: [{ id: "alpha" }, { id: "beta" }], nextCursor: expect.any(String) });
     const second = await service.listPlans({
-      filter: { productKey: "console" },
+      search: "plan",
       sort: [{ field: "id", direction: "asc" }],
       limit: 2,
       cursor: (first.data as { nextCursor: string }).nextCursor,
     }, context);
     expect(second.data).toEqual({ items: [expect.objectContaining({ id: "gamma" })], nextCursor: null });
+    const cursor = (first.data as { nextCursor: string }).nextCursor;
+    await expect(service.listPrices({ search: "plan", sort: [{ field: "id", direction: "asc" }], cursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(service.listPlans({ search: "gamma", sort: [{ field: "id", direction: "asc" }], cursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
   });
 
   it("sorts numeric catalog fields numerically and rejects missing cursor positions", async () => {
