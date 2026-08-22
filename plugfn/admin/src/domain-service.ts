@@ -9,7 +9,6 @@ import {
 } from "plugfn";
 import {
   AdminError,
-  adminPageIdentity,
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
@@ -29,6 +28,10 @@ import type {
 } from "./types.js";
 
 type JsonRecord = Record<string, unknown>;
+
+function pageIdentity(operationId: string, ...query: unknown[]): string {
+  return JSON.stringify([operationId, ...query.map((value) => value ?? null)]);
+}
 
 function json<T>(value: T): PlugFnAdminJson<T> {
   const visit = (current: unknown): unknown => {
@@ -174,7 +177,7 @@ async function listAuthorizedSyncJobs(
   const mapped = await identity(options, context);
   const owner = ownerFor(mapped);
   const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
-  const cursorIdentity = adminPageIdentity(
+  const cursorIdentity = pageIdentity(
     "plugfn.sync-jobs.list",
     mapped.userId,
     mapped.organizationId,
@@ -331,7 +334,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       await identity(options, context);
       const query = input.search?.trim().toLowerCase();
       const values = options.plugfn.providers.list().map((provider) => providerView(provider, Object.hasOwn(options.plugfn.config.integrations, provider.name))).filter((provider) => !query || `${provider.id} ${provider.displayName} ${provider.description}`.toLowerCase().includes(query)).sort((left, right) => left.id.localeCompare(right.id));
-      return page(values, input, context, adminPageIdentity("plugfn.providers.list", query));
+      return page(values, input, context, pageIdentity("plugfn.providers.list", query));
     },
     async getProvider(input, context) {
       await identity(options, context);
@@ -346,7 +349,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.map(connectionView),
         input,
         context,
-        adminPageIdentity("plugfn.connections.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
+        pageIdentity("plugfn.connections.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getConnection(input, context) { return { item: connectionView((await ownedConnection(options, input.id, context)).connection) }; },
@@ -373,7 +376,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.filter((installation) => installationOwnedForList(installation, mapped)).map(installationView),
         input,
         context,
-        adminPageIdentity("plugfn.installations.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
+        pageIdentity("plugfn.installations.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getInstallation(input, context) { return { item: installationView(await ownedInstallation(options, input.id, context)) }; },
@@ -394,7 +397,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values.map(workflowView),
         input,
         context,
-        adminPageIdentity("plugfn.workflows.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
+        pageIdentity("plugfn.workflows.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
       );
     },
     async getWorkflow(input, context) { return { item: workflowView((await ownedWorkflow(options, input.id, context)).workflow) }; },
@@ -411,7 +414,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
         values,
         input,
         context,
-        adminPageIdentity("plugfn.webhook-deliveries.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.receiptId),
+        pageIdentity("plugfn.webhook-deliveries.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.receiptId),
       );
     },
     async listSyncJobs(input, context) { return listAuthorizedSyncJobs(options, input, context); },

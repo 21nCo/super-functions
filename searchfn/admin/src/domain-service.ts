@@ -1,7 +1,6 @@
 import type { SearchAdapter, SearchDocument } from "@searchfn/adapter-contracts";
 import {
   AdminError,
-  adminPageIdentity,
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
@@ -18,6 +17,12 @@ import type {
 } from "./types.js";
 
 type JsonRecord = Record<string, unknown>;
+
+function pageIdentity(operationId: string, input: SearchFnListInput): string {
+  const filter = Object.entries(input.filter ?? {}).sort(([left], [right]) => left.localeCompare(right));
+  const sort = (input.sort ?? []).map((descriptor) => [descriptor.field ?? null, descriptor.direction ?? null]);
+  return JSON.stringify([operationId, input.search?.trim().toLowerCase() ?? null, filter, sort]);
+}
 
 export interface SearchFnDomainAdminServiceOptions {
   /** Must resolve an adapter already isolated to the active scope and optional namespace/region. */
@@ -70,12 +75,7 @@ function list(
     }
     return String(left.id ?? "").localeCompare(String(right.id ?? ""));
   });
-  const identity = adminPageIdentity(
-    operationId,
-    input.search?.trim().toLowerCase(),
-    input.filter,
-    input.sort ?? [],
-  );
+  const identity = pageIdentity(operationId, input);
   const decoded = input.cursor
     ? decodeAdminCursor<{ identity?: unknown; offset?: unknown }>(input.cursor, context.scope)
     : { identity, offset: 0 };
