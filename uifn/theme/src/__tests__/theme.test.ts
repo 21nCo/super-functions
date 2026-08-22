@@ -156,6 +156,18 @@ describe('runtime theme mounting', () => {
 
   it('allows a scoped child combinator', () => {
     expect(themeToCSS('uifn-dark', '.shell > .content')).toContain('.shell > .content{');
+    expect(themeToCSS('uifn-dark', '[data-value="body>body"]')).toContain('[data-value="body>body"]{');
+    expect(themeToCSS('uifn-dark', '.somebody>body')).toContain('.somebody>body{');
+  });
+
+  it('rejects token values that can escape a CSS custom-property declaration', () => {
+    const unsafe = structuredClone(FIRST_PARTY_THEMES['uifn-dark']);
+    const control = unsafe.tokens.control as Record<string, Record<string, { $value: string }>>;
+    control.size!.md!.$value = '1px;}body{display:none';
+
+    expect(() => themeToCSS(unsafe, '.shell')).toThrowError(expect.objectContaining({
+      code: 'UIFN_THEME_TOKEN_VALUE_INVALID',
+    }));
   });
 
   it('TV-STYLE-002 negative rejects unsafe global selectors', () => {
@@ -163,6 +175,7 @@ describe('runtime theme mounting', () => {
     expect(() => themeToCSS('uifn-dark', 'html > body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', 'html>body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', 'body > body')).toThrowError(UIFnThemeError);
+    expect(() => themeToCSS('uifn-dark', '\\68 tml>body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root, body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root { color: red; } body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', '@media print')).toThrowError(UIFnThemeError);

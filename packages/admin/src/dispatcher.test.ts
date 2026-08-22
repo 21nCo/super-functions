@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAdminCapabilityAdapter } from "./adapter.js";
-import { MemoryAdminAuditSink } from "./audit.js";
+import { AdminAuditNotPersistedError, MemoryAdminAuditSink } from "./audit.js";
 import { createAdminDispatcher } from "./dispatcher.js";
 import { AdminError } from "./errors.js";
 import { adminInputFingerprint, MemoryAdminIdempotencyStore } from "./idempotency.js";
@@ -310,6 +310,72 @@ describe("AdminDispatcher", () => {
     }
     expect(handler).toHaveBeenCalledTimes(1);
     expect(persistedOutcomes).toEqual(["attempted", "succeeded", "replayed", "replayed", "replayed"]);
+  });
+
+  it("reconciles a compensated failure with its stable terminal audit ID", async () => {
+    const base = testManifest().operations[0]!;
+    const manifest = testManifest("examplefn", { operations: [{
+      ...base,
+      id: "examplefn.records.rotate-compensated",
+      route: { method: "POST", path: "/records/actions/rotate-compensated" },
+      permission: "examplefn.records.rotate-compensated",
+      safety: { classification: "write", idempotent: true, audit: "required" },
+      mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    }] });
+    const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
+    const compensate = vi.fn(async () => undefined);
+    const persistedEvents: Array<{ id: string; outcome: string }> = [];
+    let failedAuditAttempts = 0;
+    let auditSequence = 0;
+    const dispatcher = createAdminDispatcher({
+      registry: createAdminRegistry({
+        adapters: [createAdminCapabilityAdapter({
+          manifest,
+          handlers: { "examplefn.records.rotate-compensated": handler },
+          compensators: { "examplefn.records.rotate-compensated": compensate },
+        })],
+        enabledModules: ["examplefn"],
+      }),
+      audit: {
+        idempotentById: true,
+        write: async (event) => {
+          if (event.outcome === "succeeded") {
+            throw new AdminAuditNotPersistedError("terminal event was not persisted");
+          }
+          if (event.outcome === "failed" && failedAuditAttempts++ === 0) {
+            throw new Error("rollback audit acknowledgement unavailable");
+          }
+          persistedEvents.push({ id: event.id, outcome: event.outcome });
+        },
+      },
+      idempotency: new MemoryAdminIdempotencyStore(),
+      createAuditId: () => `audit_${++auditSequence}`,
+    });
+    const dispatch = (requestId: string) => dispatcher.dispatch({
+      operationId: "examplefn.records.rotate-compensated",
+      input: {},
+      context: context({
+        requestId,
+        actor: { id: "user_1", permissions: ["examplefn.records.rotate-compensated"] },
+        idempotencyKey: "compensated-audit",
+      }),
+    });
+
+    await expect(dispatch("initial")).resolves.toMatchObject({
+      ok: false,
+      error: { details: { outcome: "compensated", reconciliationRequired: true } },
+    });
+    await expect(dispatch("retry")).resolves.toMatchObject({
+      ok: false,
+      auditId: "audit_2",
+      meta: { idempotencyReplay: true, recoveredTerminalAudit: true },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(compensate).toHaveBeenCalledTimes(1);
+    expect(persistedEvents).toEqual([
+      { id: "audit_1", outcome: "attempted" },
+      { id: "audit_2", outcome: "failed" },
+    ]);
   });
 
   it("rejects idempotency stores without atomic terminal-audit reconciliation at startup", () => {

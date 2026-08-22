@@ -168,9 +168,11 @@ export class AdminDispatcher {
     let terminalAuditId: string | undefined;
     let domainInvoked = false;
     let domainCompleted = false;
+    let domainCompensated = false;
     let domainResponse: AdminOperationResult<T> | undefined;
     let idempotencyPersisted = false;
     let policyMetadata: Readonly<Record<string, unknown>> | undefined;
+    let compensationAuditMetadata: Readonly<Record<string, unknown>> | undefined;
     try {
       this.assertContext(request.context);
       entry = this.registry.requireOperation(request.operationId);
@@ -240,9 +242,9 @@ export class AdminDispatcher {
                 request,
                 startedAt,
                 candidateAuditId,
-                recoveringAudit ? "succeeded" : "replayed",
-                undefined,
-                policyMetadata,
+                recoveringAudit ? reservation.record.audit?.outcome ?? "succeeded" : "replayed",
+                recoveringAudit ? reservation.record.audit?.errorCode : undefined,
+                recoveringAudit ? reservation.record.audit?.metadata : policyMetadata,
               );
               terminalAuditWritten = true;
               replayAuditId = candidateAuditId;
@@ -416,8 +418,10 @@ export class AdminDispatcher {
               cause: error,
             });
             domainCompleted = false;
+            domainCompensated = true;
             domainResponse = undefined;
             const rollbackAuditId = terminalAuditId ?? this.createAuditId();
+            compensationAuditMetadata = { ...policyMetadata, compensation: "succeeded" };
             try {
               await this.writeAudit(
                 entry,
@@ -426,7 +430,7 @@ export class AdminDispatcher {
                 rollbackAuditId,
                 "failed",
                 "dependency_unavailable",
-                { ...policyMetadata, compensation: "succeeded" },
+                compensationAuditMetadata,
               );
               terminalAuditWritten = true;
               auditId = rollbackAuditId;
@@ -533,12 +537,26 @@ export class AdminDispatcher {
           } else if (!domainCompleted) {
             // Once the handler was entered, even retryable failures stay
             // fenced: execution may have committed before the error surfaced.
+            const stableCompensationAuditId = domainCompensated ? terminalAuditId : undefined;
+            const timestamp = this.now().toISOString();
             await this.idempotency.complete(idempotencyClaim, {
               identity: idempotencyIdentity,
               fingerprint: idempotencyClaim.fingerprint,
               result: failedResult,
-              auditId,
-              createdAt: this.now().toISOString(),
+              ...(terminalAuditWritten && auditId ? { auditId } : {}),
+              ...(stableCompensationAuditId
+                ? {
+                    audit: {
+                      status: terminalAuditWritten ? "completed" as const : "pending" as const,
+                      auditId: stableCompensationAuditId,
+                      outcome: "failed" as const,
+                      errorCode: "dependency_unavailable",
+                      ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
+                      updatedAt: timestamp,
+                    },
+                  }
+                : {}),
+              createdAt: timestamp,
             });
           }
         } catch {
@@ -589,6 +607,7 @@ export class AdminDispatcher {
       audit: {
         status: auditStatus,
         ...(auditId ? { auditId } : {}),
+        ...(auditStatus === "not-required" ? {} : { outcome: "succeeded" as const }),
         updatedAt: timestamp,
       },
       createdAt: timestamp,

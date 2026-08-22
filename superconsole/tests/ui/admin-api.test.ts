@@ -189,16 +189,43 @@ describe('administration API boundary', () => {
   });
 
   it('opens a header-free signed download receipt', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const click = vi.fn();
+    const append = vi.fn();
+    const anchor = { href: '', target: '', rel: '', referrerPolicy: '', click } as unknown as HTMLAnchorElement;
+    const popup = {
+      opener: window,
+      document: {
+        createElement: vi.fn(() => anchor),
+        body: { append },
+      },
+      close: vi.fn(),
+    } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
     try {
       await expect(openSafeAdminDownloadReceipt({
         url: 'https://storage.example.test/signed-object',
       })).resolves.toBe(true);
-      expect(open).toHaveBeenCalledWith(
-        'https://storage.example.test/signed-object',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+      expect(popup.opener).toBeNull();
+      expect(anchor).toMatchObject({
+        href: 'https://storage.example.test/signed-object',
+        target: '_self',
+        rel: 'noopener noreferrer',
+        referrerPolicy: 'no-referrer',
+      });
+      expect(append).toHaveBeenCalledWith(anchor);
+      expect(click).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it('reports a blocked signed download window', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      await expect(openSafeAdminDownloadReceipt({
+        url: 'https://storage.example.test/signed-object',
+      })).resolves.toBe(false);
     } finally {
       open.mockRestore();
     }

@@ -70,6 +70,9 @@ export function validateAdminValue(
   value: unknown,
   path = "$",
 ): AdminValidationIssue[] {
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return [{ path, message: "must be a finite JSON number", keyword: "type" }];
+  }
   const issues: AdminValidationIssue[] = [];
   if (schema.const !== undefined && !Object.is(schema.const, value)) {
     issues.push({
@@ -183,6 +186,17 @@ export function validateAdminValue(
           ),
         ),
       );
+    } else if (Array.isArray(schema.items)) {
+      const tupleItems = schema.items as unknown as readonly AdminJsonSchema[];
+      value.forEach((item, index) =>
+        issues.push(
+          ...validateAdminValue(tupleItems[index] ?? {}, item, `${path}[${index}]`),
+        ),
+      );
+    } else if (!schema.items) {
+      value.forEach((item, index) =>
+        issues.push(...validateAdminValue({}, item, `${path}[${index}]`)),
+      );
     }
   }
 
@@ -219,6 +233,8 @@ export function validateAdminValue(
             `${path}.${key}`,
           ),
         );
+      } else {
+        issues.push(...validateAdminValue({}, item, `${path}.${key}`));
       }
     }
   }

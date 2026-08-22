@@ -19,6 +19,10 @@ export interface AdminIdempotencyRecord<T = unknown> {
     status: "pending" | "completed" | "not-required";
     /** Stable logical terminal event ID, persisted before the first sink write. */
     auditId?: string;
+    /** Terminal event shape to redeliver when a sink acknowledgement is lost. */
+    outcome?: "succeeded" | "failed";
+    errorCode?: string;
+    metadata?: Readonly<Record<string, unknown>>;
     updatedAt: string;
   };
   createdAt: string;

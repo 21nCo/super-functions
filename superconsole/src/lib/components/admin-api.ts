@@ -267,8 +267,22 @@ export function openSafeAdminDownload(
     scope: new URL(window.location.href).searchParams,
   });
   if (!safeHref) return false;
-  window.open(safeHref, '_blank', 'noopener,noreferrer');
-  return true;
+  const popup = window.open('about:blank', '_blank');
+  if (!popup) return false;
+  try {
+    popup.opener = null;
+    const anchor = popup.document.createElement('a');
+    anchor.href = safeHref;
+    anchor.target = '_self';
+    anchor.rel = 'noopener noreferrer';
+    anchor.referrerPolicy = 'no-referrer';
+    popup.document.body.append(anchor);
+    anchor.click();
+    return true;
+  } catch {
+    popup.close();
+    return false;
+  }
 }
 
 export interface AdminDownloadReceipt {
