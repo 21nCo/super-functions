@@ -123,6 +123,32 @@ describe("@datafn/admin", () => {
     expect(client.queries.query).toEqual(expect.any(Function));
   });
 
+  it("assigns distinct addressable IDs to relations with the same endpoints", async () => {
+    const executor = {
+      schema: {
+        version: 1,
+        namespaced: true,
+        resources: [],
+        relations: [
+          { from: "users", to: "teams", type: "many-to-many", relation: "memberships", inverse: "members" },
+          { from: "users", to: "teams", type: "many-to-many", relation: "ownerships", inverse: "owners" },
+        ],
+      },
+    } as unknown as DatafnExecutor<{ namespace: string }>;
+    const service = createDataFnDomainAdminService({
+      executor,
+      context: () => ({ namespace: "tenant_1" }),
+    });
+
+    const listed = await service.listRelations({}, context);
+    const items = listed.data.items;
+    expect(items.map((item) => item.id)).toHaveLength(2);
+    expect(new Set(items.map((item) => item.id)).size).toBe(2);
+    await expect(service.getRelation({ id: items[1]!.id }, context)).resolves.toMatchObject({
+      data: { item: { relation: "ownerships", inverse: "owners" } },
+    });
+  });
+
   it("binds schema, mutation, and record reads through the real DataFn executor", async () => {
     const server = await createDatafnServer<{ namespace: string; actorId: string }>({
       schema: {

@@ -181,43 +181,11 @@ describe('administration API boundary', () => {
     expect(safeAvatarHref('http://images.example.test/operator.png')).toBeUndefined();
   });
 
-  it('downloads provider receipts with required non-redacted headers', async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => new Response('file contents'));
-    const createObjectURL = vi.fn(() => 'blob:download');
-    const revokeObjectURL = vi.fn();
-    const createObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
-    const revokeObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
-    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
-    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-
-    try {
-      await expect(openSafeAdminDownloadReceipt({
-        url: 'https://storage.example.test/signed-object',
-        headers: { 'x-download-key': 'required-value' },
-      }, fetcher as typeof fetch)).resolves.toBe(true);
-      const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
-      expect(headers.get('x-download-key')).toBe('required-value');
-      expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
-      expect(createObjectURL).toHaveBeenCalled();
-      expect(click).toHaveBeenCalled();
-      expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
-    } finally {
-      click.mockRestore();
-      if (createObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', createObjectURLDescriptor);
-      else delete (URL as unknown as { createObjectURL?: typeof URL.createObjectURL }).createObjectURL;
-      if (revokeObjectURLDescriptor) Object.defineProperty(URL, 'revokeObjectURL', revokeObjectURLDescriptor);
-      else delete (URL as unknown as { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL;
-    }
-  });
-
-  it('fails closed when a required provider header was redacted', async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it('fails closed for every provider-header download receipt', async () => {
     await expect(openSafeAdminDownloadReceipt({
       url: 'https://storage.example.test/signed-object',
-      headers: { authorization: '[REDACTED]' },
-    }, fetcher as typeof fetch)).rejects.toThrow('credentialed server-side proxy');
-    expect(fetcher).not.toHaveBeenCalled();
+      headers: { 'x-goog-encryption-key': 'base64-customer-key' },
+    })).rejects.toThrow('provider headers are never sent from the browser');
   });
 
   it('materializes declared administration route parameters from bound input', () => {

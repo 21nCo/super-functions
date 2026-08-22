@@ -49,6 +49,13 @@ describe("@searchfn/admin", () => {
         idempotent: true,
       },
     });
+    for (const operationId of ["searchfn.documents.index", "searchfn.documents.remove-document"]) {
+      const operation = searchFnAdminCapability.operations.find((candidate) => candidate.id === operationId);
+      expect(operation).toMatchObject({
+        target: { resource: "documents", collection: true },
+      });
+      expect(operation?.inputSchema?.required).toContain("id");
+    }
   });
 
   it("delegates the operation and complete scope to the injected domain service", async () => {

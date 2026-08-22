@@ -235,12 +235,9 @@ describe("@filefn/admin", () => {
     expect((result.data as { item: object }).item).not.toHaveProperty("storageKey");
   });
 
-  it("preserves usable provider download receipts and rejects secret header contracts", async () => {
+  it("preserves header-free provider download receipts and rejects provider header contracts", async () => {
     const getDownloadUrl = vi.fn(async () => ({
       url: "https://storage.example.test/signed-object?signature=opaque",
-      headers: {
-        "x-download-key": "required-value",
-      },
     }));
     const registry = createAdminRegistry({
       adapters: [createFileFnAdminAdapter(domain({ files: { getDownloadUrl } }))],
@@ -260,9 +257,6 @@ describe("@filefn/admin", () => {
       data: {
         item: {
           url: "https://storage.example.test/signed-object?signature=opaque",
-          headers: {
-            "x-download-key": "required-value",
-          },
         },
       },
     });
@@ -285,7 +279,29 @@ describe("@filefn/admin", () => {
       ok: false,
       error: {
         code: "dependency_unavailable",
-        details: { unsupportedHeader: "authorization" },
+        details: { unsupportedHeaders: ["authorization"] },
+      },
+    });
+
+    const encryptionHeaderRegistry = createAdminRegistry({
+      adapters: [createFileFnAdminAdapter(domain({ files: { getDownloadUrl: async () => ({
+        url: "https://storage.example.test/object",
+        headers: { "x-goog-encryption-key": "base64-customer-key" },
+      }) } }))],
+      enabledModules: ["filefn"],
+    });
+    await expect(createAdminDispatcher({
+      registry: encryptionHeaderRegistry,
+      audit: new MemoryAdminAuditSink(),
+    }).dispatch({
+      operationId: "filefn.files.download",
+      input: { id: "file_1" },
+      context,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "dependency_unavailable",
+        details: { unsupportedHeaders: ["x-goog-encryption-key"] },
       },
     });
   });

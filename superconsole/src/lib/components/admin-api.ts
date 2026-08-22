@@ -279,8 +279,7 @@ export interface AdminDownloadReceipt {
 }
 
 export async function openSafeAdminDownloadReceipt(
-  receipt: AdminDownloadReceipt,
-  fetcher: typeof fetch = fetch
+  receipt: AdminDownloadReceipt
 ): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   const safeHref = safeAdminDownloadHref(receipt.url, {
@@ -289,33 +288,10 @@ export async function openSafeAdminDownloadReceipt(
     scope: new URL(window.location.href).searchParams,
   });
   if (!safeHref) return false;
-  const headers = new Headers();
-  let hasHeaders = false;
-  for (const [name, value] of Object.entries(receipt.headers ?? {})) {
-    if (value === '[REDACTED]') {
-      throw new Error('The download requires a credentialed server-side proxy; redacted provider headers cannot be sent from the browser.');
-    }
-    headers.set(name, value);
-    hasHeaders = true;
+  if (Object.keys(receipt.headers ?? {}).length > 0) {
+    throw new Error('The download requires a server-side proxy; provider headers are never sent from the browser.');
   }
-  if (!hasHeaders) {
-    return openSafeAdminDownload(safeHref, { signedExternal: receipt.signedExternal ?? true });
-  }
-
-  const response = await fetcher(safeHref, {
-    headers,
-    credentials: 'omit',
-    redirect: 'error',
-  });
-  if (!response.ok) throw new Error(`The download provider returned HTTP ${response.status}.`);
-  const objectUrl = URL.createObjectURL(await response.blob());
-  const anchor = document.createElement('a');
-  anchor.href = objectUrl;
-  anchor.download = '';
-  anchor.rel = 'noopener noreferrer';
-  anchor.click();
-  URL.revokeObjectURL(objectUrl);
-  return true;
+  return openSafeAdminDownload(safeHref, { signedExternal: receipt.signedExternal ?? true });
 }
 
 export function safeAvatarHref(href: string | undefined): string | undefined {

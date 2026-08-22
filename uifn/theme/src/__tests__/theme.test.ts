@@ -159,5 +159,6 @@ describe('runtime theme mounting', () => {
     expect(() => themeToCSS('uifn-dark', ':root, body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root { color: red; } body')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', '@media print')).toThrowError(UIFnThemeError);
+    expect(() => themeToCSS('uifn-dark', '</style><script>alert(1)</script>')).toThrowError(UIFnThemeError);
   });
 });

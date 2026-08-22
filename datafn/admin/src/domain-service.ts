@@ -81,10 +81,12 @@ function relationId(value: {
   from: string | readonly string[];
   to: string | readonly string[];
   type: string;
+  relation?: string;
+  inverse?: string;
 }): string {
   const from = Array.isArray(value.from) ? value.from : [value.from];
   const to = Array.isArray(value.to) ? value.to : [value.to];
-  return `${from.join(",")}->${to.join(",")}:${value.type}`;
+  return JSON.stringify([from, to, value.type, value.relation ?? null, value.inverse ?? null]);
 }
 
 interface DataFnSchemaDocuments {

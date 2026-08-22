@@ -7,7 +7,6 @@ import {
   AdminError,
   decodeAdminCursor,
   encodeAdminCursor,
-  isImplicitAdminSecretKey,
   normalizeAdminPageLimit,
   type AdminOperationContext,
   type AdminOperationResult,
@@ -24,12 +23,12 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 function adminDownloadDescriptor(descriptor: { url: string; headers?: Record<string, string> }) {
-  const unsupportedHeader = Object.keys(descriptor.headers ?? {}).find(isImplicitAdminSecretKey);
-  if (unsupportedHeader) {
+  const unsupportedHeaders = Object.keys(descriptor.headers ?? {});
+  if (unsupportedHeaders.length > 0) {
     throw new AdminError(
       "dependency_unavailable",
-      "FileFn administration downloads require a signed URL or same-origin proxy when the storage provider uses secret request headers.",
-      { details: { unsupportedHeader } },
+      "FileFn administration downloads require a signed URL or same-origin proxy; provider request headers are never exposed to the browser.",
+      { details: { unsupportedHeaders } },
     );
   }
   return descriptor;
