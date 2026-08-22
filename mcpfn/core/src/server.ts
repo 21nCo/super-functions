@@ -32,6 +32,7 @@ import {
 
 import { errorResult } from "./errors.js";
 import { assertMcpAppContracts } from "./apps.js";
+import { canonicalJson } from "./canonical.js";
 import { createManifest, type CreateManifestOptions } from "./manifest.js";
 import type { McpFnRegistry } from "./registry.js";
 import type {
@@ -99,7 +100,7 @@ function page<T>(
   operation: "tools" | "resources" | "resource-templates" | "prompts",
 ): { values: T[]; nextCursor?: string } {
   const identity = createHash("sha256")
-    .update(JSON.stringify(values))
+    .update(canonicalJson(values))
     .digest("base64url")
     .slice(0, 16);
   let offset = 0;

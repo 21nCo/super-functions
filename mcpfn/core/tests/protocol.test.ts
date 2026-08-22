@@ -154,6 +154,30 @@ describe("McpFn protocol primitives", () => {
       .rejects.toThrow(/Expired McpFn pagination cursor/);
   });
 
+  it("keeps a list cursor valid when equivalent resources change property order", async () => {
+    let reversePropertyOrder = false;
+    const registry = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://items/{id}",
+      name: "items",
+      list: async () => ({
+        resources: [
+          reversePropertyOrder
+            ? { description: "First item.", name: "first", uri: "docs://items/1" }
+            : { uri: "docs://items/1", name: "first", description: "First item." },
+          { uri: "docs://items/2", name: "second" },
+        ],
+      }),
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "item" }] }),
+    });
+    const { client } = await connect(registry);
+
+    const first = await client.listResources();
+    reversePropertyOrder = true;
+    await expect(client.listResources({ cursor: first.nextCursor })).resolves.toMatchObject({
+      resources: [{ uri: "docs://items/2" }],
+    });
+  });
+
   it("runs task-augmented tools through the SDK task store", async () => {
     const taskStore = new InMemoryTaskStore();
     const registry = new McpFnRegistry().register({

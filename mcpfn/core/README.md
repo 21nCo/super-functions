@@ -89,7 +89,7 @@ One `McpFnServer` instance connects to one transport. Create a new instance per 
 
 ## Resources, prompts, and client features
 
-Use `registerResource`, `registerResourceTemplate`, and `registerPrompt` on the same registry. Resource-template and prompt completers advertise the completions capability automatically. Resource subscription handlers advertise `resources.subscribe`. List calls use stable `mcpfn:<offset>` cursors and a configurable server page size.
+Use `registerResource`, `registerResourceTemplate`, and `registerPrompt` on the same registry. Resource-template and prompt completers advertise the completions capability automatically. Resource subscription handlers advertise `resources.subscribe`. List calls use opaque cursors bound to the list operation and the canonical collection content, with a configurable server page size. Treat the cursor format as an implementation detail: a cursor from another list operation is invalid, and a cursor expires when its visible collection changes.
 
 Task support is declared with `execution.taskSupport` and a `taskHandler`; a task-capable server must receive an official SDK `TaskStore`. `server.listRoots()`, `server.sample()`, and `server.elicit()` invoke matching client capabilities. Declare required client features in `clientRequirements` so manifests and host-profile tests can reject incompatible hosts before deployment.
 
