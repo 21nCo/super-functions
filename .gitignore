@@ -11,6 +11,7 @@ build/
 **/*.js
 **/*.d.ts
 !apifn/docsfn/src/svelte/ApifnApiReference.svelte.d.ts
+!superconsole/src/app.d.ts
 **/*.d.ts.map
 **/*.js.map
 
