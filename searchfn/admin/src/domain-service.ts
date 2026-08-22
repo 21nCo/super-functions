@@ -111,7 +111,14 @@ function splitDocumentId(value: string): { resource: string; id: string | number
     }
     return { resource, id: numericId };
   }
-  const stringId = encodedId.startsWith("string:") ? encodedId.slice("string:".length) : encodedId;
+  let stringId = encodedId;
+  if (encodedId.startsWith("string:")) {
+    try {
+      stringId = decodeURIComponent(encodedId.slice("string:".length));
+    } catch (error) {
+      throw new AdminError("invalid_argument", "SearchFn escaped string document IDs must be percent-encoded.", { cause: error });
+    }
+  }
   if (stringId.length === 0) {
     throw new AdminError("invalid_argument", "SearchFn document IDs must be non-empty.");
   }

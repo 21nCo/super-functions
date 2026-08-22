@@ -42,7 +42,8 @@ export function alignRangeValue(value: number, definition: RangeDefinition): num
   const rawIndex = (clamped - min) / step;
   const rawMaxIndex = roundRangeValue(max - min, precision) / step;
   const nearestMaxIndex = Math.round(rawMaxIndex);
-  const maxIndex = Math.abs(rawMaxIndex - nearestMaxIndex) <= Number.EPSILON * Math.max(1, Math.abs(rawMaxIndex)) * 8
+  const nearestEndpoint = roundRangeValue(min + nearestMaxIndex * step, precision);
+  const maxIndex = nearestEndpoint <= max
     ? nearestMaxIndex
     : Math.floor(rawMaxIndex);
   let index = Math.round(rawIndex);

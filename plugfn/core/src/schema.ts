@@ -5,9 +5,10 @@ import {
 } from '@superfunctions/oauth-storage';
 import { DEFAULT_PLUGFN_STORAGE_MODELS, resolvePlugFnStorageModels, type PlugFnStorageModelMapping } from './storage/adapters/database.js';
 
-// Version 7 persists sync-job tenant identity so administrative list queries can
-// enforce the same tenant boundary as connection-scoped get and mutation paths.
-export const PLUGFN_SCHEMA_VERSION = 7;
+// Version 6 adds job-scoped claim tokens to sync jobs. Any legacy claim token on a
+// connection represented a different ownership domain, so migration must not copy it;
+// stale running jobs are reclaimed and assigned a fresh job-scoped token by the worker.
+export const PLUGFN_SCHEMA_VERSION = 6;
 
 export interface PlugFnSchemaOptions {
   namespace?: string;
@@ -225,7 +226,6 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           claimToken: { type: 'string', required: false, fieldName: 'claim_token', maxLength: 64 },
           ownerKind: { type: 'string', required: false, fieldName: 'owner_kind' },
           ownerId: { type: 'string', required: false, fieldName: 'owner_id' },
-          tenantId: { type: 'string', required: false, fieldName: 'tenant_id' },
           cursor: { type: 'string', required: false, fieldName: 'cursor' },
           checkpoint: { type: 'json', required: false, fieldName: 'checkpoint' },
           fetchedCount: { type: 'number', required: true, fieldName: 'fetched_count' },
@@ -240,7 +240,6 @@ export function getSchema(options: PlugFnSchemaOptions = {}): { version: number;
           { name: 'idx_plugfn_sync_jobs_connection_resource', fields: ['connectionId', 'resource'] },
           { name: 'idx_plugfn_sync_jobs_status', fields: ['status'] },
           { name: 'idx_plugfn_sync_jobs_provider', fields: ['provider'] },
-          { name: 'idx_plugfn_sync_jobs_owner_tenant', fields: ['ownerKind', 'ownerId', 'tenantId'] },
           { name: 'idx_plugfn_sync_jobs_claim_token', fields: ['claimToken'], unique: true }
         ]
       },

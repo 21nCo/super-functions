@@ -1194,9 +1194,10 @@ export class SuperConsole {
     const resourceAliasPath = rest[0] !== 'resources'
       ? `${this.registry.apiBasePath}/modules/${encodeURIComponent(moduleId)}/resources/${rest.join('/')}`
       : undefined;
-    let entry = this.registry.matchRoute(request.method, matchedPath);
+    const routeMethod = request.method === 'HEAD' ? 'GET' : request.method;
+    let entry = this.registry.matchRoute(routeMethod, matchedPath);
     if (!entry && resourceAliasPath) {
-      entry = this.registry.matchRoute(request.method, resourceAliasPath);
+      entry = this.registry.matchRoute(routeMethod, resourceAliasPath);
       if (entry) matchedPath = resourceAliasPath;
     }
     if (!entry) {
@@ -1214,7 +1215,7 @@ export class SuperConsole {
     }
     const input = await operationInput(request, entry, matchedPath);
     const dispatched = await this.dispatcher.dispatch({ operationId: entry.operation.id, input, context: state.context });
-    return resultResponse(dispatched);
+    return this.headAware(request, resultResponse(dispatched));
   }
 
   private requirePermission(principal: SuperConsolePrincipal, permission: string): void {

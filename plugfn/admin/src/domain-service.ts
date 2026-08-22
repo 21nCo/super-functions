@@ -95,6 +95,32 @@ function assertInstallationOwner(installation: PlugFnProviderInstallation, value
   if (!owns(installation.ownerKind, installation.ownerId, installation.tenantId, value)) throw new AdminError("not_found", "The PlugFn provider installation was not found in the active project identity.");
 }
 
+function installationOwnedForList(installation: PlugFnProviderInstallation, value: PlugFnDomainIdentity): boolean {
+  try {
+    assertInstallationOwner(installation, value);
+    return true;
+  } catch (error) {
+    if (error instanceof AdminError && error.code === "not_found") return false;
+    throw error;
+  }
+}
+
+async function syncJobOwnedForList(
+  options: PlugFnDomainAdminServiceOptions,
+  job: PlugFnSyncJob,
+  value: PlugFnDomainIdentity,
+): Promise<boolean> {
+  try {
+    const connection = await options.plugfn.connections.get(job.connectionId);
+    assertConnectionOwner(connection, value);
+    return true;
+  } catch (error) {
+    if (error instanceof AdminError && error.code === "not_found") return false;
+    if (error && typeof error === "object" && "code" in error && error.code === "CONNECTION_NOT_FOUND") return false;
+    throw error;
+  }
+}
+
 function assertWorkflowOwner(workflow: Workflow, value: PlugFnDomainIdentity): void {
   if (workflow.userId !== value.userId) throw new AdminError("not_found", "The PlugFn workflow was not found in the active project identity.");
 }
@@ -228,7 +254,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const owner = ownerFor(mapped);
       const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
       const values = await options.plugfn.runtime.installations.list({ ownerKind: owner.kind, ownerId, tenantId: mapped.tenantId, ...(input.provider ? { provider: input.provider } : {}), ...(input.status ? { status: input.status } : {}) });
-      return page(values.map(installationView), input, context);
+      return page(values.filter((installation) => installationOwnedForList(installation, mapped)).map(installationView), input, context);
     },
     async getInstallation(input, context) { return { item: installationView(await ownedInstallation(options, input.id, context)) }; },
     async disableInstallation(input, context) {
@@ -266,24 +292,36 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const offset = decoded.offset ?? 0;
       if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
       const pageLimit = normalizeAdminPageLimit(limit, { defaultLimit: 50, maxLimit: 100 });
-      const values = await options.plugfn.runtime.sync.listJobs(
-        {
-          ownerKind: owner.kind,
-          ownerId,
-          tenantId: mapped.tenantId,
-          provider: input.provider,
-          connectionId: input.connectionId,
-          resource: input.resource,
-          status: input.status,
-        },
-        pageLimit + 1,
-        offset as number,
-      );
-      const items = values.slice(0, pageLimit).map(syncView);
+      const filters = {
+        ownerKind: owner.kind,
+        ownerId,
+        provider: input.provider,
+        connectionId: input.connectionId,
+        resource: input.resource,
+        status: input.status,
+      };
+      const items: JsonRecord[] = [];
+      const scanLimit = pageLimit + 1;
+      let scanOffset = offset as number;
+      let hasMore = false;
+      while (!hasMore) {
+        const values = await options.plugfn.runtime.sync.listJobs(filters, scanLimit, scanOffset);
+        if (values.length === 0) break;
+        for (const job of values) {
+          const allowed = await syncJobOwnedForList(options, job, mapped);
+          if (allowed && items.length === pageLimit) {
+            hasMore = true;
+            break;
+          }
+          scanOffset += 1;
+          if (allowed) items.push(syncView(job));
+        }
+        if (hasMore || values.length < scanLimit) break;
+      }
       return {
         items,
-        nextCursor: values.length > pageLimit
-          ? encodeAdminCursor(context.scope, { offset: (offset as number) + items.length })
+        nextCursor: hasMore
+          ? encodeAdminCursor(context.scope, { offset: scanOffset })
           : null,
       };
     },

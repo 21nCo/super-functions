@@ -180,10 +180,10 @@ export const billFnAdminResources = [
     icon: "billfn:usage",
     risk: "standard",
     idField: "id",
-    displayFields: ["id", "resource", "current", "updatedAt"],
+    displayFields: ["id", "resource", "current", "limit"],
     searchableFields: ["id", "resource"],
     filterableFields: ["resource"],
-    sortableFields: ["current", "resource", "updatedAt"],
+    sortableFields: ["current", "limit", "resource"],
     sensitiveFields: [],
   },
   {

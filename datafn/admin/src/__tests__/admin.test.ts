@@ -172,10 +172,10 @@ describe("@datafn/admin", () => {
 
     const records = await adapter.execute("datafn.records.list", {
       limit: 10,
-      filter: { resource: "tasks", select: ["id", "title"] },
+      filter: { resource: "tasks", select: ["title"] },
     }, context);
     expect(records.data).toMatchObject({
-      items: [{ id: "task-1", title: "Ship Super Console" }],
+      items: [{ id: "tasks:task-1", recordId: "task-1", title: "Ship Super Console" }],
     });
     const resources = await adapter.execute("datafn.resources.list", {}, context);
     expect(resources.data).toMatchObject({
@@ -195,6 +195,7 @@ describe("@datafn/admin", () => {
     const service = createDataFnDomainAdminService({ executor, context: () => ({ namespace: "tenant_1" }) });
 
     const first = await service.listRecords({ filter: { resource: "tasks" }, limit: 1 }, context);
+    expect(first.data.items).toEqual([{ id: "tasks:task-1", recordId: "task-1" }]);
     const nextCursor = first.data.nextCursor;
     expect(nextCursor).toEqual(expect.any(String));
     await service.listRecords({ filter: { resource: "tasks" }, limit: 1, cursor: nextCursor! }, context);

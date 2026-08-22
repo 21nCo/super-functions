@@ -151,6 +151,19 @@ describe("@searchfn/admin", () => {
     await adapter.execute("searchfn.documents.remove-document", { id: "docs:number:1.5" }, context);
     await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Floating" })).resolves.toEqual([]);
 
+    await adapter.execute("searchfn.documents.index", {
+      id: "docs:string:string%3Aliteral",
+      payload: { fields: { title: "Literal string prefix" } },
+    }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Literal" })).resolves.toEqual(["string:literal"]);
+    await adapter.execute("searchfn.documents.index", {
+      id: "docs:string:number%3A123",
+      payload: { fields: { title: "Escaped numeric prefix" } },
+    }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Escaped" })).resolves.toEqual(["number:123"]);
+    await adapter.execute("searchfn.documents.remove-document", { id: "docs:string:number%3A123" }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Escaped" })).resolves.toEqual([]);
+
     await adapter.execute("searchfn.documents.remove-document", {
       id: "docs:doc-1",
     }, context);

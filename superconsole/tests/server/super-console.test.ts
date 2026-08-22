@@ -672,6 +672,9 @@ describe('Super Console server composition', () => {
     const head = await console.handle(request('/api/admin/v1/registry', { method: 'HEAD' }));
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
+    const resourceHead = await console.handle(request('/api/admin/v1/modules/examplefn/records', { method: 'HEAD' }));
+    expect(resourceHead.status).toBe(200);
+    expect(await resourceHead.text()).toBe('');
   });
 
   it('authorization-gates OpenAPI capability enumeration', async () => {

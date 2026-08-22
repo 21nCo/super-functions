@@ -161,12 +161,15 @@ describe("@plugfn/admin", () => {
   it("fetches enough sync jobs to serve cursor pages beyond the first hundred", async () => {
     const jobs = Array.from({ length: 151 }, (_, index) => ({
       id: `job_${index}`, provider: "github", connectionId: "connection_1", resource: "issues", mode: "full",
-      status: "queued", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
+      status: "queued", ownerKind: "user", ownerId: "user_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
       createdAt: new Date(index), updatedAt: new Date(index),
     }));
     const listJobs = vi.fn(async (_filters, limit: number, offset = 0) => jobs.slice(offset, offset + limit));
     const service = createPlugFnDomainAdminService({
-      plugfn: { runtime: { sync: { listJobs } } } as never,
+      plugfn: {
+        connections: { get: async () => ({ userId: "user_1", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1" }) },
+        runtime: { sync: { listJobs } },
+      } as never,
       projectId: "project_1",
       identity: () => ({ userId: "user_1", tenantId: "tenant_1" }),
     });
@@ -174,7 +177,7 @@ describe("@plugfn/admin", () => {
     const second = await service.listSyncJobs({ limit: 100, cursor: first.nextCursor! }, context);
     expect(second.items).toHaveLength(51);
     expect(second.items[0]).toMatchObject({ id: "job_100" });
-    expect(listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ tenantId: "tenant_1" }), 101, 100);
+    expect(listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ ownerId: "user_1" }), 101, 100);
 
     const forgedOffset = Number.MAX_SAFE_INTEGER;
     await service.listSyncJobs({ limit: 100, cursor: encodeAdminCursor(context.scope, { offset: forgedOffset }) }, context);
@@ -182,7 +185,24 @@ describe("@plugfn/admin", () => {
   });
 
   it("filters sync-job lists by tenant as well as owner", async () => {
-    const { adapter, runtime } = setup();
+    const { adapter, database, runtime } = setup();
+    const now = new Date();
+    await database.createConnection({
+      id: "connection_1", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1",
+      status: ConnectionStatus.Active, credentials: { encrypted: "owned", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
+    await database.createConnection({
+      id: "connection_2", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_2",
+      status: ConnectionStatus.Active, credentials: { encrypted: "foreign-tenant", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
+    await database.createConnection({
+      id: "connection_3", userId: "other_user", provider: "github", ownerKind: "user", ownerId: "other_user", tenantId: "tenant_1",
+      status: ConnectionStatus.Active, credentials: { encrypted: "foreign-owner", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
+    await database.createConnection({
+      id: "connection_4", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1",
+      status: ConnectionStatus.Active, credentials: { encrypted: "tenantless", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
     const owned = await runtime.runtime.sync.createJob({
       provider: "github", connectionId: "connection_1", resource: "issues", mode: "full",
       owner: { kind: "user", userId: "user_1", tenantId: "tenant_1" },
@@ -191,9 +211,28 @@ describe("@plugfn/admin", () => {
       provider: "github", connectionId: "connection_2", resource: "issues", mode: "full",
       owner: { kind: "user", userId: "user_1", tenantId: "tenant_2" },
     });
+    const foreignOwner = await runtime.runtime.sync.createJob({
+      provider: "github", connectionId: "connection_3", resource: "issues", mode: "full",
+      owner: { kind: "user", userId: "other_user", tenantId: "tenant_1" },
+    });
+    const tenantless = await runtime.runtime.sync.createJob({
+      provider: "github", connectionId: "connection_4", resource: "issues", mode: "full",
+      owner: { kind: "user", userId: "user_1" },
+    });
 
     const result = await adapter.execute("plugfn.sync-jobs.list", {}, context);
     expect(result.data).toEqual({ items: [expect.objectContaining({ id: owned.id })], nextCursor: null });
     expect(JSON.stringify(result.data)).not.toContain(foreignTenant.id);
+    expect(JSON.stringify(result.data)).not.toContain(foreignOwner.id);
+    expect(JSON.stringify(result.data)).not.toContain(tenantless.id);
+
+    const tenantlessAdapter = createPlugFnDomainAdminAdapter({
+      plugfn: runtime,
+      projectId: "project_1",
+      identity: () => ({ userId: "user_1" }),
+    });
+    const tenantlessResult = await tenantlessAdapter.execute("plugfn.sync-jobs.list", {}, context);
+    expect(tenantlessResult.data).toEqual({ items: [expect.objectContaining({ id: tenantless.id })], nextCursor: null });
+    expect(JSON.stringify(tenantlessResult.data)).not.toContain(owned.id);
   });
 });

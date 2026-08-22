@@ -202,11 +202,15 @@ export function createDataFnDomainAdminService<TContext>(
       if (decoded && (decoded.operationId !== "datafn.records.list" || decoded.resource !== target)) {
         throw new AdminError("invalid_argument", "The DataFn admin cursor does not belong to this record collection.");
       }
+      const select = Array.isArray(filter.select)
+        ? [...new Set(["id", ...filter.select.filter((field): field is string => typeof field === "string")])]
+        : undefined;
       const domain = await executor.query<DataFnAdminRecord>({
         ...filter,
         resource: target,
         version: String(filter.version ?? definition.version),
         limit: input.limit,
+        ...(select ? { select } : {}),
         ...(decoded ? { cursor: decoded.cursor } : {}),
       }, options.context(context));
       const values = Array.isArray(domain.data) ? domain.data : [];
@@ -219,7 +223,16 @@ export function createDataFnDomainAdminService<TContext>(
         : null;
       return {
         ok: true,
-        data: { items: values as DataFnAdminRecord[], nextCursor },
+        data: {
+          items: values.map((value) => {
+            const recordId = value.id;
+            if (typeof recordId !== "string" && typeof recordId !== "number") {
+              throw new AdminError("dependency_unavailable", "DataFn returned a record without a usable id.");
+            }
+            return { ...value, recordId, id: `${target}:${recordId}` };
+          }),
+          nextCursor,
+        },
         page: {
           nextCursor,
           hasMore: nextCursor !== null,
@@ -238,7 +251,7 @@ export function createDataFnDomainAdminService<TContext>(
       }, options.context(context));
       const value = Array.isArray(domain.data) ? domain.data[0] : undefined;
       if (!value || typeof value !== "object") throw new AdminError("not_found", "DataFn record was not found.");
-      return resultItem({ ...value, id: `${target.resource}:${target.id}` });
+      return resultItem({ ...value, recordId: value.id ?? target.id, id: `${target.resource}:${target.id}` });
     },
     async query(input, context) {
       const value = await executor.query<DataFnAdminRecord>(object(input.payload, "payload"), options.context(context));

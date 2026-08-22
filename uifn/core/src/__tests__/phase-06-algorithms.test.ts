@@ -115,6 +115,7 @@ describe('PHASE_06 canonical shared algorithms', () => {
     expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 3 })).toBe(9);
     expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 4 })).toBe(8);
     expect(stepRangeValue(0.1, 'End', { min: 0.1, max: 0.3, step: 0.1 })).toBe(0.3);
+    expect(stepRangeValue(0.1, 'End', { min: 0.1, max: 0.3 - Number.EPSILON, step: 0.1 })).toBe(0.2);
     expect(Number.isFinite(alignRangeValue(Number.MAX_VALUE, { min: 0, max: Number.MAX_VALUE, step: 0.1 }))).toBe(true);
     expect(() => alignRangeValue(1, { min: 0, max: 10, step: Number.POSITIVE_INFINITY })).toThrowError(UIFnError);
     expect(() => parseUIFnColor('rgb(1..2 3 4)')).toThrowError(UIFnError);
@@ -167,8 +168,11 @@ describe('PHASE_06 canonical shared algorithms', () => {
   it('supports collation expansions and immutable numeric-key selections', () => {
     const matcher = createLocaleMatcher('de');
     expect(matcher.startsWith('Äpfel', 'AE')).toBe(true);
+    expect(matcher.startsWith('1 item', '0000000001')).toBe(true);
+    expect(matcher.startsWith('0000000001 item', '1')).toBe(true);
     expect(matcher.includes('Straße', 'STRASSE')).toBe(true);
     expect(matcher.includes(`${'a'.repeat(50_000)}Straße`, 'STRASSE')).toBe(true);
+    expect(matcher.includes(`${'a'.repeat(50_000)}b`, 'STRASSE')).toBe(false);
     expect(matcher.includes('ß', 's')).toBe(false);
     expect(matcher.includes('aß', 'as')).toBe(false);
     const numeric = createListCollection({

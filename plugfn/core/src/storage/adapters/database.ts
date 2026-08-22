@@ -662,7 +662,7 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
     return this.database.findMany<PlugFnSyncJob>({
       model: this.models.syncJobs,
       where: toWhereClauses(filters),
-      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }, { field: 'id', direction: 'desc' }],
       limit,
       offset,
     });
