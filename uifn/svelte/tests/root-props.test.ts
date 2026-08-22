@@ -11,7 +11,7 @@ describe('splitSvelteRootProps', () => {
       form: 'account-form',
       download: 'export.csv',
     }, ['open'])).toMatchObject({
-      inputs: { open: true },
+      inputs: { open: true, pattern: '[0-9]+', form: 'account-form' },
       dom: {
         pattern: '[0-9]+',
         maxlength: 8,
