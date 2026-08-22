@@ -252,7 +252,7 @@ describe('Super Console server composition', () => {
     expect(result.status).toBe(200);
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({
       input: { limit: 20 },
-      context: expect.objectContaining({ scope: expect.objectContaining({ organizationId: 'org_2', workspaceId: 'workspace_2', projectId: 'project_2', environmentId: 'environment_2' }) }),
+      context: expect.objectContaining({ scope: expect.objectContaining({ installationId: 'org_2', workspaceId: 'workspace_2', projectId: 'project_2', environmentId: 'environment_2' }) }),
     }));
   });
 
@@ -263,7 +263,7 @@ describe('Super Console server composition', () => {
     expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
       context: expect.objectContaining({
         scope: {
-          organizationId: 'org_2',
+          installationId: 'org_2',
           workspaceId: 'workspace_2',
           projectId: 'project_2',
           environmentId: 'environment_2',
@@ -274,7 +274,16 @@ describe('Super Console server composition', () => {
     const unchanged = await console.handle(request('/api/admin/v1/modules/examplefn/records'));
     expect(unchanged.status).toBe(200);
     expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
-      context: expect.objectContaining({ scope }),
+      context: expect.objectContaining({
+        scope: {
+          installationId: 'org_1',
+          workspaceId: 'workspace_1',
+          projectId: 'project_1',
+          environmentId: 'environment_1',
+          namespace: 'tenant_1',
+          region: 'in-south',
+        },
+      }),
     }));
   });
 
@@ -653,7 +662,11 @@ describe('Super Console server composition', () => {
     const issued = await console.handle(request('/api/admin/v1/confirmations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: 'examplefn.records.delete', input: { id: 'record_1' } }) }));
     expect(issued.status).toBe(201);
     expect(await issued.json()).toMatchObject({ ok: true as const, data: { token: 'bound-token', expiresAt: expect.any(String) } });
-    expect(confirmation.issue).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'examplefn.records.delete', input: { id: 'record_1' }, context: expect.objectContaining({ scope }) }));
+    expect(confirmation.issue).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: 'examplefn.records.delete',
+      input: { id: 'record_1' },
+      context: expect.objectContaining({ scope: expect.objectContaining({ installationId: 'org_1' }) }),
+    }));
     const executed = await console.handle(request('/api/admin/v1/modules/examplefn/records/record_1', {
       method: 'DELETE',
       headers: { 'idempotency-key': 'idem_1', 'x-admin-confirmation': 'bound-token' },
@@ -754,7 +767,9 @@ describe('Super Console server composition', () => {
       },
     });
     expect(await confirmed.json()).toMatchObject({ result: { structuredContent: { token: 'bound-token' } } });
-    expect(confirmation.issue).toHaveBeenLastCalledWith(expect.objectContaining({ context: expect.objectContaining({ source: 'mcp', scope }) }));
+    expect(confirmation.issue).toHaveBeenLastCalledWith(expect.objectContaining({
+      context: expect.objectContaining({ source: 'mcp', scope: expect.objectContaining({ installationId: 'org_1' }) }),
+    }));
     expect(audit.events).toContainEqual(expect.objectContaining({
       operationId: 'superconsole.confirmations.issue',
       outcome: 'succeeded',

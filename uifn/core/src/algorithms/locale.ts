@@ -19,11 +19,29 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     : undefined;
   const requiresGraphemeSegmentation = (value: string): boolean =>
     /\p{M}|\u200d|\ufe0e|\ufe0f|\p{Emoji_Modifier}|\p{Regional_Indicator}/u.test(value);
+  const fallbackGraphemes = (value: string): string[] => {
+    const result: string[] = [];
+    for (const codePoint of Array.from(value)) {
+      const previous = result.at(-1);
+      const continuation = /\p{M}|\ufe0e|\ufe0f|\p{Emoji_Modifier}/u.test(codePoint);
+      const joins = codePoint === '\u200d' || previous?.endsWith('\u200d');
+      const regionalPair = /\p{Regional_Indicator}/u.test(codePoint)
+        && previous !== undefined
+        && (previous.match(/\p{Regional_Indicator}/gu)?.length ?? 0) % 2 === 1;
+      if (previous !== undefined && (continuation || joins || regionalPair)) {
+        result[result.length - 1] = previous + codePoint;
+      } else {
+        result.push(codePoint);
+      }
+    }
+    return result;
+  };
   const segments = (value: string): string[] => {
     const normalized = value.normalize('NFC');
-    return segmenter && requiresGraphemeSegmentation(normalized)
+    if (!requiresGraphemeSegmentation(normalized)) return Array.from(normalized);
+    return segmenter
       ? [...segmenter.segment(normalized)].map((part) => part.segment)
-      : Array.from(normalized);
+      : fallbackGraphemes(normalized);
   };
   const MAX_COLLATION_QUERY_SEGMENTS = 256;
   const MAX_COLLATION_FALLBACK_SPAN = 256;
@@ -88,9 +106,6 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     equals: (left: string, right: string) => collator.compare(normalize(left), normalize(right)) === 0,
     startsWith(value: string, query: string) {
       if (query.length === 0) return true;
-      if (!segmenter && (requiresGraphemeSegmentation(value) || requiresGraphemeSegmentation(query))) {
-        return normalize(value) === normalize(query);
-      }
       if (!requiresGraphemeSegmentation(value) && !requiresGraphemeSegmentation(query)
         && normalize(value).startsWith(normalize(query))) return true;
       const querySegments = segments(query);
@@ -101,9 +116,6 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     },
     includes(value: string, query: string) {
       if (query.length === 0) return true;
-      if (!segmenter && (requiresGraphemeSegmentation(value) || requiresGraphemeSegmentation(query))) {
-        return normalize(value) === normalize(query);
-      }
       if (!requiresGraphemeSegmentation(value) && !requiresGraphemeSegmentation(query)
         && normalize(value).includes(normalize(query))) return true;
       const querySegments = segments(query);

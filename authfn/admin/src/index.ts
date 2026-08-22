@@ -403,7 +403,7 @@ const operations = [
   {
     id: 'authfn.users.list-sessions', title: 'List user sessions', description: 'List active sessions for an in-scope AuthFn user.',
     inputSchema: { type: 'object', properties: { userId: { type: 'string', minLength: 1 } }, required: ['userId'], additionalProperties: false }, outputSchema: { type: 'object', properties: { items: { type: 'array', items: sessionSchema } }, required: ['items'], additionalProperties: false },
-    route: { method: 'GET', path: '/resources/users/:userId/sessions' }, permission: 'authfn.sessions.read', safety: { classification: 'read', idempotent: true, requiresConfirmation: false, audit: 'required' }, mcp: { readOnlyHint: true }, target: { resource: 'users', idInput: 'userId' }
+    route: { method: 'GET', path: '/resources/users/:userId/sessions' }, permission: 'authfn.sessions.read', safety: { classification: 'read', idempotent: true, requiresConfirmation: false, audit: 'required' }, mcp: { readOnlyHint: true }, target: { resource: 'sessions', collection: true }
   },
   {
     id: 'authfn.sessions.revoke', title: 'Revoke session', description: 'Revoke a session after proving it belongs to an in-scope AuthFn user.',
@@ -417,7 +417,7 @@ export const authFnAdminCapability = defineAdminCapability({
   category: 'identity', availability: 'required-product', scopeLevels: ['organization', 'workspace', 'project', 'environment'],
   resources: [
     { id: 'users', label: 'Users', description: 'Authentication users in the active namespace and region.', icon: 'authfn:users', risk: 'sensitive', idField: 'id', displayFields: ['id', 'primaryEmail', 'updatedAt'], searchableFields: ['id', 'primaryEmail'], filterableFields: ['regionId', 'createdAt'], sortableFields: ['createdAt', 'updatedAt'], sensitiveFields: [] },
-    { id: 'sessions', label: 'Sessions', description: 'Active AuthFn sessions for an in-scope user.', icon: 'authfn:sessions', risk: 'sensitive', idField: 'id', displayFields: ['id', 'userId', 'expiresAt', 'revokedAt'], sensitiveFields: [] }
+    { id: 'sessions', label: 'Sessions', description: 'Active AuthFn sessions for an in-scope user.', icon: 'authfn:sessions', risk: 'sensitive', idField: 'id', displayFields: ['id', 'userId', 'expiresAt', 'revokedAt'], filterableFields: ['userId'], sensitiveFields: [], presentation: { standaloneList: false, listOperationId: 'authfn.users.list-sessions', query: { filters: [{ field: 'userId', inputPath: 'userId', label: 'User' }] }, parent: { resourceId: 'users', bindings: [{ sourceField: 'id', queryField: 'userId' }] } } }
   ],
   navigation: [{ id: 'authfn', label: 'AuthFn', path: '/modules/authfn', icon: 'authfn', order: 10 }], operations
 });

@@ -19,6 +19,10 @@ function changedKeys(previous, next) {
     .sort();
 }
 
+function schedulerSequence(handle) {
+  return Number(handle.slice(handle.lastIndexOf('-') + 1));
+}
+
 export function createPhase14Scheduler() {
   let sequence = 0;
   let currentTime = 0;
@@ -38,7 +42,8 @@ export function createPhase14Scheduler() {
     clearTimeout(handle) { timeouts.delete(handle); },
     setInterval(callback, intervalMs) {
       const handle = `interval-${++sequence}`;
-      intervals.set(handle, { callback, intervalMs });
+      const duration = Math.max(1, Number(intervalMs) || 0);
+      intervals.set(handle, { callback, intervalMs: duration, dueAt: currentTime + duration });
       return handle;
     },
     clearInterval(handle) { intervals.delete(handle); },
@@ -51,7 +56,9 @@ export function createPhase14Scheduler() {
     queueMicrotask(callback) { globalThis.queueMicrotask(callback); },
     async flush() {
       let turns = 0;
-      while ((frames.size > 0 || timeouts.size > 0) && turns < 1_000) {
+      const pendingIntervals = new Set(intervals.keys());
+      const hasPendingInterval = () => [...pendingIntervals].some((handle) => intervals.has(handle));
+      while ((frames.size > 0 || timeouts.size > 0 || hasPendingInterval()) && turns < 1_000) {
         turns += 1;
         if (frames.size > 0) {
           currentTime += 16;
@@ -59,20 +66,26 @@ export function createPhase14Scheduler() {
           frames.clear();
           for (const callback of pendingFrames) await callback(currentTime);
         } else {
-          const nextDueAt = Math.min(...[...timeouts.values()].map(({ dueAt }) => dueAt));
+          const intervalEntries = [...intervals.entries()]
+            .filter(([handle]) => pendingIntervals.has(handle));
+          const timers = [...timeouts.entries(), ...intervalEntries];
+          const nextDueAt = Math.min(...timers.map(([, { dueAt }]) => dueAt));
           currentTime = Math.max(currentTime, nextDueAt);
-          const ready = [...timeouts.entries()]
+          const ready = timers
             .filter(([, entry]) => entry.dueAt <= currentTime)
-            .sort(([left], [right]) => left.localeCompare(right));
+            .sort(([left], [right]) => schedulerSequence(left) - schedulerSequence(right));
           for (const [handle, entry] of ready) {
-            timeouts.delete(handle);
+            if (handle.startsWith('timeout-')) timeouts.delete(handle);
+            else pendingIntervals.delete(handle);
             await entry.callback();
+            const interval = intervals.get(handle);
+            if (interval) interval.dueAt = currentTime + interval.intervalMs;
           }
         }
         await Promise.resolve();
         await Promise.resolve();
       }
-      if (frames.size > 0 || timeouts.size > 0) {
+      if (frames.size > 0 || timeouts.size > 0 || hasPendingInterval()) {
         throw new Error('UIFn phase-14 scheduler exceeded its deterministic flush limit.');
       }
     },
@@ -308,17 +321,30 @@ export async function runPhase14Actions(vector, bridge, runtime, capture) {
     const matchingCallback = expectedCallbackName
       ? emittedCallbacks.find((callback) => callback.name === expectedCallbackName)
       : undefined;
-    const stateObserved = expectedStateKey
-      ? changed.includes(expectedStateKey)
-      : changed.length > 0;
     const semanticState = toSemanticJson(next.rawState);
+    const expectedStateCandidates = expectedStateKey
+      ? [expectedStateKey, expectedStateKey.replace(/Metrics$/, '')]
+      : [];
+    const observedStateKey = semanticState && !Array.isArray(semanticState) && typeof semanticState === 'object'
+      ? expectedStateCandidates.find((key) => key in semanticState)
+      : undefined;
+    const stateObserved = observedStateKey
+      ? changed.includes(observedStateKey)
+      : expectedStateKey
+        ? false
+        : changed.length > 0;
+    const semanticArgument = setter && action.arguments.length === 1
+      ? toSemanticJson(action.arguments[0])
+      : undefined;
     const statePayloadObserved = setter && action.arguments.length === 1
       && semanticState && !Array.isArray(semanticState) && typeof semanticState === 'object'
-      && changed.some((key) => stableJson(semanticState[key]) === stableJson(action.arguments[0]));
-    const expectedCallbackValue = setter && expectedStateKey
+      && observedStateKey !== undefined
+      && changed.includes(observedStateKey)
+      && stableJson(semanticState[observedStateKey]) === stableJson(semanticArgument);
+    const expectedCallbackValue = setter && observedStateKey
       && semanticState && !Array.isArray(semanticState) && typeof semanticState === 'object'
-      && expectedStateKey in semanticState
-      ? semanticState[expectedStateKey]
+      && observedStateKey in semanticState
+      ? semanticState[observedStateKey]
       : setter
         ? toSemanticJson(action.arguments[0], expectedCallbackName)
         : undefined;

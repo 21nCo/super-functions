@@ -80,9 +80,14 @@ describe("@datafn/admin", () => {
     expect(dataFnAdminCapability.resources?.find(
       (resource) => resource.id === "records",
     )?.presentation).toMatchObject({
+      standaloneList: false,
       listOperationId: "datafn.records.list",
       query: {
         filters: [{ field: "resource", inputPath: "filter.resource" }],
+      },
+      parent: {
+        resourceId: "resources",
+        bindings: [{ sourceField: "name", queryField: "resource" }],
       },
     });
     const mutationOperation = dataFnAdminCapability.operations.find(

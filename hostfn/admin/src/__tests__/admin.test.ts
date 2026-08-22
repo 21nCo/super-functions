@@ -190,6 +190,22 @@ describe("@hostfn/admin", () => {
     expect(second.data.items).toHaveLength(1);
     expect(second.data.nextCursor).toBeNull();
     await expect(
+      adapter.invoke<{ items: unknown[] }>(
+        "hostfn.targets.list",
+        { limit: 2, cursor: first.data.nextCursor },
+        {
+          ...context,
+          scope: {
+            organizationId: scope.installationId,
+            workspaceId: scope.workspaceId,
+            projectId: scope.projectId,
+            environmentId: scope.environmentId,
+            namespace: "ignored-by-hostfn",
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ data: { items: expect.any(Array) } });
+    await expect(
       adapter.invoke(
         "hostfn.targets.list",
         { cursor: first.data.nextCursor },

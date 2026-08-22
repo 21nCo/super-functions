@@ -148,7 +148,7 @@ export function createAdminOpenApiDocument(
         schema: { type: "string", minLength: 1 },
       });
     }
-    if (method !== "GET" && options.csrfHeader) {
+    if ((method !== "GET" || entry.operation.safety.classification !== "read") && options.csrfHeader) {
       parameters.push({
         name: options.csrfHeader.name,
         in: "header",

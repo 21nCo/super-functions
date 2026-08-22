@@ -147,10 +147,7 @@ function requestedScope(request: Request, principal: SuperConsolePrincipal): Adm
   const namespace = url.searchParams.get('namespace') ?? request.headers.get('x-superconsole-namespace');
   const region = url.searchParams.get('region') ?? request.headers.get('x-superconsole-region');
   return {
-    ...(installation ? { installationId: requestedRoot } : organization ? { organizationId: requestedRoot } : {
-      ...(principal.defaultScope.installationId ? { installationId: requestedRoot } : {}),
-      ...(principal.defaultScope.organizationId ? { organizationId: requestedRoot } : {}),
-    }),
+    ...(requestedRoot ? { installationId: requestedRoot } : {}),
     ...(requestedWorkspace ? { workspaceId: requestedWorkspace } : {}),
     ...(requestedProject ? { projectId: requestedProject } : {}),
     ...((environment ?? (rootChanged || workspaceChanged || projectChanged ? undefined : principal.defaultScope.environmentId))

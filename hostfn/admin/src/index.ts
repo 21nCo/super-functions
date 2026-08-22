@@ -699,10 +699,11 @@ function pageResult(
   input: PageInput,
   context: AdminOperationContext,
 ): PageOutput {
+  const cursorScope = scope(context);
   let offset = 0;
   if (input.cursor) {
     try {
-      const decoded = decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope);
+      const decoded = decodeAdminCursor<{ offset?: unknown }>(input.cursor, cursorScope);
       if (
         typeof decoded.offset !== "number" ||
         !Number.isSafeInteger(decoded.offset) ||
@@ -724,7 +725,7 @@ function pageResult(
     items: pageItems,
     nextCursor:
       nextOffset < items.length
-        ? encodeAdminCursor(context.scope, { offset: nextOffset })
+        ? encodeAdminCursor(cursorScope, { offset: nextOffset })
         : null,
   };
 }

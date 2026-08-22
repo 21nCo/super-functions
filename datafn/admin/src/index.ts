@@ -136,6 +136,7 @@ export const dataFnAdminResources = [
     sortableFields: ["createdAt", "updatedAt", "name"],
     sensitiveFields: [],
     presentation: {
+      standaloneList: false,
       listOperationId: "datafn.records.list",
       query: {
         filters: [{
@@ -143,6 +144,10 @@ export const dataFnAdminResources = [
           inputPath: "filter.resource",
           label: "Resource",
         }],
+      },
+      parent: {
+        resourceId: "resources",
+        bindings: [{ sourceField: "name", queryField: "resource" }],
       },
     },
   },

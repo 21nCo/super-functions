@@ -23,6 +23,15 @@ describe("@authfn/admin capability", () => {
       inputSchema: { required: ["id"] }, target: { resource: "users", idInput: "id" },
       safety: { classification: "destructive", requiresConfirmation: true },
     });
+    expect(authFnAdminCapability.operations.find((operation) => operation.id === "authfn.users.list-sessions")).toMatchObject({
+      target: { resource: "sessions", collection: true },
+    });
+    expect(authFnAdminCapability.resources?.find((resource) => resource.id === "sessions")?.presentation).toMatchObject({
+      standaloneList: false,
+      listOperationId: "authfn.users.list-sessions",
+      query: { filters: [{ field: "userId", inputPath: "userId" }] },
+      parent: { resourceId: "users", bindings: [{ sourceField: "id", queryField: "userId" }] },
+    });
   });
 
   it("reads and deletes through AuthFn core storage", async () => {
