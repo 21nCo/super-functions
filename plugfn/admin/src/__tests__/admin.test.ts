@@ -100,6 +100,18 @@ describe("@plugfn/admin", () => {
       owner: { kind: "user", userId: "user_1", tenantId: "tenant_1" },
       headersRedacted: { authorization: "should-not-project" },
     });
+    const foreignTenantReceipt = await runtime.runtime.webhooks.createReceipt({
+      provider: "github",
+      event: "issues.opened",
+      payloadHash: "sha256:foreign-tenant",
+      owner: { kind: "user", userId: "user_1", tenantId: "tenant_2" },
+    });
+    const tenantlessReceipt = await runtime.runtime.webhooks.createReceipt({
+      provider: "github",
+      event: "issues.opened",
+      payloadHash: "sha256:tenantless",
+      owner: { kind: "user", userId: "user_1" },
+    });
     await runtime.runtime.webhooks.createDelivery({ receiptId: receipt.id, handlerName: "issues" });
 
     const list = await adapter.execute("plugfn.provider-installations.list", {}, context);
@@ -114,6 +126,8 @@ describe("@plugfn/admin", () => {
     const deliveries = await adapter.execute("plugfn.webhook-deliveries.list", { receiptId: receipt.id }, context);
     expect(deliveries.data).toEqual({ items: [expect.objectContaining({ receiptId: receipt.id, status: "pending" })], nextCursor: null });
     expect(JSON.stringify(deliveries.data)).not.toContain("should-not-project");
+    await expect(adapter.execute("plugfn.webhook-receipts.get", { id: foreignTenantReceipt.id }, context)).rejects.toMatchObject({ code: "not_found" });
+    await expect(adapter.execute("plugfn.webhook-receipts.get", { id: tenantlessReceipt.id }, context)).rejects.toMatchObject({ code: "not_found" });
   });
 
   it("enforces mapped ownership before connection, workflow, and sync mutation", async () => {
@@ -133,6 +147,14 @@ describe("@plugfn/admin", () => {
     });
     await database.createWorkflow({
       id: "workflow_1", userId: "user_1", name: "Issue workflow", status: WorkflowStatus.Disabled,
+      definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "tenant_1" }, createdAt: now, updatedAt: now,
+    });
+    await database.createWorkflow({
+      id: "foreign_tenant_workflow", userId: "user_1", name: "Foreign tenant workflow", status: WorkflowStatus.Disabled,
+      definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "tenant_2" }, createdAt: now, updatedAt: now,
+    });
+    await database.createWorkflow({
+      id: "legacy_workflow", userId: "user_1", name: "Legacy workflow", status: WorkflowStatus.Disabled,
       definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, createdAt: now, updatedAt: now,
     });
 
@@ -145,6 +167,10 @@ describe("@plugfn/admin", () => {
     const enabled = await adapter.execute("plugfn.workflows.enable", { id: "workflow_1" }, context);
     expect(enabled.data).toEqual({ accepted: true });
     expect((await runtime.workflows.get("workflow_1"))?.status).toBe(WorkflowStatus.Enabled);
+    const workflows = await adapter.execute("plugfn.workflows.list", {}, context);
+    expect(workflows.data).toEqual({ items: [expect.objectContaining({ id: "workflow_1" })], nextCursor: null });
+    await expect(adapter.execute("plugfn.workflows.get", { id: "foreign_tenant_workflow" }, context)).rejects.toMatchObject({ code: "not_found" });
+    await expect(adapter.execute("plugfn.workflows.get", { id: "legacy_workflow" }, context)).rejects.toMatchObject({ code: "not_found" });
 
     const queued = await adapter.execute("plugfn.sync-jobs.enqueue", { provider: "github", connectionId: "connection_1", resource: "issues", mode: "full" }, context);
     const jobId = (queued.data as { item: { id: string } }).item.id;
@@ -234,5 +260,29 @@ describe("@plugfn/admin", () => {
     const tenantlessResult = await tenantlessAdapter.execute("plugfn.sync-jobs.list", {}, context);
     expect(tenantlessResult.data).toEqual({ items: [expect.objectContaining({ id: tenantless.id })], nextCursor: null });
     expect(JSON.stringify(tenantlessResult.data)).not.toContain(owned.id);
+  });
+
+  it("bounds tenant filtering work and reuses connection ownership checks", async () => {
+    const jobs = Array.from({ length: 50 }, (_, index) => ({
+      id: `foreign_job_${index}`, provider: "github", connectionId: "foreign_connection", resource: "issues", mode: "full",
+      status: "queued", ownerKind: "user", ownerId: "user_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
+      createdAt: new Date(index), updatedAt: new Date(index),
+    }));
+    const listJobs = vi.fn(async (_filters, limit: number, offset = 0) => jobs.slice(offset, offset + limit));
+    const getConnection = vi.fn(async () => ({
+      userId: "user_1", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_2",
+    }));
+    const service = createPlugFnDomainAdminService({
+      plugfn: { connections: { get: getConnection }, runtime: { sync: { listJobs } } } as never,
+      projectId: "project_1",
+      identity: () => ({ userId: "user_1", tenantId: "tenant_1" }),
+    });
+
+    const result = await service.listSyncJobs({ limit: 1 }, context);
+
+    expect(result.items).toEqual([]);
+    expect(result.nextCursor).toEqual(expect.any(String));
+    expect(listJobs).toHaveBeenCalledTimes(4);
+    expect(getConnection).toHaveBeenCalledTimes(1);
   });
 });

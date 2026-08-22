@@ -202,7 +202,20 @@ export async function loadResourceList(input: ResourceRouteInput): Promise<{
   }
   const apiHref = resource.listApiHref ?? resource.apiHref
     ?? `${ADMIN_API_PREFIX}/modules/${encodeURIComponent(apiModule)}/${encodeURIComponent(canonicalResource)}`;
-  const requestHref = listRequestHref(resource, apiHref, input.url.searchParams);
+  let requestHref: string;
+  try {
+    requestHref = listRequestHref(resource, apiHref, input.url.searchParams);
+  } catch {
+    return {
+      view: undefined,
+      loadError: {
+        status: 400,
+        code: 'RESOURCE_QUERY_INVALID',
+        message: `The query controls for ${resource.pluralLabel ?? resource.label} are invalid.`,
+      },
+      query: input.url.searchParams.get('q') ?? '',
+    };
+  }
   const result = await fetchAdmin<Partial<ResourceListViewModel> & { items?: unknown[] }>(
     input.fetcher,
     withAdminScope(requestHref, input.url.searchParams)

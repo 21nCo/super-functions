@@ -229,7 +229,7 @@ export function createDataFnDomainAdminService<TContext>(
             if (typeof recordId !== "string" && typeof recordId !== "number") {
               throw new AdminError("dependency_unavailable", "DataFn returned a record without a usable id.");
             }
-            return { ...value, recordId, id: `${target}:${recordId}` };
+            return { ...value, id: `${target}:${recordId}` };
           }),
           nextCursor,
         },
@@ -251,7 +251,7 @@ export function createDataFnDomainAdminService<TContext>(
       }, options.context(context));
       const value = Array.isArray(domain.data) ? domain.data[0] : undefined;
       if (!value || typeof value !== "object") throw new AdminError("not_found", "DataFn record was not found.");
-      return resultItem({ ...value, recordId: value.id ?? target.id, id: `${target.resource}:${target.id}` });
+      return resultItem({ ...value, id: `${target.resource}:${target.id}` });
     },
     async query(input, context) {
       const value = await executor.query<DataFnAdminRecord>(object(input.payload, "payload"), options.context(context));

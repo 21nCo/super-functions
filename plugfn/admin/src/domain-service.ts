@@ -23,6 +23,7 @@ import type {
   PlugFnInstallationView,
   PlugFnPageInput,
   PlugFnProviderView,
+  PlugFnSyncJobListInput,
   PlugFnWorkflowView,
 } from "./types.js";
 
@@ -109,20 +110,97 @@ async function syncJobOwnedForList(
   options: PlugFnDomainAdminServiceOptions,
   job: PlugFnSyncJob,
   value: PlugFnDomainIdentity,
+  cache?: Map<string, Promise<boolean>>,
 ): Promise<boolean> {
+  const cached = cache?.get(job.connectionId);
+  if (cached) return cached;
+  const ownership = (async () => {
+    try {
+      const connection = await options.plugfn.connections.get(job.connectionId);
+      assertConnectionOwner(connection, value);
+      return true;
+    } catch (error) {
+      if (error instanceof AdminError && error.code === "not_found") return false;
+      if (error && typeof error === "object" && "code" in error && error.code === "CONNECTION_NOT_FOUND") return false;
+      throw error;
+    }
+  })();
+  cache?.set(job.connectionId, ownership);
+  return ownership;
+}
+
+function metadataTenantId(metadata: Record<string, unknown> | undefined, key = "tenantId"): string | undefined {
+  const tenantId = metadata?.[key];
+  return typeof tenantId === "string" && tenantId.trim() ? tenantId : undefined;
+}
+
+function assertWorkflowOwner(workflow: Workflow, value: PlugFnDomainIdentity): void {
+  const tenantId = metadataTenantId(workflow.metadata);
+  if (!sameTenant(tenantId, value) || workflow.userId !== value.userId) {
+    throw new AdminError("not_found", "The PlugFn workflow was not found in the active project identity.");
+  }
+}
+
+function workflowOwnedForList(workflow: Workflow, value: PlugFnDomainIdentity): boolean {
   try {
-    const connection = await options.plugfn.connections.get(job.connectionId);
-    assertConnectionOwner(connection, value);
+    assertWorkflowOwner(workflow, value);
     return true;
   } catch (error) {
     if (error instanceof AdminError && error.code === "not_found") return false;
-    if (error && typeof error === "object" && "code" in error && error.code === "CONNECTION_NOT_FOUND") return false;
     throw error;
   }
 }
 
-function assertWorkflowOwner(workflow: Workflow, value: PlugFnDomainIdentity): void {
-  if (workflow.userId !== value.userId) throw new AdminError("not_found", "The PlugFn workflow was not found in the active project identity.");
+const MAX_SYNC_JOB_SCAN_PAGES = 4;
+
+async function listAuthorizedSyncJobs(
+  options: PlugFnDomainAdminServiceOptions,
+  input: PlugFnSyncJobListInput,
+  context: AdminOperationContext,
+): Promise<{ items: JsonRecord[]; nextCursor: string | null }> {
+  const mapped = await identity(options, context);
+  const owner = ownerFor(mapped);
+  const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
+  const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
+  const offset = decoded.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
+
+  const pageLimit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 100 });
+  const scanLimit = pageLimit + 1;
+  const filters = {
+    ownerKind: owner.kind,
+    ownerId,
+    provider: input.provider,
+    connectionId: input.connectionId,
+    resource: input.resource,
+    status: input.status,
+  };
+  const items: JsonRecord[] = [];
+  const ownershipCache = new Map<string, Promise<boolean>>();
+  let scanOffset = offset as number;
+  let hasMore = false;
+
+  for (let pageIndex = 0; pageIndex < MAX_SYNC_JOB_SCAN_PAGES && !hasMore; pageIndex += 1) {
+    const values = await options.plugfn.runtime.sync.listJobs(filters, scanLimit, scanOffset);
+    if (values.length === 0) break;
+    const allowed = await Promise.all(values.map((job) => syncJobOwnedForList(options, job, mapped, ownershipCache)));
+    for (let index = 0; index < values.length; index += 1) {
+      if (allowed[index] && items.length === pageLimit) {
+        hasMore = true;
+        break;
+      }
+      scanOffset += 1;
+      if (allowed[index]) items.push(syncView(values[index]!));
+    }
+    if (hasMore || values.length < scanLimit) break;
+    if (pageIndex === MAX_SYNC_JOB_SCAN_PAGES - 1) hasMore = true;
+  }
+
+  return {
+    items,
+    nextCursor: hasMore ? encodeAdminCursor(context.scope, { offset: scanOffset }) : null,
+  };
 }
 
 function providerView(provider: Provider, configured: boolean): PlugFnProviderView {
@@ -194,9 +272,13 @@ async function ownedReceipt(options: PlugFnDomainAdminServiceOptions, id: string
   const mapped = await identity(options, context);
   const receipt = await options.plugfn.runtime.webhooks.getReceipt(id);
   if (!receipt) throw new AdminError("not_found", "The PlugFn webhook receipt was not found in the active project identity.");
-  if (receipt.connectionId) await ownedConnection(options, receipt.connectionId, context);
-  else if (!ownsLegacyRecord(receipt.ownerKind, receipt.ownerId, mapped)) {
-    throw new AdminError("not_found", "The PlugFn webhook receipt has no verifiable project owner.");
+  if (receipt.connectionId) {
+    await ownedConnection(options, receipt.connectionId, context);
+  } else {
+    const receiptTenantId = metadataTenantId(receipt.metadata, "plugfnTenantId");
+    if (!sameTenant(receiptTenantId, mapped) || !ownsLegacyRecord(receipt.ownerKind, receipt.ownerId, mapped)) {
+      throw new AdminError("not_found", "The PlugFn webhook receipt has no verifiable project owner.");
+    }
   }
   return receipt;
 }
@@ -268,7 +350,8 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
     async listWorkflows(input, context) {
       const mapped = await identity(options, context);
       const listed = await options.plugfn.workflows.list({ userId: mapped.userId, status: input.status });
-      const values = input.provider ? listed.filter((workflow) => workflow.definition.trigger.provider === input.provider) : listed;
+      const owned = listed.filter((workflow) => workflowOwnedForList(workflow, mapped));
+      const values = input.provider ? owned.filter((workflow) => workflow.definition.trigger.provider === input.provider) : owned;
       return page(values.map(workflowView), input, context);
     },
     async getWorkflow(input, context) { return { item: workflowView((await ownedWorkflow(options, input.id, context)).workflow) }; },
@@ -282,49 +365,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const values = (await options.plugfn.runtime.webhooks.listDeliveries(input.receiptId)).map((delivery) => ({ ...json({ id: delivery.id, receiptId: delivery.receiptId, sinkId: delivery.sinkId, handlerName: delivery.handlerName, status: delivery.status, attempts: delivery.attempts, nextAttemptAt: delivery.nextAttemptAt, error: delivery.error, createdAt: delivery.createdAt, updatedAt: delivery.updatedAt }) }));
       return page(values, input, context);
     },
-    async listSyncJobs(input, context) {
-      const mapped = await identity(options, context);
-      const owner = ownerFor(mapped);
-      const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
-      const { limit } = input;
-      const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
-      if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
-      const offset = decoded.offset ?? 0;
-      if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
-      const pageLimit = normalizeAdminPageLimit(limit, { defaultLimit: 50, maxLimit: 100 });
-      const filters = {
-        ownerKind: owner.kind,
-        ownerId,
-        provider: input.provider,
-        connectionId: input.connectionId,
-        resource: input.resource,
-        status: input.status,
-      };
-      const items: JsonRecord[] = [];
-      const scanLimit = pageLimit + 1;
-      let scanOffset = offset as number;
-      let hasMore = false;
-      while (!hasMore) {
-        const values = await options.plugfn.runtime.sync.listJobs(filters, scanLimit, scanOffset);
-        if (values.length === 0) break;
-        for (const job of values) {
-          const allowed = await syncJobOwnedForList(options, job, mapped);
-          if (allowed && items.length === pageLimit) {
-            hasMore = true;
-            break;
-          }
-          scanOffset += 1;
-          if (allowed) items.push(syncView(job));
-        }
-        if (hasMore || values.length < scanLimit) break;
-      }
-      return {
-        items,
-        nextCursor: hasMore
-          ? encodeAdminCursor(context.scope, { offset: scanOffset })
-          : null,
-      };
-    },
+    async listSyncJobs(input, context) { return listAuthorizedSyncJobs(options, input, context); },
     async getSyncJob(input, context) { return { item: syncView(await ownedSyncJob(options, input.id, context)) }; },
     async runSync(input, context) {
       const mapped = await identity(options, context);

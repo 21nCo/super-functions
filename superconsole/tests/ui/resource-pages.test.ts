@@ -113,6 +113,31 @@ describe('generic resource list ordering', () => {
     ]));
   });
 
+  it('returns an admin error view for reserved query input paths', async () => {
+    const fetcher = vi.fn();
+    const guardedRegistry: RegistryViewModel = {
+      modules: [{
+        ...registry.modules[0]!,
+        resources: [{
+          ...registry.modules[0]!.resources![0]!,
+          listInputSchema: { type: 'object', properties: { filter: { type: 'object' } } },
+          presentation: { query: { filters: [{ field: 'status', inputPath: '__proto__.status' }] } },
+        }],
+      }],
+    };
+
+    const loaded = await loadResourceList({
+      fetcher,
+      url: new URL('https://console.example.test/modules/examplefn/records?status=running'),
+      registry: guardedRegistry,
+      moduleId: 'examplefn',
+      resourceId: 'records',
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(loaded.loadError).toMatchObject({ status: 400, code: 'RESOURCE_QUERY_INVALID' });
+  });
+
   it('builds parent-bound related resource links from generic detail records', async () => {
     const contextualRegistry: RegistryViewModel = {
       modules: [{

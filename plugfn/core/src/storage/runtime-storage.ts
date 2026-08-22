@@ -186,7 +186,7 @@ export class AdapterRuntimeStorage {
       verificationStatus: input.verificationStatus ?? 'not-required',
       receivedAt: now,
       createdAt: now,
-      metadata: input.metadata,
+      metadata: webhookReceiptMetadata(input),
     });
   }
 
@@ -569,6 +569,12 @@ function assertMatchingWebhookReceipt(
     throw new Error('webhook idempotency key was reused with a different payload');
   }
   return receipt;
+}
+
+function webhookReceiptMetadata(input: CreateWebhookReceiptInput): Record<string, unknown> | undefined {
+  const { plugfnTenantId: _reservedTenantId, ...metadata } = input.metadata ?? {};
+  if (input.owner?.tenantId) metadata.plugfnTenantId = input.owner.tenantId;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
 export function ownerFields(owner: PlugFnConnectionOwner | undefined): {

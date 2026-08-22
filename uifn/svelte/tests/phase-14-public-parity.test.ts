@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { cleanup, render as renderClient } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import manifest from '../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import manifest from './fixtures/phase-14-public-vectors.json';
 import {
   assemblePhase14Trace,
   capturePhase14Checkpoint,

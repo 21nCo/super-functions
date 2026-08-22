@@ -1,0 +1,4831 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-14.mjs",
+  "phase": "PHASE_14",
+  "requirement": "PARITY-001",
+  "catalogSha256": "eaf2782a22ad3a0153f29e8de410631438fd280d5c29905f7a37694178cb1f2d",
+  "catalogSourceSha256": "f90d50283106d40b028d205350733200d2d9f6982287db54fe7f52429774d282",
+  "primitiveCount": 69,
+  "interactiveCount": 51,
+  "anatomyCount": 465,
+  "canonicalVectorCount": 69,
+  "frameworks": [
+    "react",
+    "svelte",
+    "solid"
+  ],
+  "installModes": [
+    "package",
+    "source"
+  ],
+  "traceChannels": [
+    "steps",
+    "transactions",
+    "actions",
+    "parts",
+    "dom",
+    "focus",
+    "callbacks",
+    "errors",
+    "cleanup"
+  ],
+  "vectors": [
+    {
+      "id": "phase-14-accordion-public-tree",
+      "primitive": "Accordion",
+      "primitiveId": "accordion",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            [
+              "item"
+            ]
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "header",
+          "component": "Header",
+          "element": "heading",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-alert-dialog-public-tree",
+      "primitive": "AlertDialog",
+      "primitiveId": "alert-dialog",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "portal",
+          "component": "Portal",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "backdrop",
+          "component": "Backdrop",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "cancel",
+          "component": "Cancel",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "action",
+          "component": "Action",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-angle-slider-public-tree",
+      "primitive": "AngleSlider",
+      "primitiveId": "angle-slider",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            90
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "track",
+          "component": "Track",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "thumb",
+          "component": "Thumb",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-autocomplete-public-tree",
+      "primitive": "Autocomplete",
+      "primitiveId": "autocomplete",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setInputValue",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onInputValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "clear",
+          "component": "Clear",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "empty",
+          "component": "Empty",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-avatar-public-tree",
+      "primitive": "Avatar",
+      "primitiveId": "avatar",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "image",
+          "component": "Image",
+          "element": "img",
+          "cardinality": "one"
+        },
+        {
+          "id": "fallback",
+          "component": "Fallback",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-button-public-tree",
+      "primitive": "Button",
+      "primitiveId": "button",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "icon",
+          "component": "Icon",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "spinner",
+          "component": "Spinner",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-carousel-public-tree",
+      "primitive": "Carousel",
+      "primitiveId": "carousel",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {
+        "itemCount": 3,
+        "reducedMotion": true
+      },
+      "actions": [
+        {
+          "name": "next",
+          "arguments": []
+        }
+      ],
+      "callbacks": [
+        "onIndexChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "section",
+          "cardinality": "one"
+        },
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "previous",
+          "component": "Previous",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "next",
+          "component": "Next",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "indicatorGroup",
+          "component": "IndicatorGroup",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "button",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "liveRegion",
+          "component": "LiveRegion",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-checkbox-public-tree",
+      "primitive": "Checkbox",
+      "primitiveId": "checkbox",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setChecked",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onCheckedChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-checkbox-group-public-tree",
+      "primitive": "CheckboxGroup",
+      "primitiveId": "checkbox-group",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            [
+              "item-2"
+            ]
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "fieldset",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "legend",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "label",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemControl",
+          "component": "ItemControl",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-clipboard-public-tree",
+      "primitive": "Clipboard",
+      "primitiveId": "clipboard",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {
+        "capabilityFixture": "resolved-clipboard",
+        "getValueFixture": "phase-14-value"
+      },
+      "actions": [
+        {
+          "name": "copy",
+          "arguments": [
+            "phase-14"
+          ],
+          "await": true
+        }
+      ],
+      "callbacks": [
+        "onStatusChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "status",
+          "component": "Status",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-collapsible-public-tree",
+      "primitive": "Collapsible",
+      "primitiveId": "collapsible",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-color-picker-public-tree",
+      "primitive": "ColorPicker",
+      "primitiveId": "color-picker",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-007-P",
+        "TV-PRIM-007-N"
+      ],
+      "rootFixture": {
+        "defaultValue": "#000000"
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "#ff0000"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "area",
+          "component": "Area",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "areaThumb",
+          "component": "AreaThumb",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "channelSlider",
+          "component": "ChannelSlider",
+          "element": "div",
+          "cardinality": "many",
+          "value": "r"
+        },
+        {
+          "id": "channelInput",
+          "component": "ChannelInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "r"
+        },
+        {
+          "id": "swatch",
+          "component": "Swatch",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-combobox-public-tree",
+      "primitive": "Combobox",
+      "primitiveId": "combobox",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setInputValue",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onInputValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "clear",
+          "component": "Clear",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "empty",
+          "component": "Empty",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-context-menu-public-tree",
+      "primitive": "ContextMenu",
+      "primitiveId": "context-menu",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item",
+            "textValue": "Item"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "group",
+          "component": "Group",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "groupLabel",
+          "component": "GroupLabel",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuTrigger",
+          "component": "SubmenuTrigger",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuContent",
+          "component": "SubmenuContent",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-date-input-public-tree",
+      "primitive": "DateInput",
+      "primitiveId": "date-input",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-007-P",
+        "TV-PRIM-007-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "increment",
+          "arguments": [
+            "day"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "segment",
+          "component": "Segment",
+          "element": "span",
+          "cardinality": "many",
+          "value": "day"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-date-picker-public-tree",
+      "primitive": "DatePicker",
+      "primitiveId": "date-picker",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-007-P",
+        "TV-PRIM-007-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "segment",
+          "component": "Segment",
+          "element": "span",
+          "cardinality": "many",
+          "value": "day"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "header",
+          "component": "Header",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "previous",
+          "component": "Previous",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "next",
+          "component": "Next",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "grid",
+          "component": "Grid",
+          "element": "table",
+          "cardinality": "one"
+        },
+        {
+          "id": "gridLabel",
+          "component": "GridLabel",
+          "element": "caption",
+          "cardinality": "one"
+        },
+        {
+          "id": "cell",
+          "component": "Cell",
+          "element": "td",
+          "cardinality": "many",
+          "value": "2024-01-01"
+        },
+        {
+          "id": "cellTrigger",
+          "component": "CellTrigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "2024-01-01"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-dialog-public-tree",
+      "primitive": "Dialog",
+      "primitiveId": "dialog",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "portal",
+          "component": "Portal",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "backdrop",
+          "component": "Backdrop",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-drawer-public-tree",
+      "primitive": "Drawer",
+      "primitiveId": "drawer",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "portal",
+          "component": "Portal",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "backdrop",
+          "component": "Backdrop",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "handle",
+          "component": "Handle",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-editable-public-tree",
+      "primitive": "Editable",
+      "primitiveId": "editable",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "phase-14"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "preview",
+          "component": "Preview",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "submit",
+          "component": "Submit",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "cancel",
+          "component": "Cancel",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-field-public-tree",
+      "primitive": "Field",
+      "primitiveId": "field",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "requiredIndicator",
+          "component": "RequiredIndicator",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-fieldset-public-tree",
+      "primitive": "Fieldset",
+      "primitiveId": "fieldset",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "fieldset",
+          "cardinality": "one"
+        },
+        {
+          "id": "legend",
+          "component": "Legend",
+          "element": "legend",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-file-upload-public-tree",
+      "primitive": "FileUpload",
+      "primitiveId": "file-upload",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {
+        "multiple": true
+      },
+      "actions": [
+        {
+          "name": "selectFiles",
+          "arguments": [
+            [
+              {
+                "name": "phase-14.txt",
+                "size": 8,
+                "type": "text/plain",
+                "lastModified": 0
+              }
+            ]
+          ]
+        }
+      ],
+      "callbacks": [
+        "onFilesChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "dropzone",
+          "component": "Dropzone",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "itemGroup",
+          "component": "ItemGroup",
+          "element": "ul",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "li",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "itemName",
+          "component": "ItemName",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "itemSize",
+          "component": "ItemSize",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "itemDelete",
+          "component": "ItemDelete",
+          "element": "button",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "status",
+          "component": "Status",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-floating-panel-public-tree",
+      "primitive": "FloatingPanel",
+      "primitiveId": "floating-panel",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "header",
+          "component": "Header",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "dragHandle",
+          "component": "DragHandle",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "resizeHandle",
+          "component": "ResizeHandle",
+          "element": "div",
+          "cardinality": "many",
+          "value": "east"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-form-public-tree",
+      "primitive": "Form",
+      "primitiveId": "form",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "form",
+          "cardinality": "one"
+        },
+        {
+          "id": "errorSummary",
+          "component": "ErrorSummary",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "actions",
+          "component": "Actions",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-hover-card-public-tree",
+      "primitive": "HoverCard",
+      "primitiveId": "hover-card",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "a",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "arrow",
+          "component": "Arrow",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-image-cropper-public-tree",
+      "primitive": "ImageCropper",
+      "primitiveId": "image-cropper",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {
+        "src": "/phase-14-image.png"
+      },
+      "actions": [
+        {
+          "name": "setZoom",
+          "arguments": [
+            2
+          ]
+        }
+      ],
+      "callbacks": [
+        "onZoomChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "image",
+          "component": "Image",
+          "element": "img",
+          "cardinality": "one"
+        },
+        {
+          "id": "cropArea",
+          "component": "CropArea",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "handle",
+          "component": "Handle",
+          "element": "div",
+          "cardinality": "many",
+          "value": "e"
+        },
+        {
+          "id": "zoomControl",
+          "component": "ZoomControl",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "status",
+          "component": "Status",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-input-public-tree",
+      "primitive": "Input",
+      "primitiveId": "input",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-listbox-public-tree",
+      "primitive": "Listbox",
+      "primitiveId": "listbox",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "item-2"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "group",
+          "component": "Group",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "groupLabel",
+          "component": "GroupLabel",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-marquee-public-tree",
+      "primitive": "Marquee",
+      "primitiveId": "marquee",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "track",
+          "component": "Track",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-menu-public-tree",
+      "primitive": "Menu",
+      "primitiveId": "menu",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item",
+            "textValue": "Item"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "group",
+          "component": "Group",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "groupLabel",
+          "component": "GroupLabel",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuTrigger",
+          "component": "SubmenuTrigger",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuContent",
+          "component": "SubmenuContent",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-menubar-public-tree",
+      "primitive": "Menubar",
+      "primitiveId": "menubar",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item",
+            "textValue": "Item"
+          },
+          {
+            "id": "item-2",
+            "textValue": "Item 2"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "openMenu",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "menu",
+          "component": "Menu",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuTrigger",
+          "component": "SubmenuTrigger",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "submenuContent",
+          "component": "SubmenuContent",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-meter-public-tree",
+      "primitive": "Meter",
+      "primitiveId": "meter",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-008-P",
+        "TV-PRIM-008-N"
+      ],
+      "rootFixture": {
+        "value": 50
+      },
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "track",
+          "component": "Track",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "range",
+          "component": "Range",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-navigation-menu-public-tree",
+      "primitive": "NavigationMenu",
+      "primitiveId": "navigation-menu",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item",
+            "textValue": "Item",
+            "hasContent": true
+          },
+          {
+            "id": "item-2",
+            "textValue": "Item 2"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "nav",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "ul",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "li",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "link",
+          "component": "Link",
+          "element": "a",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-number-input-public-tree",
+      "primitive": "NumberInput",
+      "primitiveId": "number-input",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "42"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "increment",
+          "component": "Increment",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "decrement",
+          "component": "Decrement",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "scrubber",
+          "component": "Scrubber",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-pagination-public-tree",
+      "primitive": "Pagination",
+      "primitiveId": "pagination",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "count": 20
+      },
+      "actions": [
+        {
+          "name": "next",
+          "arguments": []
+        }
+      ],
+      "callbacks": [
+        "onPageChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "nav",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "ul",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "li",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "pageTrigger",
+          "component": "PageTrigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "previous",
+          "component": "Previous",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "next",
+          "component": "Next",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "ellipsis",
+          "component": "Ellipsis",
+          "element": "span",
+          "cardinality": "many",
+          "value": "start"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-password-input-public-tree",
+      "primitive": "PasswordInput",
+      "primitiveId": "password-input",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "toggleVisibility",
+          "arguments": []
+        }
+      ],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "visibilityTrigger",
+          "component": "VisibilityTrigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "strength",
+          "component": "Strength",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-pin-input-public-tree",
+      "primitive": "PinInput",
+      "primitiveId": "pin-input",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-005-P",
+        "TV-PRIM-005-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "1"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-popover-public-tree",
+      "primitive": "Popover",
+      "primitiveId": "popover",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "anchor",
+          "component": "Anchor",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "arrow",
+          "component": "Arrow",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-progress-public-tree",
+      "primitive": "Progress",
+      "primitiveId": "progress",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-008-P",
+        "TV-PRIM-008-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "track",
+          "component": "Track",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "range",
+          "component": "Range",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "circle",
+          "component": "Circle",
+          "element": "svg",
+          "cardinality": "one"
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-qr-code-public-tree",
+      "primitive": "QRCode",
+      "primitiveId": "qr-code",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {
+        "value": "https://uifn.dev/phase-14",
+        "label": "UIFn Phase 14"
+      },
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "figure",
+          "cardinality": "one"
+        },
+        {
+          "id": "image",
+          "component": "Image",
+          "element": "svg",
+          "cardinality": "one"
+        },
+        {
+          "id": "caption",
+          "component": "Caption",
+          "element": "figcaption",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-radio-group-public-tree",
+      "primitive": "RadioGroup",
+      "primitiveId": "radio-group",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "item-2"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "fieldset",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "legend",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "label",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemControl",
+          "component": "ItemControl",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-rating-group-public-tree",
+      "primitive": "RatingGroup",
+      "primitiveId": "rating-group",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "select",
+          "arguments": [
+            1
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "button",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-scroll-area-public-tree",
+      "primitive": "ScrollArea",
+      "primitiveId": "scroll-area",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {
+        "type": "always",
+        "orientation": "both"
+      },
+      "actions": [
+        {
+          "name": "setViewportMetrics",
+          "arguments": [
+            {
+              "scrollTop": 10,
+              "scrollLeft": 5,
+              "scrollHeight": 400,
+              "scrollWidth": 300,
+              "clientHeight": 100,
+              "clientWidth": 100
+            }
+          ]
+        }
+      ],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "scrollbar",
+          "component": "Scrollbar",
+          "element": "div",
+          "cardinality": "many",
+          "value": "vertical"
+        },
+        {
+          "id": "thumb",
+          "component": "Thumb",
+          "element": "div",
+          "cardinality": "many",
+          "value": "vertical"
+        },
+        {
+          "id": "corner",
+          "component": "Corner",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-segment-group-public-tree",
+      "primitive": "SegmentGroup",
+      "primitiveId": "segment-group",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "item-2"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemText",
+          "component": "ItemText",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-select-public-tree",
+      "primitive": "Select",
+      "primitiveId": "select",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "clear",
+          "component": "Clear",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemText",
+          "component": "ItemText",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "group",
+          "component": "Group",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "groupLabel",
+          "component": "GroupLabel",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-separator-public-tree",
+      "primitive": "Separator",
+      "primitiveId": "separator",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-signature-pad-public-tree",
+      "primitive": "SignaturePad",
+      "primitiveId": "signature-pad",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "pointerStart",
+          "arguments": [
+            1,
+            {
+              "x": 1,
+              "y": 1,
+              "pressure": 0.5,
+              "time": 0
+            }
+          ]
+        },
+        {
+          "name": "pointerEnd",
+          "arguments": [
+            1
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "canvas",
+          "component": "Canvas",
+          "element": "canvas",
+          "cardinality": "one"
+        },
+        {
+          "id": "clear",
+          "component": "Clear",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "undo",
+          "component": "Undo",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "status",
+          "component": "Status",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-slider-public-tree",
+      "primitive": "Slider",
+      "primitiveId": "slider",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {
+        "defaultValue": [
+          0
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            [
+              25
+            ]
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "track",
+          "component": "Track",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "range",
+          "component": "Range",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "thumb",
+          "component": "Thumb",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "valueText",
+          "component": "ValueText",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": 0
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-splitter-public-tree",
+      "primitive": "Splitter",
+      "primitiveId": "splitter",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-006-P",
+        "TV-PRIM-006-N"
+      ],
+      "rootFixture": {
+        "defaultSizes": [
+          50,
+          50
+        ]
+      },
+      "actions": [
+        {
+          "name": "resize",
+          "arguments": [
+            0,
+            10,
+            "keyboard"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onSizesChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "panel",
+          "component": "Panel",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "resizeTrigger",
+          "component": "ResizeTrigger",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "resizeHandle",
+          "component": "ResizeHandle",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-steps-public-tree",
+      "primitive": "Steps",
+      "primitiveId": "steps",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-008-P",
+        "TV-PRIM-008-N"
+      ],
+      "rootFixture": {
+        "count": 3
+      },
+      "actions": [
+        {
+          "name": "next",
+          "arguments": []
+        }
+      ],
+      "callbacks": [
+        "onStepChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "nav",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "ol",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "li",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "many",
+          "value": 0
+        },
+        {
+          "id": "completed",
+          "component": "Completed",
+          "element": "span",
+          "cardinality": "many",
+          "value": 0
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-switch-public-tree",
+      "primitive": "Switch",
+      "primitiveId": "switch",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setChecked",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onCheckedChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "thumb",
+          "component": "Thumb",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-tabs-public-tree",
+      "primitive": "Tabs",
+      "primitiveId": "tabs",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ]
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            "item-2"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-tags-input-public-tree",
+      "primitive": "TagsInput",
+      "primitiveId": "tags-input",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "addValue",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemText",
+          "component": "ItemText",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemDelete",
+          "component": "ItemDelete",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "clear",
+          "component": "Clear",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "error",
+          "component": "Error",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-timer-public-tree",
+      "primitive": "Timer",
+      "primitiveId": "timer",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-007-P",
+        "TV-PRIM-007-N"
+      ],
+      "rootFixture": {
+        "duration": 1000
+      },
+      "actions": [
+        {
+          "name": "start",
+          "arguments": []
+        }
+      ],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "value",
+          "component": "Value",
+          "element": "time",
+          "cardinality": "one"
+        },
+        {
+          "id": "start",
+          "component": "Start",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "pause",
+          "component": "Pause",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "reset",
+          "component": "Reset",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "status",
+          "component": "Status",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-toast-public-tree",
+      "primitive": "Toast",
+      "primitiveId": "toast",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-008-P",
+        "TV-PRIM-008-N"
+      ],
+      "rootFixture": {
+        "duration": null
+      },
+      "actions": [
+        {
+          "name": "add",
+          "arguments": [
+            {
+              "id": "phase-14-toast",
+              "title": "Phase 14",
+              "description": "Parity",
+              "duration": null
+            }
+          ]
+        }
+      ],
+      "callbacks": [
+        "onAnnounce"
+      ],
+      "anatomy": [
+        {
+          "id": "viewport",
+          "component": "Viewport",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "root",
+          "component": "Provider",
+          "element": "div",
+          "cardinality": "many",
+          "value": "phase-14-toast"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "div",
+          "cardinality": "many",
+          "value": "phase-14-toast"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "div",
+          "cardinality": "many",
+          "value": "phase-14-toast"
+        },
+        {
+          "id": "action",
+          "component": "Action",
+          "element": "button",
+          "cardinality": "many",
+          "value": "phase-14-toast"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "many",
+          "value": "phase-14-toast"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-toggle-public-tree",
+      "primitive": "Toggle",
+      "primitiveId": "toggle",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setPressed",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onPressedChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "button",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-toggle-group-public-tree",
+      "primitive": "ToggleGroup",
+      "primitiveId": "toggle-group",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ],
+        "type": "multiple"
+      },
+      "actions": [
+        {
+          "name": "setValue",
+          "arguments": [
+            [
+              "item-2"
+            ]
+          ]
+        }
+      ],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-toolbar-public-tree",
+      "primitive": "Toolbar",
+      "primitiveId": "toolbar",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item"
+          },
+          {
+            "id": "item-2"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "focusItem",
+          "arguments": [
+            "item-2"
+          ]
+        }
+      ],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "button",
+          "component": "Button",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "link",
+          "component": "Link",
+          "element": "a",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "toggleGroup",
+          "component": "ToggleGroup",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-tooltip-public-tree",
+      "primitive": "Tooltip",
+      "primitiveId": "tooltip",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {},
+      "actions": [
+        {
+          "name": "setOpen",
+          "arguments": [
+            true
+          ]
+        }
+      ],
+      "callbacks": [
+        "onOpenChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "trigger",
+          "component": "Trigger",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "arrow",
+          "component": "Arrow",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-tour-public-tree",
+      "primitive": "Tour",
+      "primitiveId": "tour",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-002-P",
+        "TV-PRIM-002-N"
+      ],
+      "rootFixture": {
+        "defaultOpen": true,
+        "steps": [
+          {
+            "id": "one",
+            "title": "One",
+            "description": "First step",
+            "target": "#phase-14-tour-target"
+          },
+          {
+            "id": "two",
+            "title": "Two",
+            "description": "Second step",
+            "target": "#phase-14-tour-target"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "next",
+          "arguments": []
+        }
+      ],
+      "callbacks": [
+        "onStepChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "portal",
+          "component": "Portal",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "backdrop",
+          "component": "Backdrop",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "spotlight",
+          "component": "Spotlight",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "positioner",
+          "component": "Positioner",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "heading",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "previous",
+          "component": "Previous",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "next",
+          "component": "Next",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "skip",
+          "component": "Skip",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "close",
+          "component": "Close",
+          "element": "button",
+          "cardinality": "one"
+        },
+        {
+          "id": "progress",
+          "component": "Progress",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-tree-view-public-tree",
+      "primitive": "TreeView",
+      "primitiveId": "tree-view",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-003-P",
+        "TV-PRIM-003-N",
+        "TV-PRIM-008-P",
+        "TV-PRIM-008-N"
+      ],
+      "rootFixture": {
+        "items": [
+          {
+            "id": "item",
+            "textValue": "Item",
+            "hasChildren": true
+          }
+        ],
+        "selectionMode": "single"
+      },
+      "actions": [
+        {
+          "name": "select",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onSelectionChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "tree",
+          "component": "Tree",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemTrigger",
+          "component": "ItemTrigger",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemText",
+          "component": "ItemText",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "branch",
+          "component": "Branch",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "indicator",
+          "component": "Indicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-badge-public-tree",
+      "primitive": "Badge",
+      "primitiveId": "badge",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-breadcrumb-public-tree",
+      "primitive": "Breadcrumb",
+      "primitiveId": "breadcrumb",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "nav",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "ol",
+          "cardinality": "one"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "li",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "link",
+          "component": "Link",
+          "element": "a",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "page",
+          "component": "Page",
+          "element": "span",
+          "cardinality": "one"
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "li",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "ellipsis",
+          "component": "Ellipsis",
+          "element": "span",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-card-public-tree",
+      "primitive": "Card",
+      "primitiveId": "card",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "header",
+          "component": "Header",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "title",
+          "component": "Title",
+          "element": "h3",
+          "cardinality": "one"
+        },
+        {
+          "id": "description",
+          "component": "Description",
+          "element": "p",
+          "cardinality": "one"
+        },
+        {
+          "id": "action",
+          "component": "Action",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "content",
+          "component": "Content",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "footer",
+          "component": "Footer",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-command-public-tree",
+      "primitive": "Command",
+      "primitiveId": "command",
+      "implementationKind": "interactive-controller",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-004-P",
+        "TV-PRIM-004-N"
+      ],
+      "rootFixture": {
+        "items": [
+          "item",
+          "item-2"
+        ],
+        "defaultOpen": true
+      },
+      "actions": [
+        {
+          "name": "setInputValue",
+          "arguments": [
+            "item"
+          ]
+        }
+      ],
+      "callbacks": [
+        "onInputValueChange"
+      ],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "label",
+          "component": "Label",
+          "element": "label",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "empty",
+          "component": "Empty",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "loading",
+          "component": "Loading",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "group",
+          "component": "Group",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "groupHeading",
+          "component": "GroupHeading",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "item",
+          "component": "Item",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "itemIndicator",
+          "component": "ItemIndicator",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "separator",
+          "component": "Separator",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "shortcut",
+          "component": "Shortcut",
+          "element": "kbd",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "hiddenInput",
+          "component": "HiddenInput",
+          "element": "input",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-input-group-public-tree",
+      "primitive": "InputGroup",
+      "primitiveId": "input-group",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "addon",
+          "component": "Addon",
+          "element": "div",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "text",
+          "component": "Text",
+          "element": "span",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "control",
+          "component": "Control",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "input",
+          "component": "Input",
+          "element": "input",
+          "cardinality": "one"
+        },
+        {
+          "id": "textarea",
+          "component": "Textarea",
+          "element": "textarea",
+          "cardinality": "one"
+        },
+        {
+          "id": "button",
+          "component": "Button",
+          "element": "button",
+          "cardinality": "many",
+          "value": "item"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-skeleton-public-tree",
+      "primitive": "Skeleton",
+      "primitiveId": "skeleton",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-table-public-tree",
+      "primitive": "Table",
+      "primitiveId": "table",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "div",
+          "cardinality": "one"
+        },
+        {
+          "id": "table",
+          "component": "Table",
+          "element": "table",
+          "cardinality": "one"
+        },
+        {
+          "id": "header",
+          "component": "Header",
+          "element": "thead",
+          "cardinality": "one"
+        },
+        {
+          "id": "body",
+          "component": "Body",
+          "element": "tbody",
+          "cardinality": "one"
+        },
+        {
+          "id": "footer",
+          "component": "Footer",
+          "element": "tfoot",
+          "cardinality": "one"
+        },
+        {
+          "id": "row",
+          "component": "Row",
+          "element": "tr",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "head",
+          "component": "Head",
+          "element": "th",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "cell",
+          "component": "Cell",
+          "element": "td",
+          "cardinality": "many",
+          "value": "item"
+        },
+        {
+          "id": "caption",
+          "component": "Caption",
+          "element": "caption",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    },
+    {
+      "id": "phase-14-textarea-public-tree",
+      "primitive": "Textarea",
+      "primitiveId": "textarea",
+      "implementationKind": "typed-static-contract",
+      "sourceVectors": [
+        "TV-CAT-001-P",
+        "TV-CAT-001-N",
+        "TV-PRIM-001-P",
+        "TV-PRIM-001-N"
+      ],
+      "rootFixture": {},
+      "actions": [],
+      "callbacks": [],
+      "anatomy": [
+        {
+          "id": "root",
+          "component": "Root",
+          "element": "textarea",
+          "cardinality": "one"
+        }
+      ],
+      "approvedException": null
+    }
+  ]
+}

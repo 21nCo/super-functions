@@ -175,7 +175,7 @@ describe("@datafn/admin", () => {
       filter: { resource: "tasks", select: ["title"] },
     }, context);
     expect(records.data).toMatchObject({
-      items: [{ id: "tasks:task-1", recordId: "task-1", title: "Ship Super Console" }],
+      items: [{ id: "tasks:task-1", title: "Ship Super Console" }],
     });
     const resources = await adapter.execute("datafn.resources.list", {}, context);
     expect(resources.data).toMatchObject({
@@ -186,7 +186,7 @@ describe("@datafn/admin", () => {
 
   it("translates and binds opaque admin cursors to the DataFn record collection", async () => {
     const query = vi.fn()
-      .mockResolvedValueOnce({ data: [{ id: "task-1" }], nextCursor: { createdAt: "2026-08-15", id: "task-1" } })
+      .mockResolvedValueOnce({ data: [{ id: "task-1", recordId: "linked-record" }], nextCursor: { createdAt: "2026-08-15", id: "task-1" } })
       .mockResolvedValueOnce({ data: [{ id: "task-2" }], nextCursor: null });
     const executor = {
       schema: { version: 1, resources: [{ name: "tasks", version: 1 }, { name: "other", version: 1 }] },
@@ -195,7 +195,7 @@ describe("@datafn/admin", () => {
     const service = createDataFnDomainAdminService({ executor, context: () => ({ namespace: "tenant_1" }) });
 
     const first = await service.listRecords({ filter: { resource: "tasks" }, limit: 1 }, context);
-    expect(first.data.items).toEqual([{ id: "tasks:task-1", recordId: "task-1" }]);
+    expect(first.data.items).toEqual([{ id: "tasks:task-1", recordId: "linked-record" }]);
     const nextCursor = first.data.nextCursor;
     expect(nextCursor).toEqual(expect.any(String));
     await service.listRecords({ filter: { resource: "tasks" }, limit: 1, cursor: nextCursor! }, context);

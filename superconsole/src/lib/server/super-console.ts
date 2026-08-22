@@ -489,7 +489,7 @@ function extractPathParams(entry: AdminRegistryOperation, concretePath: string):
 async function operationInput(request: Request, entry: AdminRegistryOperation, matchedPath: string): Promise<Record<string, unknown>> {
   const schema = entry.operation.inputSchema;
   const input: Record<string, unknown> = {};
-  if (request.method === 'GET' || request.method === 'DELETE') {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'DELETE') {
     const url = new URL(request.url);
     url.searchParams.forEach((value, key) => {
       if (['installationId', 'organizationId', 'workspaceId', 'projectId', 'environmentId', 'installation', 'organization', 'workspace', 'project', 'environment', 'namespace', 'region'].includes(key)) return;

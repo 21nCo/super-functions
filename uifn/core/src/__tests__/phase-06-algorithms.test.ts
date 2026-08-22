@@ -175,6 +175,8 @@ describe('PHASE_06 canonical shared algorithms', () => {
     expect(matcher.includes(`${'a'.repeat(50_000)}b`, 'STRASSE')).toBe(false);
     expect(matcher.includes('ß', 's')).toBe(false);
     expect(matcher.includes('aß', 'as')).toBe(false);
+    expect(matcher.includes('👍🏽', '👍')).toBe(false);
+    expect(matcher.includes('🇮🇳', '🇮')).toBe(false);
     const numeric = createListCollection({
       items: [0, 1, 2],
       getKey: (value) => value,

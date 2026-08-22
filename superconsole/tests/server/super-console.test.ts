@@ -664,7 +664,7 @@ describe('Super Console server composition', () => {
   });
 
   it('returns 405/OPTIONS/HEAD semantics instead of route ambiguity', async () => {
-    const { console } = installation();
+    const { console, handler } = installation();
     expect((await console.handle(request('/api/admin/v1/registry', { method: 'POST' }))).status).toBe(405);
     const options = await console.handle(request('/api/admin/v1/registry', { method: 'OPTIONS' }));
     expect(options.status).toBe(204);
@@ -672,9 +672,10 @@ describe('Super Console server composition', () => {
     const head = await console.handle(request('/api/admin/v1/registry', { method: 'HEAD' }));
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
-    const resourceHead = await console.handle(request('/api/admin/v1/modules/examplefn/records', { method: 'HEAD' }));
+    const resourceHead = await console.handle(request('/api/admin/v1/modules/examplefn/records?limit=7', { method: 'HEAD' }));
     expect(resourceHead.status).toBe(200);
     expect(await resourceHead.text()).toBe('');
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ input: { limit: 7 } }));
   });
 
   it('authorization-gates OpenAPI capability enumeration', async () => {
