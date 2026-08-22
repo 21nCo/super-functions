@@ -106,6 +106,7 @@ export interface PlugFnSyncJob {
   claimToken?: string;
   ownerKind?: PlugFnOwnerKind;
   ownerId?: string;
+  tenantId?: string;
   cursor?: string;
   checkpoint?: unknown;
   fetchedCount: number;

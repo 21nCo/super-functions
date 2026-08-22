@@ -8,8 +8,8 @@ describe('PlugFn schema metadata', () => {
       (table) => table.modelName === 'plugfn_webhook_receipts'
     );
 
-    expect(PLUGFN_SCHEMA_VERSION).toBe(6);
-    expect(schema.version).toBe(6);
+    expect(PLUGFN_SCHEMA_VERSION).toBe(7);
+    expect(schema.version).toBe(7);
     expect(receipts?.indexes).toContainEqual({
       name: 'idx_plugfn_webhook_receipts_idempotency',
       fields: ['provider', 'idempotencyKey'],
@@ -28,6 +28,11 @@ describe('PlugFn schema metadata', () => {
     expect(syncJobs!.fields.claimToken).toMatchObject({
       fieldName: 'claim_token',
       maxLength: 64,
+    });
+    expect(syncJobs!.fields.tenantId).toMatchObject({ fieldName: 'tenant_id' });
+    expect(syncJobs!.indexes).toContainEqual({
+      name: 'idx_plugfn_sync_jobs_owner_tenant',
+      fields: ['ownerKind', 'ownerId', 'tenantId'],
     });
     expect(syncJobs!.indexes).toContainEqual({
       name: 'idx_plugfn_sync_jobs_claim_token',

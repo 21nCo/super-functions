@@ -323,9 +323,10 @@ export class AdapterRuntimeStorage {
 
   listSyncJobs(
     filters: Record<string, unknown> = {},
-    limit = 100
+    limit = 100,
+    offset = 0
   ): Promise<PlugFnSyncJob[]> {
-    return this.adapter.listSyncJobs(filters, limit);
+    return this.adapter.listSyncJobs(filters, limit, offset);
   }
 
   claimQueuedSyncJobs(

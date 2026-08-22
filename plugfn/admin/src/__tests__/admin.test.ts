@@ -11,6 +11,7 @@ import {
   createPlugFnDomainAdminService,
   plugFnAdminCapability,
 } from "../index.js";
+import { encodeAdminCursor } from "@superfunctions/admin";
 
 const context = {
   scope: {
@@ -88,6 +89,10 @@ describe("@plugfn/admin", () => {
       provider: "github",
       owner: { kind: "user", userId: "other_user" },
     });
+    const foreignTenant = await runtime.runtime.installations.create({
+      provider: "github",
+      owner: { kind: "user", userId: "user_1", tenantId: "tenant_2" },
+    });
     const receipt = await runtime.runtime.webhooks.createReceipt({
       provider: "github",
       event: "issues.opened",
@@ -101,6 +106,7 @@ describe("@plugfn/admin", () => {
     expect(list.data).toEqual({ items: [expect.objectContaining({ id: installation.id })], nextCursor: null });
     expect(JSON.stringify(list.data)).not.toContain("never-project-installation-metadata");
     expect(JSON.stringify(list.data)).not.toContain(foreign.id);
+    expect(JSON.stringify(list.data)).not.toContain(foreignTenant.id);
 
     const disabled = await adapter.execute("plugfn.provider-installations.disable", { id: installation.id }, context);
     expect(disabled.data).toEqual({ accepted: true, item: expect.objectContaining({ status: "disabled" }) });
@@ -155,10 +161,10 @@ describe("@plugfn/admin", () => {
   it("fetches enough sync jobs to serve cursor pages beyond the first hundred", async () => {
     const jobs = Array.from({ length: 151 }, (_, index) => ({
       id: `job_${index}`, provider: "github", connectionId: "connection_1", resource: "issues", mode: "full",
-      status: "queued", ownerKind: "user", ownerId: "user_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
+      status: "queued", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
       createdAt: new Date(index), updatedAt: new Date(index),
     }));
-    const listJobs = vi.fn(async (_filters, limit: number) => jobs.slice(0, limit));
+    const listJobs = vi.fn(async (_filters, limit: number, offset = 0) => jobs.slice(offset, offset + limit));
     const service = createPlugFnDomainAdminService({
       plugfn: { runtime: { sync: { listJobs } } } as never,
       projectId: "project_1",
@@ -168,6 +174,26 @@ describe("@plugfn/admin", () => {
     const second = await service.listSyncJobs({ limit: 100, cursor: first.nextCursor! }, context);
     expect(second.items).toHaveLength(51);
     expect(second.items[0]).toMatchObject({ id: "job_100" });
-    expect(listJobs).toHaveBeenLastCalledWith(expect.any(Object), 201);
+    expect(listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ tenantId: "tenant_1" }), 101, 100);
+
+    const forgedOffset = Number.MAX_SAFE_INTEGER;
+    await service.listSyncJobs({ limit: 100, cursor: encodeAdminCursor(context.scope, { offset: forgedOffset }) }, context);
+    expect(listJobs).toHaveBeenLastCalledWith(expect.any(Object), 101, forgedOffset);
+  });
+
+  it("filters sync-job lists by tenant as well as owner", async () => {
+    const { adapter, runtime } = setup();
+    const owned = await runtime.runtime.sync.createJob({
+      provider: "github", connectionId: "connection_1", resource: "issues", mode: "full",
+      owner: { kind: "user", userId: "user_1", tenantId: "tenant_1" },
+    });
+    const foreignTenant = await runtime.runtime.sync.createJob({
+      provider: "github", connectionId: "connection_2", resource: "issues", mode: "full",
+      owner: { kind: "user", userId: "user_1", tenantId: "tenant_2" },
+    });
+
+    const result = await adapter.execute("plugfn.sync-jobs.list", {}, context);
+    expect(result.data).toEqual({ items: [expect.objectContaining({ id: owned.id })], nextCursor: null });
+    expect(JSON.stringify(result.data)).not.toContain(foreignTenant.id);
   });
 });

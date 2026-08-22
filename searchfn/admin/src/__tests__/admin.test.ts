@@ -141,7 +141,15 @@ describe("@searchfn/admin", () => {
       payload: { resource: "docs", documents: [{ id: 123, fields: { title: "Numeric identifier" } }] },
     }, context);
     await adapter.execute("searchfn.documents.remove-document", { id: "docs:123" }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Numeric identifier" })).resolves.toEqual([123]);
+    await adapter.execute("searchfn.documents.remove-document", { id: "docs:number:123" }, context);
     await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Numeric" })).resolves.toEqual([]);
+
+    await adapter.execute("searchfn.documents.batch-index", {
+      payload: { resource: "docs", documents: [{ id: 1.5, fields: { title: "Floating identifier" } }] },
+    }, context);
+    await adapter.execute("searchfn.documents.remove-document", { id: "docs:number:1.5" }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Floating" })).resolves.toEqual([]);
 
     await adapter.execute("searchfn.documents.remove-document", {
       id: "docs:doc-1",

@@ -307,9 +307,10 @@ export class MemoryAdapter implements DbAdapter {
 
   async listSyncJobs(
     filters: Record<string, unknown> = {},
-    limit = 100
+    limit = 100,
+    offset = 0
   ): Promise<PlugFnSyncJob[]> {
-    return this.storage.listSyncJobs(filters, limit);
+    return this.storage.listSyncJobs(filters, limit, offset);
   }
 
   async claimQueuedSyncJobs(

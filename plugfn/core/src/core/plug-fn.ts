@@ -116,7 +116,7 @@ export interface PlugFn {
     sync: {
       createJob(input: CreateSyncJobInput): Promise<PlugFnSyncJob>;
       getJob(id: string): Promise<PlugFnSyncJob | null>;
-      listJobs(filters?: Record<string, unknown>, limit?: number): Promise<PlugFnSyncJob[]>;
+      listJobs(filters?: Record<string, unknown>, limit?: number, offset?: number): Promise<PlugFnSyncJob[]>;
       updateJob(id: string, updates: UpdateSyncJobProgressInput): Promise<PlugFnSyncJob>;
       cancelJob(id: string): Promise<PlugFnSyncJob>;
       completeJob(id: string, updates?: Omit<UpdateSyncJobProgressInput, 'status' | 'error'>): Promise<PlugFnSyncJob>;
@@ -426,7 +426,7 @@ export function plugFn(config: PlugFnConfig): PlugFn {
       sync: {
         createJob: (input) => runtimeStorage.createSyncJob(input),
         getJob: (id) => runtimeStorage.getSyncJob(id),
-        listJobs: (filters, limit) => runtimeStorage.listSyncJobs(filters, limit),
+        listJobs: (filters, limit, offset) => runtimeStorage.listSyncJobs(filters, limit, offset),
         updateJob: (id, updates) => runtimeStorage.updateSyncJob(id, updates),
         cancelJob: (id) => runtimeStorage.cancelSyncJob(id),
         completeJob: (id, updates) => runtimeStorage.completeSyncJob(id, updates),

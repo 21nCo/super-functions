@@ -54,6 +54,13 @@ function asJson(value: object): JsonRecord {
   return { ...value };
 }
 
+function compareAdminValues(left: unknown, right: unknown): number {
+  if (typeof left === "number" && typeof right === "number") {
+    return left - right;
+  }
+  return String(left ?? "").localeCompare(String(right ?? ""));
+}
+
 function list(
   values: object[],
   input: BillFnAdminListInput,
@@ -71,14 +78,17 @@ function list(
   records.sort((left, right) => {
     for (const descriptor of sorts) {
       if (!descriptor.field) continue;
-      const compared = String(left[descriptor.field] ?? "").localeCompare(String(right[descriptor.field] ?? ""));
+      const compared = compareAdminValues(left[descriptor.field], right[descriptor.field]);
       if (compared !== 0) return compared * (descriptor.direction === "desc" ? -1 : 1);
     }
     return String(left.id ?? "").localeCompare(String(right.id ?? ""));
   });
   const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
+  }
   const offset = decoded.offset ?? 0;
-  if (!Number.isInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
   const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 200 });
   const items = records.slice(offset as number, (offset as number) + limit);
   const nextOffset = (offset as number) + items.length;

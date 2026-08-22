@@ -130,7 +130,7 @@ export interface PlugFnDatabaseStorageAdapter {
   claimWebhookDeliveriesForRetry(now: Date, limit: number, workerId: string, leaseMs?: number): Promise<PlugFnWebhookDelivery[]>;
   createSyncJob(job: PlugFnSyncJob): Promise<PlugFnSyncJob>;
   getSyncJob(id: string): Promise<PlugFnSyncJob | null>;
-  listSyncJobs(filters?: Record<string, unknown>, limit?: number): Promise<PlugFnSyncJob[]>;
+  listSyncJobs(filters?: Record<string, unknown>, limit?: number, offset?: number): Promise<PlugFnSyncJob[]>;
   claimQueuedSyncJobs(
     limit: number,
     workerId: string,
@@ -656,13 +656,15 @@ class DbBackedPlugFnDatabaseAdapter implements PlugFnDatabaseStorageAdapter {
 
   async listSyncJobs(
     filters: Record<string, unknown> = {},
-    limit = 100
+    limit = 100,
+    offset = 0
   ): Promise<PlugFnSyncJob[]> {
     return this.database.findMany<PlugFnSyncJob>({
       model: this.models.syncJobs,
       where: toWhereClauses(filters),
       orderBy: [{ field: 'createdAt', direction: 'desc' }],
       limit,
+      offset,
     });
   }
 

@@ -41,8 +41,9 @@ function json<T>(value: T): PlugFnAdminJson<T> {
 function page<T>(values: readonly T[], input: PlugFnPageInput, context: AdminOperationContext): { items: T[]; nextCursor: string | null } {
   const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 100 });
   const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
   const offset = decoded.offset ?? 0;
-  if (!Number.isInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
   const items = values.slice(offset as number, (offset as number) + limit);
   const nextOffset = (offset as number) + items.length;
   return { items: [...items], nextCursor: nextOffset < values.length ? encodeAdminCursor(context.scope, { offset: nextOffset }) : null };
@@ -226,7 +227,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const mapped = await identity(options, context);
       const owner = ownerFor(mapped);
       const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
-      const values = await options.plugfn.runtime.installations.list({ ownerKind: owner.kind, ownerId, ...(input.provider ? { provider: input.provider } : {}), ...(input.status ? { status: input.status } : {}) });
+      const values = await options.plugfn.runtime.installations.list({ ownerKind: owner.kind, ownerId, tenantId: mapped.tenantId, ...(input.provider ? { provider: input.provider } : {}), ...(input.status ? { status: input.status } : {}) });
       return page(values.map(installationView), input, context);
     },
     async getInstallation(input, context) { return { item: installationView(await ownedInstallation(options, input.id, context)) }; },
@@ -259,16 +260,32 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const mapped = await identity(options, context);
       const owner = ownerFor(mapped);
       const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
-      const { cursor: _cursor, limit, ...requested } = input;
+      const { limit } = input;
       const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+      if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
       const offset = decoded.offset ?? 0;
-      if (!Number.isInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
+      if (!Number.isSafeInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
       const pageLimit = normalizeAdminPageLimit(limit, { defaultLimit: 50, maxLimit: 100 });
       const values = await options.plugfn.runtime.sync.listJobs(
-        { ownerKind: owner.kind, ownerId, ...requested },
-        (offset as number) + pageLimit + 1,
+        {
+          ownerKind: owner.kind,
+          ownerId,
+          tenantId: mapped.tenantId,
+          provider: input.provider,
+          connectionId: input.connectionId,
+          resource: input.resource,
+          status: input.status,
+        },
+        pageLimit + 1,
+        offset as number,
       );
-      return page(values.map(syncView), input, context);
+      const items = values.slice(0, pageLimit).map(syncView);
+      return {
+        items,
+        nextCursor: values.length > pageLimit
+          ? encodeAdminCursor(context.scope, { offset: (offset as number) + items.length })
+          : null,
+      };
     },
     async getSyncJob(input, context) { return { item: syncView(await ownedSyncJob(options, input.id, context)) }; },
     async runSync(input, context) {

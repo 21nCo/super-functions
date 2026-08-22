@@ -40,7 +40,11 @@ export function alignRangeValue(value: number, definition: RangeDefinition): num
   const precision = Math.max(decimals(min), decimals(max), decimals(step));
   const clamped = clampRangeValue(value, min, max);
   const rawIndex = (clamped - min) / step;
-  const maxIndex = Math.floor((max - min) / step);
+  const rawMaxIndex = roundRangeValue(max - min, precision) / step;
+  const nearestMaxIndex = Math.round(rawMaxIndex);
+  const maxIndex = Math.abs(rawMaxIndex - nearestMaxIndex) <= Number.EPSILON * Math.max(1, Math.abs(rawMaxIndex)) * 8
+    ? nearestMaxIndex
+    : Math.floor(rawMaxIndex);
   let index = Math.round(rawIndex);
   if (Number.isFinite(maxIndex)) index = Math.min(index, maxIndex);
   const aligned = min + index * step;

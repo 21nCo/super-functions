@@ -71,8 +71,11 @@ function list(
   const decoded = input.cursor
     ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope)
     : { offset: 0 };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new AdminError("invalid_argument", "The SearchFn cursor is invalid.");
+  }
   const offset = decoded.offset ?? 0;
-  if (!Number.isInteger(offset) || (offset as number) < 0) {
+  if (!Number.isSafeInteger(offset) || (offset as number) < 0) {
     throw new AdminError("invalid_argument", "The SearchFn cursor is invalid.");
   }
   const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 200 });
@@ -93,18 +96,26 @@ function accepted(value: JsonRecord): AdminOperationResult<SearchFnMutationOutpu
   return { ok: true, data: { accepted: true, ...value } };
 }
 
-function splitDocumentId(value: string): { resource: string; id: string } {
+function splitDocumentId(value: string): { resource: string; id: string | number } {
   const separator = value.indexOf(":");
   if (separator <= 0 || separator === value.length - 1) {
     throw new AdminError("invalid_argument", "SearchFn document targets use the form resource:id.");
   }
-  return { resource: value.slice(0, separator), id: value.slice(separator + 1) };
-}
-
-function documentRemovalIds(id: string): Array<string | number> {
-  if (!/^-?(?:0|[1-9]\d*)$/.test(id)) return [id];
-  const numericId = Number(id);
-  return Number.isSafeInteger(numericId) ? [id, numericId] : [id];
+  const resource = value.slice(0, separator);
+  const encodedId = value.slice(separator + 1);
+  if (encodedId.startsWith("number:")) {
+    const numericText = encodedId.slice("number:".length);
+    const numericId = Number(numericText);
+    if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(numericText) || !Number.isFinite(numericId)) {
+      throw new AdminError("invalid_argument", "SearchFn numeric document targets use resource:number:<finite number>.");
+    }
+    return { resource, id: numericId };
+  }
+  const stringId = encodedId.startsWith("string:") ? encodedId.slice("string:".length) : encodedId;
+  if (stringId.length === 0) {
+    throw new AdminError("invalid_argument", "SearchFn document IDs must be non-empty.");
+  }
+  return { resource, id: stringId };
 }
 
 function documents(value: unknown): SearchDocument[] {
@@ -206,7 +217,7 @@ export function createSearchFnDomainAdminService(
       const { adapter, resources } = await state(context);
       const target = splitDocumentId(string(input.id, "id"));
       if (!resources.includes(target.resource)) throw new AdminError("not_found", "SearchFn index was not found in the active scope.");
-      await adapter.remove({ resource: target.resource, ids: documentRemovalIds(target.id), signal: context.signal });
+      await adapter.remove({ resource: target.resource, ids: [target.id], signal: context.signal });
       return accepted({ removed: 1, resource: target.resource });
     },
     async clearIndex(input, context) {

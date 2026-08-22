@@ -6,6 +6,7 @@ import {
   type BillFnAdminService,
 } from "../index.js";
 import { createBillFn, type BillFnInstance } from "@billfn/core";
+import { encodeAdminCursor } from "@superfunctions/admin";
 import { memoryAdapter } from "@superfunctions/db/adapters";
 
 const context = {
@@ -47,6 +48,11 @@ describe("@billfn/admin", () => {
         audit: "required",
         idempotent: true,
       },
+    });
+    expect(billFnAdminCapability.resources.find((resource) => resource.id === "products")).toMatchObject({
+      displayFields: ["id", "productKey", "planCount"],
+      filterableFields: ["productKey", "planCount"],
+      sortableFields: ["productKey", "planCount"],
     });
   });
 
@@ -154,6 +160,28 @@ describe("@billfn/admin", () => {
       cursor: (first.data as { nextCursor: string }).nextCursor,
     }, context);
     expect(second.data).toEqual({ items: [expect.objectContaining({ id: "gamma" })], nextCursor: null });
+  });
+
+  it("sorts numeric catalog fields numerically and rejects missing cursor positions", async () => {
+    const plans = [
+      ...Array.from({ length: 9 }, (_, index) => ({
+        productKey: "nine", planKey: `nine_${index}`, displayName: "Nine", features: {}, limits: {}, prices: [],
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        productKey: "ten", planKey: `ten_${index}`, displayName: "Ten", features: {}, limits: {}, prices: [],
+      })),
+    ];
+    const service = createBillFnDomainAdminService({
+      billfn: { getCatalog: vi.fn(async () => ({ plans })) } as unknown as BillFnInstance,
+      subject: () => ({ tenantId: "tenant_1" }),
+    });
+
+    await expect(service.listProducts({ sort: [{ field: "planCount", direction: "asc" }] }, context)).resolves.toMatchObject({
+      data: { items: [{ productKey: "nine", planCount: 9 }, { productKey: "ten", planCount: 10 }] },
+    });
+    await expect(service.listProducts({ cursor: encodeAdminCursor(context.scope, null) }, context)).rejects.toMatchObject({
+      code: "invalid_argument",
+    });
   });
 
   it("derives reconciliation targets from the active subject and rejects foreign targets/providers", async () => {
