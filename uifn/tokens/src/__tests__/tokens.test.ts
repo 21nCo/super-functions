@@ -154,6 +154,21 @@ describe('semantic token validation', () => {
     }
   });
 
+  it('TV-STYLE-001 negative rejects partial token leaves without recursing into scalars', () => {
+    const theme = cloneTheme(completeTheme());
+    (theme.tokens.color as Record<string, Record<string, unknown>>).surface.canvas = {
+      $type: 'color',
+    };
+
+    expect(() => validateTokenTheme(theme)).toThrowError(UIFnTokenError);
+    try {
+      validateTokenTheme(theme);
+    } catch (error) {
+      expect((error as UIFnTokenError).code).toBe('UIFN_TOKEN_PUBLIC_NAME_INVALID');
+      expect((error as UIFnTokenError).details?.path).toBe('color.surface.canvas');
+    }
+  });
+
   it('TV-STYLE-003 validates OKLCH contrast for custom hue output', () => {
     const surface = createCustomSurface({ hue: 260, contrast: 'auto' });
 

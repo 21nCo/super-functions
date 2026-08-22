@@ -1,4 +1,5 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { createHash } from "node:crypto";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   WebStandardStreamableHTTPServerTransport,
@@ -95,12 +96,22 @@ function page<T>(
   values: T[],
   cursor: string | undefined,
   pageSize: number,
+  operation: "tools" | "resources" | "resource-templates" | "prompts",
 ): { values: T[]; nextCursor?: string } {
+  const identity = createHash("sha256")
+    .update(JSON.stringify(values))
+    .digest("base64url")
+    .slice(0, 16);
   let offset = 0;
   if (cursor !== undefined) {
-    const match = /^mcpfn:(\d+)$/.exec(cursor);
-    if (!match) throw new McpError(ErrorCode.InvalidParams, "Invalid McpFn pagination cursor");
-    offset = Number(match[1]);
+    const match = /^mcpfn:([a-z-]+):([A-Za-z0-9_-]+):(\d+)$/.exec(cursor);
+    if (!match || match[1] !== operation) {
+      throw new McpError(ErrorCode.InvalidParams, "Invalid McpFn pagination cursor");
+    }
+    if (match[2] !== identity) {
+      throw new McpError(ErrorCode.InvalidParams, "Expired McpFn pagination cursor");
+    }
+    offset = Number(match[3]);
     if (!Number.isSafeInteger(offset) || offset > values.length) {
       throw new McpError(ErrorCode.InvalidParams, "Expired McpFn pagination cursor");
     }
@@ -109,7 +120,9 @@ function page<T>(
   const nextOffset = offset + selected.length;
   return {
     values: selected,
-    ...(nextOffset < values.length ? { nextCursor: `mcpfn:${nextOffset}` } : {}),
+    ...(nextOffset < values.length
+      ? { nextCursor: `mcpfn:${operation}:${identity}:${nextOffset}` }
+      : {}),
   };
 }
 
@@ -182,7 +195,7 @@ export class McpFnServer<TContext = undefined> {
         const visibleTools = this.toolVisibility
           ? await this.filterVisibleTools(tools, await this.contextFactory(extra), extra)
           : tools;
-        const result = page(visibleTools, request.params?.cursor, this.pageSize);
+        const result = page(visibleTools, request.params?.cursor, this.pageSize, "tools");
         return { tools: result.values, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}) };
       });
       this.protocol.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -238,6 +251,7 @@ export class McpFnServer<TContext = undefined> {
           await this.registry.listResources(context, extra),
           request.params?.cursor,
           this.pageSize,
+          "resources",
         );
         return {
           resources: result.values,
@@ -249,6 +263,7 @@ export class McpFnServer<TContext = undefined> {
           this.registry.listResourceTemplates(),
           request.params?.cursor,
           this.pageSize,
+          "resource-templates",
         );
         return {
           resourceTemplates: result.values,
@@ -275,7 +290,12 @@ export class McpFnServer<TContext = undefined> {
 
     if (this.capabilities.prompts) {
       this.protocol.setRequestHandler(ListPromptsRequestSchema, async (request) => {
-        const result = page(this.registry.listPrompts(), request.params?.cursor, this.pageSize);
+        const result = page(
+          this.registry.listPrompts(),
+          request.params?.cursor,
+          this.pageSize,
+          "prompts",
+        );
         return {
           prompts: result.values,
           ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),

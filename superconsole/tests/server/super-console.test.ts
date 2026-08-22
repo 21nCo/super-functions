@@ -433,6 +433,41 @@ describe('Super Console server composition', () => {
       collection: true,
       inputSchema: { required: ['name'] },
     });
+
+    const list = manifest().operations[0]!;
+    const get = {
+      ...list,
+      id: 'examplefn.records.get',
+      title: 'Get record',
+      inputSchema: { type: 'object' as const, properties: { id: { type: 'string' as const } }, required: ['id'], additionalProperties: false },
+      outputSchema: { type: 'object' as const, properties: { item: { type: 'object' as const } }, required: ['item'], additionalProperties: false },
+      route: { method: 'GET' as const, path: '/resources/records/:id' },
+      target: { resource: 'records', idInput: 'id' },
+    };
+    const download = {
+      ...get,
+      id: 'examplefn.records.download',
+      title: 'Download record',
+      route: { method: 'GET' as const, path: '/resources/records/:id/download' },
+    };
+    const readActionManifest = defineAdminCapability({
+      ...manifest(),
+      operations: [list, get, download],
+    });
+    const readActionConsole = createSuperConsole({
+      adapters: [createAdminCapabilityAdapter(readActionManifest, {
+        [list.id]: async () => ({ ok: true as const, data: { items: [] } }),
+        [get.id]: async () => ({ ok: true as const, data: { item: {} } }),
+        [download.id]: async () => ({ ok: true as const, data: { item: {} } }),
+      })],
+      enabledModules: ['examplefn'],
+      auth: auth(),
+      shellPolicy: { authorize: () => true },
+    });
+    const readActionView = await (await readActionConsole.handle(request('/api/admin/v1/modules/examplefn'))).json();
+    expect(readActionView.data.module.resources[0].actions).toEqual([
+      expect.objectContaining({ id: 'examplefn.records.download', targetIdInput: 'id' }),
+    ]);
   });
 
   it('models get-only resources with a detail URL and no collection endpoint', async () => {

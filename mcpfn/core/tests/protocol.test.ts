@@ -105,7 +105,9 @@ describe("McpFn protocol primitives", () => {
 
     const first = await client.listResources();
     expect(first.resources).toHaveLength(1);
-    expect(first.nextCursor).toBe("mcpfn:1");
+    expect(first.nextCursor).toMatch(/^mcpfn:resources:[A-Za-z0-9_-]+:1$/);
+    await expect(client.listResourceTemplates({ cursor: first.nextCursor }))
+      .rejects.toThrow(/Invalid McpFn pagination cursor/);
     const second = await client.listResources({ cursor: first.nextCursor });
     expect(second.resources).toHaveLength(1);
     await expect(client.readResource({ uri: "docs://users/42" })).resolves.toMatchObject({
@@ -128,6 +130,28 @@ describe("McpFn protocol primitives", () => {
       prompts: { listChanged: true },
       completions: {},
     });
+  });
+
+  it("rejects a list cursor after its visible collection changes", async () => {
+    let visible = new Set(["alpha", "beta"]);
+    const tool = (name: string) => ({
+      name,
+      description: `Run ${name}.`,
+      inputSchema: { type: "object" as const },
+      handler: async () => structuredResult({ ok: true }),
+    });
+    const registry = new McpFnRegistry()
+      .register(tool("alpha"))
+      .register(tool("beta"));
+    const { client } = await connect(registry, {
+      toolVisibility: ({ tool: listed }: { tool: { name: string } }) => visible.has(listed.name),
+    });
+
+    const first = await client.listTools();
+    expect(first.nextCursor).toMatch(/^mcpfn:tools:[A-Za-z0-9_-]+:1$/);
+    visible = new Set(["beta"]);
+    await expect(client.listTools({ cursor: first.nextCursor }))
+      .rejects.toThrow(/Expired McpFn pagination cursor/);
   });
 
   it("runs task-augmented tools through the SDK task store", async () => {

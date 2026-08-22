@@ -10,6 +10,10 @@ describe('splitSvelteRootProps', () => {
       inputmode: 'numeric',
       form: 'account-form',
       download: 'export.csv',
+      accesskey: 'k',
+      aria: { label: 'Account code' },
+      data: { state: 'ready' },
+      on: { click: () => undefined },
     }, ['open'])).toMatchObject({
       inputs: { open: true, pattern: '[0-9]+', form: 'account-form' },
       dom: {
@@ -18,6 +22,10 @@ describe('splitSvelteRootProps', () => {
         inputmode: 'numeric',
         form: 'account-form',
         download: 'export.csv',
+        accesskey: 'k',
+        aria: { label: 'Account code' },
+        data: { state: 'ready' },
+        on: { click: expect.any(Function) },
       },
     });
   });

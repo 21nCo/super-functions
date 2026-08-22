@@ -101,27 +101,11 @@ interface SvelteDomBinding {
 
 const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox)$/;
 const ROOT_EVENT_PROP = /^on(?::)?[a-z]/;
-const UNDECLARED_NATIVE_PROP = /^(?:pattern|form|formaction|formAction|formenctype|formEnctype|formmethod|formMethod|formnovalidate|formNoValidate|formtarget|formTarget|maxlength|maxLength|minlength|minLength|inputmode|inputMode|download|capture|size|wrap|kind|label|cite|datetime|dateTime|open|reversed|start|colspan|colSpan|rowspan|rowSpan)$/;
-let browserNativeProps: ReadonlySet<string> | undefined;
+const NORMALIZED_DOM_PROPS = new Set(['aria', 'data', 'on']);
+const NATIVE_ROOT_PROPS = new Set(`accept acceptcharset accesskey action align allow alt async autocapitalize autocomplete autoplay capture cellpadding cellspacing challenge charset checked cite class code codebase color cols colspan content contenteditable controls coords crossorigin csp datetime decoding default defer dir dirname disabled download draggable enctype enterkeyhint fetchpriority for form formaction formenctype formmethod formnovalidate formtarget frameborder headers height hidden high href hreflang http-equiv id inert inputmode integrity is ismap itemid itemprop itemref itemscope itemtype kind label lang list loading loop low max maxlength media method min minlength multiple muted name nonce novalidate open optimum pattern ping placeholder playsinline popovertarget popovertargetaction poster preload readonly referrerpolicy rel required reversed role rows rowspan sandbox scope selected shape size sizes slot span spellcheck src srcdoc srclang srcset start step style tabindex target title translate type usemap value width wrap`.split(' '));
 
 function isUndeclaredNativeProp(key: string): boolean {
-  if (UNDECLARED_NATIVE_PROP.test(key)) return true;
-  if (typeof document === 'undefined') return false;
-  if (!browserNativeProps) {
-    const names = new Set<string>();
-    for (const tag of ['a', 'button', 'details', 'dialog', 'form', 'iframe', 'img', 'input', 'label', 'li', 'meter', 'ol', 'option', 'output', 'progress', 'select', 'source', 'table', 'td', 'textarea', 'th', 'time', 'track', 'video']) {
-      let prototype: object | null = document.createElement(tag);
-      while (prototype && prototype !== Object.prototype) {
-        for (const name of Object.getOwnPropertyNames(prototype)) {
-          names.add(name);
-          names.add(name.toLowerCase());
-        }
-        prototype = Object.getPrototypeOf(prototype) as object | null;
-      }
-    }
-    browserNativeProps = names;
-  }
-  return browserNativeProps.has(key) || browserNativeProps.has(key.toLowerCase());
+  return NATIVE_ROOT_PROPS.has(key.toLowerCase());
 }
 
 const EMPTY_DOM_RESOURCES: UIFnDomResourceSnapshot = Object.freeze({
@@ -153,7 +137,7 @@ export function splitSvelteRootProps(props: AnyRecord, inputNames: readonly stri
   for (const [key, value] of Object.entries(props)) {
     if (key === 'environment') environment = value as UIFnEnvironment | undefined;
     else if (declaredInputs.has(key) || /^on[A-Z]/.test(key)) inputs[key] = value;
-    else if (ROOT_DOM_PROP.test(key) || ROOT_EVENT_PROP.test(key)) dom[key] = value;
+    else if (NORMALIZED_DOM_PROPS.has(key) || ROOT_DOM_PROP.test(key) || ROOT_EVENT_PROP.test(key)) dom[key] = value;
     else {
       inputs[key] = value;
       if (isUndeclaredNativeProp(key)) dom[key] = value;

@@ -391,7 +391,7 @@ function moduleView(
       ? operations.find((entry) => entry.operation.id === resource.presentation?.detailOperationId)
       : operations.find((entry) => entry.operation.id.endsWith('.get'));
     const actions = operations
-      .filter((entry) => entry.operation.safety.classification !== 'read' && Boolean(entry.operation.target?.idInput))
+      .filter((entry) => entry !== list && entry !== get && Boolean(entry.operation.target?.idInput))
       .map(actionView);
     const label = resource?.label ?? list?.operation.title.replace(/^List\s+/i, '') ?? get?.operation.title.replace(/^Get\s+/i, '') ?? id;
     return {
