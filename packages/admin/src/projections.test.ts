@@ -79,6 +79,32 @@ describe("OpenAPI projection", () => {
     expect(JSON.stringify(operation)).not.toContain("_admin");
   });
 
+  it("documents provider CSRF metadata for read operations that use POST", () => {
+    const base = testManifest("examplefn").operations[0]!;
+    const manifest = testManifest("examplefn", {
+      operations: [{
+        ...base,
+        id: "examplefn.records.compare",
+        route: { method: "POST", path: "/records/compare" },
+        safety: { ...base.safety, classification: "read" },
+      }],
+    });
+    const registry = createAdminRegistry({
+      adapters: [createAdminCapabilityAdapter(manifest, {
+        "examplefn.records.compare": async () => ({ ok: true as const, data: { items: [] } }),
+      })],
+      enabledModules: ["examplefn"],
+    });
+    const operation = createAdminOpenApiDocument(registry, openApiOptions)
+      .paths["/api/admin/v1/modules/examplefn/records/compare"]?.post as {
+        parameters?: Array<{ name: string; in: string }>;
+      };
+    expect(operation.parameters).toContainEqual(expect.objectContaining({
+      name: "X-Provider-CSRF",
+      in: "header",
+    }));
+  });
+
   it("projects and enforces schema-bound one-time secret paths across OpenAPI and MCP", async () => {
     const base = testManifest("examplefn").operations[0]!;
     const manifest = testManifest("examplefn", {

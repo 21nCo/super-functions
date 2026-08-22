@@ -147,11 +147,11 @@ describe("@plugfn/admin", () => {
     });
     await database.createWorkflow({
       id: "workflow_1", userId: "user_1", name: "Issue workflow", status: WorkflowStatus.Disabled,
-      definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "tenant_1" }, createdAt: now, updatedAt: now,
+      tenantId: "tenant_1", definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "caller-forged-tenant" }, createdAt: now, updatedAt: now,
     });
     await database.createWorkflow({
       id: "foreign_tenant_workflow", userId: "user_1", name: "Foreign tenant workflow", status: WorkflowStatus.Disabled,
-      definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "tenant_2" }, createdAt: now, updatedAt: now,
+      tenantId: "tenant_2", definition: { trigger: { provider: "github", event: "issues.opened" }, steps: [] }, metadata: { tenantId: "tenant_1" }, createdAt: now, updatedAt: now,
     });
     await database.createWorkflow({
       id: "legacy_workflow", userId: "user_1", name: "Legacy workflow", status: WorkflowStatus.Disabled,

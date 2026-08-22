@@ -132,8 +132,8 @@ export function createAdminOpenApiDocument(
     const input = entry.operation.inputSchema;
     const output = entry.operation.outputSchema;
     if (!input || !output) throw new AdminError("internal", `Operation ${entry.operation.id} has incomplete schemas.`);
-    const isReadMethod = method === "GET" || method === "DELETE";
-    const parameters = parametersFor(input, parameterNames, isReadMethod);
+    const usesQueryInput = method === "GET" || method === "DELETE";
+    const parameters = parametersFor(input, parameterNames, usesQueryInput);
     for (const scopeParameter of adminOpenApiScopeParameters()) {
       if (!parameters.some((parameter) => parameter.name === scopeParameter.name && parameter.in === scopeParameter.in)) {
         parameters.push(scopeParameter);
@@ -148,7 +148,7 @@ export function createAdminOpenApiDocument(
         schema: { type: "string", minLength: 1 },
       });
     }
-    if (entry.operation.safety.classification !== "read" && options.csrfHeader) {
+    if (method !== "GET" && options.csrfHeader) {
       parameters.push({
         name: options.csrfHeader.name,
         in: "header",
@@ -167,7 +167,7 @@ export function createAdminOpenApiDocument(
         schema: { type: "string", minLength: 1 },
       });
     }
-    const bodySchema = isReadMethod ? undefined : withoutProperties(input, parameterNames);
+    const bodySchema = usesQueryInput ? undefined : withoutProperties(input, parameterNames);
     const successSchema: AdminObjectSchema = {
       type: "object",
       properties: {

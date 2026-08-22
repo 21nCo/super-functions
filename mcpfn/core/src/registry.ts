@@ -182,6 +182,16 @@ export class McpFnRegistry<TContext = undefined> {
         `Duplicate MCP resource template: ${definition.name}`,
       );
     }
+    if (
+      [...this.resourceTemplates.values()].some(
+        ({ definition: existing }) =>
+          existing.uriTemplate === definition.uriTemplate,
+      )
+    ) {
+      throw new McpFnValidationError(
+        `Duplicate MCP resource template URI: ${definition.uriTemplate}`,
+      );
+    }
     let template: UriTemplate;
     try {
       template = new UriTemplate(definition.uriTemplate);

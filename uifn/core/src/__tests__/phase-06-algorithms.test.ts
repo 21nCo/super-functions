@@ -189,6 +189,20 @@ describe('PHASE_06 canonical shared algorithms', () => {
     expect(selectCollectionRange(numeric, selection, 99)).toBe(selection);
   });
 
+  it('rejects partial grapheme matches when Intl.Segmenter is unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Intl, 'Segmenter');
+    Object.defineProperty(Intl, 'Segmenter', { configurable: true, value: undefined });
+    try {
+      const matcher = createLocaleMatcher('en');
+      expect(matcher.startsWith('👍🏽', '👍')).toBe(false);
+      expect(matcher.includes('🇮🇳', '🇮')).toBe(false);
+      expect(matcher.includes('👍🏽', '👍🏽')).toBe(true);
+    } finally {
+      if (descriptor) Object.defineProperty(Intl, 'Segmenter', descriptor);
+      else Reflect.deleteProperty(Intl, 'Segmenter');
+    }
+  });
+
   it('exposes deterministic virtualization without requiring every item in the DOM', () => {
     const virtualizer = createVirtualizerContract({ count: 10_000, estimateSize: 32, overscan: 3 });
     expect(virtualizer.getWindow(3_200, 320)).toEqual({ start: 97, end: 112, offset: 3_104, totalSize: 320_000 });

@@ -21,14 +21,18 @@ function changedKeys(previous, next) {
 
 export function createPhase14Scheduler() {
   let sequence = 0;
+  let currentTime = 0;
   const timeouts = new Map();
   const intervals = new Map();
   const frames = new Map();
   return {
-    now: () => 0,
+    now: () => currentTime,
     setTimeout(callback, delayMs) {
       const handle = `timeout-${++sequence}`;
-      timeouts.set(handle, { callback, delayMs });
+      timeouts.set(handle, {
+        callback,
+        dueAt: currentTime + Math.max(0, Number(delayMs) || 0),
+      });
       return handle;
     },
     clearTimeout(handle) { timeouts.delete(handle); },
@@ -45,6 +49,33 @@ export function createPhase14Scheduler() {
     },
     cancelAnimationFrame(handle) { frames.delete(handle); },
     queueMicrotask(callback) { globalThis.queueMicrotask(callback); },
+    async flush() {
+      let turns = 0;
+      while ((frames.size > 0 || timeouts.size > 0) && turns < 1_000) {
+        turns += 1;
+        if (frames.size > 0) {
+          currentTime += 16;
+          const pendingFrames = [...frames.values()];
+          frames.clear();
+          for (const callback of pendingFrames) await callback(currentTime);
+        } else {
+          const nextDueAt = Math.min(...[...timeouts.values()].map(({ dueAt }) => dueAt));
+          currentTime = Math.max(currentTime, nextDueAt);
+          const ready = [...timeouts.entries()]
+            .filter(([, entry]) => entry.dueAt <= currentTime)
+            .sort(([left], [right]) => left.localeCompare(right));
+          for (const [handle, entry] of ready) {
+            timeouts.delete(handle);
+            await entry.callback();
+          }
+        }
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+      if (frames.size > 0 || timeouts.size > 0) {
+        throw new Error('UIFn phase-14 scheduler exceeded its deterministic flush limit.');
+      }
+    },
     resources() {
       return Object.freeze({
         timeouts: timeouts.size,
@@ -77,7 +108,7 @@ export function createPhase14HarnessRuntime(vector) {
     fixture[callback] = (...args) => callbacks.push({
       sequence: callbacks.length + 1,
       name: callback,
-      arguments: args.map((value) => toSemanticJson(value)),
+      arguments: args.map((value) => toSemanticJson(value, callback)),
     });
   }
   const token = vector.id;
@@ -155,7 +186,8 @@ function capturePart(element) {
     }
   }
   if (element instanceof HTMLInputElement) {
-    attributes.value = element.value;
+    const valueKey = `${element.type}:${element.name || element.getAttribute(PART) || 'value'}`;
+    attributes.value = toSemanticJson(element.value, valueKey);
     if (['checkbox', 'radio'].includes(element.type)) attributes.checked = element.checked;
   }
   return {
@@ -192,7 +224,12 @@ function formValues(elements) {
     if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) continue;
     const key = element.name || `${element.getAttribute(PART)}:${element.getAttribute(INSTANCE) ?? ''}`;
     if (element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)) values[key] = element.checked;
-    else values[key] = element.value;
+    else {
+      const valueKey = element instanceof HTMLInputElement
+        ? `${element.type}:${key}`
+        : key;
+      values[key] = toSemanticJson(element.value, valueKey);
+    }
   }
   return Object.fromEntries(Object.entries(values).sort(([left], [right]) => left.localeCompare(right)));
 }
@@ -254,14 +291,51 @@ export async function runPhase14Actions(vector, bridge, runtime, capture) {
       await Promise.resolve();
       await Promise.resolve();
     }
+    await runtime.scheduler.flush?.();
     const next = capture(`after-${sequence - 1}-${action.name}`, sequence);
     const changed = changedKeys(previous.rawState, next.rawState);
     next.transaction.changedKeys = changed;
+    const emittedCallbacks = runtime.callbacks.slice(callbackCount);
+    const setter = /^set(.+)$/.exec(action.name);
+    const expectedStateKey = setter
+      ? `${setter[1][0].toLowerCase()}${setter[1].slice(1)}`
+      : undefined;
+    const expectedCallbackName = setter
+      ? `on${setter[1]}Change`
+      : vector.callbacks.length === 1
+        ? vector.callbacks[0]
+        : undefined;
+    const matchingCallback = expectedCallbackName
+      ? emittedCallbacks.find((callback) => callback.name === expectedCallbackName)
+      : undefined;
+    const stateObserved = expectedStateKey
+      ? changed.includes(expectedStateKey)
+      : changed.length > 0;
+    const semanticState = toSemanticJson(next.rawState);
+    const statePayloadObserved = setter && action.arguments.length === 1
+      && semanticState && !Array.isArray(semanticState) && typeof semanticState === 'object'
+      && changed.some((key) => stableJson(semanticState[key]) === stableJson(action.arguments[0]));
+    const expectedCallbackValue = setter && expectedStateKey
+      && semanticState && !Array.isArray(semanticState) && typeof semanticState === 'object'
+      && expectedStateKey in semanticState
+      ? semanticState[expectedStateKey]
+      : setter
+        ? toSemanticJson(action.arguments[0], expectedCallbackName)
+        : undefined;
+    const callbackObserved = matchingCallback !== undefined
+      && (!setter || stableJson(matchingCallback.arguments[0]) === stableJson(expectedCallbackValue));
+    const observed = expectedCallbackName
+      ? matchingCallback
+        ? callbackObserved
+        : setter
+          ? Boolean(statePayloadObserved)
+          : stateObserved
+      : stateObserved;
     actions.push({
       sequence,
       name: action.name,
       arguments: action.arguments.map((value) => toSemanticJson(value)),
-      observed: changed.length > 0 || runtime.callbacks.length > callbackCount,
+      observed,
     });
     checkpoints.push(next);
     previous = next;

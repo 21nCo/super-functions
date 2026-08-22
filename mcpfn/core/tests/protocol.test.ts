@@ -46,6 +46,19 @@ describe("McpFn protocol primitives", () => {
     return { client, server };
   }
 
+  it("rejects duplicate resource-template URI patterns", () => {
+    const registry = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://users/{id}",
+      name: "user",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "user" }] }),
+    });
+    expect(() => registry.registerResourceTemplate({
+      uriTemplate: "docs://users/{id}",
+      name: "account",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "account" }] }),
+    })).toThrow("Duplicate MCP resource template URI: docs://users/{id}");
+  });
+
   it("serves paginated resources, templates, prompts, and completions", async () => {
     const registry = new McpFnRegistry()
       .registerResource({

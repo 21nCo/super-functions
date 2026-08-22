@@ -135,8 +135,7 @@ function metadataTenantId(metadata: Record<string, unknown> | undefined, key = "
 }
 
 function assertWorkflowOwner(workflow: Workflow, value: PlugFnDomainIdentity): void {
-  const tenantId = metadataTenantId(workflow.metadata);
-  if (!sameTenant(tenantId, value) || workflow.userId !== value.userId) {
+  if (!sameTenant(workflow.tenantId, value) || workflow.userId !== value.userId) {
     throw new AdminError("not_found", "The PlugFn workflow was not found in the active project identity.");
   }
 }

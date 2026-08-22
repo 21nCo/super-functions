@@ -1,7 +1,9 @@
 import {
   createAdminCapabilityAdapter as createKernelAdapter,
   createCapabilityAdminClient,
+  decodeAdminCursor,
   defineAdminCapability,
+  encodeAdminCursor,
   AdminError,
   type AdminCapabilityAdapter,
   type AdminClient,
@@ -697,22 +699,12 @@ function pageResult(
   input: PageInput,
   context: AdminOperationContext,
 ): PageOutput {
-  const active = scope(context);
-  const marker = [
-    active.installationId,
-    active.workspaceId,
-    active.projectId,
-    active.environmentId,
-  ].join("/");
   let offset = 0;
   if (input.cursor) {
     try {
-      const decoded = JSON.parse(atob(input.cursor)) as {
-        marker: string;
-        offset: number;
-      };
+      const decoded = decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope);
       if (
-        decoded.marker !== marker ||
+        typeof decoded.offset !== "number" ||
         !Number.isSafeInteger(decoded.offset) ||
         decoded.offset < 0
       )
@@ -732,7 +724,7 @@ function pageResult(
     items: pageItems,
     nextCursor:
       nextOffset < items.length
-        ? btoa(JSON.stringify({ marker, offset: nextOffset }))
+        ? encodeAdminCursor(context.scope, { offset: nextOffset })
         : null,
   };
 }

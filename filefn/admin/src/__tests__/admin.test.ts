@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAdminClient, createAdminRegistry } from "@superfunctions/admin";
+import {
+  createAdminClient,
+  createAdminDispatcher,
+  createAdminRegistry,
+  MemoryAdminAuditSink,
+  validateAdminCapabilityManifest,
+} from "@superfunctions/admin";
 import type {
   FileFn,
   FileService,
@@ -67,6 +73,7 @@ function domain(overrides: {
 
 describe("@filefn/admin", () => {
   it("advertises only domain-backed resources and exact high-risk contracts", () => {
+    expect(validateAdminCapabilityManifest(fileFnAdminCapability)).toEqual([]);
     expect(fileFnAdminCapability.scopeLevels).toEqual([
       "installation",
       "workspace",
@@ -103,6 +110,30 @@ describe("@filefn/admin", () => {
       confirmation: { risk: "critical", method: "mfa" },
       audit: "required",
     });
+
+    for (const resourceId of ["versions", "grants", "share-links", "artifacts"]) {
+      expect(fileFnAdminCapability.resources?.find(
+        (resource) => resource.id === resourceId,
+      )?.presentation).toMatchObject({
+        standaloneList: false,
+        query: { filters: [{ field: "fileId", inputPath: "fileId" }] },
+        parent: {
+          resourceId: "files",
+          bindings: [{ sourceField: "fileId", queryField: "fileId" }],
+        },
+      });
+    }
+    expect(fileFnAdminCapability.operations.find(
+      (operation) => operation.id === "filefn.share-links.revoke-share",
+    )?.target).toEqual({ resource: "files", idInput: "fileId" });
+    for (const operationId of ["filefn.files.download", "filefn.artifacts.download"]) {
+      expect(fileFnAdminCapability.operations.find(
+        (operation) => operation.id === operationId,
+      )).toMatchObject({ safety: { audit: "required" } });
+      expect(fileFnAdminCapability.operations.find(
+        (operation) => operation.id === operationId,
+      )?.redaction?.outputFields).toBeUndefined();
+    }
 
     expect(() => createAdminRegistry({
       adapters: [createFileFnAdminAdapter(domain())],
@@ -202,6 +233,41 @@ describe("@filefn/admin", () => {
 
     expect(result.data).toMatchObject({ item: { fileId: "file_1", versionId: "version_1" } });
     expect((result.data as { item: object }).item).not.toHaveProperty("storageKey");
+  });
+
+  it("preserves provider-issued download URLs and required headers", async () => {
+    const getDownloadUrl = vi.fn(async () => ({
+      url: "https://storage.example.test/signed-object?signature=opaque",
+      headers: {
+        "x-download-key": "required-value",
+        authorization: "Bearer storage-token",
+      },
+    }));
+    const registry = createAdminRegistry({
+      adapters: [createFileFnAdminAdapter(domain({ files: { getDownloadUrl } }))],
+      enabledModules: ["filefn"],
+    });
+    const result = await createAdminDispatcher({
+      registry,
+      audit: new MemoryAdminAuditSink(),
+    }).dispatch({
+      operationId: "filefn.files.download",
+      input: { id: "file_1" },
+      context,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        item: {
+          url: "https://storage.example.test/signed-object?signature=opaque",
+          headers: {
+            "x-download-key": "required-value",
+            authorization: "[REDACTED]",
+          },
+        },
+      },
+    });
   });
 
   it("pushes bounded child pagination into FileFn and binds cursors to the parent file", async () => {

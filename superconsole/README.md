@@ -154,8 +154,11 @@ Roll out in dependency order: the required UIFn and McpFn packages,
 `@superfunctions/admin`, changed function-domain packages, function admin
 adapters, then `superconsole` and the deployment-owned installation. Keep
 `@modelcontextprotocol/sdk` pinned to `1.25.2` until a separately tested
-protocol upgrade proves the streamable-HTTP suite. No database or persisted
-domain-data migration is required.
+protocol upgrade proves the streamable-HTTP suite. PlugFn schema version 7 adds
+the nullable, first-class `tenant_id` workflow owner field. Apply that schema
+change before enabling workflow administration, and backfill existing workflow
+owners only from an authoritative tenant source; generic workflow metadata is
+not an ownership source.
 
 To roll back, first remove traffic and `SUPERCONSOLE_INSTALLATION`, then restore
 the previous Super Console deployment while retaining AuthFn's legacy admin

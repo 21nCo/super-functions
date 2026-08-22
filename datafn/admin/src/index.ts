@@ -10,6 +10,7 @@ import {
   type AdminOperationContext,
   type AdminOperationDefinition,
   type AdminOperationRequest,
+  type AdminResourcePresentation,
 } from "@superfunctions/admin";
 import type {
   DataFnActionOutput,
@@ -44,6 +45,7 @@ export interface DataFnAdminResourceDefinition {
   filterableFields: readonly string[];
   sortableFields: readonly string[];
   sensitiveFields: readonly string[];
+  presentation?: AdminResourcePresentation;
 }
 export interface DataFnAdminActionDefinition {
   id: string;
@@ -130,9 +132,19 @@ export const dataFnAdminResources = [
     idField: "id",
     displayFields: ["id", "name", "status", "updatedAt"],
     searchableFields: ["id", "name", "status"],
-    filterableFields: ["status", "createdAt", "updatedAt"],
+    filterableFields: ["resource", "status", "createdAt", "updatedAt"],
     sortableFields: ["createdAt", "updatedAt", "name"],
     sensitiveFields: [],
+    presentation: {
+      listOperationId: "datafn.records.list",
+      query: {
+        filters: [{
+          field: "resource",
+          inputPath: "filter.resource",
+          label: "Resource",
+        }],
+      },
+    },
   },
   {
     id: "queries",

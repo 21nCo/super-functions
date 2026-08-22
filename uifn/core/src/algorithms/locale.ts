@@ -88,6 +88,9 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     equals: (left: string, right: string) => collator.compare(normalize(left), normalize(right)) === 0,
     startsWith(value: string, query: string) {
       if (query.length === 0) return true;
+      if (!segmenter && (requiresGraphemeSegmentation(value) || requiresGraphemeSegmentation(query))) {
+        return normalize(value) === normalize(query);
+      }
       if (!requiresGraphemeSegmentation(value) && !requiresGraphemeSegmentation(query)
         && normalize(value).startsWith(normalize(query))) return true;
       const querySegments = segments(query);
@@ -98,6 +101,9 @@ export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
     },
     includes(value: string, query: string) {
       if (query.length === 0) return true;
+      if (!segmenter && (requiresGraphemeSegmentation(value) || requiresGraphemeSegmentation(query))) {
+        return normalize(value) === normalize(query);
+      }
       if (!requiresGraphemeSegmentation(value) && !requiresGraphemeSegmentation(query)
         && normalize(value).includes(normalize(query))) return true;
       const querySegments = segments(query);

@@ -198,6 +198,43 @@ describe("@hostfn/admin", () => {
     ).rejects.toMatchObject({ code: "invalid_argument" });
   });
 
+  it("round-trips cursors for Unicode scope identifiers", async () => {
+    const unicodeScope: HostFnScope = {
+      ...scope,
+      projectId: "project_日本_🚀",
+    };
+    const store = new MemoryHostFnOperatorStore();
+    for (let index = 0; index < 2; index++)
+      await store.putTarget({
+        id: `unicode_target_${index}`,
+        scope: unicodeScope,
+        name: `target ${index}`,
+        server: "server",
+        runtime: "nodejs",
+        status: "ready",
+        updatedAt: "now",
+      });
+    const adapter = createHostFnAdminAdapter(
+      createHostFnOperatorAdminService(
+        new HostFnOperatorService(store, executor()),
+      ),
+    );
+    const unicodeContext = { ...context, scope: unicodeScope };
+    const first = await adapter.invoke<{
+      items: unknown[];
+      nextCursor: string;
+    }>("hostfn.targets.list", { limit: 1 }, unicodeContext);
+    await expect(
+      adapter.invoke(
+        "hostfn.targets.list",
+        { limit: 1, cursor: first.data.nextCursor },
+        unicodeContext,
+      ),
+    ).resolves.toMatchObject({
+      data: { items: [expect.any(Object)], nextCursor: null },
+    });
+  });
+
   it("preserves the common capability client contract alongside named methods", () => {
     const client = createHostFnAdminClient(
       createAdminClient({
