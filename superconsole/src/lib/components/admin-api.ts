@@ -269,6 +269,51 @@ export function openSafeAdminDownload(
   return popup !== null;
 }
 
+export interface AdminDownloadReceipt {
+  url: string;
+  headers?: Record<string, string>;
+  signedExternal?: boolean;
+}
+
+export async function openSafeAdminDownloadReceipt(
+  receipt: AdminDownloadReceipt,
+  fetcher: typeof fetch = fetch
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  const safeHref = safeAdminDownloadHref(receipt.url, {
+    origin: window.location.origin,
+    signedExternal: receipt.signedExternal ?? true,
+    scope: new URL(window.location.href).searchParams,
+  });
+  if (!safeHref) return false;
+  const headers = new Headers();
+  let hasHeaders = false;
+  for (const [name, value] of Object.entries(receipt.headers ?? {})) {
+    if (value !== '[REDACTED]') {
+      headers.set(name, value);
+      hasHeaders = true;
+    }
+  }
+  if (!hasHeaders) {
+    return openSafeAdminDownload(safeHref, { signedExternal: receipt.signedExternal ?? true });
+  }
+
+  const response = await fetcher(safeHref, {
+    headers,
+    credentials: 'omit',
+    redirect: 'follow',
+  });
+  if (!response.ok) throw new Error(`The download provider returned HTTP ${response.status}.`);
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = '';
+  anchor.rel = 'noopener noreferrer';
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+  return true;
+}
+
 export function safeAvatarHref(href: string | undefined): string | undefined {
   if (!href) return undefined;
   if (/^data:image\/(?:png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i.test(href)) return href;

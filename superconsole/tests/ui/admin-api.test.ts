@@ -7,6 +7,7 @@ import {
   materializeAdminActionHref,
   materializeAdminApiHref,
   normalizeRegistry,
+  openSafeAdminDownloadReceipt,
   safeAdminDownloadHref,
   safeAvatarHref,
   safeConsoleNavigationHref,
@@ -174,6 +175,27 @@ describe('administration API boundary', () => {
     expect(safeAvatarHref('data:text/html;base64,PHNjcmlwdD4=')).toBeUndefined();
     expect(safeAvatarHref('https://images.example.test/operator.png')).toBe('https://images.example.test/operator.png');
     expect(safeAvatarHref('http://images.example.test/operator.png')).toBeUndefined();
+  });
+
+  it('downloads provider receipts with required non-redacted headers', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => new Response('file contents'));
+    const createObjectURL = vi.fn(() => 'blob:download');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    await expect(openSafeAdminDownloadReceipt({
+      url: 'https://storage.example.test/signed-object',
+      headers: { 'x-download-key': 'required-value', authorization: '[REDACTED]' },
+    }, fetcher as typeof fetch)).resolves.toBe(true);
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get('x-download-key')).toBe('required-value');
+    expect(headers.has('authorization')).toBe(false);
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ credentials: 'omit' });
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
   });
 
   it('materializes declared administration route parameters from bound input', () => {

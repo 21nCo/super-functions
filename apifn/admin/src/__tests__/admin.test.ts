@@ -98,4 +98,16 @@ describe("@apifn/admin", () => {
     expect(client.environments.upsert).toEqual(expect.any(Function));
     expect(client.availability).toEqual(expect.any(Function));
   });
+
+  it("rejects credentials embedded in environment base URLs", async () => {
+    const adapter = createApiFnAdminAdapter(createApiFnOperatorService({
+      store: new MemoryApiFnOperatorStore(),
+    }));
+
+    await expect(adapter.execute("apifn.environments.upsert", {
+      id: "production",
+      name: "Production",
+      baseUrl: "https://operator:secret@example.test/api",
+    }, context("project"))).rejects.toMatchObject({ code: "invalid_argument" });
+  });
 });

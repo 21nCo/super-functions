@@ -80,6 +80,8 @@ describe('Super Console operator surface', () => {
     expect(action).toContain('auditId ? `Audit ${auditId}`');
     expect(action).toContain('requestId ? `Request ${requestId}`');
     expect(action).toContain('refreshSuccessfulMutation(successMessage, invalidateAll)');
+    expect(action).toContain("action.id.endsWith('.download')");
+    expect(action).toContain('openSafeAdminDownloadReceipt(receipt)');
   });
 
   it('scopes settings mutations with a stable key per desired state', () => {

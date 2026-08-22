@@ -259,6 +259,9 @@ export function createApiFnOperatorService(options: ApiFnOperatorServiceOptions)
       if (!["http:", "https:"].includes(parsed.protocol)) {
         throw new AdminError("invalid_argument", "baseUrl must use HTTP or HTTPS.");
       }
+      if (parsed.username || parsed.password) {
+        throw new AdminError("invalid_argument", "baseUrl must not include credentials.");
+      }
       const existing = await options.store.getEnvironment(scope, input.id);
       const timestamp = now();
       const record: ApiFnEnvironmentRecord = {

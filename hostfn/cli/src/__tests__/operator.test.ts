@@ -14,6 +14,29 @@ const scope: HostFnScope = {
 };
 
 describe("MemoryHostFnOperatorStore", () => {
+  it("keeps slash-bearing scope tuples isolated", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const firstScope = { ...scope, installationId: "a/b", workspaceId: "c" };
+    const secondScope = { ...scope, installationId: "a", workspaceId: "b/c" };
+    const target = (targetScope: HostFnScope, name: string): HostFnTarget => ({
+      id: "target_1",
+      scope: targetScope,
+      name,
+      server: "api.example.test",
+      runtime: "nodejs",
+      status: "ready",
+      updatedAt: "2026-08-22T00:00:00.000Z",
+    });
+
+    await store.putTarget(target(firstScope, "First"));
+    await store.putTarget(target(secondScope, "Second"));
+
+    await expect(store.getTarget(firstScope, "target_1")).resolves.toMatchObject({ name: "First" });
+    await expect(store.getTarget(secondScope, "target_1")).resolves.toMatchObject({ name: "Second" });
+    await expect(store.listTargets(firstScope)).resolves.toHaveLength(1);
+    await expect(store.listTargets(secondScope)).resolves.toHaveLength(1);
+  });
+
   it("returns defensive clones from target and deployment reads", async () => {
     const store = new MemoryHostFnOperatorStore();
     const target: HostFnTarget = {

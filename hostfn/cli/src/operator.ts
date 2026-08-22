@@ -104,12 +104,12 @@ export interface HostFnDeploymentExecutor {
 }
 
 function scopeKey(scope: HostFnScope): string {
-  return [
+  return JSON.stringify([
     scope.installationId,
     scope.workspaceId,
     scope.projectId,
     scope.environmentId,
-  ].join("/");
+  ]);
 }
 
 function scoped<T extends { scope: HostFnScope }>(
@@ -132,7 +132,13 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     HostFnVariable & { secretValue: string }
   >();
   private key(scope: HostFnScope, id: string) {
-    return `${scopeKey(scope)}:${id}`;
+    return JSON.stringify([
+      scope.installationId,
+      scope.workspaceId,
+      scope.projectId,
+      scope.environmentId,
+      id,
+    ]);
   }
   async listTargets(scope: HostFnScope) {
     return scoped(this.targets.values(), scope);
