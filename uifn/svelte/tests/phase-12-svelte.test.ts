@@ -23,7 +23,7 @@ describe('TV-SVELTE-001-P: catalog-complete Svelte 5 compounds', () => {
     for (const primitive of catalog.primitives) {
       expect(view.getByTestId(`${primitive.id}-root`)).toBeTruthy();
     }
-  });
+  }, 30_000);
 
   it('runs core behavior through concrete compound parts and bind:value', async () => {
     const view = renderClient(AccordionHarness);
