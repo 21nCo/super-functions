@@ -572,7 +572,8 @@ function assertMatchingWebhookReceipt(
 }
 
 function webhookReceiptMetadata(input: CreateWebhookReceiptInput): Record<string, unknown> | undefined {
-  const { plugfnTenantId: _reservedTenantId, ...metadata } = input.metadata ?? {};
+  const metadata = { ...input.metadata };
+  delete metadata.plugfnTenantId;
   if (input.owner?.tenantId) metadata.plugfnTenantId = input.owner.tenantId;
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
