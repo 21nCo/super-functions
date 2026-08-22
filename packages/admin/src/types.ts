@@ -335,11 +335,28 @@ export type AdminOperationHandler<TInput = unknown, TOutput = unknown> = (
 
 export type AdminOperationHandlers = Readonly<Record<string, AdminOperationHandler>>;
 
+export interface AdminOperationCompensationRequest<TInput = unknown, TOutput = unknown>
+  extends AdminOperationRequest<TInput> {
+  result: AdminOperationResult<TOutput>;
+  cause: unknown;
+}
+
+export type AdminOperationCompensator<TInput = unknown, TOutput = unknown> = (
+  request: AdminOperationCompensationRequest<TInput, TOutput>,
+) => Promise<void> | void;
+
+export type AdminOperationCompensators = Readonly<Record<string, AdminOperationCompensator>>;
+
 export interface AdminCapabilityAdapter<
   TManifest extends AdminCapabilityManifest = AdminCapabilityManifest,
 > {
   readonly manifest: TManifest;
   readonly handlers: AdminOperationHandlers;
+  /**
+   * Reverses a completed domain side effect when its required terminal audit
+   * cannot be persisted. A compensator must make a subsequent retry safe.
+   */
+  readonly compensators?: AdminOperationCompensators;
   invoke<T = unknown>(
     operationId: string,
     input: unknown,

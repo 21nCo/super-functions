@@ -394,7 +394,12 @@ describe('Super Console server composition', () => {
   it('exposes only safely bound target actions and collection action schemas', async () => {
     const targeted = installation({ destructive: true }).console;
     const targetedView = await (await targeted.handle(request('/api/admin/v1/modules/examplefn'))).json();
-    expect(targetedView.data.module.actions).toEqual([]);
+    expect(targetedView.data.module.actions[0]).toMatchObject({
+      id: 'examplefn.records.delete',
+      collection: false,
+      inputSchema: { required: ['id'] },
+    });
+    expect(targetedView.data.module.actions[0]).not.toHaveProperty('targetIdInput');
     expect(targetedView.data.module.resources[0].actions[0]).toMatchObject({
       id: 'examplefn.records.delete',
       targetIdInput: 'id',

@@ -440,6 +440,21 @@ function moduleView(
     sourceModuleId: child.id,
     foldedIntoModuleId: manifest.id,
   })));
+  const manuallyAddressedResourceIds = new Set(
+    ownResources
+      .filter((resource) => !resource.listable && !resource.detailApiHref)
+      .map((resource) => resource.resourceId),
+  );
+  const manuallyAddressedActions = entries
+    .filter((entry) =>
+      entry.operation.safety.classification !== 'read'
+      && Boolean(entry.operation.target?.idInput)
+      && manuallyAddressedResourceIds.has(resourceId(entry)))
+    .map((entry) => ({
+      ...actionView(entry),
+      targetInput: undefined,
+      targetIdInput: undefined,
+    }));
   return {
     id: manifest.id,
     name: manifest.displayName,
@@ -456,7 +471,7 @@ function moduleView(
     resources: [...ownResources, ...foldedResources],
     actions: [...entries
       .filter((entry) => entry.operation.safety.classification !== 'read' && entry.operation.target?.collection === true)
-      .map(actionView), ...foldedActions],
+      .map(actionView), ...manuallyAddressedActions, ...foldedActions],
     foldedModuleIds: childViews.map(({ view }) => view.id),
     manifest,
   };

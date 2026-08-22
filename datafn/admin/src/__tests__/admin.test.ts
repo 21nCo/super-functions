@@ -123,15 +123,15 @@ describe("@datafn/admin", () => {
     expect(client.queries.query).toEqual(expect.any(Function));
   });
 
-  it("assigns distinct addressable IDs to relations with the same endpoints", async () => {
+  it("assigns distinct addressable IDs to every schema-distinct relation", async () => {
     const executor = {
       schema: {
         version: 1,
         namespaced: true,
         resources: [],
         relations: [
-          { from: "users", to: "teams", type: "many-to-many", relation: "memberships", inverse: "members" },
-          { from: "users", to: "teams", type: "many-to-many", relation: "ownerships", inverse: "owners" },
+          { from: "users", to: "teams", type: "many-many", relation: "memberships", inverse: "members", joinTable: "team_members" },
+          { from: "users", to: "teams", type: "many-many", relation: "memberships", inverse: "members", joinTable: "archived_team_members" },
         ],
       },
     } as unknown as DatafnExecutor<{ namespace: string }>;
@@ -145,7 +145,7 @@ describe("@datafn/admin", () => {
     expect(items.map((item) => item.id)).toHaveLength(2);
     expect(new Set(items.map((item) => item.id)).size).toBe(2);
     await expect(service.getRelation({ id: items[1]!.id }, context)).resolves.toMatchObject({
-      data: { item: { relation: "ownerships", inverse: "owners" } },
+      data: { item: { joinTable: "archived_team_members" } },
     });
   });
 

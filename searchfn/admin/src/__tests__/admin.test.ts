@@ -7,7 +7,11 @@ import {
   type SearchFnAdminService,
 } from "../index.js";
 import { MemoryAdapter } from "@searchfn/adapter-memory";
-import type { AdminClient } from "@superfunctions/admin";
+import {
+  createAdminRegistry,
+  validateAdminCapabilityManifest,
+  type AdminClient,
+} from "@superfunctions/admin";
 
 const context = {
   scope: {
@@ -52,10 +56,18 @@ describe("@searchfn/admin", () => {
     for (const operationId of ["searchfn.documents.index", "searchfn.documents.remove-document"]) {
       const operation = searchFnAdminCapability.operations.find((candidate) => candidate.id === operationId);
       expect(operation).toMatchObject({
-        target: { resource: "documents", collection: true },
+        target: { resource: "documents", idInput: "id" },
       });
       expect(operation?.inputSchema?.required).toContain("id");
     }
+    expect(validateAdminCapabilityManifest(searchFnAdminCapability)).toEqual([]);
+    expect(() => createAdminRegistry({
+      adapters: [createSearchFnAdminAdapter(createSearchFnDomainAdminService({
+        adapter: () => new MemoryAdapter(),
+        resources: () => ["docs"],
+      }))],
+      enabledModules: ["searchfn"],
+    })).not.toThrow();
   });
 
   it("delegates the operation and complete scope to the injected domain service", async () => {

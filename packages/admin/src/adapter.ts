@@ -2,6 +2,7 @@ import type {
   AdminCapabilityAdapter,
   AdminCapabilityManifest,
   AdminOperationContext,
+  AdminOperationCompensators,
   AdminOperationHandlers,
   AdminOperationResult,
 } from "./types.js";
@@ -11,6 +12,7 @@ export interface CreateAdminCapabilityAdapterOptions<
 > {
   manifest: TManifest;
   handlers: AdminOperationHandlers;
+  compensators?: AdminOperationCompensators;
 }
 
 function isResult(value: unknown): value is AdminOperationResult {
@@ -34,6 +36,9 @@ export function createAdminCapabilityAdapter<
   const handlers = ("manifest" in manifestOrOptions
     ? manifestOrOptions.handlers
     : providedHandlers) ?? {};
+  const compensators = "manifest" in manifestOrOptions
+    ? manifestOrOptions.compensators
+    : undefined;
 
   const invoke = async <T = unknown>(
     operationId: string,
@@ -59,7 +64,7 @@ export function createAdminCapabilityAdapter<
         }) as AdminOperationResult<T>;
   };
 
-  return { manifest, handlers, invoke, execute: invoke };
+  return { manifest, handlers, ...(compensators ? { compensators } : {}), invoke, execute: invoke };
 }
 
 export const createAdminAdapter = createAdminCapabilityAdapter;

@@ -126,6 +126,9 @@ describe("@filefn/admin", () => {
     expect(fileFnAdminCapability.operations.find(
       (operation) => operation.id === "filefn.share-links.revoke-share",
     )?.target).toEqual({ resource: "files", idInput: "fileId" });
+    expect(fileFnAdminCapability.operations.find(
+      (operation) => operation.id === "filefn.share-links.create-share",
+    )?.safety).toMatchObject({ idempotent: false, audit: "required" });
     for (const operationId of ["filefn.files.download", "filefn.artifacts.download"]) {
       expect(fileFnAdminCapability.operations.find(
         (operation) => operation.id === operationId,
@@ -139,6 +142,43 @@ describe("@filefn/admin", () => {
       adapters: [createFileFnAdminAdapter(domain())],
       enabledModules: ["filefn"],
     })).not.toThrow();
+  });
+
+  it("revokes a newly created share when its required terminal audit fails", async () => {
+    const createShareLink = vi.fn(async () => ({ token: "one-time-share-token", expiresAt: null }));
+    const revokeShareLink = vi.fn(async () => undefined);
+    const service = domain({ shares: { createShareLink, revokeShareLink } });
+    const registry = createAdminRegistry({
+      adapters: [createFileFnAdminAdapter(service)],
+      enabledModules: ["filefn"],
+    });
+    expect(registry.requireOperation("filefn.share-links.create-share").adapter.compensators)
+      .toHaveProperty("filefn.share-links.create-share");
+    const audit = {
+      idempotentById: true as const,
+      write: vi.fn(async (event: { outcome: string }) => {
+        if (event.outcome === "succeeded") throw new Error("audit unavailable");
+      }),
+    };
+    const dispatcher = createAdminDispatcher({
+      registry,
+      audit,
+      confirmation: { verify: () => true },
+    });
+
+    const result = await dispatcher.dispatch({
+      operationId: "filefn.share-links.create-share",
+      input: { fileId: "file_1" },
+      context: { ...context, confirmationToken: "recent-auth" },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "dependency_unavailable" } });
+    expect(createShareLink).toHaveBeenCalledTimes(1);
+    expect(revokeShareLink).toHaveBeenCalledWith(
+      "file_1",
+      "one-time-share-token",
+      { principalId: "operator_1", tenantId: "project_1", requestId: "request_1" },
+    );
   });
 
   it("delegates listing to FileFn with the mapped principal, tenant, and request context", async () => {

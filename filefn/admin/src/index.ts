@@ -332,7 +332,7 @@ function bind<K extends FileFnAdminOperationId>(handler: FileFnAdminServiceMetho
 }
 
 export function createFileFnAdminAdapter(service: FileFnAdminService): AdminCapabilityAdapter<typeof fileFnAdminCapability> {
-  return createKernelAdminCapabilityAdapter(fileFnAdminCapability, {
+  const handlers = {
     "filefn.files.list": bind(service.listFiles),
     "filefn.files.get": bind(service.getFile),
     "filefn.files.download": bind(service.downloadFile),
@@ -355,6 +355,19 @@ export function createFileFnAdminAdapter(service: FileFnAdminService): AdminCapa
     "filefn.artifacts.get": bind(service.getArtifact),
     "filefn.artifacts.download": bind(service.downloadArtifact),
     "filefn.artifacts.process-file": bind(service.processFile),
+  };
+  return createKernelAdminCapabilityAdapter({
+    manifest: fileFnAdminCapability,
+    handlers,
+    compensators: {
+      "filefn.share-links.create-share": async ({ input, result, context }) => {
+        const shareInput = input as CreateShareAdminInput;
+        const shareResult = result as AdminOperationResult<FileFnAdminOperationOutputMap["filefn.share-links.create-share"]>;
+        const token = shareResult.data.item?.token;
+        if (!token) throw new Error("The created FileFn share token is unavailable for compensation.");
+        await service.revokeShareLink({ fileId: shareInput.fileId, token }, context);
+      },
+    },
   });
 }
 export { createFileFnDomainAdminService, type FileFnDomainAdminServiceOptions } from "./domain-service.js";

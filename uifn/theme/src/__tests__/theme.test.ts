@@ -154,6 +154,10 @@ describe('runtime theme mounting', () => {
     expect(shadowRoot.adoptedStyleSheets).toEqual([existingSheet]);
   });
 
+  it('allows a scoped child combinator', () => {
+    expect(themeToCSS('uifn-dark', '.shell > .content')).toContain('.shell > .content{');
+  });
+
   it('TV-STYLE-002 negative rejects unsafe global selectors', () => {
     expect(() => themeToCSS('uifn-dark', 'html body *')).toThrowError(UIFnThemeError);
     expect(() => themeToCSS('uifn-dark', ':root, body')).toThrowError(UIFnThemeError);

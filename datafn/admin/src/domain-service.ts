@@ -4,6 +4,7 @@ import {
   decodeAdminCursor,
   encodeAdminCursor,
   normalizeAdminPageLimit,
+  stableSerialize,
   type AdminOperationContext,
   type AdminOperationResult,
 } from "@superfunctions/admin";
@@ -77,16 +78,8 @@ function page<TItem extends object>(
   };
 }
 
-function relationId(value: {
-  from: string | readonly string[];
-  to: string | readonly string[];
-  type: string;
-  relation?: string;
-  inverse?: string;
-}): string {
-  const from = Array.isArray(value.from) ? value.from : [value.from];
-  const to = Array.isArray(value.to) ? value.to : [value.to];
-  return JSON.stringify([from, to, value.type, value.relation ?? null, value.inverse ?? null]);
+function relationId(value: object): string {
+  return stableSerialize(value);
 }
 
 interface DataFnSchemaDocuments {

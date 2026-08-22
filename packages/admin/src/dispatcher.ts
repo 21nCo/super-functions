@@ -396,7 +396,40 @@ export class AdminDispatcher {
       }
       return response;
     } catch (error) {
-      const normalized = normalizeAdminError(error, {
+      let dispatchError = error;
+      if (
+        entry &&
+        domainCompleted &&
+        domainResponse &&
+        terminalAuditAttempted &&
+        !terminalAuditWritten &&
+        entry.operation.safety.audit === "required"
+      ) {
+        const compensator = entry.adapter.compensators?.[entry.operation.id];
+        if (compensator) {
+          try {
+            await compensator({
+              input: request.input,
+              context: request.context,
+              result: domainResponse,
+              cause: error,
+            });
+            domainCompleted = false;
+            domainResponse = undefined;
+          } catch (cause) {
+            dispatchError = new AdminError(
+              "dependency_unavailable",
+              "The domain operation completed, but its failed audit and compensation require reconciliation.",
+              {
+                retryable: false,
+                details: { outcome: "domain_completed", compensationFailed: true },
+                cause,
+              },
+            );
+          }
+        }
+      }
+      const normalized = normalizeAdminError(dispatchError, {
         requestId: request.context?.requestId,
         correlationId: request.context?.correlationId,
       });

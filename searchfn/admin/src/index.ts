@@ -211,7 +211,7 @@ export const searchFnAdminActions = [
     classification: "write",
     requiresConfirmation: false,
     idempotent: true,
-    target: "collection",
+    target: "resource",
   },
   {
     id: "batch-index",
@@ -241,7 +241,7 @@ export const searchFnAdminActions = [
     classification: "destructive",
     requiresConfirmation: true,
     idempotent: true,
-    target: "collection",
+    target: "resource",
   },
   {
     id: "clear-index",

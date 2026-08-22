@@ -188,6 +188,24 @@ describe('administration API boundary', () => {
     })).rejects.toThrow('provider headers are never sent from the browser');
   });
 
+  it('opens a header-free signed download receipt', async () => {
+    const popup = { opener: window } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+    try {
+      await expect(openSafeAdminDownloadReceipt({
+        url: 'https://storage.example.test/signed-object',
+      })).resolves.toBe(true);
+      expect(open).toHaveBeenCalledWith(
+        'https://storage.example.test/signed-object',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(popup.opener).toBeNull();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
   it('materializes declared administration route parameters from bound input', () => {
     expect(materializeAdminApiHref(
       '/api/admin/v1/modules/authfn/users/:id/sessions/{sessionId}',
