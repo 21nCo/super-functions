@@ -721,12 +721,19 @@ function pageResult(
     }
   }
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-  const pageItems = items.slice(offset, offset + limit);
+  const orderedItems = [...items].sort((left, right) => {
+    const leftItem = left as { updatedAt?: unknown; createdAt?: unknown; id?: unknown };
+    const rightItem = right as { updatedAt?: unknown; createdAt?: unknown; id?: unknown };
+    const timestamp = String(leftItem.updatedAt ?? leftItem.createdAt ?? "")
+      .localeCompare(String(rightItem.updatedAt ?? rightItem.createdAt ?? ""));
+    return timestamp || String(leftItem.id ?? "").localeCompare(String(rightItem.id ?? ""));
+  });
+  const pageItems = orderedItems.slice(offset, offset + limit);
   const nextOffset = offset + pageItems.length;
   return {
     items: pageItems,
     nextCursor:
-      nextOffset < items.length
+      nextOffset < orderedItems.length
         ? encodeAdminCursor(cursorScope, { identity, offset: nextOffset })
         : null,
   };

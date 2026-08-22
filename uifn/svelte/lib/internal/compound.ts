@@ -99,9 +99,6 @@ interface SvelteDomBinding {
   destroy(): void;
 }
 
-const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox)$/;
-const ROOT_EVENT_PROP = /^on(?::)?[a-z]/;
-
 const EMPTY_DOM_RESOURCES: UIFnDomResourceSnapshot = Object.freeze({
   listener: 0,
   observer: 0,
@@ -131,8 +128,7 @@ export function splitSvelteRootProps(props: AnyRecord, inputNames: readonly stri
   for (const [key, value] of Object.entries(props)) {
     if (key === 'environment') environment = value as UIFnEnvironment | undefined;
     else if (declaredInputs.has(key) || /^on[A-Z]/.test(key)) inputs[key] = value;
-    else if (ROOT_DOM_PROP.test(key) || ROOT_EVENT_PROP.test(key)) dom[key] = value;
-    else inputs[key] = value;
+    else dom[key] = value;
   }
   return { inputs, dom, environment };
 }

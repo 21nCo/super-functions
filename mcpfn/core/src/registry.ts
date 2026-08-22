@@ -42,8 +42,8 @@ interface RegisteredTemplate<TContext> {
 
 function resourceTemplatePattern(uriTemplate: string): string {
   return uriTemplate.replace(/\{([^{}]+)\}/g, (_expression, body: string) => {
-    const operator = /^[+#./;?&]/.exec(body)?.[0] ?? "";
-    if (operator === ";" || operator === "?" || operator === "&") return `{${body}}`;
+    const operator = /^[+#./?&]/.exec(body)?.[0] ?? "";
+    if (operator === "?" || operator === "&") return `{${body}}`;
     const variables = body.slice(operator.length).split(",").map((variable, index) => {
       const modifier = /(?:\*|:\d+)$/.exec(variable.trim())?.[0] ?? "";
       return `v${index}${modifier}`;

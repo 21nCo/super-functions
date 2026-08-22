@@ -158,7 +158,15 @@ describe("@hostfn/admin", () => {
   });
 
   it("paginates deterministically and rejects a cursor in another scope", async () => {
-    const store = new MemoryHostFnOperatorStore();
+    class ReorderingStore extends MemoryHostFnOperatorStore {
+      private reversed = false;
+      override async listTargets(activeScope: HostFnScope) {
+        const values = await super.listTargets(activeScope);
+        this.reversed = !this.reversed;
+        return this.reversed ? values.reverse() : values;
+      }
+    }
+    const store = new ReorderingStore();
     for (let index = 0; index < 3; index++)
       await store.putTarget({
         id: `target_${index}`,
@@ -181,13 +189,16 @@ describe("@hostfn/admin", () => {
       items: unknown[];
       nextCursor: string;
     }>("hostfn.targets.list", { limit: 2 }, context);
-    expect(first.data.items).toHaveLength(2);
+    expect(first.data.items).toEqual([
+      expect.objectContaining({ id: "target_0" }),
+      expect.objectContaining({ id: "target_1" }),
+    ]);
     const second = await adapter.invoke<{ items: unknown[]; nextCursor: null }>(
       "hostfn.targets.list",
       { limit: 2, cursor: first.data.nextCursor },
       context,
     );
-    expect(second.data.items).toHaveLength(1);
+    expect(second.data.items).toEqual([expect.objectContaining({ id: "target_2" })]);
     expect(second.data.nextCursor).toBeNull();
     await expect(
       adapter.invoke<{ items: unknown[] }>(

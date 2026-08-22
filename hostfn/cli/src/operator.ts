@@ -117,7 +117,9 @@ function scoped<T extends { scope: HostFnScope }>(
   scope: HostFnScope,
 ): T[] {
   const key = scopeKey(scope);
-  return [...values].filter((value) => scopeKey(value.scope) === key);
+  return [...values]
+    .filter((value) => scopeKey(value.scope) === key)
+    .map((value) => structuredClone(value));
 }
 
 /** Self-hosted reference persistence for development and single-process installations. */
@@ -136,7 +138,8 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     return scoped(this.targets.values(), scope);
   }
   async getTarget(scope: HostFnScope, id: string) {
-    return this.targets.get(this.key(scope, id));
+    const target = this.targets.get(this.key(scope, id));
+    return target ? structuredClone(target) : undefined;
   }
   async putTarget(target: HostFnTarget) {
     this.targets.set(
@@ -150,7 +153,8 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     );
   }
   async getDeployment(scope: HostFnScope, id: string) {
-    return this.deployments.get(this.key(scope, id));
+    const deployment = this.deployments.get(this.key(scope, id));
+    return deployment ? structuredClone(deployment) : undefined;
   }
   async putDeployment(deployment: HostFnDeployment) {
     this.deployments.set(
