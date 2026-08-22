@@ -1,0 +1,46 @@
+import type { DevFnConfig } from "@devfn/config";
+import { DevFnError, type LifecyclePlan } from "./types.js";
+
+export function createPlan(config: DevFnConfig, requestedProfile?: string): LifecyclePlan {
+  const profileName = requestedProfile ?? config.defaultProfile ?? "default";
+  const profile = config.profiles[profileName];
+  if (!profile) throw new DevFnError("DEVFN_PROFILE_NOT_FOUND", `Profile ${profileName} does not exist.`);
+  const selected = new Set([...(profile.processes ?? []), ...(profile.services ?? [])]);
+  const expanded = new Set<string>();
+  const dependencies = (name: string): string[] => config.processes?.[name]?.dependsOn ?? config.services?.[name]?.dependsOn ?? [];
+  const include = (name: string): void => {
+    if (!config.processes?.[name] && !config.services?.[name]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown lifecycle node ${name}.`);
+    if (expanded.has(name)) return;
+    expanded.add(name);
+    if (!selected.has(name)) selected.add(name);
+    dependencies(name).forEach(include);
+  };
+  [...selected].forEach(include);
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: string[] = [];
+  const visit = (name: string): void => {
+    if (visited.has(name)) return;
+    if (visiting.has(name)) throw new DevFnError("DEVFN_DEPENDENCY_CYCLE", `Dependency cycle contains ${name}.`);
+    visiting.add(name);
+    dependencies(name).forEach(visit);
+    visiting.delete(name);
+    visited.add(name);
+    ordered.push(name);
+  };
+  [...selected].sort().forEach(visit);
+
+  const portNames = new Set<string>();
+  for (const name of ordered) {
+    for (const port of config.processes?.[name]?.ports ?? []) portNames.add(port);
+    for (const port of Object.keys(config.services?.[name]?.ports ?? {})) portNames.add(port);
+  }
+  for (const hostname of Object.values(config.hostnames ?? {})) if (profile.proxy && (!hostname.profiles || hostname.profiles.includes(profileName))) portNames.add(hostname.target);
+  return {
+    profile: profileName,
+    nodes: ordered.map((name) => ({ name, kind: config.processes?.[name] ? "process" : "service", dependencies: dependencies(name) })),
+    portNames: [...portNames].sort(),
+    proxy: profile.proxy === true,
+  };
+}

@@ -1,0 +1,16 @@
+{
+  "name": "devfn",
+  "version": "0.1.0",
+  "description": "Portable local development environments and worktree-aware port orchestration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "devfn": "./dist/index.js" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "README.md", "SECURITY.md", "MIGRATION.md"],
+  "scripts": { "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs", "typecheck": "tsc --noEmit -p tsconfig.json", "test": "vitest run", "lint": "echo 'lint not configured'", "clean": "rm -rf dist" },
+  "dependencies": { "@clifn/core": "0.1.0", "@devfn/config": "0.1.0", "@devfn/core": "0.1.0", "@devfn/ports": "0.1.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0", "vitest": "^3.2.4" },
+  "engines": { "node": ">=22" },
+  "license": "MIT"
+}

@@ -1,0 +1,196 @@
+#!/usr/bin/env node
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { createOutput, createScaffold, redactValue } from "@clifn/core";
+import {
+  DevFnConfigError,
+  discoverProject,
+  isProjectTrusted,
+  loadDevFnConfig,
+  renderDevFnConfig,
+  resolveDevFnManifestPath,
+  trustProject,
+} from "@devfn/config";
+import { DevFnError, DevFnOrchestrator, resolveInstanceIdentity } from "@devfn/core";
+import { FilePortRegistry, renderPortInventory } from "@devfn/ports";
+import { defaultStateDir } from "@devfn/config";
+
+interface ParsedArgs {
+  command: string;
+  positionals: string[];
+  json: boolean;
+  yes: boolean;
+  trust: boolean;
+  configPath?: string;
+  profile?: string;
+  stateDir?: string;
+  output?: string;
+  tail?: number;
+  allowPublic: boolean;
+}
+
+export interface CliOptions { cwd?: string; env?: NodeJS.ProcessEnv; stdout?: (text: string) => void; stderr?: (text: string) => void }
+
+const HELP = `DevFn — portable local development environments
+
+Usage: devfn <command> [options]
+
+Commands:
+  init                 Inspect a repository and preview or write devfn.config.ts
+  up                   Reserve ports and start the selected profile
+  down                 Stop only this worktree instance
+  restart              Restart this worktree instance
+  status               Show processes, services, ports, and health
+  logs [name]          Show process or Compose logs
+  doctor               Diagnose runtimes, Docker, ports, leases, and proxy
+  ports [gc|report]    Inspect, reconcile, collect, or report port state
+  url [name]           Print resolved local URLs
+
+Options:
+  --profile <name>     Select a named profile
+  --config <path>      Use an explicit manifest
+  --json               Emit one machine-readable JSON value
+  --trust              Trust the current manifest digest before loading it
+  --allow-public       Confirm processes or ports declared as public exposure
+  --yes                Confirm devfn init writes
+  --state-dir <path>   Override machine state (primarily for testing)
+  --output <path>      Write a ports report
+  --tail <count>       Limit log lines
+`;
+
+function parse(argv: readonly string[]): ParsedArgs {
+  const positionals: string[] = [];
+  const values: Record<string, string | boolean> = {};
+  const takesValue = new Set(["--profile", "--config", "--state-dir", "--output", "--tail"]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token.startsWith("--")) { positionals.push(token); continue; }
+    if (takesValue.has(token)) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new DevFnError("DEVFN_RUNTIME_INVALID", `${token} requires a value.`);
+      values[token] = value; index += 1;
+    } else if (["--json", "--yes", "--trust", "--allow-public", "--help"].includes(token)) values[token] = true;
+    else throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown option ${token}.`);
+  }
+  return {
+    command: values["--help"] ? "help" : positionals.shift() ?? "help",
+    positionals,
+    json: values["--json"] === true,
+    yes: values["--yes"] === true,
+    trust: values["--trust"] === true,
+    allowPublic: values["--allow-public"] === true,
+    ...(typeof values["--profile"] === "string" ? { profile: values["--profile"] } : {}),
+    ...(typeof values["--config"] === "string" ? { configPath: values["--config"] } : {}),
+    ...(typeof values["--state-dir"] === "string" ? { stateDir: values["--state-dir"] } : {}),
+    ...(typeof values["--output"] === "string" ? { output: values["--output"] } : {}),
+    ...(typeof values["--tail"] === "string" ? { tail: Number(values["--tail"]) } : {}),
+  };
+}
+
+function errorPayload(error: unknown): { code: string; message: string; details?: unknown } {
+  if (error && typeof error === "object") {
+    const candidate = error as { code?: unknown; message?: unknown; details?: unknown };
+    return { code: typeof candidate.code === "string" ? candidate.code : "DEVFN_FAILED", message: typeof candidate.message === "string" ? candidate.message : String(error), ...(candidate.details === undefined ? {} : { details: redactValue(candidate.details) }) };
+  }
+  return { code: "DEVFN_FAILED", message: String(error) };
+}
+
+async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
+  const manifest = await resolveDevFnManifestPath({ cwd, configPath: args.configPath });
+  if (path.extname(manifest.path) !== ".json") {
+    if (args.trust) await trustProject(manifest.root, manifest.path, stateDir);
+    if (!await isProjectTrusted(manifest.root, manifest.path, stateDir)) {
+      throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} is executable code and is not trusted. Review it, then rerun with --trust.`);
+    }
+  }
+  return await loadDevFnConfig({ cwd, configPath: manifest.path });
+}
+
+async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string, unknown>> {
+  try { await resolveDevFnManifestPath({ cwd, configPath: args.configPath }); throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "A DevFn manifest already exists; init will not overwrite it."); }
+  catch (error) { if (!(error instanceof DevFnConfigError) || error.code !== "DEVFN_CONFIG_NOT_FOUND") throw error; }
+  const discovery = await discoverProject(cwd);
+  const content = renderDevFnConfig(discovery.config, discovery.findings);
+  if (!args.yes) return { ok: true, written: false, preview: content, findings: discovery.findings, confirmationRequired: "Review the preview, then rerun devfn init --yes." };
+  const scaffold = createScaffold();
+  const configName = args.configPath ?? "devfn.config.ts";
+  await scaffold.apply([{ kind: "write-file", path: configName, content, ifExists: "error" }], { cwd });
+  const ignorePath = path.join(cwd, ".gitignore");
+  const ignore = await readFile(ignorePath, "utf8").catch(() => "");
+  if (!ignore.split(/\r?\n/).includes(".devfn/")) await writeFile(ignorePath, `${ignore}${ignore.endsWith("\n") || ignore.length === 0 ? "" : "\n"}.devfn/\n`, "utf8");
+  return { ok: true, written: true, manifest: path.join(cwd, configName), findings: discovery.findings };
+}
+
+export async function runCli(argv: readonly string[], options: CliOptions = {}): Promise<number> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  let args: ParsedArgs;
+  try { args = parse(argv); } catch (error) {
+    const output = createOutput({ mode: argv.includes("--json") ? "json" : "text", stdout: options.stdout, stderr: options.stderr, color: false });
+    const failure = errorPayload(error); argv.includes("--json") ? output.json({ ok: false, error: failure }) : output.error(`${failure.code}: ${failure.message}`); return 1;
+  }
+  const output = createOutput({ mode: args.json ? "json" : "text", stdout: options.stdout, stderr: options.stderr, color: false });
+  const stateDir = path.resolve(args.stateDir ?? defaultStateDir(options.env));
+  try {
+    if (args.command === "help") { if (args.json) output.json({ ok: true, help: HELP }); else options.stdout ? options.stdout(HELP) : process.stdout.write(HELP); return 0; }
+    if (args.command === "init") {
+      const result = await initCommand(args, cwd); if (args.json) output.json(result); else { if (!result.written) output.info(String(result.preview)); output.success(result.written ? `Created ${result.manifest}` : String(result.confirmationRequired)); } return 0;
+    }
+    const loaded = await trustedConfig(args, cwd, stateDir);
+    const orchestrator = new DevFnOrchestrator();
+    let result: unknown;
+    if (args.command === "up") result = await orchestrator.up({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir, allowPublic: args.allowPublic });
+    else if (args.command === "down") result = await orchestrator.down({ config: loaded.config, root: loaded.root, stateDir });
+    else if (args.command === "restart") {
+      await orchestrator.down({ config: loaded.config, root: loaded.root, stateDir }).catch((error) => { if (!(error instanceof DevFnError) || error.code !== "DEVFN_NOT_RUNNING") throw error; });
+      result = await orchestrator.up({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir, allowPublic: args.allowPublic });
+    } else if (args.command === "status") result = await orchestrator.status({ config: loaded.config, root: loaded.root });
+    else if (args.command === "doctor") result = await orchestrator.doctor({ config: loaded.config, root: loaded.root, profile: args.profile, stateDir });
+    else if (args.command === "logs") result = await orchestrator.logs({ config: loaded.config, root: loaded.root, name: args.positionals[0], tail: args.tail });
+    else if (args.command === "ports") {
+      const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+      const action = args.positionals[0];
+      if (action === "gc") result = { ok: true, removed: await registry.gc() };
+      else {
+        const state = await registry.reconcile();
+        if (action === "report") {
+          const { loadDevFnPolicy } = await import("@devfn/config");
+          const { renderPolicyInventory } = await import("@devfn/ports");
+          const policy = await loadDevFnPolicy(loaded.root, loaded.config.policy);
+          const report = `${renderPolicyInventory(policy?.policy ?? null)}\n${renderPortInventory(state)}`;
+          if (args.output) await writeFile(path.resolve(cwd, args.output), report, "utf8");
+          result = { ok: true, report, ...(args.output ? { output: path.resolve(cwd, args.output) } : {}) };
+        } else result = { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
+      }
+    } else if (args.command === "url") {
+      const status = await orchestrator.status({ config: loaded.config, root: loaded.root }) as { urls?: Record<string, string> };
+      if (args.positionals[0]) {
+        const url = status.urls?.[args.positionals[0]];
+        if (!url) throw new DevFnError("DEVFN_URL_NOT_FOUND", `No HTTP or proxy URL is resolved for ${args.positionals[0]}. Inspect devfn ports for its transport allocation.`);
+        result = { ok: true, name: args.positionals[0], url };
+      } else result = { ok: true, urls: status.urls ?? {} };
+    } else throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown command ${args.command}.`);
+
+    if (args.json) output.json(redactValue(result));
+    else {
+      if (args.command === "logs" && result && typeof result === "object") for (const [name, log] of Object.entries(result)) output.info(`${name}\n${log}`);
+      else if (args.command === "url") {
+        const value = result as { url?: string | null; urls?: Record<string, string> };
+        if (value.url) output.info(value.url);
+        else for (const url of Object.values(value.urls ?? {})) output.info(url);
+      }
+      else if (args.command === "doctor") {
+        for (const diagnostic of (result as { diagnostics: Array<{ severity: string; code: string; message: string }> }).diagnostics) output[diagnostic.severity === "error" ? "error" : diagnostic.severity === "warning" ? "warn" : "info"](`${diagnostic.code}: ${diagnostic.message}`);
+      } else output.success(`${args.command} completed.`, result);
+    }
+    return args.command === "doctor" && !(result as { ok?: boolean }).ok ? 1 : 0;
+  } catch (error) {
+    const failure = errorPayload(error);
+    if (args.json) output.json({ ok: false, error: failure }); else output.error(`${failure.code}: ${failure.message}`);
+    return 1;
+  }
+}
+
+const direct = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (direct) process.exitCode = await runCli(process.argv.slice(2));

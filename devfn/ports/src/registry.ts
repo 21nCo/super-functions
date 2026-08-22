@@ -1,0 +1,248 @@
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+
+import { allocateEphemeralPort, isPortAvailable } from "./listeners.js";
+import { withFileLock } from "./lock.js";
+import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput } from "./types.js";
+
+const EMPTY: RegistryState = { version: 1, revision: 0, allocations: [], invocations: [] };
+const execFileAsync = promisify(execFile);
+
+function stableOffset(value: string, size: number): number {
+  if (size <= 1) return 0;
+  return Number.parseInt(createHash("sha256").update(value).digest("hex").slice(0, 8), 16) % size;
+}
+
+function candidates(start: number, end: number, seed: string): number[] {
+  if (end < start) return [];
+  const values = Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  const offset = stableOffset(seed, values.length);
+  return [...values.slice(offset), ...values.slice(0, offset)];
+}
+
+function active(allocation: PortAllocation): boolean {
+  return allocation.state === "planned" || allocation.state === "active" || allocation.state === "externally-occupied";
+}
+
+export class FilePortRegistry {
+  public readonly filePath: string;
+  private readonly lockPath: string;
+
+  public constructor(filePath: string) {
+    this.filePath = filePath;
+    this.lockPath = `${filePath}.lock`;
+  }
+
+  public async read(): Promise<RegistryState> {
+    try {
+      const state = JSON.parse(await readFile(this.filePath, "utf8")) as RegistryState;
+      if (state.version !== 1 || !Array.isArray(state.allocations) || !Array.isArray(state.invocations)) throw new Error("Unsupported registry schema");
+      return state;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(EMPTY);
+      throw new PortRegistryError("DEVFN_REGISTRY_INVALID", `Unable to read registry ${this.filePath}.`, { cause: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async write(state: RegistryState): Promise<void> {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    const temp = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await rename(temp, this.filePath);
+  }
+
+  public async transaction<T>(action: (state: RegistryState) => Promise<T> | T): Promise<T> {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
+    return await withFileLock(this.lockPath, async () => {
+      const state = await this.read();
+      const result = await action(state);
+      state.revision += 1;
+      await this.write(state);
+      return result;
+    });
+  }
+
+  public async reserve(input: ReservationInput): Promise<PortAllocation[]> {
+    return await this.transaction(async (state) => {
+      const now = new Date().toISOString();
+      const occupied = new Set(state.allocations.filter(active).map((item) => item.port));
+      for (const value of input.protectedPorts ?? []) occupied.add(value);
+      for (const value of input.excludedPorts ?? []) occupied.add(value);
+      const stable = new Map(
+        state.allocations
+          .filter((item) => item.projectId === input.projectId && item.instanceId === input.instanceId && item.state !== "externally-occupied")
+          .map((item) => [item.service, item]),
+      );
+      const planned: PortAllocation[] = [];
+
+      const choose = async (name: string, spec: ReservationInput["requests"][number]["spec"]): Promise<{ port: number; source: PortAllocation["source"] }> => {
+        if (spec.ephemeral) return { port: await allocateEphemeralPort(), source: "ephemeral" };
+        const prior = stable.get(name);
+        if (prior && !occupied.has(prior.port) && await isPortAvailable(prior.port, spec.protocol)) return { port: prior.port, source: "stable" };
+        if (spec.exact && spec.preferred !== undefined) {
+          if (occupied.has(spec.preferred) || !await isPortAvailable(spec.preferred, spec.protocol)) {
+            throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
+          }
+          return { port: spec.preferred, source: "exact" };
+        }
+        const pools: Array<{ values: number[]; source: PortAllocation["source"] }> = [];
+        if (spec.preferred !== undefined) pools.push({ values: [spec.preferred], source: "preferred" });
+        if (spec.range) pools.push({ values: candidates(spec.range[0], spec.range[1], `${input.instanceId}:${name}`), source: "range" });
+        if (input.preferredRange) pools.push({ values: candidates(input.preferredRange[0], input.preferredRange[1], `${input.instanceId}:${name}:policy`), source: "preferred" });
+        const fallback = input.fallbackRange ?? [4100, 4999];
+        pools.push({ values: candidates(fallback[0], fallback[1], `${input.instanceId}:${name}:fallback`), source: "fallback" });
+        for (const pool of pools) {
+          for (const port of pool.values) {
+            if (occupied.has(port)) continue;
+            if (await isPortAvailable(port, spec.protocol)) return { port, source: pool.source };
+          }
+        }
+        throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No available port for ${name}.`, { service: name });
+      };
+
+      const blockGroups = new Map<string, typeof input.requests>();
+      for (const request of input.requests) {
+        if (!request.spec.block) continue;
+        const group = blockGroups.get(request.spec.block) ?? [];
+        group.push(request);
+        blockGroups.set(request.spec.block, group);
+      }
+      const handled = new Set<string>();
+      for (const [block, group] of blockGroups) {
+        const exactGroup = group.filter((request) => request.spec.exact);
+        if (exactGroup.length > 0 && exactGroup.length !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Port block ${block} cannot mix exact and reallocatable requirements.`);
+        const configured = group.map((request) => request.spec.range).filter(Boolean) as [number, number][];
+        const range = configured[0] ?? input.preferredRange ?? input.fallbackRange ?? [4100, 4999];
+        let chosen: number[] | null = null;
+        let blockSource: PortAllocation["source"] = "range";
+        if (exactGroup.length) {
+          const exactPorts = group.map((request) => request.spec.preferred!);
+          const sorted = [...new Set(exactPorts)].sort((a, b) => a - b);
+          if (sorted.length !== group.length || sorted.at(-1)! - sorted[0] + 1 !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port block ${block} is not contiguous.`);
+          if (!exactPorts.some((port) => occupied.has(port)) && (await Promise.all(exactPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol)))).every(Boolean)) chosen = exactPorts;
+          blockSource = "exact";
+        } else {
+          for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}`)) {
+            const ports = group.map((_, index) => start + index);
+            if (ports.some((port) => occupied.has(port))) continue;
+            if ((await Promise.all(ports.map((port, index) => isPortAvailable(port, group[index].spec.protocol)))).every(Boolean)) { chosen = ports; break; }
+          }
+        }
+        if (!chosen) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No contiguous port block available for ${block}.`);
+        group.forEach((request, index) => {
+          const port = chosen![index];
+          occupied.add(port);
+          planned.push({
+            id: randomUUID(), projectId: input.projectId, instanceId: input.instanceId, service: request.name,
+            protocol: request.spec.protocol ?? "tcp", host: request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1", port,
+            ...(request.spec.internal ? { internalPort: request.spec.internal } : {}), ...(request.hostname ? { hostname: request.hostname } : {}),
+            invocationId: input.invocationId, state: "planned", source: blockSource, createdAt: now, updatedAt: now,
+          });
+          handled.add(request.name);
+        });
+      }
+
+      for (const request of input.requests) {
+        if (handled.has(request.name)) continue;
+        const selection = await choose(request.name, request.spec);
+        occupied.add(selection.port);
+        planned.push({
+          id: randomUUID(), projectId: input.projectId, instanceId: input.instanceId, service: request.name,
+          protocol: request.spec.protocol ?? "tcp", host: request.spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1", port: selection.port,
+          ...(request.spec.internal ? { internalPort: request.spec.internal } : {}), ...(request.hostname ? { hostname: request.hostname } : {}),
+          invocationId: input.invocationId, state: "planned", source: selection.source, createdAt: now, updatedAt: now,
+        });
+      }
+      state.allocations.push(...planned);
+      state.invocations.push({ id: input.invocationId, projectId: input.projectId, instanceId: input.instanceId, profile: input.profile, state: "planning", createdAt: now, updatedAt: now });
+      return planned;
+    });
+  }
+
+  public async updateInvocation(id: string, update: Partial<Pick<RegistryInvocation, "state" | "errorCode">>): Promise<void> {
+    await this.transaction((state) => {
+      const invocation = state.invocations.find((item) => item.id === id);
+      if (!invocation) return;
+      Object.assign(invocation, update, { updatedAt: new Date().toISOString() });
+    });
+  }
+
+  public async markActive(invocationId: string, owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {}): Promise<void> {
+    await this.transaction((state) => {
+      const now = new Date().toISOString();
+      for (const allocation of state.allocations.filter((item) => item.invocationId === invocationId && item.state === "planned")) {
+        allocation.state = "active";
+        allocation.updatedAt = now;
+        if (owners[allocation.service]?.process) allocation.process = owners[allocation.service].process;
+        if (owners[allocation.service]?.container) allocation.container = owners[allocation.service].container;
+      }
+      const invocation = state.invocations.find((item) => item.id === invocationId);
+      if (invocation) Object.assign(invocation, { state: "ready", updatedAt: now });
+    });
+  }
+
+  public async release(input: { invocationId?: string; instanceId?: string; errorCode?: string }): Promise<void> {
+    await this.transaction((state) => {
+      const now = new Date().toISOString();
+      for (const allocation of state.allocations) {
+        if ((input.invocationId && allocation.invocationId !== input.invocationId) || (input.instanceId && allocation.instanceId !== input.instanceId)) continue;
+        if (!active(allocation)) continue;
+        Object.assign(allocation, { state: "released", updatedAt: now, releasedAt: now });
+      }
+      for (const invocation of state.invocations) {
+        if ((input.invocationId && invocation.id !== input.invocationId) || (input.instanceId && invocation.instanceId !== input.instanceId)) continue;
+        Object.assign(invocation, { state: input.errorCode ? "failed" : "stopped", updatedAt: now, ...(input.errorCode ? { errorCode: input.errorCode } : {}) });
+      }
+    });
+  }
+
+  public async reconcile(): Promise<RegistryState> {
+    await this.transaction(async (state) => {
+      const now = new Date().toISOString();
+      for (const allocation of state.allocations.filter(active)) {
+        const available = await isPortAvailable(allocation.port, allocation.protocol);
+        if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
+        else if (allocation.state === "active" && allocation.process && !isProcessAlive(allocation.process.pid)) allocation.state = available ? "stale" : "externally-occupied";
+        else if (allocation.state === "active" && allocation.container && !await isContainerAlive(allocation.container.id)) allocation.state = available ? "stale" : "externally-occupied";
+        else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = available ? "stale" : "externally-occupied";
+        allocation.updatedAt = now;
+      }
+    });
+    return await this.read();
+  }
+
+  public async gc(): Promise<number> {
+    return await this.transaction((state) => {
+      const before = state.allocations.length;
+      state.allocations = state.allocations.filter((allocation) => allocation.state !== "stale" && allocation.state !== "released");
+      state.invocations = state.invocations.filter((invocation) => !["failed", "stopped"].includes(invocation.state));
+      return before - state.allocations.length;
+    });
+  }
+}
+
+export function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+async function isContainerAlive(id: string): Promise<boolean> {
+  try { return (await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id], { timeout: 5000 })).stdout.trim() === "true"; }
+  catch { return false; }
+}
+
+export function renderPortInventory(state: RegistryState): string {
+  const rows = state.allocations.filter((item) => item.state !== "released").sort((a, b) => a.port - b.port);
+  return [
+    "# DevFn port inventory",
+    "",
+    `Generated from registry revision ${state.revision}.`,
+    "",
+    "| Port | Protocol | Project | Instance | Service | State | Source |",
+    "| ---: | --- | --- | --- | --- | --- | --- |",
+    ...rows.map((item) => `| ${item.port} | ${item.protocol} | ${item.projectId} | ${item.instanceId} | ${item.service} | ${item.state} | ${item.source} |`),
+    "",
+  ].join("\n");
+}
