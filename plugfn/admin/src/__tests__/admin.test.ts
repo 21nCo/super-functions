@@ -206,8 +206,26 @@ describe("@plugfn/admin", () => {
     expect(listJobs).toHaveBeenLastCalledWith(expect.objectContaining({ ownerId: "user_1" }), 101, 100);
 
     const forgedOffset = Number.MAX_SAFE_INTEGER;
-    await service.listSyncJobs({ limit: 100, cursor: encodeAdminCursor(context.scope, { offset: forgedOffset }) }, context);
+    await service.listSyncJobs({
+      limit: 100,
+      cursor: encodeAdminCursor(context.scope, {
+        identity: JSON.stringify(["plugfn.sync-jobs.list", null, null, null, null]),
+        offset: forgedOffset,
+      }),
+    }, context);
     expect(listJobs).toHaveBeenLastCalledWith(expect.any(Object), 101, forgedOffset);
+  });
+
+  it("rejects cursors from another collection or filter", async () => {
+    const { adapter } = setup();
+    const providerCursor = encodeAdminCursor(context.scope, {
+      identity: JSON.stringify(["plugfn.providers.list", null]),
+      offset: 0,
+    });
+    await expect(adapter.execute("plugfn.connections.list", { cursor: providerCursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(adapter.execute("plugfn.providers.list", { search: "github", cursor: providerCursor }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
   });
 
   it("filters sync-job lists by tenant as well as owner", async () => {

@@ -240,8 +240,11 @@ function isSemanticJsonValue(value: unknown, seen = new WeakSet<object>()): bool
   if (typeof value === 'number') return Number.isFinite(value);
   if (!value || typeof value !== 'object' || seen.has(value)) return false;
   seen.add(value);
-  if (Array.isArray(value)) return value.every((entry) => isSemanticJsonValue(entry, seen));
-  return isPlainRecord(value) && Object.values(value).every((entry) => isSemanticJsonValue(entry, seen));
+  const valid = Array.isArray(value)
+    ? value.every((entry) => isSemanticJsonValue(entry, seen))
+    : isPlainRecord(value) && Object.values(value).every((entry) => isSemanticJsonValue(entry, seen));
+  seen.delete(value);
+  return valid;
 }
 
 const traceJsonArray: TraceFieldValidator = (value) =>
@@ -256,6 +259,7 @@ function validateTraceRecord(
   value: unknown,
   path: string,
   fields: Readonly<Record<string, TraceFieldValidator>>,
+  optionalFields: Readonly<Record<string, TraceFieldValidator>> = {},
 ): Record<string, unknown> | undefined {
   if (!isPlainRecord(value)) {
     addIssue(issues, 'UIFN_TRACE_SCHEMA_INVALID', path, `${path} MUST be an object.`);
@@ -264,6 +268,11 @@ function validateTraceRecord(
   for (const [field, validator] of Object.entries(fields)) {
     if (!validator(value[field])) {
       addIssue(issues, 'UIFN_TRACE_SCHEMA_INVALID', `${path}/${field}`, `${field} has an invalid or missing value.`);
+    }
+  }
+  for (const [field, validator] of Object.entries(optionalFields)) {
+    if (Object.hasOwn(value, field) && !validator(value[field])) {
+      addIssue(issues, 'UIFN_TRACE_SCHEMA_INVALID', `${path}/${field}`, `${field} has an invalid value.`);
     }
   }
   return value;
@@ -301,19 +310,29 @@ export function validateSemanticTrace(trace: unknown): readonly SemanticTraceIss
     name: string,
     fields: Readonly<Record<string, TraceFieldValidator>>,
     nested?: (entry: Record<string, unknown>, path: string) => void,
+    optionalFields: Readonly<Record<string, TraceFieldValidator>> = {},
   ) => {
     const channel = trace[name];
     if (!Array.isArray(channel)) return;
     channel.forEach((entry, index) => {
       const path = `/${name}/${index}`;
-      const record = validateTraceRecord(issues, entry, path, fields);
+      const record = validateTraceRecord(issues, entry, path, fields, optionalFields);
       if (record) nested?.(record, path);
     });
   };
   validateChannel('steps', {
     sequence: traceNumber,
-    kind: (value) => ['event', 'action', 'update', 'lifecycle'].includes(String(value)),
+    kind: (value) => typeof value === 'string' && ['event', 'action', 'update', 'lifecycle'].includes(value),
     name: traceString,
+  }, undefined, {
+    part: traceString,
+    key: traceString,
+    pointerType: traceString,
+    defaultPrevented: traceBoolean,
+    propagationStopped: traceBoolean,
+    isComposing: traceBoolean,
+    currentTarget: traceString,
+    arguments: traceJsonArray,
   });
   validateChannel('transactions', {
     sequence: traceNumber,
@@ -321,7 +340,7 @@ export function validateSemanticTrace(trace: unknown): readonly SemanticTraceIss
     status: traceString,
     state: isSemanticJsonValue,
     changedKeys: traceStringArray,
-  });
+  }, undefined, { event: isSemanticJsonValue, source: traceString, reason: traceString });
   validateChannel('actions', {
     sequence: traceNumber,
     name: traceString,
@@ -330,15 +349,21 @@ export function validateSemanticTrace(trace: unknown): readonly SemanticTraceIss
   });
   validateChannel('parts', { checkpoint: traceString, parts: Array.isArray }, (checkpoint, path) => {
     if (!Array.isArray(checkpoint.parts)) return;
-    checkpoint.parts.forEach((part, index) => validateTraceRecord(issues, part, `${path}/parts/${index}`, {
-      part: traceString,
-      tag: traceString,
-      hidden: traceBoolean,
-      disabled: traceBoolean,
-      aria: tracePrimitiveMap,
-      data: tracePrimitiveMap,
-      attributes: tracePrimitiveMap,
-    }));
+    checkpoint.parts.forEach((part, index) => validateTraceRecord(
+      issues,
+      part,
+      `${path}/parts/${index}`,
+      {
+        part: traceString,
+        tag: traceString,
+        hidden: traceBoolean,
+        disabled: traceBoolean,
+        aria: tracePrimitiveMap,
+        data: tracePrimitiveMap,
+        attributes: tracePrimitiveMap,
+      },
+      { instance: traceString, role: traceString, id: traceString, tabIndex: traceNumber },
+    ));
   });
   validateChannel('dom', {
     checkpoint: traceString,

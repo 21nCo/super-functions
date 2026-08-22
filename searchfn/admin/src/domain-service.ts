@@ -102,6 +102,15 @@ function splitDocumentId(value: string): { resource: string; id: string | number
     throw new AdminError("invalid_argument", "SearchFn document targets use the form resource:id.");
   }
   const resource = value.slice(0, separator);
+  let decodedResource: string;
+  try {
+    decodedResource = decodeURIComponent(resource);
+  } catch (error) {
+    throw new AdminError("invalid_argument", "SearchFn resource names must be percent-encoded in document targets.", { cause: error });
+  }
+  if (!decodedResource) {
+    throw new AdminError("invalid_argument", "SearchFn document target resource names must be non-empty.");
+  }
   const encodedId = value.slice(separator + 1);
   if (encodedId.startsWith("number:")) {
     const numericText = encodedId.slice("number:".length);
@@ -109,7 +118,7 @@ function splitDocumentId(value: string): { resource: string; id: string | number
     if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(numericText) || !Number.isFinite(numericId)) {
       throw new AdminError("invalid_argument", "SearchFn numeric document targets use resource:number:<finite number>.");
     }
-    return { resource, id: numericId };
+    return { resource: decodedResource, id: numericId };
   }
   let stringId = encodedId;
   if (encodedId.startsWith("string:")) {
@@ -122,7 +131,7 @@ function splitDocumentId(value: string): { resource: string; id: string | number
   if (stringId.length === 0) {
     throw new AdminError("invalid_argument", "SearchFn document IDs must be non-empty.");
   }
-  return { resource, id: stringId };
+  return { resource: decodedResource, id: stringId };
 }
 
 function documents(value: unknown): SearchDocument[] {

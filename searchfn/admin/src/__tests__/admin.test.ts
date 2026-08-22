@@ -171,6 +171,20 @@ describe("@searchfn/admin", () => {
       resource: "docs",
       query: "Console",
     })).resolves.toEqual([]);
+
+    const colonAdapter = createSearchFnAdminAdapter(createSearchFnDomainAdminService({
+      adapter: () => adapters.get("environment_1")!,
+      resources: () => ["orders:v2"],
+    }));
+    await colonAdapter.execute("searchfn.documents.index", {
+      id: "orders%3Av2:string:doc-1",
+      payload: { fields: { title: "Versioned resource" } },
+    }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "orders:v2", query: "Versioned" }))
+      .resolves.toEqual(["doc-1"]);
+    await colonAdapter.execute("searchfn.documents.remove-document", {
+      id: "orders%3Av2:string:doc-1",
+    }, context);
   });
 
   it("applies index list search, sorting, limits, and cursors", async () => {

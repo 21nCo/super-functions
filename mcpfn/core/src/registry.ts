@@ -37,6 +37,19 @@ interface RegisteredPrompt<TContext> {
 interface RegisteredTemplate<TContext> {
   definition: McpFnResourceTemplateDefinition<TContext>;
   template: UriTemplate;
+  pattern: string;
+}
+
+function resourceTemplatePattern(uriTemplate: string): string {
+  return uriTemplate.replace(/\{([^{}]+)\}/g, (_expression, body: string) => {
+    const operator = /^[+#./?&]/.exec(body)?.[0] ?? "";
+    if (operator === "?" || operator === "&") return `{${body}}`;
+    const variables = body.slice(operator.length).split(",").map((variable, index) => {
+      const modifier = /(?:\*|:\d+)$/.exec(variable.trim())?.[0] ?? "";
+      return `v${index}${modifier}`;
+    });
+    return `{${operator}${variables.join(",")}}`;
+  });
 }
 
 type ResourceMatch<TContext> =
@@ -182,16 +195,6 @@ export class McpFnRegistry<TContext = undefined> {
         `Duplicate MCP resource template: ${definition.name}`,
       );
     }
-    if (
-      [...this.resourceTemplates.values()].some(
-        ({ definition: existing }) =>
-          existing.uriTemplate === definition.uriTemplate,
-      )
-    ) {
-      throw new McpFnValidationError(
-        `Duplicate MCP resource template URI: ${definition.uriTemplate}`,
-      );
-    }
     let template: UriTemplate;
     try {
       template = new UriTemplate(definition.uriTemplate);
@@ -206,6 +209,12 @@ export class McpFnRegistry<TContext = undefined> {
         `Resource template ${definition.name} must contain at least one variable`,
       );
     }
+    const pattern = resourceTemplatePattern(definition.uriTemplate);
+    if ([...this.resourceTemplates.values()].some((existing) => existing.pattern === pattern)) {
+      throw new McpFnValidationError(
+        `Duplicate MCP resource template URI: ${definition.uriTemplate}`,
+      );
+    }
     for (const name of Object.keys(definition.complete ?? {})) {
       if (!template.variableNames.includes(name)) {
         throw new McpFnValidationError(
@@ -213,7 +222,7 @@ export class McpFnRegistry<TContext = undefined> {
         );
       }
     }
-    this.resourceTemplates.set(definition.name, { definition, template });
+    this.resourceTemplates.set(definition.name, { definition, template, pattern });
     return this;
   }
 

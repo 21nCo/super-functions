@@ -356,7 +356,6 @@ describe('Super Console server composition', () => {
   it.each([
     '/api/admin/v1/modules/examplefn//records',
     '/api/admin/v1/modules/examplefn/%252e%252e/records',
-    '/api/admin/v1/modules/examplefn/records%2fother',
     '/api/admin/v1/modules/examplefn/records%252fother',
     '/api/admin/v1/modules/examplefn/records%5cother',
     '/api/admin/v1/modules/examplefn/records%255cother',
@@ -365,6 +364,16 @@ describe('Super Console server composition', () => {
     const result = await console.handle(request(path));
     expect(result.status).toBe(400);
     expect(await result.json()).toMatchObject({ error: { code: 'INVALID_ADMIN_PATH' } });
+  });
+
+  it('preserves an encoded separator inside a route parameter value', async () => {
+    const { console, handler } = installation({ destructive: true });
+    const result = await console.handle(request('/api/admin/v1/modules/examplefn/resources/records/team%2Fsupport', {
+      method: 'DELETE',
+      headers: { 'idempotency-key': 'encoded-id', 'x-admin-confirmation': 'bound-token' },
+    }));
+    expect(result.status).toBe(200);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ input: { id: 'team/support' } }));
   });
 
   it('does not claim the URL parser preserved a single-encoded dot segment', async () => {

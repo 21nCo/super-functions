@@ -153,7 +153,13 @@ describe('lossless public-tree semantic traces', () => {
     const malformed = {
       ...trace('react'),
       environment: {},
+      steps: [{ sequence: 1, kind: { toString: () => 'event' }, name: 'invalid', arguments: () => undefined }],
+      transactions: [{ ...trace('react').transactions[0], event: Symbol('invalid') }],
       actions: [{}],
+      parts: [{
+        ...trace('react').parts[0],
+        parts: [{ ...trace('react').parts[0]!.parts[0], tabIndex: 'zero' }],
+      }],
       cleanup: { controllerDestroyed: true, listeners: -1 },
       result: 'skipped',
     };
@@ -162,10 +168,27 @@ describe('lossless public-tree semantic traces', () => {
       '/result',
       '/environment/runtime',
       '/environment/direction',
+      '/steps/0/kind',
+      '/steps/0/arguments',
+      '/transactions/0/event',
       '/actions/0/sequence',
       '/actions/0/observed',
+      '/parts/0/parts/0/tabIndex',
       '/cleanup/domReleased',
       '/cleanup/listeners',
     ]));
+  });
+
+  it('accepts reused acyclic semantic JSON objects but rejects cycles', () => {
+    const shared = { value: true };
+    const reused = trace('react', {
+      transactions: [{ ...trace('react').transactions[0], state: { left: shared, right: shared } }],
+    });
+    expect(validateSemanticTrace(reused)).toEqual([]);
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(validateSemanticTrace(trace('react', {
+      transactions: [{ ...trace('react').transactions[0], state: cyclic as never }],
+    }))).toContainEqual(expect.objectContaining({ path: '/transactions/0/state' }));
   });
 });

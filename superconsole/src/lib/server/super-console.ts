@@ -677,9 +677,13 @@ export class SuperConsole {
         } catch {
           throw new SuperConsoleHttpError('The administration path contains invalid percent encoding.', { status: 400, code: 'INVALID_ADMIN_PATH' });
         }
-        if (next === '.' || next === '..' || /[\/\\\u0000-\u001f\u007f]/.test(next)) {
+        const unsafeDecodedSegment = next === '.' || next === '..'
+          || /[\\\u0000-\u001f\u007f]/.test(next)
+          || next.split('/').some((part) => part === '.' || part === '..');
+        if (unsafeDecodedSegment || (depth > 0 && next.includes('/'))) {
           throw new SuperConsoleHttpError('The administration path contains an unsafe segment.', { status: 400, code: 'INVALID_ADMIN_PATH' });
         }
+        if (depth === 0 && next.includes('/')) return segment;
         if (next === decoded) return segment;
         decoded = next;
       }
