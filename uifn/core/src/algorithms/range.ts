@@ -16,8 +16,10 @@ function decimals(value: number): number {
 function roundRangeValue(value: number, precision: number): number {
   const [coefficient, exponentText = '0'] = String(value).split('e');
   const shifted = Math.round(Number(`${coefficient}e${Number(exponentText) + precision}`));
+  if (!Number.isFinite(shifted)) return value;
   const [rounded, roundedExponent = '0'] = String(shifted).split('e');
-  return Number(`${rounded}e${Number(roundedExponent) - precision}`);
+  const result = Number(`${rounded}e${Number(roundedExponent) - precision}`);
+  return Number.isFinite(result) ? result : value;
 }
 
 export function clampRangeValue(value: number, min: number, max: number): number {
@@ -36,7 +38,13 @@ export function alignRangeValue(value: number, definition: RangeDefinition): num
     });
   }
   const precision = Math.max(decimals(min), decimals(max), decimals(step));
-  const aligned = min + Math.round((clampRangeValue(value, min, max) - min) / step) * step;
+  const clamped = clampRangeValue(value, min, max);
+  const rawIndex = (clamped - min) / step;
+  const maxIndex = Math.floor((max - min) / step);
+  let index = Math.round(rawIndex);
+  if (Number.isFinite(maxIndex)) index = Math.min(index, maxIndex);
+  const aligned = min + index * step;
+  if (!Number.isFinite(aligned)) return clamped;
   return clampRangeValue(roundRangeValue(aligned, precision), min, max);
 }
 

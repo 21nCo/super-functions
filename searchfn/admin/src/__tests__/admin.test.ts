@@ -131,6 +131,18 @@ describe("@searchfn/admin", () => {
       query: "Leading",
     })).resolves.toEqual(["001"]);
 
+    await adapter.execute("searchfn.documents.index", {
+      id: "docs:123",
+      payload: { fields: { title: "Numeric-looking string" } },
+    }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Numeric-looking" })).resolves.toEqual(["123"]);
+
+    await adapter.execute("searchfn.documents.batch-index", {
+      payload: { resource: "docs", documents: [{ id: 123, fields: { title: "Numeric identifier" } }] },
+    }, context);
+    await adapter.execute("searchfn.documents.remove-document", { id: "docs:123" }, context);
+    await expect(adapters.get("environment_1")!.search({ resource: "docs", query: "Numeric" })).resolves.toEqual([]);
+
     await adapter.execute("searchfn.documents.remove-document", {
       id: "docs:doc-1",
     }, context);

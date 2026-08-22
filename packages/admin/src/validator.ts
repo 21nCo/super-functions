@@ -1,5 +1,6 @@
 import { AdminError } from "./errors.js";
 import { adminScopeLevelRank, canonicalAdminScopeLevel } from "./scope.js";
+import { parseAdminOperationRoute } from "./operation-route.js";
 import type {
   AdminCapabilityManifest,
   AdminJsonSchema,
@@ -332,10 +333,8 @@ function validateSupportedSchema(
 }
 
 function normalizedRoute(operation: AdminOperationDefinition): string {
-  const raw =
-    typeof operation.route === "string"
-      ? operation.route.trim()
-      : `${operation.route.method} ${operation.route.path}`;
+  const route = parseAdminOperationRoute(operation);
+  const raw = route ? `${route.method} ${route.path}` : "";
   return raw
     .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, ":param")
     .replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, ":param");
@@ -371,17 +370,7 @@ function internalPathIssue(value: string): string | undefined {
   return undefined;
 }
 
-function operationRoutePath(
-  operation: AdminOperationDefinition,
-): string | undefined {
-  if (typeof operation.route !== "string") return operation.route.path;
-  const route = operation.route.trim();
-  let boundary = 0;
-  while (boundary < route.length && !/\s/.test(route[boundary]!)) boundary += 1;
-  const method = route.slice(0, boundary).toUpperCase();
-  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return undefined;
-  return route.slice(boundary).trimStart() || undefined;
-}
+const operationRoutePath = (operation: AdminOperationDefinition): string | undefined => parseAdminOperationRoute(operation)?.path;
 
 function presentationRecordSchema(
   operation: AdminOperationDefinition | undefined,
@@ -417,6 +406,7 @@ function presentationInputPathSchema(
 ): AdminJsonSchema | undefined {
   let current = schema;
   for (const segment of path.split(".")) {
+    if (segment === "__proto__" || segment === "prototype" || segment === "constructor") return undefined;
     if (!current || !allowedTypes(current).includes("object")) return undefined;
     current = current.properties?.[segment];
   }

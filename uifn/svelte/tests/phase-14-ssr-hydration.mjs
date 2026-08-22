@@ -78,6 +78,7 @@ const server = createHttpServer(async (request, response) => {
     response.end(html);
   } catch (cause) {
     vite.ssrFixStacktrace(cause);
+    console.error('Svelte SSR hydration render failed.', cause);
     response.statusCode = 500;
     response.setHeader('content-type', 'text/plain; charset=utf-8');
     response.end('Internal Server Error');

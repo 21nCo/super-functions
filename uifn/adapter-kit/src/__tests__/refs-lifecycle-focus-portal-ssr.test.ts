@@ -36,6 +36,15 @@ describe('adapter low-level utilities', () => {
     expect(registry.require('empty')).toBe('');
   });
 
+  it('does not let cleanup remove a newer registration of the same element', () => {
+    const registry = createElementRegistry<object>();
+    const element = {};
+    const removeOld = registry.register('item', element);
+    registry.register('item', element);
+    removeOld();
+    expect(registry.require('item')).toBe(element);
+  });
+
   it('runs lifecycle cleanup in reverse order once', () => {
     const scope = createLifecycleScope();
     const calls: string[] = [];

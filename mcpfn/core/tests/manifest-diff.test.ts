@@ -304,6 +304,16 @@ describe("McpFn manifests", () => {
     expect(canonicalJson({ "ä": 1, z: 2 })).toBe('{"z":2,"ä":1}');
     expect(canonicalJson({ "2": "two", "10": "ten", a: "letter" })).toBe('{"10":"ten","2":"two","a":"letter"}');
     expect(canonicalJson({ at: new Date("2026-08-21T00:00:00.000Z") })).toBe('{"at":"2026-08-21T00:00:00.000Z"}');
+    const keys: string[] = [];
+    const value = {
+      toJSON(key: string) {
+        keys.push(key);
+        return { toJSON: () => "must-not-run-again", nested: { toJSON: (nestedKey: string) => nestedKey } };
+      },
+    };
+    expect(canonicalJson({ value })).toBe('{"value":{"nested":"nested"}}');
+    expect(keys).toEqual(['value']);
+    expect(canonicalJson([, "present"])).toBe('[null,"present"]');
   });
 
   it("normalizes elicitation requirements and rejects malformed manifest entries", () => {

@@ -10,6 +10,8 @@ import { build as buildWithTsup } from 'tsup';
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputRoot = path.join(packageRoot, 'dist');
 
+// Build-only bridge for the published @uifn/svelte@0.0.1 primitive entries.
+// These names are intentionally absent from the @uifn/core public root.
 const legacyRuntimeAliases = Object.freeze({
   accordion: 'createAccordion',
   'alert-dialog': 'createAlertDialog',

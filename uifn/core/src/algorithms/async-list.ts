@@ -59,7 +59,9 @@ export function createAsyncList<T>(options: {
     },
     cancel() {
       if (!controller || controller.signal.aborted) return;
-      controller.abort();
+      const cancelled = controller;
+      cancelled.abort();
+      if (controller !== cancelled) return;
       if (state.status === 'loading') {
         publish({
           ...state,

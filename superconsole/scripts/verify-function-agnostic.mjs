@@ -36,27 +36,37 @@ function embeddedFunctionPackage(identifier) {
 function sourceRegions(source, extension) {
   if (extension !== '.svelte') return [{ source, lineOffset: 0 }];
   const regions = [];
-  const lower = source.toLowerCase();
+  /** @param {string} name @param {number} from @param {boolean} [closing] */
+  const findTag = (name, from, closing = false) => {
+    const prefix = closing ? `</${name}` : `<${name}`;
+    let candidate = source.indexOf('<', from);
+    while (candidate >= 0) {
+      if (source.slice(candidate, candidate + prefix.length).toLowerCase() === prefix) {
+        let boundary = candidate + prefix.length;
+        if (closing) {
+          while ([' ', '\t', '\n', '\r'].includes(source[boundary])) boundary += 1;
+          if (source[boundary] === '>') return { start: candidate, end: boundary };
+        } else if (['>', ' ', '\t', '\n', '\r'].includes(source[boundary])) {
+          const end = source.indexOf('>', boundary);
+          if (end >= 0) return { start: candidate, end };
+          return undefined;
+        }
+      }
+      candidate = source.indexOf('<', candidate + 1);
+    }
+    return undefined;
+  };
   let cursor = 0;
   while (cursor < source.length) {
-    const opening = lower.indexOf('<script', cursor);
-    if (opening < 0) break;
-    const afterName = lower[opening + '<script'.length];
-    if (!['>', ' ', '\t', '\n', '\r'].includes(afterName)) {
-      cursor = opening + '<script'.length;
-      continue;
-    }
-    const openingEnd = source.indexOf('>', opening + '<script'.length);
-    if (openingEnd < 0) break;
-    const closing = lower.indexOf('</script', openingEnd + 1);
-    if (closing < 0) break;
-    const closingEnd = source.indexOf('>', closing + '</script'.length);
-    if (closingEnd < 0) break;
+    const opening = findTag('script', cursor);
+    if (!opening) break;
+    const closing = findTag('script', opening.end + 1, true);
+    if (!closing) break;
     regions.push({
-      source: source.slice(openingEnd + 1, closing),
-      lineOffset: source.slice(0, openingEnd + 1).split('\n').length - 1,
+      source: source.slice(opening.end + 1, closing.start),
+      lineOffset: source.slice(0, opening.end + 1).split('\n').length - 1,
     });
-    cursor = closingEnd + 1;
+    cursor = closing.end + 1;
   }
   return regions;
 }

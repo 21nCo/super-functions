@@ -1,6 +1,8 @@
 # Migrating to the uifn 1.0 controller contract
 
-This is an intentional breaking cutover. There are no deprecated aliases or compatibility shims.
+This is an intentional breaking cutover. The `@uifn/core` public root has no deprecated aliases or compatibility shims.
+
+Generated per-primitive runtime entries temporarily retain the constructor names consumed by the published `@uifn/svelte@0.0.1` package. Those build-only aliases are not exported from the `@uifn/core` public root and are not part of the 1.0 controller contract; remove them when the Svelte package no longer consumes the legacy names.
 
 ## Replace behavior constructors
 

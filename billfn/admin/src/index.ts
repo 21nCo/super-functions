@@ -684,6 +684,8 @@ export interface BillFnAdminListInput {
   filter?: Record<string, unknown>;
   limit?: number;
   cursor?: string;
+  search?: string;
+  sort?: readonly { field?: string; direction?: "asc" | "desc" }[];
 }
 export interface BillFnAdminGetInput { id: string }
 export interface BillFnChangeSubscriptionInput {

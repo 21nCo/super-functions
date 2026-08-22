@@ -43,21 +43,29 @@ export function createElementRegistry<TElement>(
   options: { component?: string } = {}
 ): ElementRegistry<TElement> {
   const elements = new Map<string, TElement>();
+  const registrations = new Map<string, symbol>();
 
   return {
     register(key, element) {
       if (element === null) {
         elements.delete(key);
+        registrations.delete(key);
       } else {
         elements.set(key, element);
+        const registration = Symbol(key);
+        registrations.set(key, registration);
+        return () => {
+          if (registrations.get(key) === registration) {
+            registrations.delete(key);
+            elements.delete(key);
+          }
+        };
       }
-
-      return () => {
-        if (element !== null && elements.get(key) === element) elements.delete(key);
-      };
+      return () => undefined;
     },
     unregister(key) {
       elements.delete(key);
+      registrations.delete(key);
     },
     get(key) {
       return elements.get(key) ?? null;
@@ -84,6 +92,7 @@ export function createElementRegistry<TElement>(
     },
     clear() {
       elements.clear();
+      registrations.clear();
     },
     entries() {
       return Array.from(elements.entries());

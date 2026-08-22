@@ -132,6 +132,30 @@ describe("@billfn/admin", () => {
     });
   });
 
+  it("applies declared catalog list search, filters, sorting, limits, and cursors", async () => {
+    const plans = ["gamma", "alpha", "beta"].map((planKey) => ({
+      productKey: "console",
+      planKey,
+      displayName: `${planKey} plan`,
+      features: {},
+      limits: {},
+      prices: [],
+    }));
+    const service = createBillFnDomainAdminService({
+      billfn: { getCatalog: vi.fn(async () => ({ plans })) } as unknown as BillFnInstance,
+      subject: () => ({ tenantId: "tenant_1" }),
+    });
+    const first = await service.listPlans({ search: "plan", sort: [{ field: "id", direction: "asc" }], limit: 2 }, context);
+    expect(first.data).toMatchObject({ items: [{ id: "alpha" }, { id: "beta" }], nextCursor: expect.any(String) });
+    const second = await service.listPlans({
+      filter: { productKey: "console" },
+      sort: [{ field: "id", direction: "asc" }],
+      limit: 2,
+      cursor: (first.data as { nextCursor: string }).nextCursor,
+    }, context);
+    expect(second.data).toEqual({ items: [expect.objectContaining({ id: "gamma" })], nextCursor: null });
+  });
+
   it("derives reconciliation targets from the active subject and rejects foreign targets/providers", async () => {
     const enqueueReconciliationJob = vi.fn(async (input) => ({
       ok: true as const,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AuthType,
   ConnectionStatus,
@@ -8,6 +8,7 @@ import {
 } from "plugfn";
 import {
   createPlugFnDomainAdminAdapter,
+  createPlugFnDomainAdminService,
   plugFnAdminCapability,
 } from "../index.js";
 
@@ -149,5 +150,24 @@ describe("@plugfn/admin", () => {
   it("rejects a facade bound to another project", async () => {
     const { adapter } = setup();
     await expect(adapter.execute("plugfn.providers.list", {}, { ...context, scope: { ...context.scope, projectId: "other_project" } })).rejects.toMatchObject({ code: "forbidden" });
+  });
+
+  it("fetches enough sync jobs to serve cursor pages beyond the first hundred", async () => {
+    const jobs = Array.from({ length: 151 }, (_, index) => ({
+      id: `job_${index}`, provider: "github", connectionId: "connection_1", resource: "issues", mode: "full",
+      status: "queued", ownerKind: "user", ownerId: "user_1", fetchedCount: 0, persistedCount: 0, skippedCount: 0,
+      createdAt: new Date(index), updatedAt: new Date(index),
+    }));
+    const listJobs = vi.fn(async (_filters, limit: number) => jobs.slice(0, limit));
+    const service = createPlugFnDomainAdminService({
+      plugfn: { runtime: { sync: { listJobs } } } as never,
+      projectId: "project_1",
+      identity: () => ({ userId: "user_1", tenantId: "tenant_1" }),
+    });
+    const first = await service.listSyncJobs({ limit: 100 }, context);
+    const second = await service.listSyncJobs({ limit: 100, cursor: first.nextCursor! }, context);
+    expect(second.items).toHaveLength(51);
+    expect(second.items[0]).toMatchObject({ id: "job_100" });
+    expect(listJobs).toHaveBeenLastCalledWith(expect.any(Object), 201);
   });
 });

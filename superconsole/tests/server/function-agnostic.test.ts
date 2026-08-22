@@ -36,4 +36,15 @@ describe('function-agnostic source guard', () => {
       expect.stringContaining('concrete function package import searchfn'),
     ]);
   });
+
+  it('requires a real closing script tag and preserves offsets after Unicode case expansions', () => {
+    const findings = findFunctionAgnosticIssues(`İ
+      <script lang="ts">
+        const inert = '</scriptx>';
+        import { client } from 'searchfn';
+      </script   >
+    `, 'fixture.svelte');
+    expect(findings).toEqual([expect.stringContaining('concrete function package import searchfn')]);
+    expect(findings[0]).toMatch(/^4:/);
+  });
 });

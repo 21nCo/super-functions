@@ -18,9 +18,16 @@ export interface LegacyAvatarMachine {
 export function createLegacyAvatar(): LegacyAvatarMachine {
   let state: LegacyAvatarState = Object.freeze({ status: 'idle' });
   const subscribers = new Set<(state: LegacyAvatarState) => void>();
+  const notify = (subscriber: (state: LegacyAvatarState) => void) => {
+    try {
+      subscriber(state);
+    } catch {
+      // Compatibility subscribers are isolated from each other and state transitions.
+    }
+  };
   const update = (status: LegacyAvatarStatus) => {
     state = Object.freeze({ status });
-    for (const subscriber of [...subscribers]) subscriber(state);
+    for (const subscriber of [...subscribers]) notify(subscriber);
   };
 
   return {
@@ -34,6 +41,7 @@ export function createLegacyAvatar(): LegacyAvatarMachine {
     }),
     subscribe(callback) {
       subscribers.add(callback);
+      notify(callback);
       return () => subscribers.delete(callback);
     },
   };

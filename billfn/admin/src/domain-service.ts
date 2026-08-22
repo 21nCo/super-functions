@@ -6,10 +6,13 @@ import type {
 } from "@billfn/core";
 import {
   AdminError,
+  decodeAdminCursor,
+  encodeAdminCursor,
+  normalizeAdminPageLimit,
   type AdminOperationContext,
   type AdminOperationResult,
 } from "@superfunctions/admin";
-import type { BillFnAdminService } from "./index.js";
+import type { BillFnAdminListInput, BillFnAdminService } from "./index.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -51,8 +54,35 @@ function asJson(value: object): JsonRecord {
   return { ...value };
 }
 
-function list(values: object[]): AdminOperationResult<JsonRecord> {
-  return { ok: true, data: { items: values.map(asJson), nextCursor: null } };
+function list(
+  values: object[],
+  input: BillFnAdminListInput,
+  context: AdminOperationContext,
+): AdminOperationResult<JsonRecord> {
+  let records = values.map(asJson);
+  if (input.search?.trim()) {
+    const query = input.search.trim().toLowerCase();
+    records = records.filter((value) => JSON.stringify(value).toLowerCase().includes(query));
+  }
+  if (input.filter) {
+    records = records.filter((value) => Object.entries(input.filter!).every(([key, expected]) => Object.is(value[key], expected)));
+  }
+  const sorts = input.sort ?? [];
+  records.sort((left, right) => {
+    for (const descriptor of sorts) {
+      if (!descriptor.field) continue;
+      const compared = String(left[descriptor.field] ?? "").localeCompare(String(right[descriptor.field] ?? ""));
+      if (compared !== 0) return compared * (descriptor.direction === "desc" ? -1 : 1);
+    }
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  });
+  const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+  const offset = decoded.offset ?? 0;
+  if (!Number.isInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The BillFn cursor is invalid.");
+  const limit = normalizeAdminPageLimit(input.limit, { defaultLimit: 50, maxLimit: 200 });
+  const items = records.slice(offset as number, (offset as number) + limit);
+  const nextOffset = (offset as number) + items.length;
+  return { ok: true, data: { items, nextCursor: nextOffset < records.length ? encodeAdminCursor(context.scope, { offset: nextOffset }) : null } };
 }
 
 function item(value: object): AdminOperationResult<JsonRecord> {
@@ -102,47 +132,47 @@ export function createBillFnDomainAdminService(
   options: BillFnDomainAdminServiceOptions,
 ): BillFnAdminService {
   return {
-    async listProducts() {
+    async listProducts(input, context) {
       const catalog = await options.billfn.getCatalog();
-      return list(products(catalog.plans));
+      return list(products(catalog.plans), input, context);
     },
     async getProduct(input) {
       const catalog = await options.billfn.getCatalog();
       const value = products(catalog.plans).find((entry) => (entry as { id: string }).id === input.id);
       return value ? item(value) : notFound("Product");
     },
-    async listPlans() {
+    async listPlans(input, context) {
       const catalog = await options.billfn.getCatalog();
       const plans = catalog.plans.map((plan) => ({ ...plan, id: plan.planKey }));
-      return list(plans);
+      return list(plans, input, context);
     },
     async getPlan(input) {
       const catalog = await options.billfn.getCatalog();
       const value = catalog.plans.map((plan) => ({ ...plan, id: plan.planKey })).find((entry) => entry.id === input.id);
       return value ? item(value) : notFound("Plan");
     },
-    async listPrices() {
+    async listPrices(input, context) {
       const catalog = await options.billfn.getCatalog();
-      return list(catalog.plans.flatMap((plan) => plan.prices.map((price) => ({ ...price, id: price.priceId, planKey: plan.planKey, productKey: plan.productKey }))));
+      return list(catalog.plans.flatMap((plan) => plan.prices.map((price) => ({ ...price, id: price.priceId, planKey: plan.planKey, productKey: plan.productKey }))), input, context);
     },
     async getPrice(input) {
       const catalog = await options.billfn.getCatalog();
       const value = catalog.plans.flatMap((plan) => plan.prices.map((price) => ({ ...price, id: price.priceId, planKey: plan.planKey, productKey: plan.productKey }))).find((entry) => entry.id === input.id);
       return value ? item(value) : notFound("Price");
     },
-    async listSubscriptions(_input, context) {
+    async listSubscriptions(input, context) {
       const subject = await options.subject(context);
       const subscription = await options.billfn.subscriptionProvider.getActiveSubscription(subject);
-      return list(subscription ? [subscription] : []);
+      return list(subscription ? [subscription] : [], input, context);
     },
     async getSubscription(input, context) {
       const subject = await options.subject(context);
       const subscription = await options.billfn.subscriptionProvider.getActiveSubscription(subject);
       return subscription?.id === input.id ? item(subscription) : notFound("Subscription");
     },
-    async listEntitlements(_input, context) {
+    async listEntitlements(input, context) {
       const data = unwrap(await options.billfn.getEntitlements(await options.subject(context)));
-      return list(data.entitlements ? [data.entitlements] : []);
+      return list(data.entitlements ? [data.entitlements] : [], input, context);
     },
     async getEntitlement(input, context) {
       const data = unwrap(await options.billfn.getEntitlements(await options.subject(context)));
@@ -150,7 +180,7 @@ export function createBillFnDomainAdminService(
     },
     async listUsage(input, context) {
       const data = unwrap(await options.billfn.getUsage(await options.subject(context), optionalString(input.filter?.resource, "filter.resource")));
-      return list(data.usage.map((entry) => ({ ...entry, id: entry.resource })));
+      return list(data.usage.map((entry) => ({ ...entry, id: entry.resource })), input, context);
     },
     async getUsage(input, context) {
       const data = unwrap(await options.billfn.getUsage(await options.subject(context), input.id));

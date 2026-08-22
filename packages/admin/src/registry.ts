@@ -1,5 +1,6 @@
 import { AdminError } from "./errors.js";
 import { assertAdminCapabilityManifest } from "./validator.js";
+import { parseAdminOperationRoute } from "./operation-route.js";
 import type {
   AdminCapabilityAdapter,
   AdminCapabilityManifest,
@@ -30,21 +31,6 @@ function dependenciesOf(manifest: AdminCapabilityManifest): string[] {
   });
   if (manifest.owner) dependencies.push(manifest.owner.moduleId);
   return [...new Set(dependencies)];
-}
-
-function routeOf(operation: AdminOperationDefinition): { method: string; path: string } {
-  if (typeof operation.route === "string") {
-    const route = operation.route.trim();
-    let boundary = 0;
-    while (boundary < route.length && !/\s/.test(route[boundary]!)) boundary += 1;
-    const method = route.slice(0, boundary).toUpperCase();
-    const path = route.slice(boundary).trimStart();
-    if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !path) {
-      throw new AdminError("invalid_argument", `Invalid route for ${operation.id}.`);
-    }
-    return { method, path };
-  }
-  return operation.route;
 }
 
 export function adminMcpToolName(operationId: string): string {
@@ -169,7 +155,8 @@ export class AdminCapabilityRegistry {
     for (const moduleId of ordered) {
       const adapter = supplied.get(moduleId)!;
       for (const operation of adapter.manifest.operations) {
-        const route = routeOf(operation);
+        const route = parseAdminOperationRoute(operation);
+        if (!route) throw new AdminError("invalid_argument", `Invalid route for ${operation.id}.`);
         const suffix = route.path.startsWith("/") ? route.path : `/${route.path}`;
         const routePath = `${basePath}/modules/${moduleId}${suffix}`;
         const routeKey = `${route.method} ${normalizeRoutePattern(routePath)}`;
@@ -231,8 +218,8 @@ function normalizeRoutePattern(path: string): string {
 }
 
 function routeMatches(operation: AdminOperationDefinition, pattern: string, method: string, path: string): boolean {
-  const operationMethod = typeof operation.route === "string" ? operation.route.trim().split(/\s+/, 1)[0] : operation.route.method;
-  if (operationMethod?.toUpperCase() !== method.toUpperCase()) return false;
+  const route = parseAdminOperationRoute(operation);
+  if (route?.method !== method.toUpperCase()) return false;
   const patternParts = pattern.split("/").filter(Boolean);
   const pathParts = path.split("?")[0]!.split("/").filter(Boolean);
   return patternParts.length === pathParts.length && patternParts.every((part, index) =>

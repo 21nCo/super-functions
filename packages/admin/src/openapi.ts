@@ -1,6 +1,7 @@
 import { AdminError } from "./errors.js";
 import type { AdminCapabilityRegistry, AdminRegistryOperation } from "./registry.js";
 import { adminOperationMinimumScope } from "./scope.js";
+import { parseAdminOperationRoute } from "./operation-route.js";
 import type { AdminJsonSchema, AdminObjectSchema } from "./types.js";
 
 export interface AdminOpenApiOptions {
@@ -67,9 +68,8 @@ export function adminOpenApiScopeParameters(): Record<string, unknown>[] {
 }
 
 function route(entry: AdminRegistryOperation): { method: string; path: string; parameterNames: string[] } {
-  const method = typeof entry.operation.route === "string"
-    ? entry.operation.route.trim().split(/\s+/, 1)[0]!.toUpperCase()
-    : entry.operation.route.method;
+  const method = parseAdminOperationRoute(entry.operation)?.method;
+  if (!method) throw new AdminError("invalid_argument", `Invalid route for ${entry.operation.id}.`);
   const parameterNames: string[] = [];
   const path = entry.routePath
     .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (_, name: string) => { parameterNames.push(name); return `{${name}}`; })

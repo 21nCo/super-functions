@@ -98,8 +98,13 @@ function splitDocumentId(value: string): { resource: string; id: string } {
   if (separator <= 0 || separator === value.length - 1) {
     throw new AdminError("invalid_argument", "SearchFn document targets use the form resource:id.");
   }
-  const id = value.slice(separator + 1);
-  return { resource: value.slice(0, separator), id };
+  return { resource: value.slice(0, separator), id: value.slice(separator + 1) };
+}
+
+function documentRemovalIds(id: string): Array<string | number> {
+  if (!/^-?(?:0|[1-9]\d*)$/.test(id)) return [id];
+  const numericId = Number(id);
+  return Number.isSafeInteger(numericId) ? [id, numericId] : [id];
 }
 
 function documents(value: unknown): SearchDocument[] {
@@ -201,7 +206,7 @@ export function createSearchFnDomainAdminService(
       const { adapter, resources } = await state(context);
       const target = splitDocumentId(string(input.id, "id"));
       if (!resources.includes(target.resource)) throw new AdminError("not_found", "SearchFn index was not found in the active scope.");
-      await adapter.remove({ resource: target.resource, ids: [target.id], signal: context.signal });
+      await adapter.remove({ resource: target.resource, ids: documentRemovalIds(target.id), signal: context.signal });
       return accepted({ removed: 1, resource: target.resource });
     },
     async clearIndex(input, context) {

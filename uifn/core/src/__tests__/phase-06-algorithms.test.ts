@@ -113,6 +113,8 @@ describe('PHASE_06 canonical shared algorithms', () => {
   it('handles scientific range steps, aligned End keys, and malformed colors', () => {
     expect(alignRangeValue(2.5e-13, { min: 0, max: 1e-12, step: 1.25e-13 })).toBe(2.5e-13);
     expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 3 })).toBe(9);
+    expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 4 })).toBe(8);
+    expect(Number.isFinite(alignRangeValue(Number.MAX_VALUE, { min: 0, max: Number.MAX_VALUE, step: 0.1 }))).toBe(true);
     expect(() => alignRangeValue(1, { min: 0, max: 10, step: Number.POSITIVE_INFINITY })).toThrowError(UIFnError);
     expect(() => parseUIFnColor('rgb(1..2 3 4)')).toThrowError(UIFnError);
   });
@@ -147,9 +149,24 @@ describe('PHASE_06 canonical shared algorithms', () => {
     expect(observed).toContain('loading');
   });
 
+  it('does not let a reentrant abort listener cancel the replacement AsyncList load', async () => {
+    const pending: Array<{ signal: AbortSignal; resolve: (items: readonly string[]) => void }> = [];
+    const list = createAsyncList<string>({ load: ({ signal }) => new Promise((resolve) => pending.push({ signal, resolve })) });
+    const first = list.load('first');
+    pending[0]!.signal.addEventListener('abort', () => { void list.load('replacement'); });
+    list.cancel();
+    expect(list.state.status).toBe('loading');
+    pending[1]!.resolve(['replacement']);
+    pending[0]!.resolve(['stale']);
+    await Promise.all([first, Promise.resolve()]);
+    await Promise.resolve();
+    expect(list.state).toMatchObject({ status: 'loaded', items: ['replacement'] });
+  });
+
   it('supports collation expansions and immutable numeric-key selections', () => {
     const matcher = createLocaleMatcher('de');
     expect(matcher.includes('Straße', 'STRASSE')).toBe(true);
+    expect(matcher.includes(`${'a'.repeat(50_000)}Straße`, 'STRASSE')).toBe(true);
     const numeric = createListCollection({
       items: [0, 1, 2],
       getKey: (value) => value,

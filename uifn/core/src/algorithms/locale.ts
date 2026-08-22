@@ -10,29 +10,22 @@ export interface LocaleMatcher {
 export function createLocaleMatcher(locale = 'en'): LocaleMatcher {
   const collator = new Intl.Collator(locale, { usage: 'search', sensitivity: 'base', numeric: true });
   const normalize = (value: string) => value.normalize('NFKD').toLocaleLowerCase(locale);
+  const searchKey = (value: string) => normalize(value)
+    .replace(/\p{M}/gu, '')
+    .replace(/ß/g, 'ss')
+    .replace(/æ/g, 'ae')
+    .replace(/œ/g, 'oe')
+    .replace(/ø/g, 'o')
+    .replace(/ł/g, 'l');
   return Object.freeze({
     locale,
     normalize,
     equals: (left: string, right: string) => collator.compare(normalize(left), normalize(right)) === 0,
     startsWith(value: string, query: string) {
-      const normalizedValue = Array.from(normalize(value));
-      const normalizedQuery = normalize(query);
-      if (normalizedQuery.length === 0) return true;
-      for (let end = 1; end <= normalizedValue.length; end += 1) {
-        if (collator.compare(normalizedValue.slice(0, end).join(''), normalizedQuery) === 0) return true;
-      }
-      return false;
+      return searchKey(value).startsWith(searchKey(query));
     },
     includes(value: string, query: string) {
-      const normalizedValue = Array.from(normalize(value));
-      const normalizedQuery = normalize(query);
-      if (normalizedQuery.length === 0) return true;
-      for (let start = 0; start < normalizedValue.length; start += 1) {
-        for (let end = start + 1; end <= normalizedValue.length; end += 1) {
-          if (collator.compare(normalizedValue.slice(start, end).join(''), normalizedQuery) === 0) return true;
-        }
-      }
-      return false;
+      return searchKey(value).includes(searchKey(query));
     },
     compare: (left: string, right: string) => collator.compare(left, right),
   });

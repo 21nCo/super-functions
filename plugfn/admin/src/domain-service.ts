@@ -260,7 +260,14 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const owner = ownerFor(mapped);
       const ownerId = owner.kind === "user" ? owner.userId : owner.organizationId;
       const { cursor: _cursor, limit, ...requested } = input;
-      const values = await options.plugfn.runtime.sync.listJobs({ ownerKind: owner.kind, ownerId, ...requested }, Math.min(1000, Math.max(limit ?? 50, 100)));
+      const decoded = input.cursor ? decodeAdminCursor<{ offset?: unknown }>(input.cursor, context.scope) : { offset: 0 };
+      const offset = decoded.offset ?? 0;
+      if (!Number.isInteger(offset) || (offset as number) < 0) throw new AdminError("invalid_argument", "The PlugFn cursor is invalid.");
+      const pageLimit = normalizeAdminPageLimit(limit, { defaultLimit: 50, maxLimit: 100 });
+      const values = await options.plugfn.runtime.sync.listJobs(
+        { ownerKind: owner.kind, ownerId, ...requested },
+        (offset as number) + pageLimit + 1,
+      );
       return page(values.map(syncView), input, context);
     },
     async getSyncJob(input, context) { return { item: syncView(await ownedSyncJob(options, input.id, context)) }; },

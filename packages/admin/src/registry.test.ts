@@ -754,4 +754,36 @@ describe("manifest validation", () => {
       message: "must resolve in the list operation input schema",
     }));
   });
+
+  it("rejects presentation input paths that address prototype properties", () => {
+    const operation = {
+      ...testManifest("examplefn").operations[0]!,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          constructor: {
+            type: "object" as const,
+            properties: { value: { type: "string" as const } },
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
+    };
+    const manifest = testManifest("examplefn", {
+      resources: [{
+        id: "records", label: "Records", description: "Records.", risk: "standard", idField: "id",
+        filterableFields: ["value"],
+        presentation: {
+          listOperationId: operation.id,
+          query: { filters: [{ field: "value", inputPath: "constructor.value" }] },
+        },
+      }],
+      operations: [operation],
+    });
+    expect(validateAdminCapabilityManifest(manifest)).toContainEqual(expect.objectContaining({
+      path: "$.resources[0].presentation.query.filters[0].inputPath",
+      message: "must resolve in the list operation input schema",
+    }));
+  });
 });
