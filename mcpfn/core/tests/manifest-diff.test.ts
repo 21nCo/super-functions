@@ -63,6 +63,33 @@ describe("McpFn manifests", () => {
     );
   });
 
+  it("keeps optional input removal compatible when the new schema is open", () => {
+    const manifestWithProperty = (includeProperty: boolean, additionalProperties?: boolean) => createManifest(
+      { name: "example", version: includeProperty ? "1.0.0" : "1.1.0" },
+      new McpFnRegistry().register({
+        name: "open_input",
+        description: "Accept an open input.",
+        inputSchema: {
+          type: "object",
+          ...(includeProperty ? { properties: { optional: { type: "string" } } } : {}),
+          ...(additionalProperties === undefined ? {} : { additionalProperties }),
+        },
+        handler: async () => structuredResult({ ok: true }),
+      }),
+    );
+
+    expect(diffManifests(manifestWithProperty(true, true), manifestWithProperty(false, true)))
+      .toMatchObject({ compatible: true, changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "additive" }),
+      ]) });
+    expect(diffManifests(manifestWithProperty(true), manifestWithProperty(false)))
+      .toMatchObject({ compatible: true });
+    expect(diffManifests(manifestWithProperty(true, false), manifestWithProperty(false, false)))
+      .toMatchObject({ compatible: false, changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+      ]) });
+  });
+
   it("applies input and output variance to enum and constraint changes", () => {
     const before = createManifest(
       { name: "example", version: "1.0.0" },

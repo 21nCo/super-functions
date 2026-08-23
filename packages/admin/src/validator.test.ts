@@ -113,4 +113,11 @@ describe("validateAdminValue", () => {
       });
     },
   );
+
+  it("counts supplementary Unicode characters as one code point", () => {
+    expect(validateAdminValue({ type: "string", minLength: 1, maxLength: 1 }, "😀"))
+      .toEqual([]);
+    expect(validateAdminValue({ type: "string", minLength: 2 }, "😀"))
+      .toContainEqual(expect.objectContaining({ keyword: "minLength" }));
+  });
 });

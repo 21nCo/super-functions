@@ -295,6 +295,7 @@ export interface UIFnOverlayBaseBackend<TProps extends UIFnOverlayCommonProps> {
     getState?: () => TState,
     updateExtra?: (inputs: Partial<TProps>) => void,
     destroyExtra?: () => void,
+    normalizeInputs?: (inputs: Partial<TProps>) => Partial<TProps>,
   ): UIFnController<TState, TActions, TParts, TProps>;
 }
 
@@ -541,13 +542,14 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
         },
       };
     },
-    controller(actionsValue, parts, getState = store.getState as () => any, updateExtra, destroyExtra) {
+    controller(actionsValue, parts, getState = store.getState as () => any, updateExtra, destroyExtra, normalizeInputs) {
       return createUIFnController({
         actions: actionsValue,
         parts,
         getState,
         update(inputs) {
-          const candidateProps = { ...currentProps, ...inputs };
+          const normalizedInputs = normalizeInputs?.(inputs) ?? inputs;
+          const candidateProps = { ...currentProps, ...normalizedInputs };
           const nextModal = policyValue.modalConfigurable
             ? candidateProps.modal ?? policyValue.modalDefault
             : policyValue.modalDefault;
@@ -573,8 +575,8 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
             previousValue: store.getState().open,
             nextValue: store.getState().open,
           });
-          if ('open' in inputs && inputs.open !== undefined) actions.syncOpen(inputs.open);
-          updateExtra?.(inputs);
+          if ('open' in normalizedInputs && normalizedInputs.open !== undefined) actions.syncOpen(normalizedInputs.open);
+          updateExtra?.(normalizedInputs);
         },
         subscribe(subscriber) {
           return store.subscribe((_state, meta) => subscriber(getState(), meta as any));

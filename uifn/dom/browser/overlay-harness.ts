@@ -200,13 +200,17 @@ async function exerciseOpenPrimitive(
   }
 
   if (name === 'Dialog') {
-    controller.update({ modal: false, trapFocus: false, scrollLock: false, placement: 'top-start' });
+    controller.update({ modal: false, trapFocus: false, scrollLock: false });
     await wait(20);
     invariant(platform.modals.size === 0, 'Dialog retained modal resources after an open update');
-    invariant(fixture.positioner.dataset.side === 'top', 'Dialog did not apply an open placement update');
     controller.update({ modal: true, trapFocus: true, scrollLock: true });
     await wait(20);
     invariant(platform.modals.size === 1, 'Dialog did not reacquire modal resources after an open update');
+  }
+  if (name === 'Popover') {
+    controller.update({ placement: 'top-start' });
+    await wait(20);
+    invariant(fixture.positioner.dataset.side === 'top', 'Popover did not apply an open placement update');
   }
 
   if (name === 'AlertDialog') {

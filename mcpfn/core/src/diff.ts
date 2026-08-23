@@ -268,8 +268,10 @@ function diffSchema(
       continue;
     }
     if (oldProperty && !newProperty) {
+      const openInputRemoval = direction === "input"
+        && (after.additionalProperties === undefined || after.additionalProperties === true);
       push(changes, {
-        severity: "breaking",
+        severity: openInputRemoval ? "additive" : "breaking",
         code: "property-removed",
         path: propertyPath,
         message: `Property ${name} was removed`,

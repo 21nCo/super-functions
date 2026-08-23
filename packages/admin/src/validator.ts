@@ -166,14 +166,15 @@ function validateAdminValueInternal(
   }
 
   if (typeof value === "string") {
-    if (schema.minLength !== undefined && value.length < schema.minLength) {
+    const length = Array.from(value).length;
+    if (schema.minLength !== undefined && length < schema.minLength) {
       issues.push({
         path,
         message: `must contain at least ${schema.minLength} characters`,
         keyword: "minLength",
       });
     }
-    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+    if (schema.maxLength !== undefined && length > schema.maxLength) {
       issues.push({
         path,
         message: `must contain at most ${schema.maxLength} characters`,

@@ -68,6 +68,9 @@ export interface AuthFnAdminDeleteUsersByEmailResult {
 interface DecodedUserCursor {
   createdAt: string;
   id: string;
+  direction: AuthFnAdminListUsersDirection;
+  email: string | null;
+  regionId: string | null;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -81,9 +84,10 @@ export async function listAuthFnAdminUsers(
 ): Promise<AuthFnAdminListUsersResult> {
   const limit = normalizeLimit(input.limit);
   const direction = input.direction ?? 'desc';
-  const cursor = input.cursor ? decodeUserCursor(input.cursor) : null;
   const email = normalizeEmail(input.email);
   const regionId = normalizeOptionalString(input.regionId);
+  const cursorQuery = { direction, email: email ?? null, regionId: regionId ?? null };
+  const cursor = input.cursor ? decodeUserCursor(input.cursor, cursorQuery) : null;
   const where = email
     ? [{ field: 'primaryEmail', operator: 'eq' as const, value: email }]
     : [];
@@ -136,7 +140,7 @@ export async function listAuthFnAdminUsers(
     users,
     pageInfo: {
       hasMore,
-      nextCursor: hasMore && last ? encodeUserCursor(last) : undefined
+      nextCursor: hasMore && last ? encodeUserCursor(last, cursorQuery) : undefined
     }
   };
 }
@@ -227,16 +231,28 @@ function normalizeLimit(limit: number | undefined): number {
   return Math.min(limit, MAX_LIMIT);
 }
 
-function decodeUserCursor(cursor: string): DecodedUserCursor {
+function decodeUserCursor(
+  cursor: string,
+  query: Pick<DecodedUserCursor, 'direction' | 'email' | 'regionId'>,
+): DecodedUserCursor {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<DecodedUserCursor>;
-    if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string') {
+    if (
+      typeof parsed.createdAt !== 'string'
+      || typeof parsed.id !== 'string'
+      || parsed.direction !== query.direction
+      || parsed.email !== query.email
+      || parsed.regionId !== query.regionId
+    ) {
       throw new Error('Invalid cursor payload');
     }
 
     return {
       createdAt: parsed.createdAt,
-      id: parsed.id
+      id: parsed.id,
+      direction: query.direction,
+      email: query.email,
+      regionId: query.regionId,
     };
   } catch (error) {
     throw new AuthFnValidationError('Invalid users cursor', {
@@ -246,10 +262,14 @@ function decodeUserCursor(cursor: string): DecodedUserCursor {
   }
 }
 
-function encodeUserCursor(user: Pick<AuthFnAdminUserSummary, 'createdAt' | 'id'>): string {
+function encodeUserCursor(
+  user: Pick<AuthFnAdminUserSummary, 'createdAt' | 'id'>,
+  query: Pick<DecodedUserCursor, 'direction' | 'email' | 'regionId'>,
+): string {
   return Buffer.from(JSON.stringify({
     createdAt: toIsoDateString(user.createdAt),
-    id: user.id
+    id: user.id,
+    ...query,
   } satisfies DecodedUserCursor)).toString('base64url');
 }
 

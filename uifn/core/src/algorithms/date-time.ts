@@ -29,7 +29,7 @@ function daysInMonth(year: number, month: number): number {
 }
 
 export function createUIFnCalendarDate(year: number, month: number, day: number): UIFnCalendarDate {
-  const monthLength = Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12
+  const monthLength = Number.isInteger(year) && year >= 0 && Number.isInteger(month) && month >= 1 && month <= 12
     ? daysInMonth(year, month)
     : Number.NaN;
   const instant = Number.isFinite(monthLength) && Number.isInteger(day) && day >= 1 && day <= monthLength

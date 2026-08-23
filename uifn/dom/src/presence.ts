@@ -38,15 +38,18 @@ function parseTimeList(value: string): number[] {
   });
 }
 
-function pairedMotion(durations: number[], delays: number[]): { duration: number; count: number } {
-  const count = Math.max(durations.length, delays.length);
+function motionList(
+  names: string[],
+  durations: number[],
+  delays: number[],
+): { duration: number; count: number } {
   let maximum = 0;
   let active = 0;
-  for (let index = 0; index < count; index += 1) {
+  for (let index = 0; index < names.length; index += 1) {
     const total = (durations[index % durations.length] ?? 0)
       + (delays[index % delays.length] ?? 0);
     maximum = Math.max(maximum, total);
-    if (total > 0) active += 1;
+    if (names[index] !== 'none' && total > 0) active += 1;
   }
   return { duration: maximum, count: active };
 }
@@ -54,8 +57,16 @@ function pairedMotion(durations: number[], delays: number[]): { duration: number
 function motionPlan(scope: UIFnDomScope, element: HTMLElement) {
   if (scope.environment.prefersReducedMotion()) return { duration: 0, animations: 0, transitions: 0 };
   const style = scope.window.getComputedStyle(element);
-  const animation = pairedMotion(parseTimeList(style.animationDuration), parseTimeList(style.animationDelay));
-  const transition = pairedMotion(parseTimeList(style.transitionDuration), parseTimeList(style.transitionDelay));
+  const animation = motionList(
+    style.animationName.split(',').map((entry) => entry.trim()),
+    parseTimeList(style.animationDuration),
+    parseTimeList(style.animationDelay),
+  );
+  const transition = motionList(
+    style.transitionProperty.split(',').map((entry) => entry.trim()),
+    parseTimeList(style.transitionDuration),
+    parseTimeList(style.transitionDelay),
+  );
   return {
     duration: Math.max(animation.duration, transition.duration),
     animations: animation.count,

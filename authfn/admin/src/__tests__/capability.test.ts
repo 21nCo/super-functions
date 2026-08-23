@@ -45,4 +45,21 @@ describe("@authfn/admin capability", () => {
     const { adapter } = await setup();
     await expect(adapter.invoke("authfn.users.list", {}, { ...context, scope: { ...context.scope, namespace: "other" } })).rejects.toMatchObject({ code: "forbidden" });
   });
+
+  it("rejects user cursors reused with a different query", async () => {
+    const { config } = await setup();
+    await config.database.create<AuthFnUserRecord>({
+      model: "users",
+      namespace: "authfn",
+      data: { id: "user_2", primaryEmail: "grace@example.com", emailVerifiedAt: null, createdAt: new Date("2026-01-02"), updatedAt: new Date("2026-01-02") },
+    });
+    const service = createAuthFnAdminService(config);
+    const first = await service.listUsers({ limit: 1, direction: "asc" }, context);
+
+    expect(first.nextCursor).toEqual(expect.any(String));
+    await expect(service.listUsers({ limit: 1, direction: "desc", cursor: first.nextCursor! }, context))
+      .rejects.toMatchObject({ code: "AUTHFN_VALIDATION_ERROR" });
+    await expect(service.listUsers({ limit: 1, direction: "asc", email: "ada@example.com", cursor: first.nextCursor! }, context))
+      .rejects.toMatchObject({ code: "AUTHFN_VALIDATION_ERROR" });
+  });
 });

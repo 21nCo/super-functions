@@ -196,7 +196,7 @@ export function createUIFnPositioner(
   let destroyed = false;
   let result: Readonly<UIFnPositionResult> | null = null;
   let cleanupAutoUpdate: () => void = () => undefined;
-  let boundReference: ReferenceElement | null = null;
+  let boundReferenceTarget: Element | null = null;
   let boundFloating: HTMLElement | null = null;
   let generation = 0;
   const subscribers = new Set<(result: Readonly<UIFnPositionResult>) => void>();
@@ -235,9 +235,12 @@ export function createUIFnPositioner(
         details: { hasReference: !!reference, hasFloating: !!floating },
       });
     }
+    const referenceTarget = 'nodeType' in reference
+      ? reference as Element
+      : reference.contextElement ?? null;
     const restartAutoUpdate = running && (
       autoUpdateConfigChanged
-      || reference !== boundReference
+      || referenceTarget !== boundReferenceTarget
       || floating !== boundFloating
     );
     if (restartAutoUpdate) {
@@ -246,7 +249,7 @@ export function createUIFnPositioner(
       running = false;
       if (options.autoUpdate !== false) {
         running = true;
-        boundReference = reference as ReferenceElement;
+        boundReferenceTarget = referenceTarget;
         boundFloating = floating;
         cleanupAutoUpdate = scope.track('observer', autoUpdate(
           reference as ReferenceElement,
@@ -348,7 +351,7 @@ export function createUIFnPositioner(
     running = false;
     cleanupAutoUpdate();
     cleanupAutoUpdate = () => undefined;
-    boundReference = null;
+    boundReferenceTarget = null;
     boundFloating = null;
   };
 
@@ -374,7 +377,9 @@ export function createUIFnPositioner(
       }
       else {
         running = true;
-        boundReference = reference as ReferenceElement;
+        boundReferenceTarget = 'nodeType' in reference
+          ? reference as Element
+          : reference.contextElement ?? null;
         boundFloating = floating;
         const dependencyCleanup = autoUpdate(
           reference as ReferenceElement,

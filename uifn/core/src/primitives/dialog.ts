@@ -147,11 +147,14 @@ export function createDialogController(
       on: { click: () => actions.close('close-trigger') },
     }), { role: true, id: true, tabIndex: true, attributes: ['type'] }),
   };
-  return base.controller(actions, parts, state, (inputs) => {
+  return base.controller(actions, parts, state, undefined, undefined, (inputs) => {
     if (inputs.outsideInteractionBehavior !== undefined) {
       behavior = inputs.outsideInteractionBehavior;
     } else if ('closeOnInteractOutside' in inputs || 'closeOnOutsideInteraction' in inputs) {
-      behavior = base.getState().closeOnInteractOutside ? 'close' : 'ignore';
+      behavior = (inputs.closeOnInteractOutside ?? inputs.closeOnOutsideInteraction) === false
+        ? 'ignore'
+        : 'close';
     }
+    return { ...inputs, closeOnInteractOutside: behavior === 'close' };
   }) as DialogController;
 }

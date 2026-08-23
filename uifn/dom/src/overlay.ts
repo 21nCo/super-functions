@@ -293,7 +293,8 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
       modal = null;
     }
     ensurePositioner();
-    void positioner?.update({
+    const currentPositioner = positioner;
+    void currentPositioner?.update({
       reference: options.reference ?? trigger,
       floating,
       arrow: options.arrow,
@@ -303,8 +304,9 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
       alignOffset: options.alignOffset,
       collisionPadding: options.collisionPadding,
       autoUpdate: true,
+    }).then(() => {
+      if (!destroyed && state().open && positioner === currentPositioner) currentPositioner.start();
     }).catch((error) => scope.environment.error(error));
-    positioner?.start();
   };
 
   const closeResources = () => {
