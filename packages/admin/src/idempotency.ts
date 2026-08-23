@@ -82,7 +82,8 @@ export interface AdminIdempotencyStore {
    * Atomically replace the matching completed domain result with a
    * compensation-pending failure before the compensator is invoked. The
    * transition must fence on the claim token and fingerprint, be idempotent for
-   * the same record, and never acknowledge until the replacement is durable.
+   * the same record, install an in-progress compensation claim for that token,
+   * and never acknowledge until both the replacement and claim are durable.
    * This prevents a concurrent replay from observing stale success after the
    * domain state has been rolled back.
    */
@@ -220,7 +221,14 @@ export class MemoryAdminIdempotencyStore implements AdminIdempotencyStore {
       throw new AdminError("conflict", "The compensation fingerprint does not match its reservation.");
     }
     if (existing.record.compensation?.status === "pending") {
-      if (stableSerialize(existing.record) === stableSerialize(record)) return;
+      if (stableSerialize(existing.record) === stableSerialize(record)) {
+        if (!existing.reconciliation) {
+          let resolve!: (record: AdminIdempotencyRecord | undefined) => void;
+          const wait = new Promise<AdminIdempotencyRecord | undefined>((complete) => { resolve = complete; });
+          existing.reconciliation = { token: claim.token, wait, resolve };
+        }
+        return;
+      }
       throw new AdminError("conflict", "A different compensation transition is already pending.");
     }
     if (
@@ -231,7 +239,10 @@ export class MemoryAdminIdempotencyStore implements AdminIdempotencyStore {
     ) {
       throw new AdminError("conflict", "Only a pending successful domain result can enter compensation.");
     }
+    let resolve!: (record: AdminIdempotencyRecord | undefined) => void;
+    const wait = new Promise<AdminIdempotencyRecord | undefined>((complete) => { resolve = complete; });
     existing.record = structuredClone(record) as AdminIdempotencyRecord;
+    existing.reconciliation = { token: claim.token, wait, resolve };
   }
 
   claimCompensation<T = unknown>(input: {

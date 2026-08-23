@@ -551,15 +551,16 @@ export class AdminDispatcher {
                 },
               );
               if (idempotencyClaim && idempotencyIdentity && this.idempotency) {
+                const compensationClaim = idempotencyClaim;
                 const failedAt = this.now().toISOString();
                 const failedCompensationResult = normalizeAdminError(dispatchError, {
                   requestId: request.context.requestId,
                   correlationId: request.context.correlationId,
                 });
                 try {
-                  await this.idempotency.complete(idempotencyClaim, {
+                  await this.idempotency.complete(compensationClaim, {
                     identity: idempotencyIdentity,
-                    fingerprint: idempotencyClaim.fingerprint,
+                    fingerprint: compensationClaim.fingerprint,
                     result: failedCompensationResult,
                     audit: {
                       status: "pending",
@@ -580,6 +581,11 @@ export class AdminDispatcher {
                 } catch {
                   // The durable pending marker remains retryable when this
                   // failed-attempt transition cannot be acknowledged.
+                  try {
+                    await this.idempotency.releaseCompensation(compensationClaim);
+                  } catch {
+                    // A committed failed transition already settled the claim.
+                  }
                 }
               }
             }
@@ -668,15 +674,15 @@ export class AdminDispatcher {
             // fenced: execution may have committed before the error surfaced.
             const stableCompensationAuditId = domainCompensated ? terminalAuditId : undefined;
             const timestamp = this.now().toISOString();
+            const { auditId: _failedAuditReceipt, ...persistedFailedResult } = failedResult;
             await this.idempotency.complete(idempotencyClaim, {
               identity: idempotencyIdentity,
               fingerprint: idempotencyClaim.fingerprint,
-              result: failedResult,
-              ...(terminalAuditWritten && auditId ? { auditId } : {}),
+              result: persistedFailedResult,
               ...(stableCompensationAuditId
                 ? {
                     audit: {
-                      status: terminalAuditWritten ? "completed" as const : "pending" as const,
+                      status: "pending" as const,
                       auditId: stableCompensationAuditId,
                       outcome: "failed" as const,
                       errorCode: "dependency_unavailable",
@@ -692,10 +698,24 @@ export class AdminDispatcher {
                 : {}),
               createdAt: timestamp,
             });
+            if (stableCompensationAuditId && terminalAuditWritten) {
+              await this.idempotency.finalizeAudit(
+                idempotencyIdentity,
+                idempotencyClaim.fingerprint,
+                { auditId: stableCompensationAuditId, completedAt: timestamp },
+              );
+            }
           }
         } catch {
           // Preserve the operation error. Durable stores retain/fence claims
           // whose release or completion could not be proven.
+          if (domainCompensated) {
+            try {
+              await this.idempotency.releaseCompensation(idempotencyClaim);
+            } catch {
+              // A committed completion already settled the compensation claim.
+            }
+          }
         }
       }
       return failedResult;
@@ -891,15 +911,21 @@ export class AdminDispatcher {
     try {
       await this.idempotency.complete(reservation.claim, {
         ...claimedRecord,
-        result: resultWithReceipt,
-        ...(terminalAuditWritten ? { auditId } : {}),
+        result: completedResult,
         audit: {
           ...claimedRecord.audit,
-          status: terminalAuditWritten ? "completed" : "pending",
+          status: "pending",
           updatedAt: completedAt,
         },
         compensation: { ...compensation, status: "completed", updatedAt: completedAt },
       });
+      if (terminalAuditWritten) {
+        await this.idempotency.finalizeAudit(
+          claimedRecord.identity,
+          claimedRecord.fingerprint,
+          { auditId, completedAt },
+        );
+      }
     } catch {
       completionPersisted = false;
       try {

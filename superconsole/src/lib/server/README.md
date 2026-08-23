@@ -42,7 +42,8 @@ operations.
 
 Bound confirmation services stage unusable tokens in `issue`, atomically make
 them verifiable in `activate`, and support idempotent `revoke`. Super Console
-activates only after the required succeeded audit has been persisted.
+records activation failure as a denied terminal event and revokes tokens when
+activation or the succeeded audit cannot complete.
 
 Required-audit flows record a sanitized attempt before invoking mutable state
 and a terminal outcome afterward. This is fail-closed preflight, not an atomic

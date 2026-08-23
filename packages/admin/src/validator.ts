@@ -13,6 +13,17 @@ export interface AdminValidationIssue {
   keyword?: string;
 }
 
+function adminJsonValueEquals(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    left !== null && right !== null &&
+    typeof left === "object" && typeof right === "object"
+  ) {
+    return stableSerialize(left) === stableSerialize(right);
+  }
+  return false;
+}
+
 const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)*$/;
 const MODULE_PATTERN = /^[a-z][a-z0-9-]*$/;
 const COMPILED_PATTERNS = new WeakMap<AdminJsonSchema, RegExp>();
@@ -74,7 +85,7 @@ export function validateAdminValue(
     return [{ path, message: "must be a finite JSON number", keyword: "type" }];
   }
   const issues: AdminValidationIssue[] = [];
-  if (schema.const !== undefined && !Object.is(schema.const, value)) {
+  if (schema.const !== undefined && !adminJsonValueEquals(schema.const, value)) {
     issues.push({
       path,
       message: "must equal the declared constant",
@@ -83,7 +94,7 @@ export function validateAdminValue(
   }
   if (
     schema.enum &&
-    !schema.enum.some((candidate) => Object.is(candidate, value))
+    !schema.enum.some((candidate) => adminJsonValueEquals(candidate, value))
   ) {
     issues.push({
       path,

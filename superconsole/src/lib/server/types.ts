@@ -169,7 +169,7 @@ export interface SuperConsoleOptions {
 }
 
 export interface SuperConsoleConfirmationService extends AdminConfirmationVerifier {
-  /** Stage an unusable token. `activate` is called only after the required terminal audit succeeds. */
+  /** Stage an unusable token before activation and its required terminal audit. */
   issue(input: {
     operationId: string;
     input: unknown;

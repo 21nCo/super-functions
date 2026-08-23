@@ -87,6 +87,7 @@ export interface HostFnDeploymentExecutor {
     deployment: HostFnDeployment;
   }): Promise<void>;
   restart(input: { target: HostFnTarget }): Promise<void>;
+  /** Must be idempotent when retried with the same domain ID. */
   attachDomain(input: {
     target: HostFnTarget;
     domain: HostFnDomain;
@@ -101,6 +102,13 @@ export interface HostFnDeploymentExecutor {
     value: string;
   }): Promise<void>;
   deleteVariable(input: { target: HostFnTarget; key: string }): Promise<void>;
+}
+
+function providerReportedNotFound(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; status?: unknown; statusCode?: unknown };
+  return candidate.code === "not_found" || candidate.code === "NOT_FOUND" ||
+    candidate.status === 404 || candidate.statusCode === 404;
 }
 
 function scopeKey(scope: HostFnScope): string {
@@ -285,20 +293,46 @@ export class HostFnOperatorService {
     input: { targetId: string; hostname: string; tls?: boolean },
   ) {
     const target = await this.target(scope, input.targetId);
-    const domain: HostFnDomain = {
-      id: identifier("domain"),
-      scope,
-      targetId: target.id,
-      hostname: input.hostname,
-      tls: input.tls ?? true,
-      status: "pending",
-      updatedAt: new Date().toISOString(),
-    };
+    const existing = (await this.store.listDomains(scope, target.id)).find(
+      (candidate) => candidate.hostname === input.hostname,
+    );
+    if (existing?.status === "active") return existing;
+    const domain: HostFnDomain = existing
+      ? {
+          ...existing,
+          tls: input.tls ?? existing.tls,
+          status: "pending",
+          updatedAt: new Date().toISOString(),
+        }
+      : {
+          id: identifier("domain"),
+          scope,
+          targetId: target.id,
+          hostname: input.hostname,
+          tls: input.tls ?? true,
+          status: "pending",
+          updatedAt: new Date().toISOString(),
+        };
     // Persist the provider intent before the external side effect. If the
     // provider succeeds but the active transition fails, operators can still
     // discover and detach the pending domain instead of creating duplicates.
     await this.store.putDomain(domain);
-    await this.executor.attachDomain({ target, domain });
+    try {
+      // Executors must make retries with the same domain ID idempotent. Reusing
+      // a failed/pending intent lets ambiguous provider outcomes converge.
+      await this.executor.attachDomain({ target, domain });
+    } catch (error) {
+      try {
+        await this.store.putDomain({
+          ...domain,
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+        });
+      } catch {
+        // The already-durable pending intent remains discoverable and reusable.
+      }
+      throw error;
+    }
     const active = { ...domain, status: "active" as const };
     await this.store.putDomain(active);
     return active;
@@ -309,7 +343,11 @@ export class HostFnOperatorService {
     );
     if (!domain) throw new Error(`HostFn domain not found: ${id}`);
     const target = await this.target(scope, domain.targetId);
-    await this.executor.detachDomain({ target, domain });
+    try {
+      await this.executor.detachDomain({ target, domain });
+    } catch (error) {
+      if (!providerReportedNotFound(error)) throw error;
+    }
     await this.store.deleteDomain(scope, id);
     return domain;
   }

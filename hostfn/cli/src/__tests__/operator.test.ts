@@ -120,4 +120,84 @@ describe("MemoryHostFnOperatorStore", () => {
     ]);
     expect(attachDomain).toHaveBeenCalledTimes(1);
   });
+
+  it("reuses a failed attachment intent so provider retries converge without duplicate domains", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1",
+      scope,
+      name: "API",
+      server: "api.example.test",
+      runtime: "nodejs",
+      status: "ready",
+      updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let providerUnavailable = true;
+    const attemptedDomainIds: string[] = [];
+    const attachDomain = vi.fn(async ({ domain }: Parameters<HostFnDeploymentExecutor["attachDomain"]>[0]) => {
+      attemptedDomainIds.push(domain.id);
+      if (providerUnavailable) throw new Error("provider unavailable");
+    });
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined,
+      cancel: async () => undefined,
+      rollback: async () => undefined,
+      restart: async () => undefined,
+      attachDomain,
+      detachDomain: async () => undefined,
+      setVariable: async () => undefined,
+      deleteVariable: async () => undefined,
+    };
+    const operator = new HostFnOperatorService(store, executor);
+
+    await expect(operator.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+    })).rejects.toThrow("provider unavailable");
+    const [failed] = await store.listDomains(scope);
+    expect(failed).toMatchObject({ status: "failed", hostname: "api.example.test" });
+
+    providerUnavailable = false;
+    await expect(operator.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+    })).resolves.toMatchObject({ id: failed!.id, status: "active" });
+    await expect(store.listDomains(scope)).resolves.toHaveLength(1);
+    expect(new Set(attemptedDomainIds).size).toBe(1);
+  });
+
+  it("cleans up a failed local intent when the provider reports no matching domain", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1",
+      scope,
+      name: "API",
+      server: "api.example.test",
+      runtime: "nodejs",
+      status: "ready",
+      updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    const notFound = Object.assign(new Error("domain not found"), { code: "not_found" });
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined,
+      cancel: async () => undefined,
+      rollback: async () => undefined,
+      restart: async () => undefined,
+      attachDomain: async () => { throw new Error("provider unavailable"); },
+      detachDomain: async () => { throw notFound; },
+      setVariable: async () => undefined,
+      deleteVariable: async () => undefined,
+    };
+    const operator = new HostFnOperatorService(store, executor);
+    await expect(operator.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+    })).rejects.toThrow("provider unavailable");
+    const [failed] = await store.listDomains(scope);
+
+    await expect(operator.detachDomain(scope, failed!.id)).resolves.toMatchObject({ status: "failed" });
+    await expect(store.listDomains(scope)).resolves.toEqual([]);
+  });
 });

@@ -36,6 +36,53 @@ describe("AdminDispatcher", () => {
     expect(different).not.toBe(first);
   });
 
+  it("settles concurrent replay waiters when the original compensation claim completes", async () => {
+    const store = new MemoryAdminIdempotencyStore();
+    const identity = {
+      key: "concurrent-compensation",
+      actorId: "user_1",
+      scope: context().scope,
+      operationId: "examplefn.records.rotate",
+    };
+    const fingerprint = await adminInputFingerprint({ id: "record_1" });
+    const reservation = store.begin({ identity, fingerprint });
+    expect(reservation.status).toBe("acquired");
+    if (reservation.status !== "acquired") throw new Error("expected initial claim");
+    const completedAt = "2026-08-23T00:00:00.000Z";
+    const domainResult = { ok: true as const, data: { id: "record_1" } };
+    store.complete(reservation.claim, {
+      identity,
+      fingerprint,
+      result: domainResult,
+      audit: { status: "pending", auditId: "audit_1", outcome: "succeeded", updatedAt: completedAt },
+      createdAt: completedAt,
+    });
+    const pendingRecord = {
+      identity,
+      fingerprint,
+      result: {
+        ok: false as const,
+        error: { code: "dependency_unavailable" as const, message: "compensation pending" },
+      },
+      audit: { status: "pending" as const, auditId: "audit_1", outcome: "failed" as const, updatedAt: completedAt },
+      compensation: { status: "pending" as const, domainResult, updatedAt: completedAt },
+      createdAt: completedAt,
+    };
+    store.prepareCompensation(reservation.claim, pendingRecord);
+
+    const replay = store.claimCompensation({ identity, fingerprint });
+    expect(replay.status).toBe("in-progress");
+    if (replay.status !== "in-progress" || !replay.wait) throw new Error("expected replay waiter");
+    store.complete(reservation.claim, {
+      ...pendingRecord,
+      compensation: { ...pendingRecord.compensation, status: "completed" },
+    });
+
+    await expect(replay.wait).resolves.toMatchObject({
+      compensation: { status: "completed" },
+    });
+  });
+
   it("validates input, permissions, and output without throwing unsafe domain errors", async () => {
     const manifest = testManifest();
     const handler = vi.fn(async () => ({
@@ -341,8 +388,26 @@ describe("AdminDispatcher", () => {
       if (compensationAttempts++ === 0) throw new Error("transient compensation failure");
     });
     const persistedEvents: Array<{ id: string; outcome: string; metadata?: Readonly<Record<string, unknown>> }> = [];
-    let failedAuditAttempts = 0;
     let auditSequence = 0;
+    let finalizeCalls = 0;
+    const backing = new MemoryAdminIdempotencyStore();
+    const idempotency = {
+      begin: backing.begin.bind(backing),
+      complete: async (...args: Parameters<typeof backing.complete>) => {
+        if (args[1].compensation?.status === "completed" && args[1].audit?.status === "completed") {
+          throw new Error("audit completion must use finalizeAudit");
+        }
+        backing.complete(...args);
+      },
+      prepareCompensation: backing.prepareCompensation.bind(backing),
+      claimCompensation: backing.claimCompensation.bind(backing),
+      releaseCompensation: backing.releaseCompensation.bind(backing),
+      release: backing.release.bind(backing),
+      finalizeAudit: (...args: Parameters<typeof backing.finalizeAudit>) => {
+        finalizeCalls += 1;
+        backing.finalizeAudit(...args);
+      },
+    };
     const dispatcher = createAdminDispatcher({
       registry: createAdminRegistry({
         adapters: [createAdminCapabilityAdapter({
@@ -358,9 +423,6 @@ describe("AdminDispatcher", () => {
           if (event.outcome === "succeeded") {
             throw new AdminAuditNotPersistedError("terminal event was not persisted");
           }
-          if (event.outcome === "failed" && failedAuditAttempts++ === 0) {
-            throw new Error("rollback audit acknowledgement unavailable");
-          }
           persistedEvents.push({ id: event.id, outcome: event.outcome, metadata: event.metadata });
         },
       },
@@ -370,7 +432,7 @@ describe("AdminDispatcher", () => {
           metadata: { policy: "manual", accessToken: "raw-secret" },
         }),
       },
-      idempotency: new MemoryAdminIdempotencyStore(),
+      idempotency,
       createAuditId: () => `audit_${++auditSequence}`,
     });
     const dispatch = (requestId: string) => dispatcher.dispatch({
@@ -389,16 +451,13 @@ describe("AdminDispatcher", () => {
     });
     await expect(dispatch("retry")).resolves.toMatchObject({
       ok: false,
-      error: { details: { outcome: "compensated", reconciliationRequired: true } },
-      meta: { idempotencyReplay: true, compensationCompleted: true },
-    });
-    await expect(dispatch("retry_audit")).resolves.toMatchObject({
-      ok: false,
       auditId: "audit_2",
-      meta: { idempotencyReplay: true, recoveredTerminalAudit: true },
+      error: { details: { outcome: "compensated" } },
+      meta: { idempotencyReplay: true, compensationCompleted: true },
     });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(compensate).toHaveBeenCalledTimes(2);
+    expect(finalizeCalls).toBe(1);
     expect(persistedEvents).toEqual([
       { id: "audit_1", outcome: "attempted", metadata: { policy: "manual", accessToken: "[REDACTED]" } },
       { id: "audit_2", outcome: "failed", metadata: { policy: "manual", accessToken: "[REDACTED]", compensation: "succeeded" } },
