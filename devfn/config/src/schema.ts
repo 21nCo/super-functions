@@ -36,6 +36,12 @@ function optionalString(value: unknown, field: string): string | undefined {
   return value === undefined ? undefined : string(value, field);
 }
 
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") fail(`${field} must be a boolean.`, field);
+  return value;
+}
+
 function stringArray(value: unknown, field: string): string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) fail(`${field} must be an array.`, field);
@@ -106,8 +112,8 @@ function portSpec(value: unknown, field: string): PortSpec {
   const input = record(value, field);
   const preferred = input.preferred === undefined ? undefined : integer(input.preferred, `${field}.preferred`);
   const configuredRange = range(input.range, `${field}.range`);
-  const ephemeral = input.ephemeral === true;
-  const exact = input.exact === true;
+  const ephemeral = optionalBoolean(input.ephemeral, `${field}.ephemeral`) ?? false;
+  const exact = optionalBoolean(input.exact, `${field}.exact`) ?? false;
   const block = optionalString(input.block, `${field}.block`);
   if (exact && preferred === undefined) fail(`${field}.preferred is required when exact is true.`, field);
   if (ephemeral && (preferred !== undefined || configuredRange !== undefined || exact || block !== undefined)) {

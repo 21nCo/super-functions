@@ -107,6 +107,36 @@ describe("devfn CLI", () => {
     }
   }, 15_000);
 
+  it("restarts a live process whose configured readiness has degraded", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-readiness-recovery-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const closeMarker = path.join(cwd, "close-listener");
+    await writeFile(path.join(cwd, "server.mjs"), "import { existsSync, unlinkSync } from 'node:fs'; import http from 'node:http'; const server = http.createServer((_request, response) => { response.writeHead(200); response.end('ok'); }); server.listen(Number(process.env.PORT), '127.0.0.1'); setInterval(() => { if (existsSync(process.env.CLOSE_FILE)) { unlinkSync(process.env.CLOSE_FILE); server.close(); } }, 25);\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "readiness-recovery" }, ports: { app: { range: [44710, 44800], env: "PORT" } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], env: { CLOSE_FILE: closeMarker }, ports: ["app"], health: { type: "http", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as Record<string, unknown> };
+    };
+    try {
+      expect((await invoke(["up", "--trust"])).code).toBe(0);
+      await writeFile(closeMarker, "close\n");
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const status = await invoke(["status"]);
+        if (status.value.state === "degraded") break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect((await invoke(["status"])).value.state).toBe("degraded");
+      const restarted = await invoke(["up"]);
+      expect(restarted.code, JSON.stringify(restarted.value)).toBe(0);
+      expect(restarted.value.state).toBe("ready");
+    } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 20_000);
+
   it("requires a separate confirmation for public exposure", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-public-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));

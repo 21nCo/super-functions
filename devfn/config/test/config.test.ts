@@ -72,6 +72,11 @@ describe("DevFn configuration", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "DEVFN_PROJECT_ID" } }, profiles: { default: {} } })).toThrow(/reserved DEVFN_/);
   });
 
+  it("rejects non-boolean exact and ephemeral flags", () => {
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { preferred: 4100, exact: "true" } }, profiles: { default: {} } })).toThrow(/ports\.app\.exact must be a boolean/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { ephemeral: 1 } }, profiles: { default: {} } })).toThrow(/ports\.app\.ephemeral must be a boolean/);
+  });
+
   it("rejects TCP and HTTP readiness checks on UDP allocations", () => {
     expect(() => validateDevFnConfig({
       version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },

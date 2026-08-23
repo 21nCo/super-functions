@@ -3,9 +3,26 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { waitForReadiness } from "../src/index.js";
+import { checkReadinessNow, waitForReadiness } from "../src/index.js";
 
 describe("process readiness", () => {
+  it("applies a configured path to URL-based HTTP probes", async () => {
+    const server = (await import("node:http")).createServer((request, response) => {
+      response.writeHead(request.url === "/base/health" ? 200 : 404);
+      response.end();
+    });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("HTTP test server did not receive a port.");
+    try {
+      await expect(waitForReadiness({ health: { type: "http", url: `http://127.0.0.1:${address.port}/base`, path: "/health", timeoutMs: 1000 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBeUndefined();
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+  });
+
+  it("reports current HTTP readiness without entering the retry loop", async () => {
+    await expect(checkReadinessNow({ health: { type: "http", url: "http://127.0.0.1:1", timeoutMs: 50 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBe(false);
+  });
+
   it("keeps command probes inside the overall readiness deadline", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-readiness-"));
     const marker = path.join(root, "attempted");

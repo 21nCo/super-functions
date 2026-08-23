@@ -75,12 +75,8 @@ describe("FilePortRegistry", () => {
 
   it("honors contiguous preferred ports for reallocatable blocks", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
-    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
-    let firstPort = 0;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      firstPort = await allocateEphemeralPort();
-      if (firstPort < 65535 && await isPortAvailable(firstPort + 1)) break;
-    }
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    const firstPort = 45_670;
     const allocations = await registry.reserve({
       projectId: "oauth", instanceId: "preferred", invocationId: "preferred-block", profile: "default",
       requests: [
@@ -112,6 +108,14 @@ describe("FilePortRegistry", () => {
     const state = await registry.read();
     expect(state.allocations[0].state).toBe("released");
     expect(state.invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+  });
+
+  it("fails interrupted planning invocations that reserved no ports", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "empty", profile: "default", requests: [] });
+    await expect(registry.recoverInterrupted("one")).resolves.toBe(1);
+    expect((await registry.read()).invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
   });
 
   it("recovers ownerless stale lock directories", async () => {

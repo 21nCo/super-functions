@@ -37,7 +37,11 @@ export class FilePortRegistry {
   public readonly filePath: string;
   private readonly lockPath: string;
 
-  public constructor(filePath: string, private readonly ephemeralAllocator = allocateEphemeralPort) {
+  public constructor(
+    filePath: string,
+    private readonly ephemeralAllocator = allocateEphemeralPort,
+    private readonly availabilityCheck = isPortAvailable,
+  ) {
     this.filePath = filePath;
     this.lockPath = `${filePath}.lock`;
   }
@@ -97,13 +101,13 @@ export class FilePortRegistry {
           throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Unable to allocate an unleased ephemeral port for ${name}.`, { service: name });
         }
         if (spec.exact && spec.preferred !== undefined) {
-          if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await isPortAvailable(spec.preferred, protocol, host)) {
+          if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await this.availabilityCheck(spec.preferred, protocol, host)) {
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
           }
           return { port: spec.preferred, source: "exact" };
         }
         const prior = stable.get(name);
-        if (prior?.protocol === protocol && !occupied.has(occupancyKey(prior.port, protocol)) && await isPortAvailable(prior.port, protocol, host)) return { port: prior.port, source: "stable" };
+        if (prior?.protocol === protocol && !occupied.has(occupancyKey(prior.port, protocol)) && await this.availabilityCheck(prior.port, protocol, host)) return { port: prior.port, source: "stable" };
         const pools: Array<{ values: number[]; source: PortAllocation["source"] }> = [];
         if (spec.preferred !== undefined) pools.push({ values: [spec.preferred], source: "preferred" });
         if (spec.range) pools.push({ values: candidates(spec.range[0], spec.range[1], `${input.instanceId}:${name}`), source: "range" });
@@ -113,7 +117,7 @@ export class FilePortRegistry {
         for (const pool of pools) {
           for (const port of pool.values) {
             if (occupied.has(occupancyKey(port, protocol))) continue;
-            if (await isPortAvailable(port, protocol, host)) return { port, source: pool.source };
+            if (await this.availabilityCheck(port, protocol, host)) return { port, source: pool.source };
           }
         }
         throw new PortRegistryError("DEVFN_PORT_CONFLICT", `No available port for ${name}.`, { service: name });
@@ -142,14 +146,14 @@ export class FilePortRegistry {
           const exactPorts = group.map((request) => request.spec.preferred!);
           const sorted = [...new Set(exactPorts)].sort((a, b) => a - b);
           if (sorted.length !== group.length || sorted.at(-1)! - sorted[0] + 1 !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port block ${block} is not contiguous.`);
-          if (!exactPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(exactPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
+          if (!exactPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(exactPorts.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
           blockSource = "exact";
         } else {
           const preferredPorts = group.map((request) => request.spec.preferred);
           if (preferredPorts.every((port): port is number => port !== undefined)) {
             const unique = [...new Set(preferredPorts)].sort((a, b) => a - b);
             const contiguous = unique.length === group.length && unique.at(-1)! - unique[0] + 1 === group.length;
-            if (contiguous && !preferredPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(preferredPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+            if (contiguous && !preferredPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(preferredPorts.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
               chosen = preferredPorts;
               blockSource = "preferred";
             }
@@ -159,7 +163,7 @@ export class FilePortRegistry {
             for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}:${rangeIndex}`)) {
               const ports = group.map((_, index) => start + index);
               if (ports.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp")))) continue;
-              if ((await Promise.all(ports.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+              if ((await Promise.all(ports.map((port, index) => this.availabilityCheck(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
                 chosen = ports;
                 blockSource = source;
                 break;
@@ -213,7 +217,7 @@ export class FilePortRegistry {
   public async recoverInterrupted(instanceId: string): Promise<number> {
     return await this.transaction((state) => {
       const now = new Date().toISOString();
-      const interrupted = new Set(state.allocations.filter((allocation) => allocation.instanceId === instanceId && allocation.state === "planned").map((allocation) => allocation.invocationId));
+      const interrupted = new Set(state.invocations.filter((invocation) => invocation.instanceId === instanceId && ["planning", "starting"].includes(invocation.state)).map((invocation) => invocation.id));
       for (const allocation of state.allocations) {
         if (allocation.instanceId !== instanceId || allocation.state !== "planned") continue;
         Object.assign(allocation, { state: "released", updatedAt: now, releasedAt: now });
@@ -260,7 +264,7 @@ export class FilePortRegistry {
       const now = new Date().toISOString();
       for (const allocation of state.allocations.filter(active)) {
         const previousState = allocation.state;
-        const available = await isPortAvailable(allocation.port, allocation.protocol, allocation.host);
+        const available = await this.availabilityCheck(allocation.port, allocation.protocol, allocation.host);
         if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
         else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = available ? "stale" : "externally-occupied";

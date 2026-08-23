@@ -9,7 +9,7 @@ import { ProcessError } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
+export type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
 const LOG_CHUNK_BYTES = 256 * 1024;
 const LOG_WINDOW_BYTES = 1024 * 1024;
 
@@ -48,13 +48,46 @@ async function readNewLog(logPath: string, offset: number): Promise<{ bytes: Buf
   } finally { await handle.close(); }
 }
 
+async function readLogWindow(logPath: string): Promise<string> {
+  const handle = await open(logPath, "r").catch(() => undefined);
+  if (!handle) return "";
+  try {
+    const size = (await handle.stat()).size;
+    const length = Math.min(size, LOG_WINDOW_BYTES);
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, size - length);
+    return new TextDecoder().decode(buffer.subarray(0, bytesRead));
+  } finally { await handle.close(); }
+}
+
 async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {
   const port = health.port ? input.ports[health.port] : undefined;
-  const url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
+  let url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
+  if (health.url && health.path) {
+    const parsed = new URL(health.url);
+    parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/${health.path.replace(/^\//, "")}`;
+    url = parsed.toString();
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try { return (await fetch(url, { signal: controller.signal })).status === (health.expectedStatus ?? 200); }
   finally { clearTimeout(timer); }
+}
+
+export async function checkReadinessNow(input: ReadinessInput): Promise<boolean> {
+  const timeoutMs = Math.max(1, Math.min(input.health?.timeoutMs ?? 1000, 2000));
+  try {
+    if (!await withinDeadline(Promise.resolve(input.isAlive()), timeoutMs)) return false;
+    if (!input.health) return true;
+    if ((input.health.type === "tcp" || input.health.type === "http") && input.health.port && input.ports[input.health.port] === undefined) return false;
+    if (input.health.type === "log") {
+      const output = input.readLog
+        ? await withinDeadline(input.readLog(), timeoutMs)
+        : await withinDeadline(readLogWindow(input.logPath), timeoutMs);
+      return new RegExp(input.health.pattern, "i").test(output.slice(-LOG_WINDOW_BYTES));
+    }
+    return await withinDeadline(checkReadiness(input.health, input, timeoutMs), timeoutMs);
+  } catch { return false; }
 }
 
 async function checkReadiness(health: Exclude<HealthCheck, { type: "log" }>, input: ReadinessInput, remainingMs: number): Promise<boolean> {

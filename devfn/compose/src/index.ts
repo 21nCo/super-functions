@@ -85,6 +85,12 @@ function supportedComposeVersion(output: string): boolean {
   return true;
 }
 
+function dockerContainerMissing(error: unknown): boolean {
+  const candidate = error as { message?: unknown; stderr?: unknown };
+  const detail = `${typeof candidate.stderr === "string" ? candidate.stderr : ""}\n${typeof candidate.message === "string" ? candidate.message : ""}`;
+  return /no such (?:object|container)/i.test(detail);
+}
+
 export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}, metadata?: { instanceId: string; lifecycleName: string }): string {
   const mappings = Object.entries(spec.ports ?? {}).map(([name, internal]) => {
     const host = ports[name];
@@ -186,15 +192,28 @@ export class ComposeController {
     if (!service.preExisting) await this.run("docker", [...baseArgs, "rm", "-f", service.composeService], { cwd, env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
   }
 
+  private async applyContainerAction(action: string[], ids: string[], environment: NodeJS.ProcessEnv): Promise<void> {
+    if (ids.length === 0) return;
+    const options = { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 };
+    try { await this.run("docker", [...action, ...ids], options); }
+    catch (error) {
+      if (!dockerContainerMissing(error)) throw error;
+      for (const id of ids) {
+        try { await this.run("docker", [...action, id], options); }
+        catch (retryError) { if (!dockerContainerMissing(retryError)) throw retryError; }
+      }
+    }
+  }
+
   public async stop(service: ManagedComposeService): Promise<void> {
     const startedContainerIds = service.preExisting ? (service.startedContainerIds ?? (service.wasRunning ? [] : service.containerIds)) : service.containerIds;
     const createdContainerIds = service.preExisting ? (service.createdContainerIds ?? []) : service.containerIds;
     const stopIds = [...new Set([...startedContainerIds, ...createdContainerIds])];
-    if (stopIds.length === 0 && createdContainerIds.length === 0) return;
+    if (stopIds.length === 0) return;
     try {
       const environment = directDockerEnvironment(service.dockerEnvironment);
-      if (stopIds.length) await this.run("docker", ["stop", ...stopIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
-      if (createdContainerIds.length) await this.run("docker", ["rm", "-f", ...createdContainerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
+      await this.applyContainerAction(["stop"], stopIds, environment);
+      await this.applyContainerAction(["rm", "-f"], createdContainerIds, environment);
     } catch (error) {
       throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to stop Compose service ${service.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }

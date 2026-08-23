@@ -6,8 +6,8 @@ import { promisify } from "node:util";
 
 import { ComposeController, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, type DevFnConfig } from "@devfn/config";
-import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type PortAllocation } from "@devfn/ports";
-import { ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
+import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
+import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
@@ -52,7 +52,20 @@ export function selectOwnershipListeners(allocation: PortAllocation | undefined,
 }
 
 export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], projectId: string, instanceId: string, localProcessPorts: ReadonlyMap<string, "tcp" | "udp">, protocol: "tcp" | "udp"): boolean {
-  return allocations.some((allocation) => allocation.projectId === projectId && allocation.instanceId === instanceId && allocation.state === "active" && allocation.process !== undefined && localProcessPorts.get(allocation.service) === protocol);
+  return allocations.some((allocation) => allocation.projectId === projectId && allocation.instanceId === instanceId && allocation.state === "active" && allocation.process !== undefined && allocation.protocol === protocol && localProcessPorts.get(allocation.service) === protocol);
+}
+
+export async function verifyOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, scan: ListenerScanResult): Promise<{ port: number; protocol: "tcp" | "udp" } | undefined> {
+  const requiredProtocols = new Set<"tcp" | "udp">(expected.length ? expected.map((item) => item.protocol) : ["tcp", "udp"]);
+  for (const protocol of requiredProtocols) {
+    if (!scan.inspection[protocol]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} ${protocol.toUpperCase()} listeners could not be inspected for loopback ownership.`);
+  }
+  const candidates = scan.listeners.filter((listener) => listener.source === "os" && listener.pid !== undefined && (expected.length === 0 || expected.some((item) => item.port === listener.port && item.protocol === listener.protocol)));
+  const ownership = await Promise.all(candidates.map(async (listener) => await isProcessTreeMember(listener.pid!, ownerPid)));
+  const owned = candidates.filter((_listener, index) => ownership[index]);
+  const unsafe = owned.find((listener) => !isLoopbackHost(listener.host));
+  if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exposed port ${unsafe.port} beyond loopback.`);
+  return expected.find((item) => !owned.some((listener) => listener.port === item.port && listener.protocol === item.protocol));
 }
 
 async function waitForOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, timeoutMs: number): Promise<void> {
@@ -61,16 +74,7 @@ async function waitForOwnedLoopbackListeners(processName: string, expected: Arra
   do {
     if (!processExists(ownerPid)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exited before listener ownership could be verified.`);
     const scan = await scanListenerState();
-    const listeners = scan.listeners.filter((listener) => listener.source === "os");
-    const unsafe = listeners.find((listener) => expected.some((item) => item.port === listener.port && item.protocol === listener.protocol) && !isLoopbackHost(listener.host));
-    if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exposed port ${unsafe.port} beyond loopback.`);
-    for (const item of expected) {
-      if (!scan.inspection[item.protocol]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} ${item.protocol.toUpperCase()} port ${item.port} could not be inspected for loopback ownership.`);
-      const candidates = listeners.filter((listener) => listener.port === item.port && listener.protocol === item.protocol && listener.pid !== undefined);
-      const ownership = await Promise.all(candidates.map(async (listener) => await isProcessTreeMember(listener.pid!, ownerPid)));
-      if (!ownership.some(Boolean)) { missing = item; break; }
-      missing = undefined;
-    }
+    missing = await verifyOwnedLoopbackListeners(processName, expected, ownerPid, scan);
     if (!missing) return;
     await delay(Math.min(100, Math.max(1, deadline - Date.now())));
   } while (Date.now() < deadline);
@@ -78,6 +82,38 @@ async function waitForOwnedLoopbackListeners(processName: string, expected: Arra
 }
 
 function envName(name: string): string { return `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`; }
+function lifecycleEnvironment(config: DevFnConfig, profile: string, instanceId: string, allocations: readonly PortAllocation[]): Record<string, string> {
+  const environment: Record<string, string> = { ...(config.profiles[profile]?.environment ?? {}), DEVFN_PROJECT_ID: config.project.id, DEVFN_INSTANCE_ID: instanceId, DEVFN_PROFILE: profile };
+  for (const allocation of allocations) {
+    environment[envName(allocation.service)] = String(allocation.port);
+    const configured = config.ports?.[allocation.service]?.env;
+    if (configured) environment[configured] = String(allocation.port);
+  }
+  return environment;
+}
+
+async function receiptIsReady(config: DevFnConfig, root: string, receipt: LifecycleReceipt, processStates: readonly string[], serviceStates: readonly string[]): Promise<boolean> {
+  const ports = Object.fromEntries(receipt.allocations.map((allocation) => [allocation.service, allocation.port]));
+  const environment = lifecycleEnvironment(config, receipt.profile, receipt.instanceId, receipt.allocations);
+  const compose = new ComposeController();
+  const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
+    const spec = config.processes?.[managed.name];
+    if (!spec || processStates[index] !== "running") return false;
+    try {
+      return await checkReadinessNow({ health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment(spec, environment), isAlive: () => true });
+    } catch { return false; }
+  }));
+  const serviceReady = await Promise.all(receipt.services.map(async (managed, index) => {
+    const spec = config.services?.[managed.name];
+    if (!spec || serviceStates[index] !== "running") return false;
+    return await checkReadinessNow({
+      health: spec.health, ports, logPath: "", cwd: root, environment: { ...process.env, ...environment, ...(spec.env ?? {}) }, isAlive: () => true,
+      readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
+    });
+  }));
+  return processReady.every(Boolean) && serviceReady.every(Boolean);
+}
+
 function hostname(configured: string | undefined, key: string, projectId: string, instanceId: string, suffix = ".localhost"): string {
   const result = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{instance}", instanceId).replaceAll("{project}", projectId);
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(result)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Local hostname ${result} must be a concrete .localhost name.`);
@@ -104,7 +140,8 @@ export class DevFnOrchestrator {
       const serviceRunning = serviceStates.some((state) => state === "running");
       const managedCount = processStates.length + serviceStates.length;
       const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
-      if (existing.state === "ready" && allRunning) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      const allReady = allRunning && await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
+      if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
       if (processRunning || serviceRunning || existing.state === "starting" || existing.state === "degraded") {
         const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
         if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
@@ -137,13 +174,7 @@ export class DevFnOrchestrator {
       ...policy,
     });
     const ports = Object.fromEntries(allocations.map((item) => [item.service, item.port]));
-    const profileEnvironment = options.config.profiles[plan.profile].environment ?? {};
-    const environment: Record<string, string> = { ...profileEnvironment, DEVFN_PROJECT_ID: options.config.project.id, DEVFN_INSTANCE_ID: identity.instanceId, DEVFN_PROFILE: plan.profile };
-    for (const allocation of allocations) {
-      environment[envName(allocation.service)] = String(allocation.port);
-      const configured = options.config.ports?.[allocation.service]?.env;
-      if (configured) environment[configured] = String(allocation.port);
-    }
+    const environment = lifecycleEnvironment(options.config, plan.profile, identity.instanceId, allocations);
     const receipt: LifecycleReceipt = {
       version: 1, projectId: options.config.project.id, instanceId: identity.instanceId, invocationId, profile: plan.profile,
       state: "starting", root: options.root, runtimeDir, stateDir: path.resolve(stateDir), startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -286,7 +317,8 @@ export class DevFnOrchestrator {
     const processes = await Promise.all(receipt.processes.map(async (managed) => ({ name: managed.name, pid: managed.pid, state: await supervisor.status(managed), logPath: managed.logPath })));
     const compose = new ComposeController();
     const services = await Promise.all(receipt.services.map(async (managed) => ({ ...managed, state: await compose.status(managed) })));
-    const degraded = (processes.some((item) => item.state !== "running") || services.some((item) => item.state !== "running")) && receipt.state === "ready";
+    const runtimeReady = receipt.state === "ready" && await receiptIsReady(options.config, options.root, receipt, processes.map((item) => item.state), services.map((item) => item.state));
+    const degraded = receipt.state === "ready" && !runtimeReady;
     const state = degraded ? "degraded" : receipt.state;
     return { ok: state !== "failed" && state !== "degraded", state, instanceId: identity.instanceId, profile: receipt.profile, processes, services, allocations: receipt.allocations, urls: state === "ready" ? receipt.urls : {} };
   }

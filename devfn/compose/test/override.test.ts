@@ -138,6 +138,18 @@ describe("ComposeController", () => {
     expect(calls.find((args) => args[0] === "rm")).toEqual(["rm", "-f", "created-id"]);
   });
 
+  it("treats already-removed containers as an idempotent cleanup", async () => {
+    let present = true;
+    const controller = new ComposeController(async (_file, args) => {
+      if ((args[0] === "stop" || args[0] === "rm") && !present) throw Object.assign(new Error("container missing"), { stderr: "Error: No such container: created-id" });
+      if (args[0] === "rm") present = false;
+      return { stdout: "", stderr: "" };
+    });
+    const managed = { name: "api", composeService: "api", projectName: "shared", files: [], containerIds: ["created-id"], preExisting: true, wasRunning: false, startedContainerIds: [], createdContainerIds: ["created-id"], startedAt: new Date().toISOString() };
+    await expect(controller.stop(managed)).resolves.toBeUndefined();
+    await expect(controller.stop(managed)).resolves.toBeUndefined();
+  });
+
   it("does not reclaim a container owned by another DevFn lifecycle", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-other-owner-"));
     const calls: string[][] = [];

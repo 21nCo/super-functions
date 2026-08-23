@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasRecordedProcessOwner, selectOwnershipListeners } from "../src/index.js";
+import { hasRecordedProcessOwner, selectOwnershipListeners, verifyOwnedLoopbackListeners } from "../src/index.js";
 import type { ListenerInfo, PortAllocation } from "@devfn/ports";
 
 describe("orchestrator listener ownership", () => {
@@ -19,5 +19,13 @@ describe("orchestrator listener ownership", () => {
     const ports = new Map<string, "tcp" | "udp">([["app", "tcp"]]);
     expect(hasRecordedProcessOwner([allocation], "current", "current-instance", ports, "tcp")).toBe(false);
     expect(hasRecordedProcessOwner([{ ...allocation, projectId: "current", instanceId: "current-instance" }], "current", "current-instance", ports, "tcp")).toBe(true);
+    expect(hasRecordedProcessOwner([{ ...allocation, projectId: "current", instanceId: "current-instance", protocol: "udp" }], "current", "current-instance", ports, "tcp")).toBe(false);
+  });
+
+  it("rejects undeclared public listeners owned by a local process", async () => {
+    await expect(verifyOwnedLoopbackListeners("app", [], process.pid, {
+      listeners: [{ protocol: "tcp", host: "0.0.0.0", port: 4100, pid: process.pid, source: "os" }],
+      inspection: { tcp: true, udp: true, docker: false },
+    })).rejects.toThrow(/exposed port 4100 beyond loopback/);
   });
 });
