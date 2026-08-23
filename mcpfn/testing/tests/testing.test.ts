@@ -1,0 +1,199 @@
+import { describe, expect, it } from "vitest";
+import {
+  McpFnRegistry,
+  createMcpFnServer,
+  structuredResult,
+} from "@mcpfn/core";
+
+import {
+  McpFnTestClient,
+  MCPFN_HOST_PROFILES,
+  assertManifestContract,
+  buildOfficialConformanceArgs,
+  checkHostCompatibility,
+  runScenarios,
+} from "../src/index.js";
+
+describe("McpFn testing", () => {
+  it("checks manifests and deterministic semantic scenarios", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "echo",
+      description: "Echo a value.",
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      outputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      handler: async ({ value }) => structuredResult({ value }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "test", version: "1.0.0" },
+      registry,
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      await expect(assertManifestContract(client, server.manifest())).resolves.toHaveLength(1);
+      const results = await runScenarios(client, [
+        {
+          name: "echoes",
+          tool: "echo",
+          arguments: { value: "hello" },
+          expect: {
+            structuredContent: { value: "hello" },
+            structuredTextParity: true,
+          },
+        },
+      ]);
+      expect(results).toMatchObject([{ status: "passed" }]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("rejects stale resource and prompt inventories and ignores undefined scenario fields", async () => {
+    const registry = new McpFnRegistry()
+      .register({
+        name: "echo",
+        description: "Echo.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ value: "ok" }),
+      })
+      .registerResource({
+        uri: "docs://one",
+        name: "one",
+        read: async () => ({ contents: [{ uri: "docs://one", text: "One" }] }),
+      })
+      .registerResource({
+        uri: "docs://two",
+        name: "two",
+        read: async () => ({ contents: [{ uri: "docs://two", text: "Two" }] }),
+      })
+      .registerPrompt({ name: "one", get: async () => ({ messages: [] }) })
+      .registerPrompt({ name: "two", get: async () => ({ messages: [] }) });
+    const server = createMcpFnServer({
+      info: { name: "inventory", version: "1.0.0" },
+      registry,
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      const manifest = server.manifest();
+      await expect(assertManifestContract(client, {
+        ...manifest,
+        resources: manifest.resources?.slice(1),
+      })).rejects.toThrow(/Resource inventory mismatch/);
+      await expect(assertManifestContract(client, {
+        ...manifest,
+        prompts: manifest.prompts?.slice(1),
+      })).rejects.toThrow(/Prompt inventory mismatch/);
+      await expect(runScenarios(client, [{
+        name: "undefined parity",
+        tool: "echo",
+        expect: { structuredContent: { value: "ok", omitted: undefined } },
+      }])).resolves.toMatchObject([{ status: "passed" }]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("excludes resources listed by templates from static manifest equality", async () => {
+    const registry = new McpFnRegistry()
+      .register({
+        name: "echo",
+        description: "Echo.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ value: "ok" }),
+      })
+      .registerResource({
+        uri: "docs://guide",
+        name: "guide",
+        read: async () => ({
+          contents: [{ uri: "docs://guide", text: "Guide" }],
+        }),
+      })
+      .registerResourceTemplate({
+        uriTemplate: "docs://users/{id}",
+        name: "user",
+        list: async () => ({
+          resources: [{ uri: "docs://users/42", name: "Ada" }],
+        }),
+        read: async (uri) => ({
+          contents: [{ uri: uri.toString(), text: "Ada" }],
+        }),
+      });
+    const server = createMcpFnServer({
+      info: { name: "dynamic-resources", version: "1.0.0" },
+      registry,
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      const manifest = server.manifest();
+      await expect(assertManifestContract(client, manifest)).resolves.toHaveLength(1);
+      await expect(assertManifestContract(client, {
+        ...manifest,
+        resources: [],
+      })).rejects.toThrow(/Resource inventory mismatch/);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("pins the official conformance runner and its supported server flags", () => {
+    expect(buildOfficialConformanceArgs({
+      url: "http://127.0.0.1:3000/mcp",
+      scenario: "server-initialize",
+      outputDir: "/tmp/mcpfn-conformance",
+    })).toEqual([
+      "--yes",
+      "@modelcontextprotocol/conformance@0.1.16",
+      "server",
+      "--url",
+      "http://127.0.0.1:3000/mcp",
+      "--scenario",
+      "server-initialize",
+      "--output-dir",
+      "/tmp/mcpfn-conformance",
+    ]);
+  });
+
+  it("reports degraded and incompatible host-profile matches", () => {
+    const registry = new McpFnRegistry()
+      .register({
+        name: "requires_host",
+        description: "Use host features.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      })
+      .registerPrompt({
+        name: "hello",
+        get: async () => ({
+          messages: [{ role: "user", content: { type: "text", text: "Hello" } }],
+        }),
+      });
+    const server = createMcpFnServer({
+      info: { name: "profiles", version: "1.0.0" },
+      registry,
+      protocolVersions: ["2025-11-25"],
+      clientRequirements: { sampling: true },
+    });
+    const toolsOnly = checkHostCompatibility(
+      server.manifest(),
+      MCPFN_HOST_PROFILES.toolsOnly,
+    );
+    expect(toolsOnly).toMatchObject({ status: "incompatible", compatible: false });
+    expect(toolsOnly.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "sampling-required" }),
+      expect.objectContaining({ code: "server-feature-unavailable", path: "capabilities.prompts" }),
+    ]));
+    expect(checkHostCompatibility(
+      server.manifest(),
+      MCPFN_HOST_PROFILES.fullProtocol,
+    )).toMatchObject({ status: "compatible", compatible: true });
+  });
+});

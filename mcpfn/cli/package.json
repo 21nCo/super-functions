@@ -1,0 +1,46 @@
+{
+  "name": "@mcpfn/cli",
+  "version": "0.0.1",
+  "description": "McpFn manifest, compatibility, regression, and official conformance CLI",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": { "mcpfn": "./dist/bin.js" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "clean": "node --input-type=module -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\"",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mcpfn/core": "0.0.1",
+    "@mcpfn/testing": "0.0.1",
+    "cac": "^6.7.14",
+    "jiti": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": { "node": ">=18.18.0" },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "mcpfn/cli"
+  },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false
+}

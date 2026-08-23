@@ -36,6 +36,21 @@ const DOCS_PATTERNS = [
   /^scripts\/docs-coverage-check\.mjs$/,
 ];
 
+const MCPFN_PATTERNS = [
+  /^mcpfn\//,
+  /^datafn\/server\/src\/(?:executor|server|index)\.ts$/,
+  /^datafn\/server\/src\/__tests__\/executor\.test\.ts$/,
+  /^scripts\/(?:gate|test)-mcpfn.*\.mjs$/,
+];
+
+const MCPFN_SUPPORT_PATTERNS = [
+  /^README\.md$/,
+  /^package(?:-lock)?\.json$/,
+  /^release-packages\.json$/,
+  /^scripts\/ci-plan\.mjs$/,
+  /^\.github\/workflows\/ci\.yml$/,
+];
+
 function git(args, options = {}) {
   return execFileSync("git", args, {
     cwd: repoRoot,
@@ -250,6 +265,7 @@ let runDocs = false;
 
 const changedJsDirs = new Set();
 const changedPythonNames = new Set();
+const runMcpfn = changedPaths.some((changedPath) => matchesAny(MCPFN_PATTERNS, changedPath));
 
 for (const entry of changedEntries) {
   for (const changedPath of entry.paths) {
@@ -289,6 +305,12 @@ for (const entry of changedEntries) {
   }
 }
 
+const mcpfnOnly =
+  runMcpfn &&
+  changedPaths.every((changedPath) =>
+    matchesAny(MCPFN_PATTERNS, changedPath) ||
+    matchesAny(MCPFN_SUPPORT_PATTERNS, changedPath));
+
 const selectedJsPackages = fullJs
   ? jsPackages
   : [...changedJsDirs].map((dir) => jsByDir.get(dir)).filter(Boolean);
@@ -322,6 +344,8 @@ const summary = {
   fullJs,
   fullPython,
   runDocs,
+  runMcpfn,
+  mcpfnOnly,
   jsPackages: selectedJsPackages.map((manifest) => manifest.name).sort(),
   pythonPackages: pythonMatrix,
 };
@@ -344,3 +368,5 @@ writeOutput("run_python", String(fullPython || pythonMatrix.length > 0));
 writeOutput("full_python", String(fullPython));
 writeOutput("python_matrix", JSON.stringify(pythonMatrix));
 writeOutput("run_docs", String(runDocs));
+writeOutput("run_mcpfn", String(runMcpfn));
+writeOutput("mcpfn_only", String(mcpfnOnly));
