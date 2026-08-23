@@ -58,8 +58,18 @@ describe("@apifn/admin", () => {
       context("same-project"),
     );
     expect(first.data.items).toHaveLength(1);
-    expect(first.data.nextCursor).toBe("1");
+    expect(first.data.nextCursor).toEqual(expect.any(String));
     expect(second.data.nextCursor).toBeNull();
+    await expect(adapter.execute<any>(
+      "apifn.specs.list",
+      { limit: 1, cursor: first.data.nextCursor },
+      context("same-project", "other-workspace"),
+    )).rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(adapter.execute<any>(
+      "apifn.environments.list",
+      { cursor: first.data.nextCursor },
+      context("same-project"),
+    )).rejects.toMatchObject({ code: "invalid_argument" });
 
     const otherWorkspace = await adapter.execute<any>(
       "apifn.specs.list",

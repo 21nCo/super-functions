@@ -1,4 +1,11 @@
-import { AdminError, adminScopeRootId, type AdminOperationContext } from "@superfunctions/admin";
+import {
+  AdminError,
+  adminScopeRootId,
+  decodeAdminCursor,
+  encodeAdminCursor,
+  type AdminOperationContext,
+  type AdminScope,
+} from "@superfunctions/admin";
 
 export type BotFnPlatform = "discord" | "slack" | "github" | "linear";
 
@@ -145,19 +152,54 @@ function requireScope(context: AdminOperationContext): BotFnOperatorScope {
   return { installationId, workspaceId, projectId, environmentId: environmentId ?? null };
 }
 
-function page<T extends { id: string }>(items: T[], input: BotFnPageInput): {
+type BotFnCursorQuery =
+  | { collection: "bots" }
+  | { collection: "channels"; botId: string | null };
+
+function cursorScope(scope: BotFnOperatorScope): AdminScope {
+  return {
+    installationId: scope.installationId,
+    workspaceId: scope.workspaceId,
+    projectId: scope.projectId,
+    ...(scope.environmentId ? { environmentId: scope.environmentId } : {}),
+  };
+}
+
+function sameCursorQuery(left: BotFnCursorQuery, right: BotFnCursorQuery): boolean {
+  return left.collection === right.collection
+    && (left.collection !== "channels"
+      || (right.collection === "channels" && left.botId === right.botId));
+}
+
+function page<T extends { id: string }>(
+  items: T[],
+  input: BotFnPageInput,
+  scope: BotFnOperatorScope,
+  query: BotFnCursorQuery,
+): {
   items: T[];
   nextCursor: string | null;
 } {
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-  const offset = input.cursor === undefined ? 0 : Number(input.cursor);
+  const position = input.cursor === undefined
+    ? { offset: 0, query }
+    : decodeAdminCursor<{ offset: number; query: BotFnCursorQuery }>(input.cursor, cursorScope(scope));
+  const offset = position.offset;
   if (!Number.isSafeInteger(offset) || offset < 0) {
     throw new AdminError("invalid_argument", "BotFn cursor is invalid.");
+  }
+  if (!position.query || !sameCursorQuery(position.query, query)) {
+    throw new AdminError("invalid_argument", "BotFn cursor is invalid for this collection query.");
   }
   const ordered = [...items].sort((left, right) => left.id.localeCompare(right.id));
   const values = ordered.slice(offset, offset + limit);
   const next = offset + values.length;
-  return { items: values, nextCursor: next < ordered.length ? String(next) : null };
+  return {
+    items: values,
+    nextCursor: next < ordered.length
+      ? encodeAdminCursor(cursorScope(scope), { offset: next, query })
+      : null,
+  };
 }
 
 function channelView(value: BotFnChannelRecord): BotFnChannelView {
@@ -170,7 +212,8 @@ export function createBotFnOperatorService(options: BotFnOperatorServiceOptions)
 
   return {
     async listBots(input: BotFnPageInput, context: AdminOperationContext) {
-      return page(await options.store.listBots(requireScope(context)), input);
+      const scope = requireScope(context);
+      return page(await options.store.listBots(scope), input, scope, { collection: "bots" });
     },
 
     async getBot(input: { id: string }, context: AdminOperationContext) {
@@ -214,8 +257,12 @@ export function createBotFnOperatorService(options: BotFnOperatorServiceOptions)
     },
 
     async listChannels(input: BotFnPageInput & { botId?: string }, context: AdminOperationContext) {
-      const values = await options.store.listChannels(requireScope(context), input.botId);
-      return page(values.map(channelView), input);
+      const scope = requireScope(context);
+      const values = await options.store.listChannels(scope, input.botId);
+      return page(values.map(channelView), input, scope, {
+        collection: "channels",
+        botId: input.botId ?? null,
+      });
     },
 
     async getChannel(input: { id: string }, context: AdminOperationContext) {

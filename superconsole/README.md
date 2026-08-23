@@ -61,7 +61,10 @@ cancellation always wins. Otherwise providers revoke or expire the staged token.
 Activation failures are durably cancelled before their denied event is written
 and trigger an idempotent `revoke`; audit failures therefore cannot leave a live
 unaudited token, while a post-audit interruption remains identifiable and
-recoverable without reactivating a denied confirmation.
+recoverable without reactivating a denied confirmation. If neither cancellation
+nor revocation can durably fence an ambiguous activation result, Super Console
+returns the already-audited receipt instead of returning a 503 that could discard
+a token which reconciliation may later activate.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an

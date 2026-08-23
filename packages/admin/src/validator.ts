@@ -116,6 +116,9 @@ function validateAdminValueInternal(
   path: string,
   ancestors: Set<object>,
 ): AdminValidationIssue[] {
+  if (value === undefined || typeof value === "bigint" || typeof value === "symbol" || typeof value === "function") {
+    return [{ path, message: "must be a JSON value", keyword: "type" }];
+  }
   if (value !== null && typeof value === "object" && ancestors.has(value)) {
     return [{ path, message: "must be an acyclic JSON value", keyword: "type" }];
   }

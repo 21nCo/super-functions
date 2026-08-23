@@ -445,11 +445,12 @@ function moduleView(
       .filter((resource) => !resource.listable && !resource.detailApiHref)
       .map((resource) => resource.resourceId),
   );
-  const manuallyAddressedActions = entries
+  const directlyAddressableActions = entries
     .filter((entry) =>
       entry.operation.safety.classification !== 'read'
       && Boolean(entry.operation.target?.idInput)
-      && manuallyAddressedResourceIds.has(resourceId(entry)))
+      && (entry.operation.safety.classification !== 'destructive'
+        || manuallyAddressedResourceIds.has(resourceId(entry))))
     .map((entry) => ({
       ...actionView(entry),
       targetInput: undefined,
@@ -471,7 +472,7 @@ function moduleView(
     resources: [...ownResources, ...foldedResources],
     actions: [...entries
       .filter((entry) => entry.operation.safety.classification !== 'read' && entry.operation.target?.collection === true)
-      .map(actionView), ...manuallyAddressedActions, ...foldedActions],
+      .map(actionView), ...directlyAddressableActions, ...foldedActions],
     foldedModuleIds: childViews.map(({ view }) => view.id),
     manifest,
   };
@@ -1149,7 +1150,10 @@ export class SuperConsole {
         // The explicit cancellation record, when present, remains authoritative.
       }
       if (!cancellationDurable) {
-        throw new SuperConsoleHttpError('The confirmation activation failure could not be durably cancelled.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
+        // The succeeded audit remains authoritative when an ambiguous provider
+        // outcome cannot be fenced. Return the receipt so reconciliation may
+        // activate it without turning an unreturned credential live after 503.
+        return receipt;
       }
       try {
         await this.auditConfirmation(

@@ -479,6 +479,53 @@ describe('Super Console server composition', () => {
     ]);
   });
 
+  it('exposes non-destructive id-targeted writes before a record exists', async () => {
+    const list = manifest().operations[0]!;
+    const get = {
+      ...list,
+      id: 'examplefn.records.get',
+      title: 'Get record',
+      inputSchema: { type: 'object' as const, properties: { id: { type: 'string' as const } }, required: ['id'], additionalProperties: false },
+      outputSchema: { type: 'object' as const, properties: { item: { type: 'object' as const } }, required: ['item'], additionalProperties: false },
+      route: { method: 'GET' as const, path: '/resources/records/:id' },
+      target: { resource: 'records', idInput: 'id' },
+    };
+    const upsert = {
+      ...get,
+      id: 'examplefn.records.upsert',
+      title: 'Upsert record',
+      description: 'Create or update a record.',
+      inputSchema: { type: 'object' as const, properties: { id: { type: 'string' as const }, name: { type: 'string' as const } }, required: ['id', 'name'], additionalProperties: false },
+      outputSchema: { type: 'object' as const, properties: { accepted: { type: 'boolean' as const } }, required: ['accepted'], additionalProperties: false },
+      route: { method: 'POST' as const, path: '/resources/records/actions/upsert' },
+      permission: 'examplefn.records.write',
+      safety: { classification: 'write' as const, idempotent: true, audit: 'required' as const },
+      mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    };
+    const capability = defineAdminCapability({ ...manifest(), operations: [list, get, upsert] });
+    const console = createSuperConsole({
+      adapters: [createAdminCapabilityAdapter(capability, {
+        [list.id]: async () => ({ ok: true as const, data: { items: [] } }),
+        [get.id]: async () => ({ ok: true as const, data: { item: {} } }),
+        [upsert.id]: async () => ({ ok: true as const, data: { accepted: true } }),
+      })],
+      enabledModules: ['examplefn'],
+      auth: auth(),
+      shellPolicy: { authorize: () => true },
+      audit: new MemoryAdminAuditSink(),
+      idempotency: new MemoryAdminIdempotencyStore(),
+    });
+
+    const view = await (await console.handle(request('/api/admin/v1/modules/examplefn'))).json();
+    expect(view.data.module.actions).toEqual([
+      expect.objectContaining({ id: upsert.id, inputSchema: expect.objectContaining({ required: ['id', 'name'] }) }),
+    ]);
+    expect(view.data.module.actions[0]).not.toHaveProperty('targetIdInput');
+    expect(view.data.module.resources[0].actions).toEqual([
+      expect.objectContaining({ id: upsert.id, targetIdInput: 'id' }),
+    ]);
+  });
+
   it('models get-only resources with a detail URL and no collection endpoint', async () => {
     const base = manifest().operations[0]!;
     const getOnly = defineAdminCapability({
@@ -783,7 +830,7 @@ describe('Super Console server composition', () => {
 
   it('records activation failure as denied and leaves the staged token unusable', async () => {
     const capability = manifest({ destructive: true });
-    const outcomes: Array<{ outcome: string; errorCode?: string }> = [];
+    const outcomes: Array<{ id: string; outcome: string; errorCode?: string }> = [];
     let active = false;
     let cancelled = false;
     const cancelActivation = vi.fn(async () => { cancelled = true; });
@@ -800,7 +847,7 @@ describe('Super Console server composition', () => {
         idempotentById: true,
         write: async (event) => {
           if (event.operationId === 'superconsole.confirmations.issue') {
-            outcomes.push({ outcome: event.outcome, errorCode: event.errorCode });
+            outcomes.push({ id: event.id, outcome: event.outcome, errorCode: event.errorCode });
           }
         },
       },
@@ -823,17 +870,57 @@ describe('Super Console server composition', () => {
 
     expect(response.status).toBe(503);
     expect(await verify()).toBe(false);
+    const deniedAuditId = outcomes.find((event) => event.outcome === 'denied')?.id;
+    expect(deniedAuditId).toEqual(expect.any(String));
     expect(cancelActivation).toHaveBeenCalledWith(expect.objectContaining({
       token: 'staged-token',
       auditId: expect.any(String),
-      denialAuditId: expect.any(String),
+      denialAuditId: deniedAuditId,
     }));
     expect(revoke).toHaveBeenCalledWith(expect.objectContaining({ token: 'staged-token' }));
-    expect(outcomes).toEqual([
+    expect(outcomes.map(({ outcome, errorCode }) => ({ outcome, errorCode }))).toEqual([
       { outcome: 'attempted', errorCode: undefined },
       { outcome: 'succeeded', errorCode: undefined },
       { outcome: 'denied', errorCode: 'CONFIRMATION_ACTIVATION_FAILED' },
     ]);
+  });
+
+  it('returns the audited receipt when an ambiguous activation cannot be durably cancelled', async () => {
+    const capability = manifest({ destructive: true });
+    const outcomes: string[] = [];
+    const console = createSuperConsole({
+      adapters: [createAdminCapabilityAdapter(capability, {
+        'examplefn.records.delete': async () => ({ ok: true as const, data: { accepted: true } }),
+      })],
+      enabledModules: ['examplefn'],
+      auth: auth(),
+      shellPolicy: { authorize: () => true },
+      audit: {
+        idempotentById: true,
+        write: async (event) => {
+          if (event.operationId === 'superconsole.confirmations.issue') outcomes.push(event.outcome);
+        },
+      },
+      idempotency: new MemoryAdminIdempotencyStore(),
+      confirmation: {
+        issue: async () => ({ token: 'ambiguous-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+        prepareActivation: async () => undefined,
+        cancelActivation: async () => { throw new Error('cancellation unavailable'); },
+        activate: async () => { throw new Error('ambiguous activation outcome'); },
+        revoke: async () => { throw new Error('revocation unavailable'); },
+        verify: async () => false,
+      },
+    });
+
+    const response = await console.handle(request('/api/admin/v1/confirmations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operationId: 'examplefn.records.delete', input: { id: 'record_1' } }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ ok: true, data: { token: 'ambiguous-token' } });
+    expect(outcomes).toEqual(['attempted', 'succeeded']);
   });
 
   it('returns audit unavailable when activation preparation and its denial audit both fail', async () => {

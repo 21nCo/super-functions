@@ -286,6 +286,35 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(attachDomain).toHaveBeenCalledTimes(2);
   });
 
+  it("does not recreate a pending domain deleted while attachment is in flight", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    const detachDomain = vi.fn(async () => undefined);
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain: async () => providerGate, detachDomain,
+      setVariable: async () => undefined, deleteVariable: async () => undefined,
+    };
+    const attachingService = new HostFnOperatorService(store, executor);
+    const detachingService = new HostFnOperatorService(store, executor);
+    const attaching = attachingService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    await vi.waitFor(async () => expect(await store.listDomains(scope)).toHaveLength(1));
+    const [pending] = await store.listDomains(scope);
+
+    await expect(detachingService.detachDomain(scope, pending!.id)).resolves.toMatchObject({ status: "pending" });
+    releaseProvider();
+    await expect(attaching).rejects.toThrow("attachment lease was superseded");
+    await expect(store.listDomains(scope)).resolves.toEqual([]);
+    expect(detachDomain).toHaveBeenCalledTimes(2);
+    expect(detachDomain).toHaveBeenLastCalledWith(expect.objectContaining({ domain: expect.objectContaining({ id: pending!.id }) }));
+  });
+
   it("persists variable intent before calling the provider", async () => {
     class IntentFailureStore extends MemoryHostFnOperatorStore {
       override async putVariable() {

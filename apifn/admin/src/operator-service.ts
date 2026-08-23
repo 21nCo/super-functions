@@ -4,7 +4,14 @@ import {
   validateOpenAPI,
   type OpenAPIDocument,
 } from "@apifn/core";
-import { AdminError, adminScopeRootId, type AdminOperationContext } from "@superfunctions/admin";
+import {
+  AdminError,
+  adminScopeRootId,
+  decodeAdminCursor,
+  encodeAdminCursor,
+  type AdminOperationContext,
+  type AdminScope,
+} from "@superfunctions/admin";
 
 export interface ApiFnOperatorScope {
   installationId: string;
@@ -153,16 +160,43 @@ function specView(record: ApiFnSpecRecord): ApiFnSpecView {
   };
 }
 
-function page<T extends { id: string }>(items: T[], input: ApiFnPageInput) {
+type ApiFnCursorResource = "specs" | "environments";
+
+function cursorScope(scope: ApiFnOperatorScope): AdminScope {
+  return {
+    installationId: scope.installationId,
+    workspaceId: scope.workspaceId,
+    projectId: scope.projectId,
+    ...(scope.environmentId ? { environmentId: scope.environmentId } : {}),
+  };
+}
+
+function page<T extends { id: string }>(
+  items: T[],
+  input: ApiFnPageInput,
+  scope: ApiFnOperatorScope,
+  resource: ApiFnCursorResource,
+) {
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-  const offset = input.cursor === undefined ? 0 : Number(input.cursor);
+  const position = input.cursor === undefined
+    ? { offset: 0, resource }
+    : decodeAdminCursor<{ offset: number; resource: ApiFnCursorResource }>(input.cursor, cursorScope(scope));
+  const offset = position.offset;
   if (!Number.isSafeInteger(offset) || offset < 0) {
     throw new AdminError("invalid_argument", "ApiFn cursor is invalid.");
+  }
+  if (position.resource !== resource) {
+    throw new AdminError("invalid_argument", "ApiFn cursor is invalid for this resource.");
   }
   const ordered = [...items].sort((left, right) => left.id.localeCompare(right.id));
   const values = ordered.slice(offset, offset + limit);
   const next = offset + values.length;
-  return { items: values, nextCursor: next < ordered.length ? String(next) : null };
+  return {
+    items: values,
+    nextCursor: next < ordered.length
+      ? encodeAdminCursor(cursorScope(scope), { offset: next, resource })
+      : null,
+  };
 }
 
 function required(value: string, label: string): string {
@@ -174,8 +208,9 @@ export function createApiFnOperatorService(options: ApiFnOperatorServiceOptions)
   const now = () => (options.now?.() ?? new Date()).toISOString();
   return {
     async listSpecs(input: ApiFnPageInput, context: AdminOperationContext) {
-      const values = await options.store.listSpecs(requireScope(context));
-      return page(values.map(specView), input);
+      const scope = requireScope(context);
+      const values = await options.store.listSpecs(scope);
+      return page(values.map(specView), input, scope, "specs");
     },
 
     async getSpec(input: { id: string }, context: AdminOperationContext) {
@@ -239,7 +274,8 @@ export function createApiFnOperatorService(options: ApiFnOperatorServiceOptions)
     },
 
     async listEnvironments(input: ApiFnPageInput, context: AdminOperationContext) {
-      return page(await options.store.listEnvironments(requireScope(context)), input);
+      const scope = requireScope(context);
+      return page(await options.store.listEnvironments(scope), input, scope, "environments");
     },
 
     async getEnvironment(input: { id: string }, context: AdminOperationContext) {

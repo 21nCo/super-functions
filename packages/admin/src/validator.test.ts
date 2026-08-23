@@ -99,4 +99,18 @@ describe("validateAdminValue", () => {
       });
     },
   );
+
+  it.each([undefined, 1n, Symbol("value"), () => undefined])(
+    "rejects non-JSON primitive leaves through open schemas",
+    (value) => {
+      expect(validateAdminValue({}, value)).toEqual([
+        { path: "$", message: "must be a JSON value", keyword: "type" },
+      ]);
+      expect(validateAdminValue({ type: "object", additionalProperties: true }, { nested: value })).toContainEqual({
+        path: "$.nested",
+        message: "must be a JSON value",
+        keyword: "type",
+      });
+    },
+  );
 });

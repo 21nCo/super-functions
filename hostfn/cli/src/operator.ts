@@ -226,7 +226,7 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
   }
   async completeDomainAttachment(domain: HostFnDomain, claimToken: string) {
     const key = this.key(domain.scope, domain.id);
-    if (this.domainAttachmentClaims.get(key) !== claimToken) return false;
+    if (!this.domains.has(key) || this.domainAttachmentClaims.get(key) !== claimToken) return false;
     this.domains.set(key, structuredClone(domain));
     this.domainAttachmentClaims.delete(key);
     return true;
@@ -237,7 +237,9 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     if (domain.status !== "pending") this.domainAttachmentClaims.delete(key);
   }
   async deleteDomain(scope: HostFnScope, id: string) {
-    return this.domains.delete(this.key(scope, id));
+    const key = this.key(scope, id);
+    this.domainAttachmentClaims.delete(key);
+    return this.domains.delete(key);
   }
   async listVariables(scope: HostFnScope, targetId?: string) {
     return scoped(this.variables.values(), scope)
@@ -385,6 +387,13 @@ export class HostFnOperatorService {
     const claimToken = claim.claimToken!;
     const currentDomain = async () =>
       (await this.store.listDomains(scope, target.id)).find((candidate) => candidate.id === domain.id);
+    const compensateDeletedDomain = async () => {
+      try {
+        await this.executor.detachDomain({ target, domain });
+      } catch (error) {
+        if (!providerReportedNotFound(error)) throw error;
+      }
+    };
     try {
       // Executors must make retries with the same domain ID idempotent. Reusing
       // a failed/pending intent lets ambiguous provider outcomes converge.
@@ -399,6 +408,7 @@ export class HostFnOperatorService {
         if (!completed) {
           const current = await currentDomain();
           if (current) return current;
+          await compensateDeletedDomain();
         }
       } catch {
         // The already-durable pending intent remains discoverable and reusable.
@@ -416,6 +426,7 @@ export class HostFnOperatorService {
       if (!completed) {
         const current = await currentDomain();
         if (current) return current;
+        await compensateDeletedDomain();
         throw new Error("HostFn domain attachment lease was superseded.");
       }
     } catch (error) {
