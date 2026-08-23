@@ -6,6 +6,7 @@ export interface UIFnZonedResolution { readonly kind: 'exact' | 'gap' | 'fold'; 
 export type UIFnDateSegment = 'year' | 'month' | 'day';
 
 const DAY_MS = 86_400_000;
+const MIN_CALENDAR_YEAR = 0;
 
 function utcDate(
   year: number,
@@ -62,18 +63,23 @@ export function compareUIFnDates(left: UIFnCalendarDate, right: UIFnCalendarDate
 export function addUIFnDateDays(value: UIFnCalendarDate, amount: number): UIFnCalendarDate {
   const date = utcDate(value.year, value.month - 1, value.day);
   date.setTime(date.getTime() + Math.trunc(amount) * DAY_MS);
+  if (date.getUTCFullYear() < MIN_CALENDAR_YEAR) return createUIFnCalendarDate(MIN_CALENDAR_YEAR, 1, 1);
   return createUIFnCalendarDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
 export function addUIFnDateMonths(value: UIFnCalendarDate, amount: number): UIFnCalendarDate {
   const absolute = value.year * 12 + value.month - 1 + Math.trunc(amount);
+  if (absolute < 0) return createUIFnCalendarDate(MIN_CALENDAR_YEAR, 1, 1);
   const year = Math.floor(absolute / 12);
   const month = ((absolute % 12) + 12) % 12 + 1;
   return createUIFnCalendarDate(year, month, Math.min(value.day, daysInMonth(year, month)));
 }
 
 export function setUIFnDateSegment(value: UIFnCalendarDate, segment: UIFnDateSegment, raw: number): UIFnCalendarDate {
-  if (segment === 'year') return createUIFnCalendarDate(Math.trunc(raw), value.month, Math.min(value.day, daysInMonth(Math.trunc(raw), value.month)));
+  if (segment === 'year') {
+    const year = Math.max(MIN_CALENDAR_YEAR, Math.trunc(raw));
+    return createUIFnCalendarDate(year, value.month, Math.min(value.day, daysInMonth(year, value.month)));
+  }
   if (segment === 'month') {
     const month = Math.min(12, Math.max(1, Math.trunc(raw)));
     return createUIFnCalendarDate(value.year, month, Math.min(value.day, daysInMonth(value.year, month)));

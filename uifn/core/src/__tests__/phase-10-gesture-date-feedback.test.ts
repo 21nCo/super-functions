@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   addUIFnDateDays,
+  addUIFnDateMonths,
   assertUIFnRangeDirection,
   colorUIFnDistance,
   compareUIFnDates,
   createUIFnCalendarDate,
+  createUIFnMonthGrid,
   firstUIFnDayOfWeek,
   formatUIFnDate,
   hslaToUIFnRgba,
@@ -165,6 +167,24 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(createUIFnCalendarDate(275760, 9, 13)).toEqual({ calendar: 'gregory', year: 275760, month: 9, day: 13 });
     expect(() => createUIFnCalendarDate(275760, 9, 14)).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
     expect(() => createUIFnCalendarDate(-1, 1, 1)).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
+  });
+
+  it('clamps calendar arithmetic and picker navigation at the supported year-zero boundary', () => {
+    const lowerBound = createUIFnCalendarDate(0, 1, 1);
+    expect(addUIFnDateDays(lowerBound, -1)).toEqual(lowerBound);
+    expect(addUIFnDateMonths(lowerBound, -1)).toEqual(lowerBound);
+    const grid = createUIFnMonthGrid(lowerBound, 'en-US');
+    expect(grid).toHaveLength(42);
+    expect(grid[0]).toEqual(lowerBound);
+
+    const picker = createDatePickerController({ defaultValue: lowerBound, locale: 'en-US' }, deterministicEnv('en-US'));
+    picker.actions.navigateGrid('ArrowLeft');
+    picker.actions.navigateMonth(-1);
+    picker.actions.decrement('year');
+    expect(picker.state.focusedDate).toEqual(lowerBound);
+    expect(picker.state.visibleMonth).toEqual(lowerBound);
+    expect(picker.state.value).toEqual(lowerBound);
+    picker.destroy();
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {

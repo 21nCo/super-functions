@@ -1,7 +1,7 @@
 import { validateAdminValue, type AdminJsonSchema } from '@superfunctions/admin';
 import type { AdminActionViewModel } from './view-models';
 
-export type ActionFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
+export type ActionFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'json';
 export type ActionDraftValue = string | boolean | undefined;
 export type ActionDraft = Record<string, ActionDraftValue>;
 
@@ -25,13 +25,24 @@ function fieldLabel(name: string): string {
     .replace(/^./, (character) => character.toUpperCase());
 }
 
+function declaredFieldTypes(schema: AdminJsonSchema): Set<Exclude<ActionFieldType, 'json'>> {
+  const declared = new Set<Exclude<ActionFieldType, 'json'>>();
+  const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+  for (const type of types) {
+    if (type !== 'null' && ['string', 'number', 'integer', 'boolean', 'object', 'array'].includes(type)) {
+      declared.add(type as Exclude<ActionFieldType, 'json'>);
+    }
+  }
+  for (const branch of [...schema.allOf ?? [], ...schema.anyOf ?? [], ...schema.oneOf ?? []]) {
+    for (const type of declaredFieldTypes(branch)) declared.add(type);
+  }
+  return declared;
+}
+
 function fieldType(schema: AdminJsonSchema): ActionFieldType {
-  const declared = Array.isArray(schema.type)
-    ? schema.type.find((type) => type !== 'null')
-    : schema.type;
-  return ['number', 'integer', 'boolean', 'object', 'array'].includes(declared ?? '')
-    ? declared as ActionFieldType
-    : 'string';
+  const declared = [...declaredFieldTypes(schema)];
+  if (declared.length === 1) return declared[0];
+  return declared.length > 1 ? 'json' : 'string';
 }
 
 export function editableActionFields(action: AdminActionViewModel): ActionInputField[] {
@@ -76,7 +87,7 @@ function initialValue(field: ActionInputField, value: unknown): ActionDraftValue
     return typeof candidate === 'boolean' ? candidate : field.required ? false : undefined;
   }
   if (candidate === undefined || candidate === null) return '';
-  if (field.type === 'object' || field.type === 'array') {
+  if (field.type === 'object' || field.type === 'array' || field.type === 'json') {
     return JSON.stringify(candidate, null, 2);
   }
   return String(candidate);
@@ -99,14 +110,21 @@ function nestedSchemaError(schema: AdminJsonSchema, value: unknown, path: string
     const error = nestedSchemaError(candidate, value, path);
     if (error) return error;
   }
+  if (schema.anyOf?.length && !schema.anyOf.some((candidate) => nestedSchemaError(candidate, value, path) === undefined)) {
+    return `${path} must match at least one allowed schema.`;
+  }
+  if (schema.oneOf?.length && schema.oneOf.filter((candidate) => nestedSchemaError(candidate, value, path) === undefined).length !== 1) {
+    return `${path} must match exactly one allowed schema.`;
+  }
   if (!schemaTypeMatches(schema, value)) return `${path} has the wrong value type.`;
   if (schema.const !== undefined && validateAdminValue({ const: schema.const }, value).length > 0) return `${path} must equal the declared constant.`;
   if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => validateAdminValue({ const: candidate }, value).length === 0)) {
     return `${path} must be one of the declared values.`;
   }
   if (typeof value === 'string') {
-    if (typeof schema.minLength === 'number' && value.length < schema.minLength) return `${path} is too short.`;
-    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) return `${path} is too long.`;
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === 'number' && length < schema.minLength) return `${path} is too short.`;
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) return `${path} is too long.`;
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) return `${path} has an invalid format.`;
   }
   if (typeof value === 'number') {
@@ -183,10 +201,10 @@ function parseField(field: ActionInputField, raw: ActionDraftValue): { value?: u
     return error ? { error } : { value };
   }
 
-  if (field.type === 'object' || field.type === 'array') {
+  if (field.type === 'object' || field.type === 'array' || field.type === 'json') {
     try {
       const value: unknown = JSON.parse(text);
-      if (field.type === 'array' ? !Array.isArray(value) : typeof value !== 'object' || value === null || Array.isArray(value)) {
+      if (field.type !== 'json' && (field.type === 'array' ? !Array.isArray(value) : typeof value !== 'object' || value === null || Array.isArray(value))) {
         return { error: `${field.label} must be a JSON ${field.type}.` };
       }
       const nestedError = nestedSchemaError(field.schema, value, field.label);

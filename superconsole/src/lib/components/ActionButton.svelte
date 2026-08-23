@@ -243,7 +243,7 @@
                     {field.label}
                     {#if field.required}<FieldRequiredIndicator aria-label="required"> *</FieldRequiredIndicator>{/if}
                   </FieldLabel>
-                  {#if field.type === 'object' || field.type === 'array'}
+                  {#if field.type === 'object' || field.type === 'array' || field.type === 'json'}
                     <FieldControl>
                       <TextareaRoot
                         id={fieldId(field)}

@@ -386,6 +386,37 @@ describe('PHASE_09 selection and input vectors', () => {
     files.destroy();
   });
 
+  it('applies updated file-picker and validation constraints immediately', async () => {
+    const selected = { name: 'notes.txt', size: 4, type: 'text/plain' };
+    const pick = vi.fn(async () => [selected]);
+    const rejected: string[] = [];
+    const files = createFileUploadController({
+      capability: { pick },
+      accept: 'image/*',
+      maxSize: 100,
+      onReject: (code) => rejected.push(code),
+    });
+
+    files.update({ accept: 'text/plain', multiple: true, maxFiles: 2, maxSize: 5 });
+    await files.actions.openPicker();
+    expect(pick).toHaveBeenCalledWith({ accept: 'text/plain', multiple: true });
+    expect(files.actions.getFiles()).toEqual([selected]);
+    expect(files.parts.input.getProps().attributes).toMatchObject({ accept: 'text/plain', multiple: true });
+
+    files.update({ maxSize: 3 });
+    files.actions.selectFiles([selected]);
+    files.update({ maxSize: 10, maxFiles: 1 });
+    files.actions.selectFiles([selected, { ...selected, name: 'other.txt' }]);
+    files.update({ accept: 'application/pdf' });
+    files.actions.selectFiles([selected]);
+    expect(rejected).toEqual(['size', 'count', 'type']);
+
+    files.update({ accept: undefined, multiple: false });
+    expect(files.parts.input.getProps().attributes).toMatchObject({ multiple: false });
+    expect(files.parts.input.getProps().attributes).not.toHaveProperty('accept');
+    files.destroy();
+  });
+
   it('TV-PRIM-005-N redacts password, pin, and file payloads from state and snapshots', () => {
     const secret = 'correct horse battery staple';
     const password = createPasswordInputController({ defaultValue: secret });

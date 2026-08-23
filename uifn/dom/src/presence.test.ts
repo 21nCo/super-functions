@@ -4,7 +4,7 @@ import type { UIFnDomScope } from './scope';
 
 function fixture(style: Partial<CSSStyleDeclaration>) {
   const listeners = new Map<string, Set<(event: Event) => void>>();
-  const timers: Array<{ callback: () => void; delay: number }> = [];
+  const timers: Array<{ callback: () => void; delay: number; cancel: ReturnType<typeof vi.fn> }> = [];
   const element = {
     setAttribute: vi.fn(),
     removeAttribute: vi.fn(),
@@ -28,8 +28,9 @@ function fixture(style: Partial<CSSStyleDeclaration>) {
       };
     },
     setTimeout: vi.fn((callback: () => void, delay: number) => {
-      timers.push({ callback, delay });
-      return () => undefined;
+      const cancel = vi.fn();
+      timers.push({ callback, delay, cancel });
+      return cancel;
     }),
     window: { getComputedStyle: () => style },
     environment: { now: () => 0, trace: vi.fn(), prefersReducedMotion: () => false },
@@ -52,6 +53,7 @@ describe('createUIFnPresence', () => {
     expect(presence.state).toBe('exiting');
     test.dispatch('transitionend');
     expect(presence.state).toBe('unmounted');
+    expect(test.timers[0]?.cancel).toHaveBeenCalledOnce();
   });
 
   it('ignores excess duration entries beyond the motion-property list', () => {

@@ -237,12 +237,17 @@ function decodeUserCursor(
 ): DecodedUserCursor {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<DecodedUserCursor>;
+    const hasQueryBinding = parsed.direction !== undefined
+      || parsed.email !== undefined
+      || parsed.regionId !== undefined;
     if (
       typeof parsed.createdAt !== 'string'
       || typeof parsed.id !== 'string'
-      || parsed.direction !== query.direction
-      || parsed.email !== query.email
-      || parsed.regionId !== query.regionId
+      || (hasQueryBinding && (
+        parsed.direction !== query.direction
+        || parsed.email !== query.email
+        || parsed.regionId !== query.regionId
+      ))
     ) {
       throw new Error('Invalid cursor payload');
     }

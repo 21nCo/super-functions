@@ -97,4 +97,44 @@ describe('createUIFnPositioner auto-update binding', () => {
     positioner.destroy();
     expect(cleanup).toHaveBeenCalledOnce();
   });
+
+  it('rebinds an animation-frame subscription when the reference identity changes', async () => {
+    floatingMocks.autoUpdate.mockReset();
+    const firstCleanup = vi.fn();
+    const secondCleanup = vi.fn();
+    floatingMocks.autoUpdate
+      .mockReturnValueOnce(firstCleanup)
+      .mockReturnValueOnce(secondCleanup);
+    const rect = () => ({ x: 1, y: 2, width: 10, height: 10 } as DOMRect);
+    const element = { nodeType: 1, getBoundingClientRect: rect } as Element;
+    const virtual = { contextElement: element, getBoundingClientRect: rect };
+    let reference: Element | typeof virtual = element;
+    const floating = { getBoundingClientRect: rect } as HTMLElement;
+    const scope = {
+      assertAlive: vi.fn(),
+      track: (_kind: string, release = () => undefined) => release,
+      document: { documentElement: { clientWidth: 0, clientHeight: 0 } },
+      environment: { now: () => 0, trace: vi.fn(), error: vi.fn() },
+    } as unknown as UIFnDomScope;
+    const positioner = createUIFnPositioner(scope, {
+      reference: () => reference,
+      floating,
+      animationFrame: true,
+      applyStyles: false,
+    });
+
+    positioner.start();
+    reference = virtual;
+    await positioner.update();
+
+    expect(firstCleanup).toHaveBeenCalledOnce();
+    expect(floatingMocks.autoUpdate).toHaveBeenLastCalledWith(
+      virtual,
+      floating,
+      expect.any(Function),
+      { animationFrame: true },
+    );
+    positioner.destroy();
+    expect(secondCleanup).toHaveBeenCalledOnce();
+  });
 });

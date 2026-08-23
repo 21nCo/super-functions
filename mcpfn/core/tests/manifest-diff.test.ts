@@ -64,7 +64,11 @@ describe("McpFn manifests", () => {
   });
 
   it("keeps optional input removal compatible when the new schema is open", () => {
-    const manifestWithProperty = (includeProperty: boolean, additionalProperties?: boolean) => createManifest(
+    const manifestWithProperty = (
+      includeProperty: boolean,
+      additionalProperties?: boolean,
+      required: string[] = [],
+    ) => createManifest(
       { name: "example", version: includeProperty ? "1.0.0" : "1.1.0" },
       new McpFnRegistry().register({
         name: "open_input",
@@ -72,6 +76,7 @@ describe("McpFn manifests", () => {
         inputSchema: {
           type: "object",
           ...(includeProperty ? { properties: { optional: { type: "string" } } } : {}),
+          ...(required.length ? { required } : {}),
           ...(additionalProperties === undefined ? {} : { additionalProperties }),
         },
         handler: async () => structuredResult({ ok: true }),
@@ -85,6 +90,10 @@ describe("McpFn manifests", () => {
     expect(diffManifests(manifestWithProperty(true), manifestWithProperty(false)))
       .toMatchObject({ compatible: true });
     expect(diffManifests(manifestWithProperty(true, false), manifestWithProperty(false, false)))
+      .toMatchObject({ compatible: false, changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+      ]) });
+    expect(diffManifests(manifestWithProperty(true, true), manifestWithProperty(false, true, ["optional"])))
       .toMatchObject({ compatible: false, changes: expect.arrayContaining([
         expect.objectContaining({ code: "property-removed", severity: "breaking" }),
       ]) });

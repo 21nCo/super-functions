@@ -108,6 +108,64 @@ describe('schema-driven action input', () => {
     })).toMatchObject({ ok: true });
   });
 
+  it('uses a JSON editor for union fields and validates the selected branch', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'apifn.specs.register',
+      label: 'Register API specification',
+      input: { document: { openapi: '3.1.0' } },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: {
+            oneOf: [
+              { type: 'string', minLength: 1 },
+              {
+                type: 'object',
+                properties: { openapi: { type: 'string' } },
+                required: ['openapi'],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+        required: ['document'],
+      },
+    };
+
+    expect(editableActionFields(candidate)).toEqual([
+      expect.objectContaining({ name: 'document', type: 'json' }),
+    ]);
+    expect(createActionDraft(candidate).document).toBe('{\n  "openapi": "3.1.0"\n}');
+    expect(validateActionInput(candidate, { document: '{"openapi":"3.1.0"}' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { document: '"https://example.test/openapi.json"' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { document: '{"title":"missing version"}' })).toMatchObject({
+      ok: false,
+      errors: { document: 'Document must match exactly one allowed schema.' },
+    });
+  });
+
+  it('counts Unicode code points for string length constraints', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'billfn.adjustments.create',
+      label: 'Create adjustment',
+      inputSchema: {
+        type: 'object',
+        properties: { reason: { type: 'string', minLength: 2, maxLength: 2 } },
+        required: ['reason'],
+      },
+    };
+
+    expect(validateActionInput(candidate, { reason: '😀😀' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { reason: '😀' })).toMatchObject({
+      ok: false,
+      errors: { reason: 'Reason is too short.' },
+    });
+    expect(validateActionInput(candidate, { reason: '😀😀😀' })).toMatchObject({
+      ok: false,
+      errors: { reason: 'Reason is too long.' },
+    });
+  });
+
   it('parses primitive and JSON fields into the exact dispatch input', () => {
     const candidate = action();
     const result = validateActionInput(candidate, {

@@ -196,6 +196,7 @@ export function createUIFnPositioner(
   let destroyed = false;
   let result: Readonly<UIFnPositionResult> | null = null;
   let cleanupAutoUpdate: () => void = () => undefined;
+  let boundReference: Element | UIFnVirtualAnchor | null = null;
   let boundReferenceTarget: Element | null = null;
   let boundFloating: HTMLElement | null = null;
   let generation = 0;
@@ -240,7 +241,9 @@ export function createUIFnPositioner(
       : reference.contextElement ?? null;
     const restartAutoUpdate = running && (
       autoUpdateConfigChanged
-      || referenceTarget !== boundReferenceTarget
+      || (options.animationFrame
+        ? reference !== boundReference
+        : referenceTarget !== boundReferenceTarget)
       || floating !== boundFloating
     );
     if (restartAutoUpdate) {
@@ -249,6 +252,7 @@ export function createUIFnPositioner(
       running = false;
       if (options.autoUpdate !== false) {
         running = true;
+        boundReference = reference;
         boundReferenceTarget = referenceTarget;
         boundFloating = floating;
         cleanupAutoUpdate = scope.track('observer', autoUpdate(
@@ -351,6 +355,7 @@ export function createUIFnPositioner(
     running = false;
     cleanupAutoUpdate();
     cleanupAutoUpdate = () => undefined;
+    boundReference = null;
     boundReferenceTarget = null;
     boundFloating = null;
   };
@@ -377,6 +382,7 @@ export function createUIFnPositioner(
       }
       else {
         running = true;
+        boundReference = reference;
         boundReferenceTarget = 'nodeType' in reference
           ? reference as Element
           : reference.contextElement ?? null;
