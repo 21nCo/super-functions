@@ -88,6 +88,26 @@ describe('schema-driven action input', () => {
     expect(validateActionInput(candidate, { payload: '{"a":"one","b":"two"}' })).toMatchObject({ ok: true });
   });
 
+  it('compares object and array enum and const values structurally', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'object', enum: [{ strategy: 'safe', limits: [1, 2] }] },
+          fallback: { type: 'array', const: ['retry', { enabled: true }] },
+        },
+        required: ['mode', 'fallback'],
+      },
+    };
+
+    expect(validateActionInput(candidate, {
+      mode: '{"limits":[1,2],"strategy":"safe"}',
+      fallback: '["retry",{"enabled":true}]',
+    })).toMatchObject({ ok: true });
+  });
+
   it('parses primitive and JSON fields into the exact dispatch input', () => {
     const candidate = action();
     const result = validateActionInput(candidate, {

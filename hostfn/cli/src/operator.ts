@@ -69,6 +69,8 @@ export interface HostFnOperatorStore {
     acquired: boolean;
     claimToken?: string;
   }>;
+  /** Persist a terminal state only when `claimToken` is still the current lease. */
+  completeDomainAttachment(domain: HostFnDomain, claimToken: string): Promise<boolean>;
   releaseDomainAttachmentClaim(scope: HostFnScope, id: string, claimToken: string): Promise<void>;
   putDomain(domain: HostFnDomain): Promise<void>;
   deleteDomain(scope: HostFnScope, id: string): Promise<boolean>;
@@ -222,6 +224,13 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
       this.domainAttachmentClaims.delete(key);
     }
   }
+  async completeDomainAttachment(domain: HostFnDomain, claimToken: string) {
+    const key = this.key(domain.scope, domain.id);
+    if (this.domainAttachmentClaims.get(key) !== claimToken) return false;
+    this.domains.set(key, structuredClone(domain));
+    this.domainAttachmentClaims.delete(key);
+    return true;
+  }
   async putDomain(domain: HostFnDomain) {
     const key = this.key(domain.scope, domain.id);
     this.domains.set(key, structuredClone(domain));
@@ -374,17 +383,23 @@ export class HostFnOperatorService {
     const domain = claim.domain;
     if (!claim.acquired) return domain;
     const claimToken = claim.claimToken!;
+    const currentDomain = async () =>
+      (await this.store.listDomains(scope, target.id)).find((candidate) => candidate.id === domain.id);
     try {
       // Executors must make retries with the same domain ID idempotent. Reusing
       // a failed/pending intent lets ambiguous provider outcomes converge.
       await this.executor.attachDomain({ target, domain });
     } catch (error) {
       try {
-        await this.store.putDomain({
+        const completed = await this.store.completeDomainAttachment({
           ...domain,
           status: "failed",
           updatedAt: new Date().toISOString(),
-        });
+        }, claimToken);
+        if (!completed) {
+          const current = await currentDomain();
+          if (current) return current;
+        }
       } catch {
         // The already-durable pending intent remains discoverable and reusable.
       }
@@ -397,7 +412,12 @@ export class HostFnOperatorService {
     }
     const active = { ...domain, status: "active" as const };
     try {
-      await this.store.putDomain(active);
+      const completed = await this.store.completeDomainAttachment(active, claimToken);
+      if (!completed) {
+        const current = await currentDomain();
+        if (current) return current;
+        throw new Error("HostFn domain attachment lease was superseded.");
+      }
     } catch (error) {
       try {
         await this.store.releaseDomainAttachmentClaim(scope, domain.id, claimToken);
@@ -429,11 +449,6 @@ export class HostFnOperatorService {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(input.key))
       throw new Error("Invalid environment variable key.");
     const target = await this.target(scope, input.targetId);
-    await this.executor.setVariable({
-      target,
-      key: input.key,
-      value: input.value,
-    });
     const variable: HostFnVariable = {
       id: `${target.id}:${input.key}`,
       scope,
@@ -441,7 +456,14 @@ export class HostFnOperatorService {
       key: input.key,
       updatedAt: new Date().toISOString(),
     };
+    // Persist a deletion-capable intent before the provider side effect so an
+    // ambiguous or acknowledged provider write always remains reconcilable.
     await this.store.putVariable(variable, input.value);
+    await this.executor.setVariable({
+      target,
+      key: input.key,
+      value: input.value,
+    });
     return variable;
   }
   async deleteVariable(scope: HostFnScope, id: string) {

@@ -23,18 +23,16 @@ describe("validateAdminValue", () => {
     });
   });
 
-  it("does not satisfy required properties from an object's prototype", () => {
+  it("rejects objects that could satisfy properties from a custom prototype", () => {
     const value = Object.create({ id: "inherited" }) as Record<string, unknown>;
     expect(validateAdminValue({
       type: "object",
       properties: { id: { type: "string" } },
       required: ["id"],
       additionalProperties: false,
-    }, value)).toContainEqual({
-      path: "$.id",
-      message: "is required",
-      keyword: "required",
-    });
+    }, value)).toEqual([
+      { path: "$", message: "must be a plain JSON object", keyword: "type" },
+    ]);
   });
 
   it("compares object and array enum members structurally", () => {
@@ -75,8 +73,8 @@ describe("validateAdminValue", () => {
   it.each([new Date(0), new Map(), (() => { const value: Record<string, unknown> = {}; value.self = value; return value; })()])(
     "rejects non-JSON enum and constant comparisons without throwing",
     (value) => {
-      expect(validateAdminValue({ const: {} }, value)).toContainEqual(expect.objectContaining({ keyword: "const" }));
-      expect(validateAdminValue({ enum: [{}] }, value)).toContainEqual(expect.objectContaining({ keyword: "enum" }));
+      expect(validateAdminValue({ const: {} }, value).length).toBeGreaterThan(0);
+      expect(validateAdminValue({ enum: [{}] }, value).length).toBeGreaterThan(0);
     },
   );
 
@@ -87,4 +85,18 @@ describe("validateAdminValue", () => {
       keyword: "type",
     });
   });
+
+  it.each([new Date(0), new Map(), new (class Example { value = 1; })()])(
+    "rejects non-plain objects through open schemas",
+    (value) => {
+      expect(validateAdminValue({ type: "object" }, value)).toEqual([
+        { path: "$", message: "must be a plain JSON object", keyword: "type" },
+      ]);
+      expect(validateAdminValue({}, { nested: value })).toContainEqual({
+        path: "$.nested",
+        message: "must be a plain JSON object",
+        keyword: "type",
+      });
+    },
+  );
 });

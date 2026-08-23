@@ -80,6 +80,7 @@ describe("representative dev installation", () => {
       confirmation: {
         issue: async () => ({ token: "test", expiresAt: new Date(Date.now() + 60_000).toISOString() }),
         prepareActivation: async () => undefined,
+        cancelActivation: async () => undefined,
         activate: async () => undefined,
         revoke: async () => undefined,
         verify: async () => true,

@@ -119,6 +119,12 @@ function validateAdminValueInternal(
   if (value !== null && typeof value === "object" && ancestors.has(value)) {
     return [{ path, message: "must be an acyclic JSON value", keyword: "type" }];
   }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return [{ path, message: "must be a plain JSON object", keyword: "type" }];
+    }
+  }
   const childAncestors = new Set(ancestors);
   if (value !== null && typeof value === "object") childAncestors.add(value);
   if (typeof value === "number" && !Number.isFinite(value)) {

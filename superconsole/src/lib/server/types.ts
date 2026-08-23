@@ -185,6 +185,16 @@ export interface SuperConsoleConfirmationService extends AdminConfirmationVerifi
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<void>;
+  /** Durably make cancellation take precedence over the prepared success audit. */
+  cancelActivation(input: {
+    token: string;
+    auditId: string;
+    denialAuditId: string;
+    operationId: string;
+    input: unknown;
+    principal: SuperConsolePrincipal;
+    context: AdminOperationContext;
+  }): Promise<void>;
   /** Atomically make an audited staged token verifiable; a rejected call must leave it unusable. */
   activate(input: {
     token: string;

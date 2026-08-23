@@ -82,12 +82,15 @@ describe("MemoryHostFnOperatorStore", () => {
   it("keeps a discoverable pending domain when the provider succeeds but activation persistence fails", async () => {
     class ActivationFailureStore extends MemoryHostFnOperatorStore {
       private failActivationOnce = true;
-      override async putDomain(domain: Parameters<MemoryHostFnOperatorStore["putDomain"]>[0]) {
+      override async completeDomainAttachment(
+        domain: Parameters<MemoryHostFnOperatorStore["completeDomainAttachment"]>[0],
+        claimToken: string,
+      ) {
         if (domain.status === "active" && this.failActivationOnce) {
           this.failActivationOnce = false;
           throw new Error("activation persistence unavailable");
         }
-        await super.putDomain(domain);
+        return super.completeDomainAttachment(domain, claimToken);
       }
     }
     const store = new ActivationFailureStore();
@@ -234,6 +237,81 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(second.id).toBe(completed.id);
     expect(attachDomain).toHaveBeenCalledTimes(1);
     await expect(store.listDomains(scope)).resolves.toEqual([expect.objectContaining({ id: completed.id, status: "active" })]);
+  });
+
+  it("prevents an expired attachment worker from overwriting a reclaimed result", async () => {
+    class ClaimCapturingStore extends MemoryHostFnOperatorStore {
+      firstClaimToken?: string;
+      override async claimDomainAttachment(domain: Parameters<MemoryHostFnOperatorStore["claimDomainAttachment"]>[0]) {
+        const claim = await super.claimDomainAttachment(domain);
+        if (!this.firstClaimToken && claim.claimToken) this.firstClaimToken = claim.claimToken;
+        return claim;
+      }
+    }
+    const store = new ClaimCapturingStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let providerCalls = 0;
+    const attachDomain = vi.fn(async () => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        await firstGate;
+        throw new Error("stale provider failure");
+      }
+    });
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain, detachDomain: async () => undefined,
+      setVariable: async () => undefined, deleteVariable: async () => undefined,
+    };
+    const firstService = new HostFnOperatorService(store, executor);
+    const secondService = new HostFnOperatorService(store, executor);
+    const first = firstService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    await vi.waitFor(() => expect(attachDomain).toHaveBeenCalledTimes(1));
+    const [pending] = await store.listDomains(scope);
+    await store.releaseDomainAttachmentClaim(scope, pending!.id, store.firstClaimToken!);
+
+    const reclaimed = await secondService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    expect(reclaimed).toMatchObject({ id: pending!.id, status: "active" });
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ id: pending!.id, status: "active" });
+    await expect(store.listDomains(scope)).resolves.toEqual([
+      expect.objectContaining({ id: pending!.id, status: "active" }),
+    ]);
+    expect(attachDomain).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists variable intent before calling the provider", async () => {
+    class IntentFailureStore extends MemoryHostFnOperatorStore {
+      override async putVariable() {
+        throw new Error("variable intent persistence unavailable");
+      }
+    }
+    const store = new IntentFailureStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    const setVariable = vi.fn(async () => undefined);
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain: async () => undefined, detachDomain: async () => undefined,
+      setVariable, deleteVariable: async () => undefined,
+    };
+    const operator = new HostFnOperatorService(store, executor);
+
+    await expect(operator.setVariable(scope, {
+      targetId: target.id,
+      key: "API_KEY",
+      value: "secret",
+    })).rejects.toThrow("variable intent persistence unavailable");
+    expect(setVariable).not.toHaveBeenCalled();
   });
 
   it("reconciles a stale variable record when the provider already deleted it", async () => {

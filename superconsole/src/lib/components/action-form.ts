@@ -1,4 +1,4 @@
-import type { AdminJsonSchema } from '@superfunctions/admin';
+import { validateAdminValue, type AdminJsonSchema } from '@superfunctions/admin';
 import type { AdminActionViewModel } from './view-models';
 
 export type ActionFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
@@ -100,8 +100,8 @@ function nestedSchemaError(schema: AdminJsonSchema, value: unknown, path: string
     if (error) return error;
   }
   if (!schemaTypeMatches(schema, value)) return `${path} has the wrong value type.`;
-  if (schema.const !== undefined && !Object.is(value, schema.const)) return `${path} must equal the declared constant.`;
-  if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) {
+  if (schema.const !== undefined && validateAdminValue({ const: schema.const }, value).length > 0) return `${path} must equal the declared constant.`;
+  if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => validateAdminValue({ const: candidate }, value).length === 0)) {
     return `${path} must be one of the declared values.`;
   }
   if (typeof value === 'string') {

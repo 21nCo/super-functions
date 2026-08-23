@@ -600,10 +600,11 @@ export class SuperConsole {
     if (operations.some((operation) => operation.safety.requiresConfirmation)
       && (typeof options.confirmation?.issue !== 'function'
         || typeof options.confirmation?.prepareActivation !== 'function'
+        || typeof options.confirmation?.cancelActivation !== 'function'
         || typeof options.confirmation?.activate !== 'function'
         || typeof options.confirmation?.revoke !== 'function'
         || typeof options.confirmation?.verify !== 'function')) {
-      throw new Error('Super Console startup requires staged confirmation issue, durable activation preparation, activation, revocation, and verification because enabled operations require confirmation.');
+      throw new Error('Super Console startup requires staged confirmation issue, durable activation preparation and cancellation, activation, revocation, and verification because enabled operations require confirmation.');
     }
     if (options.openApiSecuritySchemes
       && (!options.openApiSecuritySchemes.operatorSession || !options.openApiSecuritySchemes.operatorApiKey)) {
@@ -1086,7 +1087,11 @@ export class SuperConsole {
       } catch {
         // The token remains staged and unusable when activation preparation fails.
       }
-      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'denied', started, 'CONFIRMATION_ACTIVATION_PREPARE_FAILED');
+      try {
+        await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'denied', started, 'CONFIRMATION_ACTIVATION_PREPARE_FAILED');
+      } catch {
+        throw new SuperConsoleHttpError('The confirmation activation preparation failure could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });
+      }
       throw new SuperConsoleHttpError('The confirmation token could not be prepared for activation.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
     }
     try {
@@ -1115,6 +1120,22 @@ export class SuperConsole {
         context: immutable.state.context,
       });
     } catch (error) {
+      const denialAuditId = `audit_${crypto.randomUUID()}`;
+      let cancellationDurable = false;
+      try {
+        await confirmation.cancelActivation({
+          token: receipt.token,
+          auditId: successAuditId,
+          denialAuditId,
+          operationId,
+          input: immutable.input,
+          principal: immutable.state.principal,
+          context: immutable.state.context,
+        });
+        cancellationDurable = true;
+      } catch {
+        // A durable revoke below is an equivalent cancellation fence.
+      }
       try {
         await confirmation.revoke({
           token: receipt.token,
@@ -1123,8 +1144,12 @@ export class SuperConsole {
           principal: immutable.state.principal,
           context: immutable.state.context,
         });
+        cancellationDurable = true;
       } catch {
-        // Activation is atomic by contract: rejection leaves the staged token unusable.
+        // The explicit cancellation record, when present, remains authoritative.
+      }
+      if (!cancellationDurable) {
+        throw new SuperConsoleHttpError('The confirmation activation failure could not be durably cancelled.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
       }
       try {
         await this.auditConfirmation(
@@ -1135,6 +1160,7 @@ export class SuperConsole {
           'denied',
           started,
           'CONFIRMATION_ACTIVATION_FAILED',
+          denialAuditId,
         );
       } catch {
         throw new SuperConsoleHttpError('The confirmation activation failure could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });

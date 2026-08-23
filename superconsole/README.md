@@ -56,10 +56,12 @@ Confirmation services must return an unusable staged token from `issue` and
 durably bind it to the supplied terminal audit ID in `prepareActivation`.
 Super Console then writes that exact succeeded audit and activates the token.
 Providers must reconcile prepared records after interruption: activate when the
-bound success audit exists, otherwise revoke or expire them. Activation failures
-are recorded as denied events and trigger an idempotent `revoke`; audit failures
-therefore cannot leave a live unaudited token, while a post-audit interruption
-remains durably identifiable and recoverable.
+bound success audit exists unless a durable `cancelActivation` record exists;
+cancellation always wins. Otherwise providers revoke or expire the staged token.
+Activation failures are durably cancelled before their denied event is written
+and trigger an idempotent `revoke`; audit failures therefore cannot leave a live
+unaudited token, while a post-audit interruption remains identifiable and
+recoverable without reactivating a denied confirmation.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an
