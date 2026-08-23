@@ -148,8 +148,10 @@ export class DevFnOrchestrator {
         receipt.routes = await proxy.upsert(routes);
       }
       const httpPorts = new Set<string>(profileHostnames.map(([, spec]) => spec.target));
-      for (const process of Object.values(options.config.processes ?? {})) if (process.health?.type === "http" && process.health.port) httpPorts.add(process.health.port);
-      for (const service of Object.values(options.config.services ?? {})) if (service.health?.type === "http" && service.health.port) httpPorts.add(service.health.port);
+      for (const node of plan.nodes) {
+        const health = node.kind === "process" ? options.config.processes?.[node.name]?.health : options.config.services?.[node.name]?.health;
+        if (health?.type === "http" && health.port) httpPorts.add(health.port);
+      }
       for (const allocation of allocations) {
         const route = receipt.routes.find((item) => item.targetPort === allocation.port);
         if (route) receipt.urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
@@ -229,7 +231,8 @@ export class DevFnOrchestrator {
     const compose = new ComposeController();
     const services = await Promise.all(receipt.services.map(async (managed) => ({ ...managed, state: await compose.status(managed) })));
     const degraded = (processes.some((item) => item.state !== "running") || services.some((item) => item.state !== "running")) && receipt.state === "ready";
-    return { ok: !degraded, state: degraded ? "degraded" : receipt.state, instanceId: identity.instanceId, profile: receipt.profile, processes, services, allocations: receipt.allocations, urls: receipt.urls };
+    const state = degraded ? "degraded" : receipt.state;
+    return { ok: state !== "failed" && state !== "degraded", state, instanceId: identity.instanceId, profile: receipt.profile, processes, services, allocations: receipt.allocations, urls: receipt.urls };
   }
 
   public async doctor(options: { config: DevFnConfig; root: string; profile?: string; stateDir?: string }): Promise<{ ok: boolean; diagnostics: Array<{ code: string; severity: "error" | "warning" | "info"; message: string; details?: unknown }> }> {
@@ -275,10 +278,10 @@ export class DevFnOrchestrator {
     if (plan.nodes.some((node) => node.kind === "service") && !await new ComposeController().available()) diagnostics.push({ code: "DEVFN_DOCKER_UNAVAILABLE", severity: "error", message: "Docker Compose is required by this profile but unavailable." });
     if (plan.proxy && !await new CaddyProxyController(options.stateDir ?? defaultStateDir()).available()) diagnostics.push({ code: "DEVFN_CADDY_UNAVAILABLE", severity: "error", message: "Caddy is required by this profile but unavailable." });
     const listeners = await scanListeners();
-    const exact = plan.portNames.flatMap((name) => options.config.ports?.[name]?.exact && options.config.ports[name].preferred ? [{ name, port: options.config.ports[name].preferred! }] : []);
+    const exact = plan.portNames.flatMap((name) => options.config.ports?.[name]?.exact && options.config.ports[name].preferred ? [{ name, port: options.config.ports[name].preferred!, protocol: options.config.ports[name].protocol ?? "tcp" as const }] : []);
     for (const item of exact) {
-      const listener = listeners.find((candidate) => candidate.port === item.port);
-      if (listener || !await isPortAvailable(item.port, options.config.ports?.[item.name]?.protocol)) diagnostics.push({ code: "DEVFN_EXACT_PORT_OCCUPIED", severity: "error", message: `Exact port ${item.port} for ${item.name} is occupied.`, ...(listener ? { details: listener } : {}) });
+      const listener = listeners.find((candidate) => candidate.port === item.port && candidate.protocol === item.protocol);
+      if (listener || !await isPortAvailable(item.port, item.protocol)) diagnostics.push({ code: "DEVFN_EXACT_PORT_OCCUPIED", severity: "error", message: `Exact ${item.protocol.toUpperCase()} port ${item.port} for ${item.name} is occupied.`, ...(listener ? { details: listener } : {}) });
     }
     const registry = await new FilePortRegistry(path.join(options.stateDir ?? defaultStateDir(), "registry.json")).reconcile();
     const stale = registry.allocations.filter((allocation) => allocation.state === "stale");

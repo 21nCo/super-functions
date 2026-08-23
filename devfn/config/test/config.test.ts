@@ -40,10 +40,13 @@ describe("DevFn configuration", () => {
     expect(config.hostnames?.app.hostname).toBe("app-{instance}-{project}.localhost");
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "app-{unknown}.localhost" } } })).toThrow(/only/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "bad_project" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "{project}.localhost" } } })).toThrow(/invalid/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "{instance}" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "{project}.localhost" } } })).toThrow(/invalid/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { bad_name: { target: "app" } } })).toThrow(/invalid/);
   });
 
   it("rejects lifecycle names that cannot be used as safe runtime filenames", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, services: { "../outside": { adapter: "compose", service: "app" } }, profiles: { default: {} } })).toThrow(/unsupported|only letters/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, services: { "worker\n": { adapter: "compose", service: "app" } }, profiles: { default: {} } })).toThrow(/only letters/);
   });
 
   it("validates structured organization policy", () => {
@@ -106,20 +109,29 @@ describe("DevFn configuration", () => {
 
   it("does not expose host code generation or built-in module access to trusted manifests", async () => {
     for (const expression of [
-      'process.getBuiltinModule("node:fs").writeFileSync("escape", "1")',
-      'eval("globalThis.escaped = true")',
-      'Function("return process")()',
-      'module["re" + "quire"]("node:fs")',
+      (marker: string) => `process.getBuiltinModule("node:fs").writeFileSync(${JSON.stringify(marker)}, "1")`,
+      () => 'eval("globalThis.escaped = true")',
+      () => 'Function("return process")()',
+      () => 'module["re" + "quire"]("node:fs")',
     ]) {
       const root = await mkdtemp(path.join(tmpdir(), "devfn-restricted-"));
       const stateDir = path.join(root, "state");
       const configPath = path.join(root, "devfn.config.ts");
       const marker = path.join(root, "escape");
-      await writeFile(configPath, `${expression}; export default { version: 1, project: { id: "x" }, profiles: { default: {} } };\n`);
+      await writeFile(configPath, `${expression(marker)}; export default { version: 1, project: { id: "x" }, profiles: { default: {} } };\n`);
       await trustProject(root, configPath, stateDir);
       await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/restricted context/);
       await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
     }
+  });
+
+  it("keeps scheduled manifest microtasks inside the evaluation timeout", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-microtasks-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.ts");
+    await writeFile(configPath, 'Promise.resolve().then(() => { const deadline = Date.now() + 1500; while (Date.now() < deadline) {} }); export default { version: 1, project: { id: "x" }, profiles: { default: {} } };\n');
+    await trustProject(root, configPath, stateDir);
+    await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/restricted context/);
   });
 
   it("loads JSON only from a matching trusted snapshot", async () => {

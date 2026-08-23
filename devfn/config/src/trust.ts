@@ -41,7 +41,7 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
     try {
       await writeFile(pendingPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
       try { await link(pendingPath, lockPath); }
-      finally { await rm(pendingPath, { force: true }); }
+      finally { await rm(pendingPath, { force: true }).catch(() => undefined); }
       break;
     } catch (error) {
       await rm(pendingPath, { force: true }).catch(() => undefined);

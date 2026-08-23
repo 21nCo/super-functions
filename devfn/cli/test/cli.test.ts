@@ -1,4 +1,5 @@
 import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -34,6 +35,9 @@ describe("devfn CLI", () => {
     expect(await runCli(["init", "--yes", "--config", "devfn.config.json", "--json"], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_CONFIG_INVALID");
     await expect(access(path.join(cwd, "devfn.config.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    stdout = "";
+    expect(await runCli(["init", "--yes", "--config", "devfn.config.TS", "--json"], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(0);
+    await expect(access(path.join(cwd, "devfn.config.TS"))).resolves.toBeUndefined();
   });
 
   it("runs the local up, status, url, and down lifecycle with JSON receipts", async () => {
@@ -83,6 +87,48 @@ describe("devfn CLI", () => {
     const code = await runCli(["up", "--profile", "oauth", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
     expect(code).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_PUBLIC_EXPOSURE_CONFIRMATION_REQUIRED");
+  });
+
+  it("does not infer HTTP URLs from inactive profile nodes", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-profile-url-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "profile-url" }, ports: { app: { range: [44600, 44700], env: "PORT" } },
+      processes: {
+        worker: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } },
+        web: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "http", port: "app", timeoutMs: 5000 } },
+      },
+      profiles: { default: { processes: ["worker"] }, web: { processes: ["web"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as Record<string, unknown> };
+    };
+    try {
+      expect((await invoke(["up", "--trust"])).code).toBe(0);
+      expect((await invoke(["url"])).value.urls).toEqual({});
+    } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 15_000);
+
+  it("matches exact-port diagnostics by protocol", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-doctor-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("TCP test server did not receive a port.");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "udp-doctor" }, ports: { udp: { preferred: address.port, exact: true, protocol: "udp" } },
+      processes: { worker: { adapter: "command", command: [process.execPath, "-e", "process.exit(0)"], ports: ["udp"] } }, profiles: { default: { processes: ["worker"] } },
+    }), "utf8");
+    let stdout = "";
+    try {
+      expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(0);
+      const diagnostics = JSON.parse(stdout).diagnostics as Array<{ code: string }>;
+      expect(diagnostics.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 
   it("does not execute an untrusted TypeScript manifest", async () => {
@@ -145,5 +191,8 @@ describe("devfn CLI", () => {
     expect(receipt.state).toBe("failed");
     expect(receipt.cleanup.stoppedProcesses, JSON.stringify(receipt)).toContain("app");
     expect(receipt.cleanup.releasedPorts).toBe(true);
+    stdout = "";
+    expect(await runCli(["status", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false, state: "failed" });
   }, 15_000);
 });

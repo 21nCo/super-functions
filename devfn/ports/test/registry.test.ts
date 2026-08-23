@@ -79,7 +79,9 @@ describe("FilePortRegistry", () => {
     const before = (await registry.read()).allocations[0].updatedAt;
     await new Promise((resolve) => setTimeout(resolve, 5));
     await registry.updateInvocation("failed", { state: "failed" });
-    expect((await registry.read()).allocations[0].updatedAt).toBe(before);
+    const after = await registry.read();
+    expect(after.invocations[0].state).toBe("failed");
+    expect(after.allocations[0].updatedAt).toBe(before);
   });
 
   it("escapes backslashes, pipes, and carriage returns in policy tables", () => {

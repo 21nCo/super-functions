@@ -110,7 +110,7 @@ function evaluateTrustedManifest(source: string, filename: string): unknown {
   });
   const diagnostic = transpiled.diagnostics?.find((item) => item.category === ts.DiagnosticCategory.Error);
   if (diagnostic) throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
-  const context = createContext(Object.create(null), { name: "devfn-trusted-manifest", codeGeneration: { strings: false, wasm: false } });
+  const context = createContext(Object.create(null), { name: "devfn-trusted-manifest", codeGeneration: { strings: false, wasm: false }, microtaskMode: "afterEvaluate" });
   const serialized = new Script(`(() => { const module = { exports: {} }; const exports = module.exports;\n${transpiled.outputText}\nconst value = module.exports; return JSON.stringify(value?.default ?? value?.config ?? value?.devfnConfig ?? value); })()`, { filename }).runInContext(context, { timeout: 1000 });
   if (typeof serialized !== "string") throw new Error("Trusted manifest did not export a serializable configuration.");
   return JSON.parse(serialized);

@@ -31,7 +31,7 @@ describe("process readiness", () => {
     const started = Date.now();
     await expect(waitForReadiness({
       health: { type: "log", pattern: "ready", timeoutMs: 100 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env,
-      isAlive: async () => { await new Promise((resolve) => setTimeout(resolve, 250)); return true; },
+      isAlive: async () => { await new Promise((resolve) => setTimeout(resolve, 5000)); return true; },
     })).rejects.toThrow(/timed out/);
     expect(Date.now() - started).toBeLessThan(750);
   });

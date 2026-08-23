@@ -12,7 +12,6 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
   const profile = Object.prototype.hasOwnProperty.call(config.profiles, profileName) ? config.profiles[profileName] : undefined;
   if (!profile) throw new DevFnError("DEVFN_PROFILE_NOT_FOUND", `Profile ${profileName} does not exist.`);
   const selected = new Set([...(profile.processes ?? []), ...(profile.services ?? [])]);
-  const profileSelected = new Set(selected);
   const expanded = new Set<string>();
   const dependencies = (name: string): string[] => hasProcess(name) ? processes[name].dependsOn ?? [] : hasService(name) ? services[name].dependsOn ?? [] : [];
   const include = (name: string): void => {
@@ -23,6 +22,7 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
     dependencies(name).forEach(include);
   };
   [...selected].forEach(include);
+  const profileSelected = new Set(selected);
   if (profile.proxy) {
     for (const hostname of Object.values(config.hostnames ?? {})) {
       if (hostname.profiles && !hostname.profiles.includes(profileName)) continue;

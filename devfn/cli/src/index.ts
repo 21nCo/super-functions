@@ -112,7 +112,7 @@ async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
 
 async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string, unknown>> {
   const configName = args.configPath ?? "devfn.config.ts";
-  if (path.extname(configName) !== ".ts") throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `devfn init can only generate a TypeScript manifest; ${configName} must end in .ts.`);
+  if (path.extname(configName).toLowerCase() !== ".ts") throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `devfn init can only generate a TypeScript manifest; ${configName} must end in .ts.`);
   try { await resolveDevFnManifestPath({ cwd, configPath: args.configPath }); throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "A DevFn manifest already exists; init will not overwrite it."); }
   catch (error) { if (!(error instanceof DevFnConfigError) || error.code !== "DEVFN_CONFIG_NOT_FOUND") throw error; }
   const discovery = await discoverProject(cwd);

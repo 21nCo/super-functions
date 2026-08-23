@@ -57,5 +57,6 @@ describe("lifecycle planner", () => {
     const hostnames = { app: { target: "app" } };
     expect(() => createPlan({ ...config, processes, profiles: { default: { processes: ["app", "alternate"], proxy: true } }, hostnames })).toThrow(/ambiguous/);
     expect(() => createPlan({ ...config, processes, profiles: { default: { proxy: true } }, hostnames })).toThrow(/ambiguous/);
+    expect(() => createPlan({ ...config, processes: { ...processes, app: { ...processes.app, dependsOn: ["alternate"] } }, profiles: { default: { processes: ["app"], proxy: true } }, hostnames })).toThrow(/ambiguous/);
   });
 });

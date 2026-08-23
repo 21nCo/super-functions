@@ -289,7 +289,7 @@ function validateReferences(config: DevFnConfig): void {
   const ports = new Set(Object.keys(config.ports ?? {}));
   const processes = new Set(Object.keys(config.processes ?? {}));
   const services = new Set(Object.keys(config.services ?? {}));
-  for (const name of [...processes, ...services]) if (!/^[A-Za-z0-9_.-]+$/.test(name)) fail(`Lifecycle node ${name} must use only letters, numbers, dots, underscores, and hyphens.`);
+  for (const name of [...processes, ...services]) if (!/^[A-Za-z0-9_.-]+$/.test(name) || name !== name.trim()) fail(`Lifecycle node ${name} must use only letters, numbers, dots, underscores, and hyphens.`);
   const collision = [...processes].find((name) => services.has(name));
   if (collision) fail(`Lifecycle node ${collision} cannot be both a process and a service.`);
   const nodes = new Set([...processes, ...services]);
@@ -297,8 +297,7 @@ function validateReferences(config: DevFnConfig): void {
   validateServiceReferences(config, ports, nodes);
   validateSelectionReferences(config, ports, processes, services);
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {
-    if (!spec.hostname) continue;
-    const expanded = spec.hostname.replaceAll("{project}", config.project.id).replaceAll("{instance}", "instance");
+    const expanded = (spec.hostname ?? `${name}-{instance}.localhost`).replaceAll("{instance}", "instance").replaceAll("{project}", config.project.id);
     if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expanded)) fail(`hostnames.${name}.hostname resolves to an invalid .localhost hostname for project ${config.project.id}.`, `hostnames.${name}.hostname`);
   }
 }

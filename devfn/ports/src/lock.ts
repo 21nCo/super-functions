@@ -36,15 +36,16 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
         const alive = observed.pid ? processExists(observed.pid) : false;
         const currentBirth = observed.pid ? await processBirthSignature(observed.pid) : undefined;
         const birthSignaturesSupported = process.platform === "linux" || process.platform === "darwin" || process.platform === "win32";
-        const ownerMatches = observed.birthSignature ? (currentBirth === undefined && birthSignaturesSupported ? alive : currentBirth === observed.birthSignature) : birthSignaturesSupported && alive;
-        recover = !ownerMatches && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
+        const ownerMatches = observed.birthSignature ? (currentBirth === undefined ? alive : currentBirth === observed.birthSignature) : alive;
+        recover = birthSignaturesSupported && !ownerMatches && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
       } catch (ownerError) {
         if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
         const mtime = await stat(lockPath).then((value) => value.mtimeMs).catch((error) => {
           if ((error as NodeJS.ErrnoException).code === "ENOENT") return Date.now();
           throw error;
         });
-        recover = Date.now() - mtime > staleMs;
+        const birthSignaturesSupported = process.platform === "linux" || process.platform === "darwin" || process.platform === "win32";
+        recover = birthSignaturesSupported && Date.now() - mtime > staleMs;
       }
       if (recover) {
         const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;

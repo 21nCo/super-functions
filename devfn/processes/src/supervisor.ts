@@ -40,7 +40,7 @@ export class ProcessSupervisor {
     });
     const logsDir = path.join(input.runtimeDir, "logs");
     await mkdir(logsDir, { recursive: true, mode: 0o700 });
-    if (!/^[A-Za-z0-9_.-]+$/.test(input.name)) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
+    if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
     const logPath = path.join(logsDir, `${input.name}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
     const logOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
