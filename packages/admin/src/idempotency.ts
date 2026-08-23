@@ -25,6 +25,11 @@ export interface AdminIdempotencyRecord<T = unknown> {
     metadata?: Readonly<Record<string, unknown>>;
     updatedAt: string;
   };
+  /** Durable fence installed before a previously completed domain result is compensated. */
+  compensation?: {
+    status: "pending" | "completed" | "failed";
+    updatedAt: string;
+  };
   createdAt: string;
 }
 
@@ -50,9 +55,8 @@ export type AdminIdempotencyBeginResult<T = unknown> =
  * and `release` with the claim token. `release` is used only before domain
  * invocation, so a failed audit/policy dependency cannot poison a safe retry.
  * Cross-process stores should use a renewable lease or a documented stale-claim
- * recovery policy. `complete` must be safely repeatable with the same claim,
- * identity, fingerprint and result: the dispatcher retries it after ambiguous
- * dependency acknowledgement failures and never re-invokes the domain.
+ * recovery policy. `complete` must be safely repeatable with the same claim and
+ * may advance a compensation record from pending to completed or failed.
  */
 export interface AdminIdempotencyStore {
   begin<T = unknown>(input: {
@@ -62,6 +66,20 @@ export interface AdminIdempotencyStore {
   complete<T = unknown>(
     claim: AdminIdempotencyClaim,
     record: AdminIdempotencyRecord<T>,
+  ): Promise<void> | void;
+  /**
+   * Atomically replace the matching completed domain result with a
+   * compensation-pending failure before the compensator is invoked. The
+   * transition must fence on the claim token and fingerprint, be idempotent for
+   * the same record, and never acknowledge until the replacement is durable.
+   * This prevents a concurrent replay from observing stale success after the
+   * domain state has been rolled back.
+   */
+  prepareCompensation<T = unknown>(
+    claim: AdminIdempotencyClaim,
+    record: AdminIdempotencyRecord<T> & {
+      compensation: { status: "pending"; updatedAt: string };
+    },
   ): Promise<void> | void;
   /**
    * Mandatory atomic reconciliation hook. Implementations may transition only
@@ -150,6 +168,35 @@ export class MemoryAdminIdempotencyStore implements AdminIdempotencyStore {
     const snapshot = structuredClone(record) as AdminIdempotencyRecord;
     this.entries.set(key, { status: "completed", fingerprint: claim.fingerprint, token: claim.token, record: snapshot });
     existing.resolve(structuredClone(snapshot));
+  }
+
+  prepareCompensation<T = unknown>(
+    claim: AdminIdempotencyClaim,
+    record: AdminIdempotencyRecord<T> & {
+      compensation: { status: "pending"; updatedAt: string };
+    },
+  ): void {
+    const key = adminIdempotencyStorageKey(claim.identity);
+    const existing = this.entries.get(key);
+    if (!existing || existing.status !== "completed" || existing.token !== claim.token) {
+      throw new AdminError("conflict", "The completed idempotency result is unavailable for compensation.");
+    }
+    if (existing.fingerprint !== claim.fingerprint || record.fingerprint !== claim.fingerprint) {
+      throw new AdminError("conflict", "The compensation fingerprint does not match its reservation.");
+    }
+    if (existing.record.compensation?.status === "pending") {
+      if (stableSerialize(existing.record) === stableSerialize(record)) return;
+      throw new AdminError("conflict", "A different compensation transition is already pending.");
+    }
+    if (
+      existing.record.compensation ||
+      existing.record.result.ok !== true ||
+      existing.record.audit?.status !== "pending" ||
+      existing.record.audit.outcome !== "succeeded"
+    ) {
+      throw new AdminError("conflict", "Only a pending successful domain result can enter compensation.");
+    }
+    existing.record = structuredClone(record) as AdminIdempotencyRecord;
   }
 
   finalizeAudit(

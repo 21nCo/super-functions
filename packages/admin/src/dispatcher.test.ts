@@ -256,6 +256,7 @@ describe("AdminDispatcher", () => {
     const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
     let writes = 0;
     const persistedOutcomes: string[] = [];
+    const persistedMetadata: Array<Readonly<Record<string, unknown>> | undefined> = [];
     let terminalUnavailable = true;
     const registry = createAdminRegistry({
       adapters: [createAdminCapabilityAdapter(manifest, {
@@ -271,7 +272,14 @@ describe("AdminDispatcher", () => {
           writes += 1;
           if (writes > 1 && terminalUnavailable) throw new Error("terminal sink unavailable");
           persistedOutcomes.push(event.outcome);
+          persistedMetadata.push(event.metadata);
         },
+      },
+      policy: {
+        authorize: () => ({
+          allowed: true,
+          metadata: { policy: "manual", apiToken: "raw-secret", nested: { authorization: "raw-header" } },
+        }),
       },
       idempotency: new MemoryAdminIdempotencyStore(),
     });
@@ -310,6 +318,11 @@ describe("AdminDispatcher", () => {
     }
     expect(handler).toHaveBeenCalledTimes(1);
     expect(persistedOutcomes).toEqual(["attempted", "succeeded", "replayed", "replayed", "replayed"]);
+    expect(persistedMetadata[1]).toEqual({
+      policy: "manual",
+      apiToken: "[REDACTED]",
+      nested: { authorization: "[REDACTED]" },
+    });
   });
 
   it("reconciles a compensated failure with its stable terminal audit ID", async () => {
@@ -324,7 +337,7 @@ describe("AdminDispatcher", () => {
     }] });
     const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
     const compensate = vi.fn(async () => undefined);
-    const persistedEvents: Array<{ id: string; outcome: string }> = [];
+    const persistedEvents: Array<{ id: string; outcome: string; metadata?: Readonly<Record<string, unknown>> }> = [];
     let failedAuditAttempts = 0;
     let auditSequence = 0;
     const dispatcher = createAdminDispatcher({
@@ -345,8 +358,14 @@ describe("AdminDispatcher", () => {
           if (event.outcome === "failed" && failedAuditAttempts++ === 0) {
             throw new Error("rollback audit acknowledgement unavailable");
           }
-          persistedEvents.push({ id: event.id, outcome: event.outcome });
+          persistedEvents.push({ id: event.id, outcome: event.outcome, metadata: event.metadata });
         },
+      },
+      policy: {
+        authorize: () => ({
+          allowed: true,
+          metadata: { policy: "manual", accessToken: "raw-secret" },
+        }),
       },
       idempotency: new MemoryAdminIdempotencyStore(),
       createAuditId: () => `audit_${++auditSequence}`,
@@ -373,10 +392,100 @@ describe("AdminDispatcher", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(compensate).toHaveBeenCalledTimes(1);
     expect(persistedEvents).toEqual([
-      { id: "audit_1", outcome: "attempted" },
-      { id: "audit_2", outcome: "failed" },
+      { id: "audit_1", outcome: "attempted", metadata: { policy: "manual", accessToken: "[REDACTED]" } },
+      { id: "audit_2", outcome: "failed", metadata: { policy: "manual", accessToken: "[REDACTED]", compensation: "succeeded" } },
     ]);
   });
+
+  it.each([
+    ["preparation", "before-write"],
+    ["preparation", "after-write"],
+    ["completion", "before-write"],
+    ["completion", "after-write"],
+  ] as const)(
+    "durably fences compensated results across a lost %s acknowledgement (%s)",
+    async (failureStage, failureMode) => {
+      const base = testManifest().operations[0]!;
+      const operationId = "examplefn.records.rotate-fenced-compensation";
+      const manifest = testManifest("examplefn", { operations: [{
+        ...base,
+        id: operationId,
+        route: { method: "POST", path: "/records/actions/rotate-fenced-compensation" },
+        permission: operationId,
+        safety: { classification: "write", idempotent: true, audit: "required" },
+        mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      }] });
+      const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
+      const compensate = vi.fn(async () => undefined);
+      const backing = new MemoryAdminIdempotencyStore();
+      let prepareCalls = 0;
+      let completionTransitionCalls = 0;
+      const idempotency = {
+        begin: backing.begin.bind(backing),
+        complete: async (...args: Parameters<typeof backing.complete>) => {
+          if (failureStage === "completion" && args[1].compensation?.status === "completed") {
+            completionTransitionCalls += 1;
+            if (completionTransitionCalls === 1) {
+              if (failureMode === "after-write") backing.complete(...args);
+              throw new Error(`injected ${failureMode}`);
+            }
+          }
+          backing.complete(...args);
+        },
+        finalizeAudit: backing.finalizeAudit.bind(backing),
+        release: backing.release.bind(backing),
+        prepareCompensation: async (...args: Parameters<typeof backing.prepareCompensation>) => {
+          prepareCalls += 1;
+          if (failureStage === "preparation" && prepareCalls === 1) {
+            if (failureMode === "after-write") backing.prepareCompensation(...args);
+            throw new Error(`injected ${failureMode}`);
+          }
+          backing.prepareCompensation(...args);
+        },
+      };
+      const dispatcher = createAdminDispatcher({
+        registry: createAdminRegistry({
+          adapters: [createAdminCapabilityAdapter({
+            manifest,
+            handlers: { [operationId]: handler },
+            compensators: { [operationId]: compensate },
+          })],
+          enabledModules: ["examplefn"],
+        }),
+        audit: {
+          idempotentById: true,
+          write: async (event) => {
+            if (event.outcome === "succeeded") {
+              throw new AdminAuditNotPersistedError("terminal event was not persisted");
+            }
+          },
+        },
+        idempotency,
+      });
+      const dispatch = (requestId: string) => dispatcher.dispatch({
+        operationId,
+        input: {},
+        context: context({
+          requestId,
+          actor: { id: "user_1", permissions: [operationId] },
+          idempotencyKey: `fenced-compensation-${failureStage}-${failureMode}`,
+        }),
+      });
+
+      await expect(dispatch("first")).resolves.toMatchObject({
+        ok: false,
+        error: { code: "dependency_unavailable" },
+      });
+      await expect(dispatch("retry")).resolves.toMatchObject({
+        ok: false,
+        meta: { idempotencyReplay: true },
+      });
+      expect(prepareCalls).toBe(failureStage === "preparation" ? 2 : 1);
+      expect(completionTransitionCalls).toBe(failureStage === "completion" ? 1 : 0);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(compensate).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("rejects idempotency stores without atomic terminal-audit reconciliation at startup", () => {
     const backing = new MemoryAdminIdempotencyStore();
@@ -388,6 +497,19 @@ describe("AdminDispatcher", () => {
         release: backing.release.bind(backing),
       } as never,
     })).toThrow(/atomic terminal-audit reconciliation/);
+  });
+
+  it("rejects idempotency stores without atomic compensation preparation at startup", () => {
+    const backing = new MemoryAdminIdempotencyStore();
+    expect(() => createAdminDispatcher({
+      registry: createAdminRegistry({ adapters: [testAdapter()], enabledModules: ["examplefn"] }),
+      idempotency: {
+        begin: backing.begin.bind(backing),
+        complete: backing.complete.bind(backing),
+        finalizeAudit: backing.finalizeAudit.bind(backing),
+        release: backing.release.bind(backing),
+      } as never,
+    })).toThrow(/atomic compensation preparation/);
   });
 
   it("reuses one stable terminal audit ID when reconciliation acknowledgement is repeatedly lost", async () => {
@@ -406,6 +528,7 @@ describe("AdminDispatcher", () => {
     const idempotency = {
       begin: backing.begin.bind(backing),
       complete: backing.complete.bind(backing),
+      prepareCompensation: backing.prepareCompensation.bind(backing),
       release: backing.release.bind(backing),
       finalizeAudit: async (...args: Parameters<typeof backing.finalizeAudit>) => {
         if (failReconciliation) throw new Error("lost reconciliation acknowledgement");
@@ -480,6 +603,7 @@ describe("AdminDispatcher", () => {
           }
           backing.complete(...args);
         },
+        prepareCompensation: backing.prepareCompensation.bind(backing),
         finalizeAudit: backing.finalizeAudit.bind(backing),
         release: backing.release.bind(backing),
       };

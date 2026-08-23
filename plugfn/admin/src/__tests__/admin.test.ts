@@ -252,6 +252,32 @@ describe("@plugfn/admin", () => {
       .rejects.toMatchObject({ code: "invalid_argument" });
   });
 
+  it("filters connection lists by exact tenant identity", async () => {
+    const { database, runtime } = setup();
+    const now = new Date();
+    await database.createConnection({
+      id: "tenantless_connection", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1",
+      status: ConnectionStatus.Active, credentials: { encrypted: "tenantless", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
+    await database.createConnection({
+      id: "tenant_connection", userId: "user_1", provider: "github", ownerKind: "user", ownerId: "user_1", tenantId: "tenant_1",
+      status: ConnectionStatus.Active, credentials: { encrypted: "tenant", algorithm: "aes-256-gcm" }, connectedAt: now, createdAt: now, updatedAt: now,
+    });
+    const tenantlessAdapter = createPlugFnDomainAdminAdapter({
+      plugfn: runtime,
+      projectId: "project_1",
+      identity: () => ({ userId: "user_1" }),
+    });
+
+    const result = await tenantlessAdapter.execute("plugfn.connections.list", {}, context);
+
+    expect(result.data).toEqual({
+      items: [expect.objectContaining({ id: "tenantless_connection" })],
+      nextCursor: null,
+    });
+    expect(JSON.stringify(result.data)).not.toContain("tenant_connection");
+  });
+
   it("filters sync-job lists by tenant as well as owner", async () => {
     const { adapter, database, runtime } = setup();
     const now = new Date();

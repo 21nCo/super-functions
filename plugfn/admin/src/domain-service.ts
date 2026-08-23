@@ -107,6 +107,16 @@ function assertConnectionOwner(connection: Connection, value: PlugFnDomainIdenti
   throw new AdminError("not_found", "The PlugFn connection was not found in the active project identity.");
 }
 
+function connectionOwnedForList(connection: Connection, value: PlugFnDomainIdentity): boolean {
+  try {
+    assertConnectionOwner(connection, value);
+    return true;
+  } catch (error) {
+    if (error instanceof AdminError && error.code === "not_found") return false;
+    throw error;
+  }
+}
+
 function assertInstallationOwner(installation: PlugFnProviderInstallation, value: PlugFnDomainIdentity): void {
   if (!sameTenant(installation.tenantId, value)) throw new AdminError("not_found", "The PlugFn provider installation was not found in the active project identity.");
   if (installation.ownerKind === "delegated" && value.organizationId && installation.ownerId === value.organizationId && installation.delegatedToUserId === value.userId) return;
@@ -346,7 +356,7 @@ export function createPlugFnDomainAdminService(options: PlugFnDomainAdminService
       const mapped = await identity(options, context);
       const values = await options.plugfn.connections.list({ userId: mapped.userId, provider: input.provider, status: input.status, owner: ownerFor(mapped) });
       return page(
-        values.map(connectionView),
+        values.filter((connection) => connectionOwnedForList(connection, mapped)).map(connectionView),
         input,
         context,
         pageIdentity("plugfn.connections.list", mapped.userId, mapped.organizationId, mapped.tenantId, input.provider, input.status),
