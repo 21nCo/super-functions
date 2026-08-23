@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -32,16 +32,63 @@ async function readLockOwner(lockPath: string): Promise<{ token?: string; pid?: 
 }
 
 async function withLockMutation<T>(guardPath: string, deadline: number, action: () => Promise<T>): Promise<T> {
+  const token = randomUUID();
+  const staleMs = 300_000;
   while (true) {
-    try { await mkdir(guardPath, { mode: 0o700 }); break; }
+    try {
+      await mkdir(guardPath, { mode: 0o700 });
+      const ownerTemp = path.join(guardPath, `owner.${token}.tmp`);
+      try {
+        await writeFile(ownerTemp, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+        await rename(ownerTemp, path.join(guardPath, "owner.json"));
+      } catch (error) {
+        await rm(guardPath, { recursive: true, force: true });
+        throw error;
+      }
+      break;
+    }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let observedToken: string | undefined;
+      let observedMtime: number | undefined;
+      let recover = false;
+      try {
+        const observed = await readLockOwner(guardPath);
+        observedToken = observed.token;
+        let alive = false;
+        if (observed.pid) {
+          try { process.kill(observed.pid, 0); alive = true; }
+          catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
+        }
+        recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
+      } catch (ownerError) {
+        if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
+        observedToken = "ownerless";
+        observedMtime = await stat(guardPath).then((value) => value.mtimeMs).catch((statError) => {
+          if ((statError as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+          throw statError;
+        });
+        recover = observedMtime !== undefined && Date.now() - observedMtime > staleMs;
+      }
+      if (recover && observedToken) {
+        const unchanged = observedToken === "ownerless"
+          ? await stat(guardPath).then((value) => value.mtimeMs === observedMtime).catch(() => false)
+          : await readLockOwner(guardPath).then((current) => current.token === observedToken).catch(() => false);
+        if (unchanged) {
+          const quarantine = `${guardPath}.stale.${observedToken}.${randomUUID()}`;
+          try { await rename(guardPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
+          catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
+        }
+      }
       if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-lock mutation guard ${guardPath}.`);
       await delay(20 + Math.floor(Math.random() * 20));
     }
   }
   try { return await action(); }
-  finally { await rm(guardPath, { recursive: true, force: true }); }
+  finally {
+    const owner = await readLockOwner(guardPath).catch(() => undefined);
+    if (owner?.token === token) await rm(guardPath, { recursive: true, force: true });
+  }
 }
 
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {

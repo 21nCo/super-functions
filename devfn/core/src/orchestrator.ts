@@ -237,6 +237,7 @@ export class DevFnOrchestrator {
 
   public async doctor(options: { config: DevFnConfig; root: string; profile?: string; stateDir?: string }): Promise<{ ok: boolean; diagnostics: Array<{ code: string; severity: "error" | "warning" | "info"; message: string; details?: unknown }> }> {
     const diagnostics: Array<{ code: string; severity: "error" | "warning" | "info"; message: string; details?: unknown }> = [];
+    const stateDir = options.stateDir ?? defaultStateDir();
     const plan = createPlan(options.config, options.profile);
     const major = Number(process.versions.node.split(".")[0]);
     if (major < 22) diagnostics.push({ code: "DEVFN_NODE_VERSION", severity: "error", message: `Node 22 or newer is required; found ${process.version}.` });
@@ -275,15 +276,18 @@ export class DevFnOrchestrator {
       try { await execFileAsync(tool.file, tool.args, { cwd: options.root, timeout: 5000, env: { ...process.env, ...(tool.adapter === "pnpm" ? { COREPACK_ENABLE_NETWORK: "0" } : {}) } }); diagnostics.push({ code: "DEVFN_ADAPTER_AVAILABLE", severity: "info", message: `${tool.adapter} adapter runtime is available.` }); }
       catch { diagnostics.push({ code: "DEVFN_ADAPTER_UNAVAILABLE", severity: "error", message: `${tool.adapter} adapter runtime is unavailable without installation.` }); }
     }
-    if (plan.nodes.some((node) => node.kind === "service") && !await new ComposeController().available()) diagnostics.push({ code: "DEVFN_DOCKER_UNAVAILABLE", severity: "error", message: "Docker Compose is required by this profile but unavailable." });
-    if (plan.proxy && !await new CaddyProxyController(options.stateDir ?? defaultStateDir()).available()) diagnostics.push({ code: "DEVFN_CADDY_UNAVAILABLE", severity: "error", message: "Caddy is required by this profile but unavailable." });
+    if (plan.nodes.some((node) => node.kind === "service") && !await new ComposeController().available()) diagnostics.push({ code: "DEVFN_DOCKER_UNAVAILABLE", severity: "error", message: "Docker Compose 2.24.4 or newer is required by this profile." });
+    if (plan.proxy && !await new CaddyProxyController(stateDir).available()) diagnostics.push({ code: "DEVFN_CADDY_UNAVAILABLE", severity: "error", message: "Caddy is required by this profile but unavailable." });
+    const identity = await resolveInstanceIdentity(options.config.project.id, options.root);
+    const registry = await new FilePortRegistry(path.join(stateDir, "registry.json")).reconcile();
     const listeners = await scanListeners();
     const exact = plan.portNames.flatMap((name) => options.config.ports?.[name]?.exact && options.config.ports[name].preferred ? [{ name, port: options.config.ports[name].preferred!, protocol: options.config.ports[name].protocol ?? "tcp" as const }] : []);
     for (const item of exact) {
+      const owned = registry.allocations.some((allocation) => allocation.instanceId === identity.instanceId && allocation.service === item.name && allocation.port === item.port && allocation.protocol === item.protocol && allocation.state === "active");
+      if (owned) continue;
       const listener = listeners.find((candidate) => candidate.port === item.port && candidate.protocol === item.protocol);
       if (listener || !await isPortAvailable(item.port, item.protocol)) diagnostics.push({ code: "DEVFN_EXACT_PORT_OCCUPIED", severity: "error", message: `Exact ${item.protocol.toUpperCase()} port ${item.port} for ${item.name} is occupied.`, ...(listener ? { details: listener } : {}) });
     }
-    const registry = await new FilePortRegistry(path.join(options.stateDir ?? defaultStateDir(), "registry.json")).reconcile();
     const stale = registry.allocations.filter((allocation) => allocation.state === "stale");
     if (stale.length) diagnostics.push({ code: "DEVFN_STALE_LEASES", severity: "warning", message: `${stale.length} stale lease(s) need garbage collection.` });
     return { ok: diagnostics.every((item) => item.severity !== "error"), diagnostics };

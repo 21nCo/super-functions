@@ -6,9 +6,11 @@ import { ComposeController, renderComposeOverride } from "../src/index.js";
 
 describe("ComposeController", () => {
   it("exposes availability as a non-throwing diagnostic", async () => {
-    const available = new ComposeController(async () => ({ stdout: "Docker Compose version v2", stderr: "" }));
+    const available = new ComposeController(async () => ({ stdout: "2.24.4", stderr: "" }));
+    const tooOld = new ComposeController(async () => ({ stdout: "Docker Compose version v2.23.99", stderr: "" }));
     const unavailable = new ComposeController(async () => { throw new Error("missing"); });
     expect(await available.available()).toBe(true);
+    expect(await tooOld.available()).toBe(false);
     expect(await unavailable.available()).toBe(false);
   });
 
@@ -41,7 +43,7 @@ describe("ComposeController", () => {
     const calls: Array<{ args: readonly string[]; cwd?: string; appPort?: string; dockerHost?: string }> = [];
     const controller = new ComposeController(async (_file, args, options) => {
       calls.push({ args, cwd: options.cwd, appPort: options.env?.APP_PORT, dockerHost: options.env?.DOCKER_HOST });
-      if (args.includes("version")) return { stdout: "Docker Compose version v2", stderr: "" };
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
       if (args.includes("ps")) return { stdout: calls.filter((call) => call.args.includes("ps")).length === 3 ? "container-id\n" : "", stderr: "" };
       if (args[0] === "inspect") return { stdout: "true\n", stderr: "" };
       if (args[0] === "logs") return { stdout: "standard output\n", stderr: "standard error\n" };
@@ -56,5 +58,24 @@ describe("ComposeController", () => {
     expect(await controller.logs(managed)).toBe("standard output\nstandard error\n");
     await controller.stop(managed);
     expect(calls.filter((call) => ["inspect", "logs", "stop", "rm"].includes(call.args[0])).every((call) => call.dockerHost === "tcp://docker.example:2376")).toBe(true);
+  });
+
+  it("clears ambient Docker selectors for new receipts but retains them for legacy receipts", async () => {
+    const original = process.env.DOCKER_HOST;
+    process.env.DOCKER_HOST = "tcp://ambient.example:2376";
+    const observed: Array<string | undefined> = [];
+    const controller = new ComposeController(async (_file, _args, options) => {
+      observed.push(options.env?.DOCKER_HOST);
+      return { stdout: "true\n", stderr: "" };
+    });
+    const service = { name: "api", composeService: "api", projectName: "devfn-test", files: [], containerIds: ["container-id"], preExisting: false, wasRunning: false, startedAt: new Date().toISOString() };
+    try {
+      await controller.status({ ...service, dockerEnvironment: {} });
+      await controller.status(service);
+    } finally {
+      if (original === undefined) delete process.env.DOCKER_HOST;
+      else process.env.DOCKER_HOST = original;
+    }
+    expect(observed).toEqual([undefined, "tcp://ambient.example:2376"]);
   });
 });

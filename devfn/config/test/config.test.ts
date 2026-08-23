@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -67,7 +67,9 @@ describe("DevFn configuration", () => {
   it("rejects contradictory ephemeral blocks and colliding port environment names", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { callback: { ephemeral: true, block: "oauth" } }, profiles: { default: {} } })).toThrow(/part of a block/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "api-http": {}, api_http: {} }, profiles: { default: {} } })).toThrow(/DEVFN_PORT_API_HTTP/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "": { env: "EMPTY_OWNER" }, app: { env: "EMPTY_OWNER" } }, profiles: { default: {} } })).toThrow(/EMPTY_OWNER/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "SHARED_PORT" }, admin: { env: "SHARED_PORT" } }, profiles: { default: {} } })).toThrow(/SHARED_PORT/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "DEVFN_PROJECT_ID" } }, profiles: { default: {} } })).toThrow(/reserved DEVFN_/);
   });
 
   it("does not map unsupported package managers to npm", async () => {
@@ -161,8 +163,20 @@ describe("DevFn configuration", () => {
     await writeFile(first, "first");
     await writeFile(second, "second");
     await writeFile(path.join(stateDir, "trust.lock"), JSON.stringify({ token: "stale", pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
+    await mkdir(path.join(stateDir, "trust.lock.guard"));
+    await writeFile(path.join(stateDir, "trust.lock.guard", "owner.json"), JSON.stringify({ token: "stale-guard", pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
     await Promise.all([trustProject(root, first, stateDir), trustProject(root, second, stateDir)]);
     const state = JSON.parse(await readFile(path.join(stateDir, "trust.json"), "utf8")) as { records: Array<{ configPath: string }> };
     expect(state.records.map((record) => record.configPath).sort()).toEqual([first, second].sort());
+  });
+
+  it("recovers an ownerless guard abandoned before metadata was written", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-ownerless-guard-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.json");
+    await mkdir(path.join(stateDir, "trust.lock.guard"), { recursive: true });
+    await utimes(path.join(stateDir, "trust.lock.guard"), new Date(0), new Date(0));
+    await writeFile(configPath, "ownerless");
+    await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
   });
 });

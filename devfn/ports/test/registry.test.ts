@@ -28,12 +28,18 @@ describe("FilePortRegistry", () => {
   });
 
   it("tracks TCP and UDP leases independently", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
-    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
-    const exactPort = await allocateEphemeralPort();
-    await registry.reserve({ projectId: "app", instanceId: "tcp", invocationId: "tcp", profile: "default", requests: [{ name: "tcp", spec: { preferred: exactPort, exact: true, protocol: "tcp" } }] });
-    const udp = await registry.reserve({ projectId: "app", instanceId: "udp", invocationId: "udp", profile: "default", requests: [{ name: "udp", spec: { preferred: exactPort, exact: true, protocol: "udp" } }] });
-    expect(udp[0]).toMatchObject({ port: exactPort, protocol: "udp" });
+    let exactPort = 0;
+    let udp: Awaited<ReturnType<FilePortRegistry["reserve"]>> | undefined;
+    for (let attempt = 0; attempt < 20 && !udp; attempt += 1) {
+      const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+      const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+      exactPort = await allocateEphemeralPort();
+      try {
+        await registry.reserve({ projectId: "app", instanceId: "tcp", invocationId: `tcp-${attempt}`, profile: "default", requests: [{ name: "tcp", spec: { preferred: exactPort, exact: true, protocol: "tcp" } }] });
+        udp = await registry.reserve({ projectId: "app", instanceId: "udp", invocationId: `udp-${attempt}`, profile: "default", requests: [{ name: "udp", spec: { preferred: exactPort, exact: true, protocol: "udp" } }] });
+      } catch { /* Retry if another process claims either protocol between probes. */ }
+    }
+    expect(udp?.[0]).toMatchObject({ port: exactPort, protocol: "udp" });
   });
 
   it("applies project policy ranges and renders them for humans", () => {

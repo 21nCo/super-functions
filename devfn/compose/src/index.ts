@@ -7,6 +7,7 @@ import { resolveContainedPath, type ComposeServiceSpec } from "@devfn/config";
 import { waitForReadiness } from "@devfn/processes";
 
 const execFileAsync = promisify(execFile);
+const MINIMUM_COMPOSE_VERSION = [2, 24, 4] as const;
 
 export interface ManagedComposeService {
   name: string;
@@ -60,9 +61,20 @@ function persistedDockerEnvironment(environment: NodeJS.ProcessEnv): Record<stri
   return Object.fromEntries(DOCKER_ENVIRONMENT_KEYS.flatMap((key) => environment[key] === undefined ? [] : [[key, environment[key]!]]));
 }
 
-function directDockerEnvironment(persisted: Record<string, string> = {}): NodeJS.ProcessEnv {
+function directDockerEnvironment(persisted?: Record<string, string>): NodeJS.ProcessEnv {
   const environment = composeEnvironment({ adapter: "compose", service: "docker" });
-  return { ...environment, ...persisted };
+  if (persisted !== undefined) for (const key of DOCKER_ENVIRONMENT_KEYS) delete environment[key];
+  return { ...environment, ...(persisted ?? {}) };
+}
+
+function supportedComposeVersion(output: string): boolean {
+  const match = output.match(/(?:^|\D)(\d+)\.(\d+)\.(\d+)(?:\D|$)/);
+  if (!match) return false;
+  const actual = match.slice(1, 4).map(Number);
+  for (let index = 0; index < MINIMUM_COMPOSE_VERSION.length; index += 1) {
+    if (actual[index] !== MINIMUM_COMPOSE_VERSION[index]) return actual[index] > MINIMUM_COMPOSE_VERSION[index];
+  }
+  return true;
 }
 
 export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}): string {
@@ -79,14 +91,17 @@ export class ComposeController {
   public constructor(private readonly run = execFileAsync) {}
 
   public async available(cwd?: string, environment?: NodeJS.ProcessEnv): Promise<boolean> {
-    try { await this.run("docker", ["compose", "version"], { ...(cwd ? { cwd } : {}), ...(environment ? { env: environment } : {}), timeout: 5000 }); return true; } catch { return false; }
+    try {
+      const { stdout, stderr } = await this.run("docker", ["compose", "version", "--short"], { ...(cwd ? { cwd } : {}), ...(environment ? { env: environment } : {}), timeout: 5000 });
+      return supportedComposeVersion(`${stdout}${stderr}`);
+    } catch { return false; }
   }
 
   public async start(input: ComposeStartInput): Promise<ManagedComposeService> {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose lifecycle name ${input.name} contains unsupported characters.`);
     const environment = composeEnvironment(input.spec, input.environment);
     const dockerEnvironment = persistedDockerEnvironment(environment);
-    if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose is unavailable.");
+    if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose 2.24.4 or newer is required.");
     const projectName = safeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
     const sourceFile = await resolveContainedPath(input.root, input.spec.file ?? "compose.yaml", `services.${input.name}.file`);
     const overrideDir = path.join(input.runtimeDir, "compose");

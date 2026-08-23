@@ -299,10 +299,11 @@ function validateReferences(config: DevFnConfig): void {
   validateSelectionReferences(config, ports, processes, services);
   const environmentOwners = new Map<string, string>();
   for (const [name, spec] of Object.entries(config.ports ?? {})) {
+    if (spec.env?.startsWith("DEVFN_")) fail(`ports.${name}.env cannot use reserved DEVFN_ runtime variables.`, `ports.${name}.env`);
     const generated = `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
     for (const environmentName of new Set([generated, ...(spec.env ? [spec.env] : [])])) {
       const owner = environmentOwners.get(environmentName);
-      if (owner && owner !== name) fail(`Ports ${owner} and ${name} both emit environment variable ${environmentName}.`, `ports.${name}`);
+      if (owner !== undefined && owner !== name) fail(`Ports ${owner} and ${name} both emit environment variable ${environmentName}.`, `ports.${name}`);
       environmentOwners.set(environmentName, name);
     }
   }

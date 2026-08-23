@@ -148,6 +148,33 @@ describe("devfn CLI", () => {
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 
+  it("does not report the running instance's exact port as a doctor conflict", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-doctor-owned-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const probe = createServer();
+    await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(0, "127.0.0.1", resolve); });
+    const address = probe.address();
+    if (!address || typeof address === "string") throw new Error("TCP test server did not receive a port.");
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "doctor-owned" }, ports: { app: { preferred: address.port, exact: true, env: "PORT" } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as { diagnostics?: Array<{ code: string }> } };
+    };
+    try {
+      expect((await invoke(["up", "--trust"])).code).toBe(0);
+      const doctor = await invoke(["doctor"]);
+      expect(doctor.code).toBe(0);
+      expect(doctor.value.diagnostics?.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
+    } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 15_000);
+
   it("does not execute an untrusted TypeScript manifest", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-trust-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
