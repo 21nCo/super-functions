@@ -31,52 +31,74 @@ async function readLockOwner(lockPath: string): Promise<{ token?: string; pid?: 
   }
 }
 
+async function withLockMutation<T>(guardPath: string, deadline: number, action: () => Promise<T>): Promise<T> {
+  while (true) {
+    try { await mkdir(guardPath, { mode: 0o700 }); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-lock mutation guard ${guardPath}.`);
+      await delay(20 + Math.floor(Math.random() * 20));
+    }
+  }
+  try { return await action(); }
+  finally { await rm(guardPath, { recursive: true, force: true }); }
+}
+
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
   const lockPath = path.join(stateDir, "trust.lock");
+  const guardPath = `${lockPath}.guard`;
   const token = randomUUID();
   const staleMs = 300_000;
   const deadline = Date.now() + 10_000;
+  let acquired = false;
   while (true) {
-    const pendingPath = `${lockPath}.${token}.pending`;
-    try {
-      await writeFile(pendingPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-      try { await link(pendingPath, lockPath); }
-      finally { await rm(pendingPath, { force: true }).catch(() => undefined); }
-      break;
-    } catch (error) {
-      await rm(pendingPath, { force: true }).catch(() => undefined);
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST" && code !== "EISDIR") throw error;
-      let recover = false;
-      let observedToken = "ownerless";
+    await withLockMutation(guardPath, deadline, async () => {
+      const pendingPath = `${lockPath}.${token}.pending`;
       try {
-        const observed = await readLockOwner(lockPath);
-        observedToken = observed.token ?? observedToken;
-        let alive = false;
-        if (observed.pid) {
-          try { process.kill(observed.pid, 0); alive = true; }
-          catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
+        await writeFile(pendingPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+        try { await link(pendingPath, lockPath); acquired = true; }
+        catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== "EEXIST" && code !== "EISDIR") throw error;
+          let recover = false;
+          let observedToken = "ownerless";
+          try {
+            const observed = await readLockOwner(lockPath);
+            observedToken = observed.token ?? observedToken;
+            let alive = false;
+            if (observed.pid) {
+              try { process.kill(observed.pid, 0); alive = true; }
+              catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
+            }
+            recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
+          } catch (ownerError) {
+            if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
+            // Never steal an ownerless legacy directory because its creator may be suspended.
+          }
+          if (recover) {
+            const current = await readLockOwner(lockPath).catch(() => undefined);
+            if (current?.token !== observedToken) return;
+            const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;
+            try { await rename(lockPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
+            catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
+          }
         }
-        recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
-      } catch (ownerError) {
-        if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
-        // Never steal an ownerless legacy directory because its creator may be suspended.
+      } finally {
+        await rm(pendingPath, { force: true }).catch(() => undefined);
       }
-      if (recover) {
-        const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;
-        try { await rename(lockPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
-        catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
-      }
-      if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-state lock ${lockPath}.`);
-      await delay(20 + Math.floor(Math.random() * 20));
-    }
+    });
+    if (acquired) break;
+    if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-state lock ${lockPath}.`);
+    await delay(20 + Math.floor(Math.random() * 20));
   }
   try {
     return await action();
   } finally {
     try {
-      const owner = await readLockOwner(lockPath);
-      if (owner.token === token) await rm(lockPath, { recursive: true, force: true });
+      await withLockMutation(guardPath, Date.now() + 10_000, async () => {
+        const owner = await readLockOwner(lockPath);
+        if (owner.token === token) await rm(lockPath, { recursive: true, force: true });
+      });
     } catch { /* A replaced lock is not ours to remove. */ }
   }
 }

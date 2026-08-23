@@ -22,20 +22,37 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
     dependencies(name).forEach(include);
   };
   [...selected].forEach(include);
-  const profileSelected = new Set(selected);
   if (profile.proxy) {
-    for (const hostname of Object.values(config.hostnames ?? {})) {
-      if (hostname.profiles && !hostname.profiles.includes(profileName)) continue;
+    const hostnameOwners = Object.values(config.hostnames ?? {}).flatMap((hostname) => {
+      if (hostname.profiles && !hostname.profiles.includes(profileName)) return [];
       const owners = [
         ...Object.entries(processes).filter(([, spec]) => spec.ports?.includes(hostname.target)).map(([name]) => name),
         ...Object.entries(services).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
       ];
       if (owners.length === 0) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has no lifecycle owner.`);
-      const activeOwners = owners.filter((name) => profileSelected.has(name));
-      if (activeOwners.length > 1 || (activeOwners.length === 0 && owners.length > 1)) {
-        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has ambiguous lifecycle owners for profile ${profileName}.`);
+      return [{ target: hostname.target, owners }];
+    });
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const { target, owners } of hostnameOwners) {
+        const activeOwners = owners.filter((name) => selected.has(name));
+        if (activeOwners.length > 1) {
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${target} has ambiguous lifecycle owners for profile ${profileName}.`);
+        }
+        if (activeOwners.length === 0 && owners.length === 1) {
+          const before = selected.size;
+          include(owners[0]);
+          changed ||= selected.size !== before;
+        }
       }
-      include(activeOwners[0] ?? owners[0]);
+    }
+    for (const { target, owners } of hostnameOwners) {
+      const activeOwners = owners.filter((name) => selected.has(name));
+      if (activeOwners.length !== 1) {
+        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${target} has ambiguous lifecycle owners for profile ${profileName}.`);
+      }
+      include(activeOwners[0]);
     }
   }
 

@@ -15,6 +15,7 @@ describe("ComposeController", () => {
   it("keeps conventional container ports behind allocated loopback ports", () => {
     const output = renderComposeOverride({ adapter: "compose", service: "postgres", ports: { database: 5432 } }, { database: 55432 });
     expect(output).toContain("127.0.0.1:55432:5432");
+    expect(output).toContain("ports: !override");
   });
 
   it("binds explicitly public ports and disables persistence for secret-bearing logs", () => {
@@ -37,19 +38,23 @@ describe("ComposeController", () => {
 
   it("passes the effective environment to every Compose query and lifecycle command", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-"));
-    const composeCalls: Array<{ args: readonly string[]; cwd?: string; appPort?: string }> = [];
+    const calls: Array<{ args: readonly string[]; cwd?: string; appPort?: string; dockerHost?: string }> = [];
     const controller = new ComposeController(async (_file, args, options) => {
-      if (args[0] === "compose") composeCalls.push({ args, cwd: options.cwd, appPort: options.env?.APP_PORT });
+      calls.push({ args, cwd: options.cwd, appPort: options.env?.APP_PORT, dockerHost: options.env?.DOCKER_HOST });
       if (args.includes("version")) return { stdout: "Docker Compose version v2", stderr: "" };
-      if (args.includes("ps")) return { stdout: composeCalls.filter((call) => call.args.includes("ps")).length === 3 ? "container-id\n" : "", stderr: "" };
+      if (args.includes("ps")) return { stdout: calls.filter((call) => call.args.includes("ps")).length === 3 ? "container-id\n" : "", stderr: "" };
       if (args[0] === "inspect") return { stdout: "true\n", stderr: "" };
+      if (args[0] === "logs") return { stdout: "standard output\n", stderr: "standard error\n" };
       return { stdout: "", stderr: "" };
     });
     const managed = await controller.start({
       name: "api", spec: { adapter: "compose", service: "api", env: { APP_PORT: "4100" } }, root, runtimeDir: path.join(root, ".devfn", "instances", "test"), instanceId: "test",
-      ports: {}, environment: { APP_PORT: "generated" },
+      ports: {}, environment: { APP_PORT: "generated", DOCKER_HOST: "tcp://docker.example:2376" },
     });
     expect(managed.containerIds).toEqual(["container-id"]);
-    expect(composeCalls.filter((call) => call.args.includes("ps") || call.args.includes("up")).every((call) => call.cwd === root && call.appPort === "4100")).toBe(true);
+    expect(calls.filter((call) => call.args[0] === "compose").every((call) => call.cwd === root && call.appPort === "4100" && call.dockerHost === "tcp://docker.example:2376")).toBe(true);
+    expect(await controller.logs(managed)).toBe("standard output\nstandard error\n");
+    await controller.stop(managed);
+    expect(calls.filter((call) => ["inspect", "logs", "stop", "rm"].includes(call.args[0])).every((call) => call.dockerHost === "tcp://docker.example:2376")).toBe(true);
   });
 });

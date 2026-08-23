@@ -1,4 +1,4 @@
-import { access, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -62,6 +62,12 @@ describe("DevFn configuration", () => {
   it("requires an implicit default profile and private output modes", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { one: {} } })).toThrow(/profiles.default/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: {} }, environmentOutputs: [{ path: ".devfn/out", mode: 0o644 }] })).toThrow(/group or other/);
+  });
+
+  it("rejects contradictory ephemeral blocks and colliding port environment names", () => {
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { callback: { ephemeral: true, block: "oauth" } }, profiles: { default: {} } })).toThrow(/part of a block/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "api-http": {}, api_http: {} }, profiles: { default: {} } })).toThrow(/DEVFN_PORT_API_HTTP/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "SHARED_PORT" }, admin: { env: "SHARED_PORT" } }, profiles: { default: {} } })).toThrow(/SHARED_PORT/);
   });
 
   it("does not map unsupported package managers to npm", async () => {
@@ -144,5 +150,19 @@ describe("DevFn configuration", () => {
     expect((await loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).config.project.id).toBe("x");
     await writeFile(configPath, JSON.stringify({ version: 1, project: { id: "changed" }, profiles: { default: {} } }));
     await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/not trusted/);
+  });
+
+  it("serializes concurrent stale trust-lock recovery", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-stale-trust-"));
+    const stateDir = path.join(root, "state");
+    const first = path.join(root, "first.json");
+    const second = path.join(root, "second.json");
+    await mkdir(stateDir);
+    await writeFile(first, "first");
+    await writeFile(second, "second");
+    await writeFile(path.join(stateDir, "trust.lock"), JSON.stringify({ token: "stale", pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
+    await Promise.all([trustProject(root, first, stateDir), trustProject(root, second, stateDir)]);
+    const state = JSON.parse(await readFile(path.join(stateDir, "trust.json"), "utf8")) as { records: Array<{ configPath: string }> };
+    expect(state.records.map((record) => record.configPath).sort()).toEqual([first, second].sort());
   });
 });

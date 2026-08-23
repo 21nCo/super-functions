@@ -18,6 +18,7 @@ export interface ManagedComposeService {
   wasRunning: boolean;
   startedAt: string;
   logsDisabled?: boolean;
+  dockerEnvironment?: Record<string, string>;
 }
 
 export interface ComposeStartInput {
@@ -47,10 +48,21 @@ function safeProjectName(prefix: string, instanceId: string): string {
 }
 
 function composeEnvironment(spec: ComposeServiceSpec, generated: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
+  const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
   const environment: NodeJS.ProcessEnv = {};
   for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (process.env[key] !== undefined) environment[key] = process.env[key];
   return { ...environment, ...generated, ...(spec.env ?? {}) };
+}
+
+const DOCKER_ENVIRONMENT_KEYS = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"] as const;
+
+function persistedDockerEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(DOCKER_ENVIRONMENT_KEYS.flatMap((key) => environment[key] === undefined ? [] : [[key, environment[key]!]]));
+}
+
+function directDockerEnvironment(persisted: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const environment = composeEnvironment({ adapter: "compose", service: "docker" });
+  return { ...environment, ...persisted };
 }
 
 export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}): string {
@@ -60,19 +72,21 @@ export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<st
     return `      - "${hosts[name] ?? "127.0.0.1"}:${host}:${internal}${protocols[name] === "udp" ? "/udp" : ""}"`;
   });
   const logging = spec.secretEnv?.length ? ["    logging:", "      driver: none"] : [];
-  return ["services:", `  ${spec.service}:`, ...(mappings.length ? ["    ports:", ...mappings] : []), ...logging, ...(!mappings.length && !logging.length ? ["    {}"] : []), ""].join("\n");
+  return ["services:", `  ${spec.service}:`, ...(mappings.length ? ["    ports: !override", ...mappings] : []), ...logging, ...(!mappings.length && !logging.length ? ["    {}"] : []), ""].join("\n");
 }
 
 export class ComposeController {
   public constructor(private readonly run = execFileAsync) {}
 
-  public async available(): Promise<boolean> {
-    try { await this.run("docker", ["compose", "version"], { timeout: 5000 }); return true; } catch { return false; }
+  public async available(cwd?: string, environment?: NodeJS.ProcessEnv): Promise<boolean> {
+    try { await this.run("docker", ["compose", "version"], { ...(cwd ? { cwd } : {}), ...(environment ? { env: environment } : {}), timeout: 5000 }); return true; } catch { return false; }
   }
 
   public async start(input: ComposeStartInput): Promise<ManagedComposeService> {
-    if (!await this.available()) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose is unavailable.");
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose lifecycle name ${input.name} contains unsupported characters.`);
+    const environment = composeEnvironment(input.spec, input.environment);
+    const dockerEnvironment = persistedDockerEnvironment(environment);
+    if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose is unavailable.");
     const projectName = safeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
     const sourceFile = await resolveContainedPath(input.root, input.spec.file ?? "compose.yaml", `services.${input.name}.file`);
     const overrideDir = path.join(input.runtimeDir, "compose");
@@ -82,12 +96,11 @@ export class ComposeController {
     await writeFile(overrideFile, renderComposeOverride(input.spec, input.ports, input.portHosts, input.portProtocols), { encoding: "utf8", mode: 0o600 });
     const files = [sourceFile, overrideFile];
     const baseArgs = ["compose", "-p", projectName, ...files.flatMap((file) => ["-f", file])];
-    const environment = composeEnvironment(input.spec, input.environment);
     const before = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
     const beforeRunning = await this.containerIds(baseArgs, input.spec.service, input.root, environment, false);
     if (input.spec.secretEnv?.length && before.length) {
       try {
-        const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
+        const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
         if (drivers.some((driver) => driver !== "none")) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} persists logs; refusing to expose secret-bearing output.`);
       } catch (error) {
         if (error instanceof ComposeError) throw error;
@@ -97,9 +110,9 @@ export class ComposeController {
     let containerIds: string[] = [];
     try {
       await this.run("docker", [...baseArgs, "up", "-d", "--no-recreate", "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
-      containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment);
+      containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
-      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString(), logsDisabled: Boolean(input.spec.secretEnv?.length) };
+      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString(), logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
@@ -108,7 +121,7 @@ export class ComposeController {
       });
       return managed;
     } catch (error) {
-      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString() };
+      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString(), dockerEnvironment };
       if (containerIds.length) await this.stop(failed).catch(() => undefined);
       else await this.stopWithCompose(failed, input.root, environment).catch(() => undefined);
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
@@ -131,8 +144,9 @@ export class ComposeController {
     if (service.preExisting && service.wasRunning) return;
     if (service.containerIds.length === 0) return;
     try {
-      await this.run("docker", ["stop", ...service.containerIds], { timeout: 30_000, maxBuffer: 1024 * 1024 });
-      if (!service.preExisting) await this.run("docker", ["rm", "-f", ...service.containerIds], { timeout: 30_000, maxBuffer: 1024 * 1024 });
+      const environment = directDockerEnvironment(service.dockerEnvironment);
+      await this.run("docker", ["stop", ...service.containerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
+      if (!service.preExisting) await this.run("docker", ["rm", "-f", ...service.containerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
     } catch (error) {
       throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to stop Compose service ${service.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }
@@ -140,14 +154,18 @@ export class ComposeController {
 
   public async logs(service: ManagedComposeService, tail: number | null = 200): Promise<string> {
     if (service.logsDisabled) return "";
-    const outputs = await Promise.all(service.containerIds.map(async (id) => (await this.run("docker", ["logs", ...(tail === null ? [] : ["--tail", String(tail)]), id], { timeout: 10_000, maxBuffer: 10 * 1024 * 1024 })).stdout));
+    const environment = directDockerEnvironment(service.dockerEnvironment);
+    const outputs = await Promise.all(service.containerIds.map(async (id) => {
+      const { stdout, stderr } = await this.run("docker", ["logs", ...(tail === null ? [] : ["--tail", String(tail)]), id], { env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 });
+      return `${stdout}${stderr}`;
+    }));
     return outputs.join("\n");
   }
 
   public async status(service: ManagedComposeService): Promise<"running" | "stopped"> {
     if (service.containerIds.length === 0) return "stopped";
     try {
-      const { stdout } = await this.run("docker", ["inspect", "--format", "{{.State.Running}}", ...service.containerIds], { timeout: 10_000, maxBuffer: 1024 * 1024 });
+      const { stdout } = await this.run("docker", ["inspect", "--format", "{{.State.Running}}", ...service.containerIds], { env: directDockerEnvironment(service.dockerEnvironment), timeout: 10_000, maxBuffer: 1024 * 1024 });
       return stdout.split(/\s+/).filter(Boolean).every((value) => value === "true") ? "running" : "stopped";
     } catch { return "stopped"; }
   }

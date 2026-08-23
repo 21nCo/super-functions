@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -113,6 +113,7 @@ async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
 async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string, unknown>> {
   const configName = args.configPath ?? "devfn.config.ts";
   if (path.extname(configName).toLowerCase() !== ".ts") throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `devfn init can only generate a TypeScript manifest; ${configName} must end in .ts.`);
+  if (path.isAbsolute(configName) || path.dirname(configName) !== ".") throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "devfn init can only generate a manifest at the repository root.");
   try { await resolveDevFnManifestPath({ cwd, configPath: args.configPath }); throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "A DevFn manifest already exists; init will not overwrite it."); }
   catch (error) { if (!(error instanceof DevFnConfigError) || error.code !== "DEVFN_CONFIG_NOT_FOUND") throw error; }
   const discovery = await discoverProject(cwd);
@@ -120,9 +121,14 @@ async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string
   if (!args.yes) return { ok: true, written: false, preview: content, findings: discovery.findings, confirmationRequired: "Review the preview, then rerun devfn init --yes." };
   const scaffold = createScaffold();
   await scaffold.apply([{ kind: "write-file", path: configName, content, ifExists: "error" }], { cwd });
-  const ignorePath = path.join(cwd, ".gitignore");
-  const ignore = await readFile(ignorePath, "utf8").catch(() => "");
-  if (!ignore.split(/\r?\n/).includes(".devfn/")) await writeFile(ignorePath, `${ignore}${ignore.endsWith("\n") || ignore.length === 0 ? "" : "\n"}.devfn/\n`, "utf8");
+  try {
+    const ignorePath = path.join(cwd, ".gitignore");
+    const ignore = await readFile(ignorePath, "utf8").catch(() => "");
+    if (!ignore.split(/\r?\n/).includes(".devfn/")) await writeFile(ignorePath, `${ignore}${ignore.endsWith("\n") || ignore.length === 0 ? "" : "\n"}.devfn/\n`, "utf8");
+  } catch (error) {
+    await rm(path.join(cwd, configName), { force: true }).catch(() => undefined);
+    throw error;
+  }
   return { ok: true, written: true, manifest: path.join(cwd, configName), findings: discovery.findings };
 }
 

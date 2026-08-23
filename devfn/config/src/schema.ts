@@ -108,9 +108,10 @@ function portSpec(value: unknown, field: string): PortSpec {
   const configuredRange = range(input.range, `${field}.range`);
   const ephemeral = input.ephemeral === true;
   const exact = input.exact === true;
+  const block = optionalString(input.block, `${field}.block`);
   if (exact && preferred === undefined) fail(`${field}.preferred is required when exact is true.`, field);
-  if (ephemeral && (preferred !== undefined || configuredRange !== undefined || exact)) {
-    fail(`${field} ephemeral ports cannot also be preferred, ranged, or exact.`, field);
+  if (ephemeral && (preferred !== undefined || configuredRange !== undefined || exact || block !== undefined)) {
+    fail(`${field} ephemeral ports cannot also be preferred, ranged, exact, or part of a block.`, field);
   }
   const protocol = input.protocol === undefined ? "tcp" : string(input.protocol, `${field}.protocol`);
   if (protocol !== "tcp" && protocol !== "udp") fail(`${field}.protocol must be tcp or udp.`, `${field}.protocol`);
@@ -124,7 +125,7 @@ function portSpec(value: unknown, field: string): PortSpec {
     ...(exact ? { exact } : {}),
     ...(ephemeral ? { ephemeral } : {}),
     ...(input.internal === undefined ? {} : { internal: integer(input.internal, `${field}.internal`) }),
-    ...(optionalString(input.block, `${field}.block`) ? { block: optionalString(input.block, `${field}.block`) } : {}),
+    ...(block ? { block } : {}),
     ...(optionalString(input.env, `${field}.env`) ? { env: optionalString(input.env, `${field}.env`) } : {}),
   };
 }
@@ -296,6 +297,15 @@ function validateReferences(config: DevFnConfig): void {
   validateProcessReferences(config, ports, nodes);
   validateServiceReferences(config, ports, nodes);
   validateSelectionReferences(config, ports, processes, services);
+  const environmentOwners = new Map<string, string>();
+  for (const [name, spec] of Object.entries(config.ports ?? {})) {
+    const generated = `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+    for (const environmentName of new Set([generated, ...(spec.env ? [spec.env] : [])])) {
+      const owner = environmentOwners.get(environmentName);
+      if (owner && owner !== name) fail(`Ports ${owner} and ${name} both emit environment variable ${environmentName}.`, `ports.${name}`);
+      environmentOwners.set(environmentName, name);
+    }
+  }
   for (const [name, spec] of Object.entries(config.hostnames ?? {})) {
     const expanded = (spec.hostname ?? `${name}-{instance}.localhost`).replaceAll("{instance}", "instance").replaceAll("{project}", config.project.id);
     if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expanded)) fail(`hostnames.${name}.hostname resolves to an invalid .localhost hostname for project ${config.project.id}.`, `hostnames.${name}.hostname`);

@@ -59,4 +59,17 @@ describe("lifecycle planner", () => {
     expect(() => createPlan({ ...config, processes, profiles: { default: { proxy: true } }, hostnames })).toThrow(/ambiguous/);
     expect(() => createPlan({ ...config, processes: { ...processes, app: { ...processes.app, dependsOn: ["alternate"] } }, profiles: { default: { processes: ["app"], proxy: true } }, hostnames })).toThrow(/ambiguous/);
   });
+
+  it("resolves hostname owners to a fixed point independently of hostname order", () => {
+    const processes = {
+      gateway: { adapter: "npm" as const, script: "dev", ports: ["gateway"], dependsOn: ["api"] },
+      api: { adapter: "npm" as const, script: "dev", ports: ["shared"] },
+      alternate: { adapter: "npm" as const, script: "dev", ports: ["shared"] },
+    };
+    const shared = { target: "shared" };
+    const gateway = { target: "gateway" };
+    const base = { ...config, ports: { gateway: {}, shared: {} }, services: {}, processes, profiles: { default: { proxy: true } } };
+    expect(createPlan({ ...base, hostnames: { shared, gateway } }).nodes.map((node) => node.name)).toEqual(["api", "gateway"]);
+    expect(createPlan({ ...base, hostnames: { gateway, shared } }).nodes.map((node) => node.name)).toEqual(["api", "gateway"]);
+  });
 });

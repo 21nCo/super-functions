@@ -27,6 +27,15 @@ describe("FilePortRegistry", () => {
     await expect(registry.reserve({ ...input, instanceId: "b", invocationId: "two" })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
   });
 
+  it("tracks TCP and UDP leases independently", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    const exactPort = await allocateEphemeralPort();
+    await registry.reserve({ projectId: "app", instanceId: "tcp", invocationId: "tcp", profile: "default", requests: [{ name: "tcp", spec: { preferred: exactPort, exact: true, protocol: "tcp" } }] });
+    const udp = await registry.reserve({ projectId: "app", instanceId: "udp", invocationId: "udp", profile: "default", requests: [{ name: "udp", spec: { preferred: exactPort, exact: true, protocol: "udp" } }] });
+    expect(udp[0]).toMatchObject({ port: exactPort, protocol: "udp" });
+  });
+
   it("applies project policy ranges and renders them for humans", () => {
     const policy = { version: 1 as const, ports: [{ name: "app-range", range: [45000, 45099] as [number, number], kind: "preferred" as const, project: "app" }] };
     expect(resolvePolicy(policy, "app").preferredRange).toEqual([45000, 45099]);

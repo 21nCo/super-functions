@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,6 +38,23 @@ describe("devfn CLI", () => {
     stdout = "";
     expect(await runCli(["init", "--yes", "--config", "devfn.config.TS", "--json"], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(0);
     await expect(access(path.join(cwd, "devfn.config.TS"))).resolves.toBeUndefined();
+  });
+
+  it("restricts init manifests to the repository root", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-init-"));
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample" }), "utf8");
+    let stdout = "";
+    expect(await runCli(["init", "--yes", "--config", "config/devfn.config.ts", "--json"], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+    expect(JSON.parse(stdout).error.message).toContain("repository root");
+    await expect(access(path.join(cwd, "config", "devfn.config.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rolls back the generated manifest when the runtime ignore cannot be written", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-init-"));
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample" }), "utf8");
+    await mkdir(path.join(cwd, ".gitignore"));
+    expect(await runCli(["init", "--yes", "--json"], { cwd, stdout: () => undefined, stderr: () => undefined })).toBe(1);
+    await expect(access(path.join(cwd, "devfn.config.ts"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("runs the local up, status, url, and down lifecycle with JSON receipts", async () => {
