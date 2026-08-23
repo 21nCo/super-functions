@@ -217,8 +217,9 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
     },
   });
 
-  const reference = options.reference ?? trigger();
-  if (policy.position !== 'none' && reference && floating()) {
+  const ensurePositioner = () => {
+    const reference = options.reference ?? trigger;
+    if (positioner || policy.position === 'none' || !resolve(reference) || !floating()) return;
     positioner = createUIFnPositioner(scope, {
       reference,
       floating,
@@ -233,31 +234,43 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
         options.onPosition?.({ x: result.x, y: result.y, placement: result.placement });
       },
     });
-  }
+  };
+  ensurePositioner();
 
-  const openResources = () => {
+  const reconcileOpenResources = () => {
     const current = state();
     const node = content();
     if (!node) return;
     if (options.validateAccessibleName !== false) {
       assertUIFnOverlayAccessibleName(current.policy, accessibleNameEvidence(node));
     }
-    if (!focusScope && (current.trapFocus || current.policy.restoreFocus || current.policy.initialFocus !== 'none')) {
+    const needsFocusScope = current.trapFocus
+      || current.policy.restoreFocus
+      || current.policy.initialFocus !== 'none';
+    const focusOptions = {
+      container: node,
+      trapped: current.trapFocus,
+      loop: current.trapFocus && current.policy.loopFocus,
+      initialFocus: partTarget(current, node, options.initialFocus),
+      returnFocus: current.policy.restoreFocus,
+      restoreFocus: trigger,
+      fallbackFocus: options.fallbackFocus ?? trigger,
+    };
+    if (!focusScope && needsFocusScope) {
       focusScope = platform.focusScopes.register({
         id: `${current.ids.rootId}-focus`,
-        container: node,
-        trapped: current.trapFocus,
-        loop: current.trapFocus && current.policy.loopFocus,
-        initialFocus: partTarget(current, node, options.initialFocus),
-        returnFocus: current.policy.restoreFocus,
-        restoreFocus: trigger,
-        fallbackFocus: options.fallbackFocus ?? trigger,
+        ...focusOptions,
         branches: [...branchSet].filter((branch): branch is HTMLElement => branch instanceof HTMLElement),
         // Framework renderers commit `hidden`, presence, and portal changes
         // after the controller notification that opens the overlay. Deferring
         // one task lets those DOM mutations settle before tabbable discovery.
         deferInitialFocus: true,
       });
+    } else if (focusScope && needsFocusScope) {
+      focusScope.update(focusOptions);
+    } else if (focusScope) {
+      focusScope.destroy();
+      focusScope = null;
     }
     if (!modal && current.modal) {
       modal = platform.modals.acquire({
@@ -268,7 +281,29 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
         disableOutsidePointerEvents: current.policy.preventOutsideInteraction || current.modal,
         lockScroll: current.scrollLock,
       });
+    } else if (modal && current.modal) {
+      modal.update({
+        content: node,
+        isolate: current.policy.isolateBackground,
+        disableOutsidePointerEvents: current.policy.preventOutsideInteraction || current.modal,
+        lockScroll: current.scrollLock,
+      });
+    } else if (modal) {
+      modal.destroy();
+      modal = null;
     }
+    ensurePositioner();
+    void positioner?.update({
+      reference: options.reference ?? trigger,
+      floating,
+      arrow: options.arrow,
+      placement: current.placement,
+      strategy: options.strategy,
+      sideOffset: options.sideOffset,
+      alignOffset: options.alignOffset,
+      collisionPadding: options.collisionPadding,
+      autoUpdate: true,
+    }).catch((error) => scope.environment.error(error));
     positioner?.start();
   };
 
@@ -299,7 +334,7 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
       dismissOnEscape: current.closeOnEscape,
     });
     presence?.update({ present: current.open, forceMount: options.forceMount ?? current.forceMount });
-    if (current.open && !open) openResources();
+    if (current.open) reconcileOpenResources();
     else if (!current.open && open) closeResources();
     open = current.open;
     schedulePending();
@@ -311,7 +346,7 @@ export function createUIFnOverlayDomBinding<TState extends UIFnOverlayBaseState>
   } catch (error) {
     unsubscribe();
     releaseParentBranch();
-    positioner?.destroy();
+    (positioner as UIFnPositioner | null)?.destroy();
     presence?.destroy();
     portal?.destroy();
     layer.destroy();

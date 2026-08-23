@@ -46,4 +46,36 @@ describe('createUIFnFocusScopeManager', () => {
     expect(parent.paused).toBe(false);
     manager.destroy();
   });
+
+  it('derives nesting from the newest enabled scope across three levels', () => {
+    const manager = createUIFnFocusScopeManager(scopeFixture());
+    const parent = manager.register({ id: 'parent', container: {} as HTMLElement, deferInitialFocus: true });
+    const middle = manager.register({ id: 'middle', container: {} as HTMLElement, deferInitialFocus: true });
+    const child = manager.register({ id: 'child', container: {} as HTMLElement, deferInitialFocus: true, returnFocus: false });
+
+    expect(manager.activeScopeId).toBe('child');
+    middle.update({ enabled: false });
+    middle.update({ enabled: true });
+    expect(manager.activeScopeId).toBe('child');
+
+    child.update({ enabled: false });
+    expect(manager.activeScopeId).toBe('middle');
+    expect(parent.paused).toBe(true);
+    expect(middle.paused).toBe(false);
+    manager.destroy();
+  });
+
+  it('keeps an explicit pause after a nested scope is destroyed', () => {
+    const manager = createUIFnFocusScopeManager(scopeFixture());
+    const parent = manager.register({ id: 'parent', container: {} as HTMLElement, deferInitialFocus: true });
+    parent.pause();
+    const child = manager.register({ id: 'child', container: {} as HTMLElement, deferInitialFocus: true, returnFocus: false });
+
+    child.destroy();
+    expect(parent.paused).toBe(true);
+    expect(manager.activeScopeId).toBeNull();
+    parent.resume();
+    expect(manager.activeScopeId).toBe('parent');
+    manager.destroy();
+  });
 });

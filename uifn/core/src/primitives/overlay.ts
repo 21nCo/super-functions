@@ -547,14 +547,15 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
         parts,
         getState,
         update(inputs) {
-          currentProps = { ...currentProps, ...inputs };
+          const candidateProps = { ...currentProps, ...inputs };
           const nextModal = policyValue.modalConfigurable
-            ? currentProps.modal ?? policyValue.modalDefault
+            ? candidateProps.modal ?? policyValue.modalDefault
             : policyValue.modalDefault;
-          const nextOutside = currentProps.closeOnInteractOutside
-            ?? currentProps.closeOnOutsideInteraction
+          const nextOutside = candidateProps.closeOnInteractOutside
+            ?? candidateProps.closeOnOutsideInteraction
             ?? policyValue.closeOnPointerOutside;
           if (primitive === 'AlertDialog') assertUIFnAlertDialogDismissal(nextOutside, false);
+          currentProps = candidateProps;
           store.patchState({
             modal: nextModal,
             trapFocus: currentProps.trapFocus ?? (nextModal && policyValue.trapFocus),

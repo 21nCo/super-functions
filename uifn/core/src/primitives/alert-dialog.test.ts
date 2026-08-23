@@ -27,4 +27,14 @@ describe('alert-dialog primitive', () => {
     expect(alertDialog.state.open).toBe(false);
     expect(alertDialog.state.lastChangeReason).toBe('close-escape');
   });
+
+  it('does not retain an invalid untyped update', () => {
+    const alertDialog = createAlertDialogController({ defaultOpen: true });
+
+    expect(() => alertDialog.update({ closeOnInteractOutside: true } as never))
+      .toThrowError(expect.objectContaining({ code: 'UIFN_ALERT_DIALOG_DISMISSAL' }));
+    expect(() => alertDialog.update({ forceMount: true })).not.toThrow();
+    expect(alertDialog.state.forceMount).toBe(true);
+    expect(alertDialog.state.closeOnInteractOutside).toBe(false);
+  });
 });

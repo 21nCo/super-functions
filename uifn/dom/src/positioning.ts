@@ -196,6 +196,8 @@ export function createUIFnPositioner(
   let destroyed = false;
   let result: Readonly<UIFnPositionResult> | null = null;
   let cleanupAutoUpdate: () => void = () => undefined;
+  let boundReference: ReferenceElement | null = null;
+  let boundFloating: HTMLElement | null = null;
   let generation = 0;
   const subscribers = new Set<(result: Readonly<UIFnPositionResult>) => void>();
   const releaseResource = scope.track('positioner', () => undefined);
@@ -215,6 +217,10 @@ export function createUIFnPositioner(
     nextOptions?: Partial<UIFnPositionerOptions>,
   ): Promise<Readonly<UIFnPositionResult>> => {
     assertPositionerAlive('update position');
+    const autoUpdateConfigChanged = !!nextOptions && (
+      ('autoUpdate' in nextOptions && nextOptions.autoUpdate !== options.autoUpdate)
+      || ('animationFrame' in nextOptions && nextOptions.animationFrame !== options.animationFrame)
+    );
     if (nextOptions) options = { ...options, ...nextOptions };
     const reference = resolve(options.reference);
     const floating = resolve(options.floating);
@@ -228,6 +234,27 @@ export function createUIFnPositioner(
         recoverable: true,
         details: { hasReference: !!reference, hasFloating: !!floating },
       });
+    }
+    const restartAutoUpdate = running && (
+      autoUpdateConfigChanged
+      || reference !== boundReference
+      || floating !== boundFloating
+    );
+    if (restartAutoUpdate) {
+      cleanupAutoUpdate();
+      cleanupAutoUpdate = () => undefined;
+      running = false;
+      if (options.autoUpdate !== false) {
+        running = true;
+        boundReference = reference as ReferenceElement;
+        boundFloating = floating;
+        cleanupAutoUpdate = scope.track('observer', autoUpdate(
+          reference as ReferenceElement,
+          floating,
+          () => void update().catch((error) => scope.environment.error(error)),
+          { animationFrame: options.animationFrame ?? false },
+        ), 'position-auto-update');
+      }
     }
     const currentGeneration = ++generation;
     const sizeData: { availableWidth?: number; availableHeight?: number } = {};
@@ -321,6 +348,8 @@ export function createUIFnPositioner(
     running = false;
     cleanupAutoUpdate();
     cleanupAutoUpdate = () => undefined;
+    boundReference = null;
+    boundFloating = null;
   };
 
   return {
@@ -345,6 +374,8 @@ export function createUIFnPositioner(
       }
       else {
         running = true;
+        boundReference = reference as ReferenceElement;
+        boundFloating = floating;
         const dependencyCleanup = autoUpdate(
           reference as ReferenceElement,
           floating,

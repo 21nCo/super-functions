@@ -61,6 +61,8 @@ describe('dialog primitive', () => {
       scrollLock: false,
       closeOnEscape: false,
       closeOnInteractOutside: false,
+      closeOnOutsideInteraction: false,
+      outsideInteractionBehavior: 'ignore',
       placement: 'top-start',
       forceMount: true,
       initialFocusId: 'updated-initial',

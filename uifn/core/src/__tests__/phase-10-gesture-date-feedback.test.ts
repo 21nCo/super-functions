@@ -162,6 +162,8 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(formatUIFnDate(parseUIFnIsoDate('0000-01-01'), 'en-US')).toMatch(/1 BC/);
     expect(formatUIFnDate(parseUIFnIsoDate('0001-01-01'), 'en-US')).not.toMatch(/BC/);
     expect(() => parseUIFnIsoDate('999999-02-31')).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
+    expect(createUIFnCalendarDate(275760, 9, 13)).toEqual({ calendar: 'gregory', year: 275760, month: 9, day: 13 });
+    expect(() => createUIFnCalendarDate(275760, 9, 14)).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
