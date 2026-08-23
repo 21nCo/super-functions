@@ -100,6 +100,7 @@ export class ProcessSupervisor {
       cwd,
       logPath,
       startedAt: new Date().toISOString(),
+      ...(input.spec.shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs: input.spec.shutdownTimeoutMs }),
     };
     try {
       await input.onStarted?.(managed);
@@ -112,7 +113,7 @@ export class ProcessSupervisor {
     }
   }
 
-  public async stop(managed: ManagedProcess, timeoutMs = 10_000): Promise<void> {
+  public async stop(managed: ManagedProcess, timeoutMs = managed.shutdownTimeoutMs ?? 10_000): Promise<void> {
     if (!processExists(managed.pid)) return;
     if (!await matchesProcessIdentity(managed.pid, managed.birthSignature)) {
       throw new ProcessError("DEVFN_PROCESS_OWNERSHIP_MISMATCH", `PID ${managed.pid} no longer matches the DevFn process identity.`, { name: managed.name, pid: managed.pid });

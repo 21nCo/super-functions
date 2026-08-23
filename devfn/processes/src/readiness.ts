@@ -9,7 +9,7 @@ import { ProcessError } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-export type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
+export type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string>; previouslyReady?: boolean };
 const LOG_CHUNK_BYTES = 256 * 1024;
 const LOG_WINDOW_BYTES = 1024 * 1024;
 
@@ -65,8 +65,15 @@ async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: 
   let url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
   if (health.url && health.path) {
     const parsed = new URL(health.url);
-    parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/${health.path.replace(/^\//, "")}`;
-    url = parsed.toString();
+    const baseSearch = parsed.search;
+    const baseHash = parsed.hash;
+    parsed.search = "";
+    parsed.hash = "";
+    parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/`;
+    const appended = new URL(health.path.replace(/^\/+/, ""), parsed);
+    if (!appended.search) appended.search = baseSearch;
+    if (!appended.hash) appended.hash = baseHash;
+    url = appended.toString();
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -75,18 +82,25 @@ async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: 
 }
 
 export async function checkReadinessNow(input: ReadinessInput): Promise<boolean> {
-  const timeoutMs = Math.max(1, Math.min(input.health?.timeoutMs ?? 1000, 2000));
+  const defaultTimeoutMs = input.health?.type === "tcp" ? 500 : input.health?.type === "command" ? 2000 : 1000;
+  const timeoutMs = Math.max(1, input.health?.timeoutMs ?? defaultTimeoutMs);
+  const deadline = Date.now() + timeoutMs;
   try {
-    if (!await withinDeadline(Promise.resolve(input.isAlive()), timeoutMs)) return false;
+    if (!await withinDeadline(Promise.resolve(input.isAlive()), deadline - Date.now())) return false;
     if (!input.health) return true;
     if ((input.health.type === "tcp" || input.health.type === "http") && input.health.port && input.ports[input.health.port] === undefined) return false;
+    let ready: boolean;
     if (input.health.type === "log") {
-      const output = input.readLog
-        ? await withinDeadline(input.readLog(), timeoutMs)
-        : await withinDeadline(readLogWindow(input.logPath), timeoutMs);
-      return new RegExp(input.health.pattern, "i").test(output.slice(-LOG_WINDOW_BYTES));
-    }
-    return await withinDeadline(checkReadiness(input.health, input, timeoutMs), timeoutMs);
+      if (input.previouslyReady) ready = true;
+      else {
+        const output = input.readLog
+          ? await withinDeadline(input.readLog(), deadline - Date.now())
+          : await withinDeadline(readLogWindow(input.logPath), deadline - Date.now());
+        ready = new RegExp(input.health.pattern, "i").test(output.slice(-LOG_WINDOW_BYTES));
+      }
+    } else ready = await withinDeadline(checkReadiness(input.health, input, deadline - Date.now()), deadline - Date.now());
+    if (!ready || Date.now() >= deadline) return false;
+    return await withinDeadline(Promise.resolve(input.isAlive()), deadline - Date.now());
   } catch { return false; }
 }
 

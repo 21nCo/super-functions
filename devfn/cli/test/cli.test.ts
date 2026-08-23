@@ -134,6 +134,7 @@ describe("devfn CLI", () => {
       const restarted = await invoke(["up"]);
       expect(restarted.code, JSON.stringify(restarted.value)).toBe(0);
       expect(restarted.value.state).toBe("ready");
+      expect((await invoke(["status"])).value.state).toBe("ready");
     } finally { await invoke(["down"]).catch(() => undefined); }
   }, 20_000);
 
@@ -256,6 +257,28 @@ describe("devfn CLI", () => {
       stdout = "";
       expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
       expect(JSON.parse(stdout).error.message).toContain("could not be inspected");
+    } finally { process.env.PATH = originalPath; }
+  }, 15_000);
+
+  it("preflights both listener protocols for portless local processes", async () => {
+    if (process.platform === "win32") return;
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-portless-listener-tools-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
+    await symlink("/bin/ps", path.join(toolsDir, "ps"));
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "portless-listener-tools" },
+      processes: { app: { adapter: "command", command: [process.execPath, "-e", "setInterval(() => {}, 1000)"] } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const originalPath = process.env.PATH;
+    let stdout = "";
+    try {
+      process.env.PATH = toolsDir;
+      expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+      const diagnostics = JSON.parse(stdout).diagnostics.filter((item: { code: string }) => item.code === "DEVFN_LISTENER_INSPECTION_UNAVAILABLE");
+      expect(diagnostics).toHaveLength(2);
+      expect(diagnostics.map((item: { message: string }) => item.message)).toEqual(expect.arrayContaining([expect.stringContaining("TCP"), expect.stringContaining("UDP")]));
     } finally { process.env.PATH = originalPath; }
   }, 15_000);
 

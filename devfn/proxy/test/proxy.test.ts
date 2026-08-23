@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -27,6 +27,16 @@ describe("Caddy route rendering", () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+  });
+
+  it("recovers a route activation journal before serving state to cleanup", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
+    const pendingPath = path.join(stateDir, "proxy-routes.pending.json");
+    const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" } as const;
+    await writeFile(pendingPath, `${JSON.stringify({ version: 1, routes: [route] })}\n`);
+    await expect(new CaddyProxyController(stateDir).routes()).resolves.toEqual([route]);
+    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [route] });
+    await expect(access(pendingPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("distinguishes dead proxy owners from live PID reuse", async () => {

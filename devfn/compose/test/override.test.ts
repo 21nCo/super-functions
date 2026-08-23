@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ComposeController, renderComposeOverride } from "../src/index.js";
+import { ComposeController, createComposeEnvironment, renderComposeOverride } from "../src/index.js";
 
 describe("ComposeController", () => {
   it("exposes availability as a non-throwing diagnostic", async () => {
@@ -18,6 +18,19 @@ describe("ComposeController", () => {
     const output = renderComposeOverride({ adapter: "compose", service: "postgres", ports: { database: 5432 } }, { database: 55432 });
     expect(output).toContain("127.0.0.1:55432:5432");
     expect(output).toContain("ports: !override");
+  });
+
+  it("sanitizes readiness and lifecycle environments with generated values taking precedence", () => {
+    expect(createComposeEnvironment(
+      { adapter: "compose", service: "api", envAllowlist: ["ALLOWED"], env: { APP_PORT: "configured" } },
+      { APP_PORT: "4100" },
+      { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" },
+    )).toMatchObject({ PATH: "/bin", ALLOWED: "yes", APP_PORT: "4100" });
+    expect(createComposeEnvironment(
+      { adapter: "compose", service: "api", envAllowlist: ["ALLOWED"], env: { APP_PORT: "configured" } },
+      { APP_PORT: "4100" },
+      { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" },
+    )).not.toHaveProperty("SECRET_TOKEN");
   });
 
   it("binds explicitly public ports and disables persistence for secret-bearing logs", () => {

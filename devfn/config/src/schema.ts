@@ -199,12 +199,13 @@ function serviceSpec(value: unknown, field: string): ComposeServiceSpec {
 function profileSpec(value: unknown, field: string): ProfileSpec {
   const input = record(value, field);
   const environment = stringMap(input.environment, `${field}.environment`);
+  const proxy = optionalBoolean(input.proxy, `${field}.proxy`);
   for (const key of Object.keys(environment ?? {})) if (SENSITIVE_KEY.test(key)) fail(`${field}.environment.${key} must not contain a secret. Use process envAllowlist and secretEnv.`, `${field}.environment.${key}`);
   return {
     ...(stringArray(input.processes, `${field}.processes`) ? { processes: stringArray(input.processes, `${field}.processes`) } : {}),
     ...(stringArray(input.services, `${field}.services`) ? { services: stringArray(input.services, `${field}.services`) } : {}),
     ...(environment ? { environment } : {}),
-    ...(input.proxy === undefined ? {} : { proxy: input.proxy === true }),
+    ...(proxy === undefined ? {} : { proxy }),
   };
 }
 

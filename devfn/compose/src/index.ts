@@ -56,10 +56,10 @@ function safeProjectName(prefix: string, instanceId: string): string {
   return `${safePrefix}-${suffix}`;
 }
 
-function composeEnvironment(spec: ComposeServiceSpec, generated: Record<string, string> = {}): NodeJS.ProcessEnv {
+export function createComposeEnvironment(spec: ComposeServiceSpec, generated: Record<string, string> = {}, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
   const environment: NodeJS.ProcessEnv = {};
-  for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (process.env[key] !== undefined) environment[key] = process.env[key];
+  for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (source[key] !== undefined) environment[key] = source[key];
   return { ...environment, ...(spec.env ?? {}), ...generated };
 }
 
@@ -70,7 +70,7 @@ function persistedDockerEnvironment(environment: NodeJS.ProcessEnv): Record<stri
 }
 
 function directDockerEnvironment(persisted?: Record<string, string>): NodeJS.ProcessEnv {
-  const environment = composeEnvironment({ adapter: "compose", service: "docker" });
+  const environment = createComposeEnvironment({ adapter: "compose", service: "docker" });
   if (persisted !== undefined) for (const key of DOCKER_ENVIRONMENT_KEYS) delete environment[key];
   return { ...environment, ...(persisted ?? {}) };
 }
@@ -114,7 +114,7 @@ export class ComposeController {
 
   public async start(input: ComposeStartInput): Promise<ManagedComposeService> {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose lifecycle name ${input.name} contains unsupported characters.`);
-    const environment = composeEnvironment(input.spec, input.environment);
+    const environment = createComposeEnvironment(input.spec, input.environment);
     const dockerEnvironment = persistedDockerEnvironment(environment);
     if (!await this.available(input.root, environment)) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose 2.24.4 or newer is required.");
     const projectName = safeProjectName(input.spec.projectName ?? "devfn", input.instanceId);

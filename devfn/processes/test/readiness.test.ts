@@ -8,19 +8,50 @@ import { checkReadinessNow, waitForReadiness } from "../src/index.js";
 describe("process readiness", () => {
   it("applies a configured path to URL-based HTTP probes", async () => {
     const server = (await import("node:http")).createServer((request, response) => {
-      response.writeHead(request.url === "/base/health" ? 200 : 404);
+      response.writeHead(request.url === "/base/health?ready=1" ? 200 : 404);
       response.end();
     });
     await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("HTTP test server did not receive a port.");
     try {
-      await expect(waitForReadiness({ health: { type: "http", url: `http://127.0.0.1:${address.port}/base`, path: "/health", timeoutMs: 1000 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBeUndefined();
+      await expect(waitForReadiness({ health: { type: "http", url: `http://127.0.0.1:${address.port}/base?base=1#old`, path: "/health?ready=1#current", timeoutMs: 1000 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBeUndefined();
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 
   it("reports current HTTP readiness without entering the retry loop", async () => {
-    await expect(checkReadinessNow({ health: { type: "http", url: "http://127.0.0.1:1", timeoutMs: 50 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBe(false);
+    const server = (await import("node:net")).createServer();
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("TCP test server did not receive a port.");
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await expect(checkReadinessNow({ health: { type: "http", url: `http://127.0.0.1:${address.port}`, timeoutMs: 50 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBe(false);
+  });
+
+  it("honors configured current-probe timeouts longer than two seconds", async () => {
+    const started = Date.now();
+    await expect(checkReadinessNow({
+      health: { type: "command", command: [process.execPath, "-e", "setTimeout(() => {}, 2100)"], timeoutMs: 2600 },
+      ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true,
+    })).resolves.toBe(true);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2000);
+  }, 5000);
+
+  it("rechecks liveness after a successful current probe", async () => {
+    let checks = 0;
+    await expect(checkReadinessNow({
+      health: { type: "command", command: [process.execPath, "-e", "process.exit(0)"], timeoutMs: 1000 },
+      ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => ++checks === 1,
+    })).resolves.toBe(false);
+    expect(checks).toBe(2);
+  });
+
+  it("treats a previously observed log marker as a startup event", async () => {
+    await expect(checkReadinessNow({
+      health: { type: "log", pattern: "ready", timeoutMs: 100 }, previouslyReady: true,
+      ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true,
+      readLog: async () => "new output without the historical marker",
+    })).resolves.toBe(true);
   });
 
   it("keeps command probes inside the overall readiness deadline", async () => {

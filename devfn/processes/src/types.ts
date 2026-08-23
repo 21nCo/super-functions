@@ -9,6 +9,7 @@ export interface ManagedProcess {
   logPath: string;
   startedAt: string;
   readyAt?: string;
+  shutdownTimeoutMs?: number;
 }
 
 export interface StartProcessInput {

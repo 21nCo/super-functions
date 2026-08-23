@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ComposeController, type ManagedComposeService } from "@devfn/compose";
+import { ComposeController, createComposeEnvironment, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, type DevFnConfig } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type ListenerScanResult, type PortAllocation } from "@devfn/ports";
 import { checkReadinessNow, createProcessEnvironment, ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
@@ -70,7 +70,7 @@ export async function verifyOwnedLoopbackListeners(processName: string, expected
 
 async function waitForOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  let missing: { port: number; protocol: "tcp" | "udp" } | undefined = expected[0];
+  let missing: { port: number; protocol: "tcp" | "udp" } | undefined;
   do {
     if (!processExists(ownerPid)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exited before listener ownership could be verified.`);
     const scan = await scanListenerState();
@@ -96,18 +96,23 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
   const ports = Object.fromEntries(receipt.allocations.map((allocation) => [allocation.service, allocation.port]));
   const environment = lifecycleEnvironment(config, receipt.profile, receipt.instanceId, receipt.allocations);
   const compose = new ComposeController();
+  const supervisor = new ProcessSupervisor();
   const processReady = await Promise.all(receipt.processes.map(async (managed, index) => {
     const spec = config.processes?.[managed.name];
     if (!spec || processStates[index] !== "running") return false;
     try {
-      return await checkReadinessNow({ health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment(spec, environment), isAlive: () => true });
+      return await checkReadinessNow({
+        health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment(spec, environment),
+        previouslyReady: Boolean(managed.readyAt || receipt.state === "ready"), isAlive: async () => await supervisor.status(managed) === "running",
+      });
     } catch { return false; }
   }));
   const serviceReady = await Promise.all(receipt.services.map(async (managed, index) => {
     const spec = config.services?.[managed.name];
     if (!spec || serviceStates[index] !== "running") return false;
     return await checkReadinessNow({
-      health: spec.health, ports, logPath: "", cwd: root, environment: { ...process.env, ...environment, ...(spec.env ?? {}) }, isAlive: () => true,
+      health: spec.health, ports, logPath: "", cwd: root, environment: createComposeEnvironment(spec, environment),
+      previouslyReady: receipt.state === "ready", isAlive: async () => await compose.status(managed) === "running",
       readLog: async () => await compose.logs({ ...managed, logsDisabled: Boolean(managed.logsDisabled || spec.secretEnv?.length) }, 1000, managed.startedAt),
     });
   }));
@@ -372,12 +377,21 @@ export class DevFnOrchestrator {
     const listeners = scan.listeners;
     const unavailableWarnings = new Set<string>();
     const localProcessPorts = new Map<string, "tcp" | "udp">();
+    const requiredLocalProtocols = new Set<"tcp" | "udp">();
     for (const node of plan.nodes.filter((candidate) => candidate.kind === "process")) {
       const processSpec = options.config.processes?.[node.name];
       if (!processSpec || processSpec.exposure === "public") continue;
-      for (const name of processSpec.ports ?? []) localProcessPorts.set(name, options.config.ports?.[name]?.protocol ?? "tcp");
+      if (!(processSpec.ports?.length)) {
+        requiredLocalProtocols.add("tcp");
+        requiredLocalProtocols.add("udp");
+      }
+      for (const name of processSpec.ports ?? []) {
+        const protocol = options.config.ports?.[name]?.protocol ?? "tcp";
+        localProcessPorts.set(name, protocol);
+        requiredLocalProtocols.add(protocol);
+      }
     }
-    for (const protocol of new Set(localProcessPorts.values())) {
+    for (const protocol of requiredLocalProtocols) {
       if (scan.inspection[protocol]) continue;
       const hasRecordedOwner = hasRecordedProcessOwner(registry.allocations, options.config.project.id, identity.instanceId, localProcessPorts, protocol);
       diagnostics.push({
