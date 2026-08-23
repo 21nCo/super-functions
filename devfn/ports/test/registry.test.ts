@@ -72,6 +72,16 @@ describe("FilePortRegistry", () => {
     expect(Date.parse((await registry.read()).allocations[0].updatedAt)).toBeGreaterThan(Date.parse(before));
   });
 
+  it("does not refresh planned allocations after an invocation becomes terminal", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "failed", profile: "default", requests: [{ name: "app", spec: { range: [45200, 45299] } }] });
+    const before = (await registry.read()).allocations[0].updatedAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await registry.updateInvocation("failed", { state: "failed" });
+    expect((await registry.read()).allocations[0].updatedAt).toBe(before);
+  });
+
   it("escapes backslashes, pipes, and carriage returns in policy tables", () => {
     const output = renderPolicyInventory({ version: 1, ports: [{ name: "a\\|b\rc", kind: "protected", port: 4100 }] });
     expect(output).toContain("a\\\\\\|b c");

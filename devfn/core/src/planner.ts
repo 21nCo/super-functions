@@ -2,16 +2,21 @@ import type { DevFnConfig } from "@devfn/config";
 import { DevFnError, type LifecyclePlan } from "./types.js";
 
 export function createPlan(config: DevFnConfig, requestedProfile?: string): LifecyclePlan {
-  const collision = Object.keys(config.processes ?? {}).find((name) => Object.prototype.hasOwnProperty.call(config.services ?? {}, name));
+  const processes = config.processes ?? {};
+  const services = config.services ?? {};
+  const hasProcess = (name: string): boolean => Object.prototype.hasOwnProperty.call(processes, name);
+  const hasService = (name: string): boolean => Object.prototype.hasOwnProperty.call(services, name);
+  const collision = Object.keys(processes).find(hasService);
   if (collision) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Lifecycle node ${collision} cannot be both a process and a service.`);
   const profileName = requestedProfile ?? config.defaultProfile ?? "default";
-  const profile = config.profiles[profileName];
+  const profile = Object.prototype.hasOwnProperty.call(config.profiles, profileName) ? config.profiles[profileName] : undefined;
   if (!profile) throw new DevFnError("DEVFN_PROFILE_NOT_FOUND", `Profile ${profileName} does not exist.`);
   const selected = new Set([...(profile.processes ?? []), ...(profile.services ?? [])]);
+  const profileSelected = new Set(selected);
   const expanded = new Set<string>();
-  const dependencies = (name: string): string[] => config.processes?.[name]?.dependsOn ?? config.services?.[name]?.dependsOn ?? [];
+  const dependencies = (name: string): string[] => hasProcess(name) ? processes[name].dependsOn ?? [] : hasService(name) ? services[name].dependsOn ?? [] : [];
   const include = (name: string): void => {
-    if (!config.processes?.[name] && !config.services?.[name]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown lifecycle node ${name}.`);
+    if (!hasProcess(name) && !hasService(name)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown lifecycle node ${name}.`);
     if (expanded.has(name)) return;
     expanded.add(name);
     if (!selected.has(name)) selected.add(name);
@@ -22,11 +27,11 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
     for (const hostname of Object.values(config.hostnames ?? {})) {
       if (hostname.profiles && !hostname.profiles.includes(profileName)) continue;
       const owners = [
-        ...Object.entries(config.processes ?? {}).filter(([, spec]) => spec.ports?.includes(hostname.target)).map(([name]) => name),
-        ...Object.entries(config.services ?? {}).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
+        ...Object.entries(processes).filter(([, spec]) => spec.ports?.includes(hostname.target)).map(([name]) => name),
+        ...Object.entries(services).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
       ];
       if (owners.length === 0) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has no lifecycle owner.`);
-      const activeOwners = owners.filter((name) => selected.has(name));
+      const activeOwners = owners.filter((name) => profileSelected.has(name));
       if (activeOwners.length > 1 || (activeOwners.length === 0 && owners.length > 1)) {
         throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has ambiguous lifecycle owners for profile ${profileName}.`);
       }
@@ -56,7 +61,7 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
   for (const hostname of Object.values(config.hostnames ?? {})) if (profile.proxy && (!hostname.profiles || hostname.profiles.includes(profileName))) portNames.add(hostname.target);
   return {
     profile: profileName,
-    nodes: ordered.map((name) => ({ name, kind: config.processes?.[name] ? "process" : "service", dependencies: dependencies(name) })),
+    nodes: ordered.map((name) => ({ name, kind: hasProcess(name) ? "process" : "service", dependencies: dependencies(name) })),
     portNames: [...portNames].sort(),
     proxy: profile.proxy === true,
   };

@@ -17,13 +17,14 @@ export function receiptPath(config: DevFnConfig, root: string, instanceId: strin
   return path.join(runtimeDirectory(config, root, instanceId), "receipt.json");
 }
 
-function stableReceiptPath(root: string, instanceId: string): string {
-  return path.join(root, ".devfn", "receipts", `${instanceId}.json`);
+async function stableReceiptPath(root: string, instanceId: string): Promise<string> {
+  return await resolveContainedPath(root, path.join(".devfn", "receipts", `${instanceId}.json`), "receipt");
 }
 
 export async function readReceipt(config: DevFnConfig, root: string, instanceId: string): Promise<LifecycleReceipt | null> {
   const configuredDirectory = await secureRuntimeDirectory(config, root, instanceId).catch(() => undefined);
-  for (const candidate of [stableReceiptPath(root, instanceId), ...(configuredDirectory ? [path.join(configuredDirectory, "receipt.json")] : [])]) {
+  const stable = await stableReceiptPath(root, instanceId).catch(() => undefined);
+  for (const candidate of [...(stable ? [stable] : []), ...(configuredDirectory ? [path.join(configuredDirectory, "receipt.json")] : [])]) {
     try {
       const value = JSON.parse(await readFile(candidate, "utf8")) as LifecycleReceipt;
       const [canonicalRoot, receiptRoot, canonicalRuntime] = await Promise.all([realpath(root), realpath(value.root), realpath(value.runtimeDir)]);
@@ -43,9 +44,9 @@ async function writeAtomicReceipt(target: string, receipt: LifecycleReceipt): Pr
 
 export async function writeReceipt(receipt: LifecycleReceipt): Promise<void> {
   const runtimeTarget = path.join(receipt.runtimeDir, "receipt.json");
-  await writeAtomicReceipt(runtimeTarget, receipt);
-  const stableTarget = stableReceiptPath(receipt.root, receipt.instanceId);
-  if (stableTarget !== runtimeTarget) await writeAtomicReceipt(stableTarget, receipt);
+  const stableTarget = await stableReceiptPath(receipt.root, receipt.instanceId);
+  await writeAtomicReceipt(stableTarget, receipt);
+  if (stableTarget !== runtimeTarget) await writeAtomicReceipt(runtimeTarget, receipt);
 }
 
 function dotenv(value: string): string { return /^[A-Za-z0-9_./:@-]*$/.test(value) ? value : JSON.stringify(value); }

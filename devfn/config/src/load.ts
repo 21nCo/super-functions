@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { createContext, Script } from "node:vm";
 
 import { ConfigLoaderError, loadConfig } from "@clifn/core";
 import ts from "typescript";
@@ -94,15 +94,26 @@ export async function loadTrustedDevFnConfig(options: { cwd?: string; configPath
   if (hasExternalModuleSyntax(source)) {
     throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "Executable DevFn manifests must be self-contained; imports and require() are not permitted.");
   }
-  const extension = path.extname(resolved.path);
-  const verifiedDir = path.join(options.stateDir ?? defaultStateDir(), "verified-manifests");
-  await mkdir(verifiedDir, { recursive: true, mode: 0o700 });
-  const verifiedPath = path.join(verifiedDir, `${snapshot.digest}.${randomUUID()}${extension}`);
-  await writeFile(verifiedPath, snapshot.bytes, { mode: 0o600, flag: "wx" });
   try {
-    const loaded = await loadDevFnConfig({ cwd: verifiedDir, configPath: verifiedPath });
-    return { config: loaded.config, path: resolved.path, root: resolved.root };
-  } finally { await rm(verifiedPath, { force: true }); }
+    return { config: validateDevFnConfig(evaluateTrustedManifest(source, resolved.path)), path: resolved.path, root: resolved.root };
+  } catch (error) {
+    if (error instanceof DevFnConfigError) throw error;
+    throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `Unable to evaluate trusted manifest ${resolved.path} in the restricted context.`);
+  }
+}
+
+function evaluateTrustedManifest(source: string, filename: string): unknown {
+  const transpiled = ts.transpileModule(source, {
+    fileName: filename,
+    reportDiagnostics: true,
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: false },
+  });
+  const diagnostic = transpiled.diagnostics?.find((item) => item.category === ts.DiagnosticCategory.Error);
+  if (diagnostic) throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+  const context = createContext(Object.create(null), { name: "devfn-trusted-manifest", codeGeneration: { strings: false, wasm: false } });
+  const serialized = new Script(`(() => { const module = { exports: {} }; const exports = module.exports;\n${transpiled.outputText}\nconst value = module.exports; return JSON.stringify(value?.default ?? value?.config ?? value?.devfnConfig ?? value); })()`, { filename }).runInContext(context, { timeout: 1000 });
+  if (typeof serialized !== "string") throw new Error("Trusted manifest did not export a serializable configuration.");
+  return JSON.parse(serialized);
 }
 
 function hasExternalModuleSyntax(source: string): boolean {

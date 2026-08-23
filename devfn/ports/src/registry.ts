@@ -182,7 +182,9 @@ export class FilePortRegistry {
       const invocation = state.invocations.find((item) => item.id === id);
       if (!invocation) return;
       Object.assign(invocation, update, { updatedAt: now });
-      for (const allocation of state.allocations) if (allocation.invocationId === id && allocation.state === "planned") allocation.updatedAt = now;
+      if (invocation.state === "planning" || invocation.state === "starting") {
+        for (const allocation of state.allocations) if (allocation.invocationId === id && allocation.state === "planned") allocation.updatedAt = now;
+      }
     });
   }
 

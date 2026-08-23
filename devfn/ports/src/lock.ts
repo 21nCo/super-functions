@@ -35,7 +35,8 @@ export async function withFileLock<T>(lockPath: string, action: () => Promise<T>
         observedToken = observed.token ?? observedToken;
         const alive = observed.pid ? processExists(observed.pid) : false;
         const currentBirth = observed.pid ? await processBirthSignature(observed.pid) : undefined;
-        const ownerMatches = observed.birthSignature ? (currentBirth === undefined ? alive : currentBirth === observed.birthSignature) : alive;
+        const birthSignaturesSupported = process.platform === "linux" || process.platform === "darwin" || process.platform === "win32";
+        const ownerMatches = observed.birthSignature ? (currentBirth === undefined && birthSignaturesSupported ? alive : currentBirth === observed.birthSignature) : birthSignaturesSupported && alive;
         recover = !ownerMatches && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
       } catch (ownerError) {
         if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;

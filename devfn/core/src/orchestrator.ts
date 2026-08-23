@@ -41,9 +41,13 @@ export class DevFnOrchestrator {
     const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
     const existing = await readReceipt(options.config, options.root, identity.instanceId);
     if (existing && existing.state !== "stopped") {
-      const processRunning = (await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)))).some((state) => state === "running");
-      const serviceRunning = (await Promise.all(existing.services.map((item) => new ComposeController().status(item)))).some((state) => state === "running");
-      if (existing.state === "ready" && (processRunning || serviceRunning)) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
+      const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
+      const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
+      const processRunning = processStates.some((state) => state === "running");
+      const serviceRunning = serviceStates.some((state) => state === "running");
+      const managedCount = processStates.length + serviceStates.length;
+      const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
+      if (existing.state === "ready" && allRunning) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
       if (processRunning || serviceRunning || existing.state === "starting" || existing.state === "degraded") {
         const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
         if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
@@ -234,7 +238,7 @@ export class DevFnOrchestrator {
     const major = Number(process.versions.node.split(".")[0]);
     if (major < 22) diagnostics.push({ code: "DEVFN_NODE_VERSION", severity: "error", message: `Node 22 or newer is required; found ${process.version}.` });
     else diagnostics.push({ code: "DEVFN_NODE_VERSION", severity: "info", message: `Node runtime ${process.version}.` });
-    const verifiedPrerequisites = new Set<string>();
+    const equivalentRuntimeChecks = new Set<string>();
     for (const requirement of options.config.prerequisites ?? []) {
       if (requirement.profiles && !requirement.profiles.includes(plan.profile)) continue;
       try {
@@ -251,7 +255,7 @@ export class DevFnOrchestrator {
         }
         if (expected && actual !== expected) diagnostics.push({ code: "DEVFN_PREREQUISITE_VERSION", severity: "error", message: `${requirement.command} ${expected} is required; found ${actual}.` });
         else {
-          verifiedPrerequisites.add(requirement.command);
+          if (requirement.command === "npm" || requirement.command === "pnpm") equivalentRuntimeChecks.add(requirement.command);
           diagnostics.push({ code: "DEVFN_PREREQUISITE_OK", severity: "info", message: `${requirement.command} is available.`, details: { version: actual, ...(expected ? { expected } : {}) } });
         }
       }
@@ -264,7 +268,7 @@ export class DevFnOrchestrator {
     if (adapters.has("xcode")) implicitTools.push({ adapter: "xcode", file: "xcodebuild", args: ["-version"] });
     for (const adapter of ["turbo", "wrangler", "extfn"] as const) if (adapters.has(adapter)) implicitTools.push({ adapter, file: "npm", args: ["exec", "--offline", "--", adapter, "--version"] });
     for (const tool of implicitTools) {
-      if (verifiedPrerequisites.has(tool.adapter)) continue;
+      if (equivalentRuntimeChecks.has(tool.adapter)) continue;
       try { await execFileAsync(tool.file, tool.args, { cwd: options.root, timeout: 5000, env: { ...process.env, ...(tool.adapter === "pnpm" ? { COREPACK_ENABLE_NETWORK: "0" } : {}) } }); diagnostics.push({ code: "DEVFN_ADAPTER_AVAILABLE", severity: "info", message: `${tool.adapter} adapter runtime is available.` }); }
       catch { diagnostics.push({ code: "DEVFN_ADAPTER_UNAVAILABLE", severity: "error", message: `${tool.adapter} adapter runtime is unavailable without installation.` }); }
     }
@@ -295,7 +299,7 @@ export class DevFnOrchestrator {
     const compose = new ComposeController();
     for (const service of receipt.services.filter((item) => !options.name || item.name === options.name)) {
       const currentSpec = options.config.services?.[service.name];
-      const effective = { ...service, logsDisabled: service.logsDisabled ?? Boolean(currentSpec?.secretEnv?.length) };
+      const effective = { ...service, logsDisabled: Boolean(service.logsDisabled || currentSpec?.secretEnv?.length) };
       output[service.name] = redact(await compose.logs(effective, options.tail), currentSpec?.secretEnv);
     }
     return output;

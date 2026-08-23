@@ -42,4 +42,20 @@ describe("lifecycle planner", () => {
     const namedConstructor = { ...config, processes: { constructor: { adapter: "command" as const, command: ["node"] } }, profiles: { default: { processes: ["constructor"] } } };
     expect(createPlan(namedConstructor).nodes.map((node) => node.name)).toEqual(["constructor"]);
   });
+
+  it("rejects inherited lifecycle and profile properties", () => {
+    const inheritedNode = { ...config, profiles: { default: { processes: ["toString"] } } };
+    expect(() => createPlan(inheritedNode)).toThrow(/Unknown lifecycle node/);
+    expect(() => createPlan(config, "toString")).toThrow(/does not exist/);
+  });
+
+  it("rejects ambiguous hostname owners independently of expansion order", () => {
+    const processes = {
+      app: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+      alternate: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+    };
+    const hostnames = { app: { target: "app" } };
+    expect(() => createPlan({ ...config, processes, profiles: { default: { processes: ["app", "alternate"], proxy: true } }, hostnames })).toThrow(/ambiguous/);
+    expect(() => createPlan({ ...config, processes, profiles: { default: { proxy: true } }, hostnames })).toThrow(/ambiguous/);
+  });
 });

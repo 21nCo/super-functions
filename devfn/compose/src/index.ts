@@ -72,11 +72,12 @@ export class ComposeController {
 
   public async start(input: ComposeStartInput): Promise<ManagedComposeService> {
     if (!await this.available()) throw new ComposeError("DEVFN_COMPOSE_UNAVAILABLE", "Docker Compose is unavailable.");
+    if (!/^[A-Za-z0-9_.-]+$/.test(input.name)) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose lifecycle name ${input.name} contains unsupported characters.`);
     const projectName = safeProjectName(input.spec.projectName ?? "devfn", input.instanceId);
     const sourceFile = await resolveContainedPath(input.root, input.spec.file ?? "compose.yaml", `services.${input.name}.file`);
     const overrideDir = path.join(input.runtimeDir, "compose");
     await mkdir(overrideDir, { recursive: true, mode: 0o700 });
-    const overrideFile = path.join(overrideDir, `${input.name}.override.yaml`);
+    const overrideFile = await resolveContainedPath(input.runtimeDir, path.join("compose", `${input.name}.override.yaml`), `services.${input.name}`);
     if (input.spec.secretEnv?.length && input.spec.health?.type === "log") throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${input.name} cannot use log readiness while secret-bearing logs are disabled.`);
     await writeFile(overrideFile, renderComposeOverride(input.spec, input.ports, input.portHosts, input.portProtocols), { encoding: "utf8", mode: 0o600 });
     const files = [sourceFile, overrideFile];

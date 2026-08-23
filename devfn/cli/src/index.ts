@@ -7,7 +7,6 @@ import { createOutput, createScaffold, redactValue } from "@clifn/core";
 import {
   DevFnConfigError,
   discoverProject,
-  loadDevFnConfig,
   loadTrustedDevFnConfig,
   renderDevFnConfig,
   resolveContainedPath,
@@ -112,13 +111,14 @@ async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
 }
 
 async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string, unknown>> {
+  const configName = args.configPath ?? "devfn.config.ts";
+  if (path.extname(configName) !== ".ts") throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `devfn init can only generate a TypeScript manifest; ${configName} must end in .ts.`);
   try { await resolveDevFnManifestPath({ cwd, configPath: args.configPath }); throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "A DevFn manifest already exists; init will not overwrite it."); }
   catch (error) { if (!(error instanceof DevFnConfigError) || error.code !== "DEVFN_CONFIG_NOT_FOUND") throw error; }
   const discovery = await discoverProject(cwd);
   const content = renderDevFnConfig(discovery.config, discovery.findings);
   if (!args.yes) return { ok: true, written: false, preview: content, findings: discovery.findings, confirmationRequired: "Review the preview, then rerun devfn init --yes." };
   const scaffold = createScaffold();
-  const configName = args.configPath ?? "devfn.config.ts";
   await scaffold.apply([{ kind: "write-file", path: configName, content, ifExists: "error" }], { cwd });
   const ignorePath = path.join(cwd, ".gitignore");
   const ignore = await readFile(ignorePath, "utf8").catch(() => "");

@@ -27,6 +27,15 @@ describe("devfn CLI", () => {
     expect(JSON.parse(stdout).state).toBe("stopped");
   });
 
+  it("rejects non-TypeScript init targets", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-init-"));
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample" }), "utf8");
+    let stdout = "";
+    expect(await runCli(["init", "--yes", "--config", "devfn.config.json", "--json"], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+    expect(JSON.parse(stdout).error.code).toBe("DEVFN_CONFIG_INVALID");
+    await expect(access(path.join(cwd, "devfn.config.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("runs the local up, status, url, and down lifecycle with JSON receipts", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-lifecycle-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));

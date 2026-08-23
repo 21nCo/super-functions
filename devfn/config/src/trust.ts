@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -37,10 +37,14 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
   const staleMs = 300_000;
   const deadline = Date.now() + 10_000;
   while (true) {
+    const pendingPath = `${lockPath}.${token}.pending`;
     try {
-      await writeFile(lockPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+      await writeFile(pendingPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+      try { await link(pendingPath, lockPath); }
+      finally { await rm(pendingPath, { force: true }); }
       break;
     } catch (error) {
+      await rm(pendingPath, { force: true }).catch(() => undefined);
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST" && code !== "EISDIR") throw error;
       let recover = false;

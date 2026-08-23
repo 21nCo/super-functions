@@ -47,8 +47,16 @@ export class CaddyProxyController {
   }
 
   private async read(): Promise<ProxyState> {
-    try { const state = JSON.parse(await readFile(this.statePath, "utf8")) as ProxyState; return state.version === 1 ? state : { version: 1, routes: [] }; }
-    catch { return { version: 1, routes: [] }; }
+    try {
+      const state = JSON.parse(await readFile(this.statePath, "utf8")) as ProxyState;
+      if (state.version !== 1 || !Array.isArray(state.routes)) throw new Error("Unsupported proxy route schema.");
+      renderCaddyfile(state.routes);
+      return state;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, routes: [] };
+      if (error instanceof ProxyError) throw error;
+      throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Unable to read proxy route state ${this.statePath}.`, { cause: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   private async apply(next: ProxyState): Promise<void> {
@@ -87,6 +95,13 @@ export class CaddyProxyController {
         birthSignature = await processBirthSignature(child.pid);
         if (!birthSignature) await new Promise((resolve) => setTimeout(resolve, 20));
       }
+      const stopSpawnedChild = async (): Promise<void> => {
+        try {
+          if (!child.pid) return;
+          if (birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
+          else child.kill("SIGTERM");
+        } catch { /* already exited */ }
+      };
       while (Date.now() < deadline) {
         if (await Promise.race([spawnFailure, new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))])) break;
         if (!child.pid || !birthSignature || !await matchesProcessIdentity(child.pid, birthSignature)) break;
@@ -94,15 +109,13 @@ export class CaddyProxyController {
         if (ready) break;
       }
       if (!ready || !child.pid || !birthSignature) {
-        try {
-          if (child.pid && birthSignature && await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
-        } catch { /* already exited */ }
+        await stopSpawnedChild();
         await rm(candidate, { force: true });
         throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to start the DevFn-owned Caddy proxy.");
       }
       try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
       catch (error) {
-        try { if (await matchesProcessIdentity(child.pid, birthSignature)) process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM"); } catch { /* already exited */ }
+        await stopSpawnedChild();
         await rm(candidate, { force: true });
         throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
       }

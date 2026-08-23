@@ -13,6 +13,17 @@ type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; log
 const LOG_CHUNK_BYTES = 256 * 1024;
 const LOG_WINDOW_BYTES = 1024 * 1024;
 
+async function withinDeadline<T>(promise: Promise<T>, remainingMs: number): Promise<T> {
+  if (remainingMs <= 0) throw new Error("Readiness deadline elapsed.");
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("Readiness operation exceeded the remaining deadline.")), remainingMs); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 async function tcpReady(port: number, timeoutMs = 500): Promise<boolean> {
   return await new Promise((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port });
@@ -24,16 +35,16 @@ async function tcpReady(port: number, timeoutMs = 500): Promise<boolean> {
   });
 }
 
-async function readNewLog(logPath: string, offset: number): Promise<{ text: string; nextOffset: number }> {
+async function readNewLog(logPath: string, offset: number): Promise<{ bytes: Buffer; nextOffset: number; reset: boolean }> {
   const handle = await open(logPath, "r").catch(() => undefined);
-  if (!handle) return { text: "", nextOffset: offset };
+  if (!handle) return { bytes: Buffer.alloc(0), nextOffset: offset, reset: false };
   try {
     const size = (await handle.stat()).size;
-    if (size <= offset) return { text: "", nextOffset: Math.min(size, offset) };
+    if (size <= offset) return { bytes: Buffer.alloc(0), nextOffset: Math.min(size, offset), reset: size < offset };
     const length = Math.min(size - offset, LOG_CHUNK_BYTES);
     const buffer = Buffer.alloc(length);
     const { bytesRead } = await handle.read(buffer, 0, length, offset);
-    return { text: buffer.subarray(0, bytesRead).toString("utf8"), nextOffset: offset + bytesRead };
+    return { bytes: buffer.subarray(0, bytesRead), nextOffset: offset + bytesRead, reset: false };
   } finally { await handle.close(); }
 }
 
@@ -61,7 +72,7 @@ async function checkReadiness(health: Exclude<HealthCheck, { type: "log" }>, inp
 export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   if (!input.health) {
     await delay(500);
-    if (!await input.isAlive()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited before startup completed.");
+    if (!await withinDeadline(Promise.resolve(input.isAlive()), 1000)) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited before startup completed.");
     return;
   }
   const timeoutMs = input.health.timeoutMs ?? 120_000;
@@ -70,6 +81,7 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   let logPattern: RegExp | undefined;
   let logOffset = input.logOffset ?? 0;
   let logWindow = "";
+  let logDecoder = new TextDecoder();
   if (input.health.type === "log") {
     try { logPattern = new RegExp(input.health.pattern, "i"); } catch (error) { throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Invalid readiness pattern ${input.health.pattern}.`, { cause: String(error) }); }
   }
@@ -77,17 +89,25 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
     throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Readiness check references unallocated port ${input.health.port}.`);
   }
   while (Date.now() < deadline) {
-    if (!await input.isAlive()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited while waiting for readiness.");
+    try {
+      if (!await withinDeadline(Promise.resolve(input.isAlive()), deadline - Date.now())) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited while waiting for readiness.");
+    } catch (error) {
+      if (error instanceof ProcessError) throw error;
+      lastError = error;
+      break;
+    }
+    if (Date.now() >= deadline) break;
     try {
       if (input.health.type === "log") {
-        if (input.readLog) logWindow = (await input.readLog()).slice(-LOG_WINDOW_BYTES);
+        if (input.readLog) logWindow = (await withinDeadline(input.readLog(), deadline - Date.now())).slice(-LOG_WINDOW_BYTES);
         else {
           const chunk = await readNewLog(input.logPath, logOffset);
           logOffset = chunk.nextOffset;
-          logWindow = `${logWindow}${chunk.text}`.slice(-LOG_WINDOW_BYTES);
+          if (chunk.reset) { logDecoder = new TextDecoder(); logWindow = ""; }
+          logWindow = `${logWindow}${logDecoder.decode(chunk.bytes, { stream: true })}`.slice(-LOG_WINDOW_BYTES);
         }
-        if (logPattern?.test(logWindow)) return;
-      } else if (await checkReadiness(input.health, input, Math.max(1, deadline - Date.now()))) return;
+        if (logPattern?.test(logWindow) && Date.now() < deadline) return;
+      } else if (await checkReadiness(input.health, input, Math.max(1, deadline - Date.now())) && Date.now() < deadline) return;
     } catch (error) { lastError = error; }
     await delay(Math.min(100, Math.max(1, deadline - Date.now())));
   }
