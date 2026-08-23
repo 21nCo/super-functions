@@ -3,6 +3,7 @@ import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ConfigLoaderError, loadConfig } from "@clifn/core";
+import ts from "typescript";
 
 import { DevFnConfigError } from "./errors.js";
 import { resolveContainedPath } from "./paths.js";
@@ -84,7 +85,7 @@ export async function loadTrustedDevFnConfig(options: { cwd?: string; configPath
   if (resolved.path.endsWith(".json")) return await loadDevFnConfig(options);
   const snapshot = await readTrustedManifest(resolved.root, resolved.path, options.stateDir ?? defaultStateDir());
   const source = snapshot.bytes.toString("utf8");
-  if (/\b(?:import\s*(?:\(|["'])|import\s+[^;]*?\bfrom\s*["']|export\s+[^;]*?\bfrom\s*["']|require\s*\()/m.test(source)) {
+  if (hasExternalModuleSyntax(source)) {
     throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "Executable DevFn manifests must be self-contained; imports and require() are not permitted.");
   }
   const extension = path.extname(resolved.path);
@@ -96,6 +97,18 @@ export async function loadTrustedDevFnConfig(options: { cwd?: string; configPath
     const loaded = await loadDevFnConfig({ cwd: verifiedDir, configPath: verifiedPath });
     return { config: loaded.config, path: resolved.path, root: resolved.root };
   } finally { await rm(verifiedPath, { force: true }); }
+}
+
+function hasExternalModuleSyntax(source: string): boolean {
+  const file = ts.createSourceFile("devfn.config.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let forbidden = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node) || ts.isImportTypeNode(node) || (ts.isExportDeclaration(node) && Boolean(node.moduleSpecifier))) forbidden = true;
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) forbidden = true;
+    if (!forbidden) ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return forbidden;
 }
 
 export async function loadDevFnPolicy(root: string, configuredPath?: string): Promise<{ policy: DevFnPolicy; path: string } | null> {

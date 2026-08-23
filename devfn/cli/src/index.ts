@@ -93,7 +93,7 @@ function parse(argv: readonly string[]): ParsedArgs {
 function errorPayload(error: unknown): { code: string; message: string; details?: unknown } {
   if (error && typeof error === "object") {
     const candidate = error as { code?: unknown; message?: unknown; details?: unknown };
-    return { code: typeof candidate.code === "string" ? candidate.code : "DEVFN_FAILED", message: typeof candidate.message === "string" ? candidate.message : String(error), ...(candidate.details === undefined ? {} : { details: redactValue(candidate.details) }) };
+    return { code: typeof candidate.code === "string" && candidate.code.startsWith("DEVFN_") ? candidate.code : "DEVFN_FAILED", message: typeof candidate.message === "string" ? candidate.message : String(error), ...(candidate.details === undefined ? {} : { details: redactValue(candidate.details) }) };
   }
   return { code: "DEVFN_FAILED", message: String(error) };
 }
@@ -105,7 +105,10 @@ async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
     try { return await loadTrustedDevFnConfig({ cwd, configPath: manifest.path, stateDir }); }
     catch (error) {
       if (error instanceof DevFnConfigError) throw error;
-      throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} is executable code and is not trusted. Review it, then rerun with --trust.`);
+      if (error instanceof Error && error.message.startsWith("Executable DevFn manifest is not trusted:")) {
+        throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} is executable code and is not trusted. Review it, then rerun with --trust.`);
+      }
+      throw error;
     }
   }
   return await loadDevFnConfig({ cwd, configPath: manifest.path });
@@ -131,7 +134,7 @@ type LoadedConfig = Awaited<ReturnType<typeof trustedConfig>>;
 async function portsCommand(args: ParsedArgs, cwd: string, stateDir: string, loaded: LoadedConfig): Promise<unknown> {
   const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
   const action = args.positionals[0];
-  if (action === "gc") return { ok: true, removed: await registry.gc() };
+  if (action === "gc") { await registry.reconcile(); return { ok: true, removed: await registry.gc() }; }
   if (action !== undefined && action !== "report") throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown ports action ${action}. Expected gc or report.`);
   const state = await registry.reconcile();
   if (action === undefined) return { ok: true, revision: state.revision, allocations: state.allocations.filter((item) => item.state !== "released") };
@@ -169,7 +172,7 @@ async function executeCommand(args: ParsedArgs, cwd: string, stateDir: string, l
     ports: async () => await portsCommand(args, cwd, stateDir, loaded),
     url: async () => await urlCommand(args, orchestrator, loaded),
   };
-  const handler = handlers[args.command];
+  const handler = Object.prototype.hasOwnProperty.call(handlers, args.command) ? handlers[args.command] : undefined;
   if (!handler) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown command ${args.command}.`);
   return await handler();
 }

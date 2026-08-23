@@ -30,7 +30,7 @@ function pipeRedacted(stream: NodeJS.ReadableStream, destination: NodeJS.Writabl
 pipeRedacted(child.stdout!, process.stdout);
 pipeRedacted(child.stderr!, process.stderr);
 child.once("error", (error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-child.once("exit", (code, signal) => {
+child.once("close", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
-  else process.exitCode = code ?? 1;
+  else process.exit(code ?? 1);
 });

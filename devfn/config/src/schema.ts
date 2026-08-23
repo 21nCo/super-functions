@@ -206,7 +206,7 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const tls = input.tls === undefined ? "off" : string(input.tls, `${field}.tls`);
   if (tls !== "off" && tls !== "internal") fail(`${field}.tls must be off or internal.`, `${field}.tls`);
   const hostname = optionalString(input.hostname, `${field}.hostname`);
-  if (hostname && (!hostname.endsWith(".localhost") || hostname.includes("*"))) {
+  if (hostname && !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(hostname)) {
     fail(`${field}.hostname must be a concrete .localhost hostname.`, `${field}.hostname`);
   }
   return {
@@ -288,6 +288,8 @@ function validateReferences(config: DevFnConfig): void {
   const ports = new Set(Object.keys(config.ports ?? {}));
   const processes = new Set(Object.keys(config.processes ?? {}));
   const services = new Set(Object.keys(config.services ?? {}));
+  const collision = [...processes].find((name) => services.has(name));
+  if (collision) fail(`Lifecycle node ${collision} cannot be both a process and a service.`);
   const nodes = new Set([...processes, ...services]);
   validateProcessReferences(config, ports, nodes);
   validateServiceReferences(config, ports, nodes);

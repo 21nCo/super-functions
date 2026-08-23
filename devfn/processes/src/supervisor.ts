@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { chmodSync, closeSync, mkdirSync, openSync } from "node:fs";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,7 +21,7 @@ async function terminateProcess(pid: number, force = false): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn("taskkill", ["/pid", String(pid), "/T", ...(force ? ["/F"] : [])], { stdio: "ignore", windowsHide: true });
     child.once("error", reject);
-    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`taskkill exited with ${code}`)));
+    child.once("exit", (code) => code === 0 || !processExists(pid) ? resolve() : reject(new Error(`taskkill exited with ${code}`)));
   });
 }
 
@@ -43,7 +43,9 @@ export class ProcessSupervisor {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name)) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
     const logPath = path.join(logsDir, `${input.name}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
-    const logFd = openSync(logPath, "w", 0o600);
+    const logOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
+    const logFd = openSync(logPath, "a", 0o600);
+    chmodSync(logPath, 0o600);
     const environment = createProcessEnvironment(input.spec, input.environment);
     const wrapperPath = fileURLToPath(new URL("./wrapper.js", import.meta.url));
     const child = spawn(process.execPath, [wrapperPath], {
@@ -53,6 +55,8 @@ export class ProcessSupervisor {
       windowsHide: true,
       stdio: ["ignore", logFd, logFd],
     });
+    let exited = false;
+    child.once("exit", () => { exited = true; });
     closeSync(logFd);
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(resolve, 50);
@@ -80,7 +84,8 @@ export class ProcessSupervisor {
       startedAt: new Date().toISOString(),
     };
     try {
-      await waitForReadiness({ health: input.spec.health, ports: input.ports ?? {}, logPath, cwd, environment, isAlive: () => processExists(managed.pid) });
+      await input.onStarted?.(managed);
+      await waitForReadiness({ health: input.spec.health, ports: input.ports ?? {}, logPath, logOffset, cwd, environment, isAlive: () => !exited && processExists(managed.pid) });
       managed.readyAt = new Date().toISOString();
       return managed;
     } catch (error) {
@@ -96,7 +101,10 @@ export class ProcessSupervisor {
     }
     try {
       await terminateProcess(managed.pid);
-      if (!await waitForProcessExit(managed.pid, timeoutMs)) await terminateProcess(managed.pid, true);
+      if (!await waitForProcessExit(managed.pid, timeoutMs)) {
+        await terminateProcess(managed.pid, true);
+        if (!await waitForProcessExit(managed.pid, 5_000)) throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Process ${managed.name} did not exit after forced termination.`);
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw new ProcessError("DEVFN_PROCESS_STOP_FAILED", `Unable to stop ${managed.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }

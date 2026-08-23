@@ -9,4 +9,10 @@ describe("Caddy route rendering", () => {
     expect(output).not.toContain("* {");
     expect(output).not.toContain(":443 {");
   });
+
+  it("brackets IPv6 loopback targets and rejects directive injection", () => {
+    const output = renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "::1", targetPort: 4100, tls: "off", updatedAt: "now" }]);
+    expect(output).toContain("reverse_proxy [::1]:4100");
+    expect(() => renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app.localhost\n:80", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" }])).toThrow(/concrete/);
+  });
 });

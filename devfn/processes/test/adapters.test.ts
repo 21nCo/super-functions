@@ -13,6 +13,10 @@ describe("runtime adapters", () => {
     expect(env.SECRET_TOKEN).toBeUndefined();
   });
 
+  it("disables Corepack network access for pnpm startup", () => {
+    expect(createProcessEnvironment({ adapter: "pnpm", script: "dev" }, {}, { PATH: "/bin" }).COREPACK_ENABLE_NETWORK).toBe("0");
+  });
+
   it("redacts secrets even when output chunks split the value", () => {
     let output = "";
     const redactor = createStreamingRedactor(["devfn-test-secret"], (value) => { output += value; });

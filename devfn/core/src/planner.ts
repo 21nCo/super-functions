@@ -2,6 +2,8 @@ import type { DevFnConfig } from "@devfn/config";
 import { DevFnError, type LifecyclePlan } from "./types.js";
 
 export function createPlan(config: DevFnConfig, requestedProfile?: string): LifecyclePlan {
+  const collision = Object.keys(config.processes ?? {}).find((name) => config.services?.[name]);
+  if (collision) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Lifecycle node ${collision} cannot be both a process and a service.`);
   const profileName = requestedProfile ?? config.defaultProfile ?? "default";
   const profile = config.profiles[profileName];
   if (!profile) throw new DevFnError("DEVFN_PROFILE_NOT_FOUND", `Profile ${profileName} does not exist.`);

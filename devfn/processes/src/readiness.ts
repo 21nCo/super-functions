@@ -9,12 +9,12 @@ import { ProcessError } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
+type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
 
-async function tcpReady(port: number): Promise<boolean> {
+async function tcpReady(port: number, timeoutMs = 500): Promise<boolean> {
   return await new Promise((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port });
-    socket.setTimeout(500);
+    socket.setTimeout(timeoutMs);
     const done = (value: boolean) => { socket.destroy(); resolve(value); };
     socket.once("connect", () => done(true));
     socket.once("timeout", () => done(false));
@@ -28,9 +28,9 @@ async function readNewLog(logPath: string, offset: number): Promise<string> {
   try {
     const size = (await handle.stat()).size;
     if (size <= offset) return "";
-    const length = Math.min(size - offset, 1_048_576);
+    const length = size - offset;
     const buffer = Buffer.alloc(length);
-    const { bytesRead } = await handle.read(buffer, 0, length, Math.max(offset, size - length));
+    const { bytesRead } = await handle.read(buffer, 0, length, offset);
     return buffer.subarray(0, bytesRead).toString("utf8");
   } finally { await handle.close(); }
 }
@@ -39,27 +39,27 @@ async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: 
   const port = health.port ? input.ports[health.port] : undefined;
   const url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 1000);
+  const timer = setTimeout(() => controller.abort(), health.timeoutMs ?? 1000);
   try { return (await fetch(url, { signal: controller.signal })).status === (health.expectedStatus ?? 200); }
   finally { clearTimeout(timer); }
 }
 
 async function checkReadiness(health: HealthCheck, input: ReadinessInput, logPattern?: RegExp): Promise<boolean> {
   switch (health.type) {
-    case "tcp": return await tcpReady(input.ports[health.port]);
+    case "tcp": return await tcpReady(input.ports[health.port], health.timeoutMs ?? 500);
     case "http": return await httpReady(health, input);
     case "command": {
       const [file, ...args] = health.command;
-      await execFileAsync(file, args, { cwd: input.cwd, env: input.environment, timeout: 2000 });
+      await execFileAsync(file, args, { cwd: input.cwd, env: input.environment, timeout: health.timeoutMs ?? 2000 });
       return true;
     }
-    case "log": return Boolean(logPattern?.test(input.readLog ? await input.readLog() : await readNewLog(input.logPath, 0)));
+    case "log": return Boolean(logPattern?.test(input.readLog ? await input.readLog() : await readNewLog(input.logPath, input.logOffset ?? 0)));
   }
 }
 
 export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   if (!input.health) {
-    await delay(100);
+    await delay(500);
     if (!await input.isAlive()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited before startup completed.");
     return;
   }

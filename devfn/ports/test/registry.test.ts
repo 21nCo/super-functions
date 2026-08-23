@@ -1,9 +1,9 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyInventory, resolvePolicy } from "../src/index.js";
+import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyInventory, resolvePolicy, withFileLock } from "../src/index.js";
 
 describe("FilePortRegistry", () => {
   it("gives concurrent worktrees distinct deterministic allocations", async () => {
@@ -36,19 +36,34 @@ describe("FilePortRegistry", () => {
   it("preserves contiguous exact blocks", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
     const registry = new FilePortRegistry(path.join(dir, "registry.json"));
-    let firstPort = await allocateEphemeralPort();
-    while (!await isPortAvailable(firstPort + 1)) firstPort = await allocateEphemeralPort();
-    const allocations = await registry.reserve({
-      projectId: "oauth",
-      instanceId: "one",
-      invocationId: "block",
-      profile: "oauth",
-      requests: [
-        { name: "callback", spec: { preferred: firstPort, exact: true, block: "oauth" } },
-        { name: "issuer", spec: { preferred: firstPort + 1, exact: true, block: "oauth" } },
-      ],
-    });
-    expect(allocations.map((item) => item.port)).toEqual([firstPort, firstPort + 1]);
-    expect(allocations.every((item) => item.source === "exact")).toBe(true);
+    let firstPort = 0;
+    let allocations: Awaited<ReturnType<typeof registry.reserve>> | undefined;
+    for (let attempt = 0; attempt < 20 && !allocations; attempt += 1) {
+      firstPort = await allocateEphemeralPort();
+      if (firstPort >= 65535 || !await isPortAvailable(firstPort) || !await isPortAvailable(firstPort + 1)) continue;
+      allocations = await registry.reserve({
+        projectId: "oauth", instanceId: "one", invocationId: `block-${attempt}`, profile: "oauth",
+        requests: [
+          { name: "callback", spec: { preferred: firstPort, exact: true, block: "oauth" } },
+          { name: "issuer", spec: { preferred: firstPort + 1, exact: true, block: "oauth" } },
+        ],
+      }).catch(() => undefined);
+    }
+    expect(allocations).toBeDefined();
+    expect(allocations!.map((item) => item.port)).toEqual([firstPort, firstPort + 1]);
+    expect(allocations!.every((item) => item.source === "exact")).toBe(true);
+  });
+
+  it("recovers ownerless stale lock directories", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-lock-"));
+    const lockPath = path.join(dir, "registry.lock");
+    await mkdir(lockPath);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await expect(withFileLock(lockPath, async () => "acquired", { staleMs: 1, timeoutMs: 1000 })).resolves.toBe("acquired");
+  });
+
+  it("escapes backslashes, pipes, and carriage returns in policy tables", () => {
+    const output = renderPolicyInventory({ version: 1, ports: [{ name: "a\\|b\rc", kind: "protected", port: 4100 }] });
+    expect(output).toContain("a\\\\\\|b c");
   });
 });

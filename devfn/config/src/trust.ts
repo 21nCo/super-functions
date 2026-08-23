@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -26,14 +26,46 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
   const lockPath = path.join(stateDir, "trust.lock");
   const token = randomUUID();
+  const staleMs = 300_000;
   const deadline = Date.now() + 10_000;
   while (true) {
     try {
       await mkdir(lockPath);
-      await writeFile(path.join(lockPath, "owner.json"), JSON.stringify({ token, pid: process.pid }), { mode: 0o600 });
+      const ownerTemp = path.join(lockPath, `owner.${token}.tmp`);
+      try {
+        await writeFile(ownerTemp, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
+        await rename(ownerTemp, path.join(lockPath, "owner.json"));
+      } catch (error) {
+        await rm(lockPath, { recursive: true, force: true });
+        throw error;
+      }
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let recover = false;
+      let observedToken = "ownerless";
+      try {
+        const observed = JSON.parse(await readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: string; pid?: number; createdAt?: string };
+        observedToken = observed.token ?? observedToken;
+        let alive = false;
+        if (observed.pid) {
+          try { process.kill(observed.pid, 0); alive = true; }
+          catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
+        }
+        recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
+      } catch {
+        const mtime = await stat(lockPath).then((value) => value.mtimeMs).catch((error) => {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return Date.now();
+          throw error;
+        });
+        const age = Date.now() - mtime;
+        recover = age > staleMs;
+      }
+      if (recover) {
+        const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;
+        try { await rename(lockPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
+        catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
+      }
       if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-state lock ${lockPath}.`);
       await delay(20 + Math.floor(Math.random() * 20));
     }

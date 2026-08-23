@@ -27,5 +27,6 @@ export function createProcessEnvironment(spec: ProcessSpec, generated: Record<st
     result.HOST = "127.0.0.1";
     result.DEVFN_HOST = "127.0.0.1";
   }
+  if (spec.adapter === "pnpm") result.COREPACK_ENABLE_NETWORK = "0";
   return result;
 }

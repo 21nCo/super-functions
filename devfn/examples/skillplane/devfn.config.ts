@@ -1,6 +1,4 @@
-import { defineDevFnConfig } from "@devfn/config";
-
-export default defineDevFnConfig({
+export default {
   version: 1,
   project: { id: "skillplane", name: "Skillplane" },
   defaultProfile: "default",
@@ -26,4 +24,4 @@ export default defineDevFnConfig({
   hostnames: { app: { target: "app", hostname: "skillplane-{instance}.localhost", tls: "off" } },
   prerequisites: [{ command: "pnpm", version: "9.12.0" }, { command: "docker" }, { command: "caddy" }, { command: "cloudflared", profiles: ["oauth"] }],
   environmentOutputs: [{ path: ".devfn/runtime.env", format: "dotenv", mode: 0o600 }],
-});
+} as const;

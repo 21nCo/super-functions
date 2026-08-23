@@ -18,6 +18,7 @@ export interface StartProcessInput {
   runtimeDir: string;
   environment?: Record<string, string>;
   ports?: Record<string, number>;
+  onStarted?: (process: ManagedProcess) => Promise<void>;
 }
 
 export class ProcessError extends Error {

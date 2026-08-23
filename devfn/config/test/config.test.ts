@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { discoverProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
+import { discoverProject, loadTrustedDevFnConfig, trustProject, validateDevFnConfig, validateDevFnPolicy } from "../src/index.js";
 
 describe("DevFn configuration", () => {
   it("validates named ports, processes, services, profiles, and hostnames", () => {
@@ -23,6 +23,16 @@ describe("DevFn configuration", () => {
   it("rejects unsafe paths and dangling references", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, runtimeDir: "../outside", profiles: { default: {} } })).toThrow(/inside the repository/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: { processes: ["missing"] } } })).toThrow(/unknown process/);
+  });
+
+  it("rejects colliding lifecycle names and unsafe hostnames", () => {
+    expect(() => validateDevFnConfig({
+      version: 1, project: { id: "x" }, ports: { app: {} },
+      processes: { shared: { adapter: "command", command: ["node"], ports: ["app"] } },
+      services: { shared: { adapter: "compose", service: "app", ports: { app: 3000 } } },
+      profiles: { default: {} },
+    })).toThrow(/both a process and a service/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "safe.localhost\n:80" } } })).toThrow(/concrete/);
   });
 
   it("validates structured organization policy", () => {
@@ -48,5 +58,20 @@ describe("DevFn configuration", () => {
     expect(result.config.processes).toEqual({});
     expect(result.config.prerequisites).toEqual([]);
     expect(result.findings).toContainEqual(expect.objectContaining({ kind: "package-manager", confidence: "proposed" }));
+  });
+
+  it("honors unsupported package-manager declarations without lockfiles", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-bun-"));
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ packageManager: "bun@1.2.0", scripts: { dev: "vite" } }));
+    expect((await discoverProject(root)).config.processes).toEqual({});
+  });
+
+  it("rejects commented dynamic imports in trusted executable manifests", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-trusted-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.mjs");
+    await writeFile(configPath, 'await import /* comment */ ("node:fs");\nexport default { version: 1, project: { id: "x" }, profiles: { default: {} } };\n');
+    await trustProject(root, configPath, stateDir);
+    await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/self-contained/);
   });
 });

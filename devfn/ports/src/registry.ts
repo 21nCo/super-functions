@@ -4,6 +4,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { matchesProcessIdentity, processExists } from "@devfn/processes";
+
 import { allocateEphemeralPort, isPortAvailable } from "./listeners.js";
 import { withFileLock } from "./lock.js";
 import { PortRegistryError, type PortAllocation, type RegistryInvocation, type RegistryState, type ReservationInput } from "./types.js";
@@ -116,8 +118,11 @@ export class FilePortRegistry {
         const exactGroup = group.filter((request) => request.spec.exact);
         if (exactGroup.length > 0 && exactGroup.length !== group.length) throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Port block ${block} cannot mix exact and reallocatable requirements.`);
         const configured = group.map((request) => request.spec.range).filter(Boolean) as [number, number][];
-        const ranges = [configured[0], input.preferredRange, input.fallbackRange ?? [4100, 4999]]
-          .filter((value, index, all): value is [number, number] => Boolean(value) && all.findIndex((item) => item?.[0] === value?.[0] && item?.[1] === value?.[1]) === index);
+        const ranges = [
+          ...configured.map((value) => ({ value, source: "range" as const })),
+          ...(input.preferredRange ? [{ value: input.preferredRange, source: "preferred" as const }] : []),
+          { value: input.fallbackRange ?? [4100, 4999] as [number, number], source: "fallback" as const },
+        ].filter((item, index, all) => all.findIndex((candidate) => candidate.value[0] === item.value[0] && candidate.value[1] === item.value[1]) === index);
         let chosen: number[] | null = null;
         let blockSource: PortAllocation["source"] = "range";
         if (exactGroup.length) {
@@ -128,13 +133,13 @@ export class FilePortRegistry {
           blockSource = "exact";
         } else {
           for (let rangeIndex = 0; rangeIndex < ranges.length && !chosen; rangeIndex += 1) {
-            const range = ranges[rangeIndex];
+            const { value: range, source } = ranges[rangeIndex];
             for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}:${rangeIndex}`)) {
               const ports = group.map((_, index) => start + index);
               if (ports.some((port) => occupied.has(port))) continue;
               if ((await Promise.all(ports.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
                 chosen = ports;
-                blockSource = rangeIndex === ranges.length - 1 ? "fallback" : "range";
+                blockSource = source;
                 break;
               }
             }
@@ -212,13 +217,14 @@ export class FilePortRegistry {
     await this.transaction(async (state) => {
       const now = new Date().toISOString();
       for (const allocation of state.allocations.filter(active)) {
+        const previousState = allocation.state;
         const available = await isPortAvailable(allocation.port, allocation.protocol, allocation.host);
         if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
         else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && allocation.container && !await isContainerAlive(allocation.container.id)) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "externally-occupied" && available) allocation.state = "stale";
-        allocation.updatedAt = now;
+        if (allocation.state !== previousState) allocation.updatedAt = now;
       }
     });
     return await this.read();
@@ -235,25 +241,11 @@ export class FilePortRegistry {
 }
 
 export function isProcessAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
-}
-
-async function processBirthSignature(pid: number): Promise<string | undefined> {
-  try {
-    if (process.platform === "linux") {
-      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
-      const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
-      return fields[19] ? `linux:${fields[19]}` : undefined;
-    }
-    if (process.platform === "darwin") return `darwin:${(await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)])).stdout.trim()}`;
-    if (process.platform === "win32") return `win32:${(await execFileAsync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid}).StartTime.ToUniversalTime().ToString('O')`])).stdout.trim()}`;
-  } catch { return undefined; }
-  return undefined;
+  return processExists(pid);
 }
 
 async function matchesProcessOwner(owner: NonNullable<PortAllocation["process"]>): Promise<boolean> {
-  return isProcessAlive(owner.pid) && Boolean(owner.birthSignature) && await processBirthSignature(owner.pid) === owner.birthSignature;
+  return await matchesProcessIdentity(owner.pid, owner.birthSignature);
 }
 
 async function isContainerAlive(id: string): Promise<boolean> {

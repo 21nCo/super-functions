@@ -20,7 +20,7 @@ export function resolvePolicy(policy: DevFnPolicy | null, projectId: string): { 
 }
 
 export function renderPolicyInventory(policy: DevFnPolicy | null): string {
-  const cell = (value: unknown): string => String(value ?? "").replaceAll("|", "\\|").replace(/\r?\n/g, " ");
+  const cell = (value: unknown): string => String(value ?? "").replaceAll("\\", "\\\\").replaceAll("|", "\\|").replace(/[\r\n]+/g, " ");
   return [
     "## Organization port policy",
     "",

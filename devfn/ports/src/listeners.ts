@@ -49,7 +49,7 @@ export async function allocateEphemeralPort(host = "127.0.0.1", protocol: "tcp" 
   });
 }
 
-function parseLsof(output: string): ListenerInfo[] {
+function parseLsof(output: string, protocol: "tcp" | "udp"): ListenerInfo[] {
   const listeners: ListenerInfo[] = [];
   for (const line of output.split("\n").slice(1)) {
     const columns = line.trim().split(/\s+/);
@@ -57,7 +57,7 @@ function parseLsof(output: string): ListenerInfo[] {
     const address = columns[8];
     const match = address.match(/(?:\*|\[[^\]]+\]|[^:]+):(\d+)$/);
     if (!match) continue;
-    listeners.push({ protocol: "tcp", host: address.slice(0, address.lastIndexOf(":")), port: Number(match[1]), pid: Number(columns[1]), process: columns[0], source: "os" });
+    listeners.push({ protocol, host: address.slice(0, address.lastIndexOf(":")), port: Number(match[1]), pid: Number(columns[1]), process: columns[0], source: "os" });
   }
   return listeners;
 }
@@ -66,8 +66,8 @@ function parseDocker(output: string): ListenerInfo[] {
   const listeners: ListenerInfo[] = [];
   for (const line of output.split("\n")) {
     const [name, ports = ""] = line.split("\t");
-    for (const match of ports.matchAll(/(?:0\.0\.0\.0|127\.0\.0\.1|\[::\]):(\d+)->\d+\/(tcp|udp)/g)) {
-      listeners.push({ protocol: match[2] as "tcp" | "udp", host: match[0].split(":")[0], port: Number(match[1]), process: name, source: "docker" });
+    for (const match of ports.matchAll(/(0\.0\.0\.0|127\.0\.0\.1|\[::\]):(\d+)->\d+\/(tcp|udp)/g)) {
+      listeners.push({ protocol: match[3] as "tcp" | "udp", host: match[1], port: Number(match[2]), process: name, source: "docker" });
     }
   }
   return listeners;
@@ -76,13 +76,21 @@ function parseDocker(output: string): ListenerInfo[] {
 export async function scanListeners(): Promise<ListenerInfo[]> {
   const results: ListenerInfo[] = [];
   if (process.platform !== "win32") {
-    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"])).stdout)); } catch { /* diagnostic callers report unavailable tools separately */ }
+    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"])).stdout, "tcp")); } catch { /* diagnostic callers report unavailable tools separately */ }
+    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iUDP"])).stdout, "udp")); } catch { /* diagnostic callers report unavailable tools separately */ }
   } else {
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "tcp"])).stdout;
       for (const line of output.split("\n")) {
         const match = line.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i);
         if (match) results.push({ protocol: "tcp", host: "*", port: Number(match[1]), pid: Number(match[2]), source: "os" });
+      }
+    } catch { /* optional */ }
+    try {
+      const output = (await execFileAsync("netstat", ["-ano", "-p", "udp"])).stdout;
+      for (const line of output.split("\n")) {
+        const match = line.match(/^\s*UDP\s+(.+):(\d+)\s+\*:\*\s+(\d+)/i);
+        if (match) results.push({ protocol: "udp", host: match[1], port: Number(match[2]), pid: Number(match[3]), source: "os" });
       }
     } catch { /* optional */ }
   }
