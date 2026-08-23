@@ -232,7 +232,7 @@ export class FilePortRegistry {
         const available = await isPortAvailable(allocation.port, allocation.protocol, allocation.host);
         if (allocation.state === "planned" && Date.now() - Date.parse(allocation.updatedAt) > 300_000) allocation.state = "stale";
         else if (allocation.state === "active" && allocation.process && !await matchesProcessOwner(allocation.process)) allocation.state = available ? "stale" : "externally-occupied";
-        else if (allocation.state === "active" && allocation.container && !await isContainerAlive(allocation.container.id)) allocation.state = available ? "stale" : "externally-occupied";
+        else if (allocation.state === "active" && allocation.container && await inspectContainerRunning(allocation.container) === false) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "active" && !allocation.process && !allocation.container) allocation.state = available ? "stale" : "externally-occupied";
         else if (allocation.state === "externally-occupied" && available) allocation.state = "stale";
         if (allocation.state !== previousState) allocation.updatedAt = now;
@@ -259,9 +259,15 @@ async function matchesProcessOwner(owner: NonNullable<PortAllocation["process"]>
   return await matchesProcessIdentity(owner.pid, owner.birthSignature);
 }
 
-async function isContainerAlive(id: string): Promise<boolean> {
-  try { return (await execFileAsync("docker", ["inspect", "--format", "{{.State.Running}}", id], { timeout: 5000 })).stdout.trim() === "true"; }
-  catch { return false; }
+type DockerInspect = (file: string, args: string[], options: { env: NodeJS.ProcessEnv; timeout: number }) => Promise<{ stdout: string }>;
+
+export async function inspectContainerRunning(owner: NonNullable<PortAllocation["container"]>, run: DockerInspect = execFileAsync as DockerInspect): Promise<boolean | undefined> {
+  const dockerKeys = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"];
+  const environment = { ...process.env };
+  if (owner.dockerEnvironment !== undefined) for (const key of dockerKeys) delete environment[key];
+  Object.assign(environment, owner.dockerEnvironment ?? {});
+  try { return (await run("docker", ["inspect", "--format", "{{.State.Running}}", owner.id], { env: environment, timeout: 5000 })).stdout.trim() === "true"; }
+  catch { return undefined; }
 }
 
 export function renderPortInventory(state: RegistryState): string {

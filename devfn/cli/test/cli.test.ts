@@ -101,6 +101,7 @@ describe("devfn CLI", () => {
       expect(JSON.parse(wrongOutput).error.message).toContain("same --state-dir");
       const down = await invoke(["down"]);
       expect(down.value.state).toBe("stopped");
+      expect((await invoke(["url"])).value.urls).toEqual({});
     } finally {
       await invoke(["down"]).catch(() => undefined);
     }
@@ -220,9 +221,30 @@ describe("devfn CLI", () => {
     let stdout = "";
     try {
       process.env.PATH = toolsDir;
+      expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(stdout).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "error" })]));
+      stdout = "";
       expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
       expect(JSON.parse(stdout).error.message).toContain("could not be inspected");
     } finally { process.env.PATH = originalPath; }
+  }, 15_000);
+
+  it("waits for an unprobed process to bind its declared port", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-slow-listener-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; setTimeout(() => net.createServer().listen(Number(process.env.PORT), '127.0.0.1'), 900);\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "slow-listener" }, ports: { app: { range: [45410, 45500], env: "PORT" } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"] } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as Record<string, unknown> };
+    };
+    try { expect((await invoke(["up", "--trust"])).code).toBe(0); }
+    finally { await invoke(["down"]).catch(() => undefined); }
   }, 15_000);
 
   it("reports an unrelated listener that replaces a recorded exact-port owner", async () => {

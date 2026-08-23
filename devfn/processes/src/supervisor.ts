@@ -31,6 +31,13 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
   return !processExists(pid);
 }
 
+export async function prepareProcessLog(logPath: string, resetSensitiveHistory: boolean): Promise<{ logFd: number; logOffset: number }> {
+  const logOffset = resetSensitiveHistory ? 0 : await stat(logPath).then((value) => value.size).catch(() => 0);
+  const logFd = openSync(logPath, resetSensitiveHistory ? "w" : "a", 0o600);
+  chmodSync(logPath, 0o600);
+  return { logFd, logOffset };
+}
+
 export class ProcessSupervisor {
   public async start(input: StartProcessInput): Promise<ManagedProcess> {
     const command = resolveAdapterCommand(input.spec);
@@ -43,9 +50,7 @@ export class ProcessSupervisor {
     if (!/^[A-Za-z0-9_.-]+$/.test(input.name) || input.name !== input.name.trim()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Invalid process name ${input.name}.`);
     const logPath = path.join(logsDir, `${input.name}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
-    const logOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
-    const logFd = openSync(logPath, "a", 0o600);
-    chmodSync(logPath, 0o600);
+    const { logFd, logOffset } = await prepareProcessLog(logPath, Boolean(input.spec.secretEnv?.length));
     const environment = createProcessEnvironment(input.spec, input.environment);
     const wrapperPath = fileURLToPath(new URL("./wrapper.js", import.meta.url));
     const child = spawn(process.execPath, [wrapperPath], {

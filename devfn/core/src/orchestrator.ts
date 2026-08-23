@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { ComposeController, type ManagedComposeService } from "@devfn/compose";
 import { defaultStateDir, loadDevFnPolicy, type DevFnConfig } from "@devfn/config";
 import { FilePortRegistry, isPortAvailable, resolvePolicy, scanListenerState, withFileLock, type ListenerInfo, type PortAllocation } from "@devfn/ports";
-import { ProcessSupervisor, type ManagedProcess } from "@devfn/processes";
+import { ProcessSupervisor, processExists, type ManagedProcess } from "@devfn/processes";
 import { CaddyProxyController, type ProxyRoute } from "@devfn/proxy";
 
 import { resolveInstanceIdentity } from "./identity.js";
@@ -16,6 +16,7 @@ import { readReceipt, secureRuntimeDirectory, writeEnvironmentOutputs, writeRece
 import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleReceipt, type UpOptions } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function isLoopbackHost(host: string): boolean {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
@@ -48,6 +49,28 @@ function isDockerProxyListener(processName?: string): boolean {
 export function selectOwnershipListeners(allocation: PortAllocation | undefined, matches: ListenerInfo[]): ListenerInfo[] {
   const ownedDocker = allocation?.container !== undefined && matches.some((listener) => listener.source === "docker" && listener.containerId !== undefined && (allocation.container!.id.startsWith(listener.containerId) || listener.containerId.startsWith(allocation.container!.id)));
   return ownedDocker ? matches.filter((listener) => listener.source === "docker" || !isDockerProxyListener(listener.process)) : matches;
+}
+
+async function waitForOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let missing: { port: number; protocol: "tcp" | "udp" } | undefined = expected[0];
+  do {
+    if (!processExists(ownerPid)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exited before listener ownership could be verified.`);
+    const scan = await scanListenerState();
+    const listeners = scan.listeners.filter((listener) => listener.source === "os");
+    const unsafe = listeners.find((listener) => expected.some((item) => item.port === listener.port && item.protocol === listener.protocol) && !isLoopbackHost(listener.host));
+    if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} exposed port ${unsafe.port} beyond loopback.`);
+    for (const item of expected) {
+      if (!scan.inspection[item.protocol]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} ${item.protocol.toUpperCase()} port ${item.port} could not be inspected for loopback ownership.`);
+      const candidates = listeners.filter((listener) => listener.port === item.port && listener.protocol === item.protocol && listener.pid !== undefined);
+      const ownership = await Promise.all(candidates.map(async (listener) => await isProcessTreeMember(listener.pid!, ownerPid)));
+      if (!ownership.some(Boolean)) { missing = item; break; }
+      missing = undefined;
+    }
+    if (!missing) return;
+    await delay(Math.min(100, Math.max(1, deadline - Date.now())));
+  } while (Date.now() < deadline);
+  throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${processName} ${missing!.protocol.toUpperCase()} port ${missing!.port} has no verified loopback listener owned by its process tree after ${timeoutMs} ms.`);
 }
 
 function envName(name: string): string { return `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`; }
@@ -160,16 +183,7 @@ export class DevFnOrchestrator {
           });
           if (options.config.processes![node.name].exposure !== "public") {
             const expected = (options.config.processes![node.name].ports ?? []).map((name) => ({ name, port: ports[name], protocol: options.config.ports?.[name]?.protocol ?? "tcp" }));
-            const scan = await scanListenerState();
-            const listeners = scan.listeners.filter((listener) => listener.source === "os");
-            const unsafe = listeners.find((listener) => expected.some((item) => item.port === listener.port && item.protocol === listener.protocol) && !isLoopbackHost(listener.host));
-            if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} exposed port ${unsafe.port} beyond loopback.`);
-            for (const item of expected) {
-              if (!scan.inspection[item.protocol]) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} ${item.protocol.toUpperCase()} port ${item.port} could not be inspected for loopback ownership.`);
-              const candidates = listeners.filter((listener) => listener.port === item.port && listener.protocol === item.protocol && listener.pid !== undefined);
-              const ownership = await Promise.all(candidates.map(async (listener) => await isProcessTreeMember(listener.pid!, managed.pid)));
-              if (!ownership.some(Boolean)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} ${item.protocol.toUpperCase()} port ${item.port} has no verified loopback listener owned by its process tree.`);
-            }
+            await waitForOwnedLoopbackListeners(node.name, expected, managed.pid, options.config.processes![node.name].health?.timeoutMs ?? 120_000);
           }
         }
         receipt.updatedAt = new Date().toISOString();
@@ -194,7 +208,7 @@ export class DevFnOrchestrator {
       }
       const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
       for (const process of receipt.processes) for (const name of options.config.processes?.[process.name]?.ports ?? []) owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
-      for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService } };
+      for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService, ...(service.dockerEnvironment !== undefined ? { dockerEnvironment: service.dockerEnvironment } : {}) } };
       clearInterval(heartbeat);
       await registry.markActive(invocationId, owners);
       receipt.state = "ready";
@@ -269,7 +283,7 @@ export class DevFnOrchestrator {
     const services = await Promise.all(receipt.services.map(async (managed) => ({ ...managed, state: await compose.status(managed) })));
     const degraded = (processes.some((item) => item.state !== "running") || services.some((item) => item.state !== "running")) && receipt.state === "ready";
     const state = degraded ? "degraded" : receipt.state;
-    return { ok: state !== "failed" && state !== "degraded", state, instanceId: identity.instanceId, profile: receipt.profile, processes, services, allocations: receipt.allocations, urls: receipt.urls };
+    return { ok: state !== "failed" && state !== "degraded", state, instanceId: identity.instanceId, profile: receipt.profile, processes, services, allocations: receipt.allocations, urls: state === "ready" ? receipt.urls : {} };
   }
 
   public async doctor(options: { config: DevFnConfig; root: string; profile?: string; stateDir?: string }): Promise<{ ok: boolean; diagnostics: Array<{ code: string; severity: "error" | "warning" | "info"; message: string; details?: unknown }> }> {
@@ -320,6 +334,24 @@ export class DevFnOrchestrator {
     const scan = await scanListenerState();
     const listeners = scan.listeners;
     const unavailableWarnings = new Set<string>();
+    const localProcessPorts = new Map<string, "tcp" | "udp">();
+    for (const node of plan.nodes.filter((candidate) => candidate.kind === "process")) {
+      const processSpec = options.config.processes?.[node.name];
+      if (!processSpec || processSpec.exposure === "public") continue;
+      for (const name of processSpec.ports ?? []) localProcessPorts.set(name, options.config.ports?.[name]?.protocol ?? "tcp");
+    }
+    for (const protocol of new Set(localProcessPorts.values())) {
+      if (scan.inspection[protocol]) continue;
+      const hasRecordedOwner = registry.allocations.some((allocation) => allocation.state === "active" && allocation.process && localProcessPorts.get(allocation.service) === protocol);
+      diagnostics.push({
+        code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE",
+        severity: hasRecordedOwner ? "warning" : "error",
+        message: hasRecordedOwner
+          ? `${protocol.toUpperCase()} listener ownership could not be inspected; recorded active owners were retained.`
+          : `${protocol.toUpperCase()} listener ownership inspection is required before starting local processes. Install lsof on macOS/Linux or ensure netstat is available on Windows.`,
+      });
+      unavailableWarnings.add(`${protocol}:os`);
+    }
     const exact = plan.portNames.flatMap((name) => options.config.ports?.[name]?.exact && options.config.ports[name].preferred ? [{ name, port: options.config.ports[name].preferred!, protocol: options.config.ports[name].protocol ?? "tcp" as const }] : []);
     for (const item of exact) {
       const allocation = registry.allocations.find((candidate) => candidate.instanceId === identity.instanceId && candidate.service === item.name && candidate.port === item.port && candidate.protocol === item.protocol && candidate.state === "active");

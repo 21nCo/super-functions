@@ -10,5 +10,7 @@ describe("orchestrator listener ownership", () => {
     const proxy = { source: "os", pid: 10, process: "docker-proxy", protocol: "tcp", host: "127.0.0.1", port: 4100 } as ListenerInfo;
     const unrelated = { source: "os", pid: 11, process: "node", protocol: "tcp", host: "127.0.0.1", port: 4100 } as ListenerInfo;
     expect(selectOwnershipListeners(allocation, [docker, proxy, unrelated])).toEqual([docker, unrelated]);
+    expect(selectOwnershipListeners(undefined, [proxy, unrelated])).toEqual([proxy, unrelated]);
+    expect(selectOwnershipListeners({} as PortAllocation, [proxy])).toEqual([proxy]);
   });
 });

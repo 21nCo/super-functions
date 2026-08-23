@@ -10,6 +10,7 @@ export interface ProcessOwner {
 export interface ContainerOwner {
   id: string;
   name?: string;
+  dockerEnvironment?: Record<string, string>;
 }
 
 export interface PortAllocation {

@@ -37,6 +37,8 @@ A port can specify `protocol` (`tcp` or `udp`), `preferred`, `range: [start, end
 
 Turbo, Wrangler, and ExtFn resolve project-local binaries with offline npm execution; pnpm runs through Corepack so the repository's `packageManager` pin is honored. Adapters never download a missing tool during startup. `doctor` reports the missing prerequisite instead. Discovery marks Yarn and Bun as proposed and emits no guessed npm process; add an explicit command adapter after review.
 
+Local-process exposure verification requires `lsof` on macOS and Linux; Windows uses `netstat`. Run `devfn doctor` before startup to detect a missing listener-inspection tool.
+
 Sensitive-looking keys cannot be literal manifest values. They must be inherited by name in `envAllowlist` and repeated in `secretEnv`, which activates streaming redaction before logs are persisted. This is a key-name safeguard, not general secret detection; reviewers must inspect all other literal values. Public processes require `--allow-public`.
 
 ## Compose services

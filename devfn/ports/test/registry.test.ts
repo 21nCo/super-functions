@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { allocateEphemeralPort, FilePortRegistry, isPortAvailable, renderPolicyInventory, resolvePolicy, withFileLock } from "../src/index.js";
+import { inspectContainerRunning } from "../src/registry.js";
 
 describe("FilePortRegistry", () => {
   it("gives concurrent worktrees distinct deterministic allocations", async () => {
@@ -100,6 +101,15 @@ describe("FilePortRegistry", () => {
     const after = await registry.read();
     expect(after.invocations[0].state).toBe("failed");
     expect(after.allocations[0].updatedAt).toBe(before);
+  });
+
+  it("inspects container owners through their persisted Docker selector", async () => {
+    let observedHost: string | undefined;
+    await expect(inspectContainerRunning({ id: "remote-id", dockerEnvironment: { DOCKER_HOST: "tcp://remote.example:2376" } }, async (_file, _args, options) => {
+      observedHost = options.env.DOCKER_HOST;
+      return { stdout: "true\n" };
+    })).resolves.toBe(true);
+    expect(observedHost).toBe("tcp://remote.example:2376");
   });
 
   it("escapes backslashes, pipes, and carriage returns in policy tables", () => {
