@@ -2,7 +2,7 @@ import type { DevFnConfig } from "@devfn/config";
 import { DevFnError, type LifecyclePlan } from "./types.js";
 
 export function createPlan(config: DevFnConfig, requestedProfile?: string): LifecyclePlan {
-  const collision = Object.keys(config.processes ?? {}).find((name) => config.services?.[name]);
+  const collision = Object.keys(config.processes ?? {}).find((name) => Object.prototype.hasOwnProperty.call(config.services ?? {}, name));
   if (collision) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Lifecycle node ${collision} cannot be both a process and a service.`);
   const profileName = requestedProfile ?? config.defaultProfile ?? "default";
   const profile = config.profiles[profileName];
@@ -26,7 +26,11 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
         ...Object.entries(config.services ?? {}).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
       ];
       if (owners.length === 0) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has no lifecycle owner.`);
-      owners.forEach(include);
+      const activeOwners = owners.filter((name) => selected.has(name));
+      if (activeOwners.length > 1 || (activeOwners.length === 0 && owners.length > 1)) {
+        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has ambiguous lifecycle owners for profile ${profileName}.`);
+      }
+      include(activeOwners[0] ?? owners[0]);
     }
   }
 

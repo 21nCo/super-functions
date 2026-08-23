@@ -46,7 +46,7 @@ describe("devfn CLI", () => {
     };
 
     try {
-      const up = await invoke(["up"]);
+      const up = await invoke(["up", "--trust"]);
       expect(up.code, JSON.stringify(up.value)).toBe(0);
       expect(up.value.state).toBe("ready");
       const status = await invoke(["status"]);
@@ -71,7 +71,7 @@ describe("devfn CLI", () => {
       defaultProfile: "oauth",
     }), "utf8");
     let stdout = "";
-    const code = await runCli(["up", "--profile", "oauth", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+    const code = await runCli(["up", "--profile", "oauth", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
     expect(code).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_PUBLIC_EXPOSURE_CONFIRMATION_REQUIRED");
   });
@@ -94,12 +94,22 @@ describe("devfn CLI", () => {
     await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("does not load an untrusted JSON manifest", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-json-trust-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "unsafe-json" }, profiles: { default: {} } }), "utf8");
+    let stdout = "";
+    const code = await runCli(["status", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout).error.code).toBe("DEVFN_MANIFEST_UNTRUSTED");
+  });
+
   it("rejects unsupported ports actions", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-ports-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
     await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({ version: 1, project: { id: "ports" }, profiles: { default: {} } }), "utf8");
     let stdout = "";
-    const code = await runCli(["ports", "wat", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+    const code = await runCli(["ports", "wat", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
     expect(code).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_RUNTIME_INVALID");
   });
@@ -119,7 +129,7 @@ describe("devfn CLI", () => {
       profiles: { default: { processes: ["fail"] } },
     }), "utf8");
     let stdout = "";
-    expect(await runCli(["up", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+    expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
     expect(JSON.parse(stdout).error.code).toBe("DEVFN_START_FAILED");
     const instance = (await readdir(path.join(cwd, ".devfn", "instances")))[0];
     const receipt = JSON.parse(await readFile(path.join(cwd, ".devfn", "instances", instance, "receipt.json"), "utf8")) as { state: string; cleanup: { stoppedProcesses: string[]; releasedPorts: boolean } };

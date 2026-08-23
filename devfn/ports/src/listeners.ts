@@ -54,7 +54,7 @@ function parseLsof(output: string, protocol: "tcp" | "udp"): ListenerInfo[] {
   for (const line of output.split("\n").slice(1)) {
     const columns = line.trim().split(/\s+/);
     if (columns.length < 9) continue;
-    const address = columns[8];
+    const address = columns[8].split("->", 1)[0];
     const match = address.match(/(?:\*|\[[^\]]+\]|[^:]+):(\d+)$/);
     if (!match) continue;
     listeners.push({ protocol, host: address.slice(0, address.lastIndexOf(":")), port: Number(match[1]), pid: Number(columns[1]), process: columns[0], source: "os" });
@@ -89,7 +89,7 @@ export async function scanListeners(): Promise<ListenerInfo[]> {
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "udp"])).stdout;
       for (const line of output.split("\n")) {
-        const match = line.match(/^\s*UDP\s+(.+):(\d+)\s+\*:\*\s+(\d+)/i);
+        const match = line.match(/^\s*UDP\s+(.+):(\d+)\s+\S+\s+(\d+)/i);
         if (match) results.push({ protocol: "udp", host: match[1], port: Number(match[2]), pid: Number(match[3]), source: "os" });
       }
     } catch { /* optional */ }

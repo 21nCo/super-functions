@@ -84,8 +84,13 @@ export class ComposeController {
     const before = await this.containerIds(baseArgs, input.spec.service, true);
     const beforeRunning = await this.containerIds(baseArgs, input.spec.service, false);
     if (input.spec.secretEnv?.length && before.length) {
-      const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
-      if (drivers.some((driver) => driver !== "none")) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} persists logs; refusing to expose secret-bearing output.`);
+      try {
+        const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
+        if (drivers.some((driver) => driver !== "none")) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Pre-existing Compose service ${input.name} persists logs; refusing to expose secret-bearing output.`);
+      } catch (error) {
+        if (error instanceof ComposeError) throw error;
+        throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inspect pre-existing Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
+      }
     }
     const environment = composeEnvironment(input.spec, input.environment);
     try {
@@ -97,7 +102,7 @@ export class ComposeController {
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
         isAlive: async () => await this.status(managed) === "running",
-        readLog: async () => await this.logs(managed, null),
+        readLog: async () => await this.logs(managed, 1000),
       });
       return managed;
     } catch (error) {

@@ -82,9 +82,15 @@ export async function loadDevFnConfig(options: { cwd?: string; configPath?: stri
 
 export async function loadTrustedDevFnConfig(options: { cwd?: string; configPath?: string; stateDir?: string } = {}): Promise<{ config: DevFnConfig; path: string; root: string }> {
   const resolved = await resolveDevFnManifestPath(options);
-  if (resolved.path.endsWith(".json")) return await loadDevFnConfig(options);
   const snapshot = await readTrustedManifest(resolved.root, resolved.path, options.stateDir ?? defaultStateDir());
   const source = snapshot.bytes.toString("utf8");
+  if (resolved.path.endsWith(".json")) {
+    try { return { config: validateDevFnConfig(JSON.parse(source)), path: resolved.path, root: resolved.root }; }
+    catch (error) {
+      if (error instanceof DevFnConfigError) throw error;
+      throw new DevFnConfigError("DEVFN_CONFIG_INVALID", `Unable to parse trusted JSON manifest ${resolved.path}.`);
+    }
+  }
   if (hasExternalModuleSyntax(source)) {
     throw new DevFnConfigError("DEVFN_CONFIG_INVALID", "Executable DevFn manifests must be self-contained; imports and require() are not permitted.");
   }
@@ -105,6 +111,8 @@ function hasExternalModuleSyntax(source: string): boolean {
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node) || ts.isImportTypeNode(node) || (ts.isExportDeclaration(node) && Boolean(node.moduleSpecifier))) forbidden = true;
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) forbidden = true;
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "require") forbidden = true;
+    if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "require") forbidden = true;
     if (!forbidden) ts.forEachChild(node, visit);
   };
   visit(file);

@@ -62,6 +62,16 @@ describe("FilePortRegistry", () => {
     await expect(withFileLock(lockPath, async () => "acquired", { staleMs: 1, timeoutMs: 1000 })).resolves.toBe("acquired");
   });
 
+  it("refreshes planned allocations with the lifecycle heartbeat", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "starting", profile: "default", requests: [{ name: "app", spec: { range: [45100, 45199] } }] });
+    const before = (await registry.read()).allocations[0].updatedAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await registry.updateInvocation("starting", { state: "starting" });
+    expect(Date.parse((await registry.read()).allocations[0].updatedAt)).toBeGreaterThan(Date.parse(before));
+  });
+
   it("escapes backslashes, pipes, and carriage returns in policy tables", () => {
     const output = renderPolicyInventory({ version: 1, ports: [{ name: "a\\|b\rc", kind: "protected", port: 4100 }] });
     expect(output).toContain("a\\\\\\|b c");

@@ -100,18 +100,15 @@ function errorPayload(error: unknown): { code: string; message: string; details?
 
 async function trustedConfig(args: ParsedArgs, cwd: string, stateDir: string) {
   const manifest = await resolveDevFnManifestPath({ cwd, configPath: args.configPath });
-  if (path.extname(manifest.path) !== ".json") {
-    if (args.trust) await trustProject(manifest.root, manifest.path, stateDir);
-    try { return await loadTrustedDevFnConfig({ cwd, configPath: manifest.path, stateDir }); }
-    catch (error) {
-      if (error instanceof DevFnConfigError) throw error;
-      if (error instanceof Error && error.message.startsWith("Executable DevFn manifest is not trusted:")) {
-        throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} is executable code and is not trusted. Review it, then rerun with --trust.`);
-      }
-      throw error;
+  if (args.trust) await trustProject(manifest.root, manifest.path, stateDir);
+  try { return await loadTrustedDevFnConfig({ cwd, configPath: manifest.path, stateDir }); }
+  catch (error) {
+    if (error instanceof DevFnConfigError) throw error;
+    if (error instanceof Error && error.message.startsWith("DevFn manifest is not trusted:")) {
+      throw new DevFnError("DEVFN_MANIFEST_UNTRUSTED", `Manifest ${manifest.path} can define lifecycle commands and is not trusted. Review it, then rerun with --trust.`);
     }
+    throw error;
   }
-  return await loadDevFnConfig({ cwd, configPath: manifest.path });
 }
 
 async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string, unknown>> {

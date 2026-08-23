@@ -32,7 +32,13 @@ describe("DevFn configuration", () => {
       services: { shared: { adapter: "compose", service: "app", ports: { app: 3000 } } },
       profiles: { default: {} },
     })).toThrow(/both a process and a service/);
-    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "safe.localhost\n:80" } } })).toThrow(/concrete/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "safe.localhost\n:80" } } })).toThrow(/\.localhost/);
+  });
+
+  it("accepts only documented hostname placeholders", () => {
+    const config = validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "app-{instance}-{project}.localhost" } } });
+    expect(config.hostnames?.app.hostname).toBe("app-{instance}-{project}.localhost");
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: {} }, profiles: { default: {} }, hostnames: { app: { target: "app", hostname: "app-{unknown}.localhost" } } })).toThrow(/only/);
   });
 
   it("validates structured organization policy", () => {
@@ -73,5 +79,26 @@ describe("DevFn configuration", () => {
     await writeFile(configPath, 'await import /* comment */ ("node:fs");\nexport default { version: 1, project: { id: "x" }, profiles: { default: {} } };\n');
     await trustProject(root, configPath, stateDir);
     await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/self-contained/);
+  });
+
+  it("rejects CommonJS require property access in trusted manifests", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-trusted-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.cjs");
+    await writeFile(configPath, 'module.require("node:fs");\nmodule.exports = { version: 1, project: { id: "x" }, profiles: { default: {} } };\n');
+    await trustProject(root, configPath, stateDir);
+    await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/self-contained/);
+  });
+
+  it("loads JSON only from a matching trusted snapshot", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-json-trusted-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.json");
+    await writeFile(configPath, JSON.stringify({ version: 1, project: { id: "x" }, profiles: { default: {} } }));
+    await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/not trusted/);
+    await trustProject(root, configPath, stateDir);
+    expect((await loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).config.project.id).toBe("x");
+    await writeFile(configPath, JSON.stringify({ version: 1, project: { id: "changed" }, profiles: { default: {} } }));
+    await expect(loadTrustedDevFnConfig({ cwd: root, configPath, stateDir })).rejects.toThrow(/not trusted/);
   });
 });

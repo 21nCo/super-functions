@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveContainedPath, type DevFnConfig, type EnvironmentOutput } from "@devfn/config";
@@ -17,21 +17,35 @@ export function receiptPath(config: DevFnConfig, root: string, instanceId: strin
   return path.join(runtimeDirectory(config, root, instanceId), "receipt.json");
 }
 
-export async function readReceipt(config: DevFnConfig, root: string, instanceId: string): Promise<LifecycleReceipt | null> {
-  try {
-    const directory = await secureRuntimeDirectory(config, root, instanceId);
-    const value = JSON.parse(await readFile(path.join(directory, "receipt.json"), "utf8")) as LifecycleReceipt;
-    return value.version === 1 && path.resolve(value.runtimeDir) === directory ? value : null;
-  }
-  catch { return null; }
+function stableReceiptPath(root: string, instanceId: string): string {
+  return path.join(root, ".devfn", "receipts", `${instanceId}.json`);
 }
 
-export async function writeReceipt(receipt: LifecycleReceipt): Promise<void> {
-  await mkdir(receipt.runtimeDir, { recursive: true, mode: 0o700 });
-  const target = path.join(receipt.runtimeDir, "receipt.json");
+export async function readReceipt(config: DevFnConfig, root: string, instanceId: string): Promise<LifecycleReceipt | null> {
+  const configuredDirectory = await secureRuntimeDirectory(config, root, instanceId).catch(() => undefined);
+  for (const candidate of [stableReceiptPath(root, instanceId), ...(configuredDirectory ? [path.join(configuredDirectory, "receipt.json")] : [])]) {
+    try {
+      const value = JSON.parse(await readFile(candidate, "utf8")) as LifecycleReceipt;
+      const [canonicalRoot, receiptRoot, canonicalRuntime] = await Promise.all([realpath(root), realpath(value.root), realpath(value.runtimeDir)]);
+      const relativeRuntime = path.relative(canonicalRoot, canonicalRuntime);
+      if (value.version === 1 && value.instanceId === instanceId && receiptRoot === canonicalRoot && relativeRuntime !== "" && !relativeRuntime.startsWith(`..${path.sep}`) && relativeRuntime !== ".." && !path.isAbsolute(relativeRuntime)) return value;
+    } catch { /* Try the configured legacy receipt next. */ }
+  }
+  return null;
+}
+
+async function writeAtomicReceipt(target: string, receipt: LifecycleReceipt): Promise<void> {
+  await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
   const temp = `${target}.${randomUUID()}.tmp`;
   await writeFile(temp, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await rename(temp, target);
+}
+
+export async function writeReceipt(receipt: LifecycleReceipt): Promise<void> {
+  const runtimeTarget = path.join(receipt.runtimeDir, "receipt.json");
+  await writeAtomicReceipt(runtimeTarget, receipt);
+  const stableTarget = stableReceiptPath(receipt.root, receipt.instanceId);
+  if (stableTarget !== runtimeTarget) await writeAtomicReceipt(stableTarget, receipt);
 }
 
 function dotenv(value: string): string { return /^[A-Za-z0-9_./:@-]*$/.test(value) ? value : JSON.stringify(value); }

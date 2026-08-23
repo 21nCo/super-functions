@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -23,6 +23,14 @@ async function readTrust(filePath: string): Promise<TrustState> {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function readLockOwner(lockPath: string): Promise<{ token?: string; pid?: number; createdAt?: string }> {
+  try { return JSON.parse(await readFile(lockPath, "utf8")) as { token?: string; pid?: number; createdAt?: string }; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EISDIR") throw error;
+    return JSON.parse(await readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: string; pid?: number; createdAt?: string };
+  }
+}
+
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
   const lockPath = path.join(stateDir, "trust.lock");
   const token = randomUUID();
@@ -30,22 +38,15 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
   const deadline = Date.now() + 10_000;
   while (true) {
     try {
-      await mkdir(lockPath);
-      const ownerTemp = path.join(lockPath, `owner.${token}.tmp`);
-      try {
-        await writeFile(ownerTemp, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-        await rename(ownerTemp, path.join(lockPath, "owner.json"));
-      } catch (error) {
-        await rm(lockPath, { recursive: true, force: true });
-        throw error;
-      }
+      await writeFile(lockPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "EISDIR") throw error;
       let recover = false;
       let observedToken = "ownerless";
       try {
-        const observed = JSON.parse(await readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: string; pid?: number; createdAt?: string };
+        const observed = await readLockOwner(lockPath);
         observedToken = observed.token ?? observedToken;
         let alive = false;
         if (observed.pid) {
@@ -53,13 +54,9 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
           catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
         }
         recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
-      } catch {
-        const mtime = await stat(lockPath).then((value) => value.mtimeMs).catch((error) => {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") return Date.now();
-          throw error;
-        });
-        const age = Date.now() - mtime;
-        recover = age > staleMs;
+      } catch (ownerError) {
+        if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
+        // Never steal an ownerless legacy directory because its creator may be suspended.
       }
       if (recover) {
         const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;
@@ -74,7 +71,7 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
     return await action();
   } finally {
     try {
-      const owner = JSON.parse(await readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: string };
+      const owner = await readLockOwner(lockPath);
       if (owner.token === token) await rm(lockPath, { recursive: true, force: true });
     } catch { /* A replaced lock is not ours to remove. */ }
   }
@@ -85,7 +82,7 @@ export async function readTrustedManifest(root: string, configPath: string, stat
   const digest = createHash("sha256").update(bytes).digest("hex");
   const state = await readTrust(path.join(stateDir, "trust.json"));
   if (!state.records.some((record) => record.root === root && record.configPath === configPath && record.digest === digest)) {
-    throw new Error(`Executable DevFn manifest is not trusted: ${configPath}`);
+    throw new Error(`DevFn manifest is not trusted: ${configPath}`);
   }
   return { bytes, digest };
 }

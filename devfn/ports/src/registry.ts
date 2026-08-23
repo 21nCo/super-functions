@@ -178,9 +178,11 @@ export class FilePortRegistry {
 
   public async updateInvocation(id: string, update: Partial<Pick<RegistryInvocation, "state" | "errorCode">>): Promise<void> {
     await this.transaction((state) => {
+      const now = new Date().toISOString();
       const invocation = state.invocations.find((item) => item.id === id);
       if (!invocation) return;
-      Object.assign(invocation, update, { updatedAt: new Date().toISOString() });
+      Object.assign(invocation, update, { updatedAt: now });
+      for (const allocation of state.allocations) if (allocation.invocationId === id && allocation.state === "planned") allocation.updatedAt = now;
     });
   }
 

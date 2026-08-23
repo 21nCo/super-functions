@@ -24,4 +24,22 @@ describe("lifecycle planner", () => {
     const proxied = { ...config, profiles: { default: { proxy: true } }, hostnames: { app: { target: "app" } } };
     expect(createPlan(proxied).nodes.map((node) => node.name)).toEqual(["db", "app"]);
   });
+
+  it("uses only the hostname owner selected by the active profile", () => {
+    const proxied = {
+      ...config,
+      processes: {
+        app: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+        alternate: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+      },
+      profiles: { default: { processes: ["app"], proxy: true } },
+      hostnames: { app: { target: "app" } },
+    };
+    expect(createPlan(proxied).nodes.map((node) => node.name)).toEqual(["app"]);
+  });
+
+  it("checks lifecycle collisions with own properties only", () => {
+    const namedConstructor = { ...config, processes: { constructor: { adapter: "command" as const, command: ["node"] } }, profiles: { default: { processes: ["constructor"] } } };
+    expect(createPlan(namedConstructor).nodes.map((node) => node.name)).toEqual(["constructor"]);
+  });
 });

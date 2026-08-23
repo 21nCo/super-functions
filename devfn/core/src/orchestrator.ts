@@ -17,6 +17,11 @@ import { DevFnError, type CleanupResult, type InstanceIdentity, type LifecycleRe
 
 const execFileAsync = promisify(execFile);
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return normalized === "localhost" || normalized === "::1" || /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
 function envName(name: string): string { return `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`; }
 function hostname(configured: string | undefined, key: string, projectId: string, instanceId: string, suffix = ".localhost"): string {
   const result = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{instance}", instanceId).replaceAll("{project}", projectId);
@@ -89,6 +94,8 @@ export class DevFnOrchestrator {
       await registry.release({ invocationId, errorCode: "DEVFN_RECEIPT_WRITE_FAILED" }).catch(() => undefined);
       throw error;
     }
+    const heartbeat = setInterval(() => { void registry.updateInvocation(invocationId, {}).catch(() => undefined); }, 60_000);
+    heartbeat.unref();
     const supervisor = new ProcessSupervisor();
     const compose = new ComposeController();
     const proxy = new CaddyProxyController(stateDir);
@@ -120,7 +127,7 @@ export class DevFnOrchestrator {
           if (options.config.processes![node.name].exposure !== "public") {
             const expected = (options.config.processes![node.name].ports ?? []).map((name) => ({ name, port: ports[name], protocol: options.config.ports?.[name]?.protocol ?? "tcp" }));
             const listeners = await scanListeners();
-            const unsafe = listeners.find((listener) => expected.some((item) => item.port === listener.port && item.protocol === listener.protocol) && ["*", "0.0.0.0", "::", "[::]"].includes(listener.host));
+            const unsafe = listeners.find((listener) => expected.some((item) => item.port === listener.port && item.protocol === listener.protocol) && !isLoopbackHost(listener.host));
             if (unsafe) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} exposed port ${unsafe.port} beyond loopback.`);
             const unverifiableUdp = expected.find((item) => item.protocol === "udp" && !listeners.some((listener) => listener.port === item.port && listener.protocol === "udp"));
             if (unverifiableUdp) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Process ${node.name} UDP port ${unverifiableUdp.port} could not be verified as loopback-only.`);
@@ -147,6 +154,7 @@ export class DevFnOrchestrator {
       const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
       for (const process of receipt.processes) for (const name of options.config.processes?.[process.name]?.ports ?? []) owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
       for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService } };
+      clearInterval(heartbeat);
       await registry.markActive(invocationId, owners);
       receipt.state = "ready";
       receipt.updatedAt = new Date().toISOString();
@@ -160,6 +168,8 @@ export class DevFnOrchestrator {
       receipt.updatedAt = new Date().toISOString();
       await writeReceipt(receipt);
       throw new DevFnError("DEVFN_START_FAILED", `DevFn startup failed: ${receipt.error.message}`, { cleanup, causeCode: receipt.error.code });
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 
@@ -224,12 +234,13 @@ export class DevFnOrchestrator {
     const major = Number(process.versions.node.split(".")[0]);
     if (major < 22) diagnostics.push({ code: "DEVFN_NODE_VERSION", severity: "error", message: `Node 22 or newer is required; found ${process.version}.` });
     else diagnostics.push({ code: "DEVFN_NODE_VERSION", severity: "info", message: `Node runtime ${process.version}.` });
+    const verifiedPrerequisites = new Set<string>();
     for (const requirement of options.config.prerequisites ?? []) {
       if (requirement.profiles && !requirement.profiles.includes(plan.profile)) continue;
       try {
         const executable = requirement.command === "pnpm" ? "corepack" : requirement.command;
         const args = requirement.command === "pnpm" ? ["pnpm", "--version"] : ["--version"];
-        const output = await execFileAsync(executable, args, { timeout: 5000, env: { ...process.env, ...(requirement.command === "pnpm" ? { COREPACK_ENABLE_NETWORK: "0" } : {}) } });
+        const output = await execFileAsync(executable, args, { cwd: options.root, timeout: 5000, env: { ...process.env, ...(requirement.command === "pnpm" ? { COREPACK_ENABLE_NETWORK: "0" } : {}) } });
         const actual = (output.stdout.trim() || output.stderr.trim()).replace(/^v/, "");
         let expected = requirement.version;
         if (expected === "project-pinned") {
@@ -239,7 +250,10 @@ export class DevFnOrchestrator {
           } catch { expected = undefined; }
         }
         if (expected && actual !== expected) diagnostics.push({ code: "DEVFN_PREREQUISITE_VERSION", severity: "error", message: `${requirement.command} ${expected} is required; found ${actual}.` });
-        else diagnostics.push({ code: "DEVFN_PREREQUISITE_OK", severity: "info", message: `${requirement.command} is available.`, details: { version: actual, ...(expected ? { expected } : {}) } });
+        else {
+          verifiedPrerequisites.add(requirement.command);
+          diagnostics.push({ code: "DEVFN_PREREQUISITE_OK", severity: "info", message: `${requirement.command} is available.`, details: { version: actual, ...(expected ? { expected } : {}) } });
+        }
       }
       catch { diagnostics.push({ code: "DEVFN_PREREQUISITE_MISSING", severity: requirement.optional ? "warning" : "error", message: `${requirement.command} is unavailable.` }); }
     }
@@ -250,7 +264,7 @@ export class DevFnOrchestrator {
     if (adapters.has("xcode")) implicitTools.push({ adapter: "xcode", file: "xcodebuild", args: ["-version"] });
     for (const adapter of ["turbo", "wrangler", "extfn"] as const) if (adapters.has(adapter)) implicitTools.push({ adapter, file: "npm", args: ["exec", "--offline", "--", adapter, "--version"] });
     for (const tool of implicitTools) {
-      if (diagnostics.some((item) => item.code === "DEVFN_PREREQUISITE_OK" && item.message.startsWith(`${tool.file} `))) continue;
+      if (verifiedPrerequisites.has(tool.adapter)) continue;
       try { await execFileAsync(tool.file, tool.args, { cwd: options.root, timeout: 5000, env: { ...process.env, ...(tool.adapter === "pnpm" ? { COREPACK_ENABLE_NETWORK: "0" } : {}) } }); diagnostics.push({ code: "DEVFN_ADAPTER_AVAILABLE", severity: "info", message: `${tool.adapter} adapter runtime is available.` }); }
       catch { diagnostics.push({ code: "DEVFN_ADAPTER_UNAVAILABLE", severity: "error", message: `${tool.adapter} adapter runtime is unavailable without installation.` }); }
     }
@@ -279,7 +293,11 @@ export class DevFnOrchestrator {
       output[managed.name] = redact(lines.slice(-(options.tail ?? 200)).join("\n"), options.config.processes?.[managed.name]?.secretEnv);
     }
     const compose = new ComposeController();
-    for (const service of receipt.services.filter((item) => !options.name || item.name === options.name)) output[service.name] = redact(await compose.logs(service, options.tail), options.config.services?.[service.name]?.secretEnv);
+    for (const service of receipt.services.filter((item) => !options.name || item.name === options.name)) {
+      const currentSpec = options.config.services?.[service.name];
+      const effective = { ...service, logsDisabled: service.logsDisabled ?? Boolean(currentSpec?.secretEnv?.length) };
+      output[service.name] = redact(await compose.logs(effective, options.tail), currentSpec?.secretEnv);
+    }
     return output;
   }
 }

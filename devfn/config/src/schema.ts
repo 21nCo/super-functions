@@ -206,8 +206,9 @@ function hostnameSpec(value: unknown, field: string): HostnameSpec {
   const tls = input.tls === undefined ? "off" : string(input.tls, `${field}.tls`);
   if (tls !== "off" && tls !== "internal") fail(`${field}.tls must be off or internal.`, `${field}.tls`);
   const hostname = optionalString(input.hostname, `${field}.hostname`);
-  if (hostname && !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(hostname)) {
-    fail(`${field}.hostname must be a concrete .localhost hostname.`, `${field}.hostname`);
+  const expandedHostname = hostname?.replaceAll("{project}", "project").replaceAll("{instance}", "instance");
+  if (hostname && (expandedHostname?.includes("{") || expandedHostname?.includes("}") || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$/i.test(expandedHostname!))) {
+    fail(`${field}.hostname must be a .localhost hostname using only {project} and {instance} placeholders.`, `${field}.hostname`);
   }
   return {
     target: string(input.target, `${field}.target`),

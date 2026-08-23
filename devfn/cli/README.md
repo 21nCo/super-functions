@@ -14,7 +14,7 @@ npx devfn down
 
 Profiles that declare public processes or ports require `--allow-public` on every start.
 
-The first execution of a TypeScript or JavaScript manifest requires `--trust`. Trust is bound to the manifest digest, so edits require review and trust again. Lifecycle mutations return receipts in JSON mode; read-only commands return command-specific structured data, and failures use stable error codes. Runtime files are written with restrictive permissions under `.devfn/` by default.
+The first load of any manifest requires `--trust` because JSON and executable manifests can both declare lifecycle commands. Trust is bound to the manifest digest, so edits require review and trust again. Lifecycle mutations return receipts in JSON mode; read-only commands return command-specific structured data, and failures use stable error codes. Runtime files are written with restrictive permissions under `.devfn/` by default.
 
 For automation, `devfn up --json` emits one lifecycle receipt object containing `state`, `instanceId`, `invocationId`, allocations, managed processes/services, and resolved URLs. Failures emit `{ "ok": false, "error": { "code": "DEVFN_*", "message": "..." } }` and exit nonzero. Treat fields not documented here as additive.
 

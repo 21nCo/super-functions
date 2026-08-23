@@ -14,5 +14,6 @@ describe("Caddy route rendering", () => {
     const output = renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "::1", targetPort: 4100, tls: "off", updatedAt: "now" }]);
     expect(output).toContain("reverse_proxy [::1]:4100");
     expect(() => renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app.localhost\n:80", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" }])).toThrow(/concrete/);
+    expect(() => renderCaddyfile([{ id: "a", instanceId: "i", hostname: "app.localhost", targetHost: "127.0.0.1", targetPort: Number.NaN, tls: "off", updatedAt: "now" }])).toThrow(/integer/);
   });
 });

@@ -10,6 +10,8 @@ import { ProcessError } from "./types.js";
 const execFileAsync = promisify(execFile);
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type ReadinessInput = { health?: HealthCheck; ports: Record<string, number>; logPath: string; logOffset?: number; cwd: string; environment: NodeJS.ProcessEnv; isAlive: () => boolean | Promise<boolean>; readLog?: () => Promise<string> };
+const LOG_CHUNK_BYTES = 256 * 1024;
+const LOG_WINDOW_BYTES = 1024 * 1024;
 
 async function tcpReady(port: number, timeoutMs = 500): Promise<boolean> {
   return await new Promise((resolve) => {
@@ -22,38 +24,37 @@ async function tcpReady(port: number, timeoutMs = 500): Promise<boolean> {
   });
 }
 
-async function readNewLog(logPath: string, offset: number): Promise<string> {
+async function readNewLog(logPath: string, offset: number): Promise<{ text: string; nextOffset: number }> {
   const handle = await open(logPath, "r").catch(() => undefined);
-  if (!handle) return "";
+  if (!handle) return { text: "", nextOffset: offset };
   try {
     const size = (await handle.stat()).size;
-    if (size <= offset) return "";
-    const length = size - offset;
+    if (size <= offset) return { text: "", nextOffset: Math.min(size, offset) };
+    const length = Math.min(size - offset, LOG_CHUNK_BYTES);
     const buffer = Buffer.alloc(length);
     const { bytesRead } = await handle.read(buffer, 0, length, offset);
-    return buffer.subarray(0, bytesRead).toString("utf8");
+    return { text: buffer.subarray(0, bytesRead).toString("utf8"), nextOffset: offset + bytesRead };
   } finally { await handle.close(); }
 }
 
-async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput): Promise<boolean> {
+async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {
   const port = health.port ? input.ports[health.port] : undefined;
   const url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), health.timeoutMs ?? 1000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try { return (await fetch(url, { signal: controller.signal })).status === (health.expectedStatus ?? 200); }
   finally { clearTimeout(timer); }
 }
 
-async function checkReadiness(health: HealthCheck, input: ReadinessInput, logPattern?: RegExp): Promise<boolean> {
+async function checkReadiness(health: Exclude<HealthCheck, { type: "log" }>, input: ReadinessInput, remainingMs: number): Promise<boolean> {
   switch (health.type) {
-    case "tcp": return await tcpReady(input.ports[health.port], health.timeoutMs ?? 500);
-    case "http": return await httpReady(health, input);
+    case "tcp": return await tcpReady(input.ports[health.port], Math.max(1, Math.min(health.timeoutMs ?? 500, remainingMs)));
+    case "http": return await httpReady(health, input, Math.max(1, Math.min(health.timeoutMs ?? 1000, remainingMs)));
     case "command": {
       const [file, ...args] = health.command;
-      await execFileAsync(file, args, { cwd: input.cwd, env: input.environment, timeout: health.timeoutMs ?? 2000 });
+      await execFileAsync(file, args, { cwd: input.cwd, env: input.environment, timeout: Math.max(1, Math.min(health.timeoutMs ?? 2000, remainingMs)) });
       return true;
     }
-    case "log": return Boolean(logPattern?.test(input.readLog ? await input.readLog() : await readNewLog(input.logPath, input.logOffset ?? 0)));
   }
 }
 
@@ -67,6 +68,8 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
   let logPattern: RegExp | undefined;
+  let logOffset = input.logOffset ?? 0;
+  let logWindow = "";
   if (input.health.type === "log") {
     try { logPattern = new RegExp(input.health.pattern, "i"); } catch (error) { throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Invalid readiness pattern ${input.health.pattern}.`, { cause: String(error) }); }
   }
@@ -76,9 +79,17 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   while (Date.now() < deadline) {
     if (!await input.isAlive()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", "Process exited while waiting for readiness.");
     try {
-      if (await checkReadiness(input.health, input, logPattern)) return;
+      if (input.health.type === "log") {
+        if (input.readLog) logWindow = (await input.readLog()).slice(-LOG_WINDOW_BYTES);
+        else {
+          const chunk = await readNewLog(input.logPath, logOffset);
+          logOffset = chunk.nextOffset;
+          logWindow = `${logWindow}${chunk.text}`.slice(-LOG_WINDOW_BYTES);
+        }
+        if (logPattern?.test(logWindow)) return;
+      } else if (await checkReadiness(input.health, input, Math.max(1, deadline - Date.now()))) return;
     } catch (error) { lastError = error; }
-    await delay(100);
+    await delay(Math.min(100, Math.max(1, deadline - Date.now())));
   }
   throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Readiness check timed out after ${timeoutMs} ms.`, { cause: lastError instanceof Error ? lastError.message : String(lastError ?? "not ready") });
 }
