@@ -81,7 +81,14 @@ export interface FileFnServices {
   uploads: UploadSessionService;
   grants: GrantsService;
   shares: SharesService;
-  processing: ProcessingService;
+  processing: Pick<
+    ProcessingService,
+    | 'isEnabled'
+    | 'listArtifactsForFile'
+    | 'getArtifactDownloadUrlForFile'
+    | 'getArtifactDownloadStreamForFile'
+    | 'getReadableVersionForFile'
+  >;
   policies: PolicyRegistryWithDefine;
 }
 
@@ -331,7 +338,13 @@ export function createFileFn(config: FileFnConfig): FileFn {
       uploads: uploadService,
       grants: grantsService,
       shares: sharesService,
-      processing: processingService,
+      processing: {
+        isEnabled: processingService.isEnabled.bind(processingService),
+        listArtifactsForFile: processingService.listArtifactsForFile.bind(processingService),
+        getArtifactDownloadUrlForFile: processingService.getArtifactDownloadUrlForFile.bind(processingService),
+        getArtifactDownloadStreamForFile: processingService.getArtifactDownloadStreamForFile.bind(processingService),
+        getReadableVersionForFile: processingService.getReadableVersionForFile.bind(processingService),
+      },
       policies: policyRegistry,
     },
 

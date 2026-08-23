@@ -165,6 +165,37 @@ describe("MemoryHostFnOperatorStore", () => {
     })).resolves.toMatchObject({ id: failed!.id, status: "active" });
     await expect(store.listDomains(scope)).resolves.toHaveLength(1);
     expect(new Set(attemptedDomainIds).size).toBe(1);
+    await expect(operator.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+      tls: false,
+    })).rejects.toThrow("different TLS configuration");
+    expect(attachDomain).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes concurrent attachment requests for the same domain", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    const attachDomain = vi.fn(async () => providerGate);
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain, detachDomain: async () => undefined,
+      setVariable: async () => undefined, deleteVariable: async () => undefined,
+    };
+    const operator = new HostFnOperatorService(store, executor);
+    const first = operator.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    const second = operator.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    await vi.waitFor(() => expect(attachDomain).toHaveBeenCalledTimes(1));
+    releaseProvider();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(secondResult.id).toBe(firstResult.id);
+    expect(await store.listDomains(scope)).toHaveLength(1);
   });
 
   it("cleans up a failed local intent when the provider reports no matching domain", async () => {

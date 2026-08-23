@@ -388,6 +388,7 @@ describe("AdminDispatcher", () => {
       if (compensationAttempts++ === 0) throw new Error("transient compensation failure");
     });
     const persistedEvents: Array<{ id: string; outcome: string; metadata?: Readonly<Record<string, unknown>> }> = [];
+    let failedAuditAttempts = 0;
     let auditSequence = 0;
     let finalizeCalls = 0;
     const backing = new MemoryAdminIdempotencyStore();
@@ -423,6 +424,9 @@ describe("AdminDispatcher", () => {
           if (event.outcome === "succeeded") {
             throw new AdminAuditNotPersistedError("terminal event was not persisted");
           }
+          if (event.outcome === "failed" && failedAuditAttempts++ === 0) {
+            throw new AdminAuditNotPersistedError("rollback audit acknowledgement was lost");
+          }
           persistedEvents.push({ id: event.id, outcome: event.outcome, metadata: event.metadata });
         },
       },
@@ -451,9 +455,13 @@ describe("AdminDispatcher", () => {
     });
     await expect(dispatch("retry")).resolves.toMatchObject({
       ok: false,
-      auditId: "audit_2",
-      error: { details: { outcome: "compensated" } },
+      error: { details: { outcome: "compensated", reconciliationRequired: true } },
       meta: { idempotencyReplay: true, compensationCompleted: true },
+    });
+    await expect(dispatch("retry_audit")).resolves.toMatchObject({
+      ok: false,
+      auditId: "audit_2",
+      meta: { idempotencyReplay: true, recoveredTerminalAudit: true },
     });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(compensate).toHaveBeenCalledTimes(2);
@@ -462,6 +470,47 @@ describe("AdminDispatcher", () => {
       { id: "audit_1", outcome: "attempted", metadata: { policy: "manual", accessToken: "[REDACTED]" } },
       { id: "audit_2", outcome: "failed", metadata: { policy: "manual", accessToken: "[REDACTED]", compensation: "succeeded" } },
     ]);
+  });
+
+  it("retains a failed operation audit receipt for idempotency replay provenance", async () => {
+    const base = testManifest().operations[0]!;
+    const operationId = "examplefn.records.fail-audited";
+    const manifest = testManifest("examplefn", { operations: [{
+      ...base,
+      id: operationId,
+      route: { method: "POST", path: "/records/actions/fail-audited" },
+      permission: operationId,
+      safety: { classification: "write", idempotent: true, audit: "required" },
+      mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    }] });
+    const handler = vi.fn(async () => { throw new Error("domain failed"); });
+    let auditSequence = 0;
+    const dispatcher = createAdminDispatcher({
+      registry: createAdminRegistry({
+        adapters: [createAdminCapabilityAdapter(manifest, { [operationId]: handler })],
+        enabledModules: ["examplefn"],
+      }),
+      audit: new MemoryAdminAuditSink(),
+      idempotency: new MemoryAdminIdempotencyStore(),
+      createAuditId: () => `audit_${++auditSequence}`,
+    });
+    const dispatch = (requestId: string) => dispatcher.dispatch({
+      operationId,
+      input: {},
+      context: context({
+        requestId,
+        actor: { id: "user_1", permissions: [operationId] },
+        idempotencyKey: "failed-audit-receipt",
+      }),
+    });
+
+    await expect(dispatch("first")).resolves.toMatchObject({ ok: false, auditId: "audit_2" });
+    await expect(dispatch("replay")).resolves.toMatchObject({
+      ok: false,
+      auditId: "audit_3",
+      meta: { idempotencyReplay: true, originalAuditId: "audit_2" },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it.each([

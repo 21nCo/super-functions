@@ -57,4 +57,17 @@ describe("validateAdminValue", () => {
       { nested: { enabled: true }, mode: "safe" },
     )).toEqual([]);
   });
+
+  it("treats positive and negative zero as the same JSON number", () => {
+    expect(validateAdminValue({ const: 0 }, -0)).toEqual([]);
+    expect(validateAdminValue({ enum: [0] }, -0)).toEqual([]);
+  });
+
+  it.each([new Date(0), new Map(), (() => { const value: Record<string, unknown> = {}; value.self = value; return value; })()])(
+    "rejects non-JSON enum and constant comparisons without throwing",
+    (value) => {
+      expect(validateAdminValue({ const: {} }, value)).toContainEqual(expect.objectContaining({ keyword: "const" }));
+      expect(validateAdminValue({ enum: [{}] }, value)).toContainEqual(expect.objectContaining({ keyword: "enum" }));
+    },
+  );
 });

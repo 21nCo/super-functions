@@ -42,6 +42,26 @@ describe('schema-driven action input', () => {
     });
   });
 
+  it('collects editable properties and required fields from allOf object branches', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.update',
+      label: 'Update record',
+      targetIdInput: 'id',
+      inputSchema: {
+        type: 'object',
+        allOf: [
+          { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } }, required: ['id', 'name'] },
+          { type: 'object', properties: { retries: { type: 'integer' } }, required: ['retries'] },
+        ],
+      },
+    };
+
+    expect(editableActionFields(candidate).map(({ name, required }) => ({ name, required }))).toEqual([
+      { name: 'name', required: true },
+      { name: 'retries', required: true },
+    ]);
+  });
+
   it('parses primitive and JSON fields into the exact dispatch input', () => {
     const candidate = action();
     const result = validateActionInput(candidate, {

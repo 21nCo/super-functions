@@ -1064,6 +1064,22 @@ export class SuperConsole {
     const confirmation = this.options.confirmation;
     if (!confirmation) throw new SuperConsoleHttpError('Confirmation issuance is unavailable.', { status: 503, code: 'CONFIRMATION_UNAVAILABLE' });
     try {
+      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started);
+    } catch {
+      try {
+        await confirmation.revoke({
+          token: receipt.token,
+          operationId,
+          input: immutable.input,
+          principal: immutable.state.principal,
+          context: immutable.state.context,
+        });
+      } catch {
+        // The token is still staged and unusable because activation has not run.
+      }
+      throw new SuperConsoleHttpError('The confirmation issuance could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });
+    }
+    try {
       await confirmation.activate({
         token: receipt.token,
         operationId,
@@ -1097,22 +1113,6 @@ export class SuperConsole {
         throw new SuperConsoleHttpError('The confirmation activation failure could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });
       }
       throw new SuperConsoleHttpError('The confirmation token could not be activated.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
-    }
-    try {
-      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started);
-    } catch {
-      try {
-        await confirmation.revoke({
-          token: receipt.token,
-          operationId,
-          input: immutable.input,
-          principal: immutable.state.principal,
-          context: immutable.state.context,
-        });
-      } catch {
-        // Revocation is idempotent by contract and may be reconciled by the provider.
-      }
-      throw new SuperConsoleHttpError('The confirmation issuance could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });
     }
     return receipt;
   }

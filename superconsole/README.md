@@ -53,8 +53,9 @@ then append a terminal outcome. Audit and domain state remain separate systems,
 so deployments must monitor and reconcile attempts without terminal events.
 
 Confirmation services must return an unusable staged token from `issue`.
-Super Console records activation failures as denied terminal events and calls
-idempotent `revoke` whenever activation or the succeeded audit cannot complete.
+Super Console writes the succeeded audit while the token is still staged, then
+activates it. Activation failures are recorded as denied events and trigger an
+idempotent `revoke`; audit failures therefore cannot leave a live unaudited token.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an

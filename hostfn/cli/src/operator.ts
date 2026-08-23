@@ -211,6 +211,11 @@ function identifier(prefix: string): string {
 }
 
 export class HostFnOperatorService {
+  private readonly domainAttachments = new Map<
+    string,
+    { tls: boolean; promise: Promise<HostFnDomain> }
+  >();
+
   constructor(
     private readonly store: HostFnOperatorStore,
     private readonly executor: HostFnDeploymentExecutor,
@@ -292,15 +297,41 @@ export class HostFnOperatorService {
     scope: HostFnScope,
     input: { targetId: string; hostname: string; tls?: boolean },
   ) {
+    const requestedTls = input.tls ?? true;
+    const attachmentKey = JSON.stringify([scopeKey(scope), input.targetId, input.hostname]);
+    const inFlight = this.domainAttachments.get(attachmentKey);
+    if (inFlight) {
+      if (inFlight.tls !== requestedTls) {
+        throw new Error("HostFn domain already exists with different TLS configuration.");
+      }
+      return inFlight.promise;
+    }
+    const promise = this.attachDomainOnce(scope, { ...input, tls: requestedTls });
+    this.domainAttachments.set(attachmentKey, { tls: requestedTls, promise });
+    try {
+      return await promise;
+    } finally {
+      if (this.domainAttachments.get(attachmentKey)?.promise === promise) {
+        this.domainAttachments.delete(attachmentKey);
+      }
+    }
+  }
+
+  private async attachDomainOnce(
+    scope: HostFnScope,
+    input: { targetId: string; hostname: string; tls: boolean },
+  ) {
     const target = await this.target(scope, input.targetId);
     const existing = (await this.store.listDomains(scope, target.id)).find(
       (candidate) => candidate.hostname === input.hostname,
     );
+    if (existing && existing.tls !== input.tls) {
+      throw new Error("HostFn domain already exists with different TLS configuration.");
+    }
     if (existing?.status === "active") return existing;
     const domain: HostFnDomain = existing
       ? {
           ...existing,
-          tls: input.tls ?? existing.tls,
           status: "pending",
           updatedAt: new Date().toISOString(),
         }
@@ -309,7 +340,7 @@ export class HostFnOperatorService {
           scope,
           targetId: target.id,
           hostname: input.hostname,
-          tls: input.tls ?? true,
+          tls: input.tls,
           status: "pending",
           updatedAt: new Date().toISOString(),
         };

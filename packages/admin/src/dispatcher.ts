@@ -674,7 +674,9 @@ export class AdminDispatcher {
             // fenced: execution may have committed before the error surfaced.
             const stableCompensationAuditId = domainCompensated ? terminalAuditId : undefined;
             const timestamp = this.now().toISOString();
-            const { auditId: _failedAuditReceipt, ...persistedFailedResult } = failedResult;
+            const persistedFailedResult = stableCompensationAuditId
+              ? (({ auditId: _failedAuditReceipt, ...withoutReceipt }) => withoutReceipt)(failedResult)
+              : failedResult;
             await this.idempotency.complete(idempotencyClaim, {
               identity: idempotencyIdentity,
               fingerprint: idempotencyClaim.fingerprint,

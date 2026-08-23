@@ -14,14 +14,38 @@ export interface AdminValidationIssue {
 }
 
 function adminJsonValueEquals(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (
-    left !== null && right !== null &&
-    typeof left === "object" && typeof right === "object"
-  ) {
-    return stableSerialize(left) === stableSerialize(right);
+  if (left === right) return true;
+  const leftJson = comparableJsonValue(left);
+  const rightJson = comparableJsonValue(right);
+  return leftJson !== undefined && rightJson !== undefined && leftJson === rightJson;
+}
+
+function comparableJsonValue(value: unknown, seen = new Set<object>()): string | undefined {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
   }
-  return false;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? JSON.stringify(value) : undefined;
+  }
+  if (typeof value !== "object" || seen.has(value)) return undefined;
+  const isArray = Array.isArray(value);
+  const prototype = Object.getPrototypeOf(value);
+  if (!isArray && prototype !== Object.prototype && prototype !== null) return undefined;
+  seen.add(value);
+  const entries = isArray
+    ? Array.from(value, (item, index) => [String(index), item] as const)
+    : Object.entries(value as Record<string, unknown>).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  const serialized: string[] = [];
+  for (const [key, item] of entries) {
+    const child = comparableJsonValue(item, seen);
+    if (child === undefined) {
+      seen.delete(value);
+      return undefined;
+    }
+    serialized.push(`${JSON.stringify(key)}:${child}`);
+  }
+  seen.delete(value);
+  return `${isArray ? "[" : "{"}${serialized.join(",")}${isArray ? "]" : "}"}`;
 }
 
 const ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)*$/;
@@ -81,6 +105,20 @@ export function validateAdminValue(
   value: unknown,
   path = "$",
 ): AdminValidationIssue[] {
+  return validateAdminValueInternal(schema, value, path, new Set<object>());
+}
+
+function validateAdminValueInternal(
+  schema: AdminJsonSchema,
+  value: unknown,
+  path: string,
+  ancestors: Set<object>,
+): AdminValidationIssue[] {
+  if (value !== null && typeof value === "object" && ancestors.has(value)) {
+    return [{ path, message: "must be an acyclic JSON value", keyword: "type" }];
+  }
+  const childAncestors = new Set(ancestors);
+  if (value !== null && typeof value === "object") childAncestors.add(value);
   if (typeof value === "number" && !Number.isFinite(value)) {
     return [{ path, message: "must be a finite JSON number", keyword: "type" }];
   }
@@ -179,8 +217,8 @@ export function validateAdminValue(
       });
     }
     if (schema.uniqueItems) {
-      const keys = value.map(stableSerialize);
-      if (new Set(keys).size !== keys.length)
+      const keys = value.map((item) => comparableJsonValue(item));
+      if (!keys.includes(undefined) && new Set(keys).size !== keys.length)
         issues.push({
           path,
           message: "must contain unique items",
@@ -190,10 +228,11 @@ export function validateAdminValue(
     if (schema.items && !Array.isArray(schema.items)) {
       value.forEach((item, index) =>
         issues.push(
-          ...validateAdminValue(
+          ...validateAdminValueInternal(
             schema.items as AdminJsonSchema,
             item,
             `${path}[${index}]`,
+            childAncestors,
           ),
         ),
       );
@@ -201,12 +240,12 @@ export function validateAdminValue(
       const tupleItems = schema.items as unknown as readonly AdminJsonSchema[];
       value.forEach((item, index) =>
         issues.push(
-          ...validateAdminValue(tupleItems[index] ?? {}, item, `${path}[${index}]`),
+          ...validateAdminValueInternal(tupleItems[index] ?? {}, item, `${path}[${index}]`, childAncestors),
         ),
       );
     } else if (!schema.items) {
       value.forEach((item, index) =>
-        issues.push(...validateAdminValue({}, item, `${path}[${index}]`)),
+        issues.push(...validateAdminValueInternal({}, item, `${path}[${index}]`, childAncestors)),
       );
     }
   }
@@ -225,7 +264,7 @@ export function validateAdminValue(
       const propertySchema = schema.properties?.[key];
       if (propertySchema) {
         issues.push(
-          ...validateAdminValue(propertySchema, item, `${path}.${key}`),
+          ...validateAdminValueInternal(propertySchema, item, `${path}.${key}`, childAncestors),
         );
       } else if (schema.additionalProperties === false) {
         issues.push({
@@ -238,25 +277,26 @@ export function validateAdminValue(
         typeof schema.additionalProperties === "object"
       ) {
         issues.push(
-          ...validateAdminValue(
+          ...validateAdminValueInternal(
             schema.additionalProperties,
             item,
             `${path}.${key}`,
+            childAncestors,
           ),
         );
       } else {
-        issues.push(...validateAdminValue({}, item, `${path}.${key}`));
+        issues.push(...validateAdminValueInternal({}, item, `${path}.${key}`, childAncestors));
       }
     }
   }
 
   if (schema.allOf)
     for (const candidate of schema.allOf)
-      issues.push(...validateAdminValue(candidate, value, path));
+      issues.push(...validateAdminValueInternal(candidate, value, path, ancestors));
   if (
     schema.anyOf &&
     !schema.anyOf.some(
-      (candidate) => validateAdminValue(candidate, value, path).length === 0,
+      (candidate) => validateAdminValueInternal(candidate, value, path, ancestors).length === 0,
     )
   ) {
     issues.push({
@@ -268,7 +308,7 @@ export function validateAdminValue(
   if (
     schema.oneOf &&
     schema.oneOf.filter(
-      (candidate) => validateAdminValue(candidate, value, path).length === 0,
+      (candidate) => validateAdminValueInternal(candidate, value, path, ancestors).length === 0,
     ).length !== 1
   ) {
     issues.push({

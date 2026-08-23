@@ -36,9 +36,18 @@ function fieldType(schema: AdminJsonSchema): ActionFieldType {
 
 export function editableActionFields(action: AdminActionViewModel): ActionInputField[] {
   const schema = action.inputSchema;
-  if (!schema?.properties) return [];
-  const required = new Set(schema.required ?? []);
-  return Object.entries(schema.properties).flatMap(([name, property]) => {
+  if (!schema) return [];
+  const properties: Record<string, AdminJsonSchema> = {};
+  const required = new Set<string>();
+  const collectObjectShape = (candidate: AdminJsonSchema): void => {
+    for (const name of candidate.required ?? []) required.add(name);
+    for (const [name, property] of Object.entries(candidate.properties ?? {})) {
+      properties[name] = properties[name] ? { ...properties[name], ...property } : property;
+    }
+    for (const branch of candidate.allOf ?? []) collectObjectShape(branch);
+  };
+  collectObjectShape(schema);
+  return Object.entries(properties).flatMap(([name, property]) => {
     if (name === action.targetIdInput) return [];
     return [{
       name,

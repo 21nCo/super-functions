@@ -738,11 +738,12 @@ describe('Super Console server composition', () => {
     expect(confirmation.verify).toHaveBeenCalled();
   });
 
-  it('revokes an activated confirmation when its terminal audit fails', async () => {
+  it('never activates a staged confirmation when its terminal audit fails', async () => {
     const capability = manifest({ destructive: true });
     const issue = vi.fn(async () => ({ token: 'staged-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }));
-    const activate = vi.fn(async () => undefined);
-    const revoke = vi.fn(async () => undefined);
+    let active = false;
+    const activate = vi.fn(async () => { active = true; });
+    const revoke = vi.fn(async () => { throw new Error('revocation unavailable'); });
     const console = createSuperConsole({
       adapters: [createAdminCapabilityAdapter(capability, {
         'examplefn.records.delete': async () => ({ ok: true as const, data: { accepted: true } }),
@@ -759,7 +760,7 @@ describe('Super Console server composition', () => {
         },
       },
       idempotency: new MemoryAdminIdempotencyStore(),
-      confirmation: { issue, activate, revoke, verify: async () => false },
+      confirmation: { issue, activate, revoke, verify: async () => active },
     });
 
     const response = await console.handle(request('/api/admin/v1/confirmations', {
@@ -770,8 +771,9 @@ describe('Super Console server composition', () => {
 
     expect(response.status).toBe(503);
     expect(issue).toHaveBeenCalledTimes(1);
-    expect(activate).toHaveBeenCalledWith(expect.objectContaining({ token: 'staged-token' }));
+    expect(activate).not.toHaveBeenCalled();
     expect(revoke).toHaveBeenCalledWith(expect.objectContaining({ token: 'staged-token' }));
+    expect(active).toBe(false);
   });
 
   it('records activation failure as denied and leaves the staged token unusable', async () => {
@@ -779,6 +781,7 @@ describe('Super Console server composition', () => {
     const outcomes: Array<{ outcome: string; errorCode?: string }> = [];
     let active = false;
     const revoke = vi.fn(async () => { active = false; });
+    const verify = vi.fn(async () => active);
     const console = createSuperConsole({
       adapters: [createAdminCapabilityAdapter(capability, {
         'examplefn.records.delete': async () => ({ ok: true as const, data: { accepted: true } }),
@@ -797,9 +800,9 @@ describe('Super Console server composition', () => {
       idempotency: new MemoryAdminIdempotencyStore(),
       confirmation: {
         issue: async () => ({ token: 'staged-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }),
-        activate: async () => { throw new Error('activation unavailable'); },
+        activate: async () => { active = true; throw new Error('activation unavailable'); },
         revoke,
-        verify: async () => active,
+        verify,
       },
     });
 
@@ -810,10 +813,11 @@ describe('Super Console server composition', () => {
     }));
 
     expect(response.status).toBe(503);
-    expect(active).toBe(false);
+    expect(await verify({} as never)).toBe(false);
     expect(revoke).toHaveBeenCalledWith(expect.objectContaining({ token: 'staged-token' }));
     expect(outcomes).toEqual([
       { outcome: 'attempted', errorCode: undefined },
+      { outcome: 'succeeded', errorCode: undefined },
       { outcome: 'denied', errorCode: 'CONFIRMATION_ACTIVATION_FAILED' },
     ]);
   });

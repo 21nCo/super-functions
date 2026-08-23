@@ -278,6 +278,13 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     ]);
   });
 
+  it('exposes only authorization-safe processing methods from the public service facade', () => {
+    expect(fileFn.services.processing).not.toHaveProperty('listArtifacts');
+    expect(fileFn.services.processing).not.toHaveProperty('runProcessing');
+    expect(fileFn.services.processing).not.toHaveProperty('triggerProcessing');
+    expect(fileFn.services.processing).toHaveProperty('listArtifactsForFile');
+  });
+
   it('TV-PROCESS-002: PDF preview artifact descriptors should stay on HTTP proxy routes', async () => {
     const res = await fileFn.router.handle(
       new Request('http://localhost/file_0002/artifacts/art_pdf_0001/download', { method: 'GET' }),
