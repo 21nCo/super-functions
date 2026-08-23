@@ -281,7 +281,7 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
       sequence += 1;
       const id = options.id ?? `focus-scope-${sequence}`;
       const previous = top();
-      if (previous) previous.paused = true;
+      if (options.enabled !== false && previous) previous.paused = true;
       const record: FocusScopeRecord = {
         id,
         options,
@@ -333,7 +333,20 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
         },
         update(next) {
           assertManagerAlive('update focus scope', record);
+          const activeBefore = top();
+          const wasEnabled = record.options.enabled !== false;
           record.options = { ...record.options, ...next };
+          const enabled = record.options.enabled !== false;
+          const recordIndex = records.indexOf(record);
+          if (!wasEnabled && enabled && !record.paused) {
+            const newerActive = records.slice(recordIndex + 1).some((candidate) =>
+              !candidate.destroyed && !candidate.paused && candidate.options.enabled !== false);
+            if (!newerActive && activeBefore && activeBefore !== record) activeBefore.paused = true;
+          } else if (wasEnabled && !enabled && activeBefore === record) {
+            const parent = records.slice(0, recordIndex).reverse().find((candidate) =>
+              !candidate.destroyed && candidate.options.enabled !== false);
+            if (parent) parent.paused = false;
+          }
           trace('update', record);
         },
         focusInitial() {

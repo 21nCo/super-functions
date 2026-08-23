@@ -351,13 +351,20 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(detachDomain).toHaveBeenCalledTimes(3);
   });
 
-  it("does not resurrect stale compensation over a replacement hostname claim", async () => {
+  it("does not resurrect stale compensation when the hostname moves to another target", async () => {
     const store = new MemoryHostFnOperatorStore();
     const target: HostFnTarget = {
       id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
       status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
     };
+    const replacementTarget: HostFnTarget = {
+      ...target,
+      id: "target_2",
+      name: "Replacement API",
+      server: "replacement.example.test",
+    };
     await store.putTarget(target);
+    await store.putTarget(replacementTarget);
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
     let attachCalls = 0;
@@ -382,14 +389,19 @@ describe("MemoryHostFnOperatorStore", () => {
     const [staleDomain] = await store.listDomains(scope);
 
     await replacementService.detachDomain(scope, staleDomain!.id);
-    const replacement = await replacementService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    const replacement = await replacementService.attachDomain(scope, { targetId: replacementTarget.id, hostname: "api.example.test" });
     expect(replacement.id).not.toBe(staleDomain!.id);
     releaseFirst();
 
     await expect(staleAttachment).rejects.toThrow("compensation unavailable");
     await expect(store.listDomains(scope)).resolves.toEqual([
-      expect.objectContaining({ id: replacement.id, hostname: "api.example.test", status: "active" }),
+      expect.objectContaining({ id: replacement.id, targetId: replacementTarget.id, hostname: "api.example.test", status: "active" }),
     ]);
+    await expect(staleService.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+    })).rejects.toThrow("already attached to a different target");
+    expect(attachDomain).toHaveBeenCalledTimes(2);
     expect(detachDomain).toHaveBeenCalledTimes(2);
   });
 

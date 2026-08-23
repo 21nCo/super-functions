@@ -26,7 +26,13 @@ function daysInMonth(year: number, month: number): number {
 }
 
 export function createUIFnCalendarDate(year: number, month: number, day: number): UIFnCalendarDate {
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+  const monthLength = Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12
+    ? daysInMonth(year, month)
+    : Number.NaN;
+  const instant = Number.isFinite(monthLength) && Number.isInteger(day) && day >= 1 && day <= monthLength
+    ? utcDate(year, month - 1, day).getTime()
+    : Number.NaN;
+  if (!Number.isFinite(instant)) {
     throw createUIFnError({ code: 'UIFN_DATE_VALUE_INVALID', component: 'Date', details: { year, month, day } });
   }
   return Object.freeze({ calendar: 'gregory', year, month, day });
@@ -73,7 +79,8 @@ export function setUIFnDateSegment(value: UIFnCalendarDate, segment: UIFnDateSeg
 }
 
 export function formatUIFnDate(value: UIFnCalendarDate, locale: string, options: Intl.DateTimeFormatOptions = {}): string {
-  return new Intl.DateTimeFormat(locale, { calendar: value.calendar, timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', ...options })
+  const era = value.year <= 0 && options.era === undefined ? { era: 'short' as const } : {};
+  return new Intl.DateTimeFormat(locale, { calendar: value.calendar, timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', ...options, ...era })
     .format(utcDate(value.year, value.month - 1, value.day, 12));
 }
 

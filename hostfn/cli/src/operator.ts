@@ -197,10 +197,12 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     const existing = [...this.domains.values()].find(
       (candidate) =>
         scopeKey(candidate.scope) === scopeKey(domain.scope) &&
-        candidate.targetId === domain.targetId &&
         candidate.hostname === domain.hostname,
     );
     if (existing) {
+      if (existing.targetId !== domain.targetId) {
+        throw new Error("HostFn domain hostname is already attached to a different target.");
+      }
       if (existing.tls !== domain.tls) {
         throw new Error("HostFn domain already exists with different TLS configuration.");
       }
@@ -237,7 +239,6 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     const hostnameClaimed = [...this.domains.values()].some(
       (candidate) =>
         scopeKey(candidate.scope) === scopeKey(domain.scope) &&
-        candidate.targetId === domain.targetId &&
         candidate.hostname === domain.hostname,
     );
     if (hostnameClaimed) return false;

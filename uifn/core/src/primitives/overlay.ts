@@ -331,12 +331,13 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
   options: UIFnOverlayBaseOptions<TProps>,
 ): UIFnOverlayBaseBackend<TProps> {
   const { primitive, props } = options;
+  let currentProps: TProps = { ...props };
   const policyValue = UIFN_OVERLAY_POLICIES[primitive];
   const ids = createOverlayIds(primitive, props.idBase, options.env ?? {});
   const controlled = createControlledValue({
     value: props.open,
     defaultValue: props.defaultOpen ?? false,
-    onChange: props.onOpenChange,
+    onChange: (open) => currentProps.onOpenChange?.(open),
   });
   const initialOpen = controlled.getValue();
   const modal = policyValue.modalConfigurable ? props.modal ?? policyValue.modalDefault : policyValue.modalDefault;
@@ -402,7 +403,7 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
       || previous.pendingCloseMs !== null
       || previous.lastChangeReason !== reason;
     if (semanticChanged) store.setState(next, meta);
-    if (source !== 'controlled-sync') props.onOpenChangeDetail?.(requestedOpen, reason);
+    if (source !== 'controlled-sync') currentProps.onOpenChangeDetail?.(requestedOpen, reason);
   };
 
   const scheduleOpen = (reason: string, modality: 'pointer' | 'keyboard') => {
@@ -546,6 +547,31 @@ export function createUIFnOverlayBase<TProps extends UIFnOverlayCommonProps>(
         parts,
         getState,
         update(inputs) {
+          currentProps = { ...currentProps, ...inputs };
+          const nextModal = policyValue.modalConfigurable
+            ? currentProps.modal ?? policyValue.modalDefault
+            : policyValue.modalDefault;
+          const nextOutside = currentProps.closeOnInteractOutside
+            ?? currentProps.closeOnOutsideInteraction
+            ?? policyValue.closeOnPointerOutside;
+          if (primitive === 'AlertDialog') assertUIFnAlertDialogDismissal(nextOutside, false);
+          store.patchState({
+            modal: nextModal,
+            trapFocus: currentProps.trapFocus ?? (nextModal && policyValue.trapFocus),
+            scrollLock: currentProps.scrollLock ?? (nextModal && policyValue.scrollLock),
+            closeOnEscape: currentProps.closeOnEscape ?? policyValue.closeOnEscape,
+            closeOnInteractOutside: nextOutside,
+            placement: currentProps.placement ?? options.defaultPlacement ?? 'bottom',
+            forceMount: currentProps.forceMount ?? false,
+            initialFocusId: currentProps.initialFocusId ?? null,
+            returnFocusId: currentProps.returnFocusId ?? null,
+            accessibleName: currentProps.accessibleName?.trim() || null,
+          }, {
+            source: 'controlled-sync',
+            reason: 'overlay-inputs-synced',
+            previousValue: store.getState().open,
+            nextValue: store.getState().open,
+          });
           if ('open' in inputs && inputs.open !== undefined) actions.syncOpen(inputs.open);
           updateExtra?.(inputs);
         },

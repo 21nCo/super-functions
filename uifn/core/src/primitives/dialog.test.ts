@@ -52,6 +52,40 @@ describe('dialog primitive', () => {
     expect(dialog.state.open).toBe(true);
   });
 
+  it('synchronizes mutable overlay inputs after mount', () => {
+    const dialog = createDialogController({ defaultOpen: false });
+
+    dialog.update({
+      modal: false,
+      trapFocus: false,
+      scrollLock: false,
+      closeOnEscape: false,
+      closeOnInteractOutside: false,
+      placement: 'top-start',
+      forceMount: true,
+      initialFocusId: 'updated-initial',
+      returnFocusId: 'updated-return',
+      accessibleName: 'Updated dialog',
+    });
+
+    expect(dialog.state).toMatchObject({
+      modal: false,
+      trapFocus: false,
+      scrollLock: false,
+      closeOnEscape: false,
+      closeOnInteractOutside: false,
+      placement: 'top-start',
+      forceMount: true,
+      initialFocusId: 'updated-initial',
+      returnFocusId: 'updated-return',
+      accessibleName: 'Updated dialog',
+    });
+    expect(dialog.parts.content.getProps()).toMatchObject({
+      hidden: false,
+      aria: { label: 'Updated dialog' },
+    });
+  });
+
   it('keeps fixed bases isolated to their explicit model scopes', () => {
     const first = createDialogController({ idBase: 'shared-dialog' });
     const second = createDialogController({ idBase: 'shared-dialog' });

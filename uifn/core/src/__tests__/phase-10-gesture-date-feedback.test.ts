@@ -6,6 +6,7 @@ import {
   compareUIFnDates,
   createUIFnCalendarDate,
   firstUIFnDayOfWeek,
+  formatUIFnDate,
   hslaToUIFnRgba,
   parseUIFnColor,
   parseUIFnIsoDate,
@@ -158,6 +159,9 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(compareUIFnDates(ancient, modern)).toBe(-1);
     expect(addUIFnDateDays(ancient, 1)).toEqual(createUIFnCalendarDate(2, 1, 1));
     expect(addUIFnDateDays(parseUIFnIsoDate('0000-02-28'), 1)).toEqual(createUIFnCalendarDate(0, 2, 29));
+    expect(formatUIFnDate(parseUIFnIsoDate('0000-01-01'), 'en-US')).toMatch(/1 BC/);
+    expect(formatUIFnDate(parseUIFnIsoDate('0001-01-01'), 'en-US')).not.toMatch(/BC/);
+    expect(() => parseUIFnIsoDate('999999-02-31')).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
