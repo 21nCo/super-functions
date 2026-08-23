@@ -1,0 +1,8 @@
+# uifn ownership is deliberately scoped to a repository administrator whose
+# ownership was verified before this file was added. Broader repository paths
+# remain unassigned until their maintainers explicitly accept ownership.
+/uifn/ @thyaravind
+/scripts/verify-uifn-* @thyaravind
+/scripts/build-uifn-* @thyaravind
+/scripts/deploy-uifn-* @thyaravind
+/.github/CODEOWNERS @thyaravind

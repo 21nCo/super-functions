@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "component": "Resizable",
+  "slug": "resizable",
+  "batch": "data-rich",
+  "behavior": [
+    "pointer-resize",
+    "keyboard-resize",
+    "min-max"
+  ],
+  "largeData": null,
+  "emptyState": {
+    "enabled": true
+  },
+  "errorState": {
+    "enabled": true
+  },
+  "keyboard": {
+    "enabled": true
+  },
+  "visual": {
+    "themes": [
+      "light",
+      "dark",
+      "high-contrast"
+    ],
+    "viewports": [
+      "mobile",
+      "desktop"
+    ]
+  }
+}

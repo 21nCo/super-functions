@@ -1,0 +1,6 @@
+{
+  "id": "undocumented-export",
+  "description": "Append an unregistered core symbol and primitive id to generated exports.",
+  "mutation": { "generatedFile": "core-exports.json", "operation": "append-undocumented-export" },
+  "expectedErrorCodes": ["UIFN_CATALOG_EXPORT_DRIFT"]
+}

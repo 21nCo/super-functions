@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "name": "Breadcrumb",
+  "slug": "breadcrumb",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "list",
+    "item",
+    "link",
+    "separator",
+    "page"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Breadcrumb"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Breadcrumb"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Breadcrumb"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#default",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#variants",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#states",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#accessibility",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#theming",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#keyboard",
+    "uifn/components/stories/batch-b/breadcrumb.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/breadcrumb.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#render",
+    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
+    "uifn/components/src/__tests__/batch-b.test.ts#visual",
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

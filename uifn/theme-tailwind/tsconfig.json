@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@uifn/recipes": ["../recipes/src/index.ts"],
+      "@uifn/recipes/*": ["../recipes/src/*"],
+      "@uifn/theme": ["../theme/src/index.ts"],
+      "@uifn/theme/*": ["../theme/src/*"],
+      "@uifn/tokens": ["../tokens/src/index.ts"],
+      "@uifn/tokens/*": ["../tokens/src/*"]
+    }
+  },
+  "include": ["src"]
+}

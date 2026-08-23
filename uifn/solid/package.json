@@ -1,0 +1,103 @@
+{
+  "name": "@uifn/solid",
+  "version": "0.0.1",
+  "description": "Catalog-complete, permanently headless Solid compounds for uifn primitives",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "solid": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "solid": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./hooks/copy-to-clipboard": {
+      "types": "./dist/hooks/copy-to-clipboard.d.ts",
+      "solid": "./dist/hooks/copy-to-clipboard.js",
+      "import": "./dist/hooks/copy-to-clipboard.js",
+      "default": "./dist/hooks/copy-to-clipboard.js"
+    },
+    "./hooks/media-query": {
+      "types": "./dist/hooks/media-query.d.ts",
+      "solid": "./dist/hooks/media-query.js",
+      "import": "./dist/hooks/media-query.js",
+      "default": "./dist/hooks/media-query.js"
+    },
+    "./*": {
+      "types": "./dist/generated/*.d.ts",
+      "solid": "./dist/generated/*.jsx",
+      "import": "./dist/generated/*.jsx",
+      "default": "./dist/generated/*.jsx"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-solid.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-solid.mjs --check",
+    "build": "node ../../scripts/build-uifn-solid.mjs",
+    "dev": "tsc --project tsconfig.build.json --watch",
+    "test": "vitest run --config vitest.config.ts && vitest run --config vitest.ssr.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run generate:check && npm run build"
+  },
+  "dependencies": {
+    "@uifn/adapter-kit": "0.0.1",
+    "@uifn/core": "0.0.1",
+    "@uifn/dom": "0.0.1"
+  },
+  "peerDependencies": {
+    "solid-js": ">=1.9.0 <2"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.1",
+    "playwright": "^1.57.0",
+    "solid-js": "1.9.13",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vite-plugin-solid": "2.11.12",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "solid",
+    "solidjs",
+    "ui",
+    "components",
+    "primitives",
+    "headless",
+    "accessible"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/solid"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "adapter",
+    "styling": "permanently-headless",
+    "schemaVersion": 1,
+    "catalogGenerated": true,
+    "sourcePolicy": "clean-room"
+  }
+}

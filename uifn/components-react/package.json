@@ -1,0 +1,30 @@
+{
+  "name": "@uifn/components-react",
+  "version": "0.0.1",
+  "description": "Framework-isolated React styled component boundary for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.mjs", "require": "./dist/index.js" }, "./*": { "types": "./dist/generated/*.d.ts", "import": "./dist/generated/*.mjs", "require": "./dist/generated/*.js" } },
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-components.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-components.mjs --check",
+    "build": "tsup src/index.ts src/generated/*.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run generate:check && npm run build"
+  },
+  "dependencies": { "@uifn/components": "0.0.1", "@uifn/react": "0.0.2", "@uifn/recipes": "0.0.1" },
+  "peerDependencies": { "react": ">=18.2.0 <20", "react-dom": ">=18.2.0 <20" },
+  "devDependencies": { "@types/react": "^18.2.0", "@types/react-dom": "^18.2.0", "react": "18.3.1", "react-dom": "18.3.1", "tsup": "^8.0.0", "typescript": "^5.0.0", "vitest": "^1.0.0" },
+  "files": ["dist", "README.md"],
+  "author": "21n",
+  "license": "MIT",
+  "engines": { "node": ">=18 <23" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "uifn/components-react" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "uifn": { "status": "ga-candidate", "layer": "components-framework", "framework": "react", "styling": "styled-open-compounds", "behaviorOwner": "@uifn/react", "schemaVersion": 1, "sourcePolicy": "clean-room" }
+}

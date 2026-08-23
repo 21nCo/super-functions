@@ -1,0 +1,240 @@
+# Toast
+
+Canonical primitive: `toast`.
+
+## Overview
+
+<a id="overview"></a>
+
+Toast is the stable styled status-feedback primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.
+
+## Anatomy
+
+<a id="anatomy"></a>
+
+| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `viewport` | `ToastViewport` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `root` | `ToastRoot` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `title` | `ToastTitle` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `description` | `ToastDescription` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `action` | `ToastAction` | `button` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `close` | `ToastClose` | `button` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+
+## State, actions, and parts
+
+<a id="state-actions-parts"></a>
+
+Controller and context ownership:
+
+- Core: `@uifn/core/toast: createToastController(props, environment?)`
+- State: `ToastState`
+- Actions: `ToastActions`
+- Parts: `ToastController["parts"]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, portal-presence-transitions, form-bridges-live-regions
+- react context: `ToastProvider and useToast(inputs); adapter context remains private`
+- svelte context: `ToastProvider; adapter context remains private to compound descendants`
+- solid context: `ToastProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+- `visible` (semantic)
+- `paused` (semantic)
+- `swiping` (semantic)
+- `exiting` (semantic)
+
+Complete transition signatures:
+
+- `{ type: "ADD" }` — Toast semantic transition event ADD. Source: controller-or-native-contract.
+- `{ type: "UPDATE" }` — Toast semantic transition event UPDATE. Source: controller-or-native-contract.
+- `{ type: "DISMISS" }` — Toast semantic transition event DISMISS. Source: controller-or-native-contract.
+- `{ type: "REMOVE" }` — Toast semantic transition event REMOVE. Source: controller-or-native-contract.
+- `{ type: "PAUSE" }` — Toast semantic transition event PAUSE. Source: controller-or-native-contract.
+- `{ type: "RESUME" }` — Toast semantic transition event RESUME. Source: controller-or-native-contract.
+- `{ type: "SWIPE_START" }` — Toast semantic transition event SWIPE_START. Source: controller-or-native-contract.
+- `{ type: "SWIPE_MOVE" }` — Toast semantic transition event SWIPE_MOVE. Source: controller-or-native-contract.
+- `{ type: "SWIPE_END" }` — Toast semantic transition event SWIPE_END. Source: controller-or-native-contract.
+- `{ type: "SWIPE_CANCEL" }` — Toast semantic transition event SWIPE_CANCEL. Source: controller-or-native-contract.
+- `{ type: "ROUTE_CHANGE" }` — Toast semantic transition event ROUTE_CHANGE. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- No controlled callback is declared; native element event props remain available.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `toasts` | `toast[]` | no | yes | `undefined (no public prop override)` | Optional reactive toasts input from the canonical Toast contract. |
+| `limit` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive limit input from the canonical Toast contract. |
+| `duration` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive duration input from the canonical Toast contract. |
+| `placement` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive placement input from the canonical Toast contract. |
+| `pauseOnHover` | `boolean` | no | yes | `undefined → false` | Optional reactive pauseOnHover input from the canonical Toast contract. |
+| `pauseOnFocus` | `boolean` | no | yes | `undefined → false` | Optional reactive pauseOnFocus input from the canonical Toast contract. |
+| `duplicatePolicy` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive duplicatePolicy input from the canonical Toast contract. |
+| `messages` | `object` | no | yes | `undefined (no public prop override)` | Optional reactive messages input from the canonical Toast contract. |
+| `onDismiss` | `function` | no | yes | `undefined (no public prop override)` | Optional reactive onDismiss input from the canonical Toast contract. |
+| `onRemove` | `function` | no | yes | `undefined (no public prop override)` | Optional reactive onRemove input from the canonical Toast contract. |
+| `onAnnounce` | `function` | no | yes | `undefined (no public prop override)` | Optional reactive onAnnounce input from the canonical Toast contract. |
+
+## Controlled and uncontrolled
+
+<a id="controlled-uncontrolled"></a>
+
+Control mode: `none`. Controlled inputs: none. Uncontrolled defaults: none. Change events: native events only. Do not switch mode after mount.
+
+## Accessibility
+
+<a id="accessibility"></a>
+
+Profile: `status-feedback`. Native semantic basis: Use meter, progressbar, status, timer, step, or alert semantics only as declared for each state.
+
+Accessible name required: yes; accepted sources: visible-label, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 2.1.1, 2.2.1, 2.4.3, 3.2.2, 4.1.2, 4.1.3. Normative basis: native-html, wai-aria-live-regions. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.
+
+## Keyboard, pointer, and touch
+
+<a id="keyboard-pointer-touch"></a>
+
+Keyboard model: `native-or-workflow-specific`; keys: `Tab`, `Shift+Tab`, `Enter`, `Space`, `Escape`. Pointer/touch obligations: action-activation-where-interactive, swipe-with-keyboard-alternative-where-applicable. Focus obligations: do-not-steal-focus-for-passive-status, restore-focus-for-dismissed-workflow.
+
+## Forms
+
+<a id="forms"></a>
+
+Participation: `none`; value shape: `none`; reset: `none`; validation: `none`.
+
+## Direction and locale
+
+<a id="direction-locale"></a>
+
+RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.
+
+## SSR and hydration
+
+<a id="ssr-hydration"></a>
+
+The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, portal-presence-transitions, form-bridges-live-regions) activate only after the DOM is available.
+
+## Composition and styling
+
+<a id="composition-styling"></a>
+
+Use the compound root `Toast` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component="toast"` on all styled parts; stable.
+- `data-uifn-part="viewport | root | title | description | action | close"` on all styled parts; stable.
+- `data-state="idle | visible | paused | swiping | exiting"` on stateful parts; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)
+
+## Package install
+
+<a id="package-install"></a>
+
+Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/toast` | `components/uifn/react/toast.ts` |
+| svelte | `@uifn/components-svelte/toast` | `components/uifn/svelte/toast/index.ts` |
+| solid | `@uifn/components-solid/toast` | `components/uifn/solid/toast.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { ToastViewport } from '@uifn/components-react/toast';
+
+export function ToastExample() {
+  return React.createElement(ToastViewport, {"aria-label":"Toast example"});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { ToastViewport } from './components/uifn/react/toast.js';
+
+export function ToastExample() {
+  return React.createElement(ToastViewport, {"aria-label":"Toast example"});
+}
+```
+
+#### Svelte · package
+
+```svelte
+<script lang="ts">
+  import { ToastViewport } from '@uifn/components-svelte/toast';
+</script>
+
+<ToastViewport aria-label="Toast example" />
+```
+
+#### Svelte · source
+
+```svelte
+<script lang="ts">
+  import { ToastViewport } from './components/uifn/svelte/toast/index.js';
+</script>
+
+<ToastViewport aria-label="Toast example" />
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { ToastViewport } from '@uifn/components-solid/toast';
+
+export function ToastExample() {
+  return createComponent(ToastViewport, {"aria-label":"Toast example"});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { ToastViewport } from './components/uifn/solid/toast.js';
+
+export function ToastExample() {
+  return createComponent(ToastViewport, {"aria-label":"Toast example"});
+}
+```
+
+## Source install
+
+<a id="source-install"></a>
+
+Use `uifn add toast --framework <react|svelte|solid>` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.
+
+## Known constraints
+
+<a id="known-constraints"></a>
+
+Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the status-feedback profile specifically to Toast; implementation vectors own exact behavior.

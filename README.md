@@ -36,7 +36,7 @@
 
 | Function | Description |
 | --- | --- |
-| uiFn | Reusable frontend component primitives and a design studio.<br><br>**Packages:** [npm](https://www.npmjs.com/package/uifn) |
+| [uiFn](./uifn) | Reusable frontend component primitives, themes, framework adapters, catalogs, registry delivery, and design-system tooling.<br><br>**Packages:** `@uifn/*` |
 | docFn | AI native documentation platform.<br><br>**Packages:** [npm](https://www.npmjs.com/package/docfn) |
 
 ## Infrastructure and meta

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "AuthFnAuthPanel",
+  "slug": "authfn-auth-panel",
+  "kind": "sf-pattern",
+  "category": "Superfunction Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [
+    "authfn"
+  ],
+  "controlledCounterpart": "AuthPanel",
+  "clientContract": "AuthFnClient",
+  "props": [
+    "authClient",
+    "status"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "AuthFnAuthPanel({ authClient, status })",
+      "packageImport": "import { AuthFnAuthPanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/react/authfn-auth-panel.ts",
+        "storyFile": "components/sf/react/authfn-auth-panel.stories.ts",
+        "fixtureFile": "components/sf/react/authfn-auth-panel.fixtures.ts",
+        "testFile": "components/sf/react/authfn-auth-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "AuthFnAuthPanel({ authClient, status })",
+      "packageImport": "import { AuthFnAuthPanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/svelte/authfn-auth-panel.ts",
+        "storyFile": "components/sf/svelte/authfn-auth-panel.stories.ts",
+        "fixtureFile": "components/sf/svelte/authfn-auth-panel.fixtures.ts",
+        "testFile": "components/sf/svelte/authfn-auth-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "AuthFnAuthPanel({ authClient, status })",
+      "packageImport": "import { AuthFnAuthPanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/solid/authfn-auth-panel.ts",
+        "storyFile": "components/sf/solid/authfn-auth-panel.stories.ts",
+        "fixtureFile": "components/sf/solid/authfn-auth-panel.fixtures.ts",
+        "testFile": "components/sf/solid/authfn-auth-panel.test.ts"
+      }
+    }
+  },
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/sf/authfn-auth-panel.json",
+    "lockKey": "sf:authfn-auth-panel",
+    "files": [
+      "components/sf/react/authfn-auth-panel.ts",
+      "components/sf/react/authfn-auth-panel.stories.ts",
+      "components/sf/react/authfn-auth-panel.fixtures.ts",
+      "components/sf/react/authfn-auth-panel.test.ts",
+      "components/sf/svelte/authfn-auth-panel.ts",
+      "components/sf/svelte/authfn-auth-panel.stories.ts",
+      "components/sf/svelte/authfn-auth-panel.fixtures.ts",
+      "components/sf/svelte/authfn-auth-panel.test.ts",
+      "components/sf/solid/authfn-auth-panel.ts",
+      "components/sf/solid/authfn-auth-panel.stories.ts",
+      "components/sf/solid/authfn-auth-panel.fixtures.ts",
+      "components/sf/solid/authfn-auth-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "mocked",
+      "status": "implemented",
+      "file": "uifn/sf/stories/authfn-auth-panel.stories.json",
+      "sha256": "f32edc344a75d1fffd5b35cc1d91e0dae08fc280a5100176bcb6f4c841f656cd",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/sf/fixtures/authfn-auth-panel.fixture.json",
+      "sha256": "6359e6190f98e41cc49ecbbe2fbf079c5e584bc3370193200c3237803b828940",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "injected-client",
+      "status": "implemented",
+      "file": "uifn/sf/src/sf.test.ts",
+      "sha256": "c5f9ecb9dcbc6be9af8fb8ed5f632c520768bd874ccda4eed30ab8ddfb927ff2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

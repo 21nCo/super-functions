@@ -1,0 +1,25 @@
+{
+  "name": "@uifn/catalog-react",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Next.js catalog for actual uifn React components, hooks, patterns, and Superfunction panels",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 6211",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@uifn/components": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*",
+    "next": "16.2.10",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
+  }
+}

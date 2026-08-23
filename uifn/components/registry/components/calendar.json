@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "Calendar",
+  "slug": "calendar",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "locale",
+    "keyboard-navigation",
+    "min-max",
+    "disabled-dates"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/data-rich.ts",
+      "exportName": "Calendar"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "exportName": "Calendar"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/data-rich.ts",
+      "exportName": "Calendar"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/calendar.stories.json#default",
+    "uifn/components/stories/data-rich/calendar.stories.json#large-data",
+    "uifn/components/stories/data-rich/calendar.stories.json#keyboard",
+    "uifn/components/stories/data-rich/calendar.stories.json#empty",
+    "uifn/components/stories/data-rich/calendar.stories.json#error",
+    "uifn/components/stories/data-rich/calendar.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/calendar.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
+    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
+    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
+    "uifn/components/src/__tests__/data-rich.test.ts#visual",
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

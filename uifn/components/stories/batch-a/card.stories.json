@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "component": "Card",
+  "slug": "card",
+  "batch": "batch-a",
+  "stories": [
+    {
+      "id": "default",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "variants",
+      "args": {
+        "variant": "primary",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "states",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "accessibility",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "canvas",
+        "unstyled": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "theming",
+      "args": {
+        "variant": "default",
+        "size": "md",
+        "surface": "raised",
+        "unstyled": false
+      },
+      "controls": [
+        "variant",
+        "size",
+        "surface",
+        "surfaceDepth",
+        "unstyled",
+        "className"
+      ],
+      "testUse": [
+        "a11y",
+        "visual"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ]
+    }
+  ]
+}

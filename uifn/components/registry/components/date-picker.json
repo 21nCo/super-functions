@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "DatePicker",
+  "slug": "date-picker",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "calendar-composition",
+    "min-max",
+    "disabled-dates",
+    "form-integration"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/data-rich.ts",
+      "exportName": "DatePicker"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "exportName": "DatePicker"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/data-rich.ts",
+      "exportName": "DatePicker"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/date-picker.stories.json#default",
+    "uifn/components/stories/data-rich/date-picker.stories.json#large-data",
+    "uifn/components/stories/data-rich/date-picker.stories.json#keyboard",
+    "uifn/components/stories/data-rich/date-picker.stories.json#empty",
+    "uifn/components/stories/data-rich/date-picker.stories.json#error",
+    "uifn/components/stories/data-rich/date-picker.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/date-picker.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
+    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
+    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
+    "uifn/components/src/__tests__/data-rich.test.ts#visual",
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

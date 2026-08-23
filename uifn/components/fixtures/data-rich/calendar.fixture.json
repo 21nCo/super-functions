@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "component": "Calendar",
+  "slug": "calendar",
+  "batch": "data-rich",
+  "behavior": [
+    "locale",
+    "keyboard-navigation",
+    "min-max",
+    "disabled-dates"
+  ],
+  "largeData": null,
+  "emptyState": {
+    "enabled": true
+  },
+  "errorState": {
+    "enabled": true
+  },
+  "keyboard": {
+    "enabled": true
+  },
+  "visual": {
+    "themes": [
+      "light",
+      "dark",
+      "high-contrast"
+    ],
+    "viewports": [
+      "mobile",
+      "desktop"
+    ]
+  }
+}

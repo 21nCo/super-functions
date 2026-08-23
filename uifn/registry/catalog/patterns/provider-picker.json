@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "ProviderPicker",
+  "slug": "provider-picker",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "ProviderPicker(props)",
+      "packageImport": "import { ProviderPicker } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/provider-picker.ts",
+        "storyFile": "components/patterns/react/provider-picker.stories.ts",
+        "fixtureFile": "components/patterns/react/provider-picker.fixtures.ts",
+        "testFile": "components/patterns/react/provider-picker.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "ProviderPicker(props)",
+      "packageImport": "import { ProviderPicker } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/provider-picker.ts",
+        "storyFile": "components/patterns/svelte/provider-picker.stories.ts",
+        "fixtureFile": "components/patterns/svelte/provider-picker.fixtures.ts",
+        "testFile": "components/patterns/svelte/provider-picker.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "ProviderPicker(props)",
+      "packageImport": "import { ProviderPicker } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/provider-picker.ts",
+        "storyFile": "components/patterns/solid/provider-picker.stories.ts",
+        "fixtureFile": "components/patterns/solid/provider-picker.fixtures.ts",
+        "testFile": "components/patterns/solid/provider-picker.test.ts"
+      }
+    }
+  },
+  "props": [
+    "providers",
+    "status",
+    "onSelect"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/provider-picker.json",
+    "lockKey": "pattern:provider-picker",
+    "files": [
+      "components/patterns/react/provider-picker.ts",
+      "components/patterns/react/provider-picker.stories.ts",
+      "components/patterns/react/provider-picker.fixtures.ts",
+      "components/patterns/react/provider-picker.test.ts",
+      "components/patterns/svelte/provider-picker.ts",
+      "components/patterns/svelte/provider-picker.stories.ts",
+      "components/patterns/svelte/provider-picker.fixtures.ts",
+      "components/patterns/svelte/provider-picker.test.ts",
+      "components/patterns/solid/provider-picker.ts",
+      "components/patterns/solid/provider-picker.stories.ts",
+      "components/patterns/solid/provider-picker.fixtures.ts",
+      "components/patterns/solid/provider-picker.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/provider-picker.stories.json",
+      "sha256": "5843efacef53ed5243ab7a8c6cefef22eb2ef6831d7b74a6a56950180a78ffd5",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/provider-picker.stories.json",
+      "sha256": "5843efacef53ed5243ab7a8c6cefef22eb2ef6831d7b74a6a56950180a78ffd5",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/provider-picker.stories.json",
+      "sha256": "5843efacef53ed5243ab7a8c6cefef22eb2ef6831d7b74a6a56950180a78ffd5",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/provider-picker.fixture.json",
+      "sha256": "13c080b23c90c3bcb9499edf3f9aa45e6aa86b3a5afcb58f8c589d21f5f6845b",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

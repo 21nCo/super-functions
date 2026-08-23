@@ -1,0 +1,45 @@
+{
+  "name": "@uifn/dom",
+  "version": "0.0.1",
+  "description": "Owned DOM platform boundary for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch",
+    "test": "vitest run",
+    "test:browser": "playwright test --config playwright.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
+    "@uifn/core": "0.0.1",
+    "tabbable": "^6.5.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.57.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "5.4.21",
+    "vitest": "^3.2.4"
+  },
+  "files": ["dist", "README.md", "DEPENDENCIES.md"],
+  "author": "21n",
+  "license": "MIT",
+  "engines": { "node": ">=20 <25" },
+  "repository": { "type": "git", "url": "git+https://github.com/21nCo/super-functions.git", "directory": "uifn/dom" },
+  "publishConfig": { "access": "public" },
+  "uifn": { "status": "ga-candidate", "layer": "dom", "schemaVersion": 1, "sourcePolicy": "clean-room" }
+}

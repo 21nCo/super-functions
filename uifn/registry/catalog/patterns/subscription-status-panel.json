@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "SubscriptionStatusPanel",
+  "slug": "subscription-status-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "SubscriptionStatusPanel(props)",
+      "packageImport": "import { SubscriptionStatusPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/subscription-status-panel.ts",
+        "storyFile": "components/patterns/react/subscription-status-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/subscription-status-panel.fixtures.ts",
+        "testFile": "components/patterns/react/subscription-status-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "SubscriptionStatusPanel(props)",
+      "packageImport": "import { SubscriptionStatusPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/subscription-status-panel.ts",
+        "storyFile": "components/patterns/svelte/subscription-status-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/subscription-status-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/subscription-status-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "SubscriptionStatusPanel(props)",
+      "packageImport": "import { SubscriptionStatusPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/subscription-status-panel.ts",
+        "storyFile": "components/patterns/solid/subscription-status-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/subscription-status-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/subscription-status-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "data",
+    "status",
+    "onManage",
+    "onCancel"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/subscription-status-panel.json",
+    "lockKey": "pattern:subscription-status-panel",
+    "files": [
+      "components/patterns/react/subscription-status-panel.ts",
+      "components/patterns/react/subscription-status-panel.stories.ts",
+      "components/patterns/react/subscription-status-panel.fixtures.ts",
+      "components/patterns/react/subscription-status-panel.test.ts",
+      "components/patterns/svelte/subscription-status-panel.ts",
+      "components/patterns/svelte/subscription-status-panel.stories.ts",
+      "components/patterns/svelte/subscription-status-panel.fixtures.ts",
+      "components/patterns/svelte/subscription-status-panel.test.ts",
+      "components/patterns/solid/subscription-status-panel.ts",
+      "components/patterns/solid/subscription-status-panel.stories.ts",
+      "components/patterns/solid/subscription-status-panel.fixtures.ts",
+      "components/patterns/solid/subscription-status-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/subscription-status-panel.stories.json",
+      "sha256": "bbfe7e1a94c6b2fba75e12622893ab707499441d1e144d564ecafd9d470b83ef",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/subscription-status-panel.stories.json",
+      "sha256": "bbfe7e1a94c6b2fba75e12622893ab707499441d1e144d564ecafd9d470b83ef",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/subscription-status-panel.stories.json",
+      "sha256": "bbfe7e1a94c6b2fba75e12622893ab707499441d1e144d564ecafd9d470b83ef",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/subscription-status-panel.fixture.json",
+      "sha256": "a641023be594150cf07edd6afdea5003c665302f8f9c804a47bd629aeeb483e4",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "pattern": "InvoiceTable",
+  "slug": "invoice-table",
+  "kind": "pattern-story",
+  "compatibilityPanel": {
+    "name": "InvoiceTable",
+    "status": "beta",
+    "dependencies": [
+      "Table",
+      "Button",
+      "Badge"
+    ],
+    "frameworks": [
+      "react",
+      "svelte",
+      "solid"
+    ],
+    "backing": []
+  },
+  "stories": [
+    {
+      "id": "loading",
+      "args": {
+        "status": "loading"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "empty",
+      "args": {
+        "status": "empty"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "error",
+      "args": {
+        "status": "error"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "partial",
+      "args": {
+        "status": "partial"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "permission-denied",
+      "args": {
+        "status": "permission-denied"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "optimistic",
+      "args": {
+        "status": "optimistic"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "success",
+      "args": {
+        "status": "success"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "degraded-network",
+      "args": {
+        "status": "degraded-network"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "unsupported-capability",
+      "args": {
+        "status": "unsupported-capability"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "visual",
+      "args": {
+        "status": "success"
+      },
+      "controls": [
+        "invoices",
+        "status",
+        "onDownload"
+      ],
+      "testUse": [
+        "visual",
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    }
+  ]
+}

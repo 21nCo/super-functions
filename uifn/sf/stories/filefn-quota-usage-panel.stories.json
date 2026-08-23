@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "sfPattern": "FileFnQuotaUsagePanel",
+  "slug": "filefn-quota-usage-panel",
+  "compatibilityPanel": {
+    "name": "FileFnQuotaUsagePanel",
+    "status": "beta",
+    "backing": [
+      "filefn"
+    ],
+    "frameworks": [
+      "react",
+      "svelte",
+      "solid"
+    ],
+    "controlledCounterpart": "QuotaUsagePanel",
+    "clientContract": "FileFnClient"
+  },
+  "decorators": [
+    "theme",
+    "density",
+    "locale",
+    "viewport",
+    "a11y",
+    "sf-mocks"
+  ],
+  "credentials": {
+    "type": "fake",
+    "tenant": "tenant_demo"
+  },
+  "stories": [
+    {
+      "id": "loading",
+      "args": {
+        "status": "loading",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "empty",
+      "args": {
+        "status": "empty",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "error",
+      "args": {
+        "status": "error",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "partial",
+      "args": {
+        "status": "partial",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "permission-denied",
+      "args": {
+        "status": "permission-denied",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "optimistic",
+      "args": {
+        "status": "optimistic",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "success",
+      "args": {
+        "status": "success",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "degraded-network",
+      "args": {
+        "status": "degraded-network",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "id": "unsupported-capability",
+      "args": {
+        "status": "unsupported-capability",
+        "client": "mock-filefn"
+      },
+      "controls": [
+        "fileClient",
+        "status"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ]
+    }
+  ]
+}

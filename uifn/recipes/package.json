@@ -1,0 +1,60 @@
+{
+  "name": "@uifn/recipes",
+  "version": "0.0.1",
+  "description": "Typed multi-target style recipes for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./component": {
+      "types": "./dist/component.d.ts",
+      "import": "./dist/component.mjs",
+      "require": "./dist/component.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/component.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts src/component.ts --format esm,cjs --dts --clean --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@uifn/theme": "0.0.1",
+    "@uifn/tokens": "0.0.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/recipes"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "styling",
+    "schemaVersion": 1,
+    "sourcePolicy": "clean-room"
+  }
+}

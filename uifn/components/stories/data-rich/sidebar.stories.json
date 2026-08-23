@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "component": "Sidebar",
+  "slug": "sidebar",
+  "batch": "data-rich",
+  "stories": [
+    {
+      "id": "default",
+      "args": {
+        "scenario": "default",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "large-data",
+      "args": {
+        "scenario": "large-data",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "keyboard",
+      "args": {
+        "scenario": "keyboard",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "empty",
+      "args": {
+        "scenario": "empty",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "error",
+      "args": {
+        "scenario": "error",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "viewport": [
+        "desktop"
+      ],
+      "themes": [
+        "light"
+      ]
+    },
+    {
+      "id": "visual",
+      "args": {
+        "scenario": "visual",
+        "virtualized": false
+      },
+      "controls": [
+        "scenario",
+        "disabled",
+        "loading",
+        "error",
+        "value",
+        "pageSize"
+      ],
+      "testUse": [
+        "visual",
+        "a11y"
+      ],
+      "viewport": [
+        "mobile",
+        "desktop"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ]
+    }
+  ]
+}

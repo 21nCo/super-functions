@@ -1,0 +1,147 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>HoverCard · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="hover-card"><h1>HoverCard</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>HoverCard is the stable styled modal-overlay primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `HoverCardRoot` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `trigger` | `HoverCardTrigger` | `a` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `positioner` | `HoverCardPositioner` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `content` | `HoverCardContent` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `arrow` | `HoverCardArrow` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/hover-card: createHoverCardController(props, environment?)`
+- State: `HoverCardState`
+- Actions: `HoverCardActions`
+- Parts: `HoverCardController[&quot;parts&quot;]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, dismissable-layer, focus-scope, positioning-auto-update, portal-presence-transitions
+- react context: `HoverCardProvider and useHoverCard(inputs); adapter context remains private`
+- svelte context: `HoverCardProvider; adapter context remains private to compound descendants`
+- solid context: `HoverCardProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `closed` (semantic)
+- `opening-delay` (semantic)
+- `open` (semantic)
+- `closing-delay` (semantic)
+
+Complete transition signatures:
+
+- `{ type: &quot;POINTER_ENTER&quot; }` — HoverCard semantic transition event POINTER_ENTER. Source: controller-or-native-contract.
+- `{ type: &quot;POINTER_LEAVE&quot; }` — HoverCard semantic transition event POINTER_LEAVE. Source: controller-or-native-contract.
+- `{ type: &quot;FOCUS&quot; }` — HoverCard semantic transition event FOCUS. Source: controller-or-native-contract.
+- `{ type: &quot;BLUR&quot; }` — HoverCard semantic transition event BLUR. Source: controller-or-native-contract.
+- `{ type: &quot;OPEN&quot;; reason?: string }` — HoverCard semantic transition event OPEN. Source: controller-or-native-contract.
+- `{ type: &quot;CLOSE&quot;; reason?: string }` — HoverCard semantic transition event CLOSE. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- `onOpenChange(value: boolean) =&gt; void` — Called after HoverCard requests a open change. Controlled consumers must commit the value back through open.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `open` | `boolean` | no | yes | `undefined → false` | Optional reactive open input from the canonical HoverCard contract. |
+| `defaultOpen` | `boolean` | no | yes | `undefined → false` | Optional reactive defaultOpen input from the canonical HoverCard contract. |
+| `openDelay` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive openDelay input from the canonical HoverCard contract. |
+| `closeDelay` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive closeDelay input from the canonical HoverCard contract. |
+| `placement` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive placement input from the canonical HoverCard contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `single`. Controlled inputs: `open`. Uncontrolled defaults: `defaultOpen`. Change events: `OPEN_CHANGE`. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `modal-overlay`. Native semantic basis: Use dialog or tooltip semantics appropriate to the primitive and never apply one generic overlay role.
+
+Accessible name required: yes; accepted sources: title-part, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 1.4.13, 2.1.1, 2.1.2, 2.4.3, 2.4.7, 2.4.11, 4.1.2. Normative basis: native-html, wai-aria-apg-dialog-modal, wai-aria-apg-tooltip. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `overlay-specific`; keys: `Tab`, `Shift+Tab`, `Escape`, `Enter`, `Space`. Pointer/touch obligations: trigger-activation, outside-interaction-by-declared-policy, touch-cancellation. Focus obligations: initial-focus, containment-when-modal, restore-focus, nested-scope-arbitration.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `none`; value shape: `none`; reset: `none`; validation: `none`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, dismissable-layer, focus-scope, positioning-auto-update, portal-presence-transitions) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `HoverCard` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;hover-card&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | trigger | positioner | content | arrow&quot;` on all styled parts; stable.
+- `data-state=&quot;closed | opening-delay | open | closing-delay&quot;` on stateful parts; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/hover-card` | `components/uifn/react/hover-card.ts` |
+| svelte | `@uifn/components-svelte/hover-card` | `components/uifn/svelte/hover-card/HoverCardArrow.svelte` |
+| solid | `@uifn/components-solid/hover-card` | `components/uifn/solid/hover-card.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { HoverCardRoot } from '@uifn/components-react/hover-card';
+
+export function HoverCardExample() {
+  return React.createElement(HoverCardRoot, {});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { HoverCardRoot } from './components/uifn/react/hover-card.js';
+
+export function HoverCardExample() {
+  return React.createElement(HoverCardRoot, {});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { HoverCardRoot } from '@uifn/components-svelte/hover-card';
+&lt;/script&gt;
+
+&lt;HoverCardRoot  /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { HoverCardRoot } from './components/uifn/svelte/hover-card/index.js';
+&lt;/script&gt;
+
+&lt;HoverCardRoot  /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { HoverCardRoot } from '@uifn/components-solid/hover-card';
+
+export function HoverCardExample() {
+  return createComponent(HoverCardRoot, {});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { HoverCardRoot } from './components/uifn/solid/hover-card.js';
+
+export function HoverCardExample() {
+  return createComponent(HoverCardRoot, {});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add hover-card --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the modal-overlay profile specifically to HoverCard; implementation vectors own exact behavior.</pre></section></main></body></html>

@@ -1,0 +1,60 @@
+{
+  "name": "@uifn/theme-tailwind",
+  "version": "0.0.1",
+  "description": "Tailwind preset and plugin generation for uifn themes and recipes",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@uifn/recipes": "0.0.1",
+    "@uifn/theme": "0.0.1",
+    "@uifn/tokens": "0.0.1"
+  },
+  "peerDependencies": {
+    "tailwindcss": ">=3 <5"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/theme-tailwind"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "styling",
+    "schemaVersion": 1,
+    "sourcePolicy": "clean-room"
+  }
+}

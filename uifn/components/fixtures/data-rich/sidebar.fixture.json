@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "component": "Sidebar",
+  "slug": "sidebar",
+  "batch": "data-rich",
+  "behavior": [
+    "responsive-collapse",
+    "keyboard-navigation",
+    "persistent-state"
+  ],
+  "largeData": null,
+  "emptyState": {
+    "enabled": true
+  },
+  "errorState": {
+    "enabled": true
+  },
+  "keyboard": {
+    "enabled": true
+  },
+  "visual": {
+    "themes": [
+      "light",
+      "dark",
+      "high-contrast"
+    ],
+    "viewports": [
+      "mobile",
+      "desktop"
+    ]
+  }
+}

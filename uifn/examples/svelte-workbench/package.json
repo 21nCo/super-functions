@@ -1,0 +1,25 @@
+{
+  "name": "@uifn/example-svelte-workbench",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Svelte Workbench app for uifn component, pattern, and Superfunction browser QA",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 6112",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 6112",
+    "browser-test": "node ../../../scripts/verify-uifn-browser.mjs --framework svelte"
+  },
+  "dependencies": {
+    "@uifn/components": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*",
+    "svelte": "^5.46.1"
+  },
+  "devDependencies": {
+    "@uifn/vite-plugin-svelte": "npm:@sveltejs/vite-plugin-svelte@4.0.4",
+    "typescript": "^6.0.2",
+    "vite": "^5.4.21"
+  }
+}

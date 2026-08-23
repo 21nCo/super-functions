@@ -1,0 +1,865 @@
+{
+  "catalogSha256": "eaf2782a22ad3a0153f29e8de410631438fd280d5c29905f7a37694178cb1f2d",
+  "catalogVersion": "1.0.0",
+  "domServices": [
+    "root-scope-modality-tabbability",
+    "dismissable-layer",
+    "focus-scope",
+    "modal-isolation-scroll-lock",
+    "positioning-auto-update",
+    "portal-presence-transitions",
+    "form-bridges-live-regions"
+  ],
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "portal-presence-transitions"
+      ],
+      "id": "accordion",
+      "name": "Accordion",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "modal-isolation-scroll-lock",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "alert-dialog",
+      "name": "AlertDialog",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "angle-slider",
+      "name": "AngleSlider",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "autocomplete",
+      "name": "Autocomplete",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "avatar",
+      "name": "Avatar",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "button",
+      "name": "Button",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions",
+        "portal-presence-transitions"
+      ],
+      "id": "carousel",
+      "name": "Carousel",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "checkbox",
+      "name": "Checkbox",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "checkbox-group",
+      "name": "CheckboxGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "clipboard",
+      "name": "Clipboard",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "portal-presence-transitions"
+      ],
+      "id": "collapsible",
+      "name": "Collapsible",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "color-picker",
+      "name": "ColorPicker",
+      "requirements": [
+        "CAT-001",
+        "PRIM-007"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "combobox",
+      "name": "Combobox",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "context-menu",
+      "name": "ContextMenu",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "date-input",
+      "name": "DateInput",
+      "requirements": [
+        "CAT-001",
+        "PRIM-007"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "date-picker",
+      "name": "DatePicker",
+      "requirements": [
+        "CAT-001",
+        "PRIM-007"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "modal-isolation-scroll-lock",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "dialog",
+      "name": "Dialog",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "modal-isolation-scroll-lock",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "drawer",
+      "name": "Drawer",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "editable",
+      "name": "Editable",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "field",
+      "name": "Field",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "fieldset",
+      "name": "Fieldset",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "file-upload",
+      "name": "FileUpload",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "floating-panel",
+      "name": "FloatingPanel",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "form",
+      "name": "Form",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "hover-card",
+      "name": "HoverCard",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "image-cropper",
+      "name": "ImageCropper",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "input",
+      "name": "Input",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "listbox",
+      "name": "Listbox",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "marquee",
+      "name": "Marquee",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "menu",
+      "name": "Menu",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "menubar",
+      "name": "Menubar",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "meter",
+      "name": "Meter",
+      "requirements": [
+        "CAT-001",
+        "PRIM-008"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "navigation-menu",
+      "name": "NavigationMenu",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "number-input",
+      "name": "NumberInput",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "pagination",
+      "name": "Pagination",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "password-input",
+      "name": "PasswordInput",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "pin-input",
+      "name": "PinInput",
+      "requirements": [
+        "CAT-001",
+        "PRIM-005"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "popover",
+      "name": "Popover",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "progress",
+      "name": "Progress",
+      "requirements": [
+        "CAT-001",
+        "PRIM-008"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "qr-code",
+      "name": "QRCode",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "radio-group",
+      "name": "RadioGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "rating-group",
+      "name": "RatingGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "scroll-area",
+      "name": "ScrollArea",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "segment-group",
+      "name": "SegmentGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "select",
+      "name": "Select",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "separator",
+      "name": "Separator",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "signature-pad",
+      "name": "SignaturePad",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "slider",
+      "name": "Slider",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "splitter",
+      "name": "Splitter",
+      "requirements": [
+        "CAT-001",
+        "PRIM-006"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "steps",
+      "name": "Steps",
+      "requirements": [
+        "CAT-001",
+        "PRIM-008"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "switch",
+      "name": "Switch",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "tabs",
+      "name": "Tabs",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "tags-input",
+      "name": "TagsInput",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "timer",
+      "name": "Timer",
+      "requirements": [
+        "CAT-001",
+        "PRIM-007"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "toast",
+      "name": "Toast",
+      "requirements": [
+        "CAT-001",
+        "PRIM-008"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "toggle",
+      "name": "Toggle",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "toggle-group",
+      "name": "ToggleGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability"
+      ],
+      "id": "toolbar",
+      "name": "Toolbar",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "positioning-auto-update",
+        "portal-presence-transitions"
+      ],
+      "id": "tooltip",
+      "name": "Tooltip",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "dismissable-layer",
+        "focus-scope",
+        "modal-isolation-scroll-lock",
+        "positioning-auto-update",
+        "portal-presence-transitions",
+        "form-bridges-live-regions"
+      ],
+      "id": "tour",
+      "name": "Tour",
+      "requirements": [
+        "CAT-001",
+        "PRIM-002"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "tree-view",
+      "name": "TreeView",
+      "requirements": [
+        "CAT-001",
+        "PRIM-003",
+        "PRIM-008"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "badge",
+      "name": "Badge",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "breadcrumb",
+      "name": "Breadcrumb",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "card",
+      "name": "Card",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "root-scope-modality-tabbability",
+        "form-bridges-live-regions"
+      ],
+      "id": "command",
+      "name": "Command",
+      "requirements": [
+        "CAT-001",
+        "PRIM-004"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "input-group",
+      "name": "InputGroup",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "skeleton",
+      "name": "Skeleton",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [],
+      "id": "table",
+      "name": "Table",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    },
+    {
+      "domServices": [
+        "form-bridges-live-regions"
+      ],
+      "id": "textarea",
+      "name": "Textarea",
+      "requirements": [
+        "CAT-001",
+        "PRIM-001"
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceSha256": "b1c584fe1444a6350203be6ff3f226004e5d29b25433ba241c97b6f1edfeefb7"
+}

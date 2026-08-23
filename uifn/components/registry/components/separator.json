@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "Separator",
+  "slug": "separator",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Separator"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Separator"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Separator"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/separator.stories.json#default",
+    "uifn/components/stories/batch-a/separator.stories.json#variants",
+    "uifn/components/stories/batch-a/separator.stories.json#states",
+    "uifn/components/stories/batch-a/separator.stories.json#accessibility",
+    "uifn/components/stories/batch-a/separator.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/separator.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#render",
+    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-a.test.ts#visual",
+    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

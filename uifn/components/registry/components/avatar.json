@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "name": "Avatar",
+  "slug": "avatar",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "image",
+    "fallback"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Avatar"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Avatar"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Avatar"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/avatar.stories.json#default",
+    "uifn/components/stories/batch-a/avatar.stories.json#variants",
+    "uifn/components/stories/batch-a/avatar.stories.json#states",
+    "uifn/components/stories/batch-a/avatar.stories.json#accessibility",
+    "uifn/components/stories/batch-a/avatar.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/avatar.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#render",
+    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-a.test.ts#visual",
+    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

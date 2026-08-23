@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "pattern": "UserProfileCard",
+  "slug": "user-profile-card",
+  "kind": "pattern-story",
+  "compatibilityPanel": {
+    "name": "UserProfileCard",
+    "status": "beta",
+    "dependencies": [
+      "Card",
+      "Avatar",
+      "Button"
+    ],
+    "frameworks": [
+      "react",
+      "svelte",
+      "solid"
+    ],
+    "backing": []
+  },
+  "stories": [
+    {
+      "id": "loading",
+      "args": {
+        "status": "loading"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "empty",
+      "args": {
+        "status": "empty"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "error",
+      "args": {
+        "status": "error"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "partial",
+      "args": {
+        "status": "partial"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "permission-denied",
+      "args": {
+        "status": "permission-denied"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "optimistic",
+      "args": {
+        "status": "optimistic"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "success",
+      "args": {
+        "status": "success"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "interaction",
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "degraded-network",
+      "args": {
+        "status": "degraded-network"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "unsupported-capability",
+      "args": {
+        "status": "unsupported-capability"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    },
+    {
+      "id": "visual",
+      "args": {
+        "status": "success"
+      },
+      "controls": [
+        "data",
+        "status",
+        "onUpdate"
+      ],
+      "testUse": [
+        "visual",
+        "a11y"
+      ],
+      "themes": [
+        "light",
+        "dark",
+        "high-contrast"
+      ],
+      "viewport": [
+        "mobile",
+        "tablet",
+        "desktop"
+      ]
+    }
+  ]
+}

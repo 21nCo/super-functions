@@ -1,0 +1,6 @@
+{
+  "id": "unsupported-family",
+  "description": "Assign Accordion a behavior family outside the versioned enum.",
+  "mutation": { "primitive": "Accordion", "setField": "behaviorFamily", "value": "mystery-widget" },
+  "expectedErrorCodes": ["UIFN_CATALOG_UNSUPPORTED_VALUE"]
+}

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "name": "Label",
+  "slug": "label",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "text",
+    "requiredIndicator"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Label"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Label"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Label"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/label.stories.json#default",
+    "uifn/components/stories/batch-a/label.stories.json#variants",
+    "uifn/components/stories/batch-a/label.stories.json#states",
+    "uifn/components/stories/batch-a/label.stories.json#accessibility",
+    "uifn/components/stories/batch-a/label.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/label.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#render",
+    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-a.test.ts#visual",
+    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

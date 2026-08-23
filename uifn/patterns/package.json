@@ -1,0 +1,59 @@
+{
+  "name": "@uifn/patterns",
+  "version": "0.2.0-experimental.0",
+  "description": "Backend-agnostic product patterns for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@uifn/components": "0.0.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/patterns"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "experimental"
+  },
+  "uifn": {
+    "status": "experimental",
+    "layer": "patterns",
+    "schemaVersion": 1,
+    "sourcePolicy": "clean-room",
+    "releaseLane": "experimental",
+    "stableBlocking": false,
+    "versionPolicy": "independent"
+  }
+}

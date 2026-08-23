@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "SessionList",
+  "slug": "session-list",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "SessionList(props)",
+      "packageImport": "import { SessionList } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/session-list.ts",
+        "storyFile": "components/patterns/react/session-list.stories.ts",
+        "fixtureFile": "components/patterns/react/session-list.fixtures.ts",
+        "testFile": "components/patterns/react/session-list.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "SessionList(props)",
+      "packageImport": "import { SessionList } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/session-list.ts",
+        "storyFile": "components/patterns/svelte/session-list.stories.ts",
+        "fixtureFile": "components/patterns/svelte/session-list.fixtures.ts",
+        "testFile": "components/patterns/svelte/session-list.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "SessionList(props)",
+      "packageImport": "import { SessionList } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/session-list.ts",
+        "storyFile": "components/patterns/solid/session-list.stories.ts",
+        "fixtureFile": "components/patterns/solid/session-list.fixtures.ts",
+        "testFile": "components/patterns/solid/session-list.test.ts"
+      }
+    }
+  },
+  "props": [
+    "sessions",
+    "status",
+    "onRevoke"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/session-list.json",
+    "lockKey": "pattern:session-list",
+    "files": [
+      "components/patterns/react/session-list.ts",
+      "components/patterns/react/session-list.stories.ts",
+      "components/patterns/react/session-list.fixtures.ts",
+      "components/patterns/react/session-list.test.ts",
+      "components/patterns/svelte/session-list.ts",
+      "components/patterns/svelte/session-list.stories.ts",
+      "components/patterns/svelte/session-list.fixtures.ts",
+      "components/patterns/svelte/session-list.test.ts",
+      "components/patterns/solid/session-list.ts",
+      "components/patterns/solid/session-list.stories.ts",
+      "components/patterns/solid/session-list.fixtures.ts",
+      "components/patterns/solid/session-list.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/session-list.stories.json",
+      "sha256": "e0b86c2ecab82ddd3ca6ae4686684141aa1c7543dcbbc78a4b529dc73d8d165d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/session-list.stories.json",
+      "sha256": "e0b86c2ecab82ddd3ca6ae4686684141aa1c7543dcbbc78a4b529dc73d8d165d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/session-list.stories.json",
+      "sha256": "e0b86c2ecab82ddd3ca6ae4686684141aa1c7543dcbbc78a4b529dc73d8d165d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/session-list.fixture.json",
+      "sha256": "adb1bce596e1e3adc084fa3189ef2cb9aec4b0d087a2cc2fc9da9fc8196618b4",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

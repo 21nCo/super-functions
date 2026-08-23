@@ -1,0 +1,18 @@
+# Unified deployment staging
+/dist/
+
+# Framework build output and caches
+/angular/.angular/
+/angular/dist/
+/react/.next/
+/react/out/
+/solid/.output/
+/solid/.vinxi/
+/svelte/.svelte-kit/
+/svelte/build/
+/vue/.nuxt/
+/vue/.output/
+/vue/dist
+
+# Wrangler local state
+/.wrangler/

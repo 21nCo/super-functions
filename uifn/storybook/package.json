@@ -1,0 +1,99 @@
+{
+  "name": "@uifn/storybook",
+  "version": "0.0.1",
+  "description": "Storybook preset and compatibility surface for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./preset": {
+      "types": "./dist/preset.d.ts",
+      "import": "./dist/preset.mjs",
+      "require": "./dist/preset.js"
+    },
+    "./preview": {
+      "types": "./dist/preview.d.ts",
+      "import": "./dist/preview.mjs",
+      "require": "./dist/preview.js"
+    },
+    "./manager": {
+      "types": "./dist/manager.d.ts",
+      "import": "./dist/manager.mjs",
+      "require": "./dist/manager.js"
+    }
+  },
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-docs-storybook.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-docs-storybook.mjs --check",
+    "build": "tsup src/index.ts src/preset.ts src/preview.ts src/manager.ts --format esm,cjs --dts --external react --external storybook --external storybook/manager-api",
+    "build:react": "storybook build --config-dir workbenches/react/.storybook --output-dir storybook-static/react --disable-telemetry",
+    "build:svelte": "storybook build --config-dir workbenches/svelte/.storybook --output-dir storybook-static/svelte --disable-telemetry",
+    "build:solid": "storybook build --config-dir workbenches/solid/.storybook --output-dir storybook-static/solid --disable-telemetry",
+    "build:workbenches": "npm run build:react && npm run build:svelte && npm run build:solid",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run generate:check && npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@uifn/registry": "0.0.1",
+    "@uifn/theme": "0.0.1"
+  },
+  "peerDependencies": {
+    "react": ">=18 <20",
+    "storybook": ">=10 <11"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "10.5.3",
+    "@storybook/addon-docs": "10.5.3",
+    "@storybook/react-vite": "10.5.3",
+    "@storybook/svelte-vite": "10.5.3",
+    "@sveltejs/vite-plugin-svelte": "6.2.4",
+    "@types/react": "18.3.28",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "solid-js": "1.9.13",
+    "storybook": "10.5.3",
+    "storybook-solidjs-vite": "10.6.0",
+    "svelte": "5.46.4",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vite-plugin-solid": "2.11.10",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19 <25"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/storybook"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "storybook",
+    "schemaVersion": 2,
+    "sourcePolicy": "clean-room"
+  }
+}

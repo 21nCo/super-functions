@@ -1,0 +1,110 @@
+{
+  "name": "@uifn/svelte",
+  "version": "0.0.2",
+  "description": "Catalog-complete, permanently headless Svelte 5 compounds for uifn primitives",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "svelte": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./hooks/copy-to-clipboard": {
+      "types": "./dist/hooks/copy-to-clipboard.d.ts",
+      "svelte": "./dist/hooks/copy-to-clipboard.js",
+      "import": "./dist/hooks/copy-to-clipboard.js",
+      "default": "./dist/hooks/copy-to-clipboard.js"
+    },
+    "./hooks/media-query": {
+      "types": "./dist/hooks/media-query.d.ts",
+      "svelte": "./dist/hooks/media-query.js",
+      "import": "./dist/hooks/media-query.js",
+      "default": "./dist/hooks/media-query.js"
+    },
+    "./*": {
+      "types": "./dist/generated/*/index.d.ts",
+      "svelte": "./dist/generated/*/index.js",
+      "import": "./dist/generated/*/index.js",
+      "default": "./dist/generated/*/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "**/*.svelte"
+  ],
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-svelte.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-svelte.mjs --check",
+    "build": "svelte-package -i lib -o dist --tsconfig ./tsconfig.json",
+    "dev": "svelte-package -i lib -o dist --tsconfig ./tsconfig.json --watch",
+    "test": "vitest run --config vitest.config.mts",
+    "lint": "svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "prepack": "npm run generate:check && npm run build"
+  },
+  "dependencies": {
+    "@uifn/adapter-kit": "0.0.1",
+    "@uifn/core": "0.0.1",
+    "@uifn/dom": "0.0.1"
+  },
+  "peerDependencies": {
+    "svelte": ">=5.20.0 <6"
+  },
+  "devDependencies": {
+    "@sveltejs/package": "^2.5.8",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
+    "jsdom": "^27.0.1",
+    "playwright": "^1.57.0",
+    "svelte": "^5.46.4",
+    "svelte-check": "^4.7.3",
+    "typescript": "^5.0.0",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "vitest-axe": "^0.1.0"
+  },
+  "keywords": [
+    "svelte",
+    "svelte5",
+    "ui",
+    "components",
+    "primitives",
+    "headless",
+    "accessible"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20 <25"
+  },
+  "bugs": {
+    "url": "https://github.com/21nCo/super-functions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/svelte"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "adapter",
+    "styling": "permanently-headless",
+    "schemaVersion": 1,
+    "catalogGenerated": true,
+    "sourcePolicy": "clean-room"
+  }
+}

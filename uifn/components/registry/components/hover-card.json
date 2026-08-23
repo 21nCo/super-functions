@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "name": "HoverCard",
+  "slug": "hover-card",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "trigger",
+    "content",
+    "arrow"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "HoverCard"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "HoverCard"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "HoverCard"
+    }
+  },
+  "behavior": [
+    "portal",
+    "focus-management",
+    "escape-key",
+    "outside-interaction"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/hover-card.stories.json#default",
+    "uifn/components/stories/batch-b/hover-card.stories.json#variants",
+    "uifn/components/stories/batch-b/hover-card.stories.json#states",
+    "uifn/components/stories/batch-b/hover-card.stories.json#accessibility",
+    "uifn/components/stories/batch-b/hover-card.stories.json#theming",
+    "uifn/components/stories/batch-b/hover-card.stories.json#keyboard",
+    "uifn/components/stories/batch-b/hover-card.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/hover-card.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#render",
+    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
+    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
+    "uifn/components/src/__tests__/batch-b.test.ts#visual",
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}
