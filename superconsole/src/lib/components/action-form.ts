@@ -42,7 +42,17 @@ export function editableActionFields(action: AdminActionViewModel): ActionInputF
   const collectObjectShape = (candidate: AdminJsonSchema): void => {
     for (const name of candidate.required ?? []) required.add(name);
     for (const [name, property] of Object.entries(candidate.properties ?? {})) {
-      properties[name] = properties[name] ? { ...properties[name], ...property } : property;
+      const existing = properties[name];
+      properties[name] = existing
+        ? {
+            ...existing,
+            ...property,
+            type: property.type ?? existing.type,
+            title: property.title ?? existing.title,
+            description: property.description ?? existing.description,
+            allOf: [existing, property],
+          }
+        : property;
     }
     for (const branch of candidate.allOf ?? []) collectObjectShape(branch);
   };
@@ -85,6 +95,10 @@ function schemaTypeMatches(schema: AdminJsonSchema, value: unknown): boolean {
 }
 
 function nestedSchemaError(schema: AdminJsonSchema, value: unknown, path: string): string | undefined {
+  for (const candidate of schema.allOf ?? []) {
+    const error = nestedSchemaError(candidate, value, path);
+    if (error) return error;
+  }
   if (!schemaTypeMatches(schema, value)) return `${path} has the wrong value type.`;
   if (schema.const !== undefined && !Object.is(value, schema.const)) return `${path} must equal the declared constant.`;
   if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) {
@@ -148,7 +162,9 @@ function parseField(field: ActionInputField, raw: ActionDraftValue): { value?: u
         ? { error: `${field.label} is required.` }
         : { omit: true };
     }
-    return { value: raw === true };
+    const value = raw === true;
+    const error = nestedSchemaError(field.schema, value, field.label);
+    return error ? { error } : { value };
   }
 
   const text = typeof raw === 'string' ? raw : '';
@@ -163,13 +179,8 @@ function parseField(field: ActionInputField, raw: ActionDraftValue): { value?: u
     if (!Number.isFinite(value) || (field.type === 'integer' && !Number.isInteger(value))) {
       return { error: `${field.label} must be a valid ${field.type}.` };
     }
-    if (typeof field.schema.minimum === 'number' && value < field.schema.minimum) {
-      return { error: `${field.label} must be at least ${field.schema.minimum}.` };
-    }
-    if (typeof field.schema.maximum === 'number' && value > field.schema.maximum) {
-      return { error: `${field.label} must be at most ${field.schema.maximum}.` };
-    }
-    return { value };
+    const error = nestedSchemaError(field.schema, value, field.label);
+    return error ? { error } : { value };
   }
 
   if (field.type === 'object' || field.type === 'array') {
@@ -186,16 +197,8 @@ function parseField(field: ActionInputField, raw: ActionDraftValue): { value?: u
     }
   }
 
-  if (typeof field.schema.minLength === 'number' && text.length < field.schema.minLength) {
-    return { error: `${field.label} must contain at least ${field.schema.minLength} characters.` };
-  }
-  if (typeof field.schema.maxLength === 'number' && text.length > field.schema.maxLength) {
-    return { error: `${field.label} must contain at most ${field.schema.maxLength} characters.` };
-  }
-  if (Array.isArray(field.schema.enum) && !field.schema.enum.includes(text)) {
-    return { error: `${field.label} must be one of the declared values.` };
-  }
-  return { value: text };
+  const error = nestedSchemaError(field.schema, text, field.label);
+  return error ? { error } : { value: text };
 }
 
 export function validateActionInput(action: AdminActionViewModel, draft: ActionDraft): ActionInputResult {

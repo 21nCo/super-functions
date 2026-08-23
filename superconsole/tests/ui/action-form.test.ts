@@ -62,6 +62,32 @@ describe('schema-driven action input', () => {
     ]);
   });
 
+  it('retains every nested constraint when allOf branches repeat a property', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.update',
+      label: 'Update record',
+      inputSchema: {
+        type: 'object',
+        allOf: [
+          {
+            type: 'object',
+            properties: { payload: { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] } },
+          },
+          {
+            type: 'object',
+            properties: { payload: { type: 'object', properties: { b: { type: 'string' } }, required: ['b'] } },
+          },
+        ],
+      },
+    };
+
+    expect(validateActionInput(candidate, { payload: '{"a":"one"}' })).toMatchObject({
+      ok: false,
+      errors: { payload: 'Payload.b is required.' },
+    });
+    expect(validateActionInput(candidate, { payload: '{"a":"one","b":"two"}' })).toMatchObject({ ok: true });
+  });
+
   it('parses primitive and JSON fields into the exact dispatch input', () => {
     const candidate = action();
     const result = validateActionInput(candidate, {

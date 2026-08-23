@@ -52,10 +52,14 @@ issuance append a sanitized `attempted` event before invoking mutable state,
 then append a terminal outcome. Audit and domain state remain separate systems,
 so deployments must monitor and reconcile attempts without terminal events.
 
-Confirmation services must return an unusable staged token from `issue`.
-Super Console writes the succeeded audit while the token is still staged, then
-activates it. Activation failures are recorded as denied events and trigger an
-idempotent `revoke`; audit failures therefore cannot leave a live unaudited token.
+Confirmation services must return an unusable staged token from `issue` and
+durably bind it to the supplied terminal audit ID in `prepareActivation`.
+Super Console then writes that exact succeeded audit and activates the token.
+Providers must reconcile prepared records after interruption: activate when the
+bound success audit exists, otherwise revoke or expire them. Activation failures
+are recorded as denied events and trigger an idempotent `revoke`; audit failures
+therefore cannot leave a live unaudited token, while a post-audit interruption
+remains durably identifiable and recoverable.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an

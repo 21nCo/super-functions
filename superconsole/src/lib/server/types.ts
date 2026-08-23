@@ -176,15 +176,25 @@ export interface SuperConsoleConfirmationService extends AdminConfirmationVerifi
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<{ token: string; expiresAt: string }>;
-  /** Atomically make an audited staged token verifiable; a rejected call must leave it unusable. */
-  activate(input: {
+  /** Durably bind the staged token to the terminal audit ID before that audit is written. */
+  prepareActivation(input: {
     token: string;
+    auditId: string;
     operationId: string;
     input: unknown;
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<void>;
-  /** Idempotently discard a staged token. */
+  /** Atomically make an audited staged token verifiable; a rejected call must leave it unusable. */
+  activate(input: {
+    token: string;
+    auditId: string;
+    operationId: string;
+    input: unknown;
+    principal: SuperConsolePrincipal;
+    context: AdminOperationContext;
+  }): Promise<void>;
+  /** Idempotently discard a staged token and any prepared activation intent. */
   revoke(input: {
     token: string;
     operationId: string;

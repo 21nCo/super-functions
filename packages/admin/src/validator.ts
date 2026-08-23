@@ -34,7 +34,9 @@ function comparableJsonValue(value: unknown, seen = new Set<object>()): string |
   seen.add(value);
   const entries = isArray
     ? Array.from(value, (item, index) => [String(index), item] as const)
-    : Object.entries(value as Record<string, unknown>).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+    : Object.entries(value as Record<string, unknown>).sort(([leftKey], [rightKey]) =>
+        leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0
+      );
   const serialized: string[] = [];
   for (const [key, item] of entries) {
     const child = comparableJsonValue(item, seen);
@@ -218,12 +220,19 @@ function validateAdminValueInternal(
     }
     if (schema.uniqueItems) {
       const keys = value.map((item) => comparableJsonValue(item));
-      if (!keys.includes(undefined) && new Set(keys).size !== keys.length)
+      if (keys.includes(undefined)) {
+        issues.push({
+          path,
+          message: "must contain only JSON values",
+          keyword: "type",
+        });
+      } else if (new Set(keys).size !== keys.length) {
         issues.push({
           path,
           message: "must contain unique items",
           keyword: "uniqueItems",
         });
+      }
     }
     if (schema.items && !Array.isArray(schema.items)) {
       value.forEach((item, index) =>

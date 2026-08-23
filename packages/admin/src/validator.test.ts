@@ -58,6 +58,15 @@ describe("validateAdminValue", () => {
     )).toEqual([]);
   });
 
+  it("orders object keys by code unit rather than locale collation", () => {
+    const composed = "é";
+    const decomposed = "e\u0301";
+    expect(validateAdminValue(
+      { const: { [composed]: 1, [decomposed]: 2 } },
+      { [decomposed]: 2, [composed]: 1 },
+    )).toEqual([]);
+  });
+
   it("treats positive and negative zero as the same JSON number", () => {
     expect(validateAdminValue({ const: 0 }, -0)).toEqual([]);
     expect(validateAdminValue({ enum: [0] }, -0)).toEqual([]);
@@ -70,4 +79,12 @@ describe("validateAdminValue", () => {
       expect(validateAdminValue({ enum: [{}] }, value)).toContainEqual(expect.objectContaining({ keyword: "enum" }));
     },
   );
+
+  it("rejects unsupported values instead of skipping uniqueItems validation", () => {
+    expect(validateAdminValue({ type: "array", uniqueItems: true }, [new Date(0), new Date(0)])).toContainEqual({
+      path: "$",
+      message: "must contain only JSON values",
+      keyword: "type",
+    });
+  });
 });

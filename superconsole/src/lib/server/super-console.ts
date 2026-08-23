@@ -599,10 +599,11 @@ export class SuperConsole {
     }
     if (operations.some((operation) => operation.safety.requiresConfirmation)
       && (typeof options.confirmation?.issue !== 'function'
+        || typeof options.confirmation?.prepareActivation !== 'function'
         || typeof options.confirmation?.activate !== 'function'
         || typeof options.confirmation?.revoke !== 'function'
         || typeof options.confirmation?.verify !== 'function')) {
-      throw new Error('Super Console startup requires staged confirmation issue, activation, revocation, and verification because enabled operations require confirmation.');
+      throw new Error('Super Console startup requires staged confirmation issue, durable activation preparation, activation, revocation, and verification because enabled operations require confirmation.');
     }
     if (options.openApiSecuritySchemes
       && (!options.openApiSecuritySchemes.operatorSession || !options.openApiSecuritySchemes.operatorApiKey)) {
@@ -1063,8 +1064,33 @@ export class SuperConsole {
     }
     const confirmation = this.options.confirmation;
     if (!confirmation) throw new SuperConsoleHttpError('Confirmation issuance is unavailable.', { status: 503, code: 'CONFIRMATION_UNAVAILABLE' });
+    const successAuditId = `audit_${crypto.randomUUID()}`;
     try {
-      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started);
+      await confirmation.prepareActivation({
+        token: receipt.token,
+        auditId: successAuditId,
+        operationId,
+        input: immutable.input,
+        principal: immutable.state.principal,
+        context: immutable.state.context,
+      });
+    } catch {
+      try {
+        await confirmation.revoke({
+          token: receipt.token,
+          operationId,
+          input: immutable.input,
+          principal: immutable.state.principal,
+          context: immutable.state.context,
+        });
+      } catch {
+        // The token remains staged and unusable when activation preparation fails.
+      }
+      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'denied', started, 'CONFIRMATION_ACTIVATION_PREPARE_FAILED');
+      throw new SuperConsoleHttpError('The confirmation token could not be prepared for activation.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
+    }
+    try {
+      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started, undefined, successAuditId);
     } catch {
       try {
         await confirmation.revoke({
@@ -1082,6 +1108,7 @@ export class SuperConsole {
     try {
       await confirmation.activate({
         token: receipt.token,
+        auditId: successAuditId,
         operationId,
         input: immutable.input,
         principal: immutable.state.principal,
@@ -1143,6 +1170,7 @@ export class SuperConsole {
     outcome: 'attempted' | 'succeeded' | 'denied',
     started: Date,
     errorCode?: string,
+    auditId?: string,
   ): Promise<void> {
     if (!this.options.audit) return;
     const safeInput = entry
@@ -1167,7 +1195,7 @@ export class SuperConsole {
       };
     }
     await this.options.audit.write({
-      id: `audit_${crypto.randomUUID()}`,
+      id: auditId ?? `audit_${crypto.randomUUID()}`,
       timestamp: this.now().toISOString(),
       actorId: context.actor.id,
       actorType: context.actor.type,

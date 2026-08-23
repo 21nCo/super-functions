@@ -63,6 +63,13 @@ export interface HostFnOperatorStore {
   ): Promise<HostFnDeployment | undefined>;
   putDeployment(deployment: HostFnDeployment): Promise<void>;
   listDomains(scope: HostFnScope, targetId?: string): Promise<HostFnDomain[]>;
+  /** Atomically reserve one immutable identity and acquire a reclaimable provider-work lease. */
+  claimDomainAttachment(domain: HostFnDomain): Promise<{
+    domain: HostFnDomain;
+    acquired: boolean;
+    claimToken?: string;
+  }>;
+  releaseDomainAttachmentClaim(scope: HostFnScope, id: string, claimToken: string): Promise<void>;
   putDomain(domain: HostFnDomain): Promise<void>;
   deleteDomain(scope: HostFnScope, id: string): Promise<boolean>;
   listVariables(
@@ -135,6 +142,7 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
   private readonly targets = new Map<string, HostFnTarget>();
   private readonly deployments = new Map<string, HostFnDeployment>();
   private readonly domains = new Map<string, HostFnDomain>();
+  private readonly domainAttachmentClaims = new Map<string, string>();
   private readonly variables = new Map<
     string,
     HostFnVariable & { secretValue: string }
@@ -181,11 +189,43 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
       (item) => !targetId || item.targetId === targetId,
     );
   }
-  async putDomain(domain: HostFnDomain) {
-    this.domains.set(
-      this.key(domain.scope, domain.id),
-      structuredClone(domain),
+  async claimDomainAttachment(domain: HostFnDomain) {
+    const existing = [...this.domains.values()].find(
+      (candidate) =>
+        scopeKey(candidate.scope) === scopeKey(domain.scope) &&
+        candidate.targetId === domain.targetId &&
+        candidate.hostname === domain.hostname,
     );
+    if (existing) {
+      if (existing.tls !== domain.tls) {
+        throw new Error("HostFn domain already exists with different TLS configuration.");
+      }
+      const existingKey = this.key(existing.scope, existing.id);
+      if (existing.status === "active" || this.domainAttachmentClaims.has(existingKey)) {
+        return { domain: structuredClone(existing), acquired: false };
+      }
+      const retry = { ...existing, status: "pending" as const, updatedAt: domain.updatedAt };
+      const claimToken = crypto.randomUUID();
+      this.domains.set(existingKey, structuredClone(retry));
+      this.domainAttachmentClaims.set(existingKey, claimToken);
+      return { domain: structuredClone(retry), acquired: true, claimToken };
+    }
+    const domainKey = this.key(domain.scope, domain.id);
+    const claimToken = crypto.randomUUID();
+    this.domains.set(domainKey, structuredClone(domain));
+    this.domainAttachmentClaims.set(domainKey, claimToken);
+    return { domain: structuredClone(domain), acquired: true, claimToken };
+  }
+  async releaseDomainAttachmentClaim(scope: HostFnScope, id: string, claimToken: string) {
+    const key = this.key(scope, id);
+    if (this.domainAttachmentClaims.get(key) === claimToken) {
+      this.domainAttachmentClaims.delete(key);
+    }
+  }
+  async putDomain(domain: HostFnDomain) {
+    const key = this.key(domain.scope, domain.id);
+    this.domains.set(key, structuredClone(domain));
+    if (domain.status !== "pending") this.domainAttachmentClaims.delete(key);
   }
   async deleteDomain(scope: HostFnScope, id: string) {
     return this.domains.delete(this.key(scope, id));
@@ -322,32 +362,18 @@ export class HostFnOperatorService {
     input: { targetId: string; hostname: string; tls: boolean },
   ) {
     const target = await this.target(scope, input.targetId);
-    const existing = (await this.store.listDomains(scope, target.id)).find(
-      (candidate) => candidate.hostname === input.hostname,
-    );
-    if (existing && existing.tls !== input.tls) {
-      throw new Error("HostFn domain already exists with different TLS configuration.");
-    }
-    if (existing?.status === "active") return existing;
-    const domain: HostFnDomain = existing
-      ? {
-          ...existing,
-          status: "pending",
-          updatedAt: new Date().toISOString(),
-        }
-      : {
-          id: identifier("domain"),
-          scope,
-          targetId: target.id,
-          hostname: input.hostname,
-          tls: input.tls,
-          status: "pending",
-          updatedAt: new Date().toISOString(),
-        };
-    // Persist the provider intent before the external side effect. If the
-    // provider succeeds but the active transition fails, operators can still
-    // discover and detach the pending domain instead of creating duplicates.
-    await this.store.putDomain(domain);
+    const claim = await this.store.claimDomainAttachment({
+      id: identifier("domain"),
+      scope,
+      targetId: target.id,
+      hostname: input.hostname,
+      tls: input.tls,
+      status: "pending",
+      updatedAt: new Date().toISOString(),
+    });
+    const domain = claim.domain;
+    if (!claim.acquired) return domain;
+    const claimToken = claim.claimToken!;
     try {
       // Executors must make retries with the same domain ID idempotent. Reusing
       // a failed/pending intent lets ambiguous provider outcomes converge.
@@ -362,10 +388,24 @@ export class HostFnOperatorService {
       } catch {
         // The already-durable pending intent remains discoverable and reusable.
       }
+      try {
+        await this.store.releaseDomainAttachmentClaim(scope, domain.id, claimToken);
+      } catch {
+        // Durable stores must expire abandoned provider-work leases.
+      }
       throw error;
     }
     const active = { ...domain, status: "active" as const };
-    await this.store.putDomain(active);
+    try {
+      await this.store.putDomain(active);
+    } catch (error) {
+      try {
+        await this.store.releaseDomainAttachmentClaim(scope, domain.id, claimToken);
+      } catch {
+        // Durable stores must expire abandoned provider-work leases.
+      }
+      throw error;
+    }
     return active;
   }
   async detachDomain(scope: HostFnScope, id: string) {
@@ -410,7 +450,11 @@ export class HostFnOperatorService {
     );
     if (!variable) throw new Error(`HostFn variable not found: ${id}`);
     const target = await this.target(scope, variable.targetId);
-    await this.executor.deleteVariable({ target, key: variable.key });
+    try {
+      await this.executor.deleteVariable({ target, key: variable.key });
+    } catch (error) {
+      if (!providerReportedNotFound(error)) throw error;
+    }
     await this.store.deleteVariable(scope, id);
     return variable;
   }

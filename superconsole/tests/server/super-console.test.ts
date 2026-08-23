@@ -107,6 +107,7 @@ function installation(options: { destructive?: boolean; permissions?: string[] }
   };
   const confirmation = {
     issue: vi.fn(async () => ({ token: 'bound-token', expiresAt: '2026-08-13T10:00:00.000Z' })),
+    prepareActivation: vi.fn(async () => undefined),
     activate: vi.fn(async () => undefined),
     revoke: vi.fn(async () => undefined),
     verify: vi.fn(async ({ token }: { token: string }) => token === 'bound-token'),
@@ -709,14 +710,14 @@ describe('Super Console server composition', () => {
       shellPolicy: { authorize: () => true },
       audit: new MemoryAdminAuditSink(),
       idempotency: new MemoryAdminIdempotencyStore(),
-      confirmation: { issue: async () => ({ token: 'bound', expiresAt: new Date(Date.now() + 60_000).toISOString() }), activate: async () => undefined, revoke: async () => undefined, verify: async () => true },
+      confirmation: { issue: async () => ({ token: 'bound', expiresAt: new Date(Date.now() + 60_000).toISOString() }), prepareActivation: async () => undefined, activate: async () => undefined, revoke: async () => undefined, verify: async () => true },
     })).toThrow(/mutation authorization/);
     expect(() => createSuperConsole({ adapters: [], enabledModules: [], auth: auth(), shellPolicy: { authorize: () => true } })).not.toThrow();
     expect(() => createSuperConsole({ adapters: [], enabledModules: [], auth: auth() } as never)).toThrow(/shell authorization policy/);
   });
 
   it('issues input-bound confirmation only after input/permission/policy checks and verifies it on dispatch', async () => {
-    const { console, confirmation, handler } = installation({ destructive: true, permissions: ['examplefn.records.delete'] });
+    const { console, confirmation, handler, audit } = installation({ destructive: true, permissions: ['examplefn.records.delete'] });
     const invalid = await console.handle(request('/api/admin/v1/confirmations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: 'examplefn.records.delete', input: {} }) }));
     expect(invalid.status).toBe(400);
     const issued = await console.handle(request('/api/admin/v1/confirmations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: 'examplefn.records.delete', input: { id: 'record_1' } }) }));
@@ -727,7 +728,10 @@ describe('Super Console server composition', () => {
       input: { id: 'record_1' },
       context: expect.objectContaining({ scope: expect.objectContaining({ installationId: 'org_1' }) }),
     }));
-    expect(confirmation.activate).toHaveBeenCalledWith(expect.objectContaining({ token: 'bound-token' }));
+    const successAuditId = audit.events.find((event) => event.operationId === 'superconsole.confirmations.issue' && event.outcome === 'succeeded')?.id;
+    expect(successAuditId).toEqual(expect.any(String));
+    expect(confirmation.prepareActivation).toHaveBeenCalledWith(expect.objectContaining({ token: 'bound-token', auditId: successAuditId }));
+    expect(confirmation.activate).toHaveBeenCalledWith(expect.objectContaining({ token: 'bound-token', auditId: successAuditId }));
     expect(confirmation.revoke).not.toHaveBeenCalled();
     const executed = await console.handle(request('/api/admin/v1/modules/examplefn/records/record_1', {
       method: 'DELETE',
@@ -760,7 +764,7 @@ describe('Super Console server composition', () => {
         },
       },
       idempotency: new MemoryAdminIdempotencyStore(),
-      confirmation: { issue, activate, revoke, verify: async () => active },
+      confirmation: { issue, prepareActivation: async () => undefined, activate, revoke, verify: async () => active },
     });
 
     const response = await console.handle(request('/api/admin/v1/confirmations', {
@@ -800,6 +804,7 @@ describe('Super Console server composition', () => {
       idempotency: new MemoryAdminIdempotencyStore(),
       confirmation: {
         issue: async () => ({ token: 'staged-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+        prepareActivation: async () => undefined,
         activate: async () => { active = true; throw new Error('activation unavailable'); },
         revoke,
         verify,
@@ -1006,6 +1011,7 @@ describe('Super Console server composition', () => {
       idempotency: new MemoryAdminIdempotencyStore(),
       confirmation: {
         issue: async () => ({ token: 'bound', expiresAt: '2026-08-13T10:00:00.000Z' }),
+        prepareActivation: async () => undefined,
         activate: async () => undefined,
         revoke: async () => undefined,
         verify: async () => true,
@@ -1216,7 +1222,7 @@ describe('AuthFn operator transport', () => {
       shellPolicy: { authorize: () => true },
       audit: new MemoryAdminAuditSink(),
       idempotency: new MemoryAdminIdempotencyStore(),
-      confirmation: { issue: async () => ({ token: 'bound-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }), activate: async () => undefined, revoke: async () => undefined, verify: async ({ token }) => token === 'bound-token' },
+      confirmation: { issue: async () => ({ token: 'bound-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }), prepareActivation: async () => undefined, activate: async () => undefined, revoke: async () => undefined, verify: async ({ token }) => token === 'bound-token' },
     });
     const signedIn = await console.handle(request('/api/admin/v1/auth/sign-in', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'mutation@example.test', password: 'Sup3rConsolePassword!' }) }));
     const cookies = signedIn.headers.getSetCookie();
