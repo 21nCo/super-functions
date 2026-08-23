@@ -31,7 +31,7 @@ async function readTicket(filePath: string): Promise<TrustLockTicket | undefined
   try { return JSON.parse(await readFile(filePath, "utf8")) as TrustLockTicket; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return undefined;
+    throw error;
   }
 }
 
@@ -53,7 +53,7 @@ async function cleanStaleTickets(lockPath: string, ownPaths: Set<string>, staleM
   for (const filePath of await ticketPaths(lockPath)) {
     if (ownPaths.has(filePath)) continue;
     const ticket = await readTicket(filePath);
-    if (await staleTicket(filePath, ticket, staleMs)) await rm(filePath, { force: true });
+    if (ticket && await staleTicket(filePath, ticket, staleMs)) await rm(filePath, { force: true });
   }
 }
 

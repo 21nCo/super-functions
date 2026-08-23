@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { CaddyProxyController, renderCaddyfile } from "../src/index.js";
+import { CaddyProxyController, proxyOwnerStatus, renderCaddyfile } from "../src/index.js";
 
 describe("Caddy route rendering", () => {
   it("renders explicit routes without a catch-all", () => {
@@ -27,5 +27,10 @@ describe("Caddy route rendering", () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
+  });
+
+  it("distinguishes dead proxy owners from live PID reuse", async () => {
+    await expect(proxyOwnerStatus({ pid: 2_147_483_647, birthSignature: "missing" })).resolves.toBe("dead");
+    await expect(proxyOwnerStatus({ pid: process.pid, birthSignature: "different-process" })).resolves.toBe("identity-mismatch");
   });
 });

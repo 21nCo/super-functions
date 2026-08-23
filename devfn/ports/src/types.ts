@@ -78,6 +78,11 @@ export interface ListenerInfo {
   source: "os" | "docker";
 }
 
+export interface ListenerScanResult {
+  listeners: ListenerInfo[];
+  inspection: { tcp: boolean; udp: boolean; docker: boolean };
+}
+
 export class PortRegistryError extends Error {
   public constructor(
     public readonly code: "DEVFN_PORT_CONFLICT" | "DEVFN_REGISTRY_LOCK_TIMEOUT" | "DEVFN_REGISTRY_INVALID",

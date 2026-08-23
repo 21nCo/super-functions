@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import net from "node:net";
 import { promisify } from "node:util";
 
-import type { ListenerInfo } from "./types.js";
+import type { ListenerInfo, ListenerScanResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -62,7 +62,7 @@ function parseLsof(output: string, protocol: "tcp" | "udp"): ListenerInfo[] {
   return listeners;
 }
 
-function parseDocker(output: string): ListenerInfo[] {
+export function parseDockerListeners(output: string): ListenerInfo[] {
   const listeners: ListenerInfo[] = [];
   for (const line of output.split("\n")) {
     const [containerId, name, ports = ""] = line.split("\t");
@@ -73,11 +73,19 @@ function parseDocker(output: string): ListenerInfo[] {
   return listeners;
 }
 
-export async function scanListeners(): Promise<ListenerInfo[]> {
+function commandProducedNoMatches(error: unknown): error is { code: number; stdout: string } {
+  const candidate = error as { code?: unknown; stdout?: unknown };
+  return candidate.code === 1 && typeof candidate.stdout === "string";
+}
+
+export async function scanListenerState(): Promise<ListenerScanResult> {
   const results: ListenerInfo[] = [];
+  const inspection = { tcp: false, udp: false, docker: false };
   if (process.platform !== "win32") {
-    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"])).stdout, "tcp")); } catch { /* diagnostic callers report unavailable tools separately */ }
-    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iUDP"])).stdout, "udp")); } catch { /* diagnostic callers report unavailable tools separately */ }
+    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"])).stdout, "tcp")); inspection.tcp = true; }
+    catch (error) { if (commandProducedNoMatches(error)) inspection.tcp = true; }
+    try { results.push(...parseLsof((await execFileAsync("lsof", ["-nP", "-iUDP"])).stdout, "udp")); inspection.udp = true; }
+    catch (error) { if (commandProducedNoMatches(error)) inspection.udp = true; }
   } else {
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "tcp"])).stdout;
@@ -85,15 +93,19 @@ export async function scanListeners(): Promise<ListenerInfo[]> {
         const match = line.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i);
         if (match) results.push({ protocol: "tcp", host: "*", port: Number(match[1]), pid: Number(match[2]), source: "os" });
       }
-    } catch { /* optional */ }
+      inspection.tcp = true;
+    } catch { /* unavailable */ }
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "udp"])).stdout;
       for (const line of output.split("\n")) {
         const match = line.match(/^\s*UDP\s+(.+):(\d+)\s+\S+\s+(\d+)/i);
         if (match) results.push({ protocol: "udp", host: match[1], port: Number(match[2]), pid: Number(match[3]), source: "os" });
       }
-    } catch { /* optional */ }
+      inspection.udp = true;
+    } catch { /* unavailable */ }
   }
-  try { results.push(...parseDocker((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"])).stdout)); } catch { /* Docker is optional */ }
-  return results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source));
+  try { results.push(...parseDockerListeners((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"])).stdout)); inspection.docker = true; } catch { /* Docker is optional */ }
+  return { listeners: results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source)), inspection };
 }
+
+export async function scanListeners(): Promise<ListenerInfo[]> { return (await scanListenerState()).listeners; }

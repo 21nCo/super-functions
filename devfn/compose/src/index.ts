@@ -77,14 +77,15 @@ function supportedComposeVersion(output: string): boolean {
   return true;
 }
 
-export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}): string {
+export function renderComposeOverride(spec: ComposeServiceSpec, ports: Record<string, number>, hosts: Record<string, string> = {}, protocols: Record<string, "tcp" | "udp"> = {}, metadata?: { instanceId: string; lifecycleName: string }): string {
   const mappings = Object.entries(spec.ports ?? {}).map(([name, internal]) => {
     const host = ports[name];
     if (!host) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Missing allocation ${name} for Compose service ${spec.service}.`);
     return `      - "${hosts[name] ?? "127.0.0.1"}:${host}:${internal}${protocols[name] === "udp" ? "/udp" : ""}"`;
   });
   const logging = spec.secretEnv?.length ? ["    logging:", "      driver: none"] : [];
-  return ["services:", `  ${spec.service}:`, ...(mappings.length ? ["    ports: !override", ...mappings] : []), ...logging, ...(!mappings.length && !logging.length ? ["    {}"] : []), ""].join("\n");
+  const labels = metadata ? ["    labels:", '      devfn.managed: "true"', `      devfn.instance: ${JSON.stringify(metadata.instanceId)}`, `      devfn.lifecycle: ${JSON.stringify(metadata.lifecycleName)}`] : [];
+  return ["services:", `  ${spec.service}:`, ...(mappings.length ? ["    ports: !override", ...mappings] : []), ...logging, ...labels, ...(!mappings.length && !logging.length && !labels.length ? ["    {}"] : []), ""].join("\n");
 }
 
 export class ComposeController {
@@ -108,11 +109,19 @@ export class ComposeController {
     await mkdir(overrideDir, { recursive: true, mode: 0o700 });
     const overrideFile = await resolveContainedPath(input.runtimeDir, path.join("compose", `${input.name}.override.yaml`), `services.${input.name}`);
     if (input.spec.secretEnv?.length && input.spec.health?.type === "log") throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${input.name} cannot use log readiness while secret-bearing logs are disabled.`);
-    await writeFile(overrideFile, renderComposeOverride(input.spec, input.ports, input.portHosts, input.portProtocols), { encoding: "utf8", mode: 0o600 });
+    await writeFile(overrideFile, renderComposeOverride(input.spec, input.ports, input.portHosts, input.portProtocols, { instanceId: input.instanceId, lifecycleName: input.name }), { encoding: "utf8", mode: 0o600 });
     const files = [sourceFile, overrideFile];
     const baseArgs = ["compose", "-p", projectName, ...files.flatMap((file) => ["-f", file])];
     const before = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
     const beforeRunning = await this.containerIds(baseArgs, input.spec.service, input.root, environment, false);
+    let reclaimManaged = before.length > 0 && input.spec.projectName === undefined;
+    if (before.length > 0 && input.spec.projectName !== undefined) {
+      try {
+        const labels = (await this.run("docker", ["inspect", "--format", "{{ index .Config.Labels \"devfn.managed\" }}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
+        reclaimManaged = labels.length === before.length && labels.every((label) => label === "true");
+      } catch { reclaimManaged = false; }
+    }
+    const preservePreExisting = before.length > 0 && !reclaimManaged;
     if (input.spec.secretEnv?.length && before.length) {
       try {
         const drivers = (await this.run("docker", ["inspect", "--format", "{{.HostConfig.LogConfig.Type}}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout.split(/\s+/).filter(Boolean);
@@ -125,10 +134,10 @@ export class ComposeController {
     let containerIds: string[] = [];
     const startedAt = new Date().toISOString();
     try {
-      await this.run("docker", [...baseArgs, "up", "-d", "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+      await this.run("docker", [...baseArgs, "up", "-d", ...(preservePreExisting ? ["--no-recreate"] : []), "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
       containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
-      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
+      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && beforeRunning.length > 0, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
@@ -137,7 +146,7 @@ export class ComposeController {
       });
       return managed;
     } catch (error) {
-      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt, dockerEnvironment };
+      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && beforeRunning.length > 0, startedAt, dockerEnvironment };
       if (containerIds.length) await this.stop(failed).catch(() => undefined);
       else await this.stopWithCompose(failed, input.root, environment).catch(() => undefined);
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });

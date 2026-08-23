@@ -261,6 +261,7 @@ function validateProcessReferences(config: DevFnConfig, ports: Set<string>, node
     for (const port of process.ports ?? []) if (!ports.has(port)) fail(`processes.${name} references unknown port ${port}.`);
     const healthPort = process.health && (process.health.type === "http" || process.health.type === "tcp") ? process.health.port : undefined;
     if (healthPort && (!ports.has(healthPort) || !process.ports?.includes(healthPort))) fail(`processes.${name}.health references port ${healthPort}, which must also appear in processes.${name}.ports.`);
+    if (healthPort && config.ports?.[healthPort]?.protocol === "udp") fail(`processes.${name}.health requires TCP port ${healthPort}, but that allocation uses UDP.`);
     for (const dependency of process.dependsOn ?? []) if (!nodes.has(dependency)) fail(`processes.${name} references unknown dependency ${dependency}.`);
   }
 }
@@ -270,6 +271,7 @@ function validateServiceReferences(config: DevFnConfig, ports: Set<string>, node
     for (const port of Object.keys(service.ports ?? {})) if (!ports.has(port)) fail(`services.${name} references unknown port ${port}.`);
     const healthPort = service.health && (service.health.type === "http" || service.health.type === "tcp") ? service.health.port : undefined;
     if (healthPort && (!ports.has(healthPort) || service.ports?.[healthPort] === undefined)) fail(`services.${name}.health references port ${healthPort}, which must also appear in services.${name}.ports.`);
+    if (healthPort && config.ports?.[healthPort]?.protocol === "udp") fail(`services.${name}.health requires TCP port ${healthPort}, but that allocation uses UDP.`);
     for (const dependency of service.dependsOn ?? []) if (!nodes.has(dependency)) fail(`services.${name} references unknown dependency ${dependency}.`);
   }
 }

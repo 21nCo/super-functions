@@ -4,12 +4,19 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { withFileLock } from "@devfn/ports";
-import { matchesProcessIdentity, processBirthSignature } from "@devfn/processes";
+import { matchesProcessIdentity, processBirthSignature, processExists } from "@devfn/processes";
 
 const execFileAsync = promisify(execFile);
 
 export interface ProxyRoute { id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number; tls: "off" | "internal"; updatedAt: string }
 interface ProxyState { version: 1; routes: ProxyRoute[] }
+interface ProxyOwner { pid: number; birthSignature?: string }
+
+function parseProxyOwner(value: string): ProxyOwner {
+  const owner = JSON.parse(value) as Partial<ProxyOwner> | null;
+  if (!owner || !Number.isInteger(owner.pid) || owner.pid! <= 0 || (owner.birthSignature !== undefined && typeof owner.birthSignature !== "string")) throw new Error("Invalid proxy owner record.");
+  return owner as ProxyOwner;
+}
 
 export class ProxyError extends Error {
   public constructor(public readonly code: "DEVFN_PROXY_UNAVAILABLE" | "DEVFN_PROXY_CONFIG_INVALID" | "DEVFN_PROXY_RELOAD_FAILED" | "DEVFN_PROXY_OWNERSHIP_CONFLICT", message: string, public readonly details?: Record<string, unknown>) {
@@ -27,6 +34,11 @@ export function renderCaddyfile(routes: readonly ProxyRoute[]): string {
     lines.push(`${route.tls === "off" ? "http://" : ""}${route.hostname} {`, `  reverse_proxy ${targetHost}:${route.targetPort}`, ...(route.tls === "internal" ? ["  tls internal"] : []), "}", "");
   }
   return lines.join("\n");
+}
+
+export async function proxyOwnerStatus(owner: ProxyOwner): Promise<"active" | "dead" | "identity-mismatch"> {
+  if (!processExists(owner.pid)) return "dead";
+  return await matchesProcessIdentity(owner.pid, owner.birthSignature) ? "active" : "identity-mismatch";
 }
 
 export class CaddyProxyController {
@@ -66,17 +78,25 @@ export class CaddyProxyController {
     await writeFile(candidate, renderCaddyfile(next.routes), { encoding: "utf8", mode: 0o600 });
     try { await execFileAsync("caddy", ["validate", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
     catch (error) { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Caddy rejected the generated route configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
-    const owner = await readFile(this.ownerPath, "utf8").then((value) => JSON.parse(value) as { pid: number; birthSignature?: string }).catch(() => null);
+    let owner: ProxyOwner | null;
+    try { owner = parseProxyOwner(await readFile(this.ownerPath, "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") owner = null;
+      else { await rm(candidate, { force: true }); throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", "Unable to read the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) }); }
+    }
+    if (owner) {
+      const status = await proxyOwnerStatus(owner);
+      if (status === "dead") { await rm(this.ownerPath, { force: true }); owner = null; }
+      else if (status === "identity-mismatch") {
+        await rm(candidate, { force: true });
+        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy PID belongs to a different live process; refusing to replace it.");
+      }
+    }
     if (!owner) {
       const externalAdmin = await fetch("http://127.0.0.1:2019/config/", { signal: AbortSignal.timeout(1000) }).then(() => true).catch(() => false);
       if (externalAdmin) {
         await rm(candidate, { force: true });
         throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A non-DevFn Caddy admin endpoint is already running; refusing to replace its configuration.");
-      }
-    } else {
-      if (!await matchesProcessIdentity(owner.pid, owner.birthSignature)) {
-        await rm(candidate, { force: true });
-        throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "The recorded DevFn Caddy owner no longer matches its process identity; remove the stale owner record after verification.");
       }
     }
     if (owner) {

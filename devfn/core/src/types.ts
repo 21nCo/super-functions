@@ -35,6 +35,7 @@ export interface LifecycleReceipt {
   state: LifecycleState;
   root: string;
   runtimeDir: string;
+  stateDir?: string;
   startedAt: string;
   updatedAt: string;
   allocations: PortAllocation[];

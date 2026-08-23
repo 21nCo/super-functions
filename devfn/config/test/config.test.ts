@@ -72,6 +72,19 @@ describe("DevFn configuration", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "DEVFN_PROJECT_ID" } }, profiles: { default: {} } })).toThrow(/reserved DEVFN_/);
   });
 
+  it("rejects TCP and HTTP readiness checks on UDP allocations", () => {
+    expect(() => validateDevFnConfig({
+      version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },
+      processes: { app: { adapter: "command", command: ["node"], ports: ["socket"], health: { type: "tcp", port: "socket" } } },
+      profiles: { default: { processes: ["app"] } },
+    })).toThrow(/requires TCP port socket/);
+    expect(() => validateDevFnConfig({
+      version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },
+      services: { app: { adapter: "compose", service: "app", ports: { socket: 3000 }, health: { type: "http", port: "socket" } } },
+      profiles: { default: { services: ["app"] } },
+    })).toThrow(/requires TCP port socket/);
+  });
+
   it("does not map unsupported package managers to npm", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-yarn-"));
     await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
@@ -169,7 +182,7 @@ describe("DevFn configuration", () => {
     expect(state.records.map((record) => record.configPath).sort()).toEqual([first, second].sort());
   });
 
-  it("recovers an ownerless ticket abandoned before metadata was written", async () => {
+  it("fails closed on a corrupt trust-lock ticket", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-ownerless-ticket-"));
     const stateDir = path.join(root, "state");
     const configPath = path.join(root, "devfn.config.json");
@@ -179,7 +192,7 @@ describe("DevFn configuration", () => {
     await writeFile(choosingPath, "");
     await utimes(choosingPath, new Date(0), new Date(0));
     await writeFile(configPath, "ownerless");
-    await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
+    await expect(trustProject(root, configPath, stateDir)).rejects.toThrow(/JSON/);
   });
 
   it("recovers stale tickets when a PID has been reused", async () => {

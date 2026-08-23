@@ -32,6 +32,7 @@ describe("ComposeController", () => {
 
   it("renders a valid empty service override", () => {
     expect(renderComposeOverride({ adapter: "compose", service: "worker" }, {})).toContain("worker:\n    {}");
+    expect(renderComposeOverride({ adapter: "compose", service: "worker" }, {}, {}, {}, { instanceId: "instance", lifecycleName: "worker" })).toContain('devfn.managed: "true"');
   });
 
   it("rejects a missing host allocation", () => {
@@ -81,5 +82,56 @@ describe("ComposeController", () => {
       else process.env.DOCKER_HOST = original;
     }
     expect(observed).toEqual([undefined, "tcp://ambient.example:2376"]);
+  });
+
+  it("preserves user-owned services but reclaims abandoned DevFn containers", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-owner-"));
+    const runCase = async (projectName: string | undefined) => {
+      const calls: readonly string[][] = [];
+      let psCalls = 0;
+      const controller = new ComposeController(async (_file, args) => {
+        (calls as string[][]).push([...args]);
+        if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+        if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
+        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "\n" : "true\n", stderr: "" };
+        return { stdout: "", stderr: "" };
+      });
+      const managed = await controller.start({
+        name: "api", spec: { adapter: "compose", service: "api", ...(projectName ? { projectName } : {}) }, root,
+        runtimeDir: path.join(root, ".devfn", "instances", projectName ?? "managed"), instanceId: projectName ?? "managed", ports: {},
+      });
+      return { calls, controller, managed };
+    };
+
+    const userOwned = await runCase("shared-project");
+    expect(userOwned.calls.find((args) => args.includes("up"))).toContain("--no-recreate");
+    expect(userOwned.managed).toMatchObject({ preExisting: true, wasRunning: true });
+    await userOwned.controller.stop(userOwned.managed);
+    expect(userOwned.calls.some((args) => args[0] === "stop")).toBe(false);
+
+    const abandoned = await runCase(undefined);
+    expect(abandoned.calls.find((args) => args.includes("up"))).not.toContain("--no-recreate");
+    expect(abandoned.managed).toMatchObject({ containerIds: ["new-id"], preExisting: false, wasRunning: false });
+    await abandoned.controller.stop(abandoned.managed);
+    expect(abandoned.calls.some((args) => args[0] === "stop" && args.includes("new-id"))).toBe(true);
+  });
+
+  it("cleans a replacement DevFn container when startup journaling fails", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-replace-"));
+    const calls: string[][] = [];
+    let psCalls = 0;
+    const controller = new ComposeController(async (_file, args) => {
+      calls.push([...args]);
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+      if (args.includes("ps")) { psCalls += 1; return { stdout: `${psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
+      return { stdout: "", stderr: "" };
+    });
+    await expect(controller.start({
+      name: "api", spec: { adapter: "compose", service: "api" }, root,
+      runtimeDir: path.join(root, ".devfn", "instances", "managed"), instanceId: "managed", ports: {},
+      onStarted: async () => { throw new Error("journal failed"); },
+    })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED", details: { cause: "journal failed" } });
+    expect(calls.some((args) => args[0] === "stop" && args.includes("new-id"))).toBe(true);
+    expect(calls.some((args) => args[0] === "rm" && args.includes("new-id"))).toBe(true);
   });
 });

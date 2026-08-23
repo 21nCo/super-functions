@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { isPortAvailable } from "@devfn/ports";
 import { runCli } from "../src/index.js";
 
 describe("devfn CLI", () => {
@@ -94,6 +95,10 @@ describe("devfn CLI", () => {
       expect(status.value.state).toBe("ready");
       const url = await invoke(["url"]);
       expect((url.value.urls as Record<string, string>).app).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      const wrongStateDir = await mkdtemp(path.join(tmpdir(), "devfn-wrong-state-"));
+      let wrongOutput = "";
+      expect(await runCli(["down", "--trust", "--json", "--state-dir", wrongStateDir], { cwd, stdout: (text) => { wrongOutput += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(wrongOutput).error.message).toContain("same --state-dir");
       const down = await invoke(["down"]);
       expect(down.value.state).toBe("stopped");
     } finally {
@@ -185,7 +190,39 @@ describe("devfn CLI", () => {
       const doctor = await invoke(["doctor"]);
       expect(doctor.code, JSON.stringify(doctor.value)).toBe(0);
       expect(doctor.value.diagnostics?.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
+      if (process.platform !== "win32") {
+        const originalPath = process.env.PATH;
+        const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
+        await symlink("/bin/ps", path.join(toolsDir, "ps"));
+        try {
+          process.env.PATH = toolsDir;
+          const unavailable = await invoke(["doctor"]);
+          expect(unavailable.code, JSON.stringify(unavailable.value)).toBe(0);
+          expect(unavailable.value.diagnostics?.some((item) => item.code === "DEVFN_LISTENER_INSPECTION_UNAVAILABLE")).toBe(true);
+        } finally { process.env.PATH = originalPath; }
+      }
     } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 15_000);
+
+  it("fails closed when local TCP listener ownership cannot be inspected", async () => {
+    if (process.platform === "win32") return;
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-listener-tools-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
+    await symlink("/bin/ps", path.join(toolsDir, "ps"));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; net.createServer().listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "listener-tools" }, ports: { app: { range: [45300, 45400], env: "PORT" } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const originalPath = process.env.PATH;
+    let stdout = "";
+    try {
+      process.env.PATH = toolsDir;
+      expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(stdout).error.message).toContain("could not be inspected");
+    } finally { process.env.PATH = originalPath; }
   }, 15_000);
 
   it("reports an unrelated listener that replaces a recorded exact-port owner", async () => {
@@ -196,10 +233,11 @@ describe("devfn CLI", () => {
     const address = probe.address();
     if (!address || typeof address === "string") throw new Error("TCP test server did not receive a port.");
     await new Promise<void>((resolve) => probe.close(() => resolve()));
-    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1', () => setTimeout(() => server.close(), 500)); setInterval(() => {}, 1000);\n", "utf8");
+    const closeMarker = path.join(cwd, "close-listener");
+    await writeFile(path.join(cwd, "server.mjs"), "import { existsSync } from 'node:fs'; import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1'); setInterval(() => { if (existsSync(process.env.CLOSE_FILE)) server.close(); }, 25);\n", "utf8");
     await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
       version: 1, project: { id: "doctor-replaced" }, ports: { app: { preferred: address.port, exact: true, env: "PORT" } },
-      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], env: { CLOSE_FILE: closeMarker }, ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
       profiles: { default: { processes: ["app"] } },
     }), "utf8");
     const invoke = async (args: string[]) => {
@@ -210,7 +248,9 @@ describe("devfn CLI", () => {
     const replacement = createServer();
     try {
       expect((await invoke(["up", "--trust"])).code).toBe(0);
-      await new Promise((resolve) => setTimeout(resolve, 750));
+      await writeFile(closeMarker, "close\n");
+      for (let attempt = 0; attempt < 100 && !await isPortAvailable(address.port); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(await isPortAvailable(address.port)).toBe(true);
       await new Promise<void>((resolve, reject) => { replacement.once("error", reject); replacement.listen(address.port, "127.0.0.1", resolve); });
       const doctor = await invoke(["doctor"]);
       expect(doctor.code).toBe(1);
