@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectOwnershipListeners } from "../src/index.js";
+import { hasRecordedProcessOwner, selectOwnershipListeners } from "../src/index.js";
 import type { ListenerInfo, PortAllocation } from "@devfn/ports";
 
 describe("orchestrator listener ownership", () => {
@@ -12,5 +12,12 @@ describe("orchestrator listener ownership", () => {
     expect(selectOwnershipListeners(allocation, [docker, proxy, unrelated])).toEqual([docker, unrelated]);
     expect(selectOwnershipListeners(undefined, [proxy, unrelated])).toEqual([proxy, unrelated]);
     expect(selectOwnershipListeners({} as PortAllocation, [proxy])).toEqual([proxy]);
+  });
+
+  it("scopes recorded process owners to the current project and instance", () => {
+    const allocation = { projectId: "other", instanceId: "other-instance", service: "app", protocol: "tcp", state: "active", process: { pid: 1 } } as PortAllocation;
+    const ports = new Map<string, "tcp" | "udp">([["app", "tcp"]]);
+    expect(hasRecordedProcessOwner([allocation], "current", "current-instance", ports, "tcp")).toBe(false);
+    expect(hasRecordedProcessOwner([{ ...allocation, projectId: "current", instanceId: "current-instance" }], "current", "current-instance", ports, "tcp")).toBe(true);
   });
 });

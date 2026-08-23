@@ -73,6 +73,47 @@ describe("FilePortRegistry", () => {
     expect(allocations!.every((item) => item.source === "exact")).toBe(true);
   });
 
+  it("honors contiguous preferred ports for reallocatable blocks", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    let firstPort = 0;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      firstPort = await allocateEphemeralPort();
+      if (firstPort < 65535 && await isPortAvailable(firstPort + 1)) break;
+    }
+    const allocations = await registry.reserve({
+      projectId: "oauth", instanceId: "preferred", invocationId: "preferred-block", profile: "default",
+      requests: [
+        { name: "callback", spec: { preferred: firstPort, block: "oauth" } },
+        { name: "issuer", spec: { preferred: firstPort + 1, block: "oauth" } },
+      ],
+    });
+    expect(allocations.map((item) => item.port)).toEqual([firstPort, firstPort + 1]);
+    expect(allocations.every((item) => item.source === "preferred")).toBe(true);
+  });
+
+  it("skips registry-leased ports returned by the OS ephemeral allocator", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const leased = await allocateEphemeralPort();
+    let replacement = await allocateEphemeralPort();
+    while (replacement === leased) replacement = await allocateEphemeralPort();
+    const candidates = [leased, replacement];
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), async () => candidates.shift()!);
+    await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "exact", profile: "default", requests: [{ name: "exact", spec: { preferred: leased, exact: true } }] });
+    const ephemeral = await registry.reserve({ projectId: "app", instanceId: "two", invocationId: "ephemeral", profile: "default", requests: [{ name: "ephemeral", spec: { ephemeral: true } }] });
+    expect(ephemeral[0]).toMatchObject({ port: replacement, source: "ephemeral" });
+  });
+
+  it("releases planned leases left by an interrupted instance", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"));
+    await registry.reserve({ projectId: "app", instanceId: "one", invocationId: "interrupted", profile: "default", requests: [{ name: "app", spec: { range: [45600, 45699] } }] });
+    await expect(registry.recoverInterrupted("one")).resolves.toBe(1);
+    const state = await registry.read();
+    expect(state.allocations[0].state).toBe("released");
+    expect(state.invocations[0]).toMatchObject({ state: "failed", errorCode: "DEVFN_INTERRUPTED" });
+  });
+
   it("recovers ownerless stale lock directories", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-lock-"));
     const lockPath = path.join(dir, "registry.lock");
@@ -105,11 +146,19 @@ describe("FilePortRegistry", () => {
 
   it("inspects container owners through their persisted Docker selector", async () => {
     let observedHost: string | undefined;
-    await expect(inspectContainerRunning({ id: "remote-id", dockerEnvironment: { DOCKER_HOST: "tcp://remote.example:2376" } }, async (_file, _args, options) => {
+    let observedArgs: string[] = [];
+    await expect(inspectContainerRunning({ id: "remote-id", dockerEnvironment: { DOCKER_HOST: "tcp://remote.example:2376" } }, async (_file, args, options) => {
+      observedArgs = args;
       observedHost = options.env.DOCKER_HOST;
       return { stdout: "true\n" };
     })).resolves.toBe(true);
     expect(observedHost).toBe("tcp://remote.example:2376");
+    expect(observedArgs).toEqual(["inspect", "--format", "{{.State.Running}}", "remote-id"]);
+  });
+
+  it("distinguishes a missing container from an unavailable Docker endpoint", async () => {
+    await expect(inspectContainerRunning({ id: "missing" }, async () => { throw Object.assign(new Error("inspect failed"), { stderr: "Error: No such object: missing" }); })).resolves.toBe(false);
+    await expect(inspectContainerRunning({ id: "remote" }, async () => { throw Object.assign(new Error("inspect failed"), { stderr: "Cannot connect to the Docker daemon" }); })).resolves.toBeUndefined();
   });
 
   it("escapes backslashes, pipes, and carriage returns in policy tables", () => {

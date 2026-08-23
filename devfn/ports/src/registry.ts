@@ -37,7 +37,7 @@ export class FilePortRegistry {
   public readonly filePath: string;
   private readonly lockPath: string;
 
-  public constructor(filePath: string) {
+  public constructor(filePath: string, private readonly ephemeralAllocator = allocateEphemeralPort) {
     this.filePath = filePath;
     this.lockPath = `${filePath}.lock`;
   }
@@ -89,7 +89,13 @@ export class FilePortRegistry {
       const choose = async (name: string, spec: ReservationInput["requests"][number]["spec"]): Promise<{ port: number; source: PortAllocation["source"] }> => {
         const host = spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1";
         const protocol = spec.protocol ?? "tcp";
-        if (spec.ephemeral) return { port: await allocateEphemeralPort(host, spec.protocol), source: "ephemeral" };
+        if (spec.ephemeral) {
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const port = await this.ephemeralAllocator(host, spec.protocol);
+            if (!occupied.has(occupancyKey(port, protocol))) return { port, source: "ephemeral" };
+          }
+          throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Unable to allocate an unleased ephemeral port for ${name}.`, { service: name });
+        }
         if (spec.exact && spec.preferred !== undefined) {
           if (occupied.has(occupancyKey(spec.preferred, protocol)) || !await isPortAvailable(spec.preferred, protocol, host)) {
             throw new PortRegistryError("DEVFN_PORT_CONFLICT", `Exact port ${spec.preferred} for ${name} is occupied.`, { service: name, port: spec.preferred });
@@ -139,6 +145,15 @@ export class FilePortRegistry {
           if (!exactPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(exactPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) chosen = exactPorts;
           blockSource = "exact";
         } else {
+          const preferredPorts = group.map((request) => request.spec.preferred);
+          if (preferredPorts.every((port): port is number => port !== undefined)) {
+            const unique = [...new Set(preferredPorts)].sort((a, b) => a - b);
+            const contiguous = unique.length === group.length && unique.at(-1)! - unique[0] + 1 === group.length;
+            if (contiguous && !preferredPorts.some((port, index) => occupied.has(occupancyKey(port, group[index].spec.protocol ?? "tcp"))) && (await Promise.all(preferredPorts.map((port, index) => isPortAvailable(port, group[index].spec.protocol, group[index].spec.exposure === "public" ? "0.0.0.0" : "127.0.0.1")))).every(Boolean)) {
+              chosen = preferredPorts;
+              blockSource = "preferred";
+            }
+          }
           for (let rangeIndex = 0; rangeIndex < ranges.length && !chosen; rangeIndex += 1) {
             const { value: range, source } = ranges[rangeIndex];
             for (const start of candidates(range[0], range[1] - group.length + 1, `${input.instanceId}:${block}:${rangeIndex}`)) {
@@ -192,6 +207,22 @@ export class FilePortRegistry {
       if (invocation.state === "planning" || invocation.state === "starting") {
         for (const allocation of state.allocations) if (allocation.invocationId === id && allocation.state === "planned") allocation.updatedAt = now;
       }
+    });
+  }
+
+  public async recoverInterrupted(instanceId: string): Promise<number> {
+    return await this.transaction((state) => {
+      const now = new Date().toISOString();
+      const interrupted = new Set(state.allocations.filter((allocation) => allocation.instanceId === instanceId && allocation.state === "planned").map((allocation) => allocation.invocationId));
+      for (const allocation of state.allocations) {
+        if (allocation.instanceId !== instanceId || allocation.state !== "planned") continue;
+        Object.assign(allocation, { state: "released", updatedAt: now, releasedAt: now });
+      }
+      for (const invocation of state.invocations) {
+        if (!interrupted.has(invocation.id) || !["planning", "starting"].includes(invocation.state)) continue;
+        Object.assign(invocation, { state: "failed", errorCode: "DEVFN_INTERRUPTED", updatedAt: now });
+      }
+      return interrupted.size;
     });
   }
 
@@ -267,7 +298,11 @@ export async function inspectContainerRunning(owner: NonNullable<PortAllocation[
   if (owner.dockerEnvironment !== undefined) for (const key of dockerKeys) delete environment[key];
   Object.assign(environment, owner.dockerEnvironment ?? {});
   try { return (await run("docker", ["inspect", "--format", "{{.State.Running}}", owner.id], { env: environment, timeout: 5000 })).stdout.trim() === "true"; }
-  catch { return undefined; }
+  catch (error) {
+    const candidate = error as { message?: unknown; stderr?: unknown };
+    const detail = `${typeof candidate.stderr === "string" ? candidate.stderr : ""}\n${typeof candidate.message === "string" ? candidate.message : ""}`;
+    return /no such (?:object|container)/i.test(detail) ? false : undefined;
+  }
 }
 
 export function renderPortInventory(state: RegistryState): string {

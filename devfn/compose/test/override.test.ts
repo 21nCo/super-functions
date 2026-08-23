@@ -93,7 +93,7 @@ describe("ComposeController", () => {
         (calls as string[][]).push([...args]);
         if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
         if (args.includes("ps")) { psCalls += 1; return { stdout: `${projectName || psCalls < 3 ? "old-id" : "new-id"}\n`, stderr: "" }; }
-        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "\n" : "true\tmanaged\tapi\n") : "true\n", stderr: "" };
+        if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? (projectName ? "<no value>\t<no value>\t<no value>\n" : "true\tmanaged\tapi\n") : "true\n", stderr: "" };
         return { stdout: "", stderr: "" };
       });
       const managed = await controller.start({
@@ -119,21 +119,23 @@ describe("ComposeController", () => {
   it("restores only user-owned containers that DevFn started", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-mixed-"));
     const calls: string[][] = [];
+    let allCalls = 0;
     const controller = new ComposeController(async (_file, args) => {
       calls.push([...args]);
       if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
-      if (args.includes("ps")) return { stdout: args.includes("-a") ? "running-id\nstopped-id\n" : "running-id\n", stderr: "" };
-      if (args[0] === "inspect") return { stdout: "\n", stderr: "" };
+      if (args.includes("ps") && args.includes("-a")) { allCalls += 1; return { stdout: allCalls === 1 ? "running-id\nstopped-id\n" : "running-id\nstopped-id\ncreated-id\n", stderr: "" }; }
+      if (args.includes("ps")) return { stdout: "running-id\n", stderr: "" };
+      if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "<no value>\t<no value>\t<no value>\n<no value>\t<no value>\t<no value>\n" : "true\ntrue\ntrue\n", stderr: "" };
       return { stdout: "", stderr: "" };
     });
     const managed = await controller.start({
       name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
       runtimeDir: path.join(root, ".devfn", "instances", "current"), instanceId: "current", ports: {},
     });
-    expect(managed).toMatchObject({ preExisting: true, wasRunning: false, startedContainerIds: ["stopped-id"] });
+    expect(managed).toMatchObject({ preExisting: true, wasRunning: false, startedContainerIds: ["stopped-id"], createdContainerIds: ["created-id"] });
     await controller.stop(managed);
-    expect(calls.find((args) => args[0] === "stop")).toEqual(["stop", "stopped-id"]);
-    expect(calls.some((args) => args[0] === "rm")).toBe(false);
+    expect(calls.find((args) => args[0] === "stop")).toEqual(["stop", "stopped-id", "created-id"]);
+    expect(calls.find((args) => args[0] === "rm")).toEqual(["rm", "-f", "created-id"]);
   });
 
   it("does not reclaim a container owned by another DevFn lifecycle", async () => {
@@ -146,12 +148,11 @@ describe("ComposeController", () => {
       if (args[0] === "inspect") return { stdout: args.some((arg) => arg.includes("devfn.managed")) ? "true\tother-instance\tapi\n" : "true\n", stderr: "" };
       return { stdout: "", stderr: "" };
     });
-    const managed = await controller.start({
+    await expect(controller.start({
       name: "api", spec: { adapter: "compose", service: "api", projectName: "shared" }, root,
       runtimeDir: path.join(root, ".devfn", "instances", "current"), instanceId: "current", ports: {},
-    });
-    expect(calls.find((args) => args.includes("up"))).toContain("--no-recreate");
-    expect(managed).toMatchObject({ preExisting: true, startedContainerIds: [] });
+    })).rejects.toThrow(/another DevFn lifecycle/);
+    expect(calls.some((args) => args.includes("up"))).toBe(false);
   });
 
   it("cleans a replacement DevFn container when startup journaling fails", async () => {

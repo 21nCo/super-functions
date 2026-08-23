@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { chmodSync, closeSync, mkdirSync, openSync } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { closeSync, constants, fchmodSync, mkdirSync, openSync } from "node:fs";
+import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,10 +32,23 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
 }
 
 export async function prepareProcessLog(logPath: string, resetSensitiveHistory: boolean): Promise<{ logFd: number; logOffset: number }> {
-  const logOffset = resetSensitiveHistory ? 0 : await stat(logPath).then((value) => value.size).catch(() => 0);
-  const logFd = openSync(logPath, resetSensitiveHistory ? "w" : "a", 0o600);
-  chmodSync(logPath, 0o600);
-  return { logFd, logOffset };
+  const existing = await lstat(logPath).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (existing?.isSymbolicLink()) throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Refusing symlinked process log ${logPath}.`);
+  const logOffset = resetSensitiveHistory ? 0 : existing?.size ?? 0;
+  const flags = constants.O_WRONLY | constants.O_CREAT | (resetSensitiveHistory ? constants.O_TRUNC : constants.O_APPEND) | (constants.O_NOFOLLOW ?? 0);
+  let logFd: number | undefined;
+  try {
+    logFd = openSync(logPath, flags, 0o600);
+    fchmodSync(logFd, 0o600);
+    return { logFd, logOffset };
+  } catch (error) {
+    if (logFd !== undefined) closeSync(logFd);
+    if (error instanceof ProcessError) throw error;
+    throw new ProcessError("DEVFN_PROCESS_START_FAILED", `Unable to open process log ${logPath} safely.`, { cause: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 export class ProcessSupervisor {

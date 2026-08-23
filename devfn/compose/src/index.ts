@@ -18,14 +18,16 @@ export interface ManagedComposeService {
   preExisting: boolean;
   wasRunning: boolean;
   startedContainerIds?: string[];
+  createdContainerIds?: string[];
   startedAt: string;
   logsDisabled?: boolean;
   dockerEnvironment?: Record<string, string>;
 }
 
-function ownsLifecycle(output: string, count: number, instanceId: string, lifecycleName: string): boolean {
+function lifecycleOwnership(output: string, count: number, instanceId: string, lifecycleName: string): Array<"current" | "other" | "unmanaged"> | null {
   const rows = output.split("\n").filter(Boolean).map((line) => line.split("\t"));
-  return rows.length === count && rows.every(([managed, instance, lifecycle]) => managed === "true" && instance === instanceId && lifecycle === lifecycleName);
+  if (rows.length !== count) return null;
+  return rows.map(([managed, instance, lifecycle]) => managed === "true" ? (instance === instanceId && lifecycle === lifecycleName ? "current" : "other") : "unmanaged");
 }
 
 export interface ComposeStartInput {
@@ -124,10 +126,17 @@ export class ComposeController {
     if (before.length > 0) {
       try {
         const labels = (await this.run("docker", ["inspect", "--format", "{{ index .Config.Labels \"devfn.managed\" }}\t{{ index .Config.Labels \"devfn.instance\" }}\t{{ index .Config.Labels \"devfn.lifecycle\" }}", ...before], { cwd: input.root, env: environment, timeout: 10_000, maxBuffer: 1024 * 1024 })).stdout;
-        reclaimManaged = ownsLifecycle(labels, before.length, input.instanceId, input.name);
-      } catch { reclaimManaged = false; }
+        const ownership = lifecycleOwnership(labels, before.length, input.instanceId, input.name);
+        if (!ownership) throw new Error("Docker returned incomplete ownership labels.");
+        if (ownership.includes("other")) throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Compose service ${input.name} contains containers managed by another DevFn lifecycle; refusing to mutate them.`);
+        reclaimManaged = ownership.every((owner) => owner === "current");
+      } catch (error) {
+        if (error instanceof ComposeError) throw error;
+        throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to inspect ownership for pre-existing Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
+      }
     }
     const preservePreExisting = before.length > 0 && !reclaimManaged;
+    const preExistingIds = new Set(before);
     const previouslyRunning = new Set(beforeRunning);
     if (input.spec.secretEnv?.length && before.length) {
       try {
@@ -144,8 +153,9 @@ export class ComposeController {
       await this.run("docker", [...baseArgs, "up", "-d", ...(preservePreExisting ? ["--no-recreate"] : []), "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
       containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
-      const startedContainerIds = preservePreExisting ? containerIds.filter((id) => !previouslyRunning.has(id)) : containerIds;
-      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
+      const startedContainerIds = preservePreExisting ? containerIds.filter((id) => preExistingIds.has(id) && !previouslyRunning.has(id)) : containerIds;
+      const createdContainerIds = preservePreExisting ? containerIds.filter((id) => !preExistingIds.has(id)) : containerIds;
+      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
@@ -155,8 +165,9 @@ export class ComposeController {
       return managed;
     } catch (error) {
       const cleanupIds = containerIds.length ? containerIds : (preservePreExisting ? before : []);
-      const startedContainerIds = preservePreExisting ? cleanupIds.filter((id) => !previouslyRunning.has(id)) : cleanupIds;
-      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds: cleanupIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, startedAt, dockerEnvironment };
+      const startedContainerIds = preservePreExisting ? cleanupIds.filter((id) => preExistingIds.has(id) && !previouslyRunning.has(id)) : cleanupIds;
+      const createdContainerIds = preservePreExisting ? cleanupIds.filter((id) => !preExistingIds.has(id)) : cleanupIds;
+      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds: cleanupIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, dockerEnvironment };
       if (cleanupIds.length) await this.stop(failed).catch(() => undefined);
       else await this.stopWithCompose(failed, input.root, environment).catch(() => undefined);
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
@@ -176,12 +187,14 @@ export class ComposeController {
   }
 
   public async stop(service: ManagedComposeService): Promise<void> {
-    const containerIds = service.preExisting ? (service.startedContainerIds ?? (service.wasRunning ? [] : service.containerIds)) : service.containerIds;
-    if (containerIds.length === 0) return;
+    const startedContainerIds = service.preExisting ? (service.startedContainerIds ?? (service.wasRunning ? [] : service.containerIds)) : service.containerIds;
+    const createdContainerIds = service.preExisting ? (service.createdContainerIds ?? []) : service.containerIds;
+    const stopIds = [...new Set([...startedContainerIds, ...createdContainerIds])];
+    if (stopIds.length === 0 && createdContainerIds.length === 0) return;
     try {
       const environment = directDockerEnvironment(service.dockerEnvironment);
-      await this.run("docker", ["stop", ...containerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
-      if (!service.preExisting) await this.run("docker", ["rm", "-f", ...containerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
+      if (stopIds.length) await this.run("docker", ["stop", ...stopIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
+      if (createdContainerIds.length) await this.run("docker", ["rm", "-f", ...createdContainerIds], { env: environment, timeout: 30_000, maxBuffer: 1024 * 1024 });
     } catch (error) {
       throw new ComposeError("DEVFN_COMPOSE_STOP_FAILED", `Unable to stop Compose service ${service.name}.`, { cause: error instanceof Error ? error.message : String(error) });
     }

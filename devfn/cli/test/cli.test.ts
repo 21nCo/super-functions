@@ -243,7 +243,13 @@ describe("devfn CLI", () => {
       const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
       return { code, value: JSON.parse(stdout) as Record<string, unknown> };
     };
-    try { expect((await invoke(["up", "--trust"])).code).toBe(0); }
+    try {
+      const up = await invoke(["up", "--trust"]);
+      expect(up.code, JSON.stringify(up.value)).toBe(0);
+      expect(up.value.state).toBe("ready");
+      const allocation = (up.value.allocations as Array<{ port: number }>)[0];
+      expect(await isPortAvailable(allocation.port)).toBe(false);
+    }
     finally { await invoke(["down"]).catch(() => undefined); }
   }, 15_000);
 

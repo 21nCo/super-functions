@@ -51,6 +51,10 @@ export function selectOwnershipListeners(allocation: PortAllocation | undefined,
   return ownedDocker ? matches.filter((listener) => listener.source === "docker" || !isDockerProxyListener(listener.process)) : matches;
 }
 
+export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], projectId: string, instanceId: string, localProcessPorts: ReadonlyMap<string, "tcp" | "udp">, protocol: "tcp" | "udp"): boolean {
+  return allocations.some((allocation) => allocation.projectId === projectId && allocation.instanceId === instanceId && allocation.state === "active" && allocation.process !== undefined && localProcessPorts.get(allocation.service) === protocol);
+}
+
 async function waitForOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let missing: { port: number; protocol: "tcp" | "udp" } | undefined = expected[0];
@@ -110,6 +114,7 @@ export class DevFnOrchestrator {
         await writeReceipt(existing);
       } else await registry.release({ invocationId: existing.invocationId });
     }
+    await registry.recoverInterrupted(identity.instanceId);
     const plan = createPlan(options.config, options.profile);
     const publicNodes = plan.nodes.filter((node) => node.kind === "process" && options.config.processes?.[node.name]?.exposure === "public").map((node) => node.name);
     const publicPorts = plan.portNames.filter((name) => options.config.ports?.[name]?.exposure === "public");
@@ -342,7 +347,7 @@ export class DevFnOrchestrator {
     }
     for (const protocol of new Set(localProcessPorts.values())) {
       if (scan.inspection[protocol]) continue;
-      const hasRecordedOwner = registry.allocations.some((allocation) => allocation.state === "active" && allocation.process && localProcessPorts.get(allocation.service) === protocol);
+      const hasRecordedOwner = hasRecordedProcessOwner(registry.allocations, options.config.project.id, identity.instanceId, localProcessPorts, protocol);
       diagnostics.push({
         code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE",
         severity: hasRecordedOwner ? "warning" : "error",

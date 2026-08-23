@@ -78,6 +78,21 @@ function commandProducedNoMatches(error: unknown): error is { code: number; stdo
   return candidate.code === 1 && typeof candidate.stdout === "string";
 }
 
+export function parseWindowsNetstatListeners(output: string, protocol: "tcp" | "udp"): ListenerInfo[] {
+  const listeners: ListenerInfo[] = [];
+  for (const line of output.split("\n")) {
+    const fields = line.trim().split(/\s+/);
+    if (fields[0]?.toLowerCase() !== protocol) continue;
+    const local = fields[1]?.match(/^(\[[^\]]+\]|[^:]+):(\d+)$/);
+    if (!local) continue;
+    if (protocol === "tcp" && fields[3]?.toUpperCase() !== "LISTENING") continue;
+    const pid = Number(fields[protocol === "tcp" ? 4 : 3]);
+    if (!Number.isInteger(pid)) continue;
+    listeners.push({ protocol, host: local[1], port: Number(local[2]), pid, source: "os" });
+  }
+  return listeners;
+}
+
 export async function scanListenerState(): Promise<ListenerScanResult> {
   const results: ListenerInfo[] = [];
   const inspection = { tcp: false, udp: false, docker: false };
@@ -89,18 +104,12 @@ export async function scanListenerState(): Promise<ListenerScanResult> {
   } else {
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "tcp"])).stdout;
-      for (const line of output.split("\n")) {
-        const match = line.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i);
-        if (match) results.push({ protocol: "tcp", host: "*", port: Number(match[1]), pid: Number(match[2]), source: "os" });
-      }
+      results.push(...parseWindowsNetstatListeners(output, "tcp"));
       inspection.tcp = true;
     } catch { /* unavailable */ }
     try {
       const output = (await execFileAsync("netstat", ["-ano", "-p", "udp"])).stdout;
-      for (const line of output.split("\n")) {
-        const match = line.match(/^\s*UDP\s+(.+):(\d+)\s+\S+\s+(\d+)/i);
-        if (match) results.push({ protocol: "udp", host: match[1], port: Number(match[2]), pid: Number(match[3]), source: "os" });
-      }
+      results.push(...parseWindowsNetstatListeners(output, "udp"));
       inspection.udp = true;
     } catch { /* unavailable */ }
   }
