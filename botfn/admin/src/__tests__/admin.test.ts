@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createAdminClient,
+  encodeAdminCursor,
   validateAdminCapabilityManifest,
   type AdminOperationContext,
 } from "@superfunctions/admin";
@@ -108,6 +109,11 @@ describe("@botfn/admin", () => {
       { limit: 1, cursor: channelsPage.data.nextCursor, botId: "support" },
       context("project-a"),
     )).rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(adapter.execute<any>(
+      "botfn.bots.list",
+      { cursor: encodeAdminCursor(context("project-a").scope, null) },
+      context("project-a"),
+    )).rejects.toMatchObject({ code: "invalid_argument", status: 400 });
   });
 
   it("atomically preserves the bot/channel invariant during connect and delete races", async () => {

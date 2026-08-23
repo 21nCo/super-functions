@@ -1,4 +1,4 @@
-import { cssVariableName, flattenTokens, validateTokenTheme, type DesignTokenTheme } from '@uifn/tokens';
+import { cssVariableName, flattenTokens, resolveTokenReferences, validateTokenTheme, type DesignTokenTheme } from '@uifn/tokens';
 import { getTheme, type FirstPartyThemeName } from './provider';
 
 export type ThemeErrorCode = 'UIFN_THEME_SCOPE_INVALID' | 'UIFN_THEME_TOKEN_VALUE_INVALID';
@@ -81,8 +81,9 @@ function assertSafeThemeTokenValue(path: readonly string[], value: string | numb
 
 export function themeToVars(theme: DesignTokenTheme): Record<`--uifn-${string}`, string> {
   validateTokenTheme(theme);
+  const resolvedTheme = resolveTokenReferences(theme).theme;
   return Object.fromEntries(
-    flattenTokens(theme.tokens).map(({ path, token }) => {
+    flattenTokens(resolvedTheme.tokens).map(({ path, token }) => {
       assertSafeThemeTokenValue(path, token.$value);
       return [cssVariableName(path), String(token.$value)];
     })

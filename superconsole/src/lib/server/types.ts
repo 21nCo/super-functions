@@ -180,6 +180,8 @@ export interface SuperConsoleConfirmationService extends AdminConfirmationVerifi
   prepareActivation(input: {
     token: string;
     auditId: string;
+    /** Bound failure audit whose existence permanently fences reconciliation. */
+    denialAuditId: string;
     operationId: string;
     input: unknown;
     principal: SuperConsolePrincipal;

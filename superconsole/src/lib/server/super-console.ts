@@ -1067,10 +1067,12 @@ export class SuperConsole {
     const confirmation = this.options.confirmation;
     if (!confirmation) throw new SuperConsoleHttpError('Confirmation issuance is unavailable.', { status: 503, code: 'CONFIRMATION_UNAVAILABLE' });
     const successAuditId = `audit_${crypto.randomUUID()}`;
+    const denialAuditId = `audit_${crypto.randomUUID()}`;
     try {
       await confirmation.prepareActivation({
         token: receipt.token,
         auditId: successAuditId,
+        denialAuditId,
         operationId,
         input: immutable.input,
         principal: immutable.state.principal,
@@ -1121,8 +1123,6 @@ export class SuperConsole {
         context: immutable.state.context,
       });
     } catch (error) {
-      const denialAuditId = `audit_${crypto.randomUUID()}`;
-      let cancellationDurable = false;
       try {
         await confirmation.cancelActivation({
           token: receipt.token,
@@ -1133,7 +1133,6 @@ export class SuperConsole {
           principal: immutable.state.principal,
           context: immutable.state.context,
         });
-        cancellationDurable = true;
       } catch {
         // A durable revoke below is an equivalent cancellation fence.
       }
@@ -1145,15 +1144,8 @@ export class SuperConsole {
           principal: immutable.state.principal,
           context: immutable.state.context,
         });
-        cancellationDurable = true;
       } catch {
-        // The explicit cancellation record, when present, remains authoritative.
-      }
-      if (!cancellationDurable) {
-        // The succeeded audit remains authoritative when an ambiguous provider
-        // outcome cannot be fenced. Return the receipt so reconciliation may
-        // activate it without turning an unreturned credential live after 503.
-        return receipt;
+        // The bound denial audit below remains an independent reconciliation fence.
       }
       try {
         await this.auditConfirmation(

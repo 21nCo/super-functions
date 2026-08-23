@@ -178,11 +178,15 @@ function page<T extends { id: string }>(
   resource: ApiFnCursorResource,
 ) {
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-  const position = input.cursor === undefined
+  const decoded: unknown = input.cursor === undefined
     ? { offset: 0, resource }
-    : decodeAdminCursor<{ offset: number; resource: ApiFnCursorResource }>(input.cursor, cursorScope(scope));
+    : decodeAdminCursor<unknown>(input.cursor, cursorScope(scope));
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new AdminError("invalid_argument", "ApiFn cursor is invalid.");
+  }
+  const position = decoded as { offset?: unknown; resource?: unknown };
   const offset = position.offset;
-  if (!Number.isSafeInteger(offset) || offset < 0) {
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0) {
     throw new AdminError("invalid_argument", "ApiFn cursor is invalid.");
   }
   if (position.resource !== resource) {

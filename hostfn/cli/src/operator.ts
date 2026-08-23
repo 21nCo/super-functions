@@ -391,7 +391,15 @@ export class HostFnOperatorService {
       try {
         await this.executor.detachDomain({ target, domain });
       } catch (error) {
-        if (!providerReportedNotFound(error)) throw error;
+        if (providerReportedNotFound(error)) return;
+        // Restore a durable, provider-idempotent intent so a transient
+        // compensation failure remains visible and detach can be retried.
+        await this.store.putDomain({
+          ...domain,
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+        });
+        throw error;
       }
     };
     try {

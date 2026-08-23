@@ -315,6 +315,42 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(detachDomain).toHaveBeenLastCalledWith(expect.objectContaining({ domain: expect.objectContaining({ id: pending!.id }) }));
   });
 
+  it("retains a retryable intent when deleted-domain compensation fails", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+    let detachCalls = 0;
+    const detachDomain = vi.fn(async () => {
+      detachCalls += 1;
+      if (detachCalls === 2) throw new Error("compensation unavailable");
+    });
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain: async () => providerGate, detachDomain,
+      setVariable: async () => undefined, deleteVariable: async () => undefined,
+    };
+    const attachingService = new HostFnOperatorService(store, executor);
+    const detachingService = new HostFnOperatorService(store, executor);
+    const attaching = attachingService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    await vi.waitFor(async () => expect(await store.listDomains(scope)).toHaveLength(1));
+    const [pending] = await store.listDomains(scope);
+
+    await detachingService.detachDomain(scope, pending!.id);
+    releaseProvider();
+    await expect(attaching).rejects.toThrow("compensation unavailable");
+    await expect(store.listDomains(scope)).resolves.toEqual([
+      expect.objectContaining({ id: pending!.id, status: "failed" }),
+    ]);
+    await expect(detachingService.detachDomain(scope, pending!.id)).resolves.toMatchObject({ status: "failed" });
+    await expect(store.listDomains(scope)).resolves.toEqual([]);
+    expect(detachDomain).toHaveBeenCalledTimes(3);
+  });
+
   it("persists variable intent before calling the provider", async () => {
     class IntentFailureStore extends MemoryHostFnOperatorStore {
       override async putVariable() {

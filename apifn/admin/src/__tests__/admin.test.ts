@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createAdminClient,
+  encodeAdminCursor,
   validateAdminCapabilityManifest,
   type AdminOperationContext,
 } from "@superfunctions/admin";
@@ -70,6 +71,11 @@ describe("@apifn/admin", () => {
       { cursor: first.data.nextCursor },
       context("same-project"),
     )).rejects.toMatchObject({ code: "invalid_argument" });
+    await expect(adapter.execute<any>(
+      "apifn.specs.list",
+      { cursor: encodeAdminCursor(context("same-project").scope, null) },
+      context("same-project"),
+    )).rejects.toMatchObject({ code: "invalid_argument", status: 400 });
 
     const otherWorkspace = await adapter.execute<any>(
       "apifn.specs.list",

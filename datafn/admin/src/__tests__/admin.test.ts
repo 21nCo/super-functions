@@ -247,6 +247,30 @@ describe("@datafn/admin", () => {
       .rejects.toMatchObject({ code: "invalid_argument" });
   });
 
+  it("binds metadata cursors to their schema collection", async () => {
+    const executor = {
+      schema: {
+        version: 1,
+        resources: [
+          { name: "accounts", version: 1 },
+          { name: "tasks", version: 1 },
+        ],
+        relations: [
+          { from: "accounts", to: "tasks", name: "owns" },
+          { from: "tasks", to: "accounts", name: "ownedBy" },
+        ],
+      },
+    } as unknown as DatafnExecutor<{ namespace: string }>;
+    const service = createDataFnDomainAdminService({ executor, context: () => ({ namespace: "tenant_1" }) });
+
+    const first = await service.listResources({ limit: 1 }, context);
+    expect(first.data.nextCursor).toEqual(expect.any(String));
+    await expect(service.listResources({ limit: 1, cursor: first.data.nextCursor! }, context))
+      .resolves.toMatchObject({ data: { items: [expect.objectContaining({ id: "tasks" })] } });
+    await expect(service.listRelations({ cursor: first.data.nextCursor! }, context))
+      .rejects.toMatchObject({ code: "invalid_argument" });
+  });
+
   it("round-trips resource names containing colons through composite record IDs", async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ data: [{ id: "record-1" }], nextCursor: null })

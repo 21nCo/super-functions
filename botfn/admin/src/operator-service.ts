@@ -181,11 +181,15 @@ function page<T extends { id: string }>(
   nextCursor: string | null;
 } {
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
-  const position = input.cursor === undefined
+  const decoded: unknown = input.cursor === undefined
     ? { offset: 0, query }
-    : decodeAdminCursor<{ offset: number; query: BotFnCursorQuery }>(input.cursor, cursorScope(scope));
+    : decodeAdminCursor<unknown>(input.cursor, cursorScope(scope));
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new AdminError("invalid_argument", "BotFn cursor is invalid.");
+  }
+  const position = decoded as { offset?: unknown; query?: BotFnCursorQuery };
   const offset = position.offset;
-  if (!Number.isSafeInteger(offset) || offset < 0) {
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0) {
     throw new AdminError("invalid_argument", "BotFn cursor is invalid.");
   }
   if (!position.query || !sameCursorQuery(position.query, query)) {

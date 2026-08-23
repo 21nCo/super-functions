@@ -885,9 +885,12 @@ describe('Super Console server composition', () => {
     ]);
   });
 
-  it('returns the audited receipt when an ambiguous activation cannot be durably cancelled', async () => {
+  it('uses the bound denial audit when rejected activation cannot be cancelled or revoked', async () => {
     const capability = manifest({ destructive: true });
-    const outcomes: string[] = [];
+    const outcomes: Array<{ id: string; outcome: string }> = [];
+    const prepareActivation = vi.fn(async () => undefined);
+    const cancelActivation = vi.fn(async () => { throw new Error('cancellation unavailable'); });
+    const revoke = vi.fn(async () => { throw new Error('revocation unavailable'); });
     const console = createSuperConsole({
       adapters: [createAdminCapabilityAdapter(capability, {
         'examplefn.records.delete': async () => ({ ok: true as const, data: { accepted: true } }),
@@ -898,16 +901,16 @@ describe('Super Console server composition', () => {
       audit: {
         idempotentById: true,
         write: async (event) => {
-          if (event.operationId === 'superconsole.confirmations.issue') outcomes.push(event.outcome);
+          if (event.operationId === 'superconsole.confirmations.issue') outcomes.push({ id: event.id, outcome: event.outcome });
         },
       },
       idempotency: new MemoryAdminIdempotencyStore(),
       confirmation: {
         issue: async () => ({ token: 'ambiguous-token', expiresAt: new Date(Date.now() + 60_000).toISOString() }),
-        prepareActivation: async () => undefined,
-        cancelActivation: async () => { throw new Error('cancellation unavailable'); },
+        prepareActivation,
+        cancelActivation,
         activate: async () => { throw new Error('ambiguous activation outcome'); },
-        revoke: async () => { throw new Error('revocation unavailable'); },
+        revoke,
         verify: async () => false,
       },
     });
@@ -918,9 +921,17 @@ describe('Super Console server composition', () => {
       body: JSON.stringify({ operationId: 'examplefn.records.delete', input: { id: 'record_1' } }),
     }));
 
-    expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({ ok: true, data: { token: 'ambiguous-token' } });
-    expect(outcomes).toEqual(['attempted', 'succeeded']);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: 'CONFIRMATION_ACTIVATION_FAILED' } });
+    const deniedAuditId = outcomes.find((event) => event.outcome === 'denied')?.id;
+    expect(deniedAuditId).toEqual(expect.any(String));
+    expect(prepareActivation).toHaveBeenCalledWith(expect.objectContaining({
+      token: 'ambiguous-token',
+      denialAuditId: deniedAuditId,
+    }));
+    expect(cancelActivation).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(outcomes.map((event) => event.outcome)).toEqual(['attempted', 'succeeded', 'denied']);
   });
 
   it('returns audit unavailable when activation preparation and its denial audit both fail', async () => {

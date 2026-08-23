@@ -72,6 +72,20 @@ describe('runtime theme mounting', () => {
     expect(css).toContain('--uifn-icon-size-md:1rem;');
   });
 
+  it('resolves typed token references before emitting CSS variables', () => {
+    const referenced = structuredClone(FIRST_PARTY_THEMES['uifn-light']);
+    const surface = referenced.tokens.color as Record<string, Record<string, { $type: string; $value: string; $extensions?: unknown }>>;
+    surface.surface!.raised = {
+      $type: 'color',
+      $value: '{color.surface.canvas}',
+      $extensions: { uifn: { fallbackValue: 'oklch(98% 0.01 250)' } },
+    };
+
+    const css = themeToCSS(referenced);
+    expect(css).not.toContain('{color.surface.canvas}');
+    expect(css).toContain(`--uifn-color-surface-raised:${surface.surface!.canvas!.$value};`);
+  });
+
   it('TV-STYLE-002 supports runtime root mounting and cleanup', () => {
     const vars = new Map<string, string>();
     const attrs = new Map<string, string>();

@@ -58,18 +58,27 @@ function page<TItem extends object>(
   values: readonly TItem[],
   input: DataFnListInput,
   context: AdminOperationContext,
+  collection: keyof DataFnSchemaDocuments,
 ): AdminOperationResult<DataFnPageOutput<TItem>> {
   const limit = normalizeAdminPageLimit(input.limit);
-  const offset = typeof input.cursor === "string"
-    ? decodeAdminCursor<{ offset: number }>(input.cursor, context.scope).offset
-    : 0;
-  if (!Number.isInteger(offset) || offset < 0) {
+  const decoded: unknown = typeof input.cursor === "string"
+    ? decodeAdminCursor<unknown>(input.cursor, context.scope)
+    : { offset: 0, collection };
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
     throw new AdminError("invalid_argument", "The DataFn admin cursor is invalid.");
+  }
+  const position = decoded as { offset?: unknown; collection?: unknown };
+  const offset = position.offset;
+  if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0) {
+    throw new AdminError("invalid_argument", "The DataFn admin cursor is invalid.");
+  }
+  if (position.collection !== collection) {
+    throw new AdminError("invalid_argument", "The DataFn admin cursor does not belong to this metadata collection.");
   }
   const items = values.slice(offset, offset + limit).map((entry) => ({ ...entry }));
   const next = offset + items.length;
   const nextCursor = next < values.length
-    ? encodeAdminCursor(context.scope, { offset: next })
+    ? encodeAdminCursor(context.scope, { offset: next, collection })
     : null;
   return {
     ok: true,
@@ -161,31 +170,31 @@ export function createDataFnDomainAdminService<TContext>(
 
   return {
     async listSchemas(input, context) {
-      return page(documents(context).schemas, input, context);
+      return page(documents(context).schemas, input, context, "schemas");
     },
     async getSchema(input, context) {
       return resultItem(findById(documents(context).schemas, string(input.id, "id"), "schema"));
     },
     async listResources(input, context) {
-      return page(documents(context).resources, input, context);
+      return page(documents(context).resources, input, context, "resources");
     },
     async getResource(input, context) {
       return resultItem(findById(documents(context).resources, string(input.id, "id"), "resource"));
     },
     async listRelations(input, context) {
-      return page(documents(context).relations, input, context);
+      return page(documents(context).relations, input, context, "relations");
     },
     async getRelation(input, context) {
       return resultItem(findById(documents(context).relations, string(input.id, "id"), "relation"));
     },
     async listIndices(input, context) {
-      return page(documents(context).indices, input, context);
+      return page(documents(context).indices, input, context, "indices");
     },
     async getIndex(input, context) {
       return resultItem(findById(documents(context).indices, string(input.id, "id"), "index"));
     },
     async listCapabilities(input, context) {
-      return page(documents(context).capabilities, input, context);
+      return page(documents(context).capabilities, input, context, "capabilities");
     },
     async getCapability(input, context) {
       return resultItem(findById(documents(context).capabilities, string(input.id, "id"), "capability"));
