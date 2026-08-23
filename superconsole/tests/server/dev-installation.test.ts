@@ -79,6 +79,8 @@ describe("representative dev installation", () => {
       idempotency: new MemoryAdminIdempotencyStore(),
       confirmation: {
         issue: async () => ({ token: "test", expiresAt: new Date(Date.now() + 60_000).toISOString() }),
+        activate: async () => undefined,
+        revoke: async () => undefined,
         verify: async () => true,
       },
       openApiSecuritySchemes: {

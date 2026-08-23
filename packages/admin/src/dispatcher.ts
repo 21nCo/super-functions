@@ -2,6 +2,7 @@ import { auditFailureDefinitelyNotPersisted, createAdminAuditId, redactAdminOutp
 import { AdminError, normalizeAdminError } from "./errors.js";
 import {
   beginAdminIdempotency,
+  claimAdminCompensation,
   type AdminIdempotencyClaim,
   type AdminIdempotencyIdentity,
   type AdminIdempotencyRecord,
@@ -153,6 +154,16 @@ export class AdminDispatcher {
         "Administration idempotency storage must implement atomic compensation preparation.",
       );
     }
+    if (
+      options.idempotency &&
+      (typeof options.idempotency.claimCompensation !== "function" ||
+        typeof options.idempotency.releaseCompensation !== "function")
+    ) {
+      throw new AdminError(
+        "invalid_argument",
+        "Administration idempotency storage must implement atomic compensation reconciliation.",
+      );
+    }
     this.registry = options.registry;
     this.policy = options.policy;
     this.confirmation = options.confirmation;
@@ -177,6 +188,7 @@ export class AdminDispatcher {
     let domainCompleted = false;
     let domainCompensated = false;
     let domainResponse: AdminOperationResult<T> | undefined;
+    let compensationDomainResponse: AdminOperationResult<T> | undefined;
     let idempotencyPersisted = false;
     let policyMetadata: Readonly<Record<string, unknown>> | undefined;
     let compensationAuditMetadata: Readonly<Record<string, unknown>> | undefined;
@@ -233,26 +245,28 @@ export class AdminDispatcher {
       if (identity && this.idempotency) {
         const reservation = await beginAdminIdempotency<T>(this.idempotency, identity, request.input);
         if (reservation.status === "replay") {
-          const prior = outwardAdminResult(reservation.record.result, entry);
-          const originalAuditId = reservation.record.auditId ?? prior.auditId;
-          if (reservation.record.compensation?.status === "pending") {
-            const { auditId: _originalReceipt, ...priorWithoutReceipt } = prior;
-            return {
-              ...priorWithoutReceipt,
-              meta: {
-                ...prior.meta,
-                idempotencyReplay: true,
-                compensationPending: true,
-                ...(originalAuditId ? { originalAuditId } : {}),
-              },
-            };
+          let replayRecord = reservation.record;
+          if (
+            replayRecord.compensation?.status === "pending" ||
+            replayRecord.compensation?.status === "failed"
+          ) {
+            const reconciliation = await this.reconcileCompensation(
+              entry,
+              request,
+              startedAt,
+              replayRecord,
+            );
+            if (reconciliation.status === "result") return reconciliation.result;
+            replayRecord = reconciliation.record;
           }
-          const recoveringAudit = reservation.record.audit?.status === "pending";
+          const prior = outwardAdminResult(replayRecord.result, entry);
+          const originalAuditId = replayRecord.auditId ?? prior.auditId;
+          const recoveringAudit = replayRecord.audit?.status === "pending";
           let replayAuditId: string | undefined;
           if (this.shouldAudit(entry)) {
             terminalAuditAttempted = true;
             const candidateAuditId = recoveringAudit
-              ? reservation.record.audit?.auditId
+              ? replayRecord.audit?.auditId
               : this.createAuditId();
             if (!candidateAuditId) {
               throw new AdminError("internal", "A pending terminal audit is missing its stable event ID.");
@@ -263,16 +277,16 @@ export class AdminDispatcher {
                 request,
                 startedAt,
                 candidateAuditId,
-                recoveringAudit ? reservation.record.audit?.outcome ?? "succeeded" : "replayed",
-                recoveringAudit ? reservation.record.audit?.errorCode : undefined,
-                recoveringAudit ? reservation.record.audit?.metadata : policyMetadata,
+                recoveringAudit ? replayRecord.audit?.outcome ?? "succeeded" : "replayed",
+                recoveringAudit ? replayRecord.audit?.errorCode : undefined,
+                recoveringAudit ? replayRecord.audit?.metadata : policyMetadata,
               );
               terminalAuditWritten = true;
               replayAuditId = candidateAuditId;
               if (recoveringAudit) {
                 await this.idempotency.finalizeAudit(
-                  reservation.record.identity,
-                  reservation.record.fingerprint,
+                  replayRecord.identity,
+                  replayRecord.fingerprint,
                   { auditId: candidateAuditId, completedAt: this.now().toISOString() },
                 );
               }
@@ -466,7 +480,11 @@ export class AdminDispatcher {
                     ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
                     updatedAt: preparedAt,
                   },
-                  compensation: { status: "pending", updatedAt: preparedAt },
+                  compensation: {
+                    status: "pending",
+                    domainResult: domainResponse,
+                    updatedAt: preparedAt,
+                  },
                   createdAt: preparedAt,
                 },
               );
@@ -488,6 +506,7 @@ export class AdminDispatcher {
             );
           }
           if (compensationPrepared) {
+            compensationDomainResponse = domainResponse;
             try {
               await compensator({
                 input: request.input,
@@ -531,6 +550,38 @@ export class AdminDispatcher {
                   cause,
                 },
               );
+              if (idempotencyClaim && idempotencyIdentity && this.idempotency) {
+                const failedAt = this.now().toISOString();
+                const failedCompensationResult = normalizeAdminError(dispatchError, {
+                  requestId: request.context.requestId,
+                  correlationId: request.context.correlationId,
+                });
+                try {
+                  await this.idempotency.complete(idempotencyClaim, {
+                    identity: idempotencyIdentity,
+                    fingerprint: idempotencyClaim.fingerprint,
+                    result: failedCompensationResult,
+                    audit: {
+                      status: "pending",
+                      auditId: rollbackAuditId,
+                      outcome: "failed",
+                      errorCode: "dependency_unavailable",
+                      ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
+                      updatedAt: failedAt,
+                    },
+                    compensation: {
+                      status: "failed",
+                      domainResult: compensationDomainResponse!,
+                      updatedAt: failedAt,
+                    },
+                    createdAt: preparedAt,
+                  });
+                  idempotencyClaim = undefined;
+                } catch {
+                  // The durable pending marker remains retryable when this
+                  // failed-attempt transition cannot be acknowledged.
+                }
+              }
             }
           }
         } else if (compensator) {
@@ -632,7 +683,11 @@ export class AdminDispatcher {
                       ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
                       updatedAt: timestamp,
                     },
-                    compensation: { status: "completed" as const, updatedAt: timestamp },
+                    compensation: {
+                      status: "completed" as const,
+                      domainResult: compensationDomainResponse as AdminOperationResult<T>,
+                      updatedAt: timestamp,
+                    },
                   }
                 : {}),
               createdAt: timestamp,
@@ -713,6 +768,157 @@ export class AdminDispatcher {
       // acknowledgements after the atomic transition was already committed.
       await this.idempotency.prepareCompensation(claim, record);
     }
+  }
+
+  private async reconcileCompensation<T>(
+    entry: AdminRegistryOperation,
+    request: AdminDispatchRequest,
+    startedAt: Date,
+    record: AdminIdempotencyRecord<T>,
+  ): Promise<
+    | { status: "replay"; record: AdminIdempotencyRecord<T> }
+    | { status: "result"; result: AdminResult<T> }
+  > {
+    if (!this.idempotency) return { status: "replay", record };
+    const reservation = await claimAdminCompensation<T>(
+      this.idempotency,
+      record.identity,
+      record.fingerprint,
+    );
+    if (reservation.status === "replay") return reservation;
+
+    const claimedRecord = reservation.record;
+    const compensation = claimedRecord.compensation;
+    const compensator = entry.adapter.compensators?.[entry.operation.id];
+    const auditId = claimedRecord.audit?.auditId;
+    if (!compensation || compensation.status === "completed" || !compensator || !auditId) {
+      try {
+        await this.idempotency.releaseCompensation(reservation.claim);
+      } catch {
+        // Preserve the deterministic incomplete-record error.
+      }
+      const invalid = normalizeAdminError(
+        new AdminError("internal", "The durable compensation record is incomplete."),
+        { requestId: request.context.requestId, correlationId: request.context.correlationId },
+      );
+      return { status: "result", result: invalid };
+    }
+
+    try {
+      await compensator({
+        input: request.input,
+        context: request.context,
+        result: compensation.domainResult,
+        cause: new AdminError(
+          "dependency_unavailable",
+          "Retrying compensation after the required terminal audit could not be persisted.",
+        ),
+      });
+    } catch (cause) {
+      const failedAt = this.now().toISOString();
+      const failedResult = normalizeAdminError(
+        new AdminError(
+          "dependency_unavailable",
+          "The domain operation completed, but its failed audit and compensation still require reconciliation.",
+          {
+            retryable: true,
+            details: { outcome: "domain_completed", compensationFailed: true, reconciliationRequired: true },
+            cause,
+          },
+        ),
+        { requestId: request.context.requestId, correlationId: request.context.correlationId },
+      );
+      try {
+        await this.idempotency.complete(reservation.claim, {
+          ...claimedRecord,
+          result: failedResult,
+          compensation: { ...compensation, status: "failed", updatedAt: failedAt },
+        });
+      } catch {
+        try {
+          await this.idempotency.releaseCompensation(reservation.claim);
+        } catch {
+          // A committed completion makes releasing the reconciliation claim unnecessary.
+        }
+      }
+      return {
+        status: "result",
+        result: {
+          ...outwardAdminResult(failedResult, entry),
+          meta: { idempotencyReplay: true, compensationFailed: true },
+        },
+      };
+    }
+
+    let terminalAuditWritten = false;
+    try {
+      await this.writeAudit(
+        entry,
+        request,
+        startedAt,
+        auditId,
+        "failed",
+        claimedRecord.audit?.errorCode ?? "dependency_unavailable",
+        claimedRecord.audit?.metadata,
+      );
+      terminalAuditWritten = true;
+    } catch {
+      // The completed compensation is persisted below with the stable pending
+      // audit ID so a later replay redelivers the event without compensating.
+    }
+
+    const completedAt = this.now().toISOString();
+    const completedResult = normalizeAdminError(
+      new AdminError(
+        "dependency_unavailable",
+        terminalAuditWritten
+          ? "The domain mutation was rolled back because its required terminal audit initially failed."
+          : "The domain mutation was rolled back, but its terminal audit requires reconciliation.",
+        {
+          retryable: false,
+          details: {
+            outcome: "compensated",
+            ...(terminalAuditWritten ? {} : { reconciliationRequired: true }),
+          },
+        },
+      ),
+      { requestId: request.context.requestId, correlationId: request.context.correlationId },
+    );
+    const resultWithReceipt = terminalAuditWritten
+      ? { ...completedResult, auditId }
+      : completedResult;
+    let completionPersisted = true;
+    try {
+      await this.idempotency.complete(reservation.claim, {
+        ...claimedRecord,
+        result: resultWithReceipt,
+        ...(terminalAuditWritten ? { auditId } : {}),
+        audit: {
+          ...claimedRecord.audit,
+          status: terminalAuditWritten ? "completed" : "pending",
+          updatedAt: completedAt,
+        },
+        compensation: { ...compensation, status: "completed", updatedAt: completedAt },
+      });
+    } catch {
+      completionPersisted = false;
+      try {
+        await this.idempotency.releaseCompensation(reservation.claim);
+      } catch {
+        // A committed completion makes releasing the reconciliation claim unnecessary.
+      }
+    }
+    return {
+      status: "result",
+      result: {
+        ...outwardAdminResult(resultWithReceipt, entry),
+        meta: {
+          idempotencyReplay: true,
+          compensationCompleted: true,
+          ...(!completionPersisted ? { idempotencyReconciliationPending: true } : {}),
+        },
+      },
+    };
   }
 
   private redactAuditMetadata(

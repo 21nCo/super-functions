@@ -598,8 +598,11 @@ export class SuperConsole {
       throw new Error('Super Console startup requires operator-auth mutation authorization because enabled operations can mutate state.');
     }
     if (operations.some((operation) => operation.safety.requiresConfirmation)
-      && (typeof options.confirmation?.issue !== 'function' || typeof options.confirmation?.verify !== 'function')) {
-      throw new Error('Super Console startup requires a confirmation issuer and verifier because enabled operations require confirmation.');
+      && (typeof options.confirmation?.issue !== 'function'
+        || typeof options.confirmation?.activate !== 'function'
+        || typeof options.confirmation?.revoke !== 'function'
+        || typeof options.confirmation?.verify !== 'function')) {
+      throw new Error('Super Console startup requires staged confirmation issue, activation, revocation, and verification because enabled operations require confirmation.');
     }
     if (options.openApiSecuritySchemes
       && (!options.openApiSecuritySchemes.operatorSession || !options.openApiSecuritySchemes.operatorApiKey)) {
@@ -1058,7 +1061,47 @@ export class SuperConsole {
       await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'denied', started, normalizeAdminError(error).error.code);
       throw error;
     }
-    await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started);
+    const confirmation = this.options.confirmation;
+    if (!confirmation) throw new SuperConsoleHttpError('Confirmation issuance is unavailable.', { status: 503, code: 'CONFIRMATION_UNAVAILABLE' });
+    try {
+      await this.auditConfirmation(entry, operationId, immutable.input, immutable.state.context, 'succeeded', started);
+    } catch (error) {
+      try {
+        await confirmation.revoke({
+          token: receipt.token,
+          operationId,
+          input: immutable.input,
+          principal: immutable.state.principal,
+          context: immutable.state.context,
+        });
+      } catch {
+        // Staged tokens are unusable until activate succeeds, so a cleanup
+        // failure cannot turn this rejected issuance into a live token.
+      }
+      throw new SuperConsoleHttpError('The confirmation issuance could not be audited.', { status: 503, code: 'AUDIT_UNAVAILABLE', details: { retryable: true } });
+    }
+    try {
+      await confirmation.activate({
+        token: receipt.token,
+        operationId,
+        input: immutable.input,
+        principal: immutable.state.principal,
+        context: immutable.state.context,
+      });
+    } catch (error) {
+      try {
+        await confirmation.revoke({
+          token: receipt.token,
+          operationId,
+          input: immutable.input,
+          principal: immutable.state.principal,
+          context: immutable.state.context,
+        });
+      } catch {
+        // Activation is atomic by contract: rejection leaves the staged token unusable.
+      }
+      throw new SuperConsoleHttpError('The confirmation token could not be activated.', { status: 503, code: 'CONFIRMATION_ACTIVATION_FAILED', details: { retryable: true } });
+    }
     return receipt;
   }
 

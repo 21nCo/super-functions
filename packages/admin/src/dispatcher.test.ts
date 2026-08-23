@@ -336,7 +336,10 @@ describe("AdminDispatcher", () => {
       mcp: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     }] });
     const handler = vi.fn(async () => ({ ok: true as const, data: { items: [] } }));
-    const compensate = vi.fn(async () => undefined);
+    let compensationAttempts = 0;
+    const compensate = vi.fn(async () => {
+      if (compensationAttempts++ === 0) throw new Error("transient compensation failure");
+    });
     const persistedEvents: Array<{ id: string; outcome: string; metadata?: Readonly<Record<string, unknown>> }> = [];
     let failedAuditAttempts = 0;
     let auditSequence = 0;
@@ -382,15 +385,20 @@ describe("AdminDispatcher", () => {
 
     await expect(dispatch("initial")).resolves.toMatchObject({
       ok: false,
-      error: { details: { outcome: "compensated", reconciliationRequired: true } },
+      error: { details: { outcome: "domain_completed", compensationFailed: true } },
     });
     await expect(dispatch("retry")).resolves.toMatchObject({
+      ok: false,
+      error: { details: { outcome: "compensated", reconciliationRequired: true } },
+      meta: { idempotencyReplay: true, compensationCompleted: true },
+    });
+    await expect(dispatch("retry_audit")).resolves.toMatchObject({
       ok: false,
       auditId: "audit_2",
       meta: { idempotencyReplay: true, recoveredTerminalAudit: true },
     });
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(compensate).toHaveBeenCalledTimes(1);
+    expect(compensate).toHaveBeenCalledTimes(2);
     expect(persistedEvents).toEqual([
       { id: "audit_1", outcome: "attempted", metadata: { policy: "manual", accessToken: "[REDACTED]" } },
       { id: "audit_2", outcome: "failed", metadata: { policy: "manual", accessToken: "[REDACTED]", compensation: "succeeded" } },
@@ -434,6 +442,8 @@ describe("AdminDispatcher", () => {
         },
         finalizeAudit: backing.finalizeAudit.bind(backing),
         release: backing.release.bind(backing),
+        claimCompensation: backing.claimCompensation.bind(backing),
+        releaseCompensation: backing.releaseCompensation.bind(backing),
         prepareCompensation: async (...args: Parameters<typeof backing.prepareCompensation>) => {
           prepareCalls += 1;
           if (failureStage === "preparation" && prepareCalls === 1) {
@@ -481,9 +491,13 @@ describe("AdminDispatcher", () => {
         meta: { idempotencyReplay: true },
       });
       expect(prepareCalls).toBe(failureStage === "preparation" ? 2 : 1);
-      expect(completionTransitionCalls).toBe(failureStage === "completion" ? 1 : 0);
+      expect(completionTransitionCalls).toBe(
+        failureStage === "completion" ? (failureMode === "before-write" ? 2 : 1) : 0,
+      );
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(compensate).toHaveBeenCalledTimes(1);
+      expect(compensate).toHaveBeenCalledTimes(
+        failureStage === "completion" && failureMode === "before-write" ? 2 : 1,
+      );
     },
   );
 
@@ -529,6 +543,8 @@ describe("AdminDispatcher", () => {
       begin: backing.begin.bind(backing),
       complete: backing.complete.bind(backing),
       prepareCompensation: backing.prepareCompensation.bind(backing),
+      claimCompensation: backing.claimCompensation.bind(backing),
+      releaseCompensation: backing.releaseCompensation.bind(backing),
       release: backing.release.bind(backing),
       finalizeAudit: async (...args: Parameters<typeof backing.finalizeAudit>) => {
         if (failReconciliation) throw new Error("lost reconciliation acknowledgement");
@@ -604,6 +620,8 @@ describe("AdminDispatcher", () => {
           backing.complete(...args);
         },
         prepareCompensation: backing.prepareCompensation.bind(backing),
+        claimCompensation: backing.claimCompensation.bind(backing),
+        releaseCompensation: backing.releaseCompensation.bind(backing),
         finalizeAudit: backing.finalizeAudit.bind(backing),
         release: backing.release.bind(backing),
       };

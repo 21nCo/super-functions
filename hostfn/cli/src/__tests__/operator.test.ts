@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  HostFnOperatorService,
   MemoryHostFnOperatorStore,
+  type HostFnDeploymentExecutor,
   type HostFnDeployment,
   type HostFnScope,
   type HostFnTarget,
@@ -75,5 +77,47 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(fetchedDeployment).toEqual(deployment);
     fetchedDeployment!.revision = "git:mutated";
     expect(await store.getDeployment(scope, deployment.id)).toEqual(deployment);
+  });
+
+  it("keeps a discoverable pending domain when the provider succeeds but activation persistence fails", async () => {
+    class ActivationFailureStore extends MemoryHostFnOperatorStore {
+      override async putDomain(domain: Parameters<MemoryHostFnOperatorStore["putDomain"]>[0]) {
+        if (domain.status === "active") throw new Error("activation persistence unavailable");
+        await super.putDomain(domain);
+      }
+    }
+    const store = new ActivationFailureStore();
+    const target: HostFnTarget = {
+      id: "target_1",
+      scope,
+      name: "API",
+      server: "api.example.test",
+      runtime: "nodejs",
+      status: "ready",
+      updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    const attachDomain = vi.fn(async () => undefined);
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined,
+      cancel: async () => undefined,
+      rollback: async () => undefined,
+      restart: async () => undefined,
+      attachDomain,
+      detachDomain: async () => undefined,
+      setVariable: async () => undefined,
+      deleteVariable: async () => undefined,
+    };
+    const operator = new HostFnOperatorService(store, executor);
+
+    await expect(operator.attachDomain(scope, {
+      targetId: target.id,
+      hostname: "api.example.test",
+    })).rejects.toThrow("activation persistence unavailable");
+
+    await expect(store.listDomains(scope)).resolves.toEqual([
+      expect.objectContaining({ targetId: target.id, hostname: "api.example.test", status: "pending" }),
+    ]);
+    expect(attachDomain).toHaveBeenCalledTimes(1);
   });
 });

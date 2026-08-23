@@ -294,6 +294,10 @@ export class HostFnOperatorService {
       status: "pending",
       updatedAt: new Date().toISOString(),
     };
+    // Persist the provider intent before the external side effect. If the
+    // provider succeeds but the active transition fails, operators can still
+    // discover and detach the pending domain instead of creating duplicates.
+    await this.store.putDomain(domain);
     await this.executor.attachDomain({ target, domain });
     const active = { ...domain, status: "active" as const };
     await this.store.putDomain(active);

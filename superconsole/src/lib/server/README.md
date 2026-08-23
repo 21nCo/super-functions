@@ -40,6 +40,10 @@ selection. Startup rejects missing audit, atomic idempotency, mutation
 authorization, or bound confirmation infrastructure required by enabled
 operations.
 
+Bound confirmation services stage unusable tokens in `issue`, atomically make
+them verifiable in `activate`, and support idempotent `revoke`. Super Console
+activates only after the required succeeded audit has been persisted.
+
 Required-audit flows record a sanitized attempt before invoking mutable state
 and a terminal outcome afterward. This is fail-closed preflight, not an atomic
 transaction across audit and domain stores; operators must reconcile attempts

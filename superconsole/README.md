@@ -46,11 +46,15 @@ from its name or require a repository-wide package catalog.
 
 Startup fails closed when enabled operations require infrastructure that was
 not injected: a required audit sink, atomic idempotency store, mutation
-authorization, or a bound confirmation issuer/verifier. Required-audit
+authorization, or a bound staged confirmation issuer/activator/revoker/verifier. Required-audit
 mutations and confirmation issuance append a sanitized `attempted` event before
 invoking mutable state, then append a terminal outcome. Audit and domain state
 remain separate systems, so deployments must monitor and reconcile attempts
 without terminal events.
+
+Confirmation services must return an unusable staged token from `issue`.
+Super Console calls `activate` only after the required succeeded audit is
+durable, and calls idempotent `revoke` when issuance cannot complete.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an

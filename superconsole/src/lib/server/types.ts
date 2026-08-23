@@ -169,12 +169,29 @@ export interface SuperConsoleOptions {
 }
 
 export interface SuperConsoleConfirmationService extends AdminConfirmationVerifier {
+  /** Stage an unusable token. `activate` is called only after the required terminal audit succeeds. */
   issue(input: {
     operationId: string;
     input: unknown;
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<{ token: string; expiresAt: string }>;
+  /** Atomically make a staged token verifiable; a rejected call must leave it unusable. */
+  activate(input: {
+    token: string;
+    operationId: string;
+    input: unknown;
+    principal: SuperConsolePrincipal;
+    context: AdminOperationContext;
+  }): Promise<void>;
+  /** Idempotently discard a staged token. */
+  revoke(input: {
+    token: string;
+    operationId: string;
+    input: unknown;
+    principal: SuperConsolePrincipal;
+    context: AdminOperationContext;
+  }): Promise<void>;
 }
 
 export interface SuperConsoleRequestState {
