@@ -7,8 +7,22 @@ export type UIFnDateSegment = 'year' | 'month' | 'day';
 
 const DAY_MS = 86_400_000;
 
+function utcDate(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): Date {
+  const date = new Date(0);
+  date.setUTCHours(hour, minute, second, 0);
+  date.setUTCFullYear(year, monthIndex, day);
+  return date;
+}
+
 function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return utcDate(year, month, 0).getUTCDate();
 }
 
 export function createUIFnCalendarDate(year: number, month: number, day: number): UIFnCalendarDate {
@@ -29,11 +43,16 @@ export function serializeUIFnDate(value: UIFnCalendarDate): string {
 }
 
 export function compareUIFnDates(left: UIFnCalendarDate, right: UIFnCalendarDate): number {
-  return Math.sign(Date.UTC(left.year, left.month - 1, left.day) - Date.UTC(right.year, right.month - 1, right.day));
+  return Math.sign(
+    left.year - right.year
+    || left.month - right.month
+    || left.day - right.day,
+  );
 }
 
 export function addUIFnDateDays(value: UIFnCalendarDate, amount: number): UIFnCalendarDate {
-  const date = new Date(Date.UTC(value.year, value.month - 1, value.day) + Math.trunc(amount) * DAY_MS);
+  const date = utcDate(value.year, value.month - 1, value.day);
+  date.setTime(date.getTime() + Math.trunc(amount) * DAY_MS);
   return createUIFnCalendarDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
@@ -55,7 +74,7 @@ export function setUIFnDateSegment(value: UIFnCalendarDate, segment: UIFnDateSeg
 
 export function formatUIFnDate(value: UIFnCalendarDate, locale: string, options: Intl.DateTimeFormatOptions = {}): string {
   return new Intl.DateTimeFormat(locale, { calendar: value.calendar, timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', ...options })
-    .format(new Date(Date.UTC(value.year, value.month - 1, value.day, 12)));
+    .format(utcDate(value.year, value.month - 1, value.day, 12));
 }
 
 export function firstUIFnDayOfWeek(locale: string): number {
@@ -69,7 +88,7 @@ export function firstUIFnDayOfWeek(locale: string): number {
 
 export function createUIFnMonthGrid(anchor: UIFnCalendarDate, locale: string): readonly UIFnCalendarDate[] {
   const first = createUIFnCalendarDate(anchor.year, anchor.month, 1);
-  const weekday = new Date(Date.UTC(first.year, first.month - 1, 1)).getUTCDay();
+  const weekday = utcDate(first.year, first.month - 1, 1).getUTCDay();
   const offset = (weekday - firstUIFnDayOfWeek(locale) + 7) % 7;
   const start = addUIFnDateDays(first, -offset);
   return Object.freeze(Array.from({ length: 42 }, (_, index) => addUIFnDateDays(start, index)));
@@ -86,7 +105,7 @@ function zonedParts(instant: number, timeZone: string): readonly number[] {
 export function resolveUIFnZonedDateTime(value: UIFnCalendarDateTime, timeZone: string): UIFnZonedResolution {
   const second = value.second ?? 0;
   const target = [value.year, value.month, value.day, value.hour, value.minute, second];
-  const approximate = Date.UTC(value.year, value.month - 1, value.day, value.hour, value.minute, second);
+  const approximate = utcDate(value.year, value.month - 1, value.day, value.hour, value.minute, second).getTime();
   const matches: number[] = [];
   for (let minute = -1_080; minute <= 1_080; minute += 1) {
     const instant = approximate + minute * 60_000;

@@ -72,6 +72,8 @@ export interface HostFnOperatorStore {
   /** Persist a terminal state only when `claimToken` is still the current lease. */
   completeDomainAttachment(domain: HostFnDomain, claimToken: string): Promise<boolean>;
   releaseDomainAttachmentClaim(scope: HostFnScope, id: string, claimToken: string): Promise<void>;
+  /** Atomically retain failed compensation only while its hostname has no newer lifecycle. */
+  restoreDomainCompensation(domain: HostFnDomain): Promise<boolean>;
   putDomain(domain: HostFnDomain): Promise<void>;
   deleteDomain(scope: HostFnScope, id: string): Promise<boolean>;
   listVariables(
@@ -229,6 +231,17 @@ export class MemoryHostFnOperatorStore implements HostFnOperatorStore {
     if (!this.domains.has(key) || this.domainAttachmentClaims.get(key) !== claimToken) return false;
     this.domains.set(key, structuredClone(domain));
     this.domainAttachmentClaims.delete(key);
+    return true;
+  }
+  async restoreDomainCompensation(domain: HostFnDomain) {
+    const hostnameClaimed = [...this.domains.values()].some(
+      (candidate) =>
+        scopeKey(candidate.scope) === scopeKey(domain.scope) &&
+        candidate.targetId === domain.targetId &&
+        candidate.hostname === domain.hostname,
+    );
+    if (hostnameClaimed) return false;
+    this.domains.set(this.key(domain.scope, domain.id), structuredClone(domain));
     return true;
   }
   async putDomain(domain: HostFnDomain) {
@@ -394,7 +407,7 @@ export class HostFnOperatorService {
         if (providerReportedNotFound(error)) return;
         // Restore a durable, provider-idempotent intent so a transient
         // compensation failure remains visible and detach can be retried.
-        await this.store.putDomain({
+        await this.store.restoreDomainCompensation({
           ...domain,
           status: "failed",
           updatedAt: new Date().toISOString(),

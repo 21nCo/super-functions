@@ -40,10 +40,13 @@ selection. Startup rejects missing audit, atomic idempotency, mutation
 authorization, or bound confirmation infrastructure required by enabled
 operations.
 
-Bound confirmation services stage unusable tokens in `issue`, atomically make
-them verifiable in `activate`, and support idempotent `revoke`. Super Console
-records activation failure as a denied terminal event and revokes tokens when
-activation or the succeeded audit cannot complete.
+Bound confirmation services stage unusable tokens in `issue`, keep prepared
+records fail-closed, atomically make them verifiable only in `activate`, and support
+idempotent `revoke`. A rejected activation must remain unusable, and reconciliation
+must revoke or expire prepared records rather than infer activation from a success
+audit alone. Super Console records activation failure as a denied terminal event
+and attempts cancellation and revocation when activation or the succeeded audit
+cannot complete.
 
 Required-audit flows record a sanitized attempt before invoking mutable state
 and a terminal outcome afterward. This is fail-closed preflight, not an atomic

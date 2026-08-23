@@ -1145,7 +1145,7 @@ export class SuperConsole {
           context: immutable.state.context,
         });
       } catch {
-        // The bound denial audit below remains an independent reconciliation fence.
+        // activate() rejection is fail-closed; revocation is an additional cleanup attempt.
       }
       try {
         await this.auditConfirmation(

@@ -885,9 +885,10 @@ describe('Super Console server composition', () => {
     ]);
   });
 
-  it('uses the bound denial audit when rejected activation cannot be cancelled or revoked', async () => {
+  it('keeps rejected activation fail-closed when cancellation, revocation, and denial audit fail', async () => {
     const capability = manifest({ destructive: true });
     const outcomes: Array<{ id: string; outcome: string }> = [];
+    let active = false;
     const prepareActivation = vi.fn(async () => undefined);
     const cancelActivation = vi.fn(async () => { throw new Error('cancellation unavailable'); });
     const revoke = vi.fn(async () => { throw new Error('revocation unavailable'); });
@@ -901,7 +902,9 @@ describe('Super Console server composition', () => {
       audit: {
         idempotentById: true,
         write: async (event) => {
-          if (event.operationId === 'superconsole.confirmations.issue') outcomes.push({ id: event.id, outcome: event.outcome });
+          if (event.operationId !== 'superconsole.confirmations.issue') return;
+          if (event.outcome === 'denied') throw new Error('denial audit unavailable');
+          outcomes.push({ id: event.id, outcome: event.outcome });
         },
       },
       idempotency: new MemoryAdminIdempotencyStore(),
@@ -911,7 +914,7 @@ describe('Super Console server composition', () => {
         cancelActivation,
         activate: async () => { throw new Error('ambiguous activation outcome'); },
         revoke,
-        verify: async () => false,
+        verify: async () => active,
       },
     });
 
@@ -922,16 +925,15 @@ describe('Super Console server composition', () => {
     }));
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: { code: 'CONFIRMATION_ACTIVATION_FAILED' } });
-    const deniedAuditId = outcomes.find((event) => event.outcome === 'denied')?.id;
-    expect(deniedAuditId).toEqual(expect.any(String));
+    expect(await response.json()).toMatchObject({ error: { code: 'AUDIT_UNAVAILABLE' } });
+    expect(active).toBe(false);
     expect(prepareActivation).toHaveBeenCalledWith(expect.objectContaining({
       token: 'ambiguous-token',
-      denialAuditId: deniedAuditId,
+      denialAuditId: expect.any(String),
     }));
     expect(cancelActivation).toHaveBeenCalledTimes(1);
     expect(revoke).toHaveBeenCalledTimes(1);
-    expect(outcomes.map((event) => event.outcome)).toEqual(['attempted', 'succeeded', 'denied']);
+    expect(outcomes.map((event) => event.outcome)).toEqual(['attempted', 'succeeded']);
   });
 
   it('returns audit unavailable when activation preparation and its denial audit both fail', async () => {

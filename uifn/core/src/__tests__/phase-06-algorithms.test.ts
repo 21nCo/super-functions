@@ -211,6 +211,9 @@ describe('PHASE_06 canonical shared algorithms', () => {
     const virtualizer = createVirtualizerContract({ count: 10_000, estimateSize: 32, overscan: 3 });
     expect(virtualizer.getWindow(3_200, 320)).toEqual({ start: 97, end: 112, offset: 3_104, totalSize: 320_000 });
     expect(virtualizer.getOffsetForIndex(500)).toBe(16_000);
+
+    const withoutOverscan = createVirtualizerContract({ count: 10, estimateSize: 10, overscan: 0 });
+    expect(withoutOverscan.getWindow(5, 10)).toEqual({ start: 0, end: 1, offset: 0, totalSize: 100 });
   });
 
   it('flattens expanded trees and rejects cycles through the collection invariant', () => {

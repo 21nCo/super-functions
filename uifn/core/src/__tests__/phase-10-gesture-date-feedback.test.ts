@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  addUIFnDateDays,
   assertUIFnRangeDirection,
   colorUIFnDistance,
+  compareUIFnDates,
   createUIFnCalendarDate,
   firstUIFnDayOfWeek,
   hslaToUIFnRgba,
@@ -147,6 +149,15 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
     expect(picker.state.grid).toHaveLength(42);
     input.destroy(); picker.destroy();
+  });
+
+  it('preserves years below 100 in Gregorian comparisons and day arithmetic', () => {
+    const ancient = parseUIFnIsoDate('0001-12-31');
+    const modern = parseUIFnIsoDate('1901-12-31');
+
+    expect(compareUIFnDates(ancient, modern)).toBe(-1);
+    expect(addUIFnDateDays(ancient, 1)).toEqual(createUIFnCalendarDate(2, 1, 1));
+    expect(addUIFnDateDays(parseUIFnIsoDate('0000-02-28'), 1)).toEqual(createUIFnCalendarDate(0, 2, 29));
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {

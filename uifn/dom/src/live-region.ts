@@ -81,12 +81,20 @@ export function createUIFnLiveRegion(scope: UIFnDomScope): UIFnLiveRegion {
   const publishQueue = () => {
     releasePublish = () => undefined;
     const entry = queue.shift();
-    if (!entry || entry.stale || destroyed) return;
+    if (!entry || destroyed) return;
+    if (entry.stale) {
+      if (queue.length > 0) releasePublish = scope.setTimeout(publishQueue, 0);
+      return;
+    }
     const region = regions.get(entry.politeness)!;
     region.textContent = '';
     releaseFrame = scope.requestAnimationFrame(() => {
       releaseFrame = () => undefined;
-      if (entry.stale || destroyed) return;
+      if (destroyed) return;
+      if (entry.stale) {
+        if (queue.length > 0) releasePublish = scope.setTimeout(publishQueue, 0);
+        return;
+      }
       region.textContent = entry.message;
       scope.environment.trace({
         kind: 'dom-live-region',

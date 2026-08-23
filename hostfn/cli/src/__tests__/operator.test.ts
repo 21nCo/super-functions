@@ -351,6 +351,48 @@ describe("MemoryHostFnOperatorStore", () => {
     expect(detachDomain).toHaveBeenCalledTimes(3);
   });
 
+  it("does not resurrect stale compensation over a replacement hostname claim", async () => {
+    const store = new MemoryHostFnOperatorStore();
+    const target: HostFnTarget = {
+      id: "target_1", scope, name: "API", server: "api.example.test", runtime: "nodejs",
+      status: "ready", updatedAt: "2026-08-22T00:00:00.000Z",
+    };
+    await store.putTarget(target);
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let attachCalls = 0;
+    const attachDomain = vi.fn(async () => {
+      attachCalls += 1;
+      if (attachCalls === 1) await firstGate;
+    });
+    let detachCalls = 0;
+    const detachDomain = vi.fn(async () => {
+      detachCalls += 1;
+      if (detachCalls === 2) throw new Error("compensation unavailable");
+    });
+    const executor: HostFnDeploymentExecutor = {
+      deploy: async () => undefined, cancel: async () => undefined, rollback: async () => undefined,
+      restart: async () => undefined, attachDomain, detachDomain,
+      setVariable: async () => undefined, deleteVariable: async () => undefined,
+    };
+    const staleService = new HostFnOperatorService(store, executor);
+    const replacementService = new HostFnOperatorService(store, executor);
+    const staleAttachment = staleService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    await vi.waitFor(() => expect(attachDomain).toHaveBeenCalledTimes(1));
+    const [staleDomain] = await store.listDomains(scope);
+
+    await replacementService.detachDomain(scope, staleDomain!.id);
+    const replacement = await replacementService.attachDomain(scope, { targetId: target.id, hostname: "api.example.test" });
+    expect(replacement.id).not.toBe(staleDomain!.id);
+    releaseFirst();
+
+    await expect(staleAttachment).rejects.toThrow("compensation unavailable");
+    await expect(store.listDomains(scope)).resolves.toEqual([
+      expect.objectContaining({ id: replacement.id, hostname: "api.example.test", status: "active" }),
+    ]);
+    expect(detachDomain).toHaveBeenCalledTimes(2);
+  });
+
   it("persists variable intent before calling the provider", async () => {
     class IntentFailureStore extends MemoryHostFnOperatorStore {
       override async putVariable() {

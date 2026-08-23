@@ -53,18 +53,18 @@ then append a terminal outcome. Audit and domain state remain separate systems,
 so deployments must monitor and reconcile attempts without terminal events.
 
 Confirmation services must return an unusable staged token from `issue` and
-durably bind it to the supplied success and denial audit IDs in `prepareActivation`.
-Super Console then writes that exact succeeded audit and activates the token.
-Providers must reconcile prepared records after interruption: activate when the
-bound success audit exists unless the bound denial audit or a durable
-`cancelActivation` record exists; denial and cancellation always win. Otherwise
-providers revoke or expire the staged token.
+durably bind it to the supplied success and denial audit IDs in `prepareActivation`
+without making it verifiable. Super Console then writes that exact succeeded audit
+and explicitly calls `activate`. That call is the only allowed transition to a
+verifiable token and must be atomic and idempotent: a rejected call guarantees the
+token is still unusable. Providers must never infer activation from a success audit
+alone during reconciliation; prepared records without a completed activation are
+revoked or expired.
 Activation failures attempt durable cancellation and an idempotent `revoke`
-before writing their pre-bound denied event; audit failures therefore cannot
-leave a live unaudited token, while a post-audit interruption remains identifiable
-and recoverable without reactivating a denied confirmation. The bound denial audit
-remains a reconciliation fence even when cancellation and revocation both fail,
-so rejected activation never returns an unusable credential as success.
+before writing their pre-bound denied event. Those steps provide cleanup and durable
+failure evidence, but safety does not depend on all three succeeding: the fail-closed
+activation contract and no-auto-activation reconciliation rule prevent a rejected
+activation from becoming live later.
 
 Set `SUPERCONSOLE_INSTALLATION` to the absolute filesystem path or `file://`
 URL of the compiled module. The loader accepts `superConsole`, `default`, or an

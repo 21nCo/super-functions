@@ -176,7 +176,10 @@ export interface SuperConsoleConfirmationService extends AdminConfirmationVerifi
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<{ token: string; expiresAt: string }>;
-  /** Durably bind the staged token to the terminal audit ID before that audit is written. */
+  /**
+   * Durably bind the staged token to its terminal audit IDs while leaving it fail-closed.
+   * A prepared record must never become verifiable from audit observation alone.
+   */
   prepareActivation(input: {
     token: string;
     auditId: string;
@@ -197,7 +200,11 @@ export interface SuperConsoleConfirmationService extends AdminConfirmationVerifi
     principal: SuperConsolePrincipal;
     context: AdminOperationContext;
   }): Promise<void>;
-  /** Atomically make an audited staged token verifiable; a rejected call must leave it unusable. */
+  /**
+   * The only transition that may make a staged token verifiable. This operation must be
+   * atomic and idempotent; rejection guarantees the token remains unusable and cannot
+   * become active later through reconciliation.
+   */
   activate(input: {
     token: string;
     auditId: string;
