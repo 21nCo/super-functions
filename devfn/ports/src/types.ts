@@ -74,6 +74,7 @@ export interface ListenerInfo {
   port: number;
   pid?: number;
   process?: string;
+  containerId?: string;
   source: "os" | "docker";
 }
 

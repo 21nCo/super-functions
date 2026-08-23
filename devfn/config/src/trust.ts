@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+import { processBirthSignature, processExists } from "./process-identity.js";
 
 interface TrustRecord { root: string; configPath: string; digest: string; trustedAt: string }
 interface TrustState { version: 1; records: TrustRecord[] }
@@ -23,130 +25,73 @@ async function readTrust(filePath: string): Promise<TrustState> {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function readLockOwner(lockPath: string): Promise<{ token?: string; pid?: number; createdAt?: string }> {
-  try { return JSON.parse(await readFile(lockPath, "utf8")) as { token?: string; pid?: number; createdAt?: string }; }
+interface TrustLockTicket { token: string; pid: number; birthSignature?: string; createdAt: string; number?: number }
+
+async function readTicket(filePath: string): Promise<TrustLockTicket | undefined> {
+  try { return JSON.parse(await readFile(filePath, "utf8")) as TrustLockTicket; }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EISDIR") throw error;
-    return JSON.parse(await readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: string; pid?: number; createdAt?: string };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    return undefined;
   }
 }
 
-async function withLockMutation<T>(guardPath: string, deadline: number, action: () => Promise<T>): Promise<T> {
-  const token = randomUUID();
-  const staleMs = 300_000;
-  while (true) {
-    try {
-      await mkdir(guardPath, { mode: 0o700 });
-      const ownerTemp = path.join(guardPath, `owner.${token}.tmp`);
-      try {
-        await writeFile(ownerTemp, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-        await rename(ownerTemp, path.join(guardPath, "owner.json"));
-      } catch (error) {
-        await rm(guardPath, { recursive: true, force: true });
-        throw error;
-      }
-      break;
-    }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let observedToken: string | undefined;
-      let observedMtime: number | undefined;
-      let recover = false;
-      try {
-        const observed = await readLockOwner(guardPath);
-        observedToken = observed.token;
-        let alive = false;
-        if (observed.pid) {
-          try { process.kill(observed.pid, 0); alive = true; }
-          catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
-        }
-        recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
-      } catch (ownerError) {
-        if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
-        observedToken = "ownerless";
-        observedMtime = await stat(guardPath).then((value) => value.mtimeMs).catch((statError) => {
-          if ((statError as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-          throw statError;
-        });
-        recover = observedMtime !== undefined && Date.now() - observedMtime > staleMs;
-      }
-      if (recover && observedToken) {
-        const unchanged = observedToken === "ownerless"
-          ? await stat(guardPath).then((value) => value.mtimeMs === observedMtime).catch(() => false)
-          : await readLockOwner(guardPath).then((current) => current.token === observedToken).catch(() => false);
-        if (unchanged) {
-          const quarantine = `${guardPath}.stale.${observedToken}.${randomUUID()}`;
-          try { await rename(guardPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
-          catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
-        }
-      }
-      if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-lock mutation guard ${guardPath}.`);
-      await delay(20 + Math.floor(Math.random() * 20));
-    }
-  }
-  try { return await action(); }
-  finally {
-    const owner = await readLockOwner(guardPath).catch(() => undefined);
-    if (owner?.token === token) await rm(guardPath, { recursive: true, force: true });
+async function staleTicket(filePath: string, ticket: TrustLockTicket | undefined, staleMs: number): Promise<boolean> {
+  const createdAt = ticket?.createdAt ? Date.parse(ticket.createdAt) : await stat(filePath).then((value) => value.mtimeMs).catch(() => Date.now());
+  if (!Number.isFinite(createdAt) || Date.now() - createdAt <= staleMs) return false;
+  if (!ticket?.pid) return true;
+  if (!processExists(ticket.pid)) return true;
+  if (!ticket.birthSignature) return false;
+  const currentSignature = await processBirthSignature(ticket.pid);
+  return currentSignature !== undefined && currentSignature !== ticket.birthSignature;
+}
+
+async function ticketPaths(lockPath: string): Promise<string[]> {
+  return (await readdir(lockPath)).filter((name) => name.endsWith(".choosing") || name.endsWith(".ticket")).map((name) => path.join(lockPath, name));
+}
+
+async function cleanStaleTickets(lockPath: string, ownPaths: Set<string>, staleMs: number): Promise<void> {
+  for (const filePath of await ticketPaths(lockPath)) {
+    if (ownPaths.has(filePath)) continue;
+    const ticket = await readTicket(filePath);
+    if (await staleTicket(filePath, ticket, staleMs)) await rm(filePath, { force: true });
   }
 }
 
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
   const lockPath = path.join(stateDir, "trust.lock");
-  const guardPath = `${lockPath}.guard`;
+  await mkdir(lockPath, { recursive: true, mode: 0o700 });
   const token = randomUUID();
+  const choosingPath = path.join(lockPath, `${token}.choosing`);
+  const ticketPath = path.join(lockPath, `${token}.ticket`);
+  const ownPaths = new Set([choosingPath, ticketPath]);
   const staleMs = 300_000;
   const deadline = Date.now() + 10_000;
-  let acquired = false;
-  while (true) {
-    await withLockMutation(guardPath, deadline, async () => {
-      const pendingPath = `${lockPath}.${token}.pending`;
-      try {
-        await writeFile(pendingPath, JSON.stringify({ token, pid: process.pid, createdAt: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
-        try { await link(pendingPath, lockPath); acquired = true; }
-        catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (code !== "EEXIST" && code !== "EISDIR") throw error;
-          let recover = false;
-          let observedToken = "ownerless";
-          try {
-            const observed = await readLockOwner(lockPath);
-            observedToken = observed.token ?? observedToken;
-            let alive = false;
-            if (observed.pid) {
-              try { process.kill(observed.pid, 0); alive = true; }
-              catch (killError) { alive = (killError as NodeJS.ErrnoException).code === "EPERM"; }
-            }
-            recover = !alive && Boolean(observed.createdAt) && Date.now() - Date.parse(observed.createdAt!) > staleMs;
-          } catch (ownerError) {
-            if ((ownerError as NodeJS.ErrnoException).code !== "ENOENT") throw ownerError;
-            // Never steal an ownerless legacy directory because its creator may be suspended.
-          }
-          if (recover) {
-            const current = await readLockOwner(lockPath).catch(() => undefined);
-            if (current?.token !== observedToken) return;
-            const quarantine = `${lockPath}.stale.${observedToken}.${randomUUID()}`;
-            try { await rename(lockPath, quarantine); await rm(quarantine, { recursive: true, force: true }); }
-            catch (recoveryError) { if ((recoveryError as NodeJS.ErrnoException).code !== "ENOENT") throw recoveryError; }
-          }
-        }
-      } finally {
-        await rm(pendingPath, { force: true }).catch(() => undefined);
-      }
-    });
-    if (acquired) break;
-    if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-state lock ${lockPath}.`);
-    await delay(20 + Math.floor(Math.random() * 20));
-  }
+  const baseTicket: TrustLockTicket = { token, pid: process.pid, ...(await processBirthSignature(process.pid).then((birthSignature) => birthSignature ? { birthSignature } : {})), createdAt: new Date().toISOString() };
+  await writeFile(choosingPath, JSON.stringify(baseTicket), { mode: 0o600, flag: "wx" });
   try {
+    await cleanStaleTickets(lockPath, ownPaths, staleMs);
+    const tickets = await Promise.all((await ticketPaths(lockPath)).filter((filePath) => filePath.endsWith(".ticket")).map(readTicket));
+    const number = Math.max(0, ...tickets.map((ticket) => Number.isInteger(ticket?.number) ? ticket!.number! : 0)) + 1;
+    await writeFile(ticketPath, JSON.stringify({ ...baseTicket, number }), { mode: 0o600, flag: "wx" });
+    await rm(choosingPath, { force: true });
+    while (true) {
+      await cleanStaleTickets(lockPath, ownPaths, staleMs);
+      const others = (await ticketPaths(lockPath)).filter((filePath) => !ownPaths.has(filePath));
+      let blocked = others.some((filePath) => filePath.endsWith(".choosing"));
+      if (!blocked) {
+        for (const filePath of others.filter((candidate) => candidate.endsWith(".ticket"))) {
+          const ticket = await readTicket(filePath);
+          if (!ticket || !Number.isInteger(ticket.number) || ticket.number! < number || (ticket.number === number && ticket.token < token)) { blocked = true; break; }
+        }
+      }
+      if (!blocked) break;
+      if (Date.now() >= deadline) throw new Error(`Timed out acquiring trust-state lock ${lockPath}.`);
+      await delay(20 + Math.floor(Math.random() * 20));
+    }
     return await action();
   } finally {
-    try {
-      await withLockMutation(guardPath, Date.now() + 10_000, async () => {
-        const owner = await readLockOwner(lockPath);
-        if (owner.token === token) await rm(lockPath, { recursive: true, force: true });
-      });
-    } catch { /* A replaced lock is not ours to remove. */ }
+    await rm(choosingPath, { force: true }).catch(() => undefined);
+    await rm(ticketPath, { force: true }).catch(() => undefined);
   }
 }
 

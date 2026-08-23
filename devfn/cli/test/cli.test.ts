@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -54,6 +54,17 @@ describe("devfn CLI", () => {
     await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample" }), "utf8");
     await mkdir(path.join(cwd, ".gitignore"));
     expect(await runCli(["init", "--yes", "--json"], { cwd, stdout: () => undefined, stderr: () => undefined })).toBe(1);
+    await expect(access(path.join(cwd, "devfn.config.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("refuses to update a runtime ignore symlink outside the repository", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-init-"));
+    const outside = path.join(await mkdtemp(path.join(tmpdir(), "devfn-outside-")), "gitignore");
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample" }), "utf8");
+    await writeFile(outside, "outside\n", "utf8");
+    await symlink(outside, path.join(cwd, ".gitignore"));
+    expect(await runCli(["init", "--yes", "--json"], { cwd, stdout: () => undefined, stderr: () => undefined })).toBe(1);
+    expect(await readFile(outside, "utf8")).toBe("outside\n");
     await expect(access(path.join(cwd, "devfn.config.ts"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -142,7 +153,7 @@ describe("devfn CLI", () => {
     }), "utf8");
     let stdout = "";
     try {
-      expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(0);
+      expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined }), stdout).toBe(0);
       const diagnostics = JSON.parse(stdout).diagnostics as Array<{ code: string }>;
       expect(diagnostics.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
@@ -169,10 +180,45 @@ describe("devfn CLI", () => {
     };
     try {
       expect((await invoke(["up", "--trust"])).code).toBe(0);
+      const registry = JSON.parse(await readFile(path.join(stateDir, "registry.json"), "utf8")) as { allocations: Array<{ state: string; process?: { pid: number } }> };
+      expect(registry.allocations[0], JSON.stringify(registry)).toMatchObject({ state: "active", process: { pid: expect.any(Number) } });
       const doctor = await invoke(["doctor"]);
-      expect(doctor.code).toBe(0);
+      expect(doctor.code, JSON.stringify(doctor.value)).toBe(0);
       expect(doctor.value.diagnostics?.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
     } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 15_000);
+
+  it("reports an unrelated listener that replaces a recorded exact-port owner", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-doctor-replaced-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const probe = createServer();
+    await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(0, "127.0.0.1", resolve); });
+    const address = probe.address();
+    if (!address || typeof address === "string") throw new Error("TCP test server did not receive a port.");
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1', () => setTimeout(() => server.close(), 500)); setInterval(() => {}, 1000);\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "doctor-replaced" }, ports: { app: { preferred: address.port, exact: true, env: "PORT" } },
+      processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["app"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as { diagnostics?: Array<{ code: string }> } };
+    };
+    const replacement = createServer();
+    try {
+      expect((await invoke(["up", "--trust"])).code).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      await new Promise<void>((resolve, reject) => { replacement.once("error", reject); replacement.listen(address.port, "127.0.0.1", resolve); });
+      const doctor = await invoke(["doctor"]);
+      expect(doctor.code).toBe(1);
+      expect(doctor.value.diagnostics?.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED"), JSON.stringify(doctor.value)).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => replacement.close(() => resolve()));
+      await invoke(["down"]).catch(() => undefined);
+    }
   }, 15_000);
 
   it("does not execute an untrusted TypeScript manifest", async () => {

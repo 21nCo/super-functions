@@ -71,9 +71,15 @@ export function createPlan(config: DevFnConfig, requestedProfile?: string): Life
   [...selected].sort().forEach(visit);
 
   const portNames = new Set<string>();
+  const portOwners = new Map<string, string>();
   for (const name of ordered) {
-    for (const port of config.processes?.[name]?.ports ?? []) portNames.add(port);
-    for (const port of Object.keys(config.services?.[name]?.ports ?? {})) portNames.add(port);
+    const ownedPorts = [...(config.processes?.[name]?.ports ?? []), ...Object.keys(config.services?.[name]?.ports ?? {})];
+    for (const port of ownedPorts) {
+      const owner = portOwners.get(port);
+      if (owner !== undefined && owner !== name) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Port ${port} has multiple lifecycle owners (${owner} and ${name}) in profile ${profileName}.`);
+      portOwners.set(port, name);
+      portNames.add(port);
+    }
   }
   for (const hostname of Object.values(config.hostnames ?? {})) if (profile.proxy && (!hostname.profiles || hostname.profiles.includes(profileName))) portNames.add(hostname.target);
   return {

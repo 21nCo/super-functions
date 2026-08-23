@@ -52,7 +52,7 @@ function composeEnvironment(spec: ComposeServiceSpec, generated: Record<string, 
   const base = ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "XDG_RUNTIME_DIR", "SystemRoot", "ComSpec", "PATHEXT"];
   const environment: NodeJS.ProcessEnv = {};
   for (const key of [...base, ...(spec.envAllowlist ?? [])]) if (process.env[key] !== undefined) environment[key] = process.env[key];
-  return { ...environment, ...generated, ...(spec.env ?? {}) };
+  return { ...environment, ...(spec.env ?? {}), ...generated };
 }
 
 const DOCKER_ENVIRONMENT_KEYS = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"] as const;
@@ -123,20 +123,21 @@ export class ComposeController {
       }
     }
     let containerIds: string[] = [];
+    const startedAt = new Date().toISOString();
     try {
-      await this.run("docker", [...baseArgs, "up", "-d", "--no-recreate", "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+      await this.run("docker", [...baseArgs, "up", "-d", "--no-deps", input.spec.service], { cwd: input.root, env: environment, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
       containerIds = await this.containerIds(baseArgs, input.spec.service, input.root, environment, true);
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
-      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString(), logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
+      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
         isAlive: async () => await this.status(managed) === "running",
-        readLog: async () => await this.logs(managed, 1000),
+        readLog: async () => await this.logs(managed, 1000, managed.startedAt),
       });
       return managed;
     } catch (error) {
-      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt: new Date().toISOString(), dockerEnvironment };
+      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: before.length > 0, wasRunning: beforeRunning.length > 0, startedAt, dockerEnvironment };
       if (containerIds.length) await this.stop(failed).catch(() => undefined);
       else await this.stopWithCompose(failed, input.root, environment).catch(() => undefined);
       throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
@@ -167,11 +168,11 @@ export class ComposeController {
     }
   }
 
-  public async logs(service: ManagedComposeService, tail: number | null = 200): Promise<string> {
+  public async logs(service: ManagedComposeService, tail: number | null = 200, since?: string): Promise<string> {
     if (service.logsDisabled) return "";
     const environment = directDockerEnvironment(service.dockerEnvironment);
     const outputs = await Promise.all(service.containerIds.map(async (id) => {
-      const { stdout, stderr } = await this.run("docker", ["logs", ...(tail === null ? [] : ["--tail", String(tail)]), id], { env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout, stderr } = await this.run("docker", ["logs", ...(since ? ["--since", since] : []), ...(tail === null ? [] : ["--tail", String(tail)]), id], { env: environment, timeout: 10_000, maxBuffer: 10 * 1024 * 1024 });
       return `${stdout}${stderr}`;
     }));
     return outputs.join("\n");

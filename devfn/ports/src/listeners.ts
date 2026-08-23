@@ -65,9 +65,9 @@ function parseLsof(output: string, protocol: "tcp" | "udp"): ListenerInfo[] {
 function parseDocker(output: string): ListenerInfo[] {
   const listeners: ListenerInfo[] = [];
   for (const line of output.split("\n")) {
-    const [name, ports = ""] = line.split("\t");
+    const [containerId, name, ports = ""] = line.split("\t");
     for (const match of ports.matchAll(/(0\.0\.0\.0|127\.0\.0\.1|\[::\]):(\d+)->\d+\/(tcp|udp)/g)) {
-      listeners.push({ protocol: match[3] as "tcp" | "udp", host: match[1], port: Number(match[2]), process: name, source: "docker" });
+      listeners.push({ protocol: match[3] as "tcp" | "udp", host: match[1], port: Number(match[2]), process: name, containerId, source: "docker" });
     }
   }
   return listeners;
@@ -94,6 +94,6 @@ export async function scanListeners(): Promise<ListenerInfo[]> {
       }
     } catch { /* optional */ }
   }
-  try { results.push(...parseDocker((await execFileAsync("docker", ["ps", "--format", "{{.Names}}\\t{{.Ports}}"])).stdout)); } catch { /* Docker is optional */ }
+  try { results.push(...parseDocker((await execFileAsync("docker", ["ps", "--format", "{{.ID}}\\t{{.Names}}\\t{{.Ports}}"])).stdout)); } catch { /* Docker is optional */ }
   return results.sort((a, b) => a.port - b.port || a.source.localeCompare(b.source));
 }

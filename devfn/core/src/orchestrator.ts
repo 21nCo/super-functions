@@ -22,6 +22,19 @@ function isLoopbackHost(host: string): boolean {
   return normalized === "localhost" || normalized === "::1" || /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
+async function isProcessTreeMember(pid: number, ownerPid: number): Promise<boolean> {
+  if (pid === ownerPid) return true;
+  try {
+    if (process.platform === "win32") {
+      const script = `$current=${pid}; while ($current -gt 0) { if ($current -eq ${ownerPid}) { exit 0 }; $entry=Get-CimInstance Win32_Process -Filter \"ProcessId = $current\"; if (-not $entry) { break }; $current=$entry.ParentProcessId }; exit 1`;
+      await execFileAsync("powershell", ["-NoProfile", "-Command", script], { timeout: 5000 });
+      return true;
+    }
+    const { stdout } = await execFileAsync("ps", ["-o", "pgid=", "-p", String(pid)], { timeout: 5000 });
+    return Number(stdout.trim()) === ownerPid;
+  } catch { return false; }
+}
+
 function envName(name: string): string { return `DEVFN_PORT_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`; }
 function hostname(configured: string | undefined, key: string, projectId: string, instanceId: string, suffix = ".localhost"): string {
   const result = (configured ?? `${key}-{instance}${suffix}`).replaceAll("{instance}", instanceId).replaceAll("{project}", projectId);
@@ -283,10 +296,16 @@ export class DevFnOrchestrator {
     const listeners = await scanListeners();
     const exact = plan.portNames.flatMap((name) => options.config.ports?.[name]?.exact && options.config.ports[name].preferred ? [{ name, port: options.config.ports[name].preferred!, protocol: options.config.ports[name].protocol ?? "tcp" as const }] : []);
     for (const item of exact) {
-      const owned = registry.allocations.some((allocation) => allocation.instanceId === identity.instanceId && allocation.service === item.name && allocation.port === item.port && allocation.protocol === item.protocol && allocation.state === "active");
+      const allocation = registry.allocations.find((candidate) => candidate.instanceId === identity.instanceId && candidate.service === item.name && candidate.port === item.port && candidate.protocol === item.protocol && candidate.state === "active");
+      const matches = listeners.filter((candidate) => candidate.port === item.port && candidate.protocol === item.protocol);
+      const relevantListeners = matches.some((listener) => listener.source === "docker") ? matches.filter((listener) => listener.source === "docker") : matches;
+      const ownership = await Promise.all(relevantListeners.map(async (listener) => {
+        if (allocation?.process !== undefined && listener.pid !== undefined) return await isProcessTreeMember(listener.pid, allocation.process.pid);
+        return allocation?.container !== undefined && listener.containerId !== undefined && (allocation.container.id.startsWith(listener.containerId) || listener.containerId.startsWith(allocation.container.id));
+      }));
+      const owned = ownership.length > 0 && ownership.every(Boolean);
       if (owned) continue;
-      const listener = listeners.find((candidate) => candidate.port === item.port && candidate.protocol === item.protocol);
-      if (listener || !await isPortAvailable(item.port, item.protocol)) diagnostics.push({ code: "DEVFN_EXACT_PORT_OCCUPIED", severity: "error", message: `Exact ${item.protocol.toUpperCase()} port ${item.port} for ${item.name} is occupied.`, ...(listener ? { details: listener } : {}) });
+      if (relevantListeners.length || !await isPortAvailable(item.port, item.protocol)) diagnostics.push({ code: "DEVFN_EXACT_PORT_OCCUPIED", severity: "error", message: `Exact ${item.protocol.toUpperCase()} port ${item.port} for ${item.name} is occupied.`, ...(relevantListeners[0] ? { details: relevantListeners[0] } : {}) });
     }
     const stale = registry.allocations.filter((allocation) => allocation.state === "stale");
     if (stale.length) diagnostics.push({ code: "DEVFN_STALE_LEASES", severity: "warning", message: `${stale.length} stale lease(s) need garbage collection.` });

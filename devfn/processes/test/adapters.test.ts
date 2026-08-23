@@ -8,7 +8,7 @@ describe("runtime adapters", () => {
   });
 
   it("inherits only base and allowlisted environment values", () => {
-    const env = createProcessEnvironment({ adapter: "command", command: ["node"], envAllowlist: ["ALLOWED"] }, { PORT: "4100" }, { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" });
+    const env = createProcessEnvironment({ adapter: "command", command: ["node"], envAllowlist: ["ALLOWED"], env: { PORT: "configured" } }, { PORT: "4100" }, { PATH: "/bin", ALLOWED: "yes", SECRET_TOKEN: "no" });
     expect(env).toMatchObject({ PATH: "/bin", ALLOWED: "yes", PORT: "4100" });
     expect(env.SECRET_TOKEN).toBeUndefined();
   });

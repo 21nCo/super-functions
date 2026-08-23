@@ -291,6 +291,7 @@ function validateReferences(config: DevFnConfig): void {
   const processes = new Set(Object.keys(config.processes ?? {}));
   const services = new Set(Object.keys(config.services ?? {}));
   for (const name of [...processes, ...services]) if (!/^[A-Za-z0-9_.-]+$/.test(name) || name !== name.trim()) fail(`Lifecycle node ${name} must use only letters, numbers, dots, underscores, and hyphens.`);
+  for (const name of ports) if (!/^[A-Za-z0-9_.-]+$/.test(name) || name !== name.trim()) fail(`Port name ${JSON.stringify(name)} must use only letters, numbers, dots, underscores, and hyphens.`);
   const collision = [...processes].find((name) => services.has(name));
   if (collision) fail(`Lifecycle node ${collision} cannot be both a process and a service.`);
   const nodes = new Set([...processes, ...services]);

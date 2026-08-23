@@ -60,6 +60,14 @@ describe("lifecycle planner", () => {
     expect(() => createPlan({ ...config, processes: { ...processes, app: { ...processes.app, dependsOn: ["alternate"] } }, profiles: { default: { processes: ["app"], proxy: true } }, hostnames })).toThrow(/ambiguous/);
   });
 
+  it("rejects multiple active lifecycle owners for one port", () => {
+    const processes = {
+      app: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+      alternate: { adapter: "npm" as const, script: "dev", ports: ["app"] },
+    };
+    expect(() => createPlan({ ...config, services: {}, processes, profiles: { default: { processes: ["app", "alternate"] } } })).toThrow(/multiple lifecycle owners/);
+  });
+
   it("resolves hostname owners to a fixed point independently of hostname order", () => {
     const processes = {
       gateway: { adapter: "npm" as const, script: "dev", ports: ["gateway"], dependsOn: ["api"] },

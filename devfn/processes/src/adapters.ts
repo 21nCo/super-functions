@@ -22,7 +22,7 @@ const BASE_ENV = ["PATH", "SHELL", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "
 export function createProcessEnvironment(spec: ProcessSpec, generated: Record<string, string> = {}, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const result: NodeJS.ProcessEnv = {};
   for (const key of [...BASE_ENV, ...(spec.envAllowlist ?? [])]) if (source[key] !== undefined) result[key] = source[key];
-  Object.assign(result, generated, spec.env ?? {});
+  Object.assign(result, spec.env ?? {}, generated);
   if (spec.exposure !== "public") {
     result.HOST = "127.0.0.1";
     result.DEVFN_HOST = "127.0.0.1";

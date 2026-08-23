@@ -37,7 +37,10 @@ describe("FilePortRegistry", () => {
       try {
         await registry.reserve({ projectId: "app", instanceId: "tcp", invocationId: `tcp-${attempt}`, profile: "default", requests: [{ name: "tcp", spec: { preferred: exactPort, exact: true, protocol: "tcp" } }] });
         udp = await registry.reserve({ projectId: "app", instanceId: "udp", invocationId: `udp-${attempt}`, profile: "default", requests: [{ name: "udp", spec: { preferred: exactPort, exact: true, protocol: "udp" } }] });
-      } catch { /* Retry if another process claims either protocol between probes. */ }
+      } catch (error) {
+        if ((error as { code?: string }).code !== "DEVFN_PORT_CONFLICT") throw error;
+        // Retry only when another process claims either protocol between probes.
+      }
     }
     expect(udp?.[0]).toMatchObject({ port: exactPort, protocol: "udp" });
   });

@@ -122,7 +122,7 @@ async function initCommand(args: ParsedArgs, cwd: string): Promise<Record<string
   const scaffold = createScaffold();
   await scaffold.apply([{ kind: "write-file", path: configName, content, ifExists: "error" }], { cwd });
   try {
-    const ignorePath = path.join(cwd, ".gitignore");
+    const ignorePath = await resolveContainedPath(cwd, ".gitignore", ".gitignore");
     const ignore = await readFile(ignorePath, "utf8").catch(() => "");
     if (!ignore.split(/\r?\n/).includes(".devfn/")) await writeFile(ignorePath, `${ignore}${ignore.endsWith("\n") || ignore.length === 0 ? "" : "\n"}.devfn/\n`, "utf8");
   } catch (error) {

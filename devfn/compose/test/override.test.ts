@@ -50,11 +50,15 @@ describe("ComposeController", () => {
       return { stdout: "", stderr: "" };
     });
     const managed = await controller.start({
-      name: "api", spec: { adapter: "compose", service: "api", env: { APP_PORT: "4100" } }, root, runtimeDir: path.join(root, ".devfn", "instances", "test"), instanceId: "test",
+      name: "api", spec: { adapter: "compose", service: "api", env: { APP_PORT: "4100" }, health: { type: "log", pattern: "standard output" } }, root, runtimeDir: path.join(root, ".devfn", "instances", "test"), instanceId: "test",
       ports: {}, environment: { APP_PORT: "generated", DOCKER_HOST: "tcp://docker.example:2376" },
     });
     expect(managed.containerIds).toEqual(["container-id"]);
-    expect(calls.filter((call) => call.args[0] === "compose").every((call) => call.cwd === root && call.appPort === "4100" && call.dockerHost === "tcp://docker.example:2376")).toBe(true);
+    expect(calls.filter((call) => call.args[0] === "compose").every((call) => call.cwd === root && call.appPort === "generated" && call.dockerHost === "tcp://docker.example:2376")).toBe(true);
+    const up = calls.find((call) => call.args.includes("up"));
+    expect(up?.args).not.toContain("--no-recreate");
+    const readinessLogs = calls.find((call) => call.args[0] === "logs" && call.args.includes("--since"));
+    expect(readinessLogs?.args[readinessLogs.args.indexOf("--since") + 1]).toBe(managed.startedAt);
     expect(await controller.logs(managed)).toBe("standard output\nstandard error\n");
     await controller.stop(managed);
     expect(calls.filter((call) => ["inspect", "logs", "stop", "rm"].includes(call.args[0])).every((call) => call.dockerHost === "tcp://docker.example:2376")).toBe(true);

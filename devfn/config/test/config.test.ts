@@ -67,7 +67,7 @@ describe("DevFn configuration", () => {
   it("rejects contradictory ephemeral blocks and colliding port environment names", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { callback: { ephemeral: true, block: "oauth" } }, profiles: { default: {} } })).toThrow(/part of a block/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "api-http": {}, api_http: {} }, profiles: { default: {} } })).toThrow(/DEVFN_PORT_API_HTTP/);
-    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "": { env: "EMPTY_OWNER" }, app: { env: "EMPTY_OWNER" } }, profiles: { default: {} } })).toThrow(/EMPTY_OWNER/);
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { "": { env: "EMPTY_OWNER" }, app: { env: "EMPTY_OWNER" } }, profiles: { default: {} } })).toThrow(/Port name/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "SHARED_PORT" }, admin: { env: "SHARED_PORT" } }, profiles: { default: {} } })).toThrow(/SHARED_PORT/);
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, ports: { app: { env: "DEVFN_PROJECT_ID" } }, profiles: { default: {} } })).toThrow(/reserved DEVFN_/);
   });
@@ -162,21 +162,34 @@ describe("DevFn configuration", () => {
     await mkdir(stateDir);
     await writeFile(first, "first");
     await writeFile(second, "second");
-    await writeFile(path.join(stateDir, "trust.lock"), JSON.stringify({ token: "stale", pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
-    await mkdir(path.join(stateDir, "trust.lock.guard"));
-    await writeFile(path.join(stateDir, "trust.lock.guard", "owner.json"), JSON.stringify({ token: "stale-guard", pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
+    await mkdir(path.join(stateDir, "trust.lock"));
+    await writeFile(path.join(stateDir, "trust.lock", "stale.ticket"), JSON.stringify({ token: "stale", number: 1, pid: 2_147_483_647, createdAt: "2000-01-01T00:00:00.000Z" }));
     await Promise.all([trustProject(root, first, stateDir), trustProject(root, second, stateDir)]);
     const state = JSON.parse(await readFile(path.join(stateDir, "trust.json"), "utf8")) as { records: Array<{ configPath: string }> };
     expect(state.records.map((record) => record.configPath).sort()).toEqual([first, second].sort());
   });
 
-  it("recovers an ownerless guard abandoned before metadata was written", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "devfn-ownerless-guard-"));
+  it("recovers an ownerless ticket abandoned before metadata was written", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-ownerless-ticket-"));
     const stateDir = path.join(root, "state");
     const configPath = path.join(root, "devfn.config.json");
-    await mkdir(path.join(stateDir, "trust.lock.guard"), { recursive: true });
-    await utimes(path.join(stateDir, "trust.lock.guard"), new Date(0), new Date(0));
+    const lockPath = path.join(stateDir, "trust.lock");
+    await mkdir(lockPath, { recursive: true });
+    const choosingPath = path.join(lockPath, "abandoned.choosing");
+    await writeFile(choosingPath, "");
+    await utimes(choosingPath, new Date(0), new Date(0));
     await writeFile(configPath, "ownerless");
+    await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
+  });
+
+  it("recovers stale tickets when a PID has been reused", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-reused-pid-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.json");
+    const lockPath = path.join(stateDir, "trust.lock");
+    await mkdir(lockPath, { recursive: true });
+    await writeFile(path.join(lockPath, "reused.ticket"), JSON.stringify({ token: "reused", number: 1, pid: process.pid, birthSignature: "different-process", createdAt: "2000-01-01T00:00:00.000Z" }));
+    await writeFile(configPath, "reused");
     await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
   });
 });
