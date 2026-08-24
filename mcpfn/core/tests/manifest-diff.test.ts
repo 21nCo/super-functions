@@ -97,6 +97,10 @@ describe("McpFn manifests", () => {
       .toMatchObject({ compatible: false, changes: expect.arrayContaining([
         expect.objectContaining({ code: "property-removed", severity: "breaking" }),
       ]) });
+    expect(diffManifests(manifestWithProperty(true, true, ["optional"]), manifestWithProperty(false, true, ["optional"])))
+      .toMatchObject({ compatible: true, changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "additive" }),
+      ]) });
   });
 
   it("applies input and output variance to enum and constraint changes", () => {

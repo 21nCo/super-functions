@@ -8,6 +8,8 @@ export interface UIFnFileDescriptor { readonly name: string; readonly size: numb
 export interface UIFnFilePickerCapability { pick(options: { readonly accept?: string; readonly multiple: boolean }): Promise<readonly UIFnFileDescriptor[]> }
 export interface FileUploadProps {
   readonly capability?: UIFnFilePickerCapability;
+  readonly files?: readonly UIFnFileDescriptor[];
+  readonly defaultFiles?: readonly UIFnFileDescriptor[];
   readonly accept?: string;
   readonly multiple?: boolean;
   readonly maxFiles?: number;
@@ -61,13 +63,13 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
   const token = resolved.generateId('file-upload');
   const ids = Object.freeze(Object.fromEntries(anatomy.map((part) => [part, allocator.fromToken(`file-upload-${part}`, token, part)])));
   let options = props;
-  let files: readonly UIFnFileDescriptor[] = Object.freeze([]);
+  let files: readonly UIFnFileDescriptor[] = Object.freeze([...(options.files ?? options.defaultFiles ?? [])]);
   let active = true;
   const stateFor = (base: Omit<FileUploadState, 'fileCount' | 'totalBytes' | 'valid' | 'invalid'>): FileUploadState => {
     const valid = !base.required || files.length > 0;
     return Object.freeze({ ...base, fileCount: files.length, totalBytes: files.reduce((sum, file) => sum + file.size, 0), valid, invalid: !valid });
   };
-  const store = createStateChannel<FileUploadState>(stateFor({ status: 'idle', rejectedCount: 0, required: options.required ?? false, disabled: options.disabled ?? false, multiple: options.multiple ?? false, accept: options.accept, lastErrorCode: null, ids }));
+  const store = createStateChannel<FileUploadState>(stateFor({ status: files.length ? 'accepted' : 'idle', rejectedCount: 0, required: options.required ?? false, disabled: options.disabled ?? false, multiple: options.multiple ?? false, accept: options.accept, lastErrorCode: null, ids }));
   const patch = (partial: Partial<FileUploadState>) => store.setState(stateFor({ ...store.getState(), ...partial }));
   const rejection = (code: 'type' | 'size' | 'count') => {
     patch({ status: 'rejected', rejectedCount: store.getState().rejectedCount + 1, lastErrorCode: 'UIFN_FILE_REJECTED' });
@@ -111,7 +113,11 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
       patch({ status: 'idle', lastErrorCode: null });
       options.onFilesChange?.(files);
     },
-    reset() { this.clear(); },
+    reset() {
+      files = Object.freeze([...(options.defaultFiles ?? [])]);
+      patch({ status: files.length ? 'accepted' : 'idle', lastErrorCode: null });
+      options.onFilesChange?.(files);
+    },
     getFiles() { return files; },
     setFieldsetDisabled(disabled) { patch({ disabled }); },
   };
@@ -138,11 +144,14 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     subscribe: store.subscribe,
     update(next) {
       options = { ...options, ...next };
+      const filesChanged = 'files' in next;
+      if (filesChanged) files = Object.freeze([...(options.files ?? [])]);
       const patchable: Partial<FileUploadState> = {
         ...('disabled' in next ? { disabled: options.disabled ?? false } : {}),
         ...('required' in next ? { required: options.required ?? false } : {}),
         ...('multiple' in next ? { multiple: options.multiple ?? false } : {}),
         ...('accept' in next ? { accept: options.accept } : {}),
+        ...(filesChanged ? { status: files.length ? 'accepted' as const : 'idle' as const, lastErrorCode: null } : {}),
       };
       if (Object.keys(patchable).length) patch(patchable);
     },

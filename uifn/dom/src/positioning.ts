@@ -199,6 +199,7 @@ export function createUIFnPositioner(
   let boundReference: Element | UIFnVirtualAnchor | null = null;
   let boundReferenceTarget: Element | null = null;
   let boundFloating: HTMLElement | null = null;
+  let installingAutoUpdate = false;
   let generation = 0;
   const subscribers = new Set<(result: Readonly<UIFnPositionResult>) => void>();
   const releaseResource = scope.track('positioner', () => undefined);
@@ -239,7 +240,7 @@ export function createUIFnPositioner(
     const referenceTarget = 'nodeType' in reference
       ? reference as Element
       : reference.contextElement ?? null;
-    const restartAutoUpdate = running && (
+    const restartAutoUpdate = running && !installingAutoUpdate && (
       autoUpdateConfigChanged
       || (options.animationFrame
         ? reference !== boundReference
@@ -255,12 +256,17 @@ export function createUIFnPositioner(
         boundReference = reference;
         boundReferenceTarget = referenceTarget;
         boundFloating = floating;
-        cleanupAutoUpdate = scope.track('observer', autoUpdate(
-          reference as ReferenceElement,
-          floating,
-          () => void update().catch((error) => scope.environment.error(error)),
-          { animationFrame: options.animationFrame ?? false },
-        ), 'position-auto-update');
+        installingAutoUpdate = true;
+        try {
+          cleanupAutoUpdate = scope.track('observer', autoUpdate(
+            reference as ReferenceElement,
+            floating,
+            () => void update().catch((error) => scope.environment.error(error)),
+            { animationFrame: options.animationFrame ?? false },
+          ), 'position-auto-update');
+        } finally {
+          installingAutoUpdate = false;
+        }
       }
     }
     const currentGeneration = ++generation;
@@ -387,14 +393,18 @@ export function createUIFnPositioner(
           ? reference as Element
           : reference.contextElement ?? null;
         boundFloating = floating;
-        const dependencyCleanup = autoUpdate(
-          reference as ReferenceElement,
-          floating,
-          () => void update().catch((error) => scope.environment.error(error)),
-          { animationFrame: options.animationFrame ?? false },
-        );
-        const release = scope.track('observer', dependencyCleanup, 'position-auto-update');
-        cleanupAutoUpdate = release;
+        installingAutoUpdate = true;
+        try {
+          const dependencyCleanup = autoUpdate(
+            reference as ReferenceElement,
+            floating,
+            () => void update().catch((error) => scope.environment.error(error)),
+            { animationFrame: options.animationFrame ?? false },
+          );
+          cleanupAutoUpdate = scope.track('observer', dependencyCleanup, 'position-auto-update');
+        } finally {
+          installingAutoUpdate = false;
+        }
       }
     },
     stop,

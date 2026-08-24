@@ -238,7 +238,10 @@ export function createUIFnFileInputBinding(
 ): UIFnInputDomBinding {
   const scope = platform.scope;
   let destroyed = false;
-  const onChange = () => controller.actions.selectFiles(Array.from(input.files ?? []).map((file) => Object.freeze({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified, native: file })));
+  const onChange = () => {
+    if (controller.state.status === 'picking') return;
+    controller.actions.selectFiles(Array.from(input.files ?? []).map((file) => Object.freeze({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified, native: file })));
+  };
   input.addEventListener('change', onChange);
   const releaseListener = scope.track('listener', () => input.removeEventListener('change', onChange));
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {

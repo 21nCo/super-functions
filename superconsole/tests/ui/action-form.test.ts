@@ -144,6 +144,62 @@ describe('schema-driven action input', () => {
     });
   });
 
+  it('preserves nullable union branches as their original JSON values', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      input: { label: null, settings: null },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          label: { type: ['string', 'null'] },
+          settings: {
+            oneOf: [
+              { type: 'object', properties: { mode: { type: 'string' } }, required: ['mode'] },
+              { type: 'null' },
+            ],
+          },
+        },
+        required: ['label', 'settings'],
+      },
+    };
+
+    expect(editableActionFields(candidate).map(({ name, type }) => ({ name, type }))).toEqual([
+      { name: 'label', type: 'json' },
+      { name: 'settings', type: 'json' },
+    ]);
+    expect(createActionDraft(candidate)).toMatchObject({ label: 'null', settings: 'null' });
+    expect(validateActionInput(candidate, { label: 'null', settings: 'null' })).toEqual({
+      ok: true,
+      errors: {},
+      input: { label: null, settings: null },
+    });
+    expect(validateActionInput(candidate, { label: '"ready"', settings: '{"mode":"safe"}' })).toMatchObject({ ok: true });
+  });
+
+  it('rejects schemas with empty union combinators', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          anyValue: { anyOf: [] },
+          oneValue: { oneOf: [] },
+        },
+        required: ['anyValue', 'oneValue'],
+      },
+    };
+
+    expect(validateActionInput(candidate, { anyValue: 'value', oneValue: 'value' })).toMatchObject({
+      ok: false,
+      errors: {
+        anyValue: 'Any Value must match at least one allowed schema.',
+        oneValue: 'One Value must match exactly one allowed schema.',
+      },
+    });
+  });
+
   it('counts Unicode code points for string length constraints', () => {
     const candidate: AdminActionViewModel = {
       id: 'billfn.adjustments.create',

@@ -175,7 +175,8 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(addUIFnDateMonths(lowerBound, -1)).toEqual(lowerBound);
     const grid = createUIFnMonthGrid(lowerBound, 'en-US');
     expect(grid).toHaveLength(42);
-    expect(grid[0]).toEqual(lowerBound);
+    expect(grid.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(grid[6]).toEqual(lowerBound);
 
     const picker = createDatePickerController({ defaultValue: lowerBound, locale: 'en-US' }, deterministicEnv('en-US'));
     picker.actions.navigateGrid('ArrowLeft');
@@ -184,6 +185,20 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(picker.state.focusedDate).toEqual(lowerBound);
     expect(picker.state.visibleMonth).toEqual(lowerBound);
     expect(picker.state.value).toEqual(lowerBound);
+    picker.destroy();
+  });
+
+  it('does not loop when backward navigation reaches an unavailable lower bound', () => {
+    const lowerBound = createUIFnCalendarDate(0, 1, 1);
+    const nextDay = createUIFnCalendarDate(0, 1, 2);
+    const picker = createDatePickerController({
+      defaultValue: nextDay,
+      locale: 'en-US',
+      unavailable: (value) => compareUIFnDates(value, lowerBound) === 0,
+    }, deterministicEnv('en-US'));
+
+    picker.actions.navigateGrid('ArrowLeft');
+    expect(picker.state.focusedDate).toEqual(nextDay);
     picker.destroy();
   });
 

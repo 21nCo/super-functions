@@ -1,6 +1,7 @@
 import { createUIFnError } from '../errors';
 
 export interface UIFnCalendarDate { readonly calendar: 'gregory'; readonly year: number; readonly month: number; readonly day: number }
+export type UIFnCalendarGridCell = UIFnCalendarDate | null;
 export interface UIFnCalendarDateTime extends UIFnCalendarDate { readonly hour: number; readonly minute: number; readonly second?: number }
 export interface UIFnZonedResolution { readonly kind: 'exact' | 'gap' | 'fold'; readonly instants: readonly number[] }
 export type UIFnDateSegment = 'year' | 'month' | 'day';
@@ -102,12 +103,15 @@ export function firstUIFnDayOfWeek(locale: string): number {
   return 1;
 }
 
-export function createUIFnMonthGrid(anchor: UIFnCalendarDate, locale: string): readonly UIFnCalendarDate[] {
+export function createUIFnMonthGrid(anchor: UIFnCalendarDate, locale: string): readonly UIFnCalendarGridCell[] {
   const first = createUIFnCalendarDate(anchor.year, anchor.month, 1);
   const weekday = utcDate(first.year, first.month - 1, 1).getUTCDay();
   const offset = (weekday - firstUIFnDayOfWeek(locale) + 7) % 7;
-  const start = addUIFnDateDays(first, -offset);
-  return Object.freeze(Array.from({ length: 42 }, (_, index) => addUIFnDateDays(start, index)));
+  return Object.freeze(Array.from({ length: 42 }, (_, index) => {
+    const amount = index - offset;
+    if (first.year === MIN_CALENDAR_YEAR && first.month === 1 && amount < 0) return null;
+    return addUIFnDateDays(first, amount);
+  }));
 }
 
 function zonedParts(instant: number, timeZone: string): readonly number[] {

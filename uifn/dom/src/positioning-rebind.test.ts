@@ -70,7 +70,11 @@ describe('createUIFnPositioner auto-update binding', () => {
     floatingMocks.autoUpdate.mockReset();
     floatingMocks.computePosition.mockClear();
     const cleanup = vi.fn();
-    floatingMocks.autoUpdate.mockReturnValue(cleanup);
+    floatingMocks.autoUpdate.mockImplementation((...args: unknown[]) => {
+      const callback = args[2] as () => void;
+      callback();
+      return cleanup;
+    });
     const rect = () => ({ x: 1, y: 2, width: 0, height: 0 } as DOMRect);
     const floating = { getBoundingClientRect: rect } as HTMLElement;
     const scope = {
@@ -82,14 +86,12 @@ describe('createUIFnPositioner auto-update binding', () => {
     const positioner = createUIFnPositioner(scope, {
       reference: () => ({ getBoundingClientRect: rect }),
       floating,
+      animationFrame: true,
       applyStyles: false,
     });
 
     positioner.start();
-    const automaticUpdate = (floatingMocks.autoUpdate.mock.calls as unknown[][])[0]?.[2] as (() => void) | undefined;
-    automaticUpdate?.();
     await Promise.resolve();
-    automaticUpdate?.();
     await Promise.resolve();
 
     expect(positioner.running).toBe(true);

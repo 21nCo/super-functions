@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render as renderClient, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import catalog from '../../catalog/generated/catalog.json';
 import manifest from './fixtures/phase-12-svelte-compounds.json';
 import AccordionHarness from './fixtures/AccordionHarness.svelte';
 import AllRootsHarness from './fixtures/AllRootsHarness.svelte';
+import FileUploadHarness from './fixtures/FileUploadHarness.svelte';
 import LifecycleHarness from './fixtures/LifecycleHarness.svelte';
 import MenubarHarness from './fixtures/MenubarHarness.svelte';
 import PortalFormHarness from './fixtures/PortalFormHarness.svelte';
@@ -65,6 +66,28 @@ describe('TV-SVELTE-001-P: catalog-complete Svelte 5 compounds', () => {
     const input = view.container.querySelector<HTMLInputElement>('input[name="terms"]');
     expect(input?.checked).toBe(true);
     expect(input?.value).toBe('accepted');
+  });
+
+  it('owns native FileUpload changes and trigger-driven picker selection', async () => {
+    const initial = { name: 'initial.txt', size: 4, type: 'text/plain' };
+    const view = renderClient(FileUploadHarness, { props: { files: [initial] } });
+    await tick();
+    const output = view.getByTestId('file-upload-files');
+    const input = view.getByTestId('file-upload-input') as HTMLInputElement;
+    expect(output.textContent).toContain('initial.txt');
+
+    const direct = new File(['direct'], 'direct.txt', { type: 'text/plain' });
+    Object.defineProperty(input, 'files', { configurable: true, value: [direct] });
+    await fireEvent.change(input);
+    await waitFor(() => expect(output.textContent).toContain('direct.txt'));
+
+    const picker = new File(['picker'], 'picker.txt', { type: 'text/plain' });
+    const click = vi.spyOn(input, 'click');
+    await fireEvent.click(view.getByRole('button', { name: 'Choose files' }));
+    expect(click).toHaveBeenCalledOnce();
+    Object.defineProperty(input, 'files', { configurable: true, value: [picker] });
+    await fireEvent.change(input);
+    await waitFor(() => expect(output.textContent).toContain('picker.txt'));
   });
 
   it('moves Menubar focus after Svelte commits and restores it on Escape', async () => {

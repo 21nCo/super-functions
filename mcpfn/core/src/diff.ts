@@ -268,9 +268,9 @@ function diffSchema(
       continue;
     }
     if (oldProperty && !newProperty) {
-      const remainsRequired = afterRequired.has(name);
+      const newlyRequired = afterRequired.has(name) && !beforeRequired.has(name);
       const openInputRemoval = direction === "input"
-        && !remainsRequired
+        && !newlyRequired
         && (after.additionalProperties === undefined || after.additionalProperties === true);
       push(changes, {
         severity: openInputRemoval ? "additive" : "breaking",

@@ -9,6 +9,8 @@ import { mergePartProps } from '@uifn/core/parts';
 import {
   acquireUIFnDomPlatform,
   createUIFnMenuDomBinding,
+  createUIFnFileInputBinding,
+  createUIFnNativeFilePickerCapability,
   createUIFnNativeFormResetBinding,
   createUIFnNavigationMenuDomBinding,
   createUIFnOverlayDomBinding,
@@ -558,8 +560,16 @@ export class SveltePrimitiveBridge<TInputs extends object = AnyRecord> {
     const controller = this.current;
     try {
       const reset = controller?.actions.reset;
-      if (typeof reset === 'function') {
+      if (typeof reset === 'function' && this.definition.name !== 'FileUpload') {
         bindings.push(createUIFnNativeFormResetBinding(lease.platform.scope, root, () => reset()));
+      }
+      if (this.definition.name === 'FileUpload' && controller) {
+        const input = this.getElement('input');
+        if (input?.tagName === 'INPUT') {
+          const fileInput = input as HTMLInputElement;
+          controller.update({ capability: createUIFnNativeFilePickerCapability(lease.platform, fileInput) });
+          bindings.push(createUIFnFileInputBinding(lease.platform, controller as never, root, fileInput));
+        }
       }
       for (const [key, record] of this.elements) {
         if (!key.startsWith('portal:')) continue;

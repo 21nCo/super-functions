@@ -25,12 +25,14 @@ function fieldLabel(name: string): string {
     .replace(/^./, (character) => character.toUpperCase());
 }
 
-function declaredFieldTypes(schema: AdminJsonSchema): Set<Exclude<ActionFieldType, 'json'>> {
-  const declared = new Set<Exclude<ActionFieldType, 'json'>>();
+type DeclaredFieldType = Exclude<ActionFieldType, 'json'> | 'null';
+
+function declaredFieldTypes(schema: AdminJsonSchema): Set<DeclaredFieldType> {
+  const declared = new Set<DeclaredFieldType>();
   const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   for (const type of types) {
-    if (type !== 'null' && ['string', 'number', 'integer', 'boolean', 'object', 'array'].includes(type)) {
-      declared.add(type as Exclude<ActionFieldType, 'json'>);
+    if (['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'].includes(type)) {
+      declared.add(type as DeclaredFieldType);
     }
   }
   for (const branch of [...schema.allOf ?? [], ...schema.anyOf ?? [], ...schema.oneOf ?? []]) {
@@ -41,7 +43,7 @@ function declaredFieldTypes(schema: AdminJsonSchema): Set<Exclude<ActionFieldTyp
 
 function fieldType(schema: AdminJsonSchema): ActionFieldType {
   const declared = [...declaredFieldTypes(schema)];
-  if (declared.length === 1) return declared[0];
+  if (declared.length === 1) return declared[0] === 'null' ? 'json' : declared[0];
   return declared.length > 1 ? 'json' : 'string';
 }
 
@@ -82,14 +84,15 @@ export function editableActionFields(action: AdminActionViewModel): ActionInputF
 }
 
 function initialValue(field: ActionInputField, value: unknown): ActionDraftValue {
-  const candidate = value ?? field.schema.default;
+  const candidate = value === undefined ? field.schema.default : value;
   if (field.type === 'boolean') {
     return typeof candidate === 'boolean' ? candidate : field.required ? false : undefined;
   }
-  if (candidate === undefined || candidate === null) return '';
+  if (candidate === undefined) return '';
   if (field.type === 'object' || field.type === 'array' || field.type === 'json') {
     return JSON.stringify(candidate, null, 2);
   }
+  if (candidate === null) return '';
   return String(candidate);
 }
 
@@ -110,10 +113,10 @@ function nestedSchemaError(schema: AdminJsonSchema, value: unknown, path: string
     const error = nestedSchemaError(candidate, value, path);
     if (error) return error;
   }
-  if (schema.anyOf?.length && !schema.anyOf.some((candidate) => nestedSchemaError(candidate, value, path) === undefined)) {
+  if (schema.anyOf !== undefined && !schema.anyOf.some((candidate) => nestedSchemaError(candidate, value, path) === undefined)) {
     return `${path} must match at least one allowed schema.`;
   }
-  if (schema.oneOf?.length && schema.oneOf.filter((candidate) => nestedSchemaError(candidate, value, path) === undefined).length !== 1) {
+  if (schema.oneOf !== undefined && schema.oneOf.filter((candidate) => nestedSchemaError(candidate, value, path) === undefined).length !== 1) {
     return `${path} must match exactly one allowed schema.`;
   }
   if (!schemaTypeMatches(schema, value)) return `${path} has the wrong value type.`;

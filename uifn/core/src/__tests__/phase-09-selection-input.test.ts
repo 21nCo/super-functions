@@ -417,6 +417,27 @@ describe('PHASE_09 selection and input vectors', () => {
     files.destroy();
   });
 
+  it('initializes and reconciles declared file collections', () => {
+    const initial = { name: 'initial.txt', size: 4, type: 'text/plain' };
+    const replacement = { name: 'replacement.txt', size: 8, type: 'text/plain' };
+    const files = createFileUploadController({ defaultFiles: [initial], multiple: true });
+
+    expect(files.actions.getFiles()).toEqual([initial]);
+    expect(files.state).toMatchObject({ status: 'accepted', fileCount: 1, totalBytes: 4 });
+
+    files.update({ files: [replacement] });
+    expect(files.actions.getFiles()).toEqual([replacement]);
+    expect(files.state).toMatchObject({ status: 'accepted', fileCount: 1, totalBytes: 8 });
+
+    files.update({ files: [] });
+    expect(files.actions.getFiles()).toEqual([]);
+    expect(files.state).toMatchObject({ status: 'idle', fileCount: 0, totalBytes: 0 });
+
+    files.actions.reset();
+    expect(files.actions.getFiles()).toEqual([initial]);
+    files.destroy();
+  });
+
   it('TV-PRIM-005-N redacts password, pin, and file payloads from state and snapshots', () => {
     const secret = 'correct horse battery staple';
     const password = createPasswordInputController({ defaultValue: secret });
