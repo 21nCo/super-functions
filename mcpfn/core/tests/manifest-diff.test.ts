@@ -84,6 +84,24 @@ describe("McpFn manifests", () => {
     );
   });
 
+  it("detects required names that have no property schema", () => {
+    const before = createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "token",
+        description: "Accept a token.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      }),
+    );
+    const after = structuredClone(before);
+    after.tools[0]!.inputSchema.required = ["token"];
+
+    expect(diffManifests(before, after).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "requiredness-broken", severity: "breaking" }),
+    ]));
+  });
+
   it("applies input and output variance to enum and constraint changes", () => {
     const before = createManifest(
       { name: "example", version: "1.0.0" },

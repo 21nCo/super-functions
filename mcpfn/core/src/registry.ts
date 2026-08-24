@@ -76,6 +76,21 @@ function assertUri(kind: string, uri: string): void {
   }
 }
 
+function schemaPromptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
+  const properties = definition.argumentsSchema?.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
+  const schemaRequired = definition.argumentsSchema?.required;
+  const required = new Set(Array.isArray(schemaRequired) ? schemaRequired : []);
+  return Object.entries(properties)
+    .sort(([left], [right]) => compareCodeUnits(left, right))
+    .map(([name, schema]) => ({
+      name,
+      ...(schema && typeof schema === "object" && !Array.isArray(schema) &&
+        typeof schema.description === "string" ? { description: schema.description } : {}),
+      ...(required.has(name) ? { required: true } : {}),
+    }));
+}
+
 function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
   if (definition.argumentsSchema) return definition.argumentsSchema;
   const properties = Object.fromEntries(
@@ -95,19 +110,7 @@ function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
 }
 
 export function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
-  if (definition.arguments) return definition.arguments;
-  const properties = definition.argumentsSchema?.properties;
-  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
-  const schemaRequired = definition.argumentsSchema?.required;
-  const required = new Set(Array.isArray(schemaRequired) ? schemaRequired : []);
-  return Object.entries(properties)
-    .sort(([left], [right]) => compareCodeUnits(left, right))
-    .map(([name, schema]) => ({
-      name,
-      ...(schema && typeof schema === "object" && !Array.isArray(schema) &&
-        typeof schema.description === "string" ? { description: schema.description } : {}),
-      ...(required.has(name) ? { required: true } : {}),
-    }));
+  return definition.arguments ?? schemaPromptArguments(definition);
 }
 
 export class McpFnRegistry<TContext = undefined> {
@@ -239,6 +242,18 @@ export class McpFnRegistry<TContext = undefined> {
     const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
+    }
+    if (definition.arguments && definition.argumentsSchema) {
+      const declared = definition.arguments
+        .map(({ name, required }) => ({ name, required: required === true }))
+        .sort((left, right) => compareCodeUnits(left.name, right.name));
+      const schemaDeclared = (schemaPromptArguments(definition) ?? [])
+        .map(({ name, required }) => ({ name, required: required === true }));
+      if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} arguments and argumentsSchema disagree`,
+        );
+      }
     }
     for (const name of Object.keys(definition.complete ?? {})) {
       if (!argumentNames.includes(name)) {

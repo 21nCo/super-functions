@@ -112,6 +112,19 @@ describe("McpFnServer", () => {
     })).toThrow(/invalid arguments JSON Schema/);
   });
 
+  it("rejects conflicting prompt argument declarations", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conflicting_prompt",
+      arguments: [{ name: "topic", required: false }],
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string" } },
+        required: ["topic"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/arguments and argumentsSchema disagree/);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()

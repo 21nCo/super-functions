@@ -90,6 +90,26 @@ describe("DataFn McpFn adapter", () => {
     })).toThrow(/not readable/);
   });
 
+  it("rejects sanitized default-name collisions before registration", () => {
+    const schema = {
+      resources: ["_tasks", "tasks_"].map((name) => ({
+        name,
+        version: 1,
+        fields: [{ name: "title", type: "string" as const, required: false }],
+        permissions: { read: { fields: ["title"] }, write: { fields: [] } },
+      })),
+    };
+    expect(() => createDatafnMcpRegistry({
+      executor: { schema } as never,
+      context: () => undefined,
+      clientId: "test",
+      expose: {
+        _tasks: { fields: ["id", "title"] },
+        tasks_: { fields: ["id", "title"] },
+      },
+    })).toThrow(/tool name collision for datafn_tasks_list: _tasks\.list and tasks_\.list/);
+  });
+
   it("honors schema-level default permissions", async () => {
     const schema = {
       defaultPermissions: "allResourceFields" as const,

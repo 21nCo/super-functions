@@ -224,6 +224,36 @@ function defaultName(prefix: string, resource: string, operation: Operation): st
   return [prefix, safeSegment(resource), operation].filter(Boolean).join("_");
 }
 
+function assertUniqueToolNames<TMcpContext>(
+  registry: McpFnRegistry<TMcpContext>,
+  expose: Record<string, DatafnResourceExposure>,
+  prefix: string,
+): void {
+  const owners = new Map<string, string>();
+  for (const resourceName of Object.keys(expose).sort()) {
+    const exposure = expose[resourceName]!;
+    const operations: Array<[Operation, DatafnReadToolOptions | DatafnWriteToolOptions | undefined]> = [
+      ["list", operationOptions<DatafnListToolOptions>(exposure.list, true)],
+      ["get", operationOptions<DatafnReadToolOptions>(exposure.get, true)],
+      ["create", exposure.create || undefined],
+      ["update", exposure.update || undefined],
+      ["delete", exposure.delete || undefined],
+    ];
+    for (const [operation, config] of operations) {
+      if (!config) continue;
+      const name = config.name ?? defaultName(prefix, resourceName, operation);
+      const owner = `${resourceName}.${operation}`;
+      const existing = owners.get(name);
+      if (existing || registry.has(name)) {
+        throw new McpFnValidationError(
+          `DataFn tool name collision for ${name}: ${existing ?? "existing registry tool"} and ${owner}`,
+        );
+      }
+      owners.set(name, owner);
+    }
+  }
+}
+
 export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
   options: CreateDatafnMcpRegistryOptions<TMcpContext, TDatafnContext>,
 ): McpFnRegistry<TMcpContext> {
@@ -233,6 +263,7 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
   if (typeof options.clientId === "string" && !options.clientId.trim()) {
     throw new McpFnValidationError("DataFn clientId must be a non-empty string");
   }
+  assertUniqueToolNames(registry, options.expose, prefix);
 
   for (const resourceName of Object.keys(options.expose).sort()) {
     const exposure = options.expose[resourceName]!;

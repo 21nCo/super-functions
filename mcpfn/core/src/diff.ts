@@ -233,6 +233,8 @@ function diffSchema(
   const propertyNames = [...new Set([
     ...Object.keys(beforeProperties),
     ...Object.keys(afterProperties),
+    ...(Array.isArray(before.required) ? before.required as string[] : []),
+    ...(Array.isArray(after.required) ? after.required as string[] : []),
   ])].sort();
   const beforeRequired = new Set(
     Array.isArray(before.required) ? (before.required as string[]) : [],
