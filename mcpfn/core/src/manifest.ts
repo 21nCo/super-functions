@@ -6,7 +6,11 @@ import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
-import { promptArguments, type McpFnRegistry } from "./registry.js";
+import {
+  promptArguments,
+  schemaPromptArguments,
+  type McpFnRegistry,
+} from "./registry.js";
 import type {
   McpFnManifest,
   McpFnManifestPrompt,
@@ -297,6 +301,19 @@ export function validateManifest(value: unknown): McpFnManifest {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );
+      }
+      if (prompt.arguments) {
+        const declared = prompt.arguments
+          .map(({ name, required }) => ({ name, required: required === true }))
+          .sort((left, right) => compareCodeUnits(left.name, right.name));
+        const schemaDeclared = schemaPromptArguments(prompt)?.map(
+          ({ name, required }) => ({ name, required: required === true }),
+        );
+        if (schemaDeclared && JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+          throw new McpFnValidationError(
+            `Manifest prompt ${prompt.name} arguments and argumentsSchema disagree`,
+          );
+        }
       }
     }
   }

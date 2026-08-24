@@ -57,6 +57,42 @@ describe("McpFn testing", () => {
     }
   });
 
+  it("checks an explicit request-visible tool inventory against the full manifest", async () => {
+    const registry = new McpFnRegistry()
+      .register({
+        name: "hidden",
+        description: "Hidden tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      })
+      .register({
+        name: "visible",
+        description: "Visible tool.",
+        inputSchema: { type: "object" },
+        handler: async () => structuredResult({ ok: true }),
+      });
+    const server = createMcpFnServer({
+      info: { name: "filtered", version: "1.0.0" },
+      registry,
+      toolVisibility: ({ tool }) => tool.name === "visible",
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      const manifest = server.manifest();
+      await expect(assertManifestContract(client, manifest)).rejects.toThrow(
+        /Tool inventory mismatch/,
+      );
+      await expect(assertManifestContract(client, manifest, {
+        expectedToolNames: ["visible"],
+      })).resolves.toMatchObject([{ name: "visible" }]);
+      await expect(assertManifestContract(client, manifest, {
+        expectedToolNames: ["missing"],
+      })).rejects.toThrow(/absent from the manifest/);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("rejects stale resource and prompt inventories and ignores undefined scenario fields", async () => {
     const registry = new McpFnRegistry()
       .register({

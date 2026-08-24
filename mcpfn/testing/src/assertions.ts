@@ -23,20 +23,36 @@ export class McpFnAssertionError extends Error {
   }
 }
 
+export interface AssertManifestContractOptions {
+  /** Exact tools expected to be visible for the test client's request context. */
+  expectedToolNames?: readonly string[];
+}
+
 export async function assertManifestContract(
   client: McpFnTestClient<unknown>,
   manifest: McpFnManifest,
+  options: AssertManifestContractOptions = {},
 ): Promise<Tool[]> {
   const actual = await client.listTools();
   const actualByName = new Map(actual.map((tool) => [tool.name, tool]));
-  const expectedNames = manifest.tools.map((tool) => tool.name).sort();
+  const manifestByName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const expectedNames = [...(
+    options.expectedToolNames ?? manifest.tools.map((tool) => tool.name)
+  )].sort();
+  const unknownExpectedNames = expectedNames.filter((name) => !manifestByName.has(name));
+  if (unknownExpectedNames.length) {
+    throw new McpFnAssertionError(
+      `Expected visible tools are absent from the manifest: ${stableJson(unknownExpectedNames)}`,
+    );
+  }
   const actualNames = actual.map((tool) => tool.name).sort();
   if (stableJson(expectedNames) !== stableJson(actualNames)) {
     throw new McpFnAssertionError(
       `Tool inventory mismatch\nexpected: ${stableJson(expectedNames)}\nactual:   ${stableJson(actualNames)}`,
     );
   }
-  for (const expected of manifest.tools) {
+  for (const name of expectedNames) {
+    const expected = manifestByName.get(name)!;
     const tool = actualByName.get(expected.name)!;
     const comparableExpected = {
       name: expected.name,

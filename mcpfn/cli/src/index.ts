@@ -86,14 +86,27 @@ export async function runCli(
 
   cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
     .option("--output <path>", "Write a JSON report")
-    .action(async (serverPath: string, scenariosPath: string, options: { output?: string }) => {
+    .option(
+      "--visible-tools <names>",
+      "Comma-separated tool names expected for a request-filtered server",
+    )
+    .action(async (
+      serverPath: string,
+      scenariosPath: string,
+      options: { output?: string; visibleTools?: string },
+    ) => {
       const loaded = await loadManifestSource(serverPath, cwd);
       if (!loaded.server) {
         throw new Error("The test command requires a module exporting McpFnServer");
       }
       const client = await McpFnTestClient.connect(loaded.server);
       try {
-        await assertManifestContract(client, loaded.manifest);
+        await assertManifestContract(client, loaded.manifest, {
+          expectedToolNames: options.visibleTools
+            ?.split(",")
+            .map((name) => name.trim())
+            .filter(Boolean),
+        });
         const results = await runScenarios(client, await loadScenarios(scenariosPath, cwd));
         const report = {
           manifestHash: loaded.manifest.hash,

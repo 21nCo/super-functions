@@ -214,6 +214,44 @@ describe("McpFn manifests", () => {
       ...manifest,
       prompts: [{ name: "invalid", argumentsSchema: false }],
     })).toThrow(/argumentsSchema must be an object/);
+
+    const promptManifest = createManifest(
+      { name: "prompts", version: "1.0.0" },
+      new McpFnRegistry().registerPrompt({
+        name: "welcome",
+        arguments: [{ name: "name", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        },
+        get: async () => ({ messages: [] }),
+      }),
+    );
+    expect(() => validateManifest({
+      ...promptManifest,
+      prompts: [{
+        ...promptManifest.prompts![0],
+        arguments: [{ name: "other", required: true }],
+      }],
+    })).toThrow(/arguments and argumentsSchema disagree/);
+
+    const composedPromptManifest = createManifest(
+      { name: "composed-prompts", version: "1.0.0" },
+      new McpFnRegistry().registerPrompt({
+        name: "welcome",
+        arguments: [{ name: "name", required: true }],
+        argumentsSchema: {
+          type: "object",
+          allOf: [{
+            properties: { name: { type: "string" } },
+            required: ["name"],
+          }],
+        },
+        get: async () => ({ messages: [] }),
+      }),
+    );
+    expect(validateManifest(composedPromptManifest)).toEqual(composedPromptManifest);
   });
 
   it("treats closed-schema output additions as breaking", () => {
@@ -242,6 +280,47 @@ describe("McpFn manifests", () => {
     expect(diffManifests(
       create(["value"], false, false),
       create(["value"], false, true),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("uses schema-valued additionalProperties for output additions", () => {
+    const create = (
+      additionalProperties: Record<string, unknown>,
+      added?: Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "output",
+        description: "Return output.",
+        inputSchema: { type: "object" },
+        outputSchema: {
+          type: "object",
+          properties: added ? { added } : {},
+          additionalProperties,
+        },
+        handler: async () => structuredResult({ added: "new" }),
+      }),
+    );
+
+    for (const additionalProperties of [{}, { type: "string" }]) {
+      expect(diffManifests(
+        create(additionalProperties),
+        create(additionalProperties, { type: "string" }),
+      )).toMatchObject({
+        compatible: true,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "property-added", severity: "additive" }),
+        ]),
+      });
+    }
+    expect(diffManifests(
+      create({ type: "string" }),
+      create({ type: "string" }, { type: "number" }),
     )).toMatchObject({
       compatible: false,
       changes: expect.arrayContaining([

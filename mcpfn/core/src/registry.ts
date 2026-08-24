@@ -16,6 +16,7 @@ import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
 import { compareCodeUnits } from "./canonical.js";
 import type {
   McpFnListedTool,
+  McpFnObjectSchema,
   McpFnPromptDefinition,
   McpFnRequestExtra,
   McpFnResourceDefinition,
@@ -77,19 +78,29 @@ function assertUri(kind: string, uri: string): void {
 }
 
 function uriTemplateMatchShape(uriTemplate: string): string {
-  let expressionIndex = 0;
   return uriTemplate.replace(/\{([^{}]+)\}/g, (_match, expression: string) => {
     const operator = /^[+#./?&]/.exec(expression)?.[0] ?? "";
     if (operator === "?" || operator === "&") {
       // Query variable names are literal parameter names and affect the matched URI set.
-      return `{${expression}}`;
+      const names = expression.slice(1)
+        .split(",")
+        .map((name) => name.replace("*", "").trim())
+        .join(",");
+      return `{query:${operator}:${names}}`;
     }
-    const exploded = expression.includes("*") ? "*" : "";
-    return `{${operator}variable${expressionIndex++}${exploded}}`;
+    const exploded = expression.includes("*");
+    // These tokens mirror the SDK's partToRegExp implementation. In particular,
+    // + and # share `(.+)`, while explode changes only simple and slash matches.
+    if (operator === "+" || operator === "#") return "{reserved}";
+    if (operator === ".") return "{dot}";
+    if (operator === "/") return exploded ? "{slash-exploded}" : "{slash}";
+    return exploded ? "{simple-exploded}" : "{simple}";
   });
 }
 
-function schemaPromptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
+export function schemaPromptArguments(
+  definition: { argumentsSchema?: McpFnObjectSchema },
+) {
   const schema = definition.argumentsSchema;
   if (!schema) return undefined;
   const nonFlatKeywords = [

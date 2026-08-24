@@ -112,7 +112,7 @@ describe("McpFn protocol primitives", () => {
     });
   });
 
-  it("rejects duplicate resource template URIs under different names", () => {
+  it("rejects duplicate or ambiguous resource template URIs under different names", () => {
     const registry = new McpFnRegistry().registerResourceTemplate({
       uriTemplate: "docs://users/{id}",
       name: "user",
@@ -127,6 +127,17 @@ describe("McpFn protocol primitives", () => {
       uriTemplate: "docs://users/{name}",
       name: "renamed-person",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Person" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
+
+    const reserved = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://reserved/{+id}",
+      name: "reserved",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Reserved" }] }),
+    });
+    expect(() => reserved.registerResourceTemplate({
+      uriTemplate: "docs://reserved/{+id*}",
+      name: "exploded-reserved",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Reserved" }] }),
     })).toThrow(/Ambiguous MCP resource URI template/);
   });
 

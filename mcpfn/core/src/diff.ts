@@ -68,10 +68,10 @@ function diffSchema(
   const beforeTypes = schemaTypes(before);
   const afterTypes = schemaTypes(after);
   if (!equal(before.type, after.type)) {
-    const removed = beforeTypes
+    const removed = beforeTypes && afterTypes
       ? [...beforeTypes].filter((value) => !afterTypes?.has(value))
       : [];
-    const added = afterTypes
+    const added = beforeTypes && afterTypes
       ? [...afterTypes].filter((value) => !beforeTypes?.has(value))
       : [];
     const tightened = beforeTypes === undefined
@@ -249,9 +249,25 @@ function diffSchema(
     const newProperty = afterProperties[name];
     if (!oldProperty && newProperty) {
       const newlyRequired = afterRequired.has(name);
+      const additionalPropertyChanges: McpFnContractChange[] = [];
+      if (
+        direction === "output" &&
+        typeof beforeAdditional === "object"
+      ) {
+        diffSchema(
+          beforeAdditional as McpFnJsonSchema,
+          newProperty,
+          `${propertyPath}.additionalProperties`,
+          "output",
+          additionalPropertyChanges,
+        );
+      }
       const breaksDeclaredOutput =
         direction === "output" &&
-        beforeAdditional !== true;
+        (
+          beforeAdditional === false ||
+          additionalPropertyChanges.some((change) => change.severity === "breaking")
+        );
       push(changes, {
         severity:
           direction === "input" && newlyRequired || breaksDeclaredOutput
