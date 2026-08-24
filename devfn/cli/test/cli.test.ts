@@ -95,7 +95,7 @@ describe("devfn CLI", () => {
   it("runs the local up, status, url, and down lifecycle with JSON receipts", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-lifecycle-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
-    await writeFile(path.join(cwd, "server.mjs"), "import http from 'node:http'; const server = http.createServer((_request, response) => { response.writeHead(200); response.end('ok'); }); server.listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
+    await writeFile(path.join(cwd, "server.mjs"), "import http from 'node:http'; const server = http.createServer((_request, response) => { response.writeHead(200); response.end('ok'); }); server.listen(Number(process.env.PORT), '127.0.0.1', () => console.log('ready'));\n", "utf8");
     await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
       version: 1,
       project: { id: "fixture" },
@@ -118,6 +118,8 @@ describe("devfn CLI", () => {
       expect(status.value.state).toBe("ready");
       const url = await invoke(["url"]);
       expect((url.value.urls as Record<string, string>).app).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      expect((await invoke(["logs"])).value.app).toContain("ready");
+      expect((await invoke(["logs", "--tail", "0"])).value.app).toBe("");
       const wrongStateDir = await mkdtemp(path.join(tmpdir(), "devfn-wrong-state-"));
       let wrongOutput = "";
       expect(await runCli(["down", "--trust", "--json", "--state-dir", wrongStateDir], { cwd, stdout: (text) => { wrongOutput += text; }, stderr: () => undefined })).toBe(1);

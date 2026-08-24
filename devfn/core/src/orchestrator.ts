@@ -450,7 +450,8 @@ export class DevFnOrchestrator {
     const redact = (value: string, keys: readonly string[] = []) => keys.reduce((result, key) => process.env[key] ? result.split(process.env[key]!).join("[REDACTED]") : result, value);
     for (const managed of receipt.processes.filter((item) => !options.name || item.name === options.name)) {
       const lines = (await readFile(managed.logPath, "utf8").catch(() => "")).split("\n");
-      output[managed.name] = redact(lines.slice(-(options.tail ?? 200)).join("\n"), options.config.processes?.[managed.name]?.secretEnv);
+      const tail = options.tail ?? 200;
+      output[managed.name] = redact(tail === 0 ? "" : lines.slice(-tail).join("\n"), options.config.processes?.[managed.name]?.secretEnv);
     }
     const compose = new ComposeController();
     for (const service of receipt.services.filter((item) => !options.name || item.name === options.name)) {

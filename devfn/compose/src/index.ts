@@ -22,6 +22,7 @@ export interface ManagedComposeService {
   startedAt: string;
   logsDisabled?: boolean;
   dockerEnvironment?: Record<string, string>;
+  composeCwd?: string;
 }
 
 function lifecycleOwnership(output: string, count: number, instanceId: string, lifecycleName: string): Array<"current" | "other" | "unmanaged"> | null {
@@ -161,7 +162,7 @@ export class ComposeController {
       if (containerIds.length === 0) throw new Error("Compose returned no container IDs.");
       const startedContainerIds = preservePreExisting ? containerIds.filter((id) => preExistingIds.has(id) && !previouslyRunning.has(id)) : containerIds;
       const createdContainerIds = preservePreExisting ? containerIds.filter((id) => !preExistingIds.has(id)) : containerIds;
-      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment };
+      const managed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, logsDisabled: Boolean(input.spec.secretEnv?.length), dockerEnvironment, composeCwd: input.root };
       await input.onStarted?.(managed);
       await waitForReadiness({
         health: input.spec.health, ports: input.ports, logPath: overrideFile, cwd: input.root, environment,
@@ -173,10 +174,28 @@ export class ComposeController {
       const cleanupIds = containerIds.length ? containerIds : (preservePreExisting ? before : []);
       const startedContainerIds = preservePreExisting ? cleanupIds.filter((id) => preExistingIds.has(id) && !previouslyRunning.has(id)) : cleanupIds;
       const createdContainerIds = preservePreExisting ? cleanupIds.filter((id) => !preExistingIds.has(id)) : cleanupIds;
-      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds: cleanupIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, dockerEnvironment };
-      if (cleanupIds.length) await this.stop(failed).catch(() => undefined);
-      else await this.stopWithCompose(failed, input.root, environment).catch(() => undefined);
-      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, { cause: error instanceof Error ? error.message : String(error) });
+      const failed = { name: input.name, composeService: input.spec.service, projectName, files, containerIds: cleanupIds, preExisting: preservePreExisting, wasRunning: preservePreExisting && startedContainerIds.length === 0, startedContainerIds, createdContainerIds, startedAt, dockerEnvironment, composeCwd: input.root };
+      let cleanupError: unknown;
+      try {
+        if (cleanupIds.length) await this.stop(failed);
+        else await this.stopWithCompose(failed, input.root, environment);
+      } catch (cleanupFailure) {
+        cleanupError = cleanupFailure;
+        if (cleanupIds.length === 0) {
+          try { await input.onStarted?.(failed); }
+          catch (journalFailure) {
+            throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, {
+              cause: error instanceof Error ? error.message : String(error),
+              cleanupCause: cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure),
+              journalCause: journalFailure instanceof Error ? journalFailure.message : String(journalFailure),
+            });
+          }
+        }
+      }
+      throw new ComposeError("DEVFN_COMPOSE_START_FAILED", `Unable to start Compose service ${input.name}.`, {
+        cause: error instanceof Error ? error.message : String(error),
+        ...(cleanupError === undefined ? {} : { cleanupCause: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }),
+      });
     }
   }
 
@@ -209,9 +228,12 @@ export class ComposeController {
     const startedContainerIds = service.preExisting ? (service.startedContainerIds ?? (service.wasRunning ? [] : service.containerIds)) : service.containerIds;
     const createdContainerIds = service.preExisting ? (service.createdContainerIds ?? []) : service.containerIds;
     const stopIds = [...new Set([...startedContainerIds, ...createdContainerIds])];
-    if (stopIds.length === 0) return;
     try {
       const environment = directDockerEnvironment(service.dockerEnvironment);
+      if (stopIds.length === 0) {
+        if (!service.preExisting && service.composeCwd) await this.stopWithCompose(service, service.composeCwd, environment);
+        return;
+      }
       await this.applyContainerAction(["stop"], stopIds, environment);
       await this.applyContainerAction(["rm", "-f"], createdContainerIds, environment);
     } catch (error) {

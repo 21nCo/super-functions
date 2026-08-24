@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ComposeController, createComposeEnvironment, renderComposeOverride } from "../src/index.js";
+import { ComposeController, createComposeEnvironment, renderComposeOverride, type ManagedComposeService } from "../src/index.js";
 
 describe("ComposeController", () => {
   it("exposes availability as a non-throwing diagnostic", async () => {
@@ -74,6 +74,8 @@ describe("ComposeController", () => {
     const readinessLogs = calls.find((call) => call.args[0] === "logs" && call.args.includes("--since"));
     expect(readinessLogs?.args[readinessLogs.args.indexOf("--since") + 1]).toBe(managed.startedAt);
     expect(await controller.logs(managed)).toBe("standard output\nstandard error\n");
+    await controller.logs(managed, 0);
+    expect(calls.findLast((call) => call.args[0] === "logs")?.args).toEqual(["logs", "--tail", "0", "container-id"]);
     await controller.stop(managed);
     expect(calls.filter((call) => ["inspect", "logs", "stop", "rm"].includes(call.args[0])).every((call) => call.dockerHost === "tcp://docker.example:2376")).toBe(true);
   });
@@ -198,5 +200,34 @@ describe("ComposeController", () => {
     })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED", details: { cause: "journal failed" } });
     expect(calls.some((args) => args[0] === "stop" && args.includes("new-id"))).toBe(true);
     expect(calls.some((args) => args[0] === "rm" && args.includes("new-id"))).toBe(true);
+  });
+
+  it("journals Compose recovery when startup cleanup fails before container IDs are known", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-compose-recovery-"));
+    const calls: string[][] = [];
+    let psCalls = 0;
+    let cleanupFails = true;
+    let recovery: ManagedComposeService | undefined;
+    const controller = new ComposeController(async (_file, args) => {
+      calls.push([...args]);
+      if (args.includes("version")) return { stdout: "2.24.4", stderr: "" };
+      if (args.includes("ps")) {
+        psCalls += 1;
+        if (psCalls === 3) throw new Error("container query failed");
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("stop") && cleanupFails) throw new Error("compose cleanup failed");
+      return { stdout: "", stderr: "" };
+    });
+    await expect(controller.start({
+      name: "api", spec: { adapter: "compose", service: "api" }, root,
+      runtimeDir: path.join(root, ".devfn", "instances", "recovery"), instanceId: "recovery", ports: {},
+      onStarted: async (managed) => { recovery = managed; },
+    })).rejects.toMatchObject({ code: "DEVFN_COMPOSE_START_FAILED", details: { cleanupCause: "compose cleanup failed" } });
+    expect(recovery).toMatchObject({ containerIds: [], composeCwd: root, preExisting: false });
+    cleanupFails = false;
+    await controller.stop(recovery!);
+    expect(calls.filter((args) => args.includes("stop"))).toHaveLength(2);
+    expect(calls.some((args) => args.includes("rm"))).toBe(true);
   });
 });
