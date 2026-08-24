@@ -30,6 +30,34 @@ describe("Caddy route rendering", () => {
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
   });
 
+  it("replays and commits a valid route activation journal", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
+    const pendingPath = path.join(stateDir, "proxy-routes.pending.json");
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const caddyLog = path.join(stateDir, "caddy.log");
+    const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" } as const;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    await writeFile(pendingPath, `${JSON.stringify({ version: 1, routes: [route] })}\n`);
+    await writeFile(path.join(stateDir, "proxy-owner.json"), `${JSON.stringify({ pid: process.pid, birthSignature })}\n`);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DEVFN_TEST_CADDY_LOG\"\nexit 0\n", { mode: 0o700 });
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.DEVFN_TEST_CADDY_LOG;
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      process.env.DEVFN_TEST_CADDY_LOG = caddyLog;
+      await expect(new CaddyProxyController(stateDir).routes()).resolves.toEqual([route]);
+      expect(await readFile(caddyLog, "utf8")).toContain("reload --config");
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [route] });
+      await expect(access(pendingPath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      if (originalLog === undefined) delete process.env.DEVFN_TEST_CADDY_LOG; else process.env.DEVFN_TEST_CADDY_LOG = originalLog;
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves a route activation journal when recovery reload fails", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     const pendingPath = path.join(stateDir, "proxy-routes.pending.json");

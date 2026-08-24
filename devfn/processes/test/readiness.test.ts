@@ -50,6 +50,15 @@ describe("process readiness", () => {
     expect(Date.now() - started).toBeLessThan(500);
   });
 
+  it("fails fast when an HTTP health URL is malformed", async () => {
+    const started = Date.now();
+    await expect(waitForReadiness({
+      health: { type: "http", url: "not a URL", timeoutMs: 5000 },
+      ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true,
+    })).rejects.toThrow(/Invalid HTTP readiness configuration/);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("honors configured current-probe timeouts longer than two seconds", async () => {
     const started = Date.now();
     await expect(checkReadinessNow({

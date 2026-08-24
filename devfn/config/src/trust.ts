@@ -52,9 +52,22 @@ async function ticketPaths(lockPath: string): Promise<string[]> {
 async function cleanStaleTickets(lockPath: string, ownPaths: Set<string>, staleMs: number): Promise<void> {
   for (const filePath of await ticketPaths(lockPath)) {
     if (ownPaths.has(filePath)) continue;
-    const ticket = await readTicket(filePath);
+    let ticket: TrustLockTicket | undefined;
+    try { ticket = await readTicket(filePath); }
+    catch (error) {
+      if (await staleTicket(filePath, undefined, staleMs)) { await rm(filePath, { force: true }); continue; }
+      throw error;
+    }
     if (ticket && await staleTicket(filePath, ticket, staleMs)) await rm(filePath, { force: true });
   }
+}
+
+async function writeTicket(filePath: string, ticket: TrustLockTicket): Promise<void> {
+  const temp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temp, JSON.stringify(ticket), { mode: 0o600, flag: "wx" });
+    await rename(temp, filePath);
+  } finally { await rm(temp, { force: true }).catch(() => undefined); }
 }
 
 async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Promise<T> {
@@ -67,12 +80,12 @@ async function withTrustLock<T>(stateDir: string, action: () => Promise<T>): Pro
   const staleMs = 300_000;
   const deadline = Date.now() + 10_000;
   const baseTicket: TrustLockTicket = { token, pid: process.pid, ...(await processBirthSignature(process.pid).then((birthSignature) => birthSignature ? { birthSignature } : {})), createdAt: new Date().toISOString() };
-  await writeFile(choosingPath, JSON.stringify(baseTicket), { mode: 0o600, flag: "wx" });
+  await writeTicket(choosingPath, baseTicket);
   try {
     await cleanStaleTickets(lockPath, ownPaths, staleMs);
     const tickets = await Promise.all((await ticketPaths(lockPath)).filter((filePath) => filePath.endsWith(".ticket")).map(readTicket));
     const number = Math.max(0, ...tickets.map((ticket) => Number.isInteger(ticket?.number) ? ticket!.number! : 0)) + 1;
-    await writeFile(ticketPath, JSON.stringify({ ...baseTicket, number }), { mode: 0o600, flag: "wx" });
+    await writeTicket(ticketPath, { ...baseTicket, number });
     await rm(choosingPath, { force: true });
     while (true) {
       await cleanStaleTickets(lockPath, ownPaths, staleMs);

@@ -236,7 +236,7 @@ export class DevFnOrchestrator {
         }));
         receipt.routes = await proxy.upsert(routes);
       }
-      const httpPorts = new Set<string>(profileHostnames.map(([, spec]) => spec.target));
+      const httpPorts = new Set<string>();
       for (const node of plan.nodes) {
         const health = node.kind === "process" ? options.config.processes?.[node.name]?.health : options.config.services?.[node.name]?.health;
         if (health?.type === "http" && health.port) httpPorts.add(health.port);
@@ -282,11 +282,19 @@ export class DevFnOrchestrator {
       : historical.sort((a, b) => Date.parse(b.value.startedAt) - Date.parse(a.value.startedAt));
     for (const item of started) {
       try {
-        if (item.kind === "process") { await supervisor.stop(item.value); result.stoppedProcesses.push(item.value.name); }
+        if (item.kind === "process") {
+          if (await supervisor.status(item.value) !== "running") continue;
+          await supervisor.stop(item.value);
+          result.stoppedProcesses.push(item.value.name);
+        }
         else { await compose.stop(item.value); result.stoppedServices.push(item.value.name); }
-      } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
+      } catch (error) {
+        if (item.kind !== "process" || !error || typeof error !== "object" || !("code" in error) || error.code !== "DEVFN_PROCESS_OWNERSHIP_MISMATCH") {
+          result.errors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
     }
-    try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { if (receipt.routes.length) result.errors.push(error instanceof Error ? error.message : String(error)); }
+    try { await proxy.removeInstance(receipt.instanceId); result.removedProxy = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     if (result.errors.length === 0) {
       try { await registry.release({ invocationId: receipt.invocationId, ...(failed ? { errorCode: receipt.error?.code ?? "DEVFN_START_FAILED" } : {}) }); result.releasedPorts = true; } catch (error) { result.errors.push(error instanceof Error ? error.message : String(error)); }
     }

@@ -1,9 +1,10 @@
-import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isPortAvailable } from "@devfn/ports";
+import { FilePortRegistry, isPortAvailable } from "@devfn/ports";
+import { resolveInstanceIdentity, writeReceipt } from "@devfn/core";
 import { runCli } from "../src/index.js";
 
 async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
@@ -152,6 +153,53 @@ describe("devfn CLI", () => {
     } finally { await invoke(["down"]).catch(() => undefined); }
   }, 20_000);
 
+  it("recovers a stale receipt without stopping a reused PID", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-reused-receipt-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const config = { version: 1 as const, project: { id: "reused-receipt" }, profiles: { default: {} } };
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify(config), "utf8");
+    const identity = await resolveInstanceIdentity(config.project.id, cwd);
+    const runtimeDir = path.join(cwd, ".devfn", "instances", identity.instanceId);
+    const canonicalStateDir = await realpath(stateDir);
+    const now = new Date().toISOString();
+    await writeReceipt({
+      version: 1, projectId: config.project.id, instanceId: identity.instanceId, invocationId: "stale-invocation", profile: "default", state: "ready",
+      root: cwd, runtimeDir, stateDir: canonicalStateDir, startedAt: now, updatedAt: now, allocations: [],
+      processes: [{ name: "stale", pid: process.pid, birthSignature: "different-process", command: [process.execPath], cwd, logPath: path.join(runtimeDir, "stale.log"), startedAt: now }],
+      services: [], startedNodes: [{ name: "stale", kind: "process" }], routes: [], urls: {}, environmentOutputs: [],
+    });
+    let stdout = "";
+    expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined }), stdout).toBe(0);
+    expect(JSON.parse(stdout).state).toBe("ready");
+  });
+
+  it("keeps port leases when unjournaled proxy cleanup fails", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-proxy-cleanup-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    const config = { version: 1 as const, project: { id: "proxy-cleanup" }, profiles: { default: {} } };
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify(config), "utf8");
+    const identity = await resolveInstanceIdentity(config.project.id, cwd);
+    const runtimeDir = path.join(cwd, ".devfn", "instances", identity.instanceId);
+    const canonicalStateDir = await realpath(stateDir);
+    const registry = new FilePortRegistry(path.join(stateDir, "registry.json"));
+    const allocations = await registry.reserve({
+      projectId: config.project.id, instanceId: identity.instanceId, invocationId: "stale-invocation", profile: "default",
+      requests: [{ name: "app", spec: { range: [44910, 45000] } }],
+    });
+    await registry.markActive("stale-invocation");
+    const now = new Date().toISOString();
+    await writeReceipt({
+      version: 1, projectId: config.project.id, instanceId: identity.instanceId, invocationId: "stale-invocation", profile: "default", state: "ready",
+      root: cwd, runtimeDir, stateDir: canonicalStateDir, startedAt: now, updatedAt: now, allocations,
+      processes: [], services: [], startedNodes: [], routes: [], urls: {}, environmentOutputs: [],
+    });
+    await writeFile(path.join(stateDir, "proxy-routes.json"), "{not-json");
+    let stdout = "";
+    expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+    expect(JSON.parse(stdout).error.code).toBe("DEVFN_RUNTIME_INVALID");
+    expect((await registry.read()).allocations.find((item) => item.invocationId === "stale-invocation")?.state).toBe("active");
+  });
+
   it("requires a separate confirmation for public exposure", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-public-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
@@ -179,6 +227,26 @@ describe("devfn CLI", () => {
         web: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "http", port: "app", timeoutMs: 5000 } },
       },
       profiles: { default: { processes: ["worker"] }, web: { processes: ["web"] } },
+    }), "utf8");
+    const invoke = async (args: string[]) => {
+      let stdout = "";
+      const code = await runCli([...args, "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined });
+      return { code, value: JSON.parse(stdout) as Record<string, unknown> };
+    };
+    try {
+      expect((await invoke(["up", "--trust"])).code).toBe(0);
+      expect((await invoke(["url"])).value.urls).toEqual({});
+    } finally { await invoke(["down"]).catch(() => undefined); }
+  }, 15_000);
+
+  it("does not infer an HTTP URL from a hostname when proxying is disabled", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "devfn-nonproxy-url-"));
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
+    await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; const server = net.createServer(); server.listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
+    await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
+      version: 1, project: { id: "nonproxy-url" }, ports: { app: { range: [44810, 44900], env: "PORT" } },
+      processes: { worker: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
+      profiles: { default: { processes: ["worker"], proxy: false } }, hostnames: { app: { target: "app", profiles: ["default"] } },
     }), "utf8");
     const invoke = async (args: string[]) => {
       let stdout = "";

@@ -76,7 +76,9 @@ function resolveHttpUrl(health: Extract<HealthCheck, { type: "http" }>, input: R
     if (!appended.hash) appended.hash = baseHash;
     url = appended.toString();
   }
-  return url;
+  const parsed = new URL(url);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("HTTP readiness URL must use http or https.");
+  return parsed.toString();
 }
 
 async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {

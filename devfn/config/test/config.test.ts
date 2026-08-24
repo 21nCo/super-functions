@@ -202,7 +202,7 @@ describe("DevFn configuration", () => {
     expect(state.records.map((record) => record.configPath).sort()).toEqual([first, second].sort());
   });
 
-  it("fails closed on a corrupt trust-lock ticket", async () => {
+  it("retires a stale corrupt trust-lock ticket", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-ownerless-ticket-"));
     const stateDir = path.join(root, "state");
     const configPath = path.join(root, "devfn.config.json");
@@ -211,6 +211,18 @@ describe("DevFn configuration", () => {
     const choosingPath = path.join(lockPath, "abandoned.choosing");
     await writeFile(choosingPath, "");
     await utimes(choosingPath, new Date(0), new Date(0));
+    await writeFile(configPath, "ownerless");
+    await expect(trustProject(root, configPath, stateDir)).resolves.toBeUndefined();
+    await expect(access(choosingPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails closed on a fresh corrupt trust-lock ticket", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "devfn-fresh-ownerless-ticket-"));
+    const stateDir = path.join(root, "state");
+    const configPath = path.join(root, "devfn.config.json");
+    const lockPath = path.join(stateDir, "trust.lock");
+    await mkdir(lockPath, { recursive: true });
+    await writeFile(path.join(lockPath, "active.choosing"), "");
     await writeFile(configPath, "ownerless");
     await expect(trustProject(root, configPath, stateDir)).rejects.toThrow(/JSON/);
   });
