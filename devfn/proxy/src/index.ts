@@ -7,6 +7,7 @@ import { withFileLock } from "@devfn/ports";
 import { matchesProcessIdentity, processBirthSignature, processExists } from "@devfn/processes";
 
 const execFileAsync = promisify(execFile);
+const PROXY_LOCK_TIMEOUT_MS = 30_000;
 
 export interface ProxyRoute { id: string; instanceId: string; hostname: string; targetHost: string; targetPort: number; tls: "off" | "internal"; updatedAt: string }
 interface ProxyState { version: 1; routes: ProxyRoute[] }
@@ -142,6 +143,15 @@ export class CaddyProxyController {
           else child.kill("SIGTERM");
         } catch { /* already exited */ }
       };
+      if (child.pid && birthSignature) {
+        try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
+        catch (error) {
+          await stopSpawnedChild();
+          await rm(candidate, { force: true });
+          if (!recovering) await rm(this.pendingPath, { force: true });
+          throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
+        }
+      }
       while (Date.now() < deadline) {
         if (await Promise.race([spawnFailure, new Promise<null>((resolve) => setTimeout(() => resolve(null), 100))])) break;
         if (!child.pid || !birthSignature || !await matchesProcessIdentity(child.pid, birthSignature)) break;
@@ -150,15 +160,10 @@ export class CaddyProxyController {
       }
       if (!ready || !child.pid || !birthSignature) {
         await stopSpawnedChild();
+        await rm(this.ownerPath, { force: true });
         await rm(candidate, { force: true });
         if (!recovering) await rm(this.pendingPath, { force: true });
         throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to start the DevFn-owned Caddy proxy.");
-      }
-      try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
-      catch (error) {
-        await stopSpawnedChild();
-        await rm(candidate, { force: true });
-        throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to persist the DevFn Caddy owner record.", { cause: error instanceof Error ? error.message : String(error) });
       }
       child.unref();
     }
@@ -177,7 +182,7 @@ export class CaddyProxyController {
       if (duplicate) throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Hostname ${duplicate.hostname} is already owned by another DevFn route.`);
       await this.apply({ version: 1, routes: nextRoutes });
       return nextRoutes.filter((route) => ids.has(route.id));
-    });
+    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
 
   public async removeInstance(instanceId: string): Promise<void> {
@@ -186,11 +191,11 @@ export class CaddyProxyController {
       const state = await this.read();
       const routes = state.routes.filter((route) => route.instanceId !== instanceId);
       if (routes.length !== state.routes.length) await this.apply({ version: 1, routes });
-    });
+    }, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
 
   public async routes(): Promise<ProxyRoute[]> {
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
-    return await withFileLock(this.lockPath, async () => (await this.read()).routes);
+    return await withFileLock(this.lockPath, async () => (await this.read()).routes, { timeoutMs: PROXY_LOCK_TIMEOUT_MS });
   }
 }

@@ -30,26 +30,29 @@ describe("Caddy route rendering", () => {
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
   });
 
-  it("replays a route activation journal before committing recovered state", async () => {
+  it("preserves a route activation journal when recovery reload fails", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     const pendingPath = path.join(stateDir, "proxy-routes.pending.json");
+    const statePath = path.join(stateDir, "proxy-routes.json");
     const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
     const caddyLog = path.join(stateDir, "caddy.log");
+    const previousRoute = { id: "old", instanceId: "i", hostname: "old-i.localhost", targetHost: "127.0.0.1", targetPort: 4099, tls: "off", updatedAt: "before" } as const;
     const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" } as const;
     const birthSignature = await processBirthSignature(process.pid);
     if (!birthSignature) throw new Error("Test process has no birth signature.");
+    await writeFile(statePath, `${JSON.stringify({ version: 1, routes: [previousRoute] })}\n`);
     await writeFile(pendingPath, `${JSON.stringify({ version: 1, routes: [route] })}\n`);
     await writeFile(path.join(stateDir, "proxy-owner.json"), `${JSON.stringify({ pid: process.pid, birthSignature })}\n`);
-    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DEVFN_TEST_CADDY_LOG\"\nexit 0\n", { mode: 0o700 });
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DEVFN_TEST_CADDY_LOG\"\nif [ \"$1\" = reload ]; then exit 1; fi\nexit 0\n", { mode: 0o700 });
     const originalPath = process.env.PATH;
     const originalLog = process.env.DEVFN_TEST_CADDY_LOG;
     try {
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       process.env.DEVFN_TEST_CADDY_LOG = caddyLog;
-      await expect(new CaddyProxyController(stateDir).routes()).resolves.toEqual([route]);
+      await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_RELOAD_FAILED" });
       expect(await readFile(caddyLog, "utf8")).toContain("reload --config");
-      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [route] });
-      await expect(access(pendingPath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(JSON.parse(await readFile(statePath, "utf8"))).toEqual({ version: 1, routes: [previousRoute] });
+      expect(JSON.parse(await readFile(pendingPath, "utf8"))).toEqual({ version: 1, routes: [route] });
     } finally {
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       if (originalLog === undefined) delete process.env.DEVFN_TEST_CADDY_LOG; else process.env.DEVFN_TEST_CADDY_LOG = originalLog;
@@ -68,12 +71,13 @@ describe("Caddy route rendering", () => {
     await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nif [ \"$1\" = reload ]; then : > \"$DEVFN_TEST_RELOAD_MARKER\"; sleep 0.2; fi\nexit 0\n", { mode: 0o700 });
     const originalPath = process.env.PATH;
     const originalMarker = process.env.DEVFN_TEST_RELOAD_MARKER;
+    let update: Promise<unknown> | undefined;
     try {
       process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
       process.env.DEVFN_TEST_RELOAD_MARKER = reloadMarker;
       const controller = new CaddyProxyController(stateDir);
       const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off" as const };
-      const update = controller.upsert([route]);
+      update = controller.upsert([route]);
       for (let attempt = 0; attempt < 100; attempt += 1) {
         if (await access(reloadMarker).then(() => true).catch(() => false)) break;
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -82,6 +86,7 @@ describe("Caddy route rendering", () => {
       const [, routes] = await Promise.all([update, controller.routes()]);
       expect(routes).toEqual([expect.objectContaining(route)]);
     } finally {
+      await update?.catch(() => undefined);
       if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
       if (originalMarker === undefined) delete process.env.DEVFN_TEST_RELOAD_MARKER; else process.env.DEVFN_TEST_RELOAD_MARKER = originalMarker;
       await rm(stateDir, { recursive: true, force: true });

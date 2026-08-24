@@ -41,6 +41,15 @@ describe("process readiness", () => {
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });
 
+  it("fails fast when an HTTP health path changes the configured origin", async () => {
+    const started = Date.now();
+    await expect(waitForReadiness({
+      health: { type: "http", url: "http://127.0.0.1:4100/base", path: "http://127.0.0.1:4200/wrong-origin", timeoutMs: 5000 },
+      ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true,
+    })).rejects.toThrow(/Invalid HTTP readiness configuration/);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("honors configured current-probe timeouts longer than two seconds", async () => {
     const started = Date.now();
     await expect(checkReadinessNow({

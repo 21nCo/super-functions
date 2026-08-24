@@ -101,10 +101,13 @@ async function receiptIsReady(config: DevFnConfig, root: string, receipt: Lifecy
     const spec = config.processes?.[managed.name];
     if (!spec || processStates[index] !== "running") return false;
     try {
-      return await checkReadinessNow({
+      const ready = await checkReadinessNow({
         health: spec.health, ports, logPath: managed.logPath, cwd: managed.cwd, environment: createProcessEnvironment(spec, environment),
         previouslyReady: Boolean(managed.readyAt || receipt.state === "ready"), isAlive: async () => await supervisor.status(managed) === "running",
       });
+      if (!ready || spec.exposure === "public") return ready;
+      const expected = (spec.ports ?? []).map((name) => ({ port: ports[name], protocol: config.ports?.[name]?.protocol ?? "tcp" }));
+      return !(await verifyOwnedLoopbackListeners(managed.name, expected, managed.pid, await scanListenerState()));
     } catch { return false; }
   }));
   const serviceReady = await Promise.all(receipt.services.map(async (managed, index) => {
@@ -141,20 +144,16 @@ export class DevFnOrchestrator {
       assertReceiptStateDir(existing, stateDir);
       const processStates = await Promise.all(existing.processes.map((item) => new ProcessSupervisor().status(item)));
       const serviceStates = await Promise.all(existing.services.map((item) => new ComposeController().status(item)));
-      const processRunning = processStates.some((state) => state === "running");
-      const serviceRunning = serviceStates.some((state) => state === "running");
       const managedCount = processStates.length + serviceStates.length;
       const allRunning = managedCount > 0 && processStates.every((state) => state === "running") && serviceStates.every((state) => state === "running");
       const allReady = allRunning && await receiptIsReady(options.config, options.root, existing, processStates, serviceStates);
       if (existing.state === "ready" && allReady) throw new DevFnError("DEVFN_ALREADY_RUNNING", `DevFn instance ${identity.instanceId} is already running.`);
-      if (processRunning || serviceRunning || existing.state === "starting" || existing.state === "degraded") {
-        const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
-        if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
-        existing.cleanup = recovered;
-        existing.state = "stopped";
-        existing.updatedAt = new Date().toISOString();
-        await writeReceipt(existing);
-      } else await registry.release({ invocationId: existing.invocationId });
+      const recovered = await this.cleanup(existing, registry, new ProcessSupervisor(), new ComposeController(), new CaddyProxyController(stateDir), existing.state !== "ready");
+      if (recovered.errors.length) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unable to recover interrupted invocation ${existing.invocationId}.`, { cleanup: recovered });
+      existing.cleanup = recovered;
+      existing.state = "stopped";
+      existing.updatedAt = new Date().toISOString();
+      await writeReceipt(existing);
     }
     await registry.recoverInterrupted(identity.instanceId);
     const plan = createPlan(options.config, options.profile);

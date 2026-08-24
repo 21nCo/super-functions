@@ -60,7 +60,7 @@ async function readLogWindow(logPath: string): Promise<string> {
   } finally { await handle.close(); }
 }
 
-async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {
+function resolveHttpUrl(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput): string {
   const port = health.port ? input.ports[health.port] : undefined;
   let url = health.url ?? `http://127.0.0.1:${port}${health.path ?? "/"}`;
   if (health.url && health.path) {
@@ -76,6 +76,11 @@ async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: 
     if (!appended.hash) appended.hash = baseHash;
     url = appended.toString();
   }
+  return url;
+}
+
+async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: ReadinessInput, timeoutMs: number): Promise<boolean> {
+  const url = resolveHttpUrl(health, input);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try { return (await fetch(url, { signal: controller.signal })).status === (health.expectedStatus ?? 200); }
@@ -135,6 +140,10 @@ export async function waitForReadiness(input: ReadinessInput): Promise<void> {
   }
   if ((input.health.type === "tcp" || input.health.type === "http") && input.health.port && input.ports[input.health.port] === undefined) {
     throw new ProcessError("DEVFN_PROCESS_NOT_READY", `Readiness check references unallocated port ${input.health.port}.`);
+  }
+  if (input.health.type === "http") {
+    try { resolveHttpUrl(input.health, input); }
+    catch (error) { throw new ProcessError("DEVFN_PROCESS_NOT_READY", "Invalid HTTP readiness configuration.", { cause: error instanceof Error ? error.message : String(error) }); }
   }
   while (Date.now() < deadline) {
     try {
