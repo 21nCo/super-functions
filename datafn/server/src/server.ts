@@ -59,6 +59,10 @@ import {
 } from "./execution/migration/spv2.js";
 import type { DatafnPublicLinksPlugin } from "./plugins/public-links.js";
 import { getDatafnMultiRegionRuntimeConfig } from "./plugins/multi-region.js";
+import {
+  DatafnRoutingError,
+  validateDatafnPlacement,
+} from "./multi-region-routing.js";
 import type {
   DataFnAction,
   DataFnAuthorizationDeniedMetadata,
@@ -108,6 +112,26 @@ export interface DatafnRouteHooks<TContext = any> {
   headers?: DatafnRouteHeaders<TContext>;
 }
 
+export type DatafnPluginRoutePlacementResult = string | Response;
+
+/**
+ * Placement declaration required for custom plugin routes in regional-cell
+ * mode. Returning a Response lets authentication/not-found handling stop
+ * before any regional database access.
+ */
+export interface DatafnPluginRoutePlacement<TContext = any> {
+  resolveNamespace(
+    request: Request,
+    context: TContext,
+  ): DatafnPluginRoutePlacementResult | Promise<DatafnPluginRoutePlacementResult>;
+}
+
+export type DatafnComposableRoute<TContext = any> = Route<TContext> & {
+  meta?: Route<TContext>["meta"] & {
+    datafnPlacement?: "none" | DatafnPluginRoutePlacement<TContext>;
+  };
+};
+
 /** Data provided to server plugins before a DataFn action is authorized and executed. */
 export interface DatafnPluginAuthorizationInput<TContext = any> {
   action: DataFnAction;
@@ -128,7 +152,7 @@ type DatafnServerComposablePlugin = DatafnPlugin & {
     database: Adapter;
     crossNamespaceDatabase?: Adapter;
     schema: DatafnSchema;
-  }) => Route[];
+  }) => DatafnComposableRoute[];
   authorize?: (
     input: DatafnPluginAuthorizationInput,
   ) => Promise<DatafnPluginAuthorizationResult> | DatafnPluginAuthorizationResult;
@@ -399,6 +423,14 @@ export interface DatafnServer<TContext = any> {
     /** SEC-001: addClient requires auth context. Reject unauthenticated connections with close code 4401 before calling. */
     /** SCA-005: Returns false (and closes with code 4503) when connection limits are exceeded. */
     addClient(client: WebSocketClient, authContext: WsAuthContext): boolean;
+    /** Validates and pins namespace placement during a canonical-gateway handshake. */
+    addRoutedClient(
+      client: WebSocketClient,
+      authContext: WsAuthContext,
+      handshakeRequest?: Request,
+    ): Promise<boolean>;
+    /** Closes stale sessions so clients reconnect through the canonical gateway. */
+    fenceNamespace(namespace: string, minimumEpoch?: number): number;
     removeClient(client: WebSocketClient): void;
     handleMessage(client: WebSocketClient, data: string): void;
     /** REL-007: Called by WS transport on native pong frame receipt. */
@@ -1127,6 +1159,9 @@ export async function createDatafnServer<TContext = any>(
   ): ((req: Request, ctx: TContext) => Promise<Response>) => {
     return async (req: Request, ctx: TContext): Promise<Response> => {
       const enrichedCtx = createEnrichedContext(ctx);
+      // Body parsing consumes the original Request. Preserve one clone so a
+      // signed routing assertion can bind the exact forwarded body.
+      const placementRequest = multiRegionRuntime?.placement ? req.clone() : undefined;
       let payload: unknown = null;
       // REL-009: Reject new requests immediately when shutting down
       if (shuttingDown) {
@@ -1290,6 +1325,28 @@ export async function createDatafnServer<TContext = any>(
           });
         }
 
+        if (multiRegionRuntime?.placement) {
+          try {
+            await validateDatafnPlacement({
+              namespace: await extractNamespace(enrichedCtx),
+              regionId: multiRegionRuntime.regionId,
+              runtime: multiRegionRuntime.placement,
+              request: placementRequest,
+            });
+          } catch (error) {
+            if (error instanceof DatafnRoutingError) {
+              return completeDatafnResponse({
+                action,
+                request: req,
+                context: enrichedCtx,
+                payload,
+                response: error.toResponse(),
+              });
+            }
+            throw error;
+          }
+        }
+
         const pluginAuthorization = await authorizePlugins({
           action,
           request: req,
@@ -1372,6 +1429,33 @@ export async function createDatafnServer<TContext = any>(
     };
   };
 
+  const withPluginRoutePlacement = (
+    route: DatafnComposableRoute<TContext>,
+    placement: DatafnPluginRoutePlacement<TContext>,
+  ): DatafnComposableRoute<TContext> => {
+    const originalHandler = route.handler;
+    return {
+      ...route,
+      handler: async (request, context) => {
+        const assertionRequest = request.clone();
+        const resolution = await placement.resolveNamespace(request, context);
+        if (resolution instanceof Response) return resolution;
+        try {
+          await validateDatafnPlacement({
+            namespace: resolution,
+            regionId: multiRegionRuntime!.regionId,
+            runtime: multiRegionRuntime!.placement!,
+            request: assertionRequest,
+          });
+        } catch (error) {
+          if (error instanceof DatafnRoutingError) return error.toResponse();
+          throw error;
+        }
+        return originalHandler(request, context);
+      },
+    };
+  };
+
   // Define routes
   const routes: Route<TContext>[] = [
     {
@@ -1431,11 +1515,24 @@ export async function createDatafnServer<TContext = any>(
       if (!plugin.routes) {
         continue;
       }
-      routes.push(...plugin.routes({
+      const pluginRoutes = plugin.routes({
         database: db ?? config.database,
         crossNamespaceDatabase: crossNamespaceDb,
         schema: validatedSchema,
-      }) as Route<TContext>[]);
+      }) as DatafnComposableRoute<TContext>[];
+      for (const route of pluginRoutes) {
+        if (!multiRegionRuntime?.placement || route.meta?.datafnPlacement === "none") {
+          routes.push(route);
+          continue;
+        }
+        const declaration = route.meta?.datafnPlacement;
+        if (!declaration) {
+          throw new Error(
+            `DATAFN_PLUGIN_ROUTE_PLACEMENT_REQUIRED: ${plugin.name} ${route.method} ${route.path}`,
+          );
+        }
+        routes.push(withPluginRoutePlacement(route, declaration));
+      }
     }
   }
 
@@ -1594,6 +1691,14 @@ export async function createDatafnServer<TContext = any>(
       params.namespace && params.namespace.trim() !== ""
         ? params.namespace
         : await extractNamespace(_ctx as TContext);
+    if (multiRegionRuntime?.placement) {
+      await validateDatafnPlacement({
+        namespace,
+        regionId: multiRegionRuntime.regionId,
+        runtime: multiRegionRuntime.placement,
+        trustedInternal: true,
+      });
+    }
     const actorId = await extractActorId(_ctx as TContext);
 
     const searchParams = {
@@ -1651,7 +1756,50 @@ export async function createDatafnServer<TContext = any>(
     router,
     search: serverSearch,
     websocketHandler: {
-      addClient: (client, authContext) => wsManager.addClient(client, authContext),
+      addClient: (client, authContext) => {
+        if (multiRegionRuntime?.placement) {
+          try {
+            client.close?.(
+              4409,
+              "Placement validation required; use addRoutedClient",
+            );
+          } catch {
+          }
+          return false;
+        }
+        return wsManager.addClient(client, authContext);
+      },
+      addRoutedClient: async (client, authContext, handshakeRequest) => {
+        if (!multiRegionRuntime?.placement) {
+          return wsManager.addClient(client, authContext);
+        }
+        try {
+          const validated = await validateDatafnPlacement({
+            namespace: authContext.namespace,
+            regionId: multiRegionRuntime.regionId,
+            runtime: multiRegionRuntime.placement,
+            request: handshakeRequest,
+            trustedInternal:
+              !handshakeRequest && !multiRegionRuntime.placement.requireRoutingAssertion,
+          });
+          return wsManager.addClient(client, {
+            ...authContext,
+            regionId: validated.placement.regionId,
+            routingEpoch: validated.placement.epoch,
+          });
+        } catch (error) {
+          try {
+            client.close?.(
+              error instanceof DatafnRoutingError ? 4510 : 1011,
+              error instanceof Error ? error.message : "Placement validation failed",
+            );
+          } catch {
+          }
+          return false;
+        }
+      },
+      fenceNamespace: (namespace, minimumEpoch) =>
+        wsManager.fenceNamespace(namespace, minimumEpoch),
       removeClient: (client) => wsManager.removeClient(client),
       handleMessage: (client, data) => wsManager.handleMessage(client, data),
       handlePong: (client) => wsManager.handlePong(client),

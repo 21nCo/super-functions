@@ -1,5 +1,10 @@
 import type { DatafnPlugin } from '@datafn/core';
 import type { IndexedDirectoryRecord, IndexedDirectoryStoreAdapter } from '@superfunctions/db';
+import type { DatafnPlacementRuntimeConfig } from '../multi-region-routing.js';
+
+export const DATAFN_MULTI_REGION_CAPABILITY = Symbol.for(
+  '@datafn/server/multi-region',
+);
 
 export interface DatafnMultiRegionDirectory {
   store: IndexedDirectoryStoreAdapter;
@@ -8,11 +13,17 @@ export interface DatafnMultiRegionDirectory {
 export interface DatafnMultiRegionPluginConfig {
   regionId: string;
   directory: IndexedDirectoryStoreAdapter | DatafnMultiRegionDirectory;
+  /**
+   * Optional authoritative namespace-placement runtime. When omitted, the
+   * plugin retains its existing permission-directory-only behavior.
+   */
+  placement?: DatafnPlacementRuntimeConfig;
 }
 
 export interface DatafnMultiRegionRuntimeConfig {
   regionId: string;
   directory: IndexedDirectoryStoreAdapter;
+  placement?: DatafnPlacementRuntimeConfig;
 }
 
 export interface DatafnPermissionDirectoryGrant {
@@ -36,12 +47,14 @@ export function datafnMultiRegionPlugin(
   const runtime = {
     regionId: config.regionId,
     directory: resolveDirectory(config.directory),
+    ...(config.placement ? { placement: config.placement } : {}),
   };
   return {
     name: 'datafn-multi-region',
     runsOn: ['server'],
+    [DATAFN_MULTI_REGION_CAPABILITY]: true,
     ...runtime,
-  };
+  } as DatafnPlugin & DatafnMultiRegionRuntimeConfig;
 }
 
 export const createDatafnMultiRegionPlugin = datafnMultiRegionPlugin;
@@ -49,13 +62,21 @@ export const createDatafnMultiRegionPlugin = datafnMultiRegionPlugin;
 export function getDatafnMultiRegionRuntimeConfig(
   plugins: readonly DatafnPlugin[],
 ): DatafnMultiRegionRuntimeConfig | null {
-  const plugin = plugins.find((candidate) => candidate.name === 'datafn-multi-region') as
+  const plugin = plugins.find((candidate) =>
+    (candidate as DatafnPlugin & { [DATAFN_MULTI_REGION_CAPABILITY]?: boolean })[
+      DATAFN_MULTI_REGION_CAPABILITY
+    ] === true || candidate.name === 'datafn-multi-region'
+  ) as
     | (DatafnPlugin & Partial<DatafnMultiRegionRuntimeConfig>)
     | undefined;
   return plugin
     && typeof plugin.regionId === 'string'
     && plugin.directory !== undefined
-    ? { regionId: plugin.regionId, directory: plugin.directory }
+    ? {
+        regionId: plugin.regionId,
+        directory: plugin.directory,
+        ...(plugin.placement ? { placement: plugin.placement } : {}),
+      }
     : null;
 }
 
@@ -210,3 +231,35 @@ async function deleteMatchingLegacyPermissionGrant(
     }
   }
 }
+
+export {
+  DATAFN_ROUTING_ASSERTION_HEADER,
+  DATAFN_ROUTING_INTERNAL_HEADERS,
+  DatafnRoutingError,
+  claimDatafnNamespacePlacement,
+  createConditionalKvDatafnPlacementDirectory,
+  createDatafnGatewayRouter,
+  createDatafnHmacRoutingAssertions,
+  createMemoryDatafnPlacementDirectory,
+  migrateDatafnNamespace,
+  validateDatafnPlacement,
+  withDatafnRoutingAssertion,
+} from '../multi-region-routing.js';
+
+export type {
+  DatafnGatewayCellRegistry,
+  DatafnGatewayDispatcher,
+  DatafnGatewayRouter,
+  DatafnGatewayRouterConfig,
+  DatafnNamespaceMigrationContext,
+  DatafnNamespaceMigrationHooks,
+  DatafnNamespacePlacement,
+  DatafnPlacementDirectoryAdapter,
+  DatafnPlacementRuntimeConfig,
+  DatafnPlacementState,
+  DatafnRoutingAssertionClaims,
+  DatafnRoutingAssertionSigner,
+  DatafnRoutingAssertionVerifier,
+  DatafnRoutingEvent,
+  DatafnRoutingEventType,
+} from '../multi-region-routing.js';

@@ -142,6 +142,67 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
   const modelName = config.modelName ?? "publicLink";
   const principalPrefix = config.principalPrefix ?? "public_link:";
   const tokenHeader = config.tokenHeader ?? "x-datafn-public-link-token";
+  type OwnerRouteState = {
+    session: TSession;
+    actorId: string;
+    namespace: string;
+  };
+  const ownerRouteState = new WeakMap<Request, OwnerRouteState | null>();
+  const resolveOwnerRouteState = async (request: Request): Promise<OwnerRouteState | null> => {
+    if (ownerRouteState.has(request)) return ownerRouteState.get(request) ?? null;
+    const session = await config.authenticateOwner?.(request) ?? null;
+    const actorId = session ? config.getOwnerActorId(session) : undefined;
+    if (!session || !actorId) {
+      ownerRouteState.set(request, null);
+      return null;
+    }
+    const state = {
+      session,
+      actorId,
+      namespace: await config.getOwnerNamespace(actorId, session),
+    };
+    ownerRouteState.set(request, state);
+    return state;
+  };
+  const ownerPlacement = {
+    resolveNamespace: async (request: Request): Promise<string | Response> => {
+      const state = await resolveOwnerRouteState(request);
+      return state?.namespace ?? errorResponse(
+        { code: "FORBIDDEN", message: "Authenticated session is required" },
+        401,
+      );
+    },
+  };
+  const publicLinkPlacement = {
+    resolveNamespace: async (request: Request): Promise<string | Response> => {
+      const token = await readPublicLinkTokenFromRequest(request.clone(), tokenHeader);
+      const parsed = parsePublicLinkToken(token);
+      if (!parsed) {
+        return errorResponse(
+          { code: "NOT_FOUND", message: "Public link is invalid or revoked" },
+          404,
+        );
+      }
+      if (!config.directory) {
+        return errorResponse(
+          {
+            code: "DATAFN_PLACEMENT_UNAVAILABLE",
+            message: "Public-link placement directory is unavailable",
+            details: { retryable: true, executionStarted: false },
+          },
+          503,
+        );
+      }
+      const namespace = await resolvePublicLinkNamespaceFromDirectory(
+        config.directory,
+        `${principalPrefix}${parsed.id}`,
+      );
+      return namespace ?? errorResponse(
+        { code: "NOT_FOUND", message: "Public link is invalid or revoked" },
+        404,
+      );
+    },
+  };
 
   const plugin: DatafnPublicLinksPlugin<TSession> = {
     name: "datafn-public-links",
@@ -190,10 +251,10 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
         {
           method: "POST",
           path: "/datafn/public-links",
+          meta: { datafnPlacement: ownerPlacement },
           handler: async (request) => {
-            const session = await config.authenticateOwner?.(request);
-            const actorId = session ? config.getOwnerActorId(session) : undefined;
-            if (!session || !actorId) {
+            const owner = await resolveOwnerRouteState(request);
+            if (!owner) {
               return errorResponse(
                 { code: "FORBIDDEN", message: "Authenticated session is required" },
                 401
@@ -209,8 +270,8 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
                 principalPrefix,
                 directory: config.directory,
                 resourceRegion: config.resourceRegion,
-                namespace: await config.getOwnerNamespace(actorId, session),
-                actorId,
+                namespace: owner.namespace,
+                actorId: owner.actorId,
                 input: body.data
               });
               return okResponse(link);
@@ -232,6 +293,7 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
         {
           method: "POST",
           path: "/datafn/public-links/resolve",
+          meta: { datafnPlacement: publicLinkPlacement },
           handler: async (request) => {
             const body = await request.json().catch(() => null);
             const token =
@@ -265,10 +327,10 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
         {
           method: "POST",
           path: "/datafn/public-links/revoke",
+          meta: { datafnPlacement: ownerPlacement },
           handler: async (request) => {
-            const session = await config.authenticateOwner?.(request);
-            const actorId = session ? config.getOwnerActorId(session) : undefined;
-            if (!session || !actorId) {
+            const owner = await resolveOwnerRouteState(request);
+            if (!owner) {
               return errorResponse(
                 { code: "FORBIDDEN", message: "Authenticated session is required" },
                 401
@@ -283,8 +345,8 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
                 database,
                 modelName,
                 directory: config.directory,
-                namespace: await config.getOwnerNamespace(actorId, session),
-                actorId,
+                namespace: owner.namespace,
+                actorId: owner.actorId,
                 id
               });
               if (!revoked) {
@@ -538,6 +600,52 @@ export function readDatafnPublicLinkToken(
   const authorization = request.headers.get("authorization")?.trim();
   if (!authorization?.toLowerCase().startsWith("publiclink ")) return null;
   return authorization.slice("publiclink ".length).trim();
+}
+
+async function readPublicLinkTokenFromRequest(
+  request: Request,
+  tokenHeader: string,
+): Promise<string | null> {
+  const body = await request.json().catch(() => null);
+  return body &&
+    typeof body === "object" &&
+    typeof (body as Record<string, unknown>).token === "string"
+    ? String((body as Record<string, unknown>).token)
+    : readDatafnPublicLinkToken(request, tokenHeader);
+}
+
+async function resolvePublicLinkNamespaceFromDirectory(
+  directory: IndexedDirectoryStoreAdapter,
+  principalId: string,
+): Promise<string | null> {
+  const namespaces = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await directory.query({
+      index: "datafn.permission.principal",
+      value: principalId,
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const record of page.records) {
+      try {
+        const grant = JSON.parse(record.value) as Record<string, unknown>;
+        if (
+          grant.principalId === principalId &&
+          typeof grant.resourceNs === "string" &&
+          grant.resourceNs.length > 0 &&
+          (grant.revokedAt === null || grant.revokedAt === undefined)
+        ) {
+          namespaces.add(grant.resourceNs);
+        }
+      } catch {
+      }
+    }
+    cursor = page.cursor;
+    if (cursor && cursors.has(cursor)) break;
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return namespaces.size === 1 ? [...namespaces][0] : null;
 }
 
 /**

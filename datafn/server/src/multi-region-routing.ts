@@ -1,0 +1,1021 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+import type { ConditionalKVStoreAdapter } from "@superfunctions/db";
+
+export type DatafnPlacementState = "active" | "moving" | "tombstoned";
+
+export interface DatafnNamespacePlacement {
+  namespace: string;
+  regionId: string;
+  epoch: number;
+  state: DatafnPlacementState;
+  updatedAt: string;
+  cacheExpiresAt?: string;
+  destinationRef?: string;
+  movingToRegionId?: string;
+  previousRegionId?: string;
+}
+
+export interface DatafnPlacementWriteResult {
+  updated: boolean;
+  placement: DatafnNamespacePlacement;
+}
+
+/**
+ * Authoritative namespace-placement directory.
+ *
+ * Implementations must make putIfAbsent and compareAndSet linearizable for one
+ * namespace. Permission-directory projections deliberately use a separate
+ * adapter and never decide database ownership.
+ */
+export interface DatafnPlacementDirectoryAdapter {
+  get(namespace: string): Promise<DatafnNamespacePlacement | null>;
+  putIfAbsent(
+    placement: DatafnNamespacePlacement,
+  ): Promise<{ inserted: boolean; placement: DatafnNamespacePlacement }>;
+  compareAndSet(input: {
+    namespace: string;
+    expectedEpoch: number;
+    expectedState?: DatafnPlacementState;
+    next: DatafnNamespacePlacement;
+  }): Promise<DatafnPlacementWriteResult>;
+}
+
+export interface DatafnRoutingAssertionClaims {
+  version: 1;
+  namespace: string;
+  regionId: string;
+  epoch: number;
+  requestId: string;
+  method: string;
+  path: string;
+  audience: string;
+  issuedAt: number;
+  expiresAt: number;
+  nonce: string;
+  bodyDigest?: string;
+}
+
+export interface DatafnRoutingAssertionSigner {
+  sign(claims: DatafnRoutingAssertionClaims): Promise<string> | string;
+}
+
+export interface DatafnRoutingAssertionVerifier {
+  verify(assertion: string): Promise<DatafnRoutingAssertionClaims> | DatafnRoutingAssertionClaims;
+}
+
+export type DatafnRoutingEventType =
+  | "placement_lookup"
+  | "cache_hit"
+  | "forward"
+  | "mismatch"
+  | "retry"
+  | "moving"
+  | "directory_unavailable"
+  | "destination_unavailable"
+  | "epoch_conflict"
+  | "assertion_invalid";
+
+export interface DatafnRoutingEvent {
+  type: DatafnRoutingEventType;
+  requestId?: string;
+  namespaceHash?: string;
+  sourceRegion?: string;
+  targetRegion?: string;
+  epoch?: number;
+  state?: DatafnPlacementState;
+  attempt?: number;
+  retryable?: boolean;
+  durationMs?: number;
+  outcome?: string;
+}
+
+export interface DatafnPlacementRuntimeConfig {
+  directory: DatafnPlacementDirectoryAdapter;
+  requireRoutingAssertion?: boolean;
+  assertionVerifier?: DatafnRoutingAssertionVerifier;
+  assertionAudience?: string;
+  assertionHeader?: string;
+  now?: () => number;
+  onEvent?: (event: DatafnRoutingEvent) => void | Promise<void>;
+}
+
+export const DATAFN_ROUTING_ASSERTION_HEADER = "x-datafn-routing-assertion";
+export const DATAFN_ROUTING_INTERNAL_HEADERS = [
+  DATAFN_ROUTING_ASSERTION_HEADER,
+  "x-datafn-routing-namespace",
+  "x-datafn-routing-region",
+  "x-datafn-routing-epoch",
+] as const;
+
+const PLACEMENT_KEY_PREFIX = "datafn:placement:";
+
+export class DatafnRoutingError extends Error {
+  readonly code:
+    | "DATAFN_PLACEMENT_NOT_FOUND"
+    | "DATAFN_PLACEMENT_UNAVAILABLE"
+    | "DATAFN_REGION_MISMATCH"
+    | "DATAFN_NAMESPACE_MOVING"
+    | "DATAFN_CELL_UNAVAILABLE"
+    | "DATAFN_ROUTING_ASSERTION_INVALID"
+    | "DATAFN_ROUTING_RETRY_EXHAUSTED";
+  readonly status: number;
+  readonly retryable: boolean;
+  readonly executionStarted: false;
+  readonly placement?: DatafnNamespacePlacement;
+  readonly internal: boolean;
+
+  constructor(input: {
+    code: DatafnRoutingError["code"];
+    message: string;
+    status: number;
+    retryable: boolean;
+    placement?: DatafnNamespacePlacement;
+    internal?: boolean;
+  }) {
+    super(input.message);
+    this.name = "DatafnRoutingError";
+    this.code = input.code;
+    this.status = input.status;
+    this.retryable = input.retryable;
+    this.executionStarted = false;
+    this.placement = input.placement;
+    this.internal = input.internal ?? false;
+  }
+
+  toResponse(): Response {
+    const safePlacement = this.internal && this.placement
+      ? {
+          regionId: this.placement.regionId,
+          epoch: this.placement.epoch,
+          state: this.placement.state,
+        }
+      : undefined;
+    return Response.json(
+      {
+        ok: false,
+        error: {
+          code: this.code,
+          message: this.message,
+          details: {
+            retryable: this.retryable,
+            executionStarted: false,
+            ...(safePlacement ? { placement: safePlacement } : {}),
+          },
+        },
+      },
+      {
+        status: this.status,
+        headers: {
+          "cache-control": "no-store",
+          ...(this.code === "DATAFN_REGION_MISMATCH"
+            ? { "x-datafn-region-mismatch": "1" }
+            : {}),
+        },
+      },
+    );
+  }
+}
+
+export function createConditionalKvDatafnPlacementDirectory(
+  store: ConditionalKVStoreAdapter,
+  options: { keyPrefix?: string } = {},
+): DatafnPlacementDirectoryAdapter {
+  if (typeof store.compareAndSet !== "function") {
+    throw new Error(
+      "DATAFN_PLACEMENT_CAS_REQUIRED: placement moves require compareAndSet",
+    );
+  }
+  const prefix = options.keyPrefix ?? PLACEMENT_KEY_PREFIX;
+  const key = (namespace: string) => `${prefix}${encodeURIComponent(namespace)}`;
+
+  return {
+    async get(namespace) {
+      return parsePlacement(await store.get(key(namespace)), namespace);
+    },
+    async putIfAbsent(placement) {
+      assertPlacement(placement);
+      const value = serializePlacement(placement);
+      const result = await store.setIfAbsent({ key: key(placement.namespace), value });
+      if (result.inserted) return { inserted: true, placement };
+      const existing = parsePlacement(result.existing ?? await store.get(key(placement.namespace)), placement.namespace);
+      if (!existing) {
+        throw new Error("DATAFN_PLACEMENT_CORRUPT: conditional store returned an invalid placement");
+      }
+      return { inserted: false, placement: existing };
+    },
+    async compareAndSet(input) {
+      assertPlacement(input.next);
+      if (input.next.namespace !== input.namespace) {
+        throw new Error("DATAFN_PLACEMENT_NAMESPACE_IMMUTABLE");
+      }
+      const existingValue = await store.get(key(input.namespace));
+      const existing = parsePlacement(existingValue, input.namespace);
+      if (!existing) {
+        return { updated: false, placement: input.next };
+      }
+      if (
+        existing.epoch !== input.expectedEpoch ||
+        (input.expectedState !== undefined && existing.state !== input.expectedState)
+      ) {
+        return { updated: false, placement: existing };
+      }
+      const result = await store.compareAndSet!({
+        key: key(input.namespace),
+        expected: existingValue,
+        value: serializePlacement(input.next),
+      });
+      if (result.updated) return { updated: true, placement: input.next };
+      const current = parsePlacement(result.existing ?? await store.get(key(input.namespace)), input.namespace);
+      return { updated: false, placement: current ?? existing };
+    },
+  };
+}
+
+export function createMemoryDatafnPlacementDirectory(): DatafnPlacementDirectoryAdapter {
+  const placements = new Map<string, DatafnNamespacePlacement>();
+  return {
+    async get(namespace) {
+      const placement = placements.get(namespace);
+      return placement ? clonePlacement(placement) : null;
+    },
+    async putIfAbsent(placement) {
+      assertPlacement(placement);
+      const existing = placements.get(placement.namespace);
+      if (existing) return { inserted: false, placement: clonePlacement(existing) };
+      placements.set(placement.namespace, clonePlacement(placement));
+      return { inserted: true, placement: clonePlacement(placement) };
+    },
+    async compareAndSet(input) {
+      assertPlacement(input.next);
+      const existing = placements.get(input.namespace);
+      if (
+        !existing ||
+        existing.epoch !== input.expectedEpoch ||
+        (input.expectedState !== undefined && existing.state !== input.expectedState)
+      ) {
+        return { updated: false, placement: clonePlacement(existing ?? input.next) };
+      }
+      placements.set(input.namespace, clonePlacement(input.next));
+      return { updated: true, placement: clonePlacement(input.next) };
+    },
+  };
+}
+
+export async function claimDatafnNamespacePlacement(input: {
+  directory: DatafnPlacementDirectoryAdapter;
+  namespace: string;
+  regionId: string;
+  destinationRef?: string;
+  cacheExpiresAt?: string;
+  now?: () => number;
+}): Promise<{ claimed: boolean; placement: DatafnNamespacePlacement }> {
+  const placement: DatafnNamespacePlacement = {
+    namespace: requiredString(input.namespace, "namespace"),
+    regionId: requiredString(input.regionId, "regionId"),
+    epoch: 1,
+    state: "active",
+    updatedAt: new Date((input.now ?? Date.now)()).toISOString(),
+    ...(input.destinationRef ? { destinationRef: input.destinationRef } : {}),
+    ...(input.cacheExpiresAt ? { cacheExpiresAt: input.cacheExpiresAt } : {}),
+  };
+  const result = await input.directory.putIfAbsent(placement);
+  return { claimed: result.inserted, placement: result.placement };
+}
+
+export interface DatafnPlacementValidationResult {
+  placement: DatafnNamespacePlacement;
+  assertion?: DatafnRoutingAssertionClaims;
+}
+
+export async function validateDatafnPlacement(input: {
+  namespace: string;
+  regionId: string;
+  runtime: DatafnPlacementRuntimeConfig;
+  request?: Request;
+  /** Trusted in-process execution has no externally supplied assertion. */
+  trustedInternal?: boolean;
+}): Promise<DatafnPlacementValidationResult> {
+  const startedAt = Date.now();
+  const requestId = input.request?.headers.get("x-request-id") ?? undefined;
+  let placement: DatafnNamespacePlacement | null;
+  try {
+    placement = await input.runtime.directory.get(input.namespace);
+    await emitRoutingEvent(input.runtime, {
+      type: "placement_lookup",
+      requestId,
+      sourceRegion: input.regionId,
+      targetRegion: placement?.regionId,
+      epoch: placement?.epoch,
+      state: placement?.state,
+      durationMs: Date.now() - startedAt,
+      outcome: placement ? "hit" : "miss",
+    });
+  } catch (cause) {
+    await emitRoutingEvent(input.runtime, {
+      type: "directory_unavailable",
+      requestId,
+      sourceRegion: input.regionId,
+      retryable: true,
+      durationMs: Date.now() - startedAt,
+      outcome: String(cause),
+    });
+    throw new DatafnRoutingError({
+      code: "DATAFN_PLACEMENT_UNAVAILABLE",
+      message: "Namespace placement directory is unavailable",
+      status: 503,
+      retryable: true,
+    });
+  }
+
+  if (!placement) {
+    throw new DatafnRoutingError({
+      code: "DATAFN_PLACEMENT_NOT_FOUND",
+      message: "Namespace placement was not found",
+      status: 404,
+      retryable: false,
+    });
+  }
+
+  const assertion = await validateRoutingAssertion({
+    namespace: input.namespace,
+    regionId: input.regionId,
+    placement,
+    runtime: input.runtime,
+    request: input.request,
+    trustedInternal: input.trustedInternal,
+  });
+
+  if (placement.state === "moving") {
+    await emitRoutingEvent(input.runtime, {
+      type: "moving",
+      requestId,
+      sourceRegion: input.regionId,
+      targetRegion: placement.movingToRegionId,
+      epoch: placement.epoch,
+      state: placement.state,
+      retryable: true,
+    });
+    throw new DatafnRoutingError({
+      code: "DATAFN_NAMESPACE_MOVING",
+      message: "Namespace placement is moving",
+      status: 409,
+      retryable: true,
+      placement,
+      internal: Boolean(assertion),
+    });
+  }
+  if (placement.state === "tombstoned") {
+    throw new DatafnRoutingError({
+      code: "DATAFN_PLACEMENT_NOT_FOUND",
+      message: "Namespace placement is tombstoned",
+      status: 404,
+      retryable: false,
+      placement,
+      internal: Boolean(assertion),
+    });
+  }
+  if (placement.regionId !== input.regionId) {
+    await emitRoutingEvent(input.runtime, {
+      type: "mismatch",
+      requestId,
+      sourceRegion: input.regionId,
+      targetRegion: placement.regionId,
+      epoch: placement.epoch,
+      state: placement.state,
+      retryable: true,
+    });
+    throw new DatafnRoutingError({
+      code: "DATAFN_REGION_MISMATCH",
+      message: "Request reached a cell that does not own this namespace",
+      status: 409,
+      retryable: true,
+      placement,
+      internal: Boolean(assertion),
+    });
+  }
+  if (assertion && assertion.epoch !== placement.epoch) {
+    await emitRoutingEvent(input.runtime, {
+      type: "mismatch",
+      requestId,
+      sourceRegion: input.regionId,
+      targetRegion: placement.regionId,
+      epoch: placement.epoch,
+      state: placement.state,
+      retryable: true,
+      outcome: "stale-epoch",
+    });
+    throw new DatafnRoutingError({
+      code: "DATAFN_REGION_MISMATCH",
+      message: "Routing assertion uses a stale placement epoch",
+      status: 409,
+      retryable: true,
+      placement,
+      internal: true,
+    });
+  }
+  return { placement, ...(assertion ? { assertion } : {}) };
+}
+
+export interface DatafnGatewayCellRegistry<TTarget> {
+  resolve(input: {
+    regionId: string;
+    destinationRef?: string;
+    placement: DatafnNamespacePlacement;
+  }): Promise<TTarget> | TTarget;
+}
+
+export interface DatafnGatewayDispatcher<TTarget> {
+  dispatch(input: {
+    target: TTarget;
+    request: Request;
+    assertion: string;
+    placement: DatafnNamespacePlacement;
+    attempt: 0 | 1;
+  }): Promise<Response>;
+}
+
+export interface DatafnGatewayRouterConfig<TTarget> {
+  directory: DatafnPlacementDirectoryAdapter;
+  deriveNamespace(request: Request): Promise<string> | string;
+  cellRegistry: DatafnGatewayCellRegistry<TTarget>;
+  dispatcher: DatafnGatewayDispatcher<TTarget>;
+  assertionSigner: DatafnRoutingAssertionSigner;
+  assertionAudience?: string;
+  assertionTtlMs?: number;
+  cacheTtlMs?: number;
+  now?: () => number;
+  onEvent?: (event: DatafnRoutingEvent) => void | Promise<void>;
+}
+
+export interface DatafnGatewayRouter {
+  handle(request: Request): Promise<Response>;
+  invalidate(namespace: string): void;
+  clear(): void;
+}
+
+export function createDatafnGatewayRouter<TTarget>(
+  config: DatafnGatewayRouterConfig<TTarget>,
+): DatafnGatewayRouter {
+  const cache = new Map<string, { placement: DatafnNamespacePlacement; expiresAt: number }>();
+  const now = config.now ?? Date.now;
+  const runtime: Pick<DatafnPlacementRuntimeConfig, "onEvent"> = { onEvent: config.onEvent };
+
+  const resolvePlacement = async (
+    namespace: string,
+    requestId: string,
+    force: boolean,
+  ): Promise<DatafnNamespacePlacement> => {
+    const cached = cache.get(namespace);
+    if (!force && cached && cached.expiresAt > now()) {
+      await emitRoutingEvent(runtime, {
+        type: "cache_hit",
+        requestId,
+        targetRegion: cached.placement.regionId,
+        epoch: cached.placement.epoch,
+        state: cached.placement.state,
+      });
+      return clonePlacement(cached.placement);
+    }
+    const startedAt = now();
+    let placement: DatafnNamespacePlacement | null;
+    try {
+      placement = await config.directory.get(namespace);
+    } catch (cause) {
+      await emitRoutingEvent(runtime, {
+        type: "directory_unavailable",
+        requestId,
+        retryable: true,
+        durationMs: now() - startedAt,
+        outcome: String(cause),
+      });
+      throw new DatafnRoutingError({
+        code: "DATAFN_PLACEMENT_UNAVAILABLE",
+        message: "Namespace placement directory is unavailable",
+        status: 503,
+        retryable: true,
+      });
+    }
+    await emitRoutingEvent(runtime, {
+      type: "placement_lookup",
+      requestId,
+      targetRegion: placement?.regionId,
+      epoch: placement?.epoch,
+      state: placement?.state,
+      durationMs: now() - startedAt,
+      outcome: placement ? "hit" : "miss",
+    });
+    if (!placement || placement.state === "tombstoned") {
+      throw new DatafnRoutingError({
+        code: "DATAFN_PLACEMENT_NOT_FOUND",
+        message: "Namespace placement was not found",
+        status: 404,
+        retryable: false,
+      });
+    }
+    if (placement.state === "moving") {
+      throw new DatafnRoutingError({
+        code: "DATAFN_NAMESPACE_MOVING",
+        message: "Namespace placement is moving",
+        status: 409,
+        retryable: true,
+      });
+    }
+    const configuredExpiry = placement.cacheExpiresAt
+      ? Date.parse(placement.cacheExpiresAt)
+      : Number.POSITIVE_INFINITY;
+    cache.set(namespace, {
+      placement: clonePlacement(placement),
+      expiresAt: Math.min(now() + (config.cacheTtlMs ?? 5_000), configuredExpiry),
+    });
+    return placement;
+  };
+
+  const handle = async (request: Request): Promise<Response> => {
+    let namespace: string;
+    try {
+      namespace = requiredString(await config.deriveNamespace(request), "namespace");
+    } catch {
+      return new DatafnRoutingError({
+        code: "DATAFN_PLACEMENT_NOT_FOUND",
+        message: "A trusted namespace could not be derived",
+        status: 400,
+        retryable: false,
+      }).toResponse();
+    }
+    const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+    const cleanRequest = sanitizeDatafnGatewayRequest(request, requestId);
+    const bodyDigest = await requestBodyDigest(cleanRequest.clone());
+
+    for (const attempt of [0, 1] as const) {
+      try {
+        const placement = await resolvePlacement(namespace, requestId, attempt === 1);
+        let target: TTarget;
+        try {
+          target = await config.cellRegistry.resolve({
+            regionId: placement.regionId,
+            destinationRef: placement.destinationRef,
+            placement,
+          });
+        } catch (cause) {
+          await emitRoutingEvent(runtime, {
+            type: "destination_unavailable",
+            requestId,
+            targetRegion: placement.regionId,
+            epoch: placement.epoch,
+            attempt,
+            retryable: true,
+            outcome: String(cause),
+          });
+          throw new DatafnRoutingError({
+            code: "DATAFN_CELL_UNAVAILABLE",
+            message: "The owning regional cell is unavailable",
+            status: 503,
+            retryable: true,
+          });
+        }
+        const issuedAt = now();
+        const assertion = await config.assertionSigner.sign({
+          version: 1,
+          namespace,
+          regionId: placement.regionId,
+          epoch: placement.epoch,
+          requestId,
+          method: cleanRequest.method.toUpperCase(),
+          path: new URL(cleanRequest.url).pathname,
+          audience: config.assertionAudience ?? "datafn-cell",
+          issuedAt,
+          expiresAt: issuedAt + (config.assertionTtlMs ?? 30_000),
+          nonce: crypto.randomUUID(),
+          ...(bodyDigest ? { bodyDigest } : {}),
+        });
+        await emitRoutingEvent(runtime, {
+          type: "forward",
+          requestId,
+          targetRegion: placement.regionId,
+          epoch: placement.epoch,
+          state: placement.state,
+          attempt,
+        });
+        let response: Response;
+        try {
+          response = await config.dispatcher.dispatch({
+            target,
+            request: cleanRequest.clone(),
+            assertion,
+            placement,
+            attempt,
+          });
+        } catch (cause) {
+          throw new DatafnRoutingError({
+            code: "DATAFN_CELL_UNAVAILABLE",
+            message: "The owning regional cell is unavailable",
+            status: 503,
+            retryable: true,
+          });
+        }
+        const mismatch = await readPreExecutionMismatch(response);
+        if (!mismatch) return response;
+        cache.delete(namespace);
+        if (attempt === 0) {
+          await emitRoutingEvent(runtime, {
+            type: "retry",
+            requestId,
+            targetRegion: placement.regionId,
+            epoch: placement.epoch,
+            attempt: 1,
+            retryable: true,
+          });
+          continue;
+        }
+        throw new DatafnRoutingError({
+          code: "DATAFN_ROUTING_RETRY_EXHAUSTED",
+          message: "Regional routing retry was exhausted",
+          status: 409,
+          retryable: true,
+        });
+      } catch (error) {
+        if (error instanceof DatafnRoutingError) return error.toResponse();
+        return new DatafnRoutingError({
+          code: "DATAFN_CELL_UNAVAILABLE",
+          message: "Regional routing failed",
+          status: 503,
+          retryable: true,
+        }).toResponse();
+      }
+    }
+    return new DatafnRoutingError({
+      code: "DATAFN_ROUTING_RETRY_EXHAUSTED",
+      message: "Regional routing retry was exhausted",
+      status: 409,
+      retryable: true,
+    }).toResponse();
+  };
+
+  return {
+    handle,
+    invalidate(namespace) {
+      cache.delete(namespace);
+    },
+    clear() {
+      cache.clear();
+    },
+  };
+}
+
+export interface DatafnNamespaceMigrationHooks {
+  quiesceSource(input: DatafnNamespaceMigrationContext): Promise<void>;
+  drainPermissionDirectory(input: DatafnNamespaceMigrationContext): Promise<void>;
+  copyTenantData(input: DatafnNamespaceMigrationContext): Promise<void>;
+  validateTenantData(input: DatafnNamespaceMigrationContext): Promise<void>;
+  rebuildPermissionDirectory(input: DatafnNamespaceMigrationContext): Promise<void>;
+  warmTarget(input: DatafnNamespaceMigrationContext): Promise<void>;
+  resumeTarget(input: DatafnNamespaceMigrationContext): Promise<void>;
+  rollbackSource?(input: DatafnNamespaceMigrationContext & { cause: unknown }): Promise<void>;
+}
+
+export interface DatafnNamespaceMigrationContext {
+  namespace: string;
+  sourceRegionId: string;
+  targetRegionId: string;
+  sourceEpoch: number;
+  movingEpoch: number;
+}
+
+/**
+ * Minimal fenced move protocol. The directory enters `moving` before hooks run,
+ * so every cell fails closed while source writes are quiesced and data/outbox
+ * state is copied. A second CAS activates the target at a newer epoch.
+ */
+export async function migrateDatafnNamespace(input: {
+  directory: DatafnPlacementDirectoryAdapter;
+  namespace: string;
+  targetRegionId: string;
+  targetDestinationRef?: string;
+  hooks: DatafnNamespaceMigrationHooks;
+  now?: () => number;
+  onEvent?: (event: DatafnRoutingEvent) => void | Promise<void>;
+}): Promise<DatafnNamespacePlacement> {
+  const now = input.now ?? Date.now;
+  const current = await input.directory.get(input.namespace);
+  if (!current || current.state !== "active") {
+    throw new Error("DATAFN_MIGRATION_REQUIRES_ACTIVE_PLACEMENT");
+  }
+  if (current.regionId === input.targetRegionId) return current;
+  const moving: DatafnNamespacePlacement = {
+    ...current,
+    epoch: current.epoch + 1,
+    state: "moving",
+    movingToRegionId: requiredString(input.targetRegionId, "targetRegionId"),
+    previousRegionId: current.regionId,
+    updatedAt: new Date(now()).toISOString(),
+  };
+  const fenced = await input.directory.compareAndSet({
+    namespace: current.namespace,
+    expectedEpoch: current.epoch,
+    expectedState: "active",
+    next: moving,
+  });
+  if (!fenced.updated) {
+    await input.onEvent?.({
+      type: "epoch_conflict",
+      sourceRegion: current.regionId,
+      targetRegion: input.targetRegionId,
+      epoch: fenced.placement.epoch,
+      state: fenced.placement.state,
+      retryable: true,
+    });
+    throw new Error("DATAFN_PLACEMENT_EPOCH_CONFLICT");
+  }
+  const context: DatafnNamespaceMigrationContext = {
+    namespace: current.namespace,
+    sourceRegionId: current.regionId,
+    targetRegionId: input.targetRegionId,
+    sourceEpoch: current.epoch,
+    movingEpoch: moving.epoch,
+  };
+  try {
+    await input.hooks.quiesceSource(context);
+    await input.hooks.drainPermissionDirectory(context);
+    await input.hooks.copyTenantData(context);
+    await input.hooks.validateTenantData(context);
+    await input.hooks.rebuildPermissionDirectory(context);
+    await input.hooks.warmTarget(context);
+  } catch (cause) {
+    const rollback: DatafnNamespacePlacement = {
+      ...current,
+      epoch: moving.epoch + 1,
+      state: "active",
+      previousRegionId: current.regionId,
+      updatedAt: new Date(now()).toISOString(),
+    };
+    await input.directory.compareAndSet({
+      namespace: current.namespace,
+      expectedEpoch: moving.epoch,
+      expectedState: "moving",
+      next: rollback,
+    });
+    await input.hooks.rollbackSource?.({ ...context, cause });
+    throw cause;
+  }
+  const active: DatafnNamespacePlacement = {
+    namespace: current.namespace,
+    regionId: input.targetRegionId,
+    epoch: moving.epoch + 1,
+    state: "active",
+    updatedAt: new Date(now()).toISOString(),
+    previousRegionId: current.regionId,
+    ...(input.targetDestinationRef ? { destinationRef: input.targetDestinationRef } : {}),
+  };
+  const activated = await input.directory.compareAndSet({
+    namespace: current.namespace,
+    expectedEpoch: moving.epoch,
+    expectedState: "moving",
+    next: active,
+  });
+  if (!activated.updated) {
+    throw new Error("DATAFN_PLACEMENT_EPOCH_CONFLICT");
+  }
+  await input.hooks.resumeTarget(context);
+  return active;
+}
+
+export function createDatafnHmacRoutingAssertions(input: {
+  activeKeyId: string;
+  keys: Record<string, string | Uint8Array>;
+  now?: () => number;
+  clockSkewMs?: number;
+}): DatafnRoutingAssertionSigner & DatafnRoutingAssertionVerifier {
+  const activeKey = input.keys[input.activeKeyId];
+  if (!activeKey) throw new Error("DATAFN_ROUTING_ASSERTION_ACTIVE_KEY_MISSING");
+  const now = input.now ?? Date.now;
+  return {
+    sign(claims) {
+      const payload = base64UrlEncode(JSON.stringify(claims));
+      return `${input.activeKeyId}.${payload}.${hmac(payload, activeKey)}`;
+    },
+    verify(assertion) {
+      const parts = assertion.split(".");
+      if (parts.length !== 3) throw new Error("invalid routing assertion");
+      const [keyId, payload, signature] = parts;
+      const key = input.keys[keyId];
+      if (!key || !safeEqual(signature, hmac(payload, key))) {
+        throw new Error("invalid routing assertion signature");
+      }
+      const claims = JSON.parse(base64UrlDecode(payload)) as DatafnRoutingAssertionClaims;
+      if (!validClaims(claims)) throw new Error("invalid routing assertion claims");
+      const skew = input.clockSkewMs ?? 5_000;
+      if (claims.issuedAt > now() + skew || claims.expiresAt < now() - skew) {
+        throw new Error("expired routing assertion");
+      }
+      return claims;
+    },
+  };
+}
+
+export function withDatafnRoutingAssertion(
+  request: Request,
+  assertion: string,
+  header = DATAFN_ROUTING_ASSERTION_HEADER,
+): Request {
+  const headers = new Headers(request.headers);
+  for (const name of DATAFN_ROUTING_INTERNAL_HEADERS) headers.delete(name);
+  headers.set(header, assertion);
+  return new Request(request, { headers });
+}
+
+async function validateRoutingAssertion(input: {
+  namespace: string;
+  regionId: string;
+  placement: DatafnNamespacePlacement;
+  runtime: DatafnPlacementRuntimeConfig;
+  request?: Request;
+  trustedInternal?: boolean;
+}): Promise<DatafnRoutingAssertionClaims | undefined> {
+  const header = input.runtime.assertionHeader ?? DATAFN_ROUTING_ASSERTION_HEADER;
+  const assertion = input.request?.headers.get(header)?.trim();
+  const hasForbiddenAuxiliaryHeader = Boolean(input.request) && DATAFN_ROUTING_INTERNAL_HEADERS
+    .filter((name) => name !== header)
+    .some((name) => input.request!.headers.has(name));
+  if (hasForbiddenAuxiliaryHeader) {
+    throw await invalidAssertion(input.runtime, "Untrusted internal routing headers were supplied");
+  }
+  if (!assertion) {
+    if (input.runtime.requireRoutingAssertion && !input.trustedInternal) {
+      throw await invalidAssertion(input.runtime, "A trusted routing assertion is required");
+    }
+    return undefined;
+  }
+  if (!input.runtime.assertionVerifier) {
+    throw await invalidAssertion(input.runtime, "No routing assertion verifier is configured");
+  }
+  try {
+    const claims = await input.runtime.assertionVerifier.verify(assertion);
+    const request = input.request;
+    if (
+      claims.namespace !== input.namespace ||
+      claims.regionId !== input.regionId ||
+      claims.audience !== (input.runtime.assertionAudience ?? "datafn-cell") ||
+      (request && claims.method !== request.method.toUpperCase()) ||
+      (request && claims.path !== new URL(request.url).pathname) ||
+      (request?.headers.get("x-request-id") &&
+        claims.requestId !== request.headers.get("x-request-id"))
+    ) {
+      throw new Error("routing assertion does not match the request or placement");
+    }
+    if (request && claims.bodyDigest) {
+      const digest = await requestBodyDigest(request.clone());
+      if (digest !== claims.bodyDigest) throw new Error("routing assertion body digest mismatch");
+    }
+    return claims;
+  } catch {
+    throw await invalidAssertion(input.runtime, "Routing assertion validation failed");
+  }
+}
+
+async function invalidAssertion(
+  runtime: DatafnPlacementRuntimeConfig,
+  message: string,
+): Promise<DatafnRoutingError> {
+  await emitRoutingEvent(runtime, {
+    type: "assertion_invalid",
+    retryable: false,
+    outcome: message,
+  });
+  return new DatafnRoutingError({
+    code: "DATAFN_ROUTING_ASSERTION_INVALID",
+    message,
+    status: 401,
+    retryable: false,
+  });
+}
+
+async function readPreExecutionMismatch(response: Response): Promise<boolean> {
+  if (response.status !== 409 && response.headers.get("x-datafn-region-mismatch") !== "1") {
+    return false;
+  }
+  try {
+    const body = await response.clone().json() as {
+      error?: { code?: unknown; details?: { executionStarted?: unknown } };
+    };
+    return body.error?.code === "DATAFN_REGION_MISMATCH" &&
+      body.error.details?.executionStarted === false;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeDatafnGatewayRequest(request: Request, requestId: string): Request {
+  const headers = new Headers(request.headers);
+  for (const header of DATAFN_ROUTING_INTERNAL_HEADERS) headers.delete(header);
+  headers.set("x-request-id", requestId);
+  return new Request(request, { headers });
+}
+
+async function requestBodyDigest(request: Request): Promise<string | undefined> {
+  if (request.method === "GET" || request.method === "HEAD" || request.body === null) {
+    return undefined;
+  }
+  const data = new Uint8Array(await request.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlBytes(new Uint8Array(digest));
+}
+
+function serializePlacement(placement: DatafnNamespacePlacement): string {
+  return JSON.stringify({
+    namespace: placement.namespace,
+    regionId: placement.regionId,
+    epoch: placement.epoch,
+    state: placement.state,
+    updatedAt: placement.updatedAt,
+    ...(placement.cacheExpiresAt ? { cacheExpiresAt: placement.cacheExpiresAt } : {}),
+    ...(placement.destinationRef ? { destinationRef: placement.destinationRef } : {}),
+    ...(placement.movingToRegionId ? { movingToRegionId: placement.movingToRegionId } : {}),
+    ...(placement.previousRegionId ? { previousRegionId: placement.previousRegionId } : {}),
+  });
+}
+
+function parsePlacement(
+  value: string | null | undefined,
+  expectedNamespace: string,
+): DatafnNamespacePlacement | null {
+  if (!value) return null;
+  try {
+    const placement = JSON.parse(value) as DatafnNamespacePlacement;
+    assertPlacement(placement);
+    return placement.namespace === expectedNamespace ? placement : null;
+  } catch {
+    return null;
+  }
+}
+
+function assertPlacement(value: DatafnNamespacePlacement): void {
+  requiredString(value.namespace, "namespace");
+  requiredString(value.regionId, "regionId");
+  if (!Number.isSafeInteger(value.epoch) || value.epoch < 1) {
+    throw new Error("DATAFN_PLACEMENT_EPOCH_INVALID");
+  }
+  if (!(["active", "moving", "tombstoned"] as unknown[]).includes(value.state)) {
+    throw new Error("DATAFN_PLACEMENT_STATE_INVALID");
+  }
+  if (!Number.isFinite(Date.parse(value.updatedAt))) {
+    throw new Error("DATAFN_PLACEMENT_UPDATED_AT_INVALID");
+  }
+}
+
+function requiredString(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`DATAFN_${name.toUpperCase()}_INVALID`);
+  }
+  return value;
+}
+
+function clonePlacement(placement: DatafnNamespacePlacement): DatafnNamespacePlacement {
+  return { ...placement };
+}
+
+async function emitRoutingEvent(
+  runtime: Pick<DatafnPlacementRuntimeConfig, "onEvent">,
+  event: DatafnRoutingEvent,
+): Promise<void> {
+  try {
+    await runtime.onEvent?.(event);
+  } catch {
+  }
+}
+
+function hmac(payload: string, key: string | Uint8Array): string {
+  return createHmac("sha256", key).update(payload).digest("base64url");
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function base64UrlEncode(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function base64UrlDecode(value: string): string {
+  return Buffer.from(value, "base64url").toString("utf8");
+}
+
+function base64UrlBytes(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+function validClaims(value: DatafnRoutingAssertionClaims): boolean {
+  return value?.version === 1 &&
+    typeof value.namespace === "string" &&
+    typeof value.regionId === "string" &&
+    Number.isSafeInteger(value.epoch) &&
+    typeof value.requestId === "string" &&
+    typeof value.method === "string" &&
+    typeof value.path === "string" &&
+    typeof value.audience === "string" &&
+    Number.isFinite(value.issuedAt) &&
+    Number.isFinite(value.expiresAt) &&
+    typeof value.nonce === "string";
+}

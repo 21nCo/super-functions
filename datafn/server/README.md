@@ -23,12 +23,19 @@ npm install @datafn/server @datafn/core @superfunctions/db @superfunctions/http 
 | **Sync: Seed** | Seed data into the database |
 | **Authorization** | Per-action authorization hook |
 | **Multi-User Isolation** | Per-user/tenant namespace isolation for change tracking |
+| **Multi-Region Gateway** | Atomic tenant placement, pre-execution cell fencing, signed internal forwarding, bounded stale-epoch retry, and controlled moves |
 | **REST Endpoints** | Optional REST wrappers over DFQL (GET/POST/PATCH/DELETE) |
 | **WebSocket** | Real-time cursor broadcast for live updates |
 | **Plugins** | Hook into queries, mutations, and sync on the server side |
 | **Sequence Store** | Pluggable serverSeq backend: Database, Redis, KV, or chained store |
 | **Payload Limits** | Configurable max query limits, transaction steps, and payload size |
 | **KV Resource** | Built-in key-value resource auto-included in schema |
+
+Multi-region gateway mode is opt-in and keeps ownership separate from the
+permission-directory projection. See
+[`multi-region-gateway.mdx`](../docs/content/docs/documentation/multi-region-gateway.mdx)
+for configuration, error, WebSocket, consistency, migration, and operations
+contracts.
 
 ---
 

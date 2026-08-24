@@ -1,0 +1,130 @@
+---
+title: Multi-region gateway routing
+description: Tenant placement, regional cell fencing, canonical ingress, safe retries, and namespace migration.
+---
+
+# Multi-region gateway routing
+
+DataFn supports an opt-in canonical-gateway model for applications that keep each tenant namespace in one writable regional cell. Clients keep one `remote` and `wsUrl`; regional destinations remain internal deployment handles.
+
+This capability does not provide active-active writes or automatic failover to an empty region. Existing single-region configurations and permission-directory grant indexing are unchanged unless a placement runtime is configured.
+
+## Separate ownership from permission projections
+
+`DatafnPlacementDirectoryAdapter` is the authority for namespace ownership. Its records contain a namespace, owning `regionId`, monotonically increasing `epoch`, lifecycle state, update time, and optional cache/destination metadata. `putIfAbsent` must be linearizable for the first claim, and `compareAndSet` must fence moves by epoch and state.
+
+The indexed permission directory is a separate projection. Permission-directory lag can affect sharing discovery, but it never changes a namespace's database owner. Migration must drain its outbox and rebuild the target projection explicitly.
+
+The built-in `createConditionalKvDatafnPlacementDirectory` composes the focused placement contract with any `ConditionalKVStoreAdapter` that implements `compareAndSet`. Memory, DynamoDB, Redis, and Cloudflare Durable Object stores can therefore use the same conformance contract without placing provider APIs in DataFn core.
+
+## Regional cell
+
+```ts
+import {
+  createConditionalKvDatafnPlacementDirectory,
+  createDatafnHmacRoutingAssertions,
+  createDatafnServer,
+  datafnMultiRegionPlugin,
+} from "@datafn/server";
+
+const assertions = createDatafnHmacRoutingAssertions({
+  activeKeyId: "2026-08",
+  keys: { "2026-08": env.DATAFN_ROUTING_KEY },
+});
+
+const placement = createConditionalKvDatafnPlacementDirectory(
+  stores.atomicKv,
+);
+
+const server = await createDatafnServer({
+  schema,
+  database: regionalDatabase,
+  context: authenticateRequest,
+  namespaceProvider: {
+    getNamespace: (context) => context.authorizedNamespace,
+  },
+  plugins: [
+    datafnMultiRegionPlugin({
+      regionId: "eu-west",
+      directory: permissionDirectory,
+      placement: {
+        directory: placement,
+        requireRoutingAssertion: true,
+        assertionVerifier: assertions,
+      },
+    }),
+  ],
+});
+```
+
+The server derives the trusted namespace from authenticated context, verifies the gateway assertion, and checks region + epoch before plugin authorization, application authorization, or a database/sync operation. Built-in HTTP, REST, sync, in-process search, public-link routes, and routed WebSocket handshakes use this fence.
+
+Custom plugin routes must declare `meta.datafnPlacement.resolveNamespace`. The resolver either returns the authenticated namespace or an early `Response`. An undeclared custom route is rejected at startup in placement mode. Routes that are proven global and do not touch regional data may declare `datafnPlacement: "none"`.
+
+## Canonical gateway
+
+```ts
+import {
+  createDatafnGatewayRouter,
+  withDatafnRoutingAssertion,
+} from "@datafn/server";
+
+const gateway = createDatafnGatewayRouter({
+  directory: placement,
+  deriveNamespace: async (request) =>
+    (await authenticateRequest(request)).authorizedNamespace,
+  cellRegistry: {
+    resolve: ({ regionId, destinationRef }) =>
+      internalCells.resolve(regionId, destinationRef),
+  },
+  assertionSigner: assertions,
+  dispatcher: {
+    dispatch: ({ target, request, assertion }) =>
+      target.fetch(withDatafnRoutingAssertion(request, assertion)),
+  },
+});
+```
+
+The gateway strips caller-supplied internal headers, preserves the method, path, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/path, body digest, audience, timestamps, and a nonce. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference; it is never serialized into a public response.
+
+On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gateway invalidates its cache, re-resolves placement, and retries exactly once. It does not replay ambiguous timeouts or responses produced after execution began. Existing mutation IDs and idempotency keys remain authoritative for application-level retries.
+
+## Errors and availability
+
+| Code | Meaning | Default behavior |
+| --- | --- | --- |
+| `DATAFN_PLACEMENT_NOT_FOUND` | No active placement or a tombstone | Fail closed; do not choose a default region |
+| `DATAFN_PLACEMENT_UNAVAILABLE` | Directory read failed | Retryable 503; a miss is not inferred |
+| `DATAFN_REGION_MISMATCH` | Wrong cell or stale epoch before execution | Internal metadata may trigger one gateway retry |
+| `DATAFN_NAMESPACE_MOVING` | The move fence is active | Retryable 409; no cell accepts new work |
+| `DATAFN_CELL_UNAVAILABLE` | Destination resolution/dispatch failed | Retryable 503; no random failover |
+| `DATAFN_ROUTING_ASSERTION_INVALID` | Spoofed, expired, or mismatched assertion | Non-retryable 401 |
+| `DATAFN_ROUTING_RETRY_EXHAUSTED` | The bounded re-resolution was insufficient | Retryable 409; operator review may be required |
+
+Only a verified internal assertion receives region/epoch hints. Public direct responses do not reveal internal topology.
+
+## WebSocket and sync epochs
+
+Use `server.websocketHandler.addRoutedClient(client, authContext, handshakeRequest)` in placement mode. The handshake pins namespace, region, and epoch. The legacy synchronous `addClient` rejects connections while placement mode is enabled so an adapter cannot accidentally bypass the fence.
+
+When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum epoch) on the source cell. Stale sessions close with code `4510` and reconnect through the canonical `wsUrl`. Mutation IDs, pull cursors, and reconcile checkpoints remain valid only if the migration copy/validation hooks preserve them; otherwise the application must fail explicitly and require a fresh clone.
+
+## Migration protocol
+
+`migrateDatafnNamespace` implements the minimal fenced order:
+
+1. CAS the active placement to `moving` at a newer epoch.
+2. Quiesce source writes and close/fence old sessions.
+3. Drain permission-directory outbox work.
+4. Copy and validate tenant data, cursors, mutation IDs, and checkpoints.
+5. Rebuild the permission projection and warm the target.
+6. CAS the moving record to the target `active` placement at another epoch.
+7. Resume target writes.
+
+Failure before activation rolls the placement back through a new epoch and retains `previousRegionId` evidence. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
+
+## Observability and operations
+
+Provide `onEvent` to collect placement lookup/cache hit, forward, mismatch, retry, moving, directory unavailable, destination unavailable, epoch conflict, and assertion failure events. Hash namespace identifiers before sending them to shared telemetry. Monitor directory availability and latency, cross-region dispatch latency, retry exhaustion, assertion failures, permission-outbox backlog, and migration stalls.
+
+Run shadow placement checks before enforcement, enable gateway routing for test tenants, and expand gradually. Keep the original single-region configuration as rollback only until the first placement move; after that, rollback must use the epoch protocol.
