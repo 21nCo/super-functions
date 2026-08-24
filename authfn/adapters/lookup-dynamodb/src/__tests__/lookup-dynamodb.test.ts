@@ -54,6 +54,8 @@ describe('@authfn/lookup-dynamodb', () => {
       epoch: 2
     });
     expect(sent.some((input) => input.ConditionExpression === 'attribute_not_exists(#pk)')).toBe(true);
+    expect(sent.find((input) => input.ConditionExpression === 'attribute_not_exists(#pk)')?.ExpressionAttributeNames)
+      .toEqual({ '#pk': 'PK' });
     expect(sent.some((input) => input.ConditionExpression === '#value = :expected')).toBe(true);
     expect(sent.some((input) => input.ConsistentRead === true)).toBe(true);
   });
@@ -63,6 +65,15 @@ describe('@authfn/lookup-dynamodb', () => {
       tableName: 'authfn-placement',
       consistencyModel: 'eventual-global-table'
     } as any)).toThrow('single strongly consistent writer region');
+  });
+
+  it('pins an internally constructed placement client to the writer region', () => {
+    expect(() => createDynamoDbIdentityPlacementDirectory({
+      tableName: 'authfn-placement',
+      consistencyModel: 'single-writer-strong',
+      writerRegion: 'us-east-1',
+      region: async () => 'us-east-1'
+    })).not.toThrow();
   });
 
   it('verifies the supplied document client actual region', async () => {

@@ -415,7 +415,9 @@ def create_cell_routing_middleware(
                 or payload.get("bodySha256") != _body_digest(buffered._body)
             ):
                 raise RoutingAssertionInvalidError("Gateway routing assertion does not match request")
-            if not await replay_store.claim(payload["nonce"], payload["expiresAt"]):
+            if not await replay_store.claim(
+                payload["nonce"], payload["expiresAt"] + routing.clock_skew_seconds
+            ):
                 raise RoutingAssertionInvalidError("Gateway routing assertion was replayed")
             try:
                 placement = await directory.get(payload["identityKey"])
@@ -423,7 +425,7 @@ def create_cell_routing_middleware(
                 raise PlacementDirectoryUnavailableError("Identity placement directory is unavailable") from error
             if not placement or placement.state == "tombstoned":
                 raise RegionNotFoundError("Identity placement is not active")
-            if placement.state == "moving":
+            if placement.state in {"moving", "deleting"}:
                 raise PlacementMovingError("Identity placement is moving", {"executionStarted": False})
             if (
                 placement.region_id != cell_region_id
@@ -468,7 +470,7 @@ def classify_route(request: Any, base_path: str = "/auth") -> RouteClassificatio
         path = path[len(normalized_base) :] or "/"
     method = str(request.method).upper()
     if method == "GET" and (
-        path in {"/runtime", "/environment", "/discovery", "/.well-known"}
+        path in {"/environment", "/discovery", "/.well-known"}
         or path.startswith("/.well-known/")
     ):
         return RouteClassification("global", "discovery")
@@ -604,6 +606,18 @@ async def _buffer_request(
 ) -> _BufferedRequest:
     if isinstance(request, _BufferedRequest):
         return _BufferedRequest(request.method, request.url, dict(request.headers), request._body)
+    body = await _request_body(request)
+    headers = _request_headers(request)
+    request_url = _resolve_request_url(request, context, headers, fallback_authority)
+    return _BufferedRequest(
+        method=str(getattr(request, "method", "GET")).upper(),
+        url=request_url,
+        headers=headers,
+        _body=body,
+    )
+
+
+async def _request_body(request: Any) -> bytes:
     body_method = getattr(request, "body", None)
     if callable(body_method):
         body = await _maybe_await(body_method())
@@ -611,53 +625,68 @@ async def _buffer_request(
         body = getattr(request, "_body", b"")
     if isinstance(body, str):
         body = body.encode("utf-8")
+    return bytes(body or b"")
+
+
+def _request_headers(request: Any) -> Dict[str, str]:
     headers = dict(getattr(request, "headers", {}) or {})
     if not _header(headers, "x-request-id"):
         headers["x-request-id"] = f"req_{secrets.token_hex(8)}"
+    return headers
+
+
+def _resolve_request_url(
+    request: Any,
+    context: Any,
+    headers: Dict[str, str],
+    fallback_authority: Optional[str],
+) -> str:
     request_url = getattr(request, "url", None) or getattr(context, "url", None)
-    if not request_url:
-        path = str(getattr(request, "path", "/"))
-        if fallback_authority:
-            request_url = f"{_normalize_authority(fallback_authority)}{path}"
-        else:
-            host = _header(headers, "x-forwarded-host") or _header(headers, "host")
-            if not host:
-                raise ConfigError(
-                    "URL-less AuthFn requests require a public authority or trusted host header"
-                )
-            scheme = _header(headers, "x-forwarded-proto") or "https"
-            request_url = f"{scheme}://{host}{path}"
-        encoded_query = _raw_query_string(request, context)
-        if encoded_query is None:
-            query = getattr(request, "query_params", {}) or {}
-            encoded_query = urlencode(query, doseq=True)
-        if encoded_query:
-            request_url = f"{request_url}?{encoded_query}"
-    return _BufferedRequest(
-        method=str(getattr(request, "method", "GET")).upper(),
-        url=str(request_url),
-        headers=headers,
-        _body=bytes(body or b""),
-    )
+    if request_url:
+        return str(request_url)
+    path = str(getattr(request, "path", "/"))
+    authority = _request_authority(headers, fallback_authority)
+    encoded_query = _raw_query_string(request, context)
+    if encoded_query is None:
+        encoded_query = urlencode(getattr(request, "query_params", {}) or {}, doseq=True)
+    suffix = f"?{encoded_query}" if encoded_query else ""
+    return f"{authority}{path}{suffix}"
+
+
+def _request_authority(headers: Dict[str, str], fallback_authority: Optional[str]) -> str:
+    if fallback_authority:
+        return _normalize_authority(fallback_authority)
+    host = _header(headers, "x-forwarded-host") or _header(headers, "host")
+    if not host:
+        raise ConfigError("URL-less AuthFn requests require a public authority or trusted host header")
+    scheme = _header(headers, "x-forwarded-proto") or "https"
+    return f"{scheme}://{host}"
 
 
 def _raw_query_string(request: Any, context: Any = None) -> Optional[str]:
     for source in (request, context):
-        if source is None:
-            continue
-        for attribute in ("raw_query_string", "query_string"):
-            value = getattr(source, attribute, None)
-            if isinstance(value, bytes):
-                return value.decode("ascii")
-            if isinstance(value, str):
-                return value.lstrip("?")
-        scope = getattr(source, "scope", None)
-        if isinstance(scope, dict):
-            value = scope.get("query_string")
-            if isinstance(value, bytes):
-                return value.decode("ascii")
-            if isinstance(value, str):
-                return value.lstrip("?")
+        value = _raw_query_from_source(source)
+        if value is not None:
+            return value
+    return None
+
+
+def _raw_query_from_source(source: Any) -> Optional[str]:
+    if source is None:
+        return None
+    for attribute in ("raw_query_string", "query_string"):
+        value = _decode_raw_query(getattr(source, attribute, None))
+        if value is not None:
+            return value
+    scope = getattr(source, "scope", None)
+    return _decode_raw_query(scope.get("query_string")) if isinstance(scope, dict) else None
+
+
+def _decode_raw_query(value: Any) -> Optional[str]:
+    if isinstance(value, bytes):
+        return value.decode("latin-1")
+    if isinstance(value, str):
+        return value.lstrip("?")
     return None
 
 
@@ -783,7 +812,7 @@ def _normalize_base_path(base_path: str) -> str:
 
 
 def _require_active(placement: IdentityPlacement) -> IdentityPlacement:
-    if placement.state == "moving":
+    if placement.state in {"moving", "deleting"}:
         raise PlacementMovingError("Identity placement is moving", {"executionStarted": False})
     if placement.state != "active":
         raise RegionNotFoundError("Identity placement is not active")
@@ -793,7 +822,7 @@ def _require_active(placement: IdentityPlacement) -> IdentityPlacement:
 def _validate_placement(placement: IdentityPlacement) -> None:
     if not placement.identity_key or not placement.region_id or placement.epoch < 1:
         raise ValidationError("Identity placement is invalid")
-    if placement.state not in {"active", "moving", "tombstoned"}:
+    if placement.state not in {"active", "moving", "deleting", "tombstoned"}:
         raise ValidationError("Identity placement state is invalid")
 
 

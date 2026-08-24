@@ -52,7 +52,7 @@ class MultiRegionService:
             if not routing.public_authority:
                 raise ValidationError("Gateway-mode AuthFn requires a public authority")
             authority = _normalize_authority(routing.public_authority)
-            if routing.cell_region_id:
+            if routing.cell_region_id and self.plugin_config.regions:
                 region = next(
                     (
                         candidate

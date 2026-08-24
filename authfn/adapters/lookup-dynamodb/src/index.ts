@@ -79,12 +79,12 @@ export function createDynamoDbRegionLookupStore(
         ConditionExpression: replaceExpired
           ? '(attribute_not_exists(#pk) OR #expiresAt <= :now)'
           : 'attribute_not_exists(#pk)',
+        ExpressionAttributeNames: {
+          '#pk': 'PK',
+          ...(replaceExpired ? { '#expiresAt': ttlAttributeName } : {})
+        },
         ...(replaceExpired
           ? {
-              ExpressionAttributeNames: {
-                '#pk': 'PK',
-                '#expiresAt': ttlAttributeName,
-              },
               ExpressionAttributeValues: {
                 ':now': Math.floor(now().getTime() / 1000),
               },
@@ -182,11 +182,6 @@ export function createDynamoDbIdentityPlacementDirectory(
   if (!options.writerRegion?.trim()) {
     throw new AuthFnConfigError('DynamoDB identity placement requires an explicit writerRegion');
   }
-  if (!options.documentClient && options.region !== options.writerRegion) {
-    throw new AuthFnConfigError(
-      'DynamoDB placement client region must match the single writerRegion'
-    );
-  }
   const {
     consistencyModel: _consistencyModel,
     writerRegion: _writerRegion,
@@ -197,6 +192,7 @@ export function createDynamoDbIdentityPlacementDirectory(
     : undefined;
   return createStoreBackedAuthFnPlacementDirectory(createDynamoDbRegionLookupStore({
     ...lookupOptions,
+    region: options.writerRegion,
     documentClient,
     consistentRead: true
   }));

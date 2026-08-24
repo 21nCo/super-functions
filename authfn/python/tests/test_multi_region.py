@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -290,6 +291,7 @@ async def test_multi_region_registration_updates_local_profile_and_directory() -
 
 @pytest.mark.asyncio
 async def test_canonical_gateway_retries_stale_placement_before_side_effects() -> None:
+    fixed_now = time.time()
     directory = InMemoryIdentityPlacementDirectory(
         [
             IdentityPlacement(
@@ -307,6 +309,14 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     )
     effects: List[str] = []
     calls: List[str] = []
+    replay_expiries: List[int] = []
+
+    class RecordingReplayStore:
+        async def claim(self, _nonce: str, expires_at: int) -> bool:
+            replay_expiries.append(expires_at)
+            return True
+
+    replay_store = RecordingReplayStore()
 
     def create_cell(region_id: str):
         routing = CanonicalRoutingConfig(
@@ -316,7 +326,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
             cell_region_id=region_id,
             cell_audience=f"cell:{region_id}",
             keyring=keyring,
-            replay_store=InMemoryRoutingReplayStore(),
+            replay_store=replay_store,
         )
         middleware = create_cell_routing_middleware(routing)
 
@@ -363,6 +373,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
             ),
             dispatch=dispatch,
             placement_cache_ttl_seconds=60,
+            clock=lambda: fixed_now,
         )
     )
 
@@ -374,6 +385,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     )
     assert first.status == 200
     assert first.body == {"executedIn": "us-east-1"}
+    assert replay_expiries == [int(fixed_now) + 25]
 
     moved = await directory.compare_and_set(
         identity_key="person:ada",
@@ -446,7 +458,7 @@ async def test_gateway_only_runtime_rejects_identity_route_execution() -> None:
         return Response(status=200, body={"ok": True})
 
     global_response = await middleware(
-        GatewayRequest("https://account.example.com/auth/runtime", method="GET"), None, execute
+        GatewayRequest("https://account.example.com/auth/environment", method="GET"), None, execute
     )
     identity_response = await middleware(
         GatewayRequest("https://account.example.com/auth/sign-in/password"), None, execute
@@ -496,9 +508,10 @@ def test_gateway_runtime_rejects_unknown_cell_and_preserves_empty_canonical_oaut
     with pytest.raises(ValidationError, match="Gateway cell region"):
         service.resolve_runtime(Request("https://internal.example/auth/runtime"))
 
-    config.routing.cell_region_id = "eu-west-1"
+    config.regions = []
     runtime = service.resolve_runtime(Request("https://eu.internal.example/auth/runtime"))
     assert runtime.issuer == "https://account.example.com"
+    assert runtime.region_id == "missing-region"
     assert runtime.oauth == {}
 
 
@@ -557,6 +570,22 @@ async def test_cell_buffering_preserves_context_url_and_query() -> None:
 
     response = await middleware(AdapterRequest(), context, execute)
     assert response.status == 200
+
+    class RawQueryRequest:
+        method = "GET"
+        path = "/auth/environment"
+        headers: Dict[str, str] = {}
+        raw_query_string = b"filter=\xff"
+
+        async def body(self) -> bytes:
+            return b""
+
+    async def execute_raw(request: Any, _context: Any) -> Response:
+        assert request.url == "https://account.example.com/auth/environment?filter=ÿ"
+        return Response(status=200, body={"ok": True})
+
+    raw_response = await middleware(RawQueryRequest(), None, execute_raw)
+    assert raw_response.status == 200
 
 
 @pytest.mark.asyncio

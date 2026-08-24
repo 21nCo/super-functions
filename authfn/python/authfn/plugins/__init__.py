@@ -1,5 +1,24 @@
 """Bundled authfn plugin implementations."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .gateway_routing import (
+        CanonicalGateway,
+        CanonicalGatewayOptions,
+        CanonicalRoutingConfig,
+        GatewayCell,
+        GatewayIdentity,
+        IdentityPlacement,
+        InMemoryIdentityPlacementDirectory,
+        InMemoryRoutingReplayStore,
+        RoutingKeyring,
+        RoutingSigningKey,
+        classify_route,
+        create_cell_routing_middleware,
+        move_identity_placement,
+    )
+
 __all__ = [
     "ApiKeyPluginConfig",
     "ApiKeyService",

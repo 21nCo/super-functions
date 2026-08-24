@@ -126,13 +126,11 @@ def test_authfn_openapi_and_route_inventory_match_expected_surface() -> None:
         ("POST", "/auth/2fa/disable"),
         ("POST", "/auth/regions/lookup"),
         ("GET", "/auth/environment"),
-        ("GET", "/auth/runtime"),
     }
 
     document = create_authfn_openapi(auth.config)
     assert document["paths"]["/auth/social/callback/{provider}"]["get"]["operationId"] == "completeSocialSignIn"
     assert document["paths"]["/auth/sign-up/password"]["post"]["operationId"] == "signUpWithPassword"
-    assert document["paths"]["/auth/runtime"]["get"]["operationId"] == "getRuntime"
     assert document["paths"]["/auth/environment"]["get"]["operationId"] == "getEnvironment"
 
 

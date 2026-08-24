@@ -198,6 +198,13 @@ export interface AuthFnAccountDeletionResult {
   counts: Record<string, number>;
 }
 
+export interface AuthFnAccountDeletionFailure {
+  userId: string;
+  primaryEmail?: string;
+  sessionId?: string;
+  error: unknown;
+}
+
 export interface AuthFnOtpChallengeLifecycleEvent {
   type: 'authfn.otp.sent' | 'authfn.otp.verified';
   challengeId: string;
@@ -443,6 +450,10 @@ export interface AuthFnHooks {
   afterAccountDelete(
     ctx: AuthFnHookContext,
     result: AuthFnAccountDeletionResult
+  ): Promise<void> | void;
+  afterAccountDeleteFailure(
+    ctx: AuthFnHookContext,
+    failure: AuthFnAccountDeletionFailure
   ): Promise<void> | void;
 }
 

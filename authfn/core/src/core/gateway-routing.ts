@@ -409,7 +409,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
       response = await options.dispatch(cell.target, routedRequest);
     } catch {
       await emit(options, request, 'authfn.routing.cell_unavailable', {
-        outcome: 'rejected',
+        outcome: 'unknown',
         regionId: placement.regionId,
         epoch: placement.epoch
       });
@@ -545,7 +545,7 @@ export function createAuthFnCellPlacementMiddleware(
       const assertion = verifyPayload(token, cell.keyring, () => new Date(), skew);
       if (assertion.kind !== 'request') throw new AuthFnRoutingAssertionInvalidError();
       await validateRequestAssertion(assertion, request, cell.audience);
-      if (!await cell.replayStore.claim(assertion.nonce, assertion.expiresAt)) {
+      if (!await cell.replayStore.claim(assertion.nonce, assertion.expiresAt + skew)) {
         throw new AuthFnRoutingAssertionInvalidError('Gateway routing assertion was replayed');
       }
       let placement: AuthFnIdentityPlacement | null;
@@ -557,7 +557,7 @@ export function createAuthFnCellPlacementMiddleware(
       if (!placement || placement.state === 'tombstoned') {
         throw new AuthFnRegionNotFoundError('Identity placement is not active');
       }
-      if (placement.state === 'moving') {
+      if (placement.state === 'moving' || placement.state === 'deleting') {
         throw new AuthFnPlacementMovingError(undefined, { executionStarted: false });
       }
       if (
@@ -723,6 +723,95 @@ export async function tombstoneAuthFnIdentityPlacement(
   return tombstoned;
 }
 
+/** Fences an identity before destructive account deletion begins. */
+export async function fenceAuthFnIdentityDeletion(
+  directory: AuthFnIdentityPlacementDirectoryAdapter,
+  identityKey: string,
+  now: () => Date = () => new Date()
+): Promise<AuthFnIdentityPlacement> {
+  const current = await directory.get(identityKey);
+  if (!current || current.state !== 'active') {
+    throw new AuthFnRegionMismatchError('Identity placement is not active before account deletion');
+  }
+  const deleting: AuthFnIdentityPlacement = {
+    ...current,
+    epoch: current.epoch + 1,
+    state: 'deleting',
+    movingToRegionId: undefined,
+    updatedAt: now().toISOString()
+  };
+  const result = await directory.compareAndSet({
+    identityKey,
+    expectedEpoch: current.epoch,
+    expectedState: 'active',
+    placement: deleting
+  });
+  if (!result.updated) {
+    throw new AuthFnRegionMismatchError('Identity placement changed while fencing account deletion');
+  }
+  return deleting;
+}
+
+/** Finalizes a durable deletion fence after the account cascade succeeds. */
+export async function finalizeAuthFnIdentityDeletion(
+  directory: AuthFnIdentityPlacementDirectoryAdapter,
+  identityKey: string,
+  now: () => Date = () => new Date()
+): Promise<AuthFnIdentityPlacement> {
+  const current = await directory.get(identityKey);
+  if (current?.state === 'tombstoned') return current;
+  if (!current || current.state !== 'deleting') {
+    throw new AuthFnRegionMismatchError('Identity placement is not fenced for account deletion');
+  }
+  const tombstoned: AuthFnIdentityPlacement = {
+    ...current,
+    epoch: current.epoch + 1,
+    state: 'tombstoned',
+    movingToRegionId: undefined,
+    updatedAt: now().toISOString()
+  };
+  const result = await directory.compareAndSet({
+    identityKey,
+    expectedEpoch: current.epoch,
+    expectedState: 'deleting',
+    placement: tombstoned
+  });
+  if (!result.updated) {
+    throw new AuthFnRegionMismatchError('Identity placement changed before deletion finalization');
+  }
+  return tombstoned;
+}
+
+/** Restores ownership when destructive account deletion aborts. */
+export async function restoreAuthFnIdentityDeletion(
+  directory: AuthFnIdentityPlacementDirectoryAdapter,
+  identityKey: string,
+  now: () => Date = () => new Date()
+): Promise<AuthFnIdentityPlacement> {
+  const current = await directory.get(identityKey);
+  if (current?.state === 'active') return current;
+  if (!current || current.state !== 'deleting') {
+    throw new AuthFnRegionMismatchError('Identity placement is not fenced for account deletion');
+  }
+  const active: AuthFnIdentityPlacement = {
+    ...current,
+    epoch: current.epoch + 1,
+    state: 'active',
+    movingToRegionId: undefined,
+    updatedAt: now().toISOString()
+  };
+  const result = await directory.compareAndSet({
+    identityKey,
+    expectedEpoch: current.epoch,
+    expectedState: 'deleting',
+    placement: active
+  });
+  if (!result.updated) {
+    throw new AuthFnRegionMismatchError('Identity placement changed before deletion rollback');
+  }
+  return active;
+}
+
 function createMismatchAssertion(
   assertion: RoutingAssertion,
   placement: AuthFnIdentityPlacement,
@@ -845,7 +934,7 @@ function requestPathAndQuery(request: Request): string {
 }
 
 function requireActivePlacement(placement: AuthFnIdentityPlacement): AuthFnIdentityPlacement {
-  if (placement.state === 'moving') {
+  if (placement.state === 'moving' || placement.state === 'deleting') {
     throw new AuthFnPlacementMovingError(undefined, { executionStarted: false });
   }
   if (placement.state !== 'active') throw new AuthFnRegionNotFoundError('Identity placement is not active');
@@ -897,7 +986,7 @@ function parsePlacement(value: string | null | undefined): AuthFnIdentityPlaceme
 }
 
 function isPlacementState(value: unknown): value is AuthFnIdentityPlacementState {
-  return value === 'active' || value === 'moving' || value === 'tombstoned';
+  return value === 'active' || value === 'moving' || value === 'deleting' || value === 'tombstoned';
 }
 
 function isSignedRoutingPayload(value: unknown): value is SignedRoutingPayload {

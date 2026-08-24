@@ -122,7 +122,7 @@ export interface AuthFnRegionLookupRecord {
   updatedAt: Date | string;
 }
 
-export type AuthFnIdentityPlacementState = 'active' | 'moving' | 'tombstoned';
+export type AuthFnIdentityPlacementState = 'active' | 'moving' | 'deleting' | 'tombstoned';
 
 /**
  * Canonical ownership record for an AuthFn identity. The directory owns only

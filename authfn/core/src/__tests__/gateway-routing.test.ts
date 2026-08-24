@@ -12,6 +12,7 @@ import {
 } from '../core/gateway-routing.js';
 import type {
   AuthFnIdentityPlacement,
+  AuthFnRoutingReplayStore,
   AuthFnRoutingKeyring,
   MultiRegionPluginRuntimeConfig
 } from '../plugin-types.js';
@@ -65,6 +66,58 @@ describe('AuthFn canonical gateway routing', () => {
       expect.objectContaining({ type: 'authfn.routing.forwarded', outcome: 'success' })
     ]));
     expect(events.every((event) => event.metadata?.outcome === undefined)).toBe(true);
+  });
+
+  it('reports dispatch failures as indeterminate because execution may have started', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([
+      placement('person:ada', 'us-east-1', 1)
+    ]);
+    const events: Array<{ type: string; outcome?: string }> = [];
+    const gateway = createAuthFnCanonicalGateway<unknown>({
+      publicAuthority: 'https://account.example.com',
+      placementDirectory: directory,
+      keyring,
+      resolveIdentity: () => ({ identityKey: 'person:ada' }),
+      selectInitialRegion: () => 'us-east-1',
+      resolveCell: () => ({ regionId: 'us-east-1', audience: 'cell:us-east-1', target: {} }),
+      dispatch: async () => { throw new Error('transport failed after write'); },
+      onEvent: (event) => { events.push(event); }
+    });
+
+    const response = await gateway.handle(identityRequest());
+
+    expect(response.status).toBe(503);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'authfn.routing.cell_unavailable',
+      outcome: 'unknown'
+    }));
+  });
+
+  it('retains replay claims through the accepted clock-skew window', async () => {
+    const fixedNow = Math.floor(Date.now() / 1000) * 1000;
+    const directory = createInMemoryAuthFnPlacementDirectory([
+      placement('person:ada', 'us-east-1', 1)
+    ]);
+    const replayExpiries: number[] = [];
+    const cell = createCell('us-east-1', directory, [], {
+      async claim(_nonce, expiresAt) {
+        replayExpiries.push(expiresAt);
+        return true;
+      }
+    });
+    const gateway = createAuthFnCanonicalGateway<Router>({
+      publicAuthority: 'https://account.example.com',
+      placementDirectory: directory,
+      keyring,
+      now: () => new Date(fixedNow),
+      resolveIdentity: () => ({ identityKey: 'person:ada' }),
+      selectInitialRegion: () => 'us-east-1',
+      resolveCell: () => ({ regionId: 'us-east-1', audience: 'cell:us-east-1', target: cell }),
+      dispatch: (target, request) => target.handle(request)
+    });
+
+    expect((await gateway.handle(identityRequest())).status).toBe(200);
+    expect(replayExpiries).toEqual([Math.floor(fixedNow / 1000) + 25]);
   });
 
   it('routes by canonical placement, strips spoofed headers, and retries once before execution', async () => {
@@ -277,7 +330,21 @@ describe('AuthFn canonical gateway routing', () => {
       identityKey: 'person:ada',
       expectedEpoch: 2,
       expectedState: 'moving',
-      placement: placement('person:ada', 'us-east-1', 3)
+      placement: {
+        ...placement('person:ada', 'us-east-1', 3),
+        state: 'deleting'
+      }
+    });
+    gateway.invalidate('person:ada');
+    const deleting = await gateway.handle(identityRequest());
+    expect(deleting.status).toBe(503);
+    expect(captured).toBeNull();
+
+    await directory.compareAndSet({
+      identityKey: 'person:ada',
+      expectedEpoch: 3,
+      expectedState: 'deleting',
+      placement: placement('person:ada', 'us-east-1', 4)
     });
     gateway.invalidate('person:ada');
     const routed = await gateway.handle(identityRequest());
@@ -567,7 +634,8 @@ describe('AuthFn canonical runtime', () => {
 function createCell(
   regionId: string,
   directory: ReturnType<typeof createInMemoryAuthFnPlacementDirectory>,
-  effects: string[]
+  effects: string[],
+  replayStore: AuthFnRoutingReplayStore = createInMemoryAuthFnRoutingReplayStore()
 ): Router {
   const pluginConfig: MultiRegionPluginRuntimeConfig = {
     routing: {
@@ -579,7 +647,7 @@ function createCell(
         regionId,
         audience: `cell:${regionId}`,
         keyring,
-        replayStore: createInMemoryAuthFnRoutingReplayStore()
+        replayStore
       }
     }
   };

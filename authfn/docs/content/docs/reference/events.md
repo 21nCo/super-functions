@@ -53,7 +53,7 @@ type AuthFnEvent = {
 | `authfn.routing.retry` | The gateway refreshed placement and began its one allowed retry. | started | `regionId`, `epoch`, `attempt` |
 | `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorType` |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorType` |
-| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected | `regionId`, `epoch`, `errorType` |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected / unknown | `regionId`, `epoch`, `errorType` |
 | `authfn.handoff.started` | A handoff code was issued. | success | `kind` (`native` / `web`) |
 | `authfn.handoff.exchanged` | A handoff code was exchanged for a session. | success | `kind` |
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |

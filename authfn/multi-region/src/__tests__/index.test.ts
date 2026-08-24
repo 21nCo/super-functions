@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthFnRuntimeConfig } from 'authfn';
+import { deleteAccountForUser } from 'authfn/core/account';
+import { composePluginHooks } from 'authfn/plugin-runner';
 import {
   authFnMultiRegionEnvironment,
   authFnMultiRegionPlugin,
-  createInMemoryAuthFnPlacementDirectory
+  createInMemoryAuthFnPlacementDirectory,
+  finalizeAuthFnIdentityDeletion
 } from '../index.js';
 
-function gatewayRuntime(directory = createInMemoryAuthFnPlacementDirectory()) {
+function gatewayRuntime(
+  directory = createInMemoryAuthFnPlacementDirectory(),
+  database: AuthFnRuntimeConfig['database'] = { deleteMany: async () => 1 } as never
+) {
   const plugin = authFnMultiRegionPlugin();
   const environment = authFnMultiRegionEnvironment({
     routing: {
@@ -19,7 +25,7 @@ function gatewayRuntime(directory = createInMemoryAuthFnPlacementDirectory()) {
   const config = {
     plugins: [plugin],
     environment,
-    database: {},
+    database,
     namespace: 'authfn',
     basePath: '/auth'
   } as unknown as AuthFnRuntimeConfig;
@@ -76,8 +82,16 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     )).regionId).toBe('eu-west-1');
   });
 
-  it('tombstones placement only after account deletion succeeds', async () => {
-    const { config, directory, plugin } = gatewayRuntime();
+  it('fences before deletion, tombstones after success, and restores after failure', async () => {
+    const observedStates: string[] = [];
+    const directory = createInMemoryAuthFnPlacementDirectory();
+    const database = {
+      async deleteMany() {
+        observedStates.push((await directory.get('email:ada@example.com'))?.state ?? 'missing');
+        return 1;
+      }
+    } as never;
+    const { config } = gatewayRuntime(directory, database);
     await directory.putIfAbsent({
       identityKey: 'email:ada@example.com',
       regionId: 'eu-west-1',
@@ -86,17 +100,72 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
       updatedAt: '2026-08-24T00:00:00.000Z'
     });
 
-    await plugin.hooks?.afterAccountDelete?.(
-      { config },
-      { deleted: true, userId: 'user_1', primaryEmail: ' ADA@example.com ', counts: {} }
-    );
+    await deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: ' ADA@example.com ' } as never
+    });
 
+    expect(observedStates).toEqual(['deleting', 'deleting', 'deleting']);
     await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
       state: 'tombstoned',
+      epoch: 5
+    });
+
+    const failingDirectory = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 7,
+      state: 'active',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    const failing = gatewayRuntime(failingDirectory, {
+      deleteMany: async () => { throw new Error('database unavailable'); }
+    } as never);
+
+    await expect(deleteAccountForUser(failing.config, composePluginHooks(failing.config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow('database unavailable');
+    await expect(failingDirectory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'active',
+      epoch: 9
+    });
+  });
+
+  it('leaves a durable deletion fence when finalization fails and supports repair', async () => {
+    const backing = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 3,
+      state: 'active',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    let failFinalization = true;
+    const directory = {
+      get: (identityKey: string) => backing.get(identityKey),
+      putIfAbsent: (placement: Parameters<typeof backing.putIfAbsent>[0]) =>
+        backing.putIfAbsent(placement),
+      compareAndSet: (input: Parameters<typeof backing.compareAndSet>[0]) => {
+        if (failFinalization && input.expectedState === 'deleting') {
+          throw new Error('placement directory unavailable');
+        }
+        return backing.compareAndSet(input);
+      }
+    };
+    const { config } = gatewayRuntime(directory, { deleteMany: async () => 1 } as never);
+
+    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow();
+    await expect(backing.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'deleting',
       epoch: 4
     });
 
-    expect(plugin.hooks?.beforeAccountDelete).toBeUndefined();
+    failFinalization = false;
+    await finalizeAuthFnIdentityDeletion(directory, 'email:ada@example.com');
+    await expect(backing.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'tombstoned',
+      epoch: 5
+    });
   });
 
   it('returns the canonical authority without exposing placement or accepting malformed identifiers', async () => {

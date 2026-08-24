@@ -106,7 +106,7 @@ Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InM
 | API-key create/list/revoke/authenticate | Route. | Verified session handle or API-key routing prefix/MAC. | Validate before key lookup or mutation. |
 | Social OAuth start, GET/POST callback, disconnect, and native Apple start/complete | Route. | Verified session, OAuth state, or native handshake routing handle. | Keep issuer and callback canonical; validate before state consumption or identity mutation. |
 | Native/web handoff | Route. | Signed handoff routing handle. | Validate before code creation or exchange. |
-| Account deletion and email change | Route. | Verified session handle. | Validate routing before mutation. Account deletion tombstones placement only after the cascading delete succeeds, so a failed delete remains retryable; email-change flows must update placement with an application-level transaction/outbox protocol. |
+| Account deletion and email change | Route. | Verified session handle. | Validate routing before mutation. Account deletion CAS-fences `active` to durable `deleting` before the cascade, restores `active` if the cascade fails, and publishes `tombstoned` only after success. A failed final CAS remains safely fenced and can be retried with `finalizeAuthFnIdentityDeletion`; email-change flows must update placement with an application-level transaction/outbox protocol. |
 
 Do not fall back to a default cell for an established identity whose placement is absent. Initial placement is only for explicitly classified first-use flows. Public lookup responses must be identical for present and absent identities.
 
@@ -119,7 +119,7 @@ Backfill existing users by deriving the same stable identity key used at the gat
 1. CAS `active(source, epoch N)` to `moving(source → target, N+1)`.
 2. Quiesce source writes and drain in-flight auth/delivery work.
 3. Copy identity state and dependent credentials/tokens, validate it, and warm the target.
-4. Resume target traffic while placement remains `moving`, then CAS to `active(target, N+2)`. Publishing `active` before target resume would expose an unroutable owner.
+4. Resume target capacity and complete readiness checks while public identity traffic remains fenced by `moving`, then CAS to `active(target, N+2)`. Publishing `active` before the target is fully ready would expose an unroutable owner.
 5. Before activation, failures leave placement fenced as `moving` unless a source recovery callback is supplied. With source recovery, resume the source first and only then CAS to `active(source, N+2)`; a failed source resume must never publish an active source. After target activation, ownership remains at the target.
 
 Invalidate gateway placement caches after every claim, move, tombstone, and operator repair. Old assertions are rejected by epoch even when their TTL has not elapsed.
@@ -128,6 +128,7 @@ Invalidate gateway placement caches after every claim, move, tombstone, and oper
 
 - Placement directory unavailable: fail closed with `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE`; do not guess a region.
 - Placement `moving`: return `AUTHFN_PLACEMENT_MOVING`; do not start auth side effects.
+- Placement `deleting`: return `AUTHFN_PLACEMENT_MOVING`; the durable deletion fence must be finalized or restored before identity traffic resumes.
 - Missing/tombstoned established placement: fail closed. Do not enumerate the identity through the public lookup route.
 - Cell missing or internal dispatch failure: `AUTHFN_ROUTING_CELL_UNAVAILABLE`.
 - Gateway outage: restore the canonical gateway. Do not expose regional authorities as an automatic fallback because that changes issuer, callback, cookie, and topology contracts.

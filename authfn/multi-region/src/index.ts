@@ -21,7 +21,11 @@ import { resolveEnvironment } from 'authfn/core/environment';
 import { createAuthFnRouteMeta } from 'authfn/http/router';
 import { jsonSuccess } from 'authfn/http/envelopes';
 import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
-import { tombstoneAuthFnIdentityPlacement } from 'authfn/core/gateway-routing';
+import {
+  fenceAuthFnIdentityDeletion,
+  finalizeAuthFnIdentityDeletion,
+  restoreAuthFnIdentityDeletion
+} from 'authfn/core/gateway-routing';
 
 export type {
   AuthFnCanonicalRoutingConfig,
@@ -44,7 +48,10 @@ export {
   createInMemoryAuthFnPlacementDirectory,
   createInMemoryAuthFnRoutingReplayStore,
   createStoreBackedAuthFnPlacementDirectory,
+  fenceAuthFnIdentityDeletion,
+  finalizeAuthFnIdentityDeletion,
   moveAuthFnIdentityPlacement,
+  restoreAuthFnIdentityDeletion,
   tombstoneAuthFnIdentityPlacement
 } from 'authfn/core/gateway-routing';
 export type {
@@ -65,7 +72,8 @@ export function authFnMultiRegionPlugin(
     schema: () => config.schema ?? createMultiRegionSchema(),
     routes: (ctx) => createMultiRegionRoutes(ctx),
     hookFailurePolicy: {
-      afterUserCreate: 'fail'
+      afterUserCreate: 'fail',
+      afterAccountDelete: 'fail'
     },
     validateConfig: (runtimeConfig) => {
       const pluginConfig = getMultiRegionPluginConfig(runtimeConfig);
@@ -146,6 +154,19 @@ export function authFnMultiRegionPlugin(
           regionId: alignment.regionId ?? readOptionalString(input.regionId)
         };
       },
+      beforeAccountDelete: async (ctx, input) => {
+        const authConfig = ctx.config;
+        const primaryEmail = readOptionalString(input.primaryEmail);
+        if (!authConfig || !primaryEmail) return input;
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+        if (pluginConfig.routing?.mode !== 'gateway') return input;
+        const routing = pluginConfig.routing;
+        await fenceAuthFnIdentityDeletion(
+          routing.placementDirectory,
+          routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+        );
+        return input;
+      },
       afterAccountDelete: async (ctx, result) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(result.primaryEmail);
@@ -156,13 +177,25 @@ export function authFnMultiRegionPlugin(
 
         if (pluginConfig.routing?.mode === 'gateway') {
           const routing = pluginConfig.routing;
-          await tombstoneAuthFnIdentityPlacement(
+          await finalizeAuthFnIdentityDeletion(
             routing.placementDirectory,
             routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
           );
         }
 
         await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
+      },
+      afterAccountDeleteFailure: async (ctx, failure) => {
+        const authConfig = ctx.config;
+        const primaryEmail = readOptionalString(failure.primaryEmail);
+        if (!authConfig || !primaryEmail) return;
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+        if (pluginConfig.routing?.mode !== 'gateway') return;
+        const routing = pluginConfig.routing;
+        await restoreAuthFnIdentityDeletion(
+          routing.placementDirectory,
+          routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+        );
       }
     }
   };
