@@ -24,7 +24,12 @@ export interface UpdateResult {
 export function updateInstalled(options: UpdateOptions): UpdateResult {
   const registry = buildRegistry();
   const lockfile = readLockFile(options.rootDir, { catalogSha256: registry.trust.catalogSha256, signatureKeyId: registry.trust.keyId });
-  const requestedKeys = options.lockKeys ?? Object.keys(lockfile.items);
+  const requestedKeys = (options.lockKeys ?? Object.keys(lockfile.items))
+    .map((value) => value.includes(':') ? value : `component:${value}`);
+  if (options.lockKeys) {
+    const missing = requestedKeys.filter((key) => !lockfile.items[key]);
+    if (missing.length) return { ok: false, dryRun: Boolean(options.dryRun), updated: [], errors: [{ code: 'UIFN_REGISTRY_ARTIFACT_NOT_INSTALLED', message: `Not installed: ${missing.join(', ')}` }] };
+  }
   const entries = requestedKeys.map((key) => [key, lockfile.items[key]] as const).filter((pair): pair is readonly [string, NonNullable<typeof pair[1]>] => Boolean(pair[1]));
   if (!entries.length) return { ok: true, dryRun: Boolean(options.dryRun), updated: [], errors: [] };
   const frameworks = new Set(entries.map(([, entry]) => entry.framework));

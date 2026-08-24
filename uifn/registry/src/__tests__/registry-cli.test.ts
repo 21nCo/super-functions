@@ -85,6 +85,25 @@ describe('TV-REG-001-P/N transaction-safe registry', () => {
     });
   });
 
+  it('rejects explicitly requested lock keys that are not installed', () => {
+    withProject((rootDir) => {
+      expect(addArtifact({ rootDir, artifact: 'button', framework: 'react' }).ok).toBe(true);
+      const before = snapshot(rootDir);
+      expect(updateInstalled({
+        rootDir,
+        lockKeys: ['button', 'component:not-installed'],
+      })).toMatchObject({
+        ok: false,
+        updated: [],
+        errors: [{
+          code: 'UIFN_REGISTRY_ARTIFACT_NOT_INSTALLED',
+          message: 'Not installed: component:not-installed',
+        }],
+      });
+      expect(snapshot(rootDir)).toBe(before);
+    });
+  });
+
   it('rejects symlink escape before writes and leaves the outside byte-identical', () => {
     const outside = mkdtempSync(path.join(os.tmpdir(), 'uifn-phase16-outside-'));
     try {

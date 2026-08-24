@@ -73,22 +73,30 @@ export type SliderController = UIFnController<SliderState, SliderActions, Slider
 function normalizeSliderValues(values: readonly number[], min: number, max: number, step: number, minSteps: number): readonly number[] {
   const sorted = (values.length ? values : [min]).map((value) => alignRangeValue(value, { min, max, step })).sort((a, b) => a - b);
   const next = [...sorted];
-  for (let index = 1; index < next.length; index += 1) next[index] = Math.max(next[index], next[index - 1] + minSteps * step);
-  for (let index = next.length - 2; index >= 0; index -= 1) next[index] = Math.min(next[index], next[index + 1] - minSteps * step);
+  const gap = minSteps * step;
+  for (let index = 1; index < next.length; index += 1) next[index] = Math.max(next[index], next[index - 1] + gap);
+  if (next.at(-1)! > max) {
+    next[next.length - 1] = max;
+    for (let index = next.length - 2; index >= 0; index -= 1) next[index] = Math.min(next[index], next[index + 1] - gap);
+  }
+  if (next[0] < min) {
+    next[0] = min;
+    for (let index = 1; index < next.length; index += 1) next[index] = Math.max(next[index], next[index - 1] + gap);
+  }
   return Object.freeze(next.map((value) => alignRangeValue(value, { min, max, step })));
 }
 
 export function createSliderController(props: SliderProps = {}, env: UIFnEnvironment = {}): SliderController {
-  const { resolved, id } = createUIFnPhase10Ids('Slider', 'slider', env); const min = props.min ?? 0; const max = props.max ?? 100; const step = props.step ?? 1;
-  const minSteps = Math.max(0, props.minStepsBetweenThumbs ?? 0); const controlled = props.value !== undefined; const initial = normalizeSliderValues(props.value ?? props.defaultValue ?? [min], min, max, step, minSteps);
-  const locale = props.locale ?? resolved.getLocale(); const format = (value: number) => formatUIFnValueText(value, { maximumFractionDigits: 12 }, locale);
+  const { resolved, id } = createUIFnPhase10Ids('Slider', 'slider', env); let currentProps = props; let min = props.min ?? 0; let max = props.max ?? 100; let step = props.step ?? 1;
+  let minSteps = Math.max(0, props.minStepsBetweenThumbs ?? 0); let controlled = props.value !== undefined; const initial = normalizeSliderValues(props.value ?? props.defaultValue ?? [min], min, max, step, minSteps);
+  let locale = props.locale ?? resolved.getLocale(); let format = (value: number) => formatUIFnValueText(value, { maximumFractionDigits: 12 }, locale);
   const store = createStateChannel<SliderState>({ value: initial, min, max, step, minStepsBetweenThumbs: minSteps, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), locale, disabled: props.disabled ?? false, readOnly: props.readOnly ?? false, activeThumb: 0, pointers: Object.freeze({}), interaction: 'idle', cancelledPointers: Object.freeze([]), valueText: Object.freeze(initial.map(format)), announcementCount: 0, announcementAt: -1_000_000_000_000 });
   const commit = (nextValue: readonly number[], modality: 'keyboard' | 'pointer' | 'touch' | 'programmatic', forceAnnouncement = false) => {
     const state = store.getState(); if (state.disabled || state.readOnly) return;
     const normalized = normalizeSliderValues(nextValue, min, max, step, minSteps); const message = normalized.map(format).join(' – '); const result = announce(state.announcementAt, resolved.now(), message, forceAnnouncement);
     if (controlled) store.patchState({ requestedValue: normalized, announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) });
     else store.patchState({ value: normalized, valueText: Object.freeze(normalized.map(format)), requestedValue: undefined, announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) });
-    props.onValueChange?.(normalized);
+    currentProps.onValueChange?.(normalized);
   };
   const actions: SliderActions = {
     setValue: (value) => commit(value, 'programmatic'),
@@ -101,7 +109,7 @@ export function createSliderController(props: SliderProps = {}, env: UIFnEnviron
     pointerEnd(pointerId) { const state = store.getState(); if (!state.pointers[pointerId]) return; const pointers = removePointer(state.pointers, pointerId); store.patchState({ pointers, interaction: phase(pointers) }); },
     pointerCancel(pointerId) { const state = store.getState(); if (!state.pointers[pointerId]) return; const pointers = removePointer(state.pointers, pointerId); store.patchState({ pointers, interaction: phase(pointers), cancelledPointers: Object.freeze([...state.cancelledPointers, pointerId]) }); },
     lostPointerCapture: (pointerId) => actions.pointerCancel(pointerId),
-    reset: () => actions.syncValue(props.defaultValue ?? [min]),
+    reset: () => actions.syncValue(currentProps.defaultValue ?? [min]),
   };
   const parts: SliderControllerParts = {
     root: createUIFnPhase10Part('Slider', 'root', () => ({ id: id('root'), role: 'group', aria: { disabled: store.getState().disabled }, data: { orientation: store.getState().orientation, dir: store.getState().dir, state: store.getState().interaction } }), { id: true, role: true }),
@@ -124,9 +132,43 @@ export function createSliderController(props: SliderProps = {}, env: UIFnEnviron
     }, { id: true }),
     thumb: createUIFnPhase10ValuePart('Slider', 'thumb', (index) => { const state = store.getState(); const value = state.value[index] ?? min; const previous = state.value[index - 1] ?? min; const next = state.value[index + 1] ?? max; return { role: 'slider', id: id('thumb', index), tabIndex: state.disabled ? -1 : 0, aria: { valuemin: index ? previous + minSteps * step : min, valuemax: index < state.value.length - 1 ? next - minSteps * step : max, valuenow: value, valuetext: state.valueText[index], orientation: state.orientation, disabled: state.disabled, readonly: state.readOnly, labelledby: id('label') }, data: { index, state: state.activeThumb === index ? 'active' : 'idle', orientation: state.orientation }, style: state.orientation === 'horizontal' ? { insetInlineStart: `${rangeValueToPercent(value, { min, max })}%` } : { bottom: `${rangeValueToPercent(value, { min, max })}%` }, on: { focus: () => actions.setActiveThumb(index), keydown: (event) => actions.keyStep(index, event?.key ?? '') } }; }, { role: true, id: true, tabIndex: true, aria: ['valuemin', 'valuemax', 'valuenow', 'valuetext', 'orientation'] }),
     valueText: createUIFnPhase10ValuePart('Slider', 'valueText', (index) => ({ id: id('value-text', index), data: { value: store.getState().valueText[index] } }), { id: true }),
-    hiddenInput: createUIFnPhase10ValuePart('Slider', 'hiddenInput', (index) => ({ id: id('input', index), attributes: { type: 'hidden', name: props.name, value: store.getState().value[index], disabled: store.getState().disabled } }), { id: true }),
+    hiddenInput: createUIFnPhase10ValuePart('Slider', 'hiddenInput', (index) => ({ id: id('input', index), attributes: { type: 'hidden', name: currentProps.name, value: store.getState().value[index], disabled: store.getState().disabled } }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.value !== undefined) actions.syncValue(inputs.value); }, });
+  return createUIFnPhase10Controller({
+    store,
+    actions,
+    parts,
+    env,
+    update(inputs) {
+      currentProps = { ...currentProps, ...inputs };
+      controlled = currentProps.value !== undefined;
+      if ('min' in inputs) min = inputs.min ?? 0;
+      if ('max' in inputs) max = inputs.max ?? 100;
+      if ('step' in inputs) step = inputs.step ?? 1;
+      if ('minStepsBetweenThumbs' in inputs) minSteps = Math.max(0, inputs.minStepsBetweenThumbs ?? 0);
+      if ('locale' in inputs) {
+        locale = inputs.locale ?? resolved.getLocale();
+        format = (value: number) => formatUIFnValueText(value, { maximumFractionDigits: 12 }, locale);
+      }
+      const state = store.getState();
+      const value = normalizeSliderValues(inputs.value ?? state.value, min, max, step, minSteps);
+      store.patchState({
+        value,
+        requestedValue: undefined,
+        min,
+        max,
+        step,
+        minStepsBetweenThumbs: minSteps,
+        orientation: 'orientation' in inputs ? inputs.orientation ?? 'horizontal' : state.orientation,
+        dir: 'dir' in inputs ? inputs.dir ?? resolved.getDirection() : state.dir,
+        locale,
+        disabled: 'disabled' in inputs ? inputs.disabled ?? false : state.disabled,
+        readOnly: 'readOnly' in inputs ? inputs.readOnly ?? false : state.readOnly,
+        activeThumb: Math.min(state.activeThumb, value.length - 1),
+        valueText: Object.freeze(value.map(format)),
+      });
+    },
+  });
 }
 
 export interface AngleSliderProps { readonly value?: number; readonly defaultValue?: number; readonly min?: number; readonly max?: number; readonly step?: number; readonly locale?: string; readonly name?: string; readonly disabled?: boolean; readonly readOnly?: boolean; readonly onValueChange?: (value: number) => void }

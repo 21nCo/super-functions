@@ -4,8 +4,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseSvelte } from 'svelte/compiler';
 import ts from 'typescript';
+import { svelteScriptSources } from '../uifn/components-svelte/scripts/svelte-script-sources.mjs';
 
 const defaultRepoRoot = process.cwd();
 const ignoredDirectories = new Set([
@@ -255,14 +255,6 @@ export function sourceImportSpecifiers(source, pathname) {
     visit(sourceFile);
   }
   return dependencies;
-}
-
-function svelteScriptSources(source) {
-  const parsed = parseSvelte(source, { modern: true });
-  return [parsed.instance, parsed.module]
-    .filter((script) => script?.content)
-    .sort((left, right) => left.content.start - right.content.start)
-    .map((script) => source.slice(script.content.start, script.content.end));
 }
 
 export function runPackageGraphVerification(options = {}) {
