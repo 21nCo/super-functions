@@ -10,7 +10,7 @@
     "generate": "node ../../scripts/generate-uifn-components.mjs --write",
     "generate:check": "node ../../scripts/generate-uifn-components.mjs --check",
     "build": "tsup src/index.ts src/generated/*.ts --format esm,cjs --dts --clean",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "dev": "tsup src/index.ts src/generated/*.ts --format esm,cjs --dts --watch",
     "test": "vitest run --config vitest.config.ts",
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -12,6 +12,7 @@
   "anatomy": [
     "root",
     "trigger",
+    "positioner",
     "content",
     "arrow"
   ],
@@ -50,9 +51,7 @@
   },
   "behavior": [
     "portal",
-    "focus-management",
-    "escape-key",
-    "outside-interaction"
+    "escape-key"
   ],
   "stories": [
     "uifn/components/stories/batch-b/tooltip.stories.json#default",

@@ -19,7 +19,14 @@ export const InputContract = defineUIFnStaticContract<InputProps, InputState, In
     const state = this.getState(inputs);
     return freezeUIFnParts({ root: {
       id: createUIFnPartId(context.scopeId, 'input', 'root'), disabled: state.disabled,
-      attributes: { type: inputs.type ?? 'text', value: inputs.value, defaultValue: inputs.defaultValue, name: inputs.name, readonly: state.readOnly, required: state.required },
+      attributes: {
+        type: inputs.type ?? 'text',
+        value: inputs.value,
+        defaultValue: inputs.value === undefined ? inputs.defaultValue : undefined,
+        name: inputs.name,
+        readonly: state.readOnly,
+        required: state.required,
+      },
       aria: { invalid: state.invalid }, data: { state: state.status },
     } });
   },

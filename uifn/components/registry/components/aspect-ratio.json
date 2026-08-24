@@ -4,7 +4,7 @@
   "slug": "aspect-ratio",
   "batch": "batch-a",
   "kind": "component-implementation",
-  "status": "implemented",
+  "status": "planned",
   "sourcePolicy": "clean-room",
   "owners": [
     "platform-ui"
@@ -30,19 +30,13 @@
   ],
   "frameworks": {
     "react": {
-      "supported": true,
-      "entry": "uifn/components-react/src/batch-a.ts",
-      "exportName": "AspectRatio"
+      "supported": false
     },
     "svelte": {
-      "supported": true,
-      "entry": "uifn/components-svelte/src/batch-a.ts",
-      "exportName": "AspectRatio"
+      "supported": false
     },
     "solid": {
-      "supported": true,
-      "entry": "uifn/components-solid/src/batch-a.ts",
-      "exportName": "AspectRatio"
+      "supported": false
     }
   },
   "stories": [

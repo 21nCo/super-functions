@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   inspectObservedAssertion,
+  expandPhase14ConsensusTraces,
   phase18MutationResults,
   phase18SemanticMutationResults,
   validateFailureArtifact,
@@ -11,12 +12,10 @@ import {
 
 const catalog = JSON.parse(readFileSync(new URL('../uifn/catalog/generated/catalog.json', import.meta.url), 'utf8'));
 const ledger = JSON.parse(readFileSync(new URL('../uifn/evidence/generated/phase-18/normative-ledger.json', import.meta.url), 'utf8'));
-const traces = [];
-for (const installMode of ['package', 'source']) {
-  for (const framework of ['react', 'svelte', 'solid']) {
-    traces.push(...JSON.parse(readFileSync(new URL(`../uifn/.conduct/evidence/phase-14/20260724T110120Z-PHASE-18-a11y-root-semantics/${installMode}-${framework}.json`, import.meta.url), 'utf8')));
-  }
-}
+const traces = expandPhase14ConsensusTraces(JSON.parse(readFileSync(
+  new URL('../uifn/evidence/generated/phase-14/phase-14-semantic-traces.json', import.meta.url),
+  'utf8',
+)));
 
 test('reviewed ledger covers all primitives, modes, and rule mappings', () => {
   assert.deepEqual(validateLedger(ledger, catalog, { now: new Date('2026-07-24T12:00:00Z') }), []);

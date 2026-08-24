@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { buildRegistry } from '../build-registry';
 import { checksumContent } from '../lockfile';
 import { REQUIRED_FRAMEWORKS, validateDependencyGraph, validateManifest } from '../schema';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { REGISTRY_CATALOG_PAYLOAD_JSON } from '../generated/catalog';
 import { verifyRegistryCatalogSignature } from '../trust';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -57,5 +59,21 @@ describe('TV-GEN-001-P/N canonical delivery catalog', () => {
     expect(validateDependencyGraph(cycle).errors.map((error) => error.code)).toContain('UIFN_REGISTRY_DEPENDENCY_CYCLE');
 
     expect(verifyRegistryCatalogSignature('tampered catalog').code).toBe('UIFN_REGISTRY_SIGNATURE_INVALID');
+  });
+
+  it('rejects a self-consistent signature from an arbitrary replacement key', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const payload = REGISTRY_CATALOG_PAYLOAD_JSON;
+    const keyId = createHash('sha256')
+      .update(publicKey.export({ type: 'spki', format: 'der' }))
+      .digest('hex')
+      .slice(0, 24);
+    expect(verifyRegistryCatalogSignature(payload, {
+      schemaVersion: 1,
+      algorithm: 'Ed25519',
+      keyId,
+      catalogSha256: createHash('sha256').update(payload).digest('hex'),
+      signatureBase64: sign(null, Buffer.from(payload), privateKey).toString('base64'),
+    })).toMatchObject({ ok: false, code: 'UIFN_REGISTRY_SIGNATURE_INVALID' });
   });
 });

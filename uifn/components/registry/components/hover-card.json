@@ -12,6 +12,7 @@
   "anatomy": [
     "root",
     "trigger",
+    "positioner",
     "content",
     "arrow"
   ],

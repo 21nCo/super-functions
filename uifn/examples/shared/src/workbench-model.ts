@@ -291,9 +291,9 @@ export function patternModelHtml(input: {
           <p class="eyebrow">${input.family === 'sf' ? 'Superfunction UI' : 'Application pattern'}</p>
           <h2>${escapeHtml(input.name)}</h2>
         </div>
-        <span class="workbench-status-pill" data-status="${input.status}">${statusLabel}</span>
+        <span class="workbench-status-pill" data-status="${escapeHtml(input.status)}">${escapeHtml(statusLabel)}</span>
       </header>
-      <p class="workbench-status-message" data-uifn-status-message role="${input.status === 'error' ? 'alert' : 'status'}">${statusMessage(input.status)}</p>
+      <p class="workbench-status-message" data-uifn-status-message role="${input.status === 'error' ? 'alert' : 'status'}">${escapeHtml(statusMessage(input.status))}</p>
       ${productData}
       ${metadata}
       <div class="workbench-model-actions" aria-label="${escapeHtml(input.name)} actions">
@@ -363,7 +363,7 @@ function humanizeStatus(status: PatternStatus): string {
     'degraded-network': 'Offline mode',
     'unsupported-capability': 'Unavailable',
   };
-  return labels[status];
+  return labels[status] ?? String(status);
 }
 
 function statusMessage(status: PatternStatus): string {
@@ -378,7 +378,7 @@ function statusMessage(status: PatternStatus): string {
     'degraded-network': 'Showing locally available data while the connection recovers.',
     'unsupported-capability': 'This capability is unavailable in the current environment.',
   };
-  return messages[status];
+  return messages[status] ?? String(status);
 }
 
 function renderProductData(data: unknown): string {

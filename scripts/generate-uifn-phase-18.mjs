@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { materializeOutputs } from './uifn-delivery-generator.mjs';
 import {
   normalizeSemanticParts,
+  expandPhase14ConsensusTraces,
   PHASE_18_LEDGER_REVISION,
   PHASE_18_RULES,
   sha256,
@@ -20,41 +21,8 @@ const deliveryModes = ['package', 'source'];
 const readJson = (relative) => JSON.parse(readFileSync(path.join(root, relative), 'utf8'));
 const catalog = readJson('uifn/catalog/generated/catalog.json');
 const storyInventory = readJson('uifn/storybook/generated/story-inventory.json');
-const requiredTraceFiles = deliveryModes.flatMap((deliveryMode) => (
-  frameworks.map((framework) => `${deliveryMode}-${framework}.json`)
-));
-function discoverTraceRoot() {
-  const configured = process.env.UIFN_PHASE18_TRACE_DIR;
-  if (configured) {
-    const absolute = path.resolve(root, configured);
-    const relative = path.relative(root, absolute).replaceAll(path.sep, '/');
-    if (relative.startsWith('../') || path.isAbsolute(relative)) {
-      throw new Error('UIFN_PHASE18_TRACE_DIR must resolve inside the repository.');
-    }
-    return relative;
-  }
-  const evidenceParent = path.join(root, 'uifn/.conduct/evidence/phase-14');
-  const candidates = existsSync(evidenceParent)
-    ? readdirSync(evidenceParent, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(evidenceParent, entry.name, 'traces'))
-      .filter((candidate) => (
-        existsSync(path.join(candidate, 'trace-run.json'))
-        && requiredTraceFiles.every((file) => existsSync(path.join(candidate, file)))
-      ))
-      .sort((left, right) => (
-        statSync(path.join(right, 'trace-run.json')).mtimeMs
-        - statSync(path.join(left, 'trace-run.json')).mtimeMs
-      ))
-    : [];
-  if (!candidates[0]) throw new Error('UIFN_PHASE18_TRACE_EVIDENCE_MISSING');
-  return path.relative(root, candidates[0]).replaceAll(path.sep, '/');
-}
-const traceRoot = discoverTraceRoot();
-const traceSets = [];
-for (const deliveryMode of deliveryModes) for (const framework of frameworks) {
-  traceSets.push(...readJson(`${traceRoot}/${deliveryMode}-${framework}.json`));
-}
+const traceSource = 'uifn/evidence/generated/phase-14/phase-14-semantic-traces.json';
+const traceSets = expandPhase14ConsensusTraces(readJson(traceSource));
 const tracesByPrimitive = new Map();
 for (const trace of traceSets) {
   const id = catalog.primitives.find((primitive) => primitive.name === trace.primitive)?.id;
@@ -153,10 +121,7 @@ const ledgerPrimitives = catalog.primitives.map((primitive) => {
 
 const catalogSource = readFileSync(path.join(root, 'uifn/catalog/generated/catalog.json'), 'utf8');
 const inventorySource = readFileSync(path.join(root, 'uifn/storybook/generated/story-inventory.json'), 'utf8');
-const traceHashes = deliveryModes.flatMap((deliveryMode) => frameworks.map((framework) => {
-  const relative = `${traceRoot}/${deliveryMode}-${framework}.json`;
-  return { path: relative, sha256: sha256(readFileSync(path.join(root, relative))) };
-}));
+const traceHashes = [{ path: traceSource, sha256: sha256(readFileSync(path.join(root, traceSource))) }];
 const definitionSha256 = sha256([catalogSource, inventorySource, ...traceHashes.map((entry) => `${entry.path}:${entry.sha256}`)].join('\n'));
 
 const ledger = {
@@ -276,9 +241,9 @@ const manualHandoff = {
 
 const readme = `# uifn accessibility evidence
 
-This directory contains the generated, reviewed Phase 18 normative ledger, automated browser matrix, and Phase 19 manual handoff.
+The generated, reviewed normative ledger, automated browser matrix, and manual accessibility handoff are maintained under \`uifn/evidence/generated/phase-18\`; this directory documents their status.
 
-The automated result is deliberately provisional. It does not infer assistive-technology speech, does not represent emulation as physical-device evidence, and cannot authorize a 10/10 or release claim until the Phase 19 VoiceOver, NVDA, TalkBack, and independent-review evidence is signed. JAWS is deferred by explicit user decision.
+The automated result is deliberately provisional. It does not infer assistive-technology speech, does not represent emulation as physical-device evidence, and cannot authorize a 10/10 or release claim until the VoiceOver, NVDA, TalkBack, and independent-review evidence is signed. JAWS is deferred by explicit user decision.
 `;
 
 const outputs = {

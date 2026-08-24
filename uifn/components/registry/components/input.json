@@ -10,10 +10,7 @@
     "platform-ui"
   ],
   "anatomy": [
-    "root",
-    "input",
-    "prefix",
-    "suffix"
+    "root"
   ],
   "props": [
     "unstyled",
@@ -28,8 +25,7 @@
     "invalid",
     "focusVisible",
     "active",
-    "selected",
-    "open"
+    "selected"
   ],
   "frameworks": {
     "react": {

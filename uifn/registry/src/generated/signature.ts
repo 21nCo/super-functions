@@ -1,5 +1,4 @@
 /* Generated detached registry signature. */
-export const REGISTRY_PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA8UHJbpG5xbAgG8CAPGRVFMmTlmYHfCOWlccWcH1TNqs=\n-----END PUBLIC KEY-----\n";
 export const REGISTRY_SIGNATURE = {
   "schemaVersion": 1,
   "algorithm": "Ed25519",

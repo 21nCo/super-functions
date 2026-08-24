@@ -91,7 +91,7 @@ const docsCoverage = readJson(path.join(root, 'uifn/docs/generated/docs-coverage
 const docsSamples = readJson(path.join(root, 'uifn/docs/generated/sample-manifest.json'));
 const expectedRuleCount = ledgerSource.primitiveCount * ledgerSource.ruleIds.length;
 const expectedTraceCount = ledgerSource.primitiveCount * 3 * 2;
-const traceRoot = path.dirname(path.join(root, ledgerSource.traceHashes[0].path));
+const traceRoot = evidenceRoot ? path.join(evidenceRoot, 'phase-14-traces') : null;
 
 const commands = [
   [node, ['scripts/generate-uifn-catalog.mjs', '--check']],
@@ -110,8 +110,13 @@ const commands = [
   [npm, ['--workspace', '@uifn/storybook', 'run', 'typecheck']],
   [npm, ['--workspace', '@uifn/storybook', 'run', 'test']],
   [npm, ['--workspace', '@uifn/storybook', 'run', 'build:workbenches']],
-  [node, ['scripts/verify-uifn-phase-14-parity.mjs', '--trace-dir', relative(traceRoot)]],
 ];
+if (traceRoot) {
+  commands.push(
+    [node, ['scripts/run-uifn-phase-14-traces.mjs', '--output-dir', relative(traceRoot)]],
+    [node, ['scripts/verify-uifn-phase-14-parity.mjs', '--trace-dir', relative(traceRoot)]],
+  );
+}
 if (ledgerPath) commands.push([node, ['scripts/verify-uifn-phase-18-ledger.mjs'], { UIFN_PHASE18_LEDGER_EVIDENCE: ledgerPath }]);
 if (!useExistingBrowser && browserPath && storyPath && docsPath) {
   commands.push([node, ['scripts/verify-uifn-phase-18-browser.mjs'], {

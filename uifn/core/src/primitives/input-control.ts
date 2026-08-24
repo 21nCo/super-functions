@@ -20,6 +20,8 @@ export interface UIFnCaret {
 export interface UIFnTextInputProps {
   readonly value?: string;
   readonly defaultValue?: string;
+  readonly editing?: boolean;
+  readonly defaultEditing?: boolean;
   readonly disabled?: boolean;
   readonly readOnly?: boolean;
   readonly required?: boolean;
@@ -42,6 +44,7 @@ export interface UIFnTextInputProps {
   readonly validate?: (value: string) => string | null;
   readonly onValueChange?: (value: string) => void;
   readonly onValueCommit?: (value: string) => void;
+  readonly onEditingChange?: (editing: boolean) => void;
   readonly onComplete?: (value: string) => void;
 }
 
@@ -186,6 +189,7 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
   env: UIFnEnvironment = {},
 ): UIFnTextInputController<TParts> {
   const controlled = inputs.value !== undefined;
+  const editingControlled = config.kind === 'editable' && inputs.editing !== undefined;
   const secret = config.secret ?? (config.kind === 'password' || config.kind === 'pin');
   const initialRaw = controlled ? inputs.value! : inputs.defaultValue ?? '';
   let rawValue = initialRaw;
@@ -231,7 +235,7 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
     name: inputs.name,
     form: inputs.form,
     locale: inputs.locale ?? 'en',
-    editing: config.kind !== 'editable',
+    editing: config.kind !== 'editable' || (inputs.editing ?? inputs.defaultEditing ?? false),
     visible: false,
     autofilled: false,
     pasteCount: 0,
@@ -243,6 +247,10 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
   }));
 
   const patch = (partial: Partial<UIFnTextInputState>) => store.setState(stateFor({ ...store.getState(), ...partial }));
+  const setEditing = (editing: boolean) => {
+    if (!editingControlled) patch({ editing });
+    inputs.onEditingChange?.(editing);
+  };
   const ensureInteractive = () => {
     const state = store.getState();
     if (!state.disabled && !state.readOnly) return true;
@@ -342,22 +350,23 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
     startEditing() {
       if (!ensureInteractive()) return;
       editOriginal = rawValue;
-      patch({ editing: true });
+      setEditing(true);
     },
     submit() {
       if (store.getState().composing) throw createUIFnError({ code: 'UIFN_IME_COMMIT_EARLY', component: config.primitive });
       if (!store.getState().valid) return;
-      patch({ editing: config.kind !== 'editable' });
+      setEditing(config.kind !== 'editable');
       inputs.onValueCommit?.(rawValue);
     },
     cancel() {
       if (config.kind !== 'editable') return;
       if (controlled) {
-        patch({ editing: false, composing: false, draftValue: safeValue(rawValue) });
+        patch({ composing: false, draftValue: safeValue(rawValue) });
       } else {
         rawValue = editOriginal;
-        patch({ editing: false, composing: false, draftValue: safeValue(rawValue) });
+        patch({ composing: false, draftValue: safeValue(rawValue) });
       }
+      setEditing(false);
     },
     stepBy(delta) {
       if (!ensureInteractive() || config.kind !== 'number') return;

@@ -15,7 +15,8 @@
     "item",
     "link",
     "separator",
-    "page"
+    "page",
+    "ellipsis"
   ],
   "props": [
     "unstyled",
@@ -30,8 +31,7 @@
     "invalid",
     "focusVisible",
     "active",
-    "selected",
-    "open"
+    "selected"
   ],
   "frameworks": {
     "react": {
@@ -51,8 +51,7 @@
     }
   },
   "behavior": [
-    "keyboard",
-    "controlled-state"
+    "keyboard"
   ],
   "stories": [
     "uifn/components/stories/batch-b/breadcrumb.stories.json#default",

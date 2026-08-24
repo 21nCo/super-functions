@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   phase18MutationResults,
   phase18SemanticMutationResults,
+  expandPhase14ConsensusTraces,
   PHASE_18_RULES,
   sha256,
   stableJson,
@@ -21,9 +22,9 @@ const catalog = readJson('uifn/catalog/generated/catalog.json');
 const ledger = readJson('uifn/evidence/generated/phase-18/normative-ledger.json');
 const automation = readJson('uifn/evidence/generated/phase-18/automation-manifest.json');
 const handoff = readJson('uifn/evidence/generated/phase-18/manual-handoff.json');
-const traceRoot = 'uifn/.conduct/evidence/phase-14/2026-07-30T19-00-00-000Z-PHASE-14-69-production-readiness/traces';
-const traces = [];
-for (const deliveryMode of ['package', 'source']) for (const framework of ['react', 'svelte', 'solid']) traces.push(...readJson(`${traceRoot}/${deliveryMode}-${framework}.json`));
+const traces = expandPhase14ConsensusTraces(
+  readJson('uifn/evidence/generated/phase-14/phase-14-semantic-traces.json'),
+);
 
 const startedAt = new Date();
 const failures = [

@@ -21,6 +21,18 @@ export const PHASE_18_RULES = Object.freeze([
 export const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 export const stableJson = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
+export function expandPhase14ConsensusTraces(document) {
+  const frameworks = document?.frameworks;
+  const traces = document?.traces;
+  if (!Array.isArray(frameworks) || !Array.isArray(traces)) {
+    throw new Error('UIFN_PHASE18_TRACE_CONSENSUS_INVALID');
+  }
+  return traces.flatMap((trace) => frameworks.map((framework) => ({
+    ...structuredClone(trace),
+    framework,
+  })));
+}
+
 export function normalizeSemanticParts(trace) {
   const checkpoints = trace?.parts ?? [];
   const byKey = new Map();

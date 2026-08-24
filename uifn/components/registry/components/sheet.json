@@ -4,7 +4,7 @@
   "slug": "sheet",
   "batch": "batch-b",
   "kind": "component-implementation",
-  "status": "implemented",
+  "status": "planned",
   "sourcePolicy": "clean-room",
   "owners": [
     "platform-ui"
@@ -35,19 +35,13 @@
   ],
   "frameworks": {
     "react": {
-      "supported": true,
-      "entry": "uifn/components-react/src/batch-b.ts",
-      "exportName": "Sheet"
+      "supported": false
     },
     "svelte": {
-      "supported": true,
-      "entry": "uifn/components-svelte/src/batch-b.ts",
-      "exportName": "Sheet"
+      "supported": false
     },
     "solid": {
-      "supported": true,
-      "entry": "uifn/components-solid/src/batch-b.ts",
-      "exportName": "Sheet"
+      "supported": false
     }
   },
   "behavior": [

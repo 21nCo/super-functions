@@ -217,10 +217,10 @@ function validateSourceImports(repoRoot, node, allowedDependencies) {
   return failures;
 }
 
-function sourceImportSpecifiers(source, pathname) {
+export function sourceImportSpecifiers(source, pathname) {
   const extension = path.extname(pathname);
   const executableSources = extension === '.svelte'
-    ? [...source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1])
+    ? [...source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)].map((match) => match[1])
     : [source];
   const dependencies = new Set();
 

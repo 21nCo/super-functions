@@ -3,7 +3,7 @@
   "revision": "uifn-a11y-ledger-v1",
   "generatorVersion": "18.0.0",
   "catalogVersion": "1.0.0",
-  "definitionSha256": "51932f86f5558eaed81c6dec1d946479db4ec1b60407678ce98a974eba0804b6",
+  "definitionSha256": "6c2e985b5f8cda63f384af93678a473fe4c25b43ada3abdaf77ec4063c8bea71",
   "normativeStandard": "WCAG 2.2 Level A and AA",
   "review": {
     "owner": "uifn-maintainer",
@@ -36,28 +36,8 @@
   "modeCount": 705,
   "traceHashes": [
     {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/package-react.json",
-      "sha256": "b42e8fbbb0b2ae5701685f2708da65bd97f0286d5fd90f98052c7b8ceb21de24"
-    },
-    {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/package-svelte.json",
-      "sha256": "7ffc300d7f4351416d623f69a20ce9702e09788a994023029dea362f032439f4"
-    },
-    {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/package-solid.json",
-      "sha256": "ef34b2288356a3b43ebfffd2ae052abde80ea68a0bf4c6c590b7fd7d28189104"
-    },
-    {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/source-react.json",
-      "sha256": "0916382ee843a606db7845f0dde17b2fbcb5aafad1066579089770db6e35aa1e"
-    },
-    {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/source-svelte.json",
-      "sha256": "dc41057e373dfe3a343daaee660b83b1f657b19d1e0bd2d05b421f1ad1b6faf2"
-    },
-    {
-      "path": "uifn/.conduct/evidence/phase-14/2026-07-30T21-38-00-000Z-PHASE-14-69-production-readiness/traces/source-solid.json",
-      "sha256": "75b42cf75d8eff79c98f8670980932c0df8eb425dc9a7e6f723cbde456467859"
+      "path": "uifn/evidence/generated/phase-14/phase-14-semantic-traces.json",
+      "sha256": "25d33870240f1c568e72342dbb45b335330e86d333609ab219dd329de719fad2"
     }
   ],
   "primitives": [

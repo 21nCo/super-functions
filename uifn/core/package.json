@@ -112,7 +112,7 @@
   },
   "scripts": {
     "build": "node ./scripts/build.mjs",
-    "dev": "tsup --watch",
+    "dev": "node ./scripts/dev.mjs",
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",

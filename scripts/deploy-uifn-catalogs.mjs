@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { parseContentSecurityPolicySources } from "./uifn-catalog-csp.mjs";
 
 const environment = process.argv[2];
 if (!["preview", "production"].includes(environment)) {
@@ -86,7 +87,7 @@ async function waitForDeploymentReadiness(origin, expected, expectedWorkerBuildH
         const expectedStatus = sentinelPath.endsWith("does-not-exist") ? 404 : 200;
         const contentSecurityPolicy =
           response.headers.get("content-security-policy") ?? "";
-        const cspSources = new Set(contentSecurityPolicy.split(/\s+/));
+        const cspSources = parseContentSecurityPolicySources(contentSecurityPolicy);
         const ready =
           response.status === expectedStatus &&
           response.headers.get("x-uifn-catalog-build") === expected.generatedAt &&

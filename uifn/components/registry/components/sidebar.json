@@ -4,7 +4,7 @@
   "slug": "sidebar",
   "batch": "data-rich",
   "kind": "component-implementation",
-  "status": "implemented",
+  "status": "planned",
   "sourcePolicy": "clean-room",
   "owners": [
     "platform-ui"
@@ -16,19 +16,13 @@
   ],
   "frameworks": {
     "react": {
-      "supported": true,
-      "entry": "uifn/components-react/src/data-rich.ts",
-      "exportName": "Sidebar"
+      "supported": false
     },
     "svelte": {
-      "supported": true,
-      "entry": "uifn/components-svelte/src/data-rich.ts",
-      "exportName": "Sidebar"
+      "supported": false
     },
     "solid": {
-      "supported": true,
-      "entry": "uifn/components-solid/src/data-rich.ts",
-      "exportName": "Sidebar"
+      "supported": false
     }
   },
   "stories": [

@@ -210,6 +210,24 @@ describe('PHASE_09 selection and input vectors', () => {
     }
   });
 
+  it('honors Editable controlled and default editing inputs', () => {
+    const uncontrolled = createEditableController({ defaultEditing: true });
+    expect(uncontrolled.state.editing).toBe(true);
+    uncontrolled.actions.cancel();
+    expect(uncontrolled.state.editing).toBe(false);
+    uncontrolled.destroy();
+
+    const changes: boolean[] = [];
+    const controlled = createEditableController({
+      editing: true,
+      onEditingChange: (editing) => changes.push(editing),
+    });
+    controlled.actions.submit();
+    expect(controlled.state.editing).toBe(true);
+    expect(changes).toEqual([false]);
+    controlled.destroy();
+  });
+
   it('TV-PRIM-004-P keeps Checkbox form values separate from controlled checked state', () => {
     const controller = createCheckboxController({ value: 'accepted', defaultChecked: false, name: 'terms' });
     expect(controller.state.controlled).toBe(false);

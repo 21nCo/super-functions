@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { runPackageGraphVerification } from './verify-uifn-package-graph.mjs';
+import { runPackageGraphVerification, sourceImportSpecifiers } from './verify-uifn-package-graph.mjs';
 
 const graph = JSON.parse(readFileSync('uifn/package-graph.json', 'utf8'));
 
@@ -43,4 +43,11 @@ test('stable-only graph does not require experimental workspaces', () => {
   const result = runPackageGraphVerification({ graph, inspectWorktree: false, stableOnly: true });
   assert.equal(result.ok, true, JSON.stringify(result.failures, null, 2));
   assert.equal(result.mode, 'stable-only');
+});
+
+test('Svelte import filtering accepts whitespace before a script end tag', () => {
+  assert.deepEqual(
+    [...sourceImportSpecifiers('<script>import "@uifn/core";</script >', 'fixture.svelte')],
+    ['@uifn/core'],
+  );
 });

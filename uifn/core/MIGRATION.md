@@ -34,7 +34,7 @@ Every public behavior constructor is now a controller factory:
 | `createToolbar` | `createToolbarController` |
 | `createTooltip` | `createTooltipController` |
 
-Import controllers and their types from `@uifn/core` or `@uifn/core/primitives`. Wildcard source paths such as `@uifn/core/primitives/select` were removed so internal implementation modules cannot become accidental public APIs.
+Import controllers and their types from `@uifn/core`, `@uifn/core/primitives`, or the supported generated primitive subpaths such as `@uifn/core/primitives/select`. Private implementation source modules are not public package entrypoints.
 
 ## Use the uniform lifecycle
 
