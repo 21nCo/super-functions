@@ -26,6 +26,10 @@ export type AuthFnErrorCode =
   | 'AUTHFN_REDIRECT_URI_DISALLOWED'
   | 'AUTHFN_REGION_MISMATCH'
   | 'AUTHFN_REGION_NOT_FOUND'
+  | 'AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE'
+  | 'AUTHFN_PLACEMENT_MOVING'
+  | 'AUTHFN_ROUTING_ASSERTION_INVALID'
+  | 'AUTHFN_ROUTING_CELL_UNAVAILABLE'
   | 'AUTHFN_SESSION_EXPIRED'
   | 'AUTHFN_SESSION_REVOKED'
   | 'AUTHFN_UNAUTHENTICATED'
@@ -143,6 +147,49 @@ export class AuthFnRegionNotFoundError extends AuthFnError {
       details
     });
     this.name = 'AuthFnRegionNotFoundError';
+  }
+}
+
+export class AuthFnPlacementDirectoryUnavailableError extends AuthFnError {
+  constructor(message: string = 'Identity placement directory is unavailable', details?: Record<string, unknown>) {
+    super('AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE', message, {
+      status: 503,
+      retryable: true,
+      details
+    });
+    this.name = 'AuthFnPlacementDirectoryUnavailableError';
+  }
+}
+
+export class AuthFnPlacementMovingError extends AuthFnError {
+  constructor(message: string = 'Identity placement is moving', details?: Record<string, unknown>) {
+    super('AUTHFN_PLACEMENT_MOVING', message, {
+      status: 503,
+      retryable: true,
+      details
+    });
+    this.name = 'AuthFnPlacementMovingError';
+  }
+}
+
+export class AuthFnRoutingAssertionInvalidError extends AuthFnError {
+  constructor(message: string = 'Gateway routing assertion is invalid', details?: Record<string, unknown>) {
+    super('AUTHFN_ROUTING_ASSERTION_INVALID', message, {
+      status: 401,
+      details
+    });
+    this.name = 'AuthFnRoutingAssertionInvalidError';
+  }
+}
+
+export class AuthFnRoutingCellUnavailableError extends AuthFnError {
+  constructor(message: string = 'Regional AuthFn cell is unavailable', details?: Record<string, unknown>) {
+    super('AUTHFN_ROUTING_CELL_UNAVAILABLE', message, {
+      status: 503,
+      retryable: true,
+      details
+    });
+    this.name = 'AuthFnRoutingCellUnavailableError';
   }
 }
 

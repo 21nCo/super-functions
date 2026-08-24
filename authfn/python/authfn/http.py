@@ -22,6 +22,7 @@ from .observability import (
 )
 from .plugins.api_keys import ApiKeyPluginConfig, ApiKeyService
 from .plugins.email_otp import EmailOtpPluginConfig, EmailOtpService
+from .plugins.gateway_routing import create_cell_routing_middleware
 from .plugins.multi_region import MultiRegionPluginConfig, MultiRegionService
 from .plugins.two_factor import TwoFactorPluginConfig, TwoFactorService
 from .types import (
@@ -169,10 +170,21 @@ def create_authfn_routes(config: AuthFnConfig) -> List[Route]:
         elif plugin.name == "multiRegion":
             routes.extend(_create_multi_region_routes(config))
     base_path = (config.base_path or "/auth").rstrip("/")
-    return [
+    resolved_routes = [
         route.model_copy(update={"path": _join_path(base_path, route.path)})
         for route in routes
     ]
+    plugin_config = get_plugin_config(config, "multiRegion", MultiRegionPluginConfig())
+    routing = plugin_config.routing
+    if routing and routing.mode == "gateway":
+        placement_middleware = create_cell_routing_middleware(routing, base_path=base_path)
+        resolved_routes = [
+            route.model_copy(
+                update={"middleware": [placement_middleware, *(route.middleware or [])]}
+            )
+            for route in resolved_routes
+        ]
+    return resolved_routes
 
 
 async def authenticate_request(config: AuthFnConfig, request: Any) -> Optional[AuthFnSession]:
@@ -1033,6 +1045,17 @@ async def _handle_two_factor_disable(config: AuthFnConfig, request: Any, _contex
 async def _handle_region_lookup(config: AuthFnConfig, request: Any, _context: RouteContext) -> Response:
     body = await _read_json(request)
     plugin_config = get_plugin_config(config, "multiRegion", MultiRegionPluginConfig())
+    if plugin_config.routing and plugin_config.routing.mode == "gateway":
+        identifier = _normalize_email(body.get("identifier"))
+        runtime = MultiRegionService(config, plugin_config).resolve_runtime(request)
+        return json_success(
+            request,
+            {
+                "identifier": identifier,
+                "authority": runtime.issuer,
+                "continueLocally": True,
+            },
+        )
     result = await MultiRegionService(config, plugin_config).lookup(identifier=body.get("identifier", ""), request=request)
     await emit_auth_event(
         config,
@@ -1054,6 +1077,7 @@ async def _handle_region_lookup(config: AuthFnConfig, request: Any, _context: Ro
 
 async def _handle_runtime(config: AuthFnConfig, request: Any, _context: RouteContext) -> Response:
     runtime = resolve_runtime(config, request)
+    plugin_config = get_plugin_config(config, "multiRegion", MultiRegionPluginConfig())
     cookie_policy = resolve_cookie_policy(config, request, runtime)
     oauth = getattr(runtime, "oauth", None) or {}
     return json_success(
@@ -1061,7 +1085,9 @@ async def _handle_runtime(config: AuthFnConfig, request: Any, _context: RouteCon
         {
             "issuer": runtime.issuer,
             "baseUrl": runtime.base_url if hasattr(runtime, "base_url") else runtime.baseUrl,
-            "regionId": getattr(runtime, "region_id", None) or getattr(runtime, "regionId", None),
+            "regionId": None
+            if plugin_config.routing and plugin_config.routing.mode == "gateway"
+            else getattr(runtime, "region_id", None) or getattr(runtime, "regionId", None),
             "cookie": {
                 "prefix": cookie_policy.prefix,
                 "domain": cookie_policy.domain,

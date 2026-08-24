@@ -26,11 +26,15 @@ export {
   AuthFnOtpExpiredError,
   AuthFnOtpInvalidError,
   AuthFnOtpReplayedError,
+  AuthFnPlacementDirectoryUnavailableError,
+  AuthFnPlacementMovingError,
   AuthFnPluginAbortedError,
   AuthFnRateLimitedError,
   AuthFnRedirectUriDisallowedError,
   AuthFnRegionMismatchError,
   AuthFnRegionNotFoundError,
+  AuthFnRoutingAssertionInvalidError,
+  AuthFnRoutingCellUnavailableError,
   AuthFnSessionExpiredError,
   AuthFnSessionRevokedError,
   AuthFnTwoFactorInvalidCodeError,
@@ -225,6 +229,14 @@ export type AuthFnEventType =
   | 'authfn.2fa.challenged'
   | 'authfn.region.lookup'
   | 'authfn.region.lookup.conflict'
+  | 'authfn.routing.placement_lookup'
+  | 'authfn.routing.placement_claimed'
+  | 'authfn.routing.forwarded'
+  | 'authfn.routing.mismatch'
+  | 'authfn.routing.retry'
+  | 'authfn.routing.assertion_rejected'
+  | 'authfn.routing.directory_unavailable'
+  | 'authfn.routing.cell_unavailable'
   | 'authfn.handoff.started'
   | 'authfn.handoff.exchanged'
   | 'authfn.handoff.failed'

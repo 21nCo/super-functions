@@ -22,6 +22,7 @@ import {
   setCachedJson
 } from './cache.js';
 import {
+  AuthFnConfigError,
   AuthFnRegionMismatchError,
   AuthFnValidationError
 } from './errors.js';
@@ -43,6 +44,18 @@ export function authFnMultiRegionEnvironment(
   const observability = normalizeObservability(config.observability)?.child({ component: 'authfn.lookup' });
   const resolvedConfig: MultiRegionPluginRuntimeConfig = {
     ...config,
+    routing: config.routing?.placementDirectory
+      ? {
+          ...config.routing,
+          placementDirectory: instrumentMethods({
+            target: config.routing.placementDirectory,
+            observability: observability?.child({ component: 'authfn.placement' }),
+            kind: 'placement',
+            component: 'authfn.placement',
+            extract: ({ property }) => ({ operation: String(property) })
+          })
+        }
+      : config.routing,
     lookupStore: config.lookupStore
       ? instrumentMethods({
           target: config.lookupStore,
@@ -62,6 +75,26 @@ export function authFnMultiRegionEnvironment(
     [multiRegionEnvironmentConfig]: resolvedConfig,
     resolve(request) {
       const url = new URL(request.url);
+      if (resolvedConfig.routing?.mode === 'gateway') {
+        const publicAuthority = resolvedConfig.routing.publicAuthority;
+        if (!publicAuthority) {
+          throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority');
+        }
+        const authority = normalizeAuthority(publicAuthority);
+        const selectedRegion = resolvedConfig.routing.cell?.regionId
+          ? findConfiguredRegion(resolvedConfig, resolvedConfig.routing.cell.regionId)
+          : resolveRegionForRequest(resolvedConfig, request, {
+              issuer: authority,
+              baseUrl: authority
+            });
+        return {
+          issuer: authority,
+          baseUrl: authority,
+          regionId: resolvedConfig.routing.cell?.regionId ?? selectedRegion?.regionId,
+          cookie: resolvedConfig.routing.canonicalCookie,
+          oauth: resolvedConfig.routing.canonicalOAuth ?? selectedRegion?.oauth
+        };
+      }
       const baseEnvironment: AuthFnEnvironment = {
         issuer: url.origin,
         baseUrl: url.origin
@@ -352,7 +385,7 @@ export async function registerUserRegion(
       updatedAt: record.updatedAt
     };
 
-    if (pluginConfig.lookupStore) {
+    if (pluginConfig.lookupStore && pluginConfig.routing?.mode !== 'gateway') {
       const migratedRecord = await readLookupStoreRecord(pluginConfig.lookupStore, identifier);
       const result = migratedRecord
         ? { inserted: false, existing: serializeLookupRecord(migratedRecord) }
@@ -445,6 +478,14 @@ export async function registerUserRegion(
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
     };
+    if (pluginConfig.lookupStore && pluginConfig.routing?.mode === 'gateway') {
+      // Gateway placement already settled ownership before execution. This is
+      // a post-commit lookup projection only and never participates in routing.
+      await pluginConfig.lookupStore.set({
+        key: regionLookupStoreKey(identifier),
+        value: serializeLookupRecord(lookupRecord)
+      });
+    }
     await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
       value: {

@@ -539,6 +539,53 @@ class RegionNotFoundError(AuthFnError):
     status = 404
 
 
+class PlacementDirectoryUnavailableError(AuthFnError):
+    """Canonical identity placement cannot be read or updated."""
+
+    code = "AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE"
+    status = 503
+    retryable = True
+
+    def __init__(self, message: str = "Identity placement directory is unavailable"):
+        super().__init__(message)
+
+
+class PlacementMovingError(AuthFnError):
+    """Identity writes are fenced while ownership moves between cells."""
+
+    code = "AUTHFN_PLACEMENT_MOVING"
+    status = 503
+    retryable = True
+
+    def __init__(
+        self,
+        message: str = "Identity placement is moving",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, details)
+
+
+class RoutingAssertionInvalidError(AuthFnError):
+    """A regional cell rejected an untrusted or replayed gateway assertion."""
+
+    code = "AUTHFN_ROUTING_ASSERTION_INVALID"
+    status = 401
+
+    def __init__(self, message: str = "Gateway routing assertion is invalid"):
+        super().__init__(message)
+
+
+class RoutingCellUnavailableError(AuthFnError):
+    """The selected regional cell cannot accept the routed request."""
+
+    code = "AUTHFN_ROUTING_CELL_UNAVAILABLE"
+    status = 503
+    retryable = True
+
+    def __init__(self, message: str = "Regional AuthFn cell is unavailable"):
+        super().__init__(message)
+
+
 class AuthFnSchemaConflictError(AuthFnError):
     """Deterministic schema composition conflict."""
 
@@ -668,6 +715,10 @@ __all__ = [
     "RedirectUriDisallowedError",
     "RegionMismatchError",
     "RegionNotFoundError",
+    "PlacementDirectoryUnavailableError",
+    "PlacementMovingError",
+    "RoutingAssertionInvalidError",
+    "RoutingCellUnavailableError",
     "Request",
     "SessionExpiredError",
     "SessionRevokedError",

@@ -1,13 +1,24 @@
 ---
 title: Multi-region routing
-description: How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
+description: Direct regional authorities and canonical-gateway routing for region-pinned AuthFn identity data.
 ---
 
 # Multi-region routing
 
-Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. The same browser may end up on either authority."*
+Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. How do I keep authentication correct when traffic enters through one public authority?"*
 
-Enable the **`authFnMultiRegionPlugin`** and the kernel will:
+AuthFn supports two explicit modes:
+
+| Mode | Public authority | Routing behavior | Compatibility |
+| --- | --- | --- | --- |
+| `direct` (default) | One authority per region | The client looks up a region, receives `AUTHFN_REGION_MISMATCH`, and continues on the regional authority. | Existing regional clients and deployments are unchanged. |
+| `gateway` | One canonical authority | A trusted gateway derives an identity key, reads canonical placement, and forwards internally to the owning cell. Regional topology is never returned to the client. | New deployments opt in; there is no silent fallback from gateway to direct mode. |
+
+In gateway mode the configured `publicAuthority` is always the issuer and base URL. OAuth redirect URIs, discovery metadata, cookie scope, browser origins, and native handoff return paths therefore remain stable while execution moves between cells. The selected cell still receives a private `regionId` for database and residency policy.
+
+The placement directory is deliberately separate from the existing identifier lookup projection. Its atomic record is `{ identityKey, regionId, epoch, state }`; only `active` records execute. `moving` records fence writes and `tombstoned` records fail closed. Cell destinations are opaque values returned by the cell registry and are never stored in placement or sent publicly.
+
+In direct mode, enable the **`authFnMultiRegionPlugin`** and the kernel will:
 
 1. Look up which region a user belongs to (by email or other identifier) before any sensitive operation.
 2. Apply a region-specific runtime overlay (issuer, base URL, cookie domain, OAuth credentials).
@@ -77,6 +88,8 @@ authFnMultiRegionPlugin({
 
 ## How a request flows
 
+The diagram below describes `direct` mode. In `gateway` mode the browser talks only to the canonical authority; see [Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region).
+
 ```mermaid
 sequenceDiagram
   participant Browser
@@ -109,7 +122,7 @@ The plugin enforces region alignment at every privileged entry point that has a 
 
 ## Pinning new users
 
-When a user signs up, authfn writes a `region_profiles` row with the region the request landed on. If you need to migrate a user between regions, do it through your own admin tooling — `authFnMultiRegionPlugin` does not currently expose a "move user" route by default. (You can write one as a custom plugin or a direct DB migration.)
+When a user signs up in direct mode, authfn writes a `region_profiles` row with the region the request landed on. Gateway mode atomically claims an initial placement before the regional handler starts, so concurrent first-use requests cannot create identity state in two cells. Use `moveAuthFnIdentityPlacement` for a fenced gateway-mode move; no public move route is registered.
 
 ## Conflicts and races
 
@@ -134,6 +147,8 @@ The plugin emits:
 
 - `authfn.region.lookup` — every successful region lookup. Carries `identifier`, `regionId`, `authority`.
 - `authfn.region.lookup.conflict` — when a registration attempt loses a race.
+
+Gateway deployments can additionally emit `authfn.routing.placement_lookup`, `placement_claimed`, `forwarded`, `mismatch`, `retry`, `assertion_rejected`, `directory_unavailable`, and `cell_unavailable`. Alert on directory/cell availability, mismatch-retry exhaustion, and assertion rejection rather than logging identity keys or assertion contents.
 
 Use these to track lookup latency, miss ratios, and conflict frequency.
 

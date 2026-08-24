@@ -19,10 +19,25 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from superfunctions.http import Response
+
 from authfn import (
     AuthFnConfig,
     RegionMismatchError,
     RegionNotFoundError,
+)
+from authfn.plugins.gateway_routing import (
+    CanonicalGateway,
+    CanonicalGatewayOptions,
+    CanonicalRoutingConfig,
+    GatewayCell,
+    GatewayIdentity,
+    IdentityPlacement,
+    InMemoryIdentityPlacementDirectory,
+    InMemoryRoutingReplayStore,
+    RoutingKeyring,
+    RoutingSigningKey,
+    create_cell_routing_middleware,
 )
 from authfn.plugins.multi_region import (
     MultiRegionPluginConfig,
@@ -101,6 +116,29 @@ class Request:
     def __init__(self, url: str) -> None:
         self.url = url
         self.headers: Dict[str, str] = {}
+
+
+class GatewayRequest:
+    def __init__(
+        self,
+        url: str,
+        *,
+        method: str = "POST",
+        body: bytes = b'{"identityKey":"person:ada"}',
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
+        self.url = url
+        self.method = method
+        self.headers = headers or {}
+        self._payload = body
+
+    async def body(self) -> bytes:
+        return self._payload
+
+    async def json(self) -> Dict[str, Any]:
+        import json
+
+        return json.loads(self._payload)
 
 
 class Directory:
@@ -244,3 +282,192 @@ async def test_multi_region_registration_updates_local_profile_and_directory() -
     assert len(directory.register_calls) == 1
     assert directory.register_calls[0]["userId"] == "user_2"
     assert db.storage["region_profiles"][0]["regionId"] == "us-east-1"
+
+
+@pytest.mark.asyncio
+async def test_canonical_gateway_retries_stale_placement_before_side_effects() -> None:
+    directory = InMemoryIdentityPlacementDirectory(
+        [
+            IdentityPlacement(
+                identity_key="person:ada",
+                region_id="us-east-1",
+                epoch=1,
+                updated_at="2026-08-23T00:00:00Z",
+            )
+        ]
+    )
+    keyring = RoutingKeyring(
+        active=RoutingSigningKey(
+            "routing-2026-08", "python-routing-test-secret-with-entropy"
+        )
+    )
+    effects: List[str] = []
+    calls: List[str] = []
+
+    def create_cell(region_id: str):
+        routing = CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://account.example.com",
+            placement_directory=directory,
+            cell_region_id=region_id,
+            cell_audience=f"cell:{region_id}",
+            keyring=keyring,
+            replay_store=InMemoryRoutingReplayStore(),
+        )
+        middleware = create_cell_routing_middleware(routing)
+
+        async def dispatch(request: Any) -> Response:
+            async def execute(routed: Any, _context: Any) -> Response:
+                assert "x-authfn-routing-attacker" not in {
+                    key.lower(): value for key, value in routed.headers.items()
+                }
+                effects.append(region_id)
+                return Response(status=200, body={"executedIn": region_id})
+
+            return await middleware(request, None, execute)
+
+        return dispatch
+
+    cells = {
+        "us-east-1": create_cell("us-east-1"),
+        "eu-west-1": create_cell("eu-west-1"),
+    }
+
+    async def resolve_identity(request: Any, _classification: Any) -> GatewayIdentity:
+        assert "x-authfn-routing-attacker" not in {
+            key.lower(): value for key, value in request.headers.items()
+        }
+        body = await request.json()
+        return GatewayIdentity(body["identityKey"])
+
+    async def dispatch(target: Any, request: Any) -> Response:
+        region_id = next(key for key, value in cells.items() if value is target)
+        calls.append(region_id)
+        return await target(request)
+
+    gateway = CanonicalGateway(
+        CanonicalGatewayOptions(
+            public_authority="https://account.example.com",
+            placement_directory=directory,
+            keyring=keyring,
+            resolve_identity=resolve_identity,
+            select_initial_region=lambda _identity, _request: "us-east-1",
+            resolve_cell=lambda region_id: GatewayCell(
+                region_id=region_id,
+                audience=f"cell:{region_id}",
+                target=cells[region_id],
+            ),
+            dispatch=dispatch,
+        )
+    )
+
+    first = await gateway.handle(
+        GatewayRequest(
+            "https://account.example.com/auth/sign-in/password",
+            headers={"x-authfn-routing-attacker": "spoofed"},
+        )
+    )
+    assert first.status == 200
+    assert first.body == {"executedIn": "us-east-1"}
+
+    moved = await directory.compare_and_set(
+        identity_key="person:ada",
+        expected_epoch=1,
+        expected_state="active",
+        placement=IdentityPlacement(
+            identity_key="person:ada",
+            region_id="eu-west-1",
+            epoch=2,
+            updated_at="2026-08-23T00:01:00Z",
+        ),
+    )
+    assert moved["updated"] is True
+
+    second = await gateway.handle(
+        GatewayRequest("https://account.example.com/auth/sign-in/password")
+    )
+    assert second.status == 200
+    assert second.body == {"executedIn": "eu-west-1"}
+    assert calls == ["us-east-1", "us-east-1", "eu-west-1"]
+    assert effects == ["us-east-1", "eu-west-1"]
+
+    direct = await cells["eu-west-1"](
+        GatewayRequest("https://account.example.com/auth/sign-in/password")
+    )
+    assert direct.status == 401
+    assert direct.body["error"]["code"] == "AUTHFN_ROUTING_ASSERTION_INVALID"
+
+    async def tampered_dispatch(target: Any, request: Any) -> Response:
+        request.headers["x-request-id"] = "req_tampered"
+        return await target(request)
+
+    gateway.options.dispatch = tampered_dispatch
+    tampered = await gateway.handle(
+        GatewayRequest(
+            "https://account.example.com/auth/sign-in/password",
+            headers={"x-request-id": "req_original"},
+        )
+    )
+    assert tampered.status == 401
+    assert effects == ["us-east-1", "eu-west-1"]
+
+    def failed_cell_resolution(_region_id: str) -> Any:
+        raise RuntimeError("private binding secret")
+
+    gateway.options.resolve_cell = failed_cell_resolution
+    unavailable = await gateway.handle(
+        GatewayRequest("https://account.example.com/auth/sign-in/password")
+    )
+    assert unavailable.status == 503
+    assert unavailable.body["error"]["code"] == "AUTHFN_ROUTING_CELL_UNAVAILABLE"
+    assert "private binding secret" not in unavailable.body["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_gateway_only_runtime_rejects_identity_route_execution() -> None:
+    middleware = create_cell_routing_middleware(
+        CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://account.example.com",
+            placement_directory=InMemoryIdentityPlacementDirectory(),
+        )
+    )
+    executions = 0
+
+    async def execute(_request: Any, _context: Any) -> Response:
+        nonlocal executions
+        executions += 1
+        return Response(status=200, body={"ok": True})
+
+    global_response = await middleware(
+        GatewayRequest("https://account.example.com/auth/runtime", method="GET"), None, execute
+    )
+    identity_response = await middleware(
+        GatewayRequest("https://account.example.com/auth/sign-in/password"), None, execute
+    )
+    assert global_response.status == 200
+    assert identity_response.status == 503
+    assert executions == 1
+
+
+def test_gateway_mode_uses_stable_public_runtime_and_canonical_cookie_policy() -> None:
+    db = MockDatabaseAdapter()
+    config = create_plugin_config()
+    config.routing = CanonicalRoutingConfig(
+        mode="gateway",
+        public_authority="https://account.example.com",
+        canonical_cookie={"prefix": "authfn-public", "domain": ".example.com"},
+        canonical_oauth={"google": {"clientId": "canonical-google"}},
+        placement_directory=InMemoryIdentityPlacementDirectory(),
+        cell_region_id="eu-west-1",
+    )
+    runtime = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn", runtime=RuntimeResolver()),
+        config,
+    ).resolve_runtime(Request("https://eu.internal.example/auth/runtime"))
+    assert runtime.issuer == "https://account.example.com"
+    assert runtime.base_url == "https://account.example.com"
+    assert runtime.region_id == "eu-west-1"
+    assert runtime.cookie.prefix == "authfn-public"
+    assert runtime.cookie.domain == ".example.com"
+    assert runtime.oauth["google"]["clientId"] == "canonical-google"

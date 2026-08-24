@@ -1,10 +1,63 @@
 import { describe, expect, it } from 'vitest';
 import {
   AuthFnDynamoDbLookupStoreError,
+  createDynamoDbIdentityPlacementDirectory,
   createDynamoDbRegionLookupStore
 } from '../index.js';
 
 describe('@authfn/lookup-dynamodb', () => {
+  it('provides atomic identity-placement claims and epoch moves', async () => {
+    let item: Record<string, unknown> | undefined;
+    const directory = createDynamoDbIdentityPlacementDirectory({
+      tableName: 'authfn-placement',
+      consistencyModel: 'single-writer-strong',
+      ttlAttributeName: false,
+      documentClient: {
+        async send(command: any) {
+          const input = command.input as Record<string, any>;
+          if (input.Key) return { Item: item };
+          if (input.ConditionExpression === 'attribute_not_exists(#pk)' && item) {
+            const error = new Error('conditional failed');
+            error.name = 'ConditionalCheckFailedException';
+            throw error;
+          }
+          if (input.ConditionExpression === '#value = :expected' && item?.value !== input.ExpressionAttributeValues[':expected']) {
+            const error = new Error('conditional failed');
+            error.name = 'ConditionalCheckFailedException';
+            throw error;
+          }
+          item = input.Item;
+          return {};
+        }
+      } as any
+    });
+    const initial = {
+      identityKey: 'person:ada',
+      regionId: 'us-east-1',
+      epoch: 1,
+      state: 'active' as const,
+      updatedAt: '2026-08-23T00:00:00.000Z'
+    };
+    expect((await directory.putIfAbsent(initial)).inserted).toBe(true);
+    expect((await directory.compareAndSet({
+      identityKey: initial.identityKey,
+      expectedEpoch: 1,
+      expectedState: 'active',
+      placement: { ...initial, regionId: 'eu-west-1', epoch: 2 }
+    })).updated).toBe(true);
+    await expect(directory.get(initial.identityKey)).resolves.toMatchObject({
+      regionId: 'eu-west-1',
+      epoch: 2
+    });
+  });
+
+  it('requires the strongly consistent single-writer placement model', () => {
+    expect(() => createDynamoDbIdentityPlacementDirectory({
+      tableName: 'authfn-placement',
+      consistencyModel: 'eventual-global-table'
+    } as any)).toThrow('single strongly consistent writer region');
+  });
+
   it('gets raw conditional KV values by composite lookup key', async () => {
     const sent: unknown[] = [];
     const store = createDynamoDbRegionLookupStore({

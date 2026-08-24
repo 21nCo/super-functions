@@ -16,6 +16,7 @@ from ..types import (
     RegionNotFoundError,
     ValidationError,
 )
+from .gateway_routing import CanonicalRoutingConfig
 
 
 @dataclass
@@ -35,6 +36,7 @@ class MultiRegionPluginConfig:
     regions: List[MultiRegionRegionConfig] = field(default_factory=list)
     default_region_id: Optional[str] = None
     directory: Optional[Any] = None
+    routing: Optional[CanonicalRoutingConfig] = None
 
 
 class MultiRegionService:
@@ -45,6 +47,29 @@ class MultiRegionService:
     def resolve_runtime(self, request: Any) -> AuthFnRuntimeResolution:
         base_runtime = self._base_runtime(request)
         region = self._resolve_region(request, base_runtime)
+        routing = self.plugin_config.routing
+        if routing and routing.mode == "gateway":
+            if not routing.public_authority:
+                raise ValidationError("Gateway-mode AuthFn requires a public authority")
+            authority = _normalize_authority(routing.public_authority)
+            if routing.cell_region_id:
+                region = next(
+                    (
+                        candidate
+                        for candidate in self.plugin_config.regions
+                        if candidate.region_id == routing.cell_region_id
+                    ),
+                    region,
+                )
+            return AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": authority,
+                    "baseUrl": authority,
+                    "regionId": routing.cell_region_id or (region.region_id if region else None),
+                    "cookie": routing.canonical_cookie,
+                    "oauth": routing.canonical_oauth or (region.oauth if region else None),
+                }
+            )
         if region is None:
             return base_runtime
         cookie = dict(base_runtime.cookie.model_dump(by_alias=True) if base_runtime.cookie else {})

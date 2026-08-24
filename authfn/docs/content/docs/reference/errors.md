@@ -32,6 +32,10 @@ The table below covers every code the kernel emits across all plugins.
 | `AUTHFN_RATE_LIMITED` | 429 | yes | Per-route rate limiter rejected the request. `details.retryAfter`. |
 | `AUTHFN_REGION_MISMATCH` | 409 | yes | Request landed on the wrong region. `details.redirectTo`. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | Identifier isn't registered to any region (anti-enumeration friendly: usually 200 with a fake answer is preferred — see plugin config). |
+| `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
+| `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect started. |
+| `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | yes | The selected private cell target was absent or dispatch failed. |
 | `AUTHFN_DELIVERY_FAILED` | 502 | yes | OTP/email delivery provider returned an error. |
 | `AUTHFN_PLUGIN_ABORTED` | 400 | no | A `before*` hook threw `AuthFnPluginAbortedError` to reject the operation. `details.reason`. |
 | `AUTHFN_CONFLICT` | 409 | no | Duplicate primary email, duplicate OAuth identity, etc. |

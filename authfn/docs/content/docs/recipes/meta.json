@@ -9,6 +9,7 @@
     "adding-password",
     "account-deletion",
     "multi-region-deployment",
+    "canonical-gateway-multi-region",
     "native-mobile-handoff",
     "custom-oauth-provider",
     "google-one-tap",

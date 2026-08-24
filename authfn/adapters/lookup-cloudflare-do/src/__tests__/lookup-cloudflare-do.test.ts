@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthFnCloudflareDoLookupStoreError,
   AuthFnRegionLookupDurableObject,
+  createCloudflareIdentityPlacementDirectory,
   createCloudflareRegionLookupStore,
   type CloudflareDurableObjectNamespace,
   type DurableObjectStateLike,
@@ -76,6 +77,28 @@ describe('AuthFnRegionLookupDurableObject', () => {
 });
 
 describe('createCloudflareRegionLookupStore', () => {
+  it('provides atomic identity-placement claims and epoch moves', async () => {
+    const directory = createCloudflareIdentityPlacementDirectory(createNamespace());
+    const initial = {
+      identityKey: 'person:ada',
+      regionId: 'insouth',
+      epoch: 1,
+      state: 'active' as const,
+      updatedAt: '2026-08-23T00:00:00.000Z'
+    };
+    expect((await directory.putIfAbsent(initial)).inserted).toBe(true);
+    expect((await directory.compareAndSet({
+      identityKey: initial.identityKey,
+      expectedEpoch: 1,
+      expectedState: 'active',
+      placement: { ...initial, regionId: 'us-east-1', epoch: 2 }
+    })).updated).toBe(true);
+    await expect(directory.get(initial.identityKey)).resolves.toMatchObject({
+      regionId: 'us-east-1',
+      epoch: 2
+    });
+  });
+
   it('routes conditional KV calls through key-named durable objects', async () => {
     const namespace = createNamespace();
     const store = createCloudflareRegionLookupStore(namespace, {

@@ -9,6 +9,9 @@ import {
   PutCommand
 } from '@aws-sdk/lib-dynamodb';
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import { AuthFnConfigError } from 'authfn';
+import { createStoreBackedAuthFnPlacementDirectory } from 'authfn/core/gateway-routing';
+import type { AuthFnIdentityPlacementDirectoryAdapter } from 'authfn/plugin-types';
 
 const LOOKUP_RECORD_SORT_KEY = 'LOOKUP';
 
@@ -20,6 +23,16 @@ export interface DynamoDbRegionLookupStoreOptions extends DynamoDBClientConfig {
   /** DynamoDB TTL attribute. Set to false when table TTL is intentionally disabled. */
   ttlAttributeName?: string | false;
   now?: () => Date;
+}
+
+export interface DynamoDbIdentityPlacementDirectoryOptions extends DynamoDbRegionLookupStoreOptions {
+  /**
+   * Required acknowledgement that every placement read and conditional write
+   * uses one strongly consistent DynamoDB writer region. Local Global Table
+   * replicas are eventually consistent with one another and cannot provide
+   * the cross-region uniqueness contract on their own.
+   */
+  consistencyModel: 'single-writer-strong';
 }
 
 export class AuthFnDynamoDbLookupStoreError extends Error {
@@ -153,6 +166,22 @@ export function createDynamoDbRegionLookupStore(
       }
     }
   };
+}
+
+/** Uses the same DynamoDB atomic primitives for the canonical identity-placement directory. */
+export function createDynamoDbIdentityPlacementDirectory(
+  options: DynamoDbIdentityPlacementDirectoryOptions
+): AuthFnIdentityPlacementDirectoryAdapter {
+  if (options.consistencyModel !== 'single-writer-strong') {
+    throw new AuthFnConfigError(
+      'DynamoDB identity placement requires a single strongly consistent writer region'
+    );
+  }
+  const { consistencyModel: _consistencyModel, ...lookupOptions } = options;
+  return createStoreBackedAuthFnPlacementDirectory(createDynamoDbRegionLookupStore({
+    ...lookupOptions,
+    consistentRead: true
+  }));
 }
 
 function itemKey(key: string): Record<string, string> {
