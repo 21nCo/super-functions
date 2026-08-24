@@ -109,11 +109,64 @@ describe("DataFn McpFn adapter", () => {
         tasks: {
           fields: ["id", "title"],
           create: { fields: ["title"] },
+          delete: true,
         },
       },
     });
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       "datafn_tasks_create",
+      "datafn_tasks_delete",
+      "datafn_tasks_get",
+      "datafn_tasks_list",
+    ]);
+  });
+
+  it("treats resource permissions as a complete override of schema defaults", async () => {
+    const schema = {
+      defaultPermissions: "allResourceFields" as const,
+      resources: [{
+        name: "tasks",
+        version: 1,
+        fields: [{ name: "title", type: "string" as const, required: true }],
+        permissions: { read: { fields: ["title"] } },
+      }],
+    };
+    const datafn = await createDatafnServer({ schema, db: memoryAdapter() });
+    closeables.push(datafn);
+    expect(() => createDatafnMcpRegistry({
+      schema,
+      executor: datafn.executor,
+      context: () => undefined,
+      clientId: "test",
+      expose: {
+        tasks: {
+          fields: ["id", "title"],
+          create: { fields: ["title"] },
+          delete: true,
+        },
+      },
+    })).toThrow(/has no write policy/);
+  });
+
+  it("keeps generated names stable for resource-edge underscores", async () => {
+    const schema = {
+      resources: [{
+        name: "_tasks_",
+        version: 1,
+        fields: [{ name: "title", type: "string" as const, required: true }],
+        permissions: { read: { fields: ["title"] } },
+      }],
+    };
+    const datafn = await createDatafnServer({ schema, db: memoryAdapter() });
+    closeables.push(datafn);
+    const registry = createDatafnMcpRegistry({
+      schema,
+      executor: datafn.executor,
+      context: () => undefined,
+      clientId: "test",
+      expose: { _tasks_: { fields: ["id", "title"] } },
+    });
+    expect(registry.listTools().map((tool) => tool.name)).toEqual([
       "datafn_tasks_get",
       "datafn_tasks_list",
     ]);

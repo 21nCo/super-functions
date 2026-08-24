@@ -6,7 +6,7 @@ import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
-import type { McpFnRegistry } from "./registry.js";
+import { promptArguments, type McpFnRegistry } from "./registry.js";
 import type {
   McpFnManifest,
   McpFnManifestPrompt,
@@ -95,7 +95,7 @@ export function createManifest<TContext>(
     name: prompt.name,
     ...(prompt.title ? { title: prompt.title } : {}),
     ...(prompt.description ? { description: prompt.description } : {}),
-    ...(prompt.arguments ? { arguments: prompt.arguments } : {}),
+    ...(promptArguments(prompt) ? { arguments: promptArguments(prompt) } : {}),
     ...(prompt.argumentsSchema ? { argumentsSchema: prompt.argumentsSchema } : {}),
     ...(prompt.icons ? { icons: prompt.icons } : {}),
     ...(prompt.metadata ? { metadata: prompt.metadata } : {}),

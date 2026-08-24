@@ -112,6 +112,19 @@ describe("McpFn protocol primitives", () => {
     });
   });
 
+  it("rejects duplicate resource template URIs under different names", () => {
+    const registry = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://users/{id}",
+      name: "user",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "User" }] }),
+    });
+    expect(() => registry.registerResourceTemplate({
+      uriTemplate: "docs://users/{id}",
+      name: "person",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Person" }] }),
+    })).toThrow(/Duplicate MCP resource URI template/);
+  });
+
   it("runs task-augmented tools through the SDK task store", async () => {
     const taskStore = new InMemoryTaskStore();
     const registry = new McpFnRegistry().register({

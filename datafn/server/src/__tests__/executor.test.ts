@@ -173,5 +173,22 @@ describe("DatafnExecutor", () => {
       message: "DataFn execution returned an invalid response",
       status: 502,
     });
+
+    const nonObjectResponse = await createDatafnServer({
+      schema,
+      db: memoryAdapter(),
+      routeHooks: {
+        afterResponse: () => Response.json(null, { status: 502 }),
+      },
+    });
+    servers.push(nonObjectResponse);
+    await expect(nonObjectResponse.executor.query({
+      resource: "tasks",
+      version: "1",
+    })).rejects.toMatchObject({
+      code: "INTERNAL",
+      message: "DataFn execution returned an invalid response",
+      status: 502,
+    });
   });
 });

@@ -368,10 +368,12 @@ const httpServer = createServer(async (request, response) => {
     }
     response.end();
   } catch {
-    if (!response.headersSent) {
+    if (response.headersSent) {
+      response.destroy();
+    } else {
       response.writeHead(500, { "content-type": "text/plain" });
+      response.end("Internal Server Error");
     }
-    response.end("Internal Server Error");
   }
 });
 

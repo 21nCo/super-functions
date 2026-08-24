@@ -76,7 +76,7 @@ describe("McpFnServer", () => {
   });
 
   it("lists prompt arguments derived from argumentsSchema", () => {
-    const prompts = new McpFnRegistry().registerPrompt({
+    const registry = new McpFnRegistry().registerPrompt({
       name: "schema_prompt",
       argumentsSchema: {
         type: "object",
@@ -85,11 +85,31 @@ describe("McpFnServer", () => {
         additionalProperties: false,
       },
       get: async () => ({ messages: [] }),
-    }).listPrompts();
+    });
+    const prompts = registry.listPrompts();
     expect(prompts).toEqual([expect.objectContaining({
       name: "schema_prompt",
       arguments: [{ name: "topic", description: "Topic to explain.", required: true }],
     })]);
+    expect(createMcpFnServer({
+      info: { name: "schema-prompt", version: "1.0.0" },
+      registry,
+    }).manifest().prompts).toEqual([expect.objectContaining({
+      name: "schema_prompt",
+      arguments: [{ name: "topic", description: "Topic to explain.", required: true }],
+    })]);
+  });
+
+  it("rejects malformed prompt required lists through validation", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "invalid_required",
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string" } },
+        required: "topic",
+      } as never,
+      get: async () => ({ messages: [] }),
+    })).toThrow(/invalid arguments JSON Schema/);
   });
 
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {

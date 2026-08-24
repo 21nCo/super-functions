@@ -1440,6 +1440,12 @@ export async function createDatafnServer<TContext = any>(
         response.status,
       );
     }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
     if (!envelope.ok || !Object.prototype.hasOwnProperty.call(envelope, "result")) {
       throw new DatafnExecutorError(
         envelope.error ?? { code: "INTERNAL", message: "DataFn execution failed" },

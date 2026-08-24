@@ -70,7 +70,21 @@ function safeSegment(value: string): string {
       needsSeparator = true;
     }
   }
-  return segment;
+  let start = 0;
+  let end = segment.length;
+  while (start < end && segment[start] === "_") start += 1;
+  while (end > start && segment[end - 1] === "_") end -= 1;
+  return segment.slice(start, end);
+}
+
+function resourceDefaults(
+  schema: DatafnSchema,
+  resource: DatafnResourceSchema,
+) {
+  if (resource.permissions !== undefined || resource.defaultPermissions === false) {
+    return undefined;
+  }
+  return schema.defaultPermissions;
 }
 
 function fieldSchema(field: DatafnFieldSchema): McpFnJsonSchema {
@@ -116,7 +130,7 @@ function fieldMaps(
   for (const field of capabilitiesFor(schema, resource)) {
     schemaFields.set(field.name, field as DatafnFieldSchema);
   }
-  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const defaults = resourceDefaults(schema, resource);
   const readDefault = typeof defaults === "string" ? defaults : defaults?.read;
   const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
   const defaultFields = ["id", ...resource.fields.map((field) => field.name)];
@@ -138,7 +152,7 @@ function validateReadFields(
   resource: DatafnResourceSchema,
   fields: string[],
 ): void {
-  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const defaults = resourceDefaults(schema, resource);
   const readDefault = typeof defaults === "string" ? defaults : defaults?.read;
   if (!resource.permissions?.read && readDefault !== "allResourceFields") {
     throw new McpFnValidationError(
@@ -165,7 +179,7 @@ function validateWriteFields(
   resource: DatafnResourceSchema,
   fields: string[],
 ): void {
-  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const defaults = resourceDefaults(schema, resource);
   const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
   if (!resource.permissions?.write && writeDefault !== "allResourceFields") {
     throw new McpFnValidationError(
@@ -422,7 +436,9 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
     if (exposure.update) registerWrite("update", exposure.update);
     if (exposure.delete) {
       const config = exposure.delete;
-      if (!resource.permissions?.write) {
+      const defaults = resourceDefaults(schema, resource);
+      const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
+      if (!resource.permissions?.write && writeDefault !== "allResourceFields") {
         throw new McpFnValidationError(
           `DataFn resource ${resourceName} has no write policy and cannot expose delete`,
         );

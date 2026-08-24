@@ -94,11 +94,12 @@ function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
   };
 }
 
-function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
+export function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
   if (definition.arguments) return definition.arguments;
   const properties = definition.argumentsSchema?.properties;
   if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
-  const required = new Set(definition.argumentsSchema?.required ?? []);
+  const schemaRequired = definition.argumentsSchema?.required;
+  const required = new Set(Array.isArray(schemaRequired) ? schemaRequired : []);
   return Object.entries(properties)
     .sort(([left], [right]) => compareCodeUnits(left, right))
     .map(([name, schema]) => ({
@@ -196,6 +197,13 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.resourceTemplates.has(definition.name)) {
       throw new McpFnValidationError(
         `Duplicate MCP resource template: ${definition.name}`,
+      );
+    }
+    if ([...this.resourceTemplates.values()].some(
+      ({ definition: registered }) => registered.uriTemplate === definition.uriTemplate,
+    )) {
+      throw new McpFnValidationError(
+        `Duplicate MCP resource URI template: ${definition.uriTemplate}`,
       );
     }
     let template: UriTemplate;
