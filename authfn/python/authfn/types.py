@@ -546,8 +546,12 @@ class PlacementDirectoryUnavailableError(AuthFnError):
     status = 503
     retryable = True
 
-    def __init__(self, message: str = "Identity placement directory is unavailable"):
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str = "Identity placement directory is unavailable",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, details)
 
 
 class PlacementMovingError(AuthFnError):
@@ -571,8 +575,12 @@ class RoutingAssertionInvalidError(AuthFnError):
     code = "AUTHFN_ROUTING_ASSERTION_INVALID"
     status = 401
 
-    def __init__(self, message: str = "Gateway routing assertion is invalid"):
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str = "Gateway routing assertion is invalid",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, details)
 
 
 class RoutingCellUnavailableError(AuthFnError):
@@ -582,8 +590,12 @@ class RoutingCellUnavailableError(AuthFnError):
     status = 503
     retryable = True
 
-    def __init__(self, message: str = "Regional AuthFn cell is unavailable"):
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str = "Regional AuthFn cell is unavailable",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, details)
 
 
 class AuthFnSchemaConflictError(AuthFnError):

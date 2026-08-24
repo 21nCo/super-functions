@@ -30,11 +30,15 @@ import {
   createAuthFnCanonicalGateway,
   createInMemoryAuthFnRoutingReplayStore,
 } from '@authfn/multi-region';
+import { authFnPlugins, authfn } from 'authfn';
 import { createDynamoDbIdentityPlacementDirectory } from '@authfn/lookup-dynamodb';
 
+const placementWriterRegion = process.env.AUTHFN_PLACEMENT_WRITER_REGION!;
 const placementDirectory = createDynamoDbIdentityPlacementDirectory({
   tableName: process.env.AUTHFN_PLACEMENT_TABLE!,
   consistencyModel: 'single-writer-strong',
+  writerRegion: placementWriterRegion,
+  region: placementWriterRegion,
 });
 
 const keyring = {
@@ -63,6 +67,11 @@ const environment = authFnMultiRegionEnvironment({
     },
   },
 });
+
+const app = authfn({
+  plugins: authFnPlugins(authFnMultiRegionPlugin()),
+});
+const cellServer = app.createServer({ database, environment });
 
 const gateway = createAuthFnCanonicalGateway({
   publicAuthority: 'https://account.example.com',
@@ -93,9 +102,9 @@ Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InM
 | Password and OTP start/verify/reset | Route. Atomically claim on first use if policy allows. | Normalized keyed identifier derived from the body. | Validate before lookup, challenge creation, delivery, verification, or session issue. |
 | Session read/list/revoke/sign-out | Route. | Verified opaque session routing handle. | Validate before session reads, last-seen updates, or revocation. |
 | API-key create/list/revoke/authenticate | Route. | Verified session handle or API-key routing prefix/MAC. | Validate before key lookup or mutation. |
-| OAuth authorize/start/callback/token/refresh/revoke | Route. | Verified OAuth state/authorization-code/refresh-token routing handle. | Keep issuer and callback canonical; validate before state/code/token consumption. |
+| Social OAuth start, GET/POST callback, disconnect, and native Apple start/complete | Route. | Verified session, OAuth state, or native handshake routing handle. | Keep issuer and callback canonical; validate before state consumption or identity mutation. |
 | Native/web handoff | Route. | Signed handoff routing handle. | Validate before code creation or exchange. |
-| Account deletion and email change | Route. | Verified session handle. | Validate before mutation; update/tombstone placement only after the owning cell completes its transactional work. |
+| Account deletion and email change | Route. | Verified session handle. | Validate before mutation. Account deletion tombstones placement before the delete and aborts if tombstoning fails; email-change flows must update placement with an application-level transaction/outbox protocol. |
 
 Do not fall back to a default cell for an established identity whose placement is absent. Initial placement is only for explicitly classified first-use flows. Public lookup responses must be identical for present and absent identities.
 
@@ -108,8 +117,8 @@ Backfill existing users by deriving the same stable identity key used at the gat
 1. CAS `active(source, epoch N)` to `moving(source → target, N+1)`.
 2. Quiesce source writes and drain in-flight auth/delivery work.
 3. Copy identity state and dependent credentials/tokens, validate it, and warm the target.
-4. CAS to `active(target, N+2)` and resume target traffic.
-5. Before activation, failures roll back to the source at a newer epoch. After activation, ownership remains at the target; do not resume the source and create split brain.
+4. Resume target traffic while placement remains `moving`, then CAS to `active(target, N+2)`. Publishing `active` before target resume would expose an unroutable owner.
+5. Before activation, failures leave placement fenced as `moving` unless a source recovery callback is supplied. With source recovery, resume the source first and only then CAS to `active(source, N+2)`; a failed source resume must never publish an active source. After target activation, ownership remains at the target.
 
 Invalidate gateway placement caches after every claim, move, tombstone, and operator repair. Old assertions are rejected by epoch even when their TTL has not elapsed.
 
@@ -143,8 +152,8 @@ Run these drills before rollout and quarterly afterward:
 - remove a cell binding and confirm the error contains no internal target;
 - replay and body-modify a captured assertion and confirm rejection;
 - move an identity during OTP, session refresh, OAuth callback, and handoff flows;
-- fail each migration callback before activation and verify source rollback at a higher epoch;
-- fail target resume after activation and verify the source stays fenced;
+- fail each migration callback before activation and verify placement stays fenced unless source recovery succeeds;
+- fail target resume and source resume independently, and verify neither region is published active before it is ready;
 - rotate the signing key with mixed-version gateway/cell deployments;
 - verify discovery issuer, OAuth redirect URI, cookie names/domain, browser origins, and native return paths remain canonical before and after a move.
 

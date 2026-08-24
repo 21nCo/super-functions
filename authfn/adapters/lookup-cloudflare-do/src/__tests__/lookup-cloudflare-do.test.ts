@@ -87,6 +87,26 @@ describe('createCloudflareRegionLookupStore', () => {
       updatedAt: '2026-08-23T00:00:00.000Z'
     };
     expect((await directory.putIfAbsent(initial)).inserted).toBe(true);
+    await expect(directory.putIfAbsent({ ...initial, regionId: 'eu-west-1' }))
+      .resolves.toMatchObject({ inserted: false, existing: { regionId: 'insouth', epoch: 1 } });
+    await expect(directory.compareAndSet({
+      identityKey: initial.identityKey,
+      expectedEpoch: 0,
+      expectedState: 'active',
+      placement: { ...initial, regionId: 'eu-west-1', epoch: 2 }
+    })).resolves.toMatchObject({ updated: false, existing: { regionId: 'insouth', epoch: 1 } });
+    await expect(directory.compareAndSet({
+      identityKey: initial.identityKey,
+      expectedEpoch: 1,
+      expectedState: 'moving',
+      placement: { ...initial, regionId: 'eu-west-1', epoch: 2 }
+    })).resolves.toMatchObject({ updated: false, existing: { regionId: 'insouth', epoch: 1 } });
+    await expect(directory.compareAndSet({
+      identityKey: initial.identityKey,
+      expectedEpoch: 1,
+      expectedState: 'active',
+      placement: { ...initial, identityKey: 'person:other', regionId: 'eu-west-1', epoch: 2 }
+    })).rejects.toThrow('identity key must match');
     expect((await directory.compareAndSet({
       identityKey: initial.identityKey,
       expectedEpoch: 1,

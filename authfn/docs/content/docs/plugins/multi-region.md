@@ -35,6 +35,7 @@ interface MultiRegionPluginRuntimeConfig {
   regions?: AuthFnMultiRegionRegionConfig[];
   defaultRegionId?: string;
   lookupStore?: ConditionalKVStoreAdapter;
+  routing?: AuthFnCanonicalRoutingConfig;
   observability?: ObservabilityInput<AuthFnEvent>;
 }
 
@@ -55,6 +56,7 @@ interface AuthFnMultiRegionRegionConfig {
 | `defaultRegionId` | Fallback region for requests that don't match by host. |
 | `regions` | Array of region configs. Order is irrelevant. |
 | `lookupStore` | Recommended when regional databases do not replicate region profiles globally. |
+| `routing` | Selects explicit `direct` or canonical `gateway` routing. Gateway mode requires a public authority, placement directory, and identity-key derivation function; cells also require a shared atomic replay store. |
 | `observability` | Optional sink for lookup-store instrumentation. |
 
 ## Lookup store
@@ -67,6 +69,12 @@ interface ConditionalKVStoreAdapter {
     inserted: boolean;
     existing?: string;
   }>;
+  compareAndSet?(input: {
+    key: string;
+    expectedValue: string;
+    value: string;
+    ttlSeconds?: number;
+  }): Promise<{ updated: boolean; existing?: string }>;
   delete(key: string): Promise<void>;
 }
 
@@ -83,16 +91,17 @@ interface AuthFnRegionLookupRecord {
 
 AuthFn normalizes the identifier, uses the key
 `authfn:region:<normalized-identifier>`, and serializes the lookup record as the
-string value. The lookup store needs to be **globally consistent** across
-regions. Bundled implementations are available as
+string value. `setIfAbsent` must be atomic across every writer that may claim
+an identifier. Gateway placement additionally requires atomic `compareAndSet`
+for fenced epoch/state transitions. Bundled implementations are available as
 `@authfn/lookup-dynamodb` and `@authfn/lookup-cloudflare-do`; a custom
 conditional KV implementation can target another backend.
 
 Common implementations:
 
-- **DynamoDB Global Tables** (AWS): use the bundled composite `PK`/`SK` adapter layout.
-- **Cloudflare D1 + Replicas** or **Hyperdrive + Postgres** with a leader-followers topology.
-- **Redis with cross-region streams** (eventual consistency; pair with retries).
+- **DynamoDB** (AWS): use the bundled composite `PK`/`SK` layout and route canonical placement through one declared writer region. Global Table replicas may be recovery/shadow-read replicas, not independent placement writers.
+- **Cloudflare Durable Objects**: use a key-named object to serialize claims and placement CAS operations.
+- **Postgres or Redis-backed services**: expose one coordinator/leader for the atomic conditional operations; replication or streams alone are not an atomic ownership primitive.
 
 `setIfAbsent` is what enforces region pinning under contention. Implement it as
 an atomic conditional insert (`attribute_not_exists`, `INSERT ... ON CONFLICT

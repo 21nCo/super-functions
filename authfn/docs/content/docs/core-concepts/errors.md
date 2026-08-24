@@ -48,11 +48,15 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_OTP_EXPIRED` | 400 | no | The OTP code is past its expiry. |
 | `AUTHFN_OTP_INVALID` | 400 | no | The OTP code is wrong. |
 | `AUTHFN_OTP_REPLAYED` | 409 | no | The OTP code was already used. |
+| `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
+| `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect may start. |
 | `AUTHFN_PLUGIN_ABORTED` | 500 | no | A plugin's `before*` hook threw / aborted. |
 | `AUTHFN_RATE_LIMITED` | 429 | yes | The request was rate-limited (by an external limiter or by an authfn-internal counter). |
 | `AUTHFN_REDIRECT_URI_DISALLOWED` | 400 | no | `returnTo` (or OAuth `redirect_uri`) is not in `allowlistedReturnTo` / `allowlistedRedirectUris`. |
 | `AUTHFN_REGION_MISMATCH` | 409 | no | This request must continue against a different region authority. The response `details.redirectTo` says where. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | The region lookup yielded no record for the given identifier. |
+| `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | yes | The selected private cell target was absent or dispatch failed. |
 | `AUTHFN_SESSION_EXPIRED` | 401 | no | Session past `expiresAt`. |
 | `AUTHFN_SESSION_REVOKED` | 401 | no | Session has `revokedAt` set. |
 | `AUTHFN_UNAUTHENTICATED` | 401 | no | No session at all. |
@@ -92,6 +96,9 @@ The first-party SDKs throw a typed `AuthFnError` so you can `try`/`catch` and br
 - `AUTHFN_DELIVERY_FAILED` — the mail provider returned a transient error.
 - `AUTHFN_RATE_LIMITED` — wait and retry; the response should carry `details.retryAfterMs` if known.
 - `AUTHFN_INTERNAL_ERROR` — kernel-side glitch; safe to retry once with backoff.
+- `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` — retry after the canonical placement coordinator recovers.
+- `AUTHFN_PLACEMENT_MOVING` — retry after the fenced identity move completes or rolls back.
+- `AUTHFN_ROUTING_CELL_UNAVAILABLE` — retry after the owning regional cell or internal transport recovers.
 
 Everything else is `retryable: false` — retrying without changing the input will produce the same error.
 
@@ -105,6 +112,8 @@ Everything else is `retryable: false` — retrying without changing the input wi
 - `AUTHFN_OAUTH_*` → sanitized provider details with secrets redacted
 - `AUTHFN_RATE_LIMITED` → `{ retryAfterMs? }`
 - `AUTHFN_CONFLICT` → `{ field?, reason? }`
+- `AUTHFN_PLACEMENT_MOVING` → `{ executionStarted: false }` when a cell rejected the request before side effects.
+- `AUTHFN_ROUTING_*` → sanitized epoch, region, or rejection context; never cell targets, identity keys, assertions, or secrets.
 
 The shapes for each `code`/`details` pair are documented per-route in the [API reference](../api).
 

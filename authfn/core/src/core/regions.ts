@@ -81,18 +81,22 @@ export function authFnMultiRegionEnvironment(
           throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority');
         }
         const authority = normalizeAuthority(publicAuthority);
-        const selectedRegion = resolvedConfig.routing.cell?.regionId
-          ? findConfiguredRegion(resolvedConfig, resolvedConfig.routing.cell.regionId)
+        const cellRegionId = resolvedConfig.routing.cell?.regionId;
+        const selectedRegion = cellRegionId
+          ? findConfiguredRegion(resolvedConfig, cellRegionId)
           : resolveRegionForRequest(resolvedConfig, request, {
               issuer: authority,
               baseUrl: authority
             });
+        if (cellRegionId && !selectedRegion) {
+          throw new AuthFnConfigError('Gateway cell region must be present in configured regions');
+        }
         return {
           issuer: authority,
           baseUrl: authority,
-          regionId: resolvedConfig.routing.cell?.regionId ?? selectedRegion?.regionId,
+          regionId: cellRegionId ?? selectedRegion?.regionId,
           cookie: resolvedConfig.routing.canonicalCookie,
-          oauth: resolvedConfig.routing.canonicalOAuth ?? selectedRegion?.oauth
+          oauth: resolvedConfig.routing.canonicalOAuth
         };
       }
       const baseEnvironment: AuthFnEnvironment = {
@@ -481,10 +485,24 @@ export async function registerUserRegion(
     if (pluginConfig.lookupStore && pluginConfig.routing?.mode === 'gateway') {
       // Gateway placement already settled ownership before execution. This is
       // a post-commit lookup projection only and never participates in routing.
-      await pluginConfig.lookupStore.set({
-        key: regionLookupStoreKey(identifier),
-        value: serializeLookupRecord(lookupRecord)
-      });
+      try {
+        await pluginConfig.lookupStore.set({
+          key: regionLookupStoreKey(identifier),
+          value: serializeLookupRecord(lookupRecord)
+        });
+      } catch (error) {
+        await emitAuthEvent(config, {
+          type: 'authfn.region.lookup',
+          requestId: eventRequestId(input.request),
+          userId: input.user.id,
+          regionId: record.regionId,
+          outcome: 'projection-failed',
+          metadata: {
+            identifier,
+            errorCode: readErrorCode(error)
+          }
+        });
+      }
     }
     await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
@@ -648,7 +666,7 @@ function safeHostname(authority: string): string | null {
   }
 }
 
-function normalizeIdentifier(identifier: string): string {
+export function normalizeIdentifier(identifier: string): string {
   const normalized = identifier.trim().toLowerCase();
   if (!normalized || !normalized.includes('@')) {
     throw new AuthFnValidationError('A valid identifier is required', {
@@ -666,6 +684,14 @@ function normalizeAuthority(authority: string): string {
       authority
     });
   }
+}
+
+function readErrorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return error instanceof Error ? error.name : 'UNKNOWN';
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {

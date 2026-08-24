@@ -35,6 +35,7 @@ describe('AuthFn canonical gateway routing', () => {
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
       keyring,
+      placementCacheTtlMs: 60_000,
       resolveIdentity: () => ({ identityKey: 'person:new', allowInitialPlacement }),
       selectInitialRegion: () => 'us-east-1',
       resolveCell: () => ({ regionId: 'us-east-1', audience: 'cell:us-east-1', target: cell }),
@@ -71,6 +72,7 @@ describe('AuthFn canonical gateway routing', () => {
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
       keyring,
+      placementCacheTtlMs: 60_000,
       resolveIdentity: async (request) => {
         expect(request.headers.get('x-authfn-routing-attacker')).toBeNull();
         const body = await request.json() as { identityKey: string };
@@ -393,6 +395,52 @@ describe('AuthFn placement adapters and migration', () => {
     });
     expect(calls).toEqual(['quiesce', 'drain', 'copy', 'resume-source']);
   });
+
+  it('keeps placement fenced when target resume fails without source recovery', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([placement('person:ada', 'us-east-1', 4)]);
+    await expect(moveAuthFnIdentityPlacement(directory, {
+      identityKey: 'person:ada',
+      sourceRegionId: 'us-east-1',
+      targetRegionId: 'eu-west-1',
+      callbacks: {
+        async quiesceSource() {},
+        async drainSource() {},
+        async copyToTarget() {},
+        async validateTarget() {},
+        async warmTarget() {},
+        async resumeTarget() { throw new Error('target resume failed'); }
+      }
+    })).rejects.toThrow('target resume failed');
+    await expect(directory.get('person:ada')).resolves.toMatchObject({
+      regionId: 'us-east-1',
+      epoch: 5,
+      state: 'moving',
+      movingToRegionId: 'eu-west-1'
+    });
+  });
+
+  it('does not publish source rollback until source resume succeeds', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([placement('person:ada', 'us-east-1', 4)]);
+    await expect(moveAuthFnIdentityPlacement(directory, {
+      identityKey: 'person:ada',
+      sourceRegionId: 'us-east-1',
+      targetRegionId: 'eu-west-1',
+      callbacks: {
+        async quiesceSource() {},
+        async drainSource() {},
+        async copyToTarget() { throw new Error('copy failed'); },
+        async validateTarget() {},
+        async warmTarget() {},
+        async resumeTarget() {},
+        async resumeSource() { throw new Error('source resume failed'); }
+      }
+    })).rejects.toThrow('source resume failed');
+    await expect(directory.get('person:ada')).resolves.toMatchObject({
+      regionId: 'us-east-1',
+      epoch: 5,
+      state: 'moving'
+    });
+  });
 });
 
 describe('AuthFn route classification', () => {
@@ -420,7 +468,8 @@ describe('AuthFn canonical runtime', () => {
         routing: {
           mode: 'gateway',
           publicAuthority: 'https://account.example.com',
-          placementDirectory: createInMemoryAuthFnPlacementDirectory()
+          placementDirectory: createInMemoryAuthFnPlacementDirectory(),
+          identityKeyForIdentifier: (identifier) => identifier
         }
       }
     );
@@ -470,6 +519,7 @@ describe('AuthFn canonical runtime', () => {
         canonicalCookie: { prefix: 'canonical', domain: '.example.com' },
         canonicalOAuth: { google: { clientId: 'canonical-google' } },
         placementDirectory: directory,
+        identityKeyForIdentifier: (identifier) => identifier,
         cell: {
           regionId: 'eu-west-1',
           audience: 'cell:eu-west-1',
@@ -513,6 +563,7 @@ function createCell(
       mode: 'gateway',
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
+      identityKeyForIdentifier: (identifier) => identifier,
       cell: {
         regionId,
         audience: `cell:${regionId}`,

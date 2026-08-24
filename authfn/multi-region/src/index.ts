@@ -13,6 +13,7 @@ import {
   ensureRegionAlignmentForIdentifier,
   ensureRegionAlignmentForUser,
   getMultiRegionPluginConfig,
+  normalizeIdentifier,
   registerUserRegion,
   unregisterRegionLookupForIdentifier
 } from 'authfn/core/regions';
@@ -71,6 +72,11 @@ export function authFnMultiRegionPlugin(
       if (pluginConfig?.routing?.mode !== 'gateway') return;
       if (!pluginConfig.routing.publicAuthority || !pluginConfig.routing.placementDirectory) {
         throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority and placementDirectory');
+      }
+      if (!pluginConfig.routing.identityKeyForIdentifier) {
+        throw new AuthFnConfigError(
+          'Gateway-mode multi-region AuthFn requires identityKeyForIdentifier for placement tombstones'
+        );
       }
       if (pluginConfig.routing.cell && !pluginConfig.routing.cell.replayStore) {
         throw new AuthFnConfigError('Gateway-mode AuthFn cells require a replayStore');
@@ -140,6 +146,20 @@ export function authFnMultiRegionPlugin(
           regionId: alignment.regionId ?? readOptionalString(input.regionId)
         };
       },
+      beforeAccountDelete: async (ctx, input) => {
+        const authConfig = ctx.config;
+        const primaryEmail = readOptionalString(input.primaryEmail);
+        if (!authConfig || !primaryEmail) return input;
+        const routing = getMultiRegionPluginConfig(authConfig)?.routing;
+        if (routing?.mode !== 'gateway') return input;
+        const placementDirectory = routing.placementDirectory;
+        const identityKeyForIdentifier = routing.identityKeyForIdentifier;
+        await tombstoneAuthFnIdentityPlacement(
+          placementDirectory,
+          identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+        );
+        return input;
+      },
       afterAccountDelete: async (ctx, result) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(result.primaryEmail);
@@ -147,18 +167,6 @@ export function authFnMultiRegionPlugin(
           return;
         }
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
-
-        const routing = pluginConfig.routing;
-        if (
-          routing?.mode === 'gateway'
-          && routing.placementDirectory
-          && routing.identityKeyForIdentifier
-        ) {
-          await tombstoneAuthFnIdentityPlacement(
-            routing.placementDirectory,
-            routing.identityKeyForIdentifier(primaryEmail.trim().toLowerCase())
-          );
-        }
 
         await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
       }
@@ -205,20 +213,33 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
       }),
       handler: async (request) => {
         const runtime = await resolveEnvironment(ctx.config, request);
-        const body = await request.json() as {
-          identifier?: string;
-        };
+        const body = await request.json() as Record<string, unknown>;
         const pluginConfig = getMultiRegionPluginConfig(ctx.config) ?? {};
         if (pluginConfig.routing?.mode === 'gateway') {
-          const identifier = normalizeGatewayIdentifier(body.identifier ?? '');
+          const routing = pluginConfig.routing;
+          if (typeof body.identifier !== 'string') {
+            throw new AuthFnValidationError('A valid identifier is required', { field: 'identifier' });
+          }
+          const identifier = normalizeIdentifier(body.identifier);
+          const authority = new URL(routing.publicAuthority).origin;
+          await emitAuthEvent(ctx.config, {
+            type: 'authfn.region.lookup',
+            requestId: eventRequestId(request),
+            outcome: 'local',
+            metadata: {
+              identifier,
+              authority,
+              continueLocally: true
+            }
+          });
           return jsonSuccess(request, {
             identifier,
-            authority: new URL(pluginConfig.routing.publicAuthority!).origin,
+            authority,
             continueLocally: true
           });
         }
         const lookup = await buildLookupResult(ctx.config, pluginConfig, {
-          identifier: body.identifier ?? '',
+          identifier: typeof body.identifier === 'string' ? body.identifier : '',
           request,
           environment: runtime
         });
@@ -273,14 +294,6 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
 
 function pluginConfigForEnvironment(ctx: AuthFnPluginRuntimeContext): MultiRegionPluginRuntimeConfig | null {
   return getMultiRegionPluginConfig(ctx.config);
-}
-
-function normalizeGatewayIdentifier(identifier: string): string {
-  const normalized = identifier.trim().toLowerCase();
-  if (!normalized || !normalized.includes('@')) {
-    throw new AuthFnValidationError('A valid identifier is required', { field: 'identifier' });
-  }
-  return normalized;
 }
 
 function sanitizeRuntimeOAuth(runtime: AuthFnEnvironment): Record<string, unknown> {

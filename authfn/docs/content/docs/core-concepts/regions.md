@@ -56,14 +56,22 @@ A row in `authfn_region_profiles`. One per user. It records the user's pinned `r
 
 ### Region lookup
 
-Either a row in your **lookup store** (e.g. a globally-replicated table that maps `email → region`), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
+Either a row in your **lookup store** (for example, a shared table that maps `email → region` and provides an atomic conditional insert through one writer/coordinator), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
 
 ## Configuring the plugin
 
 ```ts
-import { authFnMultiRegionPlugin } from '@authfn/core';
+import { authFnPlugins, authfn } from 'authfn';
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+} from '@authfn/multi-region';
 
-authFnMultiRegionPlugin({
+const app = authfn({
+  plugins: authFnPlugins(authFnMultiRegionPlugin()),
+});
+
+const environment = authFnMultiRegionEnvironment({
   defaultRegionId: 'us-east-1',
   regions: [
     {
@@ -82,8 +90,9 @@ authFnMultiRegionPlugin({
     },
   ],
   lookupStore,        // optional, externally-replicated lookup
-  directory,          // optional, alternative to lookupStore for managed directories
 });
+
+const server = app.createServer({ database, environment });
 ```
 
 ## How a request flows
@@ -139,7 +148,7 @@ Use a Redis-backed store for production; the in-memory KV store is fine for loca
 
 ## What if no lookup store is configured?
 
-Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile (e.g. a globally-replicated table). This is the simplest pattern for small multi-region deployments. For larger setups, configure a dedicated lookup store backed by a global index (DynamoDB Global Tables, Cloudflare D1 + replication, etc.).
+Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile. For larger setups, configure a dedicated lookup store whose `setIfAbsent` operation is atomic across every writer. Replication alone, including local reads and writes against DynamoDB Global Table replicas, does not establish a globally atomic owner.
 
 ## Observability
 
@@ -148,7 +157,7 @@ The plugin emits:
 - `authfn.region.lookup` — every successful region lookup. Carries `identifier`, `regionId`, `authority`.
 - `authfn.region.lookup.conflict` — when a registration attempt loses a race.
 
-Gateway deployments can additionally emit `authfn.routing.placement_lookup`, `placement_claimed`, `forwarded`, `mismatch`, `retry`, `assertion_rejected`, `directory_unavailable`, and `cell_unavailable`. Alert on directory/cell availability, mismatch-retry exhaustion, and assertion rejection rather than logging identity keys or assertion contents.
+Gateway deployments can additionally emit `authfn.routing.placement_lookup`, `authfn.routing.placement_claimed`, `authfn.routing.forwarded`, `authfn.routing.mismatch`, `authfn.routing.retry`, `authfn.routing.assertion_rejected`, `authfn.routing.directory_unavailable`, and `authfn.routing.cell_unavailable`. Alert on directory/cell availability, mismatch-retry exhaustion, and assertion rejection rather than logging identity keys or assertion contents.
 
 Use these to track lookup latency, miss ratios, and conflict frequency.
 

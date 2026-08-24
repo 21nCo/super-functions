@@ -8,13 +8,17 @@ import {
 describe('@authfn/lookup-dynamodb', () => {
   it('provides atomic identity-placement claims and epoch moves', async () => {
     let item: Record<string, unknown> | undefined;
+    const sent: Array<Record<string, any>> = [];
     const directory = createDynamoDbIdentityPlacementDirectory({
       tableName: 'authfn-placement',
       consistencyModel: 'single-writer-strong',
+      writerRegion: 'us-east-1',
+      documentClientRegion: 'us-east-1',
       ttlAttributeName: false,
       documentClient: {
         async send(command: any) {
           const input = command.input as Record<string, any>;
+          sent.push(input);
           if (input.Key) return { Item: item };
           if (input.ConditionExpression === 'attribute_not_exists(#pk)' && item) {
             const error = new Error('conditional failed');
@@ -49,6 +53,9 @@ describe('@authfn/lookup-dynamodb', () => {
       regionId: 'eu-west-1',
       epoch: 2
     });
+    expect(sent.some((input) => input.ConditionExpression === 'attribute_not_exists(#pk)')).toBe(true);
+    expect(sent.some((input) => input.ConditionExpression === '#value = :expected')).toBe(true);
+    expect(sent.some((input) => input.ConsistentRead === true)).toBe(true);
   });
 
   it('requires the strongly consistent single-writer placement model', () => {
@@ -56,6 +63,16 @@ describe('@authfn/lookup-dynamodb', () => {
       tableName: 'authfn-placement',
       consistencyModel: 'eventual-global-table'
     } as any)).toThrow('single strongly consistent writer region');
+  });
+
+  it('requires a verifiable single writer region', () => {
+    expect(() => createDynamoDbIdentityPlacementDirectory({
+      tableName: 'authfn-placement',
+      consistencyModel: 'single-writer-strong',
+      writerRegion: 'us-east-1',
+      documentClientRegion: 'eu-west-1',
+      documentClient: { send: async () => ({}) } as any
+    })).toThrow('documentClientRegion must match');
   });
 
   it('gets raw conditional KV values by composite lookup key', async () => {

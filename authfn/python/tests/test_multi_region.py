@@ -26,6 +26,7 @@ from authfn import (
     RegionMismatchError,
     RegionNotFoundError,
 )
+from authfn.plugins import gateway_routing
 from authfn.plugins.gateway_routing import (
     CanonicalGateway,
     CanonicalGatewayOptions,
@@ -38,6 +39,7 @@ from authfn.plugins.gateway_routing import (
     RoutingKeyring,
     RoutingSigningKey,
     create_cell_routing_middleware,
+    move_identity_placement,
 )
 from authfn.plugins.multi_region import (
     MultiRegionPluginConfig,
@@ -358,6 +360,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
                 target=cells[region_id],
             ),
             dispatch=dispatch,
+            placement_cache_ttl_seconds=60,
         )
     )
 
@@ -471,3 +474,177 @@ def test_gateway_mode_uses_stable_public_runtime_and_canonical_cookie_policy() -
     assert runtime.cookie.prefix == "authfn-public"
     assert runtime.cookie.domain == ".example.com"
     assert runtime.oauth["google"]["clientId"] == "canonical-google"
+
+
+def test_gateway_runtime_rejects_unknown_cell_and_preserves_empty_canonical_oauth() -> None:
+    db = MockDatabaseAdapter()
+    config = create_plugin_config()
+    config.routing = CanonicalRoutingConfig(
+        mode="gateway",
+        public_authority="https://account.example.com",
+        canonical_oauth={},
+        placement_directory=InMemoryIdentityPlacementDirectory(),
+        cell_region_id="missing-region",
+    )
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn", runtime=RuntimeResolver()),
+        config,
+    )
+    with pytest.raises(Exception, match="Gateway cell region"):
+        service.resolve_runtime(Request("https://internal.example/auth/runtime"))
+
+    config.routing.cell_region_id = "eu-west-1"
+    runtime = service.resolve_runtime(Request("https://eu.internal.example/auth/runtime"))
+    assert runtime.issuer == "https://account.example.com"
+    assert runtime.oauth == {}
+
+
+@pytest.mark.asyncio
+async def test_gateway_alignment_uses_canonical_authority_without_legacy_redirect() -> None:
+    config = create_plugin_config()
+    config.routing = CanonicalRoutingConfig(
+        mode="gateway",
+        public_authority="https://account.example.com",
+        placement_directory=InMemoryIdentityPlacementDirectory(),
+        cell_region_id="eu-west-1",
+    )
+    service = MultiRegionService(
+        AuthFnConfig(database=MockDatabaseAdapter(), namespace="authfn", runtime=RuntimeResolver()),
+        config,
+    )
+    alignment = await service.ensure_region_alignment(
+        user_id="user_gateway",
+        request=Request("https://eu.internal.example/auth/sign-in/password"),
+    )
+    assert alignment == {"regionId": "eu-west-1"}
+
+
+@pytest.mark.asyncio
+async def test_cell_buffering_preserves_context_url_and_query() -> None:
+    middleware = create_cell_routing_middleware(
+        CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://account.example.com",
+            placement_directory=InMemoryIdentityPlacementDirectory(),
+        )
+    )
+
+    class AdapterRequest:
+        method = "GET"
+        path = "/auth/environment"
+        headers: Dict[str, str] = {}
+        query_params = {"region": "eu-west-1", "include": ["cookie", "oauth"]}
+
+        async def body(self) -> bytes:
+            return b""
+
+    context = type(
+        "Context",
+        (),
+        {"url": "https://account.example.com/auth/environment?region=eu-west-1&include=cookie&include=oauth"},
+    )()
+
+    async def execute(request: Any, _context: Any) -> Response:
+        assert request.url == context.url
+        assert request.query_params == {
+            "region": "eu-west-1",
+            "include": ["cookie", "oauth"],
+        }
+        return Response(status=200, body={"ok": True})
+
+    response = await middleware(AdapterRequest(), context, execute)
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_cell_rejects_signed_non_object_payload() -> None:
+    directory = InMemoryIdentityPlacementDirectory()
+    keyring = RoutingKeyring(
+        active=RoutingSigningKey("routing-2026-08", "python-routing-test-secret-with-entropy")
+    )
+    middleware = create_cell_routing_middleware(
+        CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://account.example.com",
+            placement_directory=directory,
+            cell_region_id="eu-west-1",
+            cell_audience="cell:eu-west-1",
+            keyring=keyring,
+            replay_store=InMemoryRoutingReplayStore(),
+        )
+    )
+    token = gateway_routing._sign(["not", "an", "object"], keyring)  # type: ignore[arg-type]
+    response = await middleware(
+        GatewayRequest(
+            "https://account.example.com/auth/sign-in/password",
+            headers={"x-authfn-routing-assertion": token},
+        ),
+        None,
+        lambda _request, _context: Response(status=200),
+    )
+    assert response.status == 401
+    assert response.body["error"]["code"] == "AUTHFN_ROUTING_ASSERTION_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_move_keeps_placement_fenced_when_target_resume_fails() -> None:
+    directory = InMemoryIdentityPlacementDirectory(
+        [IdentityPlacement("person:ada", "us-east-1", 3, updated_at="2026-08-23T00:00:00Z")]
+    )
+
+    async def ok() -> None:
+        return None
+
+    async def fail_target() -> None:
+        raise RuntimeError("target unavailable")
+
+    with pytest.raises(RuntimeError, match="target unavailable"):
+        await move_identity_placement(
+            directory,
+            identity_key="person:ada",
+            source_region_id="us-east-1",
+            target_region_id="eu-west-1",
+            quiesce_source=ok,
+            drain_source=ok,
+            copy_to_target=ok,
+            validate_target=ok,
+            warm_target=ok,
+            resume_target=fail_target,
+        )
+    placement = await directory.get("person:ada")
+    assert placement is not None
+    assert (placement.state, placement.epoch) == ("moving", 4)
+
+
+@pytest.mark.asyncio
+async def test_move_does_not_publish_source_when_source_resume_fails() -> None:
+    directory = InMemoryIdentityPlacementDirectory(
+        [IdentityPlacement("person:ada", "us-east-1", 7, updated_at="2026-08-23T00:00:00Z")]
+    )
+
+    async def ok() -> None:
+        return None
+
+    async def fail_copy() -> None:
+        raise RuntimeError("copy failed")
+
+    async def fail_source() -> None:
+        raise RuntimeError("source unavailable")
+
+    with pytest.raises(RuntimeError, match="source unavailable"):
+        await move_identity_placement(
+            directory,
+            identity_key="person:ada",
+            source_region_id="us-east-1",
+            target_region_id="eu-west-1",
+            quiesce_source=ok,
+            drain_source=ok,
+            copy_to_target=fail_copy,
+            validate_target=ok,
+            warm_target=ok,
+            resume_target=ok,
+            resume_source=fail_source,
+        )
+    placement = await directory.get("person:ada")
+    assert placement is not None
+    assert (placement.state, placement.epoch) == ("moving", 8)

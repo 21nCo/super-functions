@@ -1048,6 +1048,20 @@ async def _handle_region_lookup(config: AuthFnConfig, request: Any, _context: Ro
     if plugin_config.routing and plugin_config.routing.mode == "gateway":
         identifier = _normalize_email(body.get("identifier"))
         runtime = MultiRegionService(config, plugin_config).resolve_runtime(request)
+        await emit_auth_event(
+            config,
+            {
+                "type": "authfn.region.lookup",
+                "requestId": event_request_id(request),
+                "regionId": runtime.region_id,
+                "outcome": "local",
+                "metadata": {
+                    "identifier": identifier,
+                    "authority": runtime.issuer,
+                    "continueLocally": True,
+                },
+            },
+        )
         return json_success(
             request,
             {

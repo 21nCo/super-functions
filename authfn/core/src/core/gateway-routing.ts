@@ -82,6 +82,10 @@ export interface AuthFnCanonicalGatewayOptions<TTarget> {
   ) => Promise<Response> | Response;
   assertionTtlSeconds?: number;
   placementCacheTtlMs?: number;
+  /** Maximum identities retained by the in-process placement cache. */
+  placementCacheMaxEntries?: number;
+  /** Allowed clock difference when verifying signed cell mismatch responses. */
+  clockSkewSeconds?: number;
   now?: () => Date;
   onEvent?: (event: AuthFnEventInput) => Promise<void> | void;
 }
@@ -272,13 +276,38 @@ export function createAuthFnCanonicalGateway<TTarget>(
   const now = options.now ?? (() => new Date());
   const assertionTtlSeconds = options.assertionTtlSeconds ?? 20;
   const placementCacheTtlMs = options.placementCacheTtlMs ?? 5_000;
+  const placementCacheMaxEntries = options.placementCacheMaxEntries ?? 10_000;
+  const clockSkewSeconds = options.clockSkewSeconds ?? 5;
   if (!Number.isSafeInteger(assertionTtlSeconds) || assertionTtlSeconds < 1 || assertionTtlSeconds > 300) {
     throw new AuthFnConfigError('AuthFn assertionTtlSeconds must be between 1 and 300');
   }
   if (!Number.isFinite(placementCacheTtlMs) || placementCacheTtlMs < 0) {
     throw new AuthFnConfigError('AuthFn placementCacheTtlMs must be non-negative');
   }
+  if (!Number.isSafeInteger(placementCacheMaxEntries) || placementCacheMaxEntries < 1) {
+    throw new AuthFnConfigError('AuthFn placementCacheMaxEntries must be a positive integer');
+  }
+  if (!Number.isSafeInteger(clockSkewSeconds) || clockSkewSeconds < 0 || clockSkewSeconds > 60) {
+    throw new AuthFnConfigError('AuthFn clockSkewSeconds must be between 0 and 60');
+  }
   const cache = new Map<string, CachedPlacement>();
+
+  function cachePlacement(identityKey: string, placement: AuthFnIdentityPlacement): void {
+    const currentTime = now().getTime();
+    for (const [key, entry] of cache) {
+      if (entry.expiresAt <= currentTime) cache.delete(key);
+    }
+    cache.delete(identityKey);
+    while (cache.size >= placementCacheMaxEntries) {
+      const oldest = cache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+    cache.set(identityKey, {
+      placement: clonePlacement(placement),
+      expiresAt: currentTime + placementCacheTtlMs
+    });
+  }
 
   async function loadPlacement(identityKey: string, bypassCache: boolean): Promise<AuthFnIdentityPlacement | null> {
     const cached = cache.get(identityKey);
@@ -289,7 +318,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
     } catch {
       throw new AuthFnPlacementDirectoryUnavailableError();
     }
-    if (placement) cache.set(identityKey, { placement, expiresAt: now().getTime() + placementCacheTtlMs });
+    if (placement) cachePlacement(identityKey, placement);
     else cache.delete(identityKey);
     return placement;
   }
@@ -326,7 +355,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
     }
     const placement = result.inserted ? claimed : result.existing;
     if (!placement) throw new AuthFnPlacementDirectoryUnavailableError('Placement claim returned no record');
-    cache.set(identity.identityKey, { placement, expiresAt: now().getTime() + placementCacheTtlMs });
+    cachePlacement(identity.identityKey, placement);
     await emit(options, request, result.inserted ? 'authfn.routing.placement_claimed' : 'authfn.routing.placement_lookup', {
       regionId: placement.regionId,
       epoch: placement.epoch
@@ -397,7 +426,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
     if (attempt === 0 && mismatchToken) {
       let mismatch: RoutingMismatchAssertion | null = null;
       try {
-        const verified = verifyPayload(mismatchToken, options.keyring, now);
+        const verified = verifyPayload(mismatchToken, options.keyring, now, clockSkewSeconds);
         mismatch = verified.kind === 'mismatch' ? verified : null;
       } catch {
         mismatch = null;
@@ -458,12 +487,19 @@ export function createAuthFnCanonicalGateway<TTarget>(
         return forward(sanitizedRequest, normalizedIdentity, placement, 0);
       } catch (error) {
         const code = readErrorCode(error);
-        await emit(options, request, code === 'AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE'
+        const eventType = code === 'AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE'
           ? 'authfn.routing.directory_unavailable'
-          : 'authfn.routing.placement_lookup', {
-          errorCode: code,
-          outcome: 'rejected'
-        });
+          : code === 'AUTHFN_ROUTING_CELL_UNAVAILABLE'
+            ? 'authfn.routing.cell_unavailable'
+            : code === 'AUTHFN_PLACEMENT_MOVING' || code === 'AUTHFN_REGION_NOT_FOUND'
+              ? 'authfn.routing.placement_lookup'
+              : null;
+        if (eventType) {
+          await emit(options, request, eventType, {
+            errorCode: code,
+            outcome: 'rejected'
+          });
+        }
         return jsonError(request, error);
       }
     },
@@ -613,13 +649,13 @@ export async function moveAuthFnIdentityPlacement(
     placement: moving
   });
   if (!fenced.updated) throw new AuthFnRegionMismatchError('Identity placement changed during migration');
-  let activated = false;
   try {
     await input.callbacks.quiesceSource();
     await input.callbacks.drainSource();
     await input.callbacks.copyToTarget();
     await input.callbacks.validateTarget();
     await input.callbacks.warmTarget();
+    await input.callbacks.resumeTarget();
     const active: AuthFnIdentityPlacement = {
       identityKey: input.identityKey,
       regionId: input.targetRegionId,
@@ -635,11 +671,10 @@ export async function moveAuthFnIdentityPlacement(
       placement: active
     });
     if (!activationResult.updated) throw new AuthFnRegionMismatchError('Identity placement changed before activation');
-    activated = true;
-    await input.callbacks.resumeTarget();
     return active;
   } catch (error) {
-    if (activated) throw error;
+    if (!input.callbacks.resumeSource) throw error;
+    await input.callbacks.resumeSource();
     const rollback: AuthFnIdentityPlacement = {
       identityKey: input.identityKey,
       regionId: input.sourceRegionId,
@@ -657,7 +692,6 @@ export async function moveAuthFnIdentityPlacement(
     if (!rolledBack.updated) {
       throw new AuthFnRegionMismatchError('Identity placement rollback lost its compare-and-set race');
     }
-    await input.callbacks.resumeSource?.();
     throw error;
   }
 }
@@ -851,7 +885,9 @@ function parsePlacement(value: string | null | undefined): AuthFnIdentityPlaceme
       || !isPlacementState(parsed.state)
       || (typeof parsed.updatedAt !== 'string' && !(parsed.updatedAt instanceof Date))
     ) return null;
-    return parsed as AuthFnIdentityPlacement;
+    const placement = parsed as AuthFnIdentityPlacement;
+    validatePlacement(placement);
+    return placement;
   } catch {
     return null;
   }

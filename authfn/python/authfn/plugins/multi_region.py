@@ -59,15 +59,17 @@ class MultiRegionService:
                         for candidate in self.plugin_config.regions
                         if candidate.region_id == routing.cell_region_id
                     ),
-                    region,
+                    None,
                 )
+                if region is None:
+                    raise ValidationError("Gateway cell region is not present in configured regions")
             return AuthFnRuntimeResolution.model_validate(
                 {
                     "issuer": authority,
                     "baseUrl": authority,
                     "regionId": routing.cell_region_id or (region.region_id if region else None),
                     "cookie": routing.canonical_cookie,
-                    "oauth": routing.canonical_oauth or (region.oauth if region else None),
+                    "oauth": routing.canonical_oauth,
                 }
             )
         if region is None:
@@ -170,6 +172,8 @@ class MultiRegionService:
 
     async def ensure_region_alignment(self, *, user_id: str, request: Optional[Any] = None) -> Dict[str, Any]:
         runtime = self.resolve_runtime(request or _default_request())
+        if self.plugin_config.routing and self.plugin_config.routing.mode == "gateway":
+            return {"regionId": runtime.region_id}
         user = await self.config.database.find_one(
             model="users",
             where=[{"field": "id", "operator": "eq", "value": user_id}],

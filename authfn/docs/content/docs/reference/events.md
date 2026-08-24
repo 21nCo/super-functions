@@ -46,6 +46,14 @@ type AuthFnEvent = {
 | `authfn.2fa.challenged` | A 2FA challenge was completed (or failed). | success / failure | `errorCode` |
 | `authfn.region.lookup` | A region lookup was performed. | success | `regionId`, `cacheHit` |
 | `authfn.region.lookup.conflict` | Two regions raced to claim the same identifier. | failure | `loserRegionId` |
+| `authfn.routing.placement_lookup` | Gateway/cell placement was read or an identity-scoped request was rejected before execution. | validated / rejected | `regionId`, `epoch`, `errorCode` |
+| `authfn.routing.placement_claimed` | A first-use identity placement was atomically claimed. | success | `regionId`, `epoch` |
+| `authfn.routing.forwarded` | The gateway dispatched to the selected private cell. | success | `regionId`, `epoch`, `family`, `attempt` |
+| `authfn.routing.mismatch` | A cell proved a stale region/epoch before execution. | pre-execution | `receivedRegionId`, `receivedEpoch`, `expectedRegionId`, `expectedEpoch`, `executionStarted` |
+| `authfn.routing.retry` | The gateway refreshed placement and began its one allowed retry. | success | `regionId`, `epoch`, `attempt` |
+| `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorCode` |
+| `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorCode` |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected | `regionId`, `epoch`, `errorCode` |
 | `authfn.handoff.started` | A handoff code was issued. | success | `kind` (`native` / `web`) |
 | `authfn.handoff.exchanged` | A handoff code was exchanged for a session. | success | `kind` |
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |

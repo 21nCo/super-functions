@@ -71,6 +71,14 @@ interface AuthFnEvent {
 | `authfn.2fa.challenged` | A 2FA challenge was issued (`primaryMethod` carried). |
 | `authfn.region.lookup` | Multi-region lookup succeeded. |
 | `authfn.region.lookup.conflict` | Multi-region registration lost a race. |
+| `authfn.routing.placement_lookup` | Canonical placement was read/validated, or placement state rejected execution. |
+| `authfn.routing.placement_claimed` | A first-use placement claim won and established the canonical owner. |
+| `authfn.routing.forwarded` | The gateway dispatched to a private cell. |
+| `authfn.routing.mismatch` | A cell proved a stale routing assertion before side effects. |
+| `authfn.routing.retry` | The gateway refreshed placement and used its single retry. |
+| `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
+| `authfn.routing.directory_unavailable` | Placement storage failed closed. |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
 | `authfn.handoff.started` | Native handoff code created. |
 | `authfn.handoff.exchanged` | Native handoff code exchanged for a session. |
 | `authfn.handoff.failed` | Native handoff exchange failed. |

@@ -31,7 +31,6 @@ export function createAuthFnRouter(
     ? createAuthFnCellPlacementMiddleware(config, multiRegionConfig)
     : null;
   const middleware = [
-    ...(placementMiddleware ? [placementMiddleware] : []),
     ...(config.observability
       ? [
           createObservabilityMiddleware({
@@ -41,6 +40,7 @@ export function createAuthFnRouter(
           })
         ]
       : []),
+    ...(placementMiddleware ? [placementMiddleware] : []),
     ...(rateLimitMiddleware ? [rateLimitMiddleware] : [])
   ];
 

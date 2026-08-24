@@ -12,7 +12,7 @@ import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from superfunctions.http import Response
 
@@ -182,6 +182,8 @@ class CanonicalGatewayOptions:
     base_path: str = "/auth"
     assertion_ttl_seconds: int = 20
     placement_cache_ttl_seconds: float = 5.0
+    placement_cache_max_entries: int = 10_000
+    clock_skew_seconds: int = 5
     clock: Callable[[], float] = time.time
 
 
@@ -194,6 +196,10 @@ class CanonicalGateway:
             raise ConfigError("AuthFn assertion TTL must be between 1 and 300 seconds")
         if options.placement_cache_ttl_seconds < 0:
             raise ConfigError("AuthFn placement cache TTL must be non-negative")
+        if options.placement_cache_max_entries < 1:
+            raise ConfigError("AuthFn placement cache maximum must be positive")
+        if not 0 <= options.clock_skew_seconds <= 60:
+            raise ConfigError("AuthFn gateway clock skew must be between 0 and 60 seconds")
         self.options = options
         self.public_authority = _normalize_authority(options.public_authority)
         self.base_path = _normalize_base_path(options.base_path)
@@ -201,6 +207,19 @@ class CanonicalGateway:
 
     def invalidate(self, identity_key: str) -> None:
         self._cache.pop(identity_key, None)
+
+    def _cache_placement(self, identity_key: str, placement: IdentityPlacement) -> None:
+        current = self.options.clock()
+        self._cache = {
+            key: value for key, value in self._cache.items() if value[1] > current
+        }
+        self.invalidate(identity_key)
+        while len(self._cache) >= self.options.placement_cache_max_entries:
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[identity_key] = (
+            _copy_placement(placement),
+            current + self.options.placement_cache_ttl_seconds,
+        )
 
     async def handle(self, request: Any) -> Response:
         buffered = await _buffer_request(request)
@@ -242,10 +261,7 @@ class CanonicalGateway:
         except Exception as error:  # noqa: BLE001
             raise PlacementDirectoryUnavailableError("Identity placement directory is unavailable") from error
         if placement:
-            self._cache[identity_key] = (
-                _copy_placement(placement),
-                self.options.clock() + self.options.placement_cache_ttl_seconds,
-            )
+            self._cache_placement(identity_key, placement)
         else:
             self.invalidate(identity_key)
         return placement
@@ -278,10 +294,7 @@ class CanonicalGateway:
         placement = claimed if result.get("inserted") else result.get("existing")
         if not placement:
             raise PlacementDirectoryUnavailableError("Placement claim returned no record")
-        self._cache[identity.identity_key] = (
-            _copy_placement(placement),
-            self.options.clock() + self.options.placement_cache_ttl_seconds,
-        )
+        self._cache_placement(identity.identity_key, placement)
         return _require_active(placement)
 
     async def _forward(
@@ -321,7 +334,12 @@ class CanonicalGateway:
         mismatch_token = _header(response.headers, MISMATCH_HEADER)
         if attempt == 0 and mismatch_token:
             try:
-                mismatch = _verify(mismatch_token, self.options.keyring, self.options.clock)
+                mismatch = _verify(
+                    mismatch_token,
+                    self.options.keyring,
+                    self.options.clock,
+                    self.options.clock_skew_seconds,
+                )
             except RoutingAssertionInvalidError:
                 mismatch = {}
             if (
@@ -359,7 +377,7 @@ def create_cell_routing_middleware(
             context: Any,
             next_handler: Callable[..., Any],
         ) -> Response:
-            buffered = await _buffer_request(request)
+            buffered = await _buffer_request(request, context)
             if classify_route(buffered, base_path).scope == "global":
                 return cast(Response, await next_handler(buffered, context))
             return _error_response(buffered, RoutingCellUnavailableError())
@@ -376,7 +394,7 @@ def create_cell_routing_middleware(
         raise ConfigError("AuthFn cell clock skew must be between 0 and 60 seconds")
 
     async def middleware(request: Any, context: Any, next_handler: Callable[..., Any]) -> Response:
-        buffered = await _buffer_request(request)
+        buffered = await _buffer_request(request, context)
         if classify_route(buffered, base_path).scope == "global":
             return cast(Response, await next_handler(buffered, context))
         try:
@@ -502,10 +520,10 @@ async def move_identity_placement(
     )
     if not fenced.get("updated"):
         raise RegionMismatchError("Identity placement changed during migration")
-    activated = False
     try:
         for callback in [quiesce_source, drain_source, copy_to_target, validate_target, warm_target]:
             await _maybe_await(callback())
+        await _maybe_await(resume_target())
         active = IdentityPlacement(
             identity_key=identity_key,
             region_id=target_region_id,
@@ -521,30 +539,28 @@ async def move_identity_placement(
         )
         if not result.get("updated"):
             raise RegionMismatchError("Identity placement changed before activation")
-        activated = True
-        await _maybe_await(resume_target())
         return active
     except Exception as error:
-        if not activated:
-            rollback = IdentityPlacement(
-                identity_key=identity_key,
-                region_id=source_region_id,
-                epoch=moving.epoch + 1,
-                previous_region_id=target_region_id,
-                updated_at=_iso_now(time.time),
-            )
-            rolled_back = await directory.compare_and_set(
-                identity_key=identity_key,
-                expected_epoch=moving.epoch,
-                expected_state="moving",
-                placement=rollback,
-            )
-            if not rolled_back.get("updated"):
-                raise RegionMismatchError(
-                    "Identity placement rollback lost its compare-and-set race"
-                ) from error
-            if resume_source:
-                await _maybe_await(resume_source())
+        if resume_source is None:
+            raise
+        await _maybe_await(resume_source())
+        rollback = IdentityPlacement(
+            identity_key=identity_key,
+            region_id=source_region_id,
+            epoch=moving.epoch + 1,
+            previous_region_id=target_region_id,
+            updated_at=_iso_now(time.time),
+        )
+        rolled_back = await directory.compare_and_set(
+            identity_key=identity_key,
+            expected_epoch=moving.epoch,
+            expected_state="moving",
+            placement=rollback,
+        )
+        if not rolled_back.get("updated"):
+            raise RegionMismatchError(
+                "Identity placement rollback lost its compare-and-set race"
+            ) from error
         raise
 
 
@@ -561,7 +577,11 @@ class _BufferedRequest:
 
     @property
     def query_params(self) -> Dict[str, Any]:
-        return {}
+        parsed = parse_qs(urlparse(self.url).query, keep_blank_values=True)
+        return {
+            key: values[0] if len(values) == 1 else values
+            for key, values in parsed.items()
+        }
 
     async def body(self) -> bytes:
         return self._body
@@ -573,7 +593,7 @@ class _BufferedRequest:
         return json.loads(await self.text()) if self._body else {}
 
 
-async def _buffer_request(request: Any) -> _BufferedRequest:
+async def _buffer_request(request: Any, context: Any = None) -> _BufferedRequest:
     if isinstance(request, _BufferedRequest):
         return _BufferedRequest(request.method, request.url, dict(request.headers), request._body)
     body_method = getattr(request, "body", None)
@@ -586,9 +606,19 @@ async def _buffer_request(request: Any) -> _BufferedRequest:
     headers = dict(getattr(request, "headers", {}) or {})
     if not _header(headers, "x-request-id"):
         headers["x-request-id"] = f"req_{secrets.token_hex(8)}"
+    request_url = getattr(request, "url", None) or getattr(context, "url", None)
+    if not request_url:
+        path = str(getattr(request, "path", "/"))
+        query = getattr(request, "query_params", {}) or {}
+        host = _header(headers, "x-forwarded-host") or _header(headers, "host") or "account.example.com"
+        scheme = _header(headers, "x-forwarded-proto") or "https"
+        request_url = f"{scheme}://{host}{path}"
+        encoded_query = urlencode(query, doseq=True)
+        if encoded_query:
+            request_url = f"{request_url}?{encoded_query}"
     return _BufferedRequest(
         method=str(getattr(request, "method", "GET")).upper(),
-        url=str(getattr(request, "url", "https://account.example.com")),
+        url=str(request_url),
         headers=headers,
         _body=bytes(body or b""),
     )
@@ -633,9 +663,12 @@ def _verify(
         raise RoutingAssertionInvalidError()
     encoded, signature = parts
     try:
-        payload = cast(Dict[str, Any], json.loads(_unb64(encoded).decode("utf-8")))
+        decoded = json.loads(_unb64(encoded).decode("utf-8"))
     except Exception as error:  # noqa: BLE001
         raise RoutingAssertionInvalidError() from error
+    if not isinstance(decoded, dict):
+        raise RoutingAssertionInvalidError()
+    payload = cast(Dict[str, Any], decoded)
     _validate_signed_payload(payload)
     key = next(
         (entry for entry in [keyring.active, *keyring.previous] if entry.key_id == payload.get("keyId")),

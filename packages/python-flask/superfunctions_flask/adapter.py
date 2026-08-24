@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 import threading
-from typing import Any, Awaitable, Callable, Coroutine, Dict, List, cast
+from typing import Any, Awaitable, Callable, Coroutine, Dict, List, Optional, cast
 
 from flask import Blueprint, jsonify, request
 from flask import Request as FlaskRequest
@@ -169,15 +169,43 @@ def _create_request_context(path_params: Dict[str, Any]) -> tuple[FlaskRequestAd
     return adapted_request, context
 
 
+async def _execute_route(
+    route: Optional[Route],
+    handler: Callable,
+    request: Any,
+    context: RouteContext,
+) -> Response:
+    next_handler: Any = handler
+    for middleware in reversed((route.middleware or []) if route else []):
+        downstream = next_handler
+
+        async def invoke(
+            current_request: Any,
+            current_context: RouteContext,
+            middleware: Any = middleware,
+            downstream: Any = downstream,
+        ) -> Response:
+            return cast(
+                Response,
+                await middleware(current_request, current_context, downstream),
+            )
+
+        next_handler = invoke
+    return cast(Response, await next_handler(request, context))
+
+
 def _invoke_flask_handler(
     handler: Callable,
     path_params: Dict[str, Any],
     *,
     log_label: str,
+    route: Optional[Route] = None,
 ) -> FlaskResponse:
     try:
         adapted_request, context = _create_request_context(path_params)
-        response = _run_async_handler(lambda: handler(adapted_request, context))
+        response = _run_async_handler(
+            lambda: _execute_route(route, handler, adapted_request, context)
+        )
         return to_flask_response(response)
     except HttpError as error:
         return to_flask_response(error.to_response())
@@ -198,7 +226,7 @@ def create_handler(handler: Callable, route: Route):
     """
 
     def flask_handler(**path_params):
-        return _invoke_flask_handler(handler, path_params, log_label="route")
+        return _invoke_flask_handler(handler, path_params, log_label="route", route=route)
 
     setattr(flask_handler, SUPERFUNCTIONS_ROUTE_ATTR, route)
     setattr(flask_handler, SUPERFUNCTIONS_ROUTE_META_ATTR, route.meta)

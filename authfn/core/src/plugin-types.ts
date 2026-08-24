@@ -174,18 +174,29 @@ export interface AuthFnRoutingReplayStore {
   claim(nonce: string, expiresAt: number): Promise<boolean>;
 }
 
-export interface AuthFnCanonicalRoutingConfig {
-  mode: 'direct' | 'gateway';
+interface AuthFnCanonicalRoutingBase {
   /** Stable public issuer/base URL used for discovery, OAuth, and cookies. */
   publicAuthority?: string;
   /** Canonical cookie policy. In gateway mode this must not vary by cell. */
   canonicalCookie?: Partial<AuthFnCookieConfig>;
   /** Canonical OAuth policy merged independently of the execution cell. */
   canonicalOAuth?: AuthFnEnvironment['oauth'];
+}
+
+export interface AuthFnDirectRoutingConfig extends AuthFnCanonicalRoutingBase {
+  mode: 'direct';
+  placementDirectory?: never;
+  identityKeyForIdentifier?: never;
+  cell?: never;
+}
+
+export interface AuthFnGatewayRoutingConfig extends AuthFnCanonicalRoutingBase {
+  mode: 'gateway';
+  publicAuthority: string;
   /** Required in gateway mode on both the gateway and regional cells. */
-  placementDirectory?: AuthFnIdentityPlacementDirectoryAdapter;
+  placementDirectory: AuthFnIdentityPlacementDirectoryAdapter;
   /** Maps normalized public identifiers to the same stable key used by the gateway. */
-  identityKeyForIdentifier?: (identifier: string) => string;
+  identityKeyForIdentifier: (identifier: string) => string;
   /** Required by a regional cell to validate gateway assertions. */
   cell?: {
     regionId: string;
@@ -195,6 +206,10 @@ export interface AuthFnCanonicalRoutingConfig {
     clockSkewSeconds?: number;
   };
 }
+
+export type AuthFnCanonicalRoutingConfig =
+  | AuthFnDirectRoutingConfig
+  | AuthFnGatewayRoutingConfig;
 
 export interface MultiRegionPluginConfig extends AuthFnBundledPluginConfig {
 }

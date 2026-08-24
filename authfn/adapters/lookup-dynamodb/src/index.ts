@@ -33,6 +33,10 @@ export interface DynamoDbIdentityPlacementDirectoryOptions extends DynamoDbRegio
    * the cross-region uniqueness contract on their own.
    */
   consistencyModel: 'single-writer-strong';
+  /** Region that owns every authoritative placement write. */
+  writerRegion: string;
+  /** Required with a supplied documentClient so its fixed region can be verified. */
+  documentClientRegion?: string;
 }
 
 export class AuthFnDynamoDbLookupStoreError extends Error {
@@ -177,7 +181,26 @@ export function createDynamoDbIdentityPlacementDirectory(
       'DynamoDB identity placement requires a single strongly consistent writer region'
     );
   }
-  const { consistencyModel: _consistencyModel, ...lookupOptions } = options;
+  if (!options.writerRegion?.trim()) {
+    throw new AuthFnConfigError('DynamoDB identity placement requires an explicit writerRegion');
+  }
+  if (options.documentClient) {
+    if (options.documentClientRegion !== options.writerRegion) {
+      throw new AuthFnConfigError(
+        'DynamoDB placement documentClientRegion must match the single writerRegion'
+      );
+    }
+  } else if (options.region !== options.writerRegion) {
+    throw new AuthFnConfigError(
+      'DynamoDB placement client region must match the single writerRegion'
+    );
+  }
+  const {
+    consistencyModel: _consistencyModel,
+    writerRegion: _writerRegion,
+    documentClientRegion: _documentClientRegion,
+    ...lookupOptions
+  } = options;
   return createStoreBackedAuthFnPlacementDirectory(createDynamoDbRegionLookupStore({
     ...lookupOptions,
     consistentRead: true
