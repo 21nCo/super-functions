@@ -42,6 +42,27 @@ describe("McpFn manifests", () => {
     expect(validateManifest(first)).toEqual(first);
   });
 
+  it("uses the validator's code-unit order for generated inventories", () => {
+    const manifest = createManifest(
+      { name: "ordering", version: "1.0.0" },
+      new McpFnRegistry()
+        .register({
+          name: "a_b",
+          description: "Underscore.",
+          inputSchema: { type: "object" },
+          handler: async () => structuredResult({ ok: true }),
+        })
+        .register({
+          name: "a-b",
+          description: "Dash.",
+          inputSchema: { type: "object" },
+          handler: async () => structuredResult({ ok: true }),
+        }),
+    );
+    expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-b", "a_b"]);
+    expect(validateManifest(manifest)).toEqual(manifest);
+  });
+
   it("classifies required inputs as breaking and descriptions as behavioral", () => {
     const before = createManifest(
       { name: "example", version: "1.0.0" },
@@ -144,6 +165,14 @@ describe("McpFn manifests", () => {
         inputSchema: { type: "object", properties: { value: { minimum: "invalid" } } },
       }],
     })).toThrow(/invalid JSON Schema/);
+    expect(() => validateManifest({
+      ...manifest,
+      tools: [{ ...manifest.tools[0], outputSchema: null }],
+    })).toThrow(/outputSchema must be an object/);
+    expect(() => validateManifest({
+      ...manifest,
+      prompts: [{ name: "invalid", argumentsSchema: false }],
+    })).toThrow(/argumentsSchema must be an object/);
   });
 
   it("treats required or closed-schema output additions as breaking", () => {

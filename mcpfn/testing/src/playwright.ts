@@ -196,10 +196,10 @@ export const test = base.extend<McpFnPlaywrightFixtures>({
       started,
       server: started.oauth,
       authorize: (page, options = {}) => authorizeWithBrowser(page, {
+        ...options,
         authorizationEndpoint: options.authorizationEndpoint ?? started.oauth.authorizationEndpoint,
         clientId: options.clientId ?? started.oauth.clientId,
         redirectUri: options.redirectUri ?? started.oauth.callbackUrl,
-        ...options,
       }),
     };
     try {

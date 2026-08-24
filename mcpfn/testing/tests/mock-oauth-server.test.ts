@@ -62,6 +62,19 @@ describe("McpFn mock OAuth authorization server", () => {
         code_verifier: pkce.verifier,
       }),
     });
+    const wrongVerifier = await fetch(oauth.tokenEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: clientId,
+        redirect_uri: oauth.callbackUrl,
+        code,
+        code_verifier: "wrong-verifier-that-is-long-enough-to-be-valid-but-does-not-match",
+      }),
+    });
+    expect(wrongVerifier.status).toBe(400);
+    await expect(wrongVerifier.json()).resolves.toMatchObject({ error: "invalid_grant" });
     const tokenResponse = await exchange();
     expect(tokenResponse.status).toBe(200);
     const tokens = await tokenResponse.json() as {
@@ -77,18 +90,24 @@ describe("McpFn mock OAuth authorization server", () => {
     expect(verified.resource?.href).toBe("https://mcp.example.com/mcp");
     expect((await exchange()).status).toBe(400);
 
-    const refresh = () => fetch(oauth.tokenEndpoint, {
+    const refresh = (refreshToken = tokens.refresh_token) => fetch(oauth.tokenEndpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         client_id: clientId,
-        refresh_token: tokens.refresh_token,
+        refresh_token: refreshToken,
       }),
     });
     const refreshResponse = await refresh();
     expect(refreshResponse.status).toBe(200);
-    const refreshed = await refreshResponse.json() as { access_token: string };
+    const refreshed = await refreshResponse.json() as {
+      access_token: string;
+      refresh_token: string;
+    };
+    expect(refreshed.refresh_token).not.toBe(tokens.refresh_token);
+    await expect(oauth.verifyAccessToken(refreshed.access_token)).resolves.toMatchObject({ clientId });
+    expect((await refresh(refreshed.refresh_token)).status).toBe(200);
     expect((await refresh()).status).toBe(400);
 
     expect((await fetch(oauth.tokenEndpoint, {

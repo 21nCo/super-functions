@@ -32,10 +32,9 @@ Set `clientRequirements` for roots, sampling, or elicitation used by handlers. A
 
 ## Existing Superfunctions migrations
 
-- LangFn retains its `MCPServer`, `MCPClient`, `StdioMCPTransport`, and `SSEMCPTransport` names at the compatibility edge, but all protocol lifecycle now uses the official SDK. The legacy SSE class name now means Streamable HTTP.
-- MemoryFn's `MemoryMCP` exposes the same two tool names with validated inputs and structured results through McpFn.
-- ProbeFn shares its existing Zod schemas and exact `ProbefnEnvelope` results with McpFn. Its stdio path is official SDK stdio; its optional TCP compatibility transport implements only stream framing and delegates all JSON-RPC/MCP behavior to the SDK server.
+LangFn, MemoryFn, and ProbeFn migrations are outside this release. Their existing
+MCP compatibility surfaces remain unchanged until each consumer is migrated and
+its own regression suite is added to the release gate.
 
-Run `npm run gate:mcpfn-release` after any of these consumers or the shared runtime changes.
-
-The retained LangFn class names are source-level migration aids, not a promise that the removed hand-written transport methods remain available. Consumers that called transport `.request()` or server `.handle()` directly must move to `MCPClient.callTool()` or an official SDK client connection.
+Run `npm run gate:mcpfn-release` after changes to the shared McpFn runtime or its
+current DataFn adapter. Do not treat that gate as evidence for unmigrated consumers.

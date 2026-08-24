@@ -38,11 +38,25 @@ test("runs a browser PKCE flow for extensible client metadata", async ({
     clientId,
     refreshToken: tokens.refresh_token,
   });
+  expect(refreshed.refresh_token).not.toBe(tokens.refresh_token);
+  await expect(mcpfnOAuth.server.verifyAccessToken(refreshed.access_token)).resolves.toMatchObject({
+    clientId,
+  });
+  const rotated = await refreshOAuthAccessToken({
+    tokenEndpoint: mcpfnOAuth.server.tokenEndpoint,
+    clientId,
+    refreshToken: refreshed.refresh_token,
+  });
+  await expect(refreshOAuthAccessToken({
+    tokenEndpoint: mcpfnOAuth.server.tokenEndpoint,
+    clientId,
+    refreshToken: tokens.refresh_token,
+  })).rejects.toThrow(/Refresh token is invalid or expired/);
   await revokeOAuthToken({
     revocationEndpoint: mcpfnOAuth.server.revocationEndpoint,
-    token: refreshed.access_token,
+    token: rotated.access_token,
   });
-  await expect(mcpfnOAuth.server.verifyAccessToken(refreshed.access_token)).rejects.toThrow(
+  await expect(mcpfnOAuth.server.verifyAccessToken(rotated.access_token)).rejects.toThrow(
     "Invalid access token",
   );
 });

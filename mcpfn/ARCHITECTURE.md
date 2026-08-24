@@ -29,10 +29,10 @@ The official `@modelcontextprotocol/sdk` owns initialization, JSON-RPC dispatch,
 
 ## Manifest compatibility
 
-`createManifest` emits canonical, sorted tools, resources, templates, prompts, capabilities, client requirements, extensions, and a SHA-256 hash. `diffManifests` classifies changes as:
+`createManifest` emits code-unit-sorted tool, resource, template, and prompt inventories plus a SHA-256 hash over a canonically ordered JSON representation. Object-valued capabilities, client requirements, and extensions retain their supplied insertion order in the returned body; their order does not affect the hash. `diffManifests` classifies changes as:
 
-- `breaking`: removed tools/properties/support, narrowed enums, tighter constraints, newly required inputs, incompatible output requiredness;
-- `additive`: added tools or optional properties, wider enums, relaxed constraints, added protocol/transport support;
+- `breaking`: removed tools/properties/support, narrowed input enums, widened output enums, tighter input constraints, relaxed output constraints, newly required inputs, required output additions, and any output property added to a previously closed schema;
+- `additive`: added tools, optional input properties, optional output properties accepted by a previously open schema, widened input enums, relaxed input constraints, and added protocol/transport support;
 - `behavioral`: titles, descriptions, or annotations that can alter model tool selection without changing JSON validity.
 
 The diff is deliberately structural. Semantic scenarios are still required for authorization decisions, version resolution, idempotency, side effects, error envelopes, and result meaning.

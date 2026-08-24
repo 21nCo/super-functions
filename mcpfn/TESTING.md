@@ -74,8 +74,8 @@ McpFn delegates to the pinned official conformance npm package and returns its e
 npm run gate:mcpfn-release
 ```
 
-The gate typechecks, tests, and builds all five McpFn packages; runs OAuth boundary tests, a real Chromium PKCE flow, and the official active conformance suite; runs the complete DataFn server and LangFn suites; runs focused MemoryFn and ProbeFn MCP regression suites; exercises the real CLI against the checked-in calculator server, manifest, and scenarios; and checks package contents.
+The gate typechecks, tests, and builds all five McpFn packages; runs OAuth boundary tests, a real Chromium PKCE flow, and the official active conformance suite; runs the complete DataFn server suite; exercises the real CLI against the checked-in calculator server, manifest, and scenarios; and checks package contents. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
 
-CI routes a change set made entirely of the McpFn runtime, its migrated consumers, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
+CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
 
 When publishing manually, release `@mcpfn/core` and `@mcpfn/auth` first, followed by `@mcpfn/testing`, `@mcpfn/datafn`, and `@mcpfn/cli`. The repository's package release workflow publishes one selected package at a time; it does not infer dependency order.

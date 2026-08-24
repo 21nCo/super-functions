@@ -23,6 +23,9 @@ import {
   structuredResult,
 } from "@mcpfn/core";
 
+// Replace this example with your application's published-skill lookup.
+const resolvePublishedSkill = async (slug: string) => ({ slug });
+
 const registry = new McpFnRegistry().register({
   name: "skill_get",
   description: "Resolve one published skill by slug.",

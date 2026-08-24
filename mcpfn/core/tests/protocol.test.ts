@@ -249,6 +249,13 @@ describe("McpFn protocol primitives", () => {
         handler: async () => structuredResult({ ok: true }),
       }),
     })).toThrow(/missing MCP App resource/);
+
+    expect(() => createMcpAppResource({
+      uri: "ui://optional-csp/main",
+      name: "optional-csp",
+      html: "<!doctype html><html><body>Optional</body></html>",
+      ui: { csp: { connectDomains: undefined } as never },
+    })).not.toThrow();
   });
 
   it("mediates roots, sampling, and elicitation through declared client requirements", async () => {

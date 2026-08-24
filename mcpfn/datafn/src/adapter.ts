@@ -3,6 +3,7 @@ import {
   resolveCapabilities,
   type DatafnFieldSchema,
   type DatafnResourceSchema,
+  type DatafnSchema,
 } from "@datafn/core";
 import {
   McpFnRegistry,
@@ -52,7 +53,24 @@ async function resolveClientId<TMcpContext, TDatafnContext>(
 }
 
 function safeSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "");
+  let segment = "";
+  let needsSeparator = false;
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    const allowed =
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      character === "_" || character === "." || character === "-";
+    if (allowed) {
+      if (needsSeparator && segment) segment += "_";
+      segment += character;
+      needsSeparator = false;
+    } else {
+      needsSeparator = true;
+    }
+  }
+  return segment;
 }
 
 function fieldSchema(field: DatafnFieldSchema): McpFnJsonSchema {
@@ -82,7 +100,7 @@ function fieldSchema(field: DatafnFieldSchema): McpFnJsonSchema {
 }
 
 function capabilitiesFor(
-  schema: CreateDatafnMcpRegistryOptions<unknown, unknown>["schema"],
+  schema: DatafnSchema,
   resource: DatafnResourceSchema,
 ) {
   return getCapabilityFields(
@@ -91,25 +109,38 @@ function capabilitiesFor(
 }
 
 function fieldMaps(
-  schema: CreateDatafnMcpRegistryOptions<unknown, unknown>["schema"],
+  schema: DatafnSchema,
   resource: DatafnResourceSchema,
 ) {
   const schemaFields = new Map(resource.fields.map((field) => [field.name, field]));
   for (const field of capabilitiesFor(schema, resource)) {
     schemaFields.set(field.name, field as DatafnFieldSchema);
   }
-  const readable = new Set(["id", ...(resource.permissions?.read?.fields ?? [])]);
+  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const readDefault = typeof defaults === "string" ? defaults : defaults?.read;
+  const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
+  const defaultFields = ["id", ...resource.fields.map((field) => field.name)];
+  const readable = new Set([
+    "id",
+    ...(resource.permissions?.read?.fields ??
+      (readDefault === "allResourceFields" ? defaultFields : [])),
+  ]);
   for (const field of capabilitiesFor(schema, resource)) readable.add(field.name);
-  const writable = new Set(resource.permissions?.write?.fields ?? []);
+  const writable = new Set(
+    resource.permissions?.write?.fields ??
+      (writeDefault === "allResourceFields" ? defaultFields : []),
+  );
   return { schemaFields, readable, writable };
 }
 
 function validateReadFields(
-  schema: CreateDatafnMcpRegistryOptions<unknown, unknown>["schema"],
+  schema: DatafnSchema,
   resource: DatafnResourceSchema,
   fields: string[],
 ): void {
-  if (!resource.permissions?.read) {
+  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const readDefault = typeof defaults === "string" ? defaults : defaults?.read;
+  if (!resource.permissions?.read && readDefault !== "allResourceFields") {
     throw new McpFnValidationError(
       `DataFn resource ${resource.name} has no read policy and cannot be exposed`,
     );
@@ -130,11 +161,13 @@ function validateReadFields(
 }
 
 function validateWriteFields(
-  schema: CreateDatafnMcpRegistryOptions<unknown, unknown>["schema"],
+  schema: DatafnSchema,
   resource: DatafnResourceSchema,
   fields: string[],
 ): void {
-  if (!resource.permissions?.write) {
+  const defaults = resource.defaultPermissions === false ? undefined : schema.defaultPermissions;
+  const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
+  if (!resource.permissions?.write && writeDefault !== "allResourceFields") {
     throw new McpFnValidationError(
       `DataFn resource ${resource.name} has no write policy and cannot expose mutations`,
     );

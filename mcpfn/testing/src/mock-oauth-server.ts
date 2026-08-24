@@ -476,12 +476,12 @@ export async function startMockOAuthAuthorizationServer(
     try {
       if (!oauth) throw new Error("Mock OAuth server is not initialized");
       await writeResponse(res, await oauth.handle(await toRequest(req, origin)));
-    } catch (error) {
+    } catch {
       res.statusCode = 500;
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({
         error: "server_error",
-        error_description: error instanceof Error ? error.message : String(error),
+        error_description: "Internal Server Error",
       }));
     }
   });

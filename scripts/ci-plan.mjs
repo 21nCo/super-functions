@@ -45,10 +45,7 @@ const MCPFN_PATTERNS = [
 
 const MCPFN_SUPPORT_PATTERNS = [
   /^README\.md$/,
-  /^package(?:-lock)?\.json$/,
   /^release-packages\.json$/,
-  /^scripts\/ci-plan\.mjs$/,
-  /^\.github\/workflows\/ci\.yml$/,
 ];
 
 function git(args, options = {}) {

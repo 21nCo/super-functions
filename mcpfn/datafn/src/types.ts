@@ -34,7 +34,7 @@ export interface DatafnResourceExposure {
 
 export interface CreateDatafnMcpRegistryOptions<TMcpContext, TDatafnContext> {
   /** @deprecated The executor's normalized schema is authoritative. */
-  schema: DatafnSchema;
+  schema?: DatafnSchema;
   executor: DatafnExecutor<TDatafnContext>;
   expose: Record<string, DatafnResourceExposure>;
   /** Resolve trusted DataFn context from server-derived MCP context. */

@@ -61,6 +61,37 @@ describe("McpFnServer", () => {
     });
   });
 
+  it("normalizes structured results without treating repeated references as cycles", () => {
+    const shared = { value: 1 };
+    const circular: Record<string, unknown> = { shared };
+    circular.self = circular;
+    expect(structuredResult({ first: shared, second: shared, circular })).toMatchObject({
+      structuredContent: {
+        first: { value: 1 },
+        second: { value: 1 },
+        circular: { shared: { value: 1 }, self: "[Circular]" },
+      },
+    });
+    expect(structuredResult({ count: 1n }).structuredContent).toEqual({ count: "1" });
+  });
+
+  it("lists prompt arguments derived from argumentsSchema", () => {
+    const prompts = new McpFnRegistry().registerPrompt({
+      name: "schema_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string", description: "Topic to explain." } },
+        required: ["topic"],
+        additionalProperties: false,
+      },
+      get: async () => ({ messages: [] }),
+    }).listPrompts();
+    expect(prompts).toEqual([expect.objectContaining({
+      name: "schema_prompt",
+      arguments: [{ name: "topic", description: "Topic to explain.", required: true }],
+    })]);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()

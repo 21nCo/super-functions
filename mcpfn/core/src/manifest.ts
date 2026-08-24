@@ -3,7 +3,7 @@ import addFormats from "ajv-formats";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
-import { sha256 } from "./canonical.js";
+import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
 import type { McpFnRegistry } from "./registry.js";
@@ -26,7 +26,7 @@ export interface CreateManifestOptions {
 }
 
 function assertSortedUnique(label: string, values: string[]): void {
-  const canonical = [...new Set(values)].sort();
+  const canonical = [...new Set(values)].sort(compareCodeUnits);
   if (
     canonical.length !== values.length ||
     canonical.some((value, index) => value !== values[index])
@@ -210,12 +210,15 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (!tool.inputSchema || tool.inputSchema.type !== "object") {
       throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object inputSchema`);
     }
-    if (tool.outputSchema && tool.outputSchema.type !== "object") {
-      throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object outputSchema`);
+    if (tool.outputSchema !== undefined) {
+      assertObject(`Manifest tool ${tool.name} outputSchema`, tool.outputSchema);
+      if (tool.outputSchema.type !== "object") {
+        throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object outputSchema`);
+      }
     }
     try {
       ajv.compile(tool.inputSchema);
-      if (tool.outputSchema) ajv.compile(tool.outputSchema);
+      if (tool.outputSchema !== undefined) ajv.compile(tool.outputSchema);
     } catch (error) {
       throw new McpFnValidationError(
         `Manifest tool ${tool.name} contains an invalid JSON Schema`,
@@ -288,7 +291,8 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Manifest prompt ${prompt.name} has duplicate arguments`);
     }
-    if (prompt.argumentsSchema) {
+    if (prompt.argumentsSchema !== undefined) {
+      assertObject(`Manifest prompt ${prompt.name} argumentsSchema`, prompt.argumentsSchema);
       try { ajv.compile(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,

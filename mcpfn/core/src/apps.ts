@@ -57,6 +57,7 @@ function assertHtml(html: string): void {
 function assertCsp(csp: McpAppCsp | undefined): void {
   if (!csp) return;
   for (const [kind, domains] of Object.entries(csp)) {
+    if (domains === undefined) continue;
     if (!Array.isArray(domains)) {
       throw new McpFnValidationError(`MCP App CSP ${kind} must be an array`);
     }

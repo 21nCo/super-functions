@@ -90,6 +90,35 @@ describe("DataFn McpFn adapter", () => {
     })).toThrow(/not readable/);
   });
 
+  it("honors schema-level default permissions", async () => {
+    const schema = {
+      defaultPermissions: "allResourceFields" as const,
+      resources: [{
+        name: "tasks",
+        version: 1,
+        fields: [{ name: "title", type: "string" as const, required: true }],
+      }],
+    };
+    const datafn = await createDatafnServer({ schema, db: memoryAdapter() });
+    closeables.push(datafn);
+    const registry = createDatafnMcpRegistry({
+      executor: datafn.executor,
+      context: () => undefined,
+      clientId: "test",
+      expose: {
+        tasks: {
+          fields: ["id", "title"],
+          create: { fields: ["title"] },
+        },
+      },
+    });
+    expect(registry.listTools().map((tool) => tool.name)).toEqual([
+      "datafn_tasks_create",
+      "datafn_tasks_get",
+      "datafn_tasks_list",
+    ]);
+  });
+
   it("uses the executor's normalized schema as the authoritative contract", async () => {
     const executorSchema = {
       resources: [{
@@ -102,7 +131,6 @@ describe("DataFn McpFn adapter", () => {
     const datafn = await createDatafnServer({ schema: executorSchema, db: memoryAdapter() });
     closeables.push(datafn);
     const registry = createDatafnMcpRegistry({
-      schema: { resources: [] },
       executor: datafn.executor,
       context: () => undefined,
       clientId: "test",

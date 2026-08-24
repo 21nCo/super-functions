@@ -195,5 +195,25 @@ describe("McpFn testing", () => {
       server.manifest(),
       MCPFN_HOST_PROFILES.fullProtocol,
     )).toMatchObject({ status: "compatible", compatible: true });
+
+    const optionalPromptServer = createMcpFnServer({
+      info: { name: "optional-prompts", version: "1.0.0" },
+      registry: new McpFnRegistry().registerPrompt({
+        name: "optional",
+        get: async () => ({ messages: [] }),
+      }),
+      protocolVersions: ["2025-11-25"],
+    });
+    expect(checkHostCompatibility(
+      optionalPromptServer.manifest(),
+      MCPFN_HOST_PROFILES.toolsOnly,
+    )).toMatchObject({
+      status: "degraded",
+      compatible: true,
+      issues: [expect.objectContaining({
+        code: "server-feature-unavailable",
+        path: "capabilities.prompts",
+      })],
+    });
   });
 });

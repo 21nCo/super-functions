@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   McpFnRegistry,
@@ -98,7 +98,7 @@ describe("mcpfn CLI", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-mismatch-"));
     roots.push(root);
     const coreUrl = pathToFileURL(
-      path.resolve(import.meta.dirname, "../../core/src/index.ts"),
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
     ).href;
     const stale = createManifest(
       { name: "mismatch", version: "1.0.0" },

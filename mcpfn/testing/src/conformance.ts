@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 export const OFFICIAL_CONFORMANCE_VERSION = "0.1.16";
@@ -19,6 +20,21 @@ export interface OfficialConformanceResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+}
+
+function npxInvocation(args: string[]): { command: string; args: string[] } {
+  if (process.platform !== "win32") return { command: "npx", args };
+  const npmExecPath = process.env.npm_execpath;
+  const candidates = [
+    npmExecPath ? path.join(path.dirname(npmExecPath), "npx-cli.js") : undefined,
+    path.resolve(path.dirname(process.execPath), "node_modules/npm/bin/npx-cli.js"),
+    path.resolve(path.dirname(process.execPath), "../lib/node_modules/npm/bin/npx-cli.js"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const npxCli = candidates.find((candidate) => existsSync(candidate));
+  if (!npxCli) {
+    throw new Error("Unable to locate npm's npx-cli.js for the official MCP conformance runner");
+  }
+  return { command: process.execPath, args: [npxCli, ...args] };
 }
 
 export function buildOfficialConformanceArgs(
@@ -52,9 +68,10 @@ export async function runOfficialConformance(
     );
   }
   const args = buildOfficialConformanceArgs(options);
+  const invocation = npxInvocation(args);
 
   return await new Promise<OfficialConformanceResult>((resolve, reject) => {
-    const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", args, {
+    const child = spawn(invocation.command, invocation.args, {
       cwd: options.cwd,
       env: {
         ...process.env,

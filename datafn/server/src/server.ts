@@ -1412,15 +1412,34 @@ export async function createDatafnServer<TContext = any>(
       body,
       signal,
     });
-    const response = await withAuth(action, handler)(
-      request,
-      context ?? ({} as TContext),
-    );
-    const envelope = await response.json() as {
+    let response: Response;
+    try {
+      const configuredContext = config.context;
+      const executorContext = context ?? (
+        typeof configuredContext === "function"
+          ? await (configuredContext as (request: Request) => Promise<TContext> | TContext)(request)
+          : configuredContext ?? ({} as TContext)
+      );
+      response = await withAuth(action, handler)(request, executorContext);
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "Internal Server Error" },
+        500,
+      );
+    }
+    let envelope: {
       ok: boolean;
       result?: TResult;
       error?: DatafnError;
     };
+    try {
+      envelope = await response.json() as typeof envelope;
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
     if (!envelope.ok || !Object.prototype.hasOwnProperty.call(envelope, "result")) {
       throw new DatafnExecutorError(
         envelope.error ?? { code: "INTERNAL", message: "DataFn execution failed" },

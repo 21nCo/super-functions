@@ -1,13 +1,14 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-function jsonSafe(value: unknown): unknown {
-  const seen = new WeakSet<object>();
+export function jsonSafe(value: unknown): unknown {
+  const ancestors: object[] = [];
   try {
-    const serialized = JSON.stringify(value, (_key, entry: unknown) => {
+    const serialized = JSON.stringify(value, function (this: unknown, _key, entry: unknown) {
       if (typeof entry === "bigint") return entry.toString();
       if (entry && typeof entry === "object") {
-        if (seen.has(entry)) return "[Circular]";
-        seen.add(entry);
+        while (ancestors.length && ancestors.at(-1) !== this) ancestors.pop();
+        if (ancestors.includes(entry)) return "[Circular]";
+        ancestors.push(entry);
       }
       return entry;
     });

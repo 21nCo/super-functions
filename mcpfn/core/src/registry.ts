@@ -13,6 +13,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
+import { compareCodeUnits } from "./canonical.js";
 import type {
   McpFnListedTool,
   McpFnPromptDefinition,
@@ -91,6 +92,21 @@ function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
       .map((argument) => argument.name),
     additionalProperties: false,
   };
+}
+
+function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
+  if (definition.arguments) return definition.arguments;
+  const properties = definition.argumentsSchema?.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
+  const required = new Set(definition.argumentsSchema?.required ?? []);
+  return Object.entries(properties)
+    .sort(([left], [right]) => compareCodeUnits(left, right))
+    .map(([name, schema]) => ({
+      name,
+      ...(schema && typeof schema === "object" && !Array.isArray(schema) &&
+        typeof schema.description === "string" ? { description: schema.description } : {}),
+      ...(required.has(name) ? { required: true } : {}),
+    }));
 }
 
 export class McpFnRegistry<TContext = undefined> {
@@ -212,7 +228,7 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.prompts.has(definition.name)) {
       throw new McpFnValidationError(`Duplicate MCP prompt: ${definition.name}`);
     }
-    const argumentNames = (definition.arguments ?? []).map(({ name }) => name);
+    const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
     }
@@ -247,23 +263,23 @@ export class McpFnRegistry<TContext = undefined> {
   definitions(): McpFnToolDefinition<TContext>[] {
     return [...this.tools.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   resourceDefinitions(): McpFnResourceDefinition<TContext>[] {
-    return [...this.resources.values()].sort((left, right) => left.uri.localeCompare(right.uri));
+    return [...this.resources.values()].sort((left, right) => compareCodeUnits(left.uri, right.uri));
   }
 
   resourceTemplateDefinitions(): McpFnResourceTemplateDefinition<TContext>[] {
     return [...this.resourceTemplates.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   promptDefinitions(): McpFnPromptDefinition<TContext>[] {
     return [...this.prompts.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   capabilities(options: { listChanged?: boolean } = {}): ServerCapabilities {
@@ -321,7 +337,7 @@ export class McpFnRegistry<TContext = undefined> {
     for (const { definition } of this.resourceTemplates.values()) {
       if (definition.list) resources.push(...(await definition.list(context, extra)).resources);
     }
-    return resources.sort((left, right) => left.uri.localeCompare(right.uri));
+    return resources.sort((left, right) => compareCodeUnits(left.uri, right.uri));
   }
 
   listResourceTemplates(): ResourceTemplate[] {
@@ -342,7 +358,7 @@ export class McpFnRegistry<TContext = undefined> {
       name: definition.name,
       ...(definition.title ? { title: definition.title } : {}),
       ...(definition.description ? { description: definition.description } : {}),
-      ...(definition.arguments ? { arguments: definition.arguments } : {}),
+      ...(promptArguments(definition) ? { arguments: promptArguments(definition) } : {}),
       ...(definition.icons ? { icons: definition.icons } : {}),
       ...(definition.metadata ? { _meta: definition.metadata } : {}),
     }));
