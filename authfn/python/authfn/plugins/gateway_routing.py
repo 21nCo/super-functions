@@ -361,7 +361,7 @@ def create_cell_routing_middleware(
         ) -> Response:
             buffered = await _buffer_request(request)
             if classify_route(buffered, base_path).scope == "global":
-                return await next_handler(buffered, context)
+                return cast(Response, await next_handler(buffered, context))
             return _error_response(buffered, RoutingCellUnavailableError())
 
         return gateway_only_middleware
@@ -378,7 +378,7 @@ def create_cell_routing_middleware(
     async def middleware(request: Any, context: Any, next_handler: Callable[..., Any]) -> Response:
         buffered = await _buffer_request(request)
         if classify_route(buffered, base_path).scope == "global":
-            return await next_handler(buffered, context)
+            return cast(Response, await next_handler(buffered, context))
         try:
             token = _header(buffered.headers, ASSERTION_HEADER)
             if not token:
@@ -433,7 +433,7 @@ def create_cell_routing_middleware(
                 )
                 response.headers[MISMATCH_HEADER] = _sign(mismatch, keyring)
                 return response
-            return await next_handler(buffered, context)
+            return cast(Response, await next_handler(buffered, context))
         except Exception as error:  # noqa: BLE001
             return _error_response(buffered, error)
 
