@@ -1,0 +1,97 @@
+import { access, readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+
+import type { DetectionFinding, DevFnConfig, DiscoveryResult, ProcessSpec } from "./types.js";
+
+async function exists(filePath: string): Promise<boolean> {
+  try { await access(filePath); return true; } catch { return false; }
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+}
+
+async function readPackage(root: string): Promise<Record<string, unknown> | null> {
+  try { return JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as Record<string, unknown>; } catch { return null; }
+}
+
+export async function discoverProject(root = process.cwd()): Promise<DiscoveryResult> {
+  const resolvedRoot = path.resolve(root);
+  const findings: DetectionFinding[] = [];
+  const processes: Record<string, ProcessSpec> = {};
+  const packageJson = await readPackage(resolvedRoot);
+  const baseName = path.basename(resolvedRoot);
+
+  const declaredManager = typeof packageJson?.packageManager === "string" ? packageJson.packageManager : "";
+  const unsupportedManager = await exists(path.join(resolvedRoot, "yarn.lock")) || /^yarn(?:@|$)/.test(declaredManager) ? "yarn"
+    : await exists(path.join(resolvedRoot, "bun.lockb")) || await exists(path.join(resolvedRoot, "bun.lock")) || /^bun(?:@|$)/.test(declaredManager) ? "bun"
+      : undefined;
+  let packageManager: "npm" | "pnpm" | undefined = unsupportedManager ? undefined : "npm";
+  if (!unsupportedManager) {
+    if (await exists(path.join(resolvedRoot, "pnpm-lock.yaml"))) packageManager = "pnpm";
+    else if (/^pnpm(?:@|$)/.test(declaredManager)) packageManager = "pnpm";
+  }
+  findings.push({
+    kind: "package-manager",
+    confidence: unsupportedManager ? "proposed" : packageJson ? "confirmed" : "proposed",
+    source: packageJson ? "package.json" : "directory contents",
+    detail: unsupportedManager ? `${unsupportedManager} is detected but has no native adapter; add an explicit command.` : packageManager!,
+  });
+
+  const scripts = packageJson && packageJson.scripts && typeof packageJson.scripts === "object" ? packageJson.scripts as Record<string, unknown> : {};
+  for (const candidate of ["dev", "start"] as const) {
+    if (packageManager && typeof scripts[candidate] === "string") {
+      processes.app = { adapter: packageManager, script: candidate, ports: ["app"] };
+      findings.push({ kind: "process", confidence: "confirmed", source: `package.json#scripts.${candidate}`, detail: `${packageManager} run ${candidate}` });
+      break;
+    }
+  }
+
+  const entries = await readdir(resolvedRoot).catch(() => [] as string[]);
+  const composeFile = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"].find((name) => entries.includes(name));
+  if (composeFile) findings.push({ kind: "compose", confidence: "confirmed", source: composeFile, detail: "Compose file detected; service selection requires review." });
+  const wranglerFile = ["wrangler.toml", "wrangler.json", "wrangler.jsonc"].find((name) => entries.includes(name));
+  if (wranglerFile) findings.push({ kind: "wrangler", confidence: "confirmed", source: wranglerFile, detail: "Wrangler configuration detected; binding and health settings require review." });
+  if (entries.some((name) => name.endsWith(".xcodeproj") || name.endsWith(".xcworkspace"))) {
+    findings.push({ kind: "xcode", confidence: "confirmed", source: "repository root", detail: "Xcode project/workspace detected; scheme and simulator require review." });
+  }
+  if (await exists(path.join(resolvedRoot, "manifest.json")) || await exists(path.join(resolvedRoot, "public", "manifest.json"))) {
+    findings.push({ kind: "extension", confidence: "proposed", source: "manifest.json", detail: "Possible browser extension; ExtFn workflow requires review." });
+  }
+
+  if (Object.keys(processes).length === 0) {
+    findings.push({ kind: "process", confidence: "proposed", source: "no supported script detected", detail: "Add an explicit process command before running devfn up." });
+  }
+  if (Object.keys(processes).length > 0) {
+    findings.push({ kind: "process", confidence: "proposed", source: "framework default", detail: "The initial app port 3000 is a proposal and must be checked against the actual development server." });
+  }
+
+  const config: DevFnConfig = {
+    version: 1,
+    project: { id: slug(typeof packageJson?.name === "string" ? packageJson.name : baseName), name: typeof packageJson?.name === "string" ? packageJson.name : baseName },
+    defaultProfile: "default",
+    runtimeDir: ".devfn",
+    ports: Object.keys(processes).length ? { app: { preferred: 3000, range: [3000, 3099], env: "PORT" } } : {},
+    processes,
+    profiles: { default: { processes: Object.keys(processes), services: [] } },
+    prerequisites: Object.keys(processes).length && packageManager ? [{ command: packageManager, version: packageManager === "pnpm" ? "project-pinned" : undefined }] : [],
+    environmentOutputs: [{ path: ".devfn/runtime.env", format: "dotenv", mode: 0o600 }],
+  };
+  return { root: resolvedRoot, findings, config };
+}
+
+function quote(value: unknown, indent = 0): string {
+  const json = JSON.stringify(value, null, 2).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
+  return json.split("\n").map((line, index) => index === 0 ? line : `${" ".repeat(indent)}${line}`).join("\n");
+}
+
+export function renderDevFnConfig(config: DevFnConfig, findings: readonly DetectionFinding[]): string {
+  const uncertain = findings.filter((finding) => finding.confidence === "proposed");
+  const header = [
+    "// Generated by devfn init. Review every command before trusting this repository.",
+    "// Keep executable DevFn manifests self-contained; imports and require() are rejected.",
+    ...(uncertain.length ? uncertain.map((finding) => `// REVIEW: ${finding.detail} (${finding.source})`) : []),
+    "export default ",
+  ];
+  return `${header.join("\n")}${quote(config, 2)} as const;\n`;
+}
