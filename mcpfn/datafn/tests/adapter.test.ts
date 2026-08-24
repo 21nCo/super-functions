@@ -107,7 +107,7 @@ describe("DataFn McpFn adapter", () => {
         _tasks: { fields: ["id", "title"] },
         tasks_: { fields: ["id", "title"] },
       },
-    })).toThrow(/tool name collision for datafn_tasks_list: _tasks\.list and tasks_\.list/);
+    })).toThrow(/DataFn tool name collision for datafn_tasks_list: _tasks\.list and tasks_\.list/);
   });
 
   it("honors schema-level default permissions", async () => {

@@ -29,7 +29,7 @@ export interface DatafnResourceExposure {
   /** Mutations are always disabled unless configured with an explicit field allowlist. */
   create?: false | DatafnWriteToolOptions;
   update?: false | DatafnWriteToolOptions;
-  delete?: false | Omit<DatafnWriteToolOptions, "fields">;
+  delete?: boolean | Omit<DatafnWriteToolOptions, "fields">;
 }
 
 export interface CreateDatafnMcpRegistryOptions<TMcpContext, TDatafnContext> {

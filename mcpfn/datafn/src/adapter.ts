@@ -237,7 +237,7 @@ function assertUniqueToolNames<TMcpContext>(
       ["get", operationOptions<DatafnReadToolOptions>(exposure.get, true)],
       ["create", exposure.create || undefined],
       ["update", exposure.update || undefined],
-      ["delete", exposure.delete || undefined],
+      ["delete", operationOptions<Omit<DatafnWriteToolOptions, "fields">>(exposure.delete, false)],
     ];
     for (const [operation, config] of operations) {
       if (!config) continue;
@@ -465,8 +465,12 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
 
     if (exposure.create) registerWrite("create", exposure.create);
     if (exposure.update) registerWrite("update", exposure.update);
-    if (exposure.delete) {
-      const config = exposure.delete;
+    const remove = operationOptions<Omit<DatafnWriteToolOptions, "fields">>(
+      exposure.delete,
+      false,
+    );
+    if (remove) {
+      const config = remove;
       const defaults = resourceDefaults(schema, resource);
       const writeDefault = typeof defaults === "string" ? defaults : defaults?.write;
       if (!resource.permissions?.write && writeDefault !== "allResourceFields") {

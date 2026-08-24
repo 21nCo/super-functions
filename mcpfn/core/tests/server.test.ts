@@ -73,6 +73,9 @@ describe("McpFnServer", () => {
       },
     });
     expect(structuredResult({ count: 1n }).structuredContent).toEqual({ count: "1" });
+    expect(() => structuredResult({ toJSON: () => null })).toThrow(
+      /structuredContent must serialize to an object/,
+    );
   });
 
   it("lists prompt arguments derived from argumentsSchema", () => {
@@ -100,6 +103,21 @@ describe("McpFnServer", () => {
     })]);
   });
 
+  it("lists required-only prompt arguments derived from argumentsSchema", () => {
+    const registry = new McpFnRegistry().registerPrompt({
+      name: "required_only_prompt",
+      argumentsSchema: {
+        type: "object",
+        required: ["token"],
+      },
+      get: async () => ({ messages: [] }),
+    });
+    expect(registry.listPrompts()).toEqual([expect.objectContaining({
+      name: "required_only_prompt",
+      arguments: [{ name: "token", required: true }],
+    })]);
+  });
+
   it("rejects malformed prompt required lists through validation", () => {
     expect(() => new McpFnRegistry().registerPrompt({
       name: "invalid_required",
@@ -123,6 +141,29 @@ describe("McpFnServer", () => {
       },
       get: async () => ({ messages: [] }),
     })).toThrow(/arguments and argumentsSchema disagree/);
+  });
+
+  it("allows explicit prompt arguments with a composed schema", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "composed_prompt",
+      arguments: [{ name: "topic", required: true }],
+      argumentsSchema: {
+        type: "object",
+        allOf: [{
+          properties: { topic: { type: "string" } },
+          required: ["topic"],
+        }],
+      },
+      get: async () => ({ messages: [] }),
+    })).not.toThrow();
+  });
+
+  it("rejects malformed prompt argument inventories with a validation error", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "malformed_prompt",
+      arguments: false,
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/arguments must be an array/);
   });
 
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {

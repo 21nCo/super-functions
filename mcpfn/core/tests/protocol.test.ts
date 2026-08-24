@@ -122,7 +122,12 @@ describe("McpFn protocol primitives", () => {
       uriTemplate: "docs://users/{id}",
       name: "person",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Person" }] }),
-    })).toThrow(/Duplicate MCP resource URI template/);
+    })).toThrow(/Ambiguous MCP resource URI template/);
+    expect(() => registry.registerResourceTemplate({
+      uriTemplate: "docs://users/{name}",
+      name: "renamed-person",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Person" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
   });
 
   it("runs task-augmented tools through the SDK task store", async () => {

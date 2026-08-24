@@ -102,6 +102,29 @@ describe("McpFn manifests", () => {
     ]));
   });
 
+  it("allows required output additions when prior clients accept extra properties", () => {
+    const before = createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "result",
+        description: "Return a result.",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "object" },
+        handler: async () => structuredResult({ token: "value" }),
+      }),
+    );
+    const after = structuredClone(before);
+    after.tools[0]!.outputSchema = {
+      type: "object",
+      properties: { token: { type: "string" } },
+      required: ["token"],
+    };
+
+    expect(diffManifests(before, after).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "property-added", severity: "additive" }),
+    ]));
+  });
+
   it("applies input and output variance to enum and constraint changes", () => {
     const before = createManifest(
       { name: "example", version: "1.0.0" },
@@ -193,7 +216,7 @@ describe("McpFn manifests", () => {
     })).toThrow(/argumentsSchema must be an object/);
   });
 
-  it("treats required or closed-schema output additions as breaking", () => {
+  it("treats closed-schema output additions as breaking", () => {
     const create = (
       required: string[],
       additionalProperties: boolean,
@@ -216,17 +239,15 @@ describe("McpFn manifests", () => {
         handler: async () => structuredResult({ value: "ok", added: "new" }),
       }),
     );
-    for (const [before, after] of [
-      [create(["value"], false, false), create(["value"], false, true)],
-      [create(["value"], true, false), create(["value", "added"], true, true)],
-    ]) {
-      expect(diffManifests(before, after)).toMatchObject({
-        compatible: false,
-        changes: expect.arrayContaining([
-          expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
-        ]),
-      });
-    }
+    expect(diffManifests(
+      create(["value"], false, false),
+      create(["value"], false, true),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+      ]),
+    });
   });
 
   it("treats new client-mediated requirements as breaking", () => {

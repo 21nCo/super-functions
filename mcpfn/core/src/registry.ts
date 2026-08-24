@@ -76,19 +76,51 @@ function assertUri(kind: string, uri: string): void {
   }
 }
 
+function uriTemplateMatchShape(uriTemplate: string): string {
+  let expressionIndex = 0;
+  return uriTemplate.replace(/\{([^{}]+)\}/g, (_match, expression: string) => {
+    const operator = /^[+#./?&]/.exec(expression)?.[0] ?? "";
+    if (operator === "?" || operator === "&") {
+      // Query variable names are literal parameter names and affect the matched URI set.
+      return `{${expression}}`;
+    }
+    const exploded = expression.includes("*") ? "*" : "";
+    return `{${operator}variable${expressionIndex++}${exploded}}`;
+  });
+}
+
 function schemaPromptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
-  const properties = definition.argumentsSchema?.properties;
-  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return undefined;
-  const schemaRequired = definition.argumentsSchema?.required;
-  const required = new Set(Array.isArray(schemaRequired) ? schemaRequired : []);
-  return Object.entries(properties)
-    .sort(([left], [right]) => compareCodeUnits(left, right))
-    .map(([name, schema]) => ({
+  const schema = definition.argumentsSchema;
+  if (!schema) return undefined;
+  const nonFlatKeywords = [
+    "$ref", "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
+    "patternProperties", "dependentSchemas", "propertyNames",
+  ];
+  if (nonFlatKeywords.some((keyword) => Object.hasOwn(schema, keyword))) return undefined;
+  const properties = schema.properties;
+  if (properties !== undefined && (
+    typeof properties !== "object" || properties === null || Array.isArray(properties)
+  )) return undefined;
+  if (schema.required !== undefined && !Array.isArray(schema.required)) return undefined;
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((name): name is string => typeof name === "string")
+      : [],
+  );
+  const propertySchemas = (properties ?? {}) as Record<string, unknown>;
+  const names = [...new Set([...Object.keys(propertySchemas), ...required])]
+    .sort(compareCodeUnits);
+  return names.map((name) => {
+    const propertySchema = propertySchemas[name];
+    return {
       name,
-      ...(schema && typeof schema === "object" && !Array.isArray(schema) &&
-        typeof schema.description === "string" ? { description: schema.description } : {}),
+      ...(propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema) &&
+        typeof (propertySchema as { description?: unknown }).description === "string"
+        ? { description: (propertySchema as { description: string }).description }
+        : {}),
       ...(required.has(name) ? { required: true } : {}),
-    }));
+    };
+  });
 }
 
 function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
@@ -110,7 +142,9 @@ function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
 }
 
 export function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
-  return definition.arguments ?? schemaPromptArguments(definition);
+  return Array.isArray(definition.arguments)
+    ? definition.arguments
+    : schemaPromptArguments(definition);
 }
 
 export class McpFnRegistry<TContext = undefined> {
@@ -202,13 +236,6 @@ export class McpFnRegistry<TContext = undefined> {
         `Duplicate MCP resource template: ${definition.name}`,
       );
     }
-    if ([...this.resourceTemplates.values()].some(
-      ({ definition: registered }) => registered.uriTemplate === definition.uriTemplate,
-    )) {
-      throw new McpFnValidationError(
-        `Duplicate MCP resource URI template: ${definition.uriTemplate}`,
-      );
-    }
     let template: UriTemplate;
     try {
       template = new UriTemplate(definition.uriTemplate);
@@ -221,6 +248,15 @@ export class McpFnRegistry<TContext = undefined> {
     if (!template.variableNames.length) {
       throw new McpFnValidationError(
         `Resource template ${definition.name} must contain at least one variable`,
+      );
+    }
+    const matchShape = uriTemplateMatchShape(definition.uriTemplate);
+    if ([...this.resourceTemplates.values()].some(
+      ({ definition: registered }) =>
+        uriTemplateMatchShape(registered.uriTemplate) === matchShape,
+    )) {
+      throw new McpFnValidationError(
+        `Ambiguous MCP resource URI template: ${definition.uriTemplate}`,
       );
     }
     for (const name of Object.keys(definition.complete ?? {})) {
@@ -239,6 +275,17 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.prompts.has(definition.name)) {
       throw new McpFnValidationError(`Duplicate MCP prompt: ${definition.name}`);
     }
+    if (
+      definition.arguments !== undefined && (
+        !Array.isArray(definition.arguments) ||
+        definition.arguments.some((argument) =>
+          !argument || typeof argument !== "object" || Array.isArray(argument) ||
+          typeof argument.name !== "string"
+        )
+      )
+    ) {
+      throw new McpFnValidationError(`Prompt ${definition.name} arguments must be an array`);
+    }
     const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
@@ -247,9 +294,11 @@ export class McpFnRegistry<TContext = undefined> {
       const declared = definition.arguments
         .map(({ name, required }) => ({ name, required: required === true }))
         .sort((left, right) => compareCodeUnits(left.name, right.name));
-      const schemaDeclared = (schemaPromptArguments(definition) ?? [])
-        .map(({ name, required }) => ({ name, required: required === true }));
-      if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+      const derivedArguments = schemaPromptArguments(definition);
+      const schemaDeclared = derivedArguments?.map(
+        ({ name, required }) => ({ name, required: required === true }),
+      );
+      if (schemaDeclared && JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
         throw new McpFnValidationError(
           `Prompt ${definition.name} arguments and argumentsSchema disagree`,
         );

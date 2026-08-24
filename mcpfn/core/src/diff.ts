@@ -251,7 +251,7 @@ function diffSchema(
       const newlyRequired = afterRequired.has(name);
       const breaksDeclaredOutput =
         direction === "output" &&
-        (newlyRequired || before.additionalProperties === false);
+        beforeAdditional !== true;
       push(changes, {
         severity:
           direction === "input" && newlyRequired || breaksDeclaredOutput
