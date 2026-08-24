@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import type { InstanceIdentity } from "./types.js";
@@ -13,7 +14,8 @@ async function git(root: string, args: string[]): Promise<string | undefined> {
 
 export async function resolveInstanceIdentity(projectId: string, root: string): Promise<InstanceIdentity> {
   const worktreePath = await realpath(root);
-  const repositoryIdentity = await git(root, ["config", "--get", "remote.origin.url"]) ?? await git(root, ["rev-parse", "--git-common-dir"]) ?? worktreePath;
+  const commonDirectory = await git(root, ["rev-parse", "--git-common-dir"]);
+  const repositoryIdentity = commonDirectory ? await realpath(path.resolve(root, commonDirectory)) : worktreePath;
   const instanceId = createHash("sha256").update(`${repositoryIdentity}\0${worktreePath}\0${projectId}`).digest("hex").slice(0, 12);
   return {
     projectId,

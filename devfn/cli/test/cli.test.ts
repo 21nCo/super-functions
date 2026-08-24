@@ -1,10 +1,24 @@
-import { access, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isPortAvailable } from "@devfn/ports";
 import { runCli } from "../src/index.js";
+
+async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
+  const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
+  await symlink("/bin/ps", path.join(toolsDir, "ps"));
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = toolsDir;
+    return await action();
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    await rm(toolsDir, { recursive: true, force: true });
+  }
+}
 
 describe("devfn CLI", () => {
   it("previews detection before init writes", async () => {
@@ -223,15 +237,11 @@ describe("devfn CLI", () => {
       expect(doctor.code, JSON.stringify(doctor.value)).toBe(0);
       expect(doctor.value.diagnostics?.some((item) => item.code === "DEVFN_EXACT_PORT_OCCUPIED")).toBe(false);
       if (process.platform !== "win32") {
-        const originalPath = process.env.PATH;
-        const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
-        await symlink("/bin/ps", path.join(toolsDir, "ps"));
-        try {
-          process.env.PATH = toolsDir;
+        await withListenerTools(async () => {
           const unavailable = await invoke(["doctor"]);
           expect(unavailable.code, JSON.stringify(unavailable.value)).toBe(0);
           expect(unavailable.value.diagnostics?.some((item) => item.code === "DEVFN_LISTENER_INSPECTION_UNAVAILABLE")).toBe(true);
-        } finally { process.env.PATH = originalPath; }
+        });
       }
     } finally { await invoke(["down"]).catch(() => undefined); }
   }, 15_000);
@@ -240,46 +250,38 @@ describe("devfn CLI", () => {
     if (process.platform === "win32") return;
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-listener-tools-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
-    await symlink("/bin/ps", path.join(toolsDir, "ps"));
     await writeFile(path.join(cwd, "server.mjs"), "import net from 'node:net'; net.createServer().listen(Number(process.env.PORT), '127.0.0.1');\n", "utf8");
     await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
       version: 1, project: { id: "listener-tools" }, ports: { app: { range: [45300, 45400], env: "PORT" } },
       processes: { app: { adapter: "command", command: [process.execPath, "server.mjs"], ports: ["app"], health: { type: "tcp", port: "app", timeoutMs: 5000 } } },
       profiles: { default: { processes: ["app"] } },
     }), "utf8");
-    const originalPath = process.env.PATH;
     let stdout = "";
-    try {
-      process.env.PATH = toolsDir;
+    await withListenerTools(async () => {
       expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
       expect(JSON.parse(stdout).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "DEVFN_LISTENER_INSPECTION_UNAVAILABLE", severity: "error" })]));
       stdout = "";
       expect(await runCli(["up", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
       expect(JSON.parse(stdout).error.message).toContain("could not be inspected");
-    } finally { process.env.PATH = originalPath; }
+    });
   }, 15_000);
 
   it("preflights both listener protocols for portless local processes", async () => {
     if (process.platform === "win32") return;
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-portless-listener-tools-"));
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-state-"));
-    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-tools-"));
-    await symlink("/bin/ps", path.join(toolsDir, "ps"));
     await writeFile(path.join(cwd, "devfn.config.json"), JSON.stringify({
       version: 1, project: { id: "portless-listener-tools" },
       processes: { app: { adapter: "command", command: [process.execPath, "-e", "setInterval(() => {}, 1000)"] } },
       profiles: { default: { processes: ["app"] } },
     }), "utf8");
-    const originalPath = process.env.PATH;
     let stdout = "";
-    try {
-      process.env.PATH = toolsDir;
+    await withListenerTools(async () => {
       expect(await runCli(["doctor", "--trust", "--json", "--state-dir", stateDir], { cwd, stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
       const diagnostics = JSON.parse(stdout).diagnostics.filter((item: { code: string }) => item.code === "DEVFN_LISTENER_INSPECTION_UNAVAILABLE");
       expect(diagnostics).toHaveLength(2);
       expect(diagnostics.map((item: { message: string }) => item.message)).toEqual(expect.arrayContaining([expect.stringContaining("TCP"), expect.stringContaining("UDP")]));
-    } finally { process.env.PATH = originalPath; }
+    });
   }, 15_000);
 
   it("waits for an unprobed process to bind its declared port", async () => {

@@ -94,6 +94,17 @@ describe("DevFn configuration", () => {
     })).toThrow(/requires TCP port socket/);
   });
 
+  it("rejects UDP hostname targets active in proxy-enabled profiles", () => {
+    expect(() => validateDevFnConfig({
+      version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },
+      profiles: { default: { proxy: true } }, hostnames: { socket: { target: "socket" } },
+    })).toThrow(/cannot target UDP port socket/);
+    expect(validateDevFnConfig({
+      version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },
+      profiles: { default: {}, proxied: { proxy: true } }, hostnames: { socket: { target: "socket", profiles: ["default"] } },
+    }).hostnames?.socket.target).toBe("socket");
+  });
+
   it("does not map unsupported package managers to npm", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "devfn-yarn-"));
     await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));

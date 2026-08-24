@@ -88,6 +88,18 @@ describe("FilePortRegistry", () => {
     expect(allocations.every((item) => item.source === "preferred")).toBe(true);
   });
 
+  it("rejects blocks whose assigned ports cannot satisfy every member range", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
+    const registry = new FilePortRegistry(path.join(dir, "registry.json"), undefined, async () => true);
+    await expect(registry.reserve({
+      projectId: "oauth", instanceId: "incompatible", invocationId: "incompatible-block", profile: "default",
+      requests: [
+        { name: "callback", spec: { range: [5000, 5001], block: "oauth" } },
+        { name: "issuer", spec: { range: [6000, 6001], block: "oauth" } },
+      ],
+    })).rejects.toMatchObject({ code: "DEVFN_PORT_CONFLICT" });
+  });
+
   it("skips registry-leased ports returned by the OS ephemeral allocator", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "devfn-registry-"));
     const leased = await allocateEphemeralPort();

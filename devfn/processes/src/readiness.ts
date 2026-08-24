@@ -71,6 +71,7 @@ async function httpReady(health: Extract<HealthCheck, { type: "http" }>, input: 
     parsed.hash = "";
     parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/`;
     const appended = new URL(health.path.replace(/^\/+/, ""), parsed);
+    if (appended.origin !== parsed.origin) throw new Error("HTTP readiness path must stay on the configured URL origin.");
     if (!appended.search) appended.search = baseSearch;
     if (!appended.hash) appended.hash = baseHash;
     url = appended.toString();

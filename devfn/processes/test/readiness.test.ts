@@ -28,6 +28,19 @@ describe("process readiness", () => {
     await expect(checkReadinessNow({ health: { type: "http", url: `http://127.0.0.1:${address.port}`, timeoutMs: 50 }, ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true })).resolves.toBe(false);
   });
 
+  it("rejects an absolute health path that changes the configured origin", async () => {
+    const server = (await import("node:http")).createServer((_request, response) => { response.writeHead(200); response.end(); });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("HTTP test server did not receive a port.");
+    try {
+      await expect(checkReadinessNow({
+        health: { type: "http", url: "http://127.0.0.1:1/base", path: `http://127.0.0.1:${address.port}/wrong-origin`, timeoutMs: 100 },
+        ports: {}, logPath: "unused.log", cwd: process.cwd(), environment: process.env, isAlive: () => true,
+      })).resolves.toBe(false);
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+  });
+
   it("honors configured current-probe timeouts longer than two seconds", async () => {
     const started = Date.now();
     await expect(checkReadinessNow({

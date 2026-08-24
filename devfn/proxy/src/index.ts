@@ -76,14 +76,13 @@ export class CaddyProxyController {
   private async read(): Promise<ProxyState> {
     const pending = await this.readState(this.pendingPath);
     if (pending) {
-      try { await rename(this.pendingPath, this.statePath); }
-      catch (error) { throw new ProxyError("DEVFN_PROXY_CONFIG_INVALID", `Unable to recover pending proxy route state ${this.pendingPath}.`, { cause: error instanceof Error ? error.message : String(error) }); }
+      await this.apply(pending, true);
       return pending;
     }
     return await this.readState(this.statePath) ?? { version: 1, routes: [] };
   }
 
-  private async apply(next: ProxyState): Promise<void> {
+  private async apply(next: ProxyState, recovering = false): Promise<void> {
     if (!await this.available()) throw new ProxyError("DEVFN_PROXY_UNAVAILABLE", "Caddy is required for this profile but is unavailable.");
     await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
     const candidate = `${this.configPath}.candidate`;
@@ -111,12 +110,18 @@ export class CaddyProxyController {
         throw new ProxyError("DEVFN_PROXY_OWNERSHIP_CONFLICT", "A non-DevFn Caddy admin endpoint is already running; refusing to replace its configuration.");
       }
     }
-    const pendingTemp = `${this.pendingPath}.${process.pid}.tmp`;
-    await writeFile(pendingTemp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await rename(pendingTemp, this.pendingPath);
+    if (!recovering) {
+      const pendingTemp = `${this.pendingPath}.${process.pid}.tmp`;
+      await writeFile(pendingTemp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      await rename(pendingTemp, this.pendingPath);
+    }
     if (owner) {
       try { await execFileAsync("caddy", ["reload", "--config", candidate, "--adapter", "caddyfile"], { timeout: 10_000 }); }
-      catch (error) { await rm(candidate, { force: true }); await rm(this.pendingPath, { force: true }); throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to reload the DevFn-owned Caddy proxy.", { cause: error instanceof Error ? error.message : String(error) }); }
+      catch (error) {
+        await rm(candidate, { force: true });
+        if (!recovering) await rm(this.pendingPath, { force: true });
+        throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to reload the DevFn-owned Caddy proxy.", { cause: error instanceof Error ? error.message : String(error) });
+      }
     } else {
       const child = spawn("caddy", ["run", "--config", candidate, "--adapter", "caddyfile"], { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "ignore"], windowsHide: true });
       const spawnFailure = new Promise<Error | null>((resolve) => {
@@ -146,7 +151,7 @@ export class CaddyProxyController {
       if (!ready || !child.pid || !birthSignature) {
         await stopSpawnedChild();
         await rm(candidate, { force: true });
-        await rm(this.pendingPath, { force: true });
+        if (!recovering) await rm(this.pendingPath, { force: true });
         throw new ProxyError("DEVFN_PROXY_RELOAD_FAILED", "Unable to start the DevFn-owned Caddy proxy.");
       }
       try { await writeFile(this.ownerPath, `${JSON.stringify({ pid: child.pid, birthSignature, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 }); }
@@ -184,5 +189,8 @@ export class CaddyProxyController {
     });
   }
 
-  public async routes(): Promise<ProxyRoute[]> { return (await this.read()).routes; }
+  public async routes(): Promise<ProxyRoute[]> {
+    await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
+    return await withFileLock(this.lockPath, async () => (await this.read()).routes);
+  }
 }

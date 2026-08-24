@@ -1,7 +1,8 @@
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { processBirthSignature } from "@devfn/processes";
 import { CaddyProxyController, proxyOwnerStatus, renderCaddyfile } from "../src/index.js";
 
 describe("Caddy route rendering", () => {
@@ -29,14 +30,63 @@ describe("Caddy route rendering", () => {
     await expect(new CaddyProxyController(stateDir).routes()).rejects.toMatchObject({ code: "DEVFN_PROXY_CONFIG_INVALID" });
   });
 
-  it("recovers a route activation journal before serving state to cleanup", async () => {
+  it("replays a route activation journal before committing recovered state", async () => {
     const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
     const pendingPath = path.join(stateDir, "proxy-routes.pending.json");
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const caddyLog = path.join(stateDir, "caddy.log");
     const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off", updatedAt: "now" } as const;
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
     await writeFile(pendingPath, `${JSON.stringify({ version: 1, routes: [route] })}\n`);
-    await expect(new CaddyProxyController(stateDir).routes()).resolves.toEqual([route]);
-    expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [route] });
-    await expect(access(pendingPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await writeFile(path.join(stateDir, "proxy-owner.json"), `${JSON.stringify({ pid: process.pid, birthSignature })}\n`);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DEVFN_TEST_CADDY_LOG\"\nexit 0\n", { mode: 0o700 });
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.DEVFN_TEST_CADDY_LOG;
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      process.env.DEVFN_TEST_CADDY_LOG = caddyLog;
+      await expect(new CaddyProxyController(stateDir).routes()).resolves.toEqual([route]);
+      expect(await readFile(caddyLog, "utf8")).toContain("reload --config");
+      expect(JSON.parse(await readFile(path.join(stateDir, "proxy-routes.json"), "utf8"))).toEqual({ version: 1, routes: [route] });
+      await expect(access(pendingPath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      if (originalLog === undefined) delete process.env.DEVFN_TEST_CADDY_LOG; else process.env.DEVFN_TEST_CADDY_LOG = originalLog;
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes route reads with an in-flight proxy activation", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-"));
+    const toolsDir = await mkdtemp(path.join(tmpdir(), "devfn-proxy-tools-"));
+    const reloadMarker = path.join(stateDir, "reload-started");
+    const birthSignature = await processBirthSignature(process.pid);
+    if (!birthSignature) throw new Error("Test process has no birth signature.");
+    await writeFile(path.join(stateDir, "proxy-owner.json"), `${JSON.stringify({ pid: process.pid, birthSignature })}\n`);
+    await writeFile(path.join(toolsDir, "caddy"), "#!/bin/sh\nif [ \"$1\" = reload ]; then : > \"$DEVFN_TEST_RELOAD_MARKER\"; sleep 0.2; fi\nexit 0\n", { mode: 0o700 });
+    const originalPath = process.env.PATH;
+    const originalMarker = process.env.DEVFN_TEST_RELOAD_MARKER;
+    try {
+      process.env.PATH = `${toolsDir}${path.delimiter}${originalPath ?? ""}`;
+      process.env.DEVFN_TEST_RELOAD_MARKER = reloadMarker;
+      const controller = new CaddyProxyController(stateDir);
+      const route = { id: "a", instanceId: "i", hostname: "app-i.localhost", targetHost: "127.0.0.1", targetPort: 4100, tls: "off" as const };
+      const update = controller.upsert([route]);
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (await access(reloadMarker).then(() => true).catch(() => false)) break;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await expect(access(reloadMarker)).resolves.toBeUndefined();
+      const [, routes] = await Promise.all([update, controller.routes()]);
+      expect(routes).toEqual([expect.objectContaining(route)]);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
+      if (originalMarker === undefined) delete process.env.DEVFN_TEST_RELOAD_MARKER; else process.env.DEVFN_TEST_RELOAD_MARKER = originalMarker;
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(toolsDir, { recursive: true, force: true });
+    }
   });
 
   it("distinguishes dead proxy owners from live PID reuse", async () => {

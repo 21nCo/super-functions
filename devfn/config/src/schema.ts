@@ -291,6 +291,10 @@ function validateSelectionReferences(config: DevFnConfig, ports: Set<string>, pr
   for (const [name, hostname] of Object.entries(config.hostnames ?? {})) {
     if (!ports.has(hostname.target)) fail(`hostnames.${name} references unknown port ${hostname.target}.`);
     for (const profile of hostname.profiles ?? []) if (!config.profiles[profile]) fail(`hostnames.${name} references unknown profile ${profile}.`);
+    const activeProfiles = hostname.profiles ?? Object.keys(config.profiles);
+    if (config.ports?.[hostname.target]?.protocol === "udp" && activeProfiles.some((profile) => config.profiles[profile]?.proxy)) {
+      fail(`hostnames.${name} cannot target UDP port ${hostname.target} from a proxy-enabled profile.`, `hostnames.${name}.target`);
+    }
   }
   if (config.defaultProfile && !config.profiles[config.defaultProfile]) fail(`defaultProfile references unknown profile ${config.defaultProfile}.`);
 }
