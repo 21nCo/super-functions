@@ -231,10 +231,11 @@ function prerequisites(value: unknown): RuntimePrerequisite[] | undefined {
   if (!Array.isArray(value)) fail("prerequisites must be an array.", "prerequisites");
   return value.map((item, index) => {
     const input = record(item, `prerequisites[${index}]`);
+    const optional = optionalBoolean(input.optional, `prerequisites[${index}].optional`);
     return {
       command: string(input.command, `prerequisites[${index}].command`),
       ...(optionalString(input.version, `prerequisites[${index}].version`) ? { version: optionalString(input.version, `prerequisites[${index}].version`) } : {}),
-      ...(input.optional === undefined ? {} : { optional: input.optional === true }),
+      ...(optional === undefined ? {} : { optional }),
       ...(stringArray(input.profiles, `prerequisites[${index}].profiles`) ? { profiles: stringArray(input.profiles, `prerequisites[${index}].profiles`) } : {}),
     };
   });

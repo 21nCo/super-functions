@@ -74,6 +74,9 @@ function parse(argv: readonly string[]): ParsedArgs {
     } else if (["--json", "--yes", "--trust", "--allow-public", "--help"].includes(token)) values[token] = true;
     else throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown option ${token}.`);
   }
+  const tailValue = values["--tail"];
+  const tail = typeof tailValue === "string" && /^\d+$/.test(tailValue) ? Number(tailValue) : undefined;
+  if (tailValue !== undefined && (tail === undefined || !Number.isSafeInteger(tail))) throw new DevFnError("DEVFN_RUNTIME_INVALID", "--tail must be a non-negative integer.");
   return {
     command: values["--help"] ? "help" : positionals.shift() ?? "help",
     positionals,
@@ -85,7 +88,7 @@ function parse(argv: readonly string[]): ParsedArgs {
     ...(typeof values["--config"] === "string" ? { configPath: values["--config"] } : {}),
     ...(typeof values["--state-dir"] === "string" ? { stateDir: values["--state-dir"] } : {}),
     ...(typeof values["--output"] === "string" ? { output: values["--output"] } : {}),
-    ...(typeof values["--tail"] === "string" ? { tail: Number(values["--tail"]) } : {}),
+    ...(tail === undefined ? {} : { tail }),
   };
 }
 

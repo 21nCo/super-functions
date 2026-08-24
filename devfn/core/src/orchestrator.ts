@@ -55,6 +55,16 @@ export function hasRecordedProcessOwner(allocations: readonly PortAllocation[], 
   return allocations.some((allocation) => allocation.projectId === projectId && allocation.instanceId === instanceId && allocation.state === "active" && allocation.process !== undefined && allocation.protocol === protocol && localProcessPorts.get(allocation.service) === protocol);
 }
 
+export function resolveAllocationUrls(allocations: readonly PortAllocation[], routes: readonly ProxyRoute[], httpPorts: ReadonlySet<string>): Record<string, string> {
+  const urls: Record<string, string> = {};
+  for (const allocation of allocations) {
+    const route = allocation.protocol === "tcp" ? routes.find((item) => item.targetPort === allocation.port) : undefined;
+    if (route) urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
+    else if (allocation.protocol === "tcp" && httpPorts.has(allocation.service)) urls[allocation.service] = `http://127.0.0.1:${allocation.port}`;
+  }
+  return urls;
+}
+
 export async function verifyOwnedLoopbackListeners(processName: string, expected: Array<{ port: number; protocol: "tcp" | "udp" }>, ownerPid: number, scan: ListenerScanResult): Promise<{ port: number; protocol: "tcp" | "udp" } | undefined> {
   const requiredProtocols = new Set<"tcp" | "udp">(expected.length ? expected.map((item) => item.protocol) : ["tcp", "udp"]);
   for (const protocol of requiredProtocols) {
@@ -241,11 +251,7 @@ export class DevFnOrchestrator {
         const health = node.kind === "process" ? options.config.processes?.[node.name]?.health : options.config.services?.[node.name]?.health;
         if (health?.type === "http" && health.port) httpPorts.add(health.port);
       }
-      for (const allocation of allocations) {
-        const route = receipt.routes.find((item) => item.targetPort === allocation.port);
-        if (route) receipt.urls[allocation.service] = `${route.tls === "internal" ? "https" : "http"}://${route.hostname}`;
-        else if (httpPorts.has(allocation.service)) receipt.urls[allocation.service] = `http://127.0.0.1:${allocation.port}`;
-      }
+      receipt.urls = resolveAllocationUrls(allocations, receipt.routes, httpPorts);
       const owners: Record<string, { process?: PortAllocation["process"]; container?: PortAllocation["container"] }> = {};
       for (const process of receipt.processes) for (const name of options.config.processes?.[process.name]?.ports ?? []) owners[name] = { process: { pid: process.pid, ...(process.birthSignature ? { birthSignature: process.birthSignature } : {}) } };
       for (const service of receipt.services) for (const name of Object.keys(options.config.services?.[service.name]?.ports ?? {})) owners[name] = { container: { id: service.containerIds[0], name: service.composeService, ...(service.dockerEnvironment !== undefined ? { dockerEnvironment: service.dockerEnvironment } : {}) } };

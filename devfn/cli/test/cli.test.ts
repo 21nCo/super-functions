@@ -22,6 +22,14 @@ async function withListenerTools<T>(action: () => Promise<T>): Promise<T> {
 }
 
 describe("devfn CLI", () => {
+  it("rejects invalid tail counts before command dispatch", async () => {
+    for (const value of ["nope", "-1", "1.5", "9007199254740992"]) {
+      let stdout = "";
+      expect(await runCli(["logs", "--tail", value, "--json"], { stdout: (text) => { stdout += text; }, stderr: () => undefined })).toBe(1);
+      expect(JSON.parse(stdout)).toMatchObject({ error: { code: "DEVFN_RUNTIME_INVALID", message: "--tail must be a non-negative integer." } });
+    }
+  });
+
   it("previews detection before init writes", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "devfn-init-"));
     await writeFile(path.join(cwd, "package.json"), JSON.stringify({ name: "sample", scripts: { dev: "node server.js" } }), "utf8");

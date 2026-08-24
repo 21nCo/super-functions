@@ -81,6 +81,10 @@ describe("DevFn configuration", () => {
     expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: { proxy: "false" } } })).toThrow(/profiles\.default\.proxy must be a boolean/);
   });
 
+  it("rejects non-boolean prerequisite optional flags", () => {
+    expect(() => validateDevFnConfig({ version: 1, project: { id: "x" }, profiles: { default: {} }, prerequisites: [{ command: "missing", optional: "true" }] })).toThrow(/prerequisites\[0\]\.optional must be a boolean/);
+  });
+
   it("rejects TCP and HTTP readiness checks on UDP allocations", () => {
     expect(() => validateDevFnConfig({
       version: 1, project: { id: "x" }, ports: { socket: { protocol: "udp" } },

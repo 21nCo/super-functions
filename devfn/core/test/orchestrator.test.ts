@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { hasRecordedProcessOwner, selectOwnershipListeners, verifyOwnedLoopbackListeners } from "../src/index.js";
+import { hasRecordedProcessOwner, resolveAllocationUrls, selectOwnershipListeners, verifyOwnedLoopbackListeners } from "../src/index.js";
 import type { ListenerInfo, PortAllocation } from "@devfn/ports";
+import type { ProxyRoute } from "@devfn/proxy";
 
 describe("orchestrator listener ownership", () => {
   it("keeps unrelated host listeners while suppressing Docker proxy duplicates", () => {
@@ -20,6 +21,13 @@ describe("orchestrator listener ownership", () => {
     expect(hasRecordedProcessOwner([allocation], "current", "current-instance", ports, "tcp")).toBe(false);
     expect(hasRecordedProcessOwner([{ ...allocation, projectId: "current", instanceId: "current-instance" }], "current", "current-instance", ports, "tcp")).toBe(true);
     expect(hasRecordedProcessOwner([{ ...allocation, projectId: "current", instanceId: "current-instance", protocol: "udp" }], "current", "current-instance", ports, "tcp")).toBe(false);
+  });
+
+  it("does not assign a TCP proxy URL to a UDP allocation on the same port", () => {
+    const allocation = { service: "web", protocol: "tcp", port: 4100 } as PortAllocation;
+    const udp = { service: "socket", protocol: "udp", port: 4100 } as PortAllocation;
+    const route = { hostname: "web.localhost", targetPort: 4100, tls: "off" } as ProxyRoute;
+    expect(resolveAllocationUrls([allocation, udp], [route], new Set())).toEqual({ web: "http://web.localhost" });
   });
 
   it("rejects undeclared public listeners owned by a local process", async () => {
