@@ -22,6 +22,7 @@ import { createAuthFnRouteMeta } from 'authfn/http/router';
 import { jsonSuccess } from 'authfn/http/envelopes';
 import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
 import {
+  authFnVerifiedRoutingIdentityKey,
   fenceAuthFnIdentityDeletion,
   finalizeAuthFnIdentityDeletion,
   restoreAuthFnIdentityDeletion
@@ -157,44 +158,58 @@ export function authFnMultiRegionPlugin(
       beforeAccountDelete: async (ctx, input) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(input.primaryEmail);
-        if (!authConfig || !primaryEmail) return input;
+        if (!authConfig) return input;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return input;
         const routing = pluginConfig.routing;
+        const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+        if (!identityKey) {
+          throw new AuthFnValidationError(
+            'Gateway-mode account deletion requires a verified identity routing key'
+          );
+        }
         await fenceAuthFnIdentityDeletion(
           routing.placementDirectory,
-          routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+          identityKey
         );
         return input;
       },
       afterAccountDelete: async (ctx, result) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(result.primaryEmail);
-        if (!authConfig || !primaryEmail) {
-          return;
-        }
+        if (!authConfig) return;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
         if (pluginConfig.routing?.mode === 'gateway') {
           const routing = pluginConfig.routing;
+          const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+          if (!identityKey) {
+            throw new AuthFnValidationError(
+              'Gateway-mode account deletion requires a verified identity routing key'
+            );
+          }
           await finalizeAuthFnIdentityDeletion(
             routing.placementDirectory,
-            routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+            identityKey
           );
         }
 
-        await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
+        if (primaryEmail) {
+          await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
+        }
       },
       afterAccountDeleteFailure: async (ctx, failure) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(failure.primaryEmail);
-        if (!authConfig || !primaryEmail) return;
+        if (!authConfig) return;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return;
         const routing = pluginConfig.routing;
+        const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+        if (!identityKey) return;
         await restoreAuthFnIdentityDeletion(
           routing.placementDirectory,
-          routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+          identityKey
         );
       }
     }
@@ -358,4 +373,16 @@ function readRequiredString(value: unknown): string {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function deletionIdentityKey(
+  request: Request | undefined,
+  primaryEmail: string | undefined,
+  routing: Extract<MultiRegionPluginRuntimeConfig['routing'], { mode: 'gateway' }>
+): string | null {
+  const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
+  if (verifiedIdentityKey) return verifiedIdentityKey;
+  return primaryEmail
+    ? routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+    : null;
 }

@@ -27,6 +27,7 @@ const ASSERTION_HEADER = 'x-authfn-routing-assertion';
 const MISMATCH_HEADER = 'x-authfn-routing-mismatch';
 const INTERNAL_HEADER_PREFIX = 'x-authfn-routing-';
 const PLACEMENT_KEY_PREFIX = 'authfn:placement:';
+const verifiedRoutingIdentityKeys = new WeakMap<Request, string>();
 
 export type AuthFnRouteScope = 'global' | 'identity';
 
@@ -592,8 +593,10 @@ export function createAuthFnCellPlacementMiddleware(
         outcome: 'validated',
         metadata: { epoch: placement.epoch }
       });
-      return next();
+      verifiedRoutingIdentityKeys.set(request, assertion.identityKey);
+      return next().finally(() => verifiedRoutingIdentityKeys.delete(request));
     } catch (error) {
+      verifiedRoutingIdentityKeys.delete(request);
       const code = readErrorCode(error);
       await emitAuthEvent(config, {
         type: code === 'AUTHFN_ROUTING_ASSERTION_INVALID'
@@ -609,6 +612,11 @@ export function createAuthFnCellPlacementMiddleware(
       return jsonError(request, error);
     }
   };
+}
+
+/** Returns the identity key cryptographically bound to this routed request. */
+export function authFnVerifiedRoutingIdentityKey(request?: Request): string | null {
+  return request ? verifiedRoutingIdentityKeys.get(request) ?? null : null;
 }
 
 export interface AuthFnIdentityMoveCallbacks {
@@ -652,12 +660,14 @@ export async function moveAuthFnIdentityPlacement(
     placement: moving
   });
   if (!fenced.updated) throw new AuthFnRegionMismatchError('Identity placement changed during migration');
+  let targetResumeStarted = false;
   try {
     await input.callbacks.quiesceSource();
     await input.callbacks.drainSource();
     await input.callbacks.copyToTarget();
     await input.callbacks.validateTarget();
     await input.callbacks.warmTarget();
+    targetResumeStarted = true;
     await input.callbacks.resumeTarget();
     const active: AuthFnIdentityPlacement = {
       identityKey: input.identityKey,
@@ -676,6 +686,7 @@ export async function moveAuthFnIdentityPlacement(
     if (!activationResult.updated) throw new AuthFnRegionMismatchError('Identity placement changed before activation');
     return active;
   } catch (error) {
+    if (targetResumeStarted) throw error;
     if (!input.callbacks.resumeSource) throw error;
     await input.callbacks.resumeSource();
     const rollback: AuthFnIdentityPlacement = {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRouter, type Router } from '@superfunctions/http';
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
 import {
+  authFnVerifiedRoutingIdentityKey,
   classifyAuthFnRoute,
   createAuthFnCanonicalGateway,
   createAuthFnCellPlacementMiddleware,
@@ -99,8 +100,13 @@ describe('AuthFn canonical gateway routing', () => {
       placement('person:ada', 'us-east-1', 1)
     ]);
     const replayExpiries: number[] = [];
-    const cell = createCell('us-east-1', directory, [], {
-      async claim(_nonce, expiresAt) {
+    const effects: string[] = [];
+    const claimedNonces = new Set<string>();
+    let forwardedRequest: Request | undefined;
+    const cell = createCell('us-east-1', directory, effects, {
+      async claim(nonce, expiresAt) {
+        if (claimedNonces.has(nonce)) return false;
+        claimedNonces.add(nonce);
         replayExpiries.push(expiresAt);
         return true;
       }
@@ -113,11 +119,59 @@ describe('AuthFn canonical gateway routing', () => {
       resolveIdentity: () => ({ identityKey: 'person:ada' }),
       selectInitialRegion: () => 'us-east-1',
       resolveCell: () => ({ regionId: 'us-east-1', audience: 'cell:us-east-1', target: cell }),
-      dispatch: (target, request) => target.handle(request)
+      dispatch: (target, request) => {
+        forwardedRequest = request.clone();
+        return target.handle(request);
+      }
     });
 
     expect((await gateway.handle(identityRequest())).status).toBe(200);
     expect(replayExpiries).toEqual([Math.floor(fixedNow / 1000) + 25]);
+    expect(forwardedRequest).toBeDefined();
+    expect((await cell.handle(forwardedRequest!)).status).toBe(401);
+    expect(effects).toEqual(['us-east-1']);
+  });
+
+  it('makes the verified routing identity available only after cell validation', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([
+      placement('person:session-handle', 'us-east-1', 1)
+    ]);
+    const middleware = createAuthFnCellPlacementMiddleware(
+      { basePath: '/auth' },
+      cellPluginConfig('us-east-1', directory, createInMemoryAuthFnRoutingReplayStore())
+    );
+    if (!middleware) throw new Error('cell middleware missing');
+    const observed: Array<string | null> = [];
+    const cell = createRouter({
+      basePath: '/auth',
+      middleware: [middleware],
+      routes: [{
+        method: 'POST',
+        path: '/sign-in/password',
+        handler: (request) => {
+          observed.push(authFnVerifiedRoutingIdentityKey(request));
+          return Response.json({ ok: true });
+        }
+      }]
+    });
+    let routedRequest: Request | undefined;
+    const gateway = createAuthFnCanonicalGateway<Router>({
+      publicAuthority: 'https://account.example.com',
+      placementDirectory: directory,
+      keyring,
+      resolveIdentity: () => ({ identityKey: 'person:session-handle' }),
+      selectInitialRegion: () => 'us-east-1',
+      resolveCell: () => ({ regionId: 'us-east-1', audience: 'cell:us-east-1', target: cell }),
+      dispatch: (target, request) => {
+        routedRequest = request;
+        return target.handle(request);
+      }
+    });
+
+    expect(authFnVerifiedRoutingIdentityKey(identityRequest())).toBeNull();
+    expect((await gateway.handle(identityRequest())).status).toBe(200);
+    expect(observed).toEqual(['person:session-handle']);
+    expect(authFnVerifiedRoutingIdentityKey(routedRequest)).toBeNull();
   });
 
   it('routes by canonical placement, strips spoofed headers, and retries once before execution', async () => {
@@ -493,6 +547,46 @@ describe('AuthFn placement adapters and migration', () => {
     });
   });
 
+  it('keeps placement fenced when target resumes but activation loses its CAS race', async () => {
+    const backing = createInMemoryAuthFnPlacementDirectory([
+      placement('person:ada', 'us-east-1', 4)
+    ]);
+    let rejectActivation = true;
+    const directory = {
+      get: (identityKey: string) => backing.get(identityKey),
+      putIfAbsent: (value: AuthFnIdentityPlacement) => backing.putIfAbsent(value),
+      compareAndSet: (input: Parameters<typeof backing.compareAndSet>[0]) => {
+        if (rejectActivation && input.expectedState === 'moving' && input.placement.state === 'active') {
+          rejectActivation = false;
+          return Promise.resolve({ updated: false });
+        }
+        return backing.compareAndSet(input);
+      }
+    };
+    let sourceResumes = 0;
+    await expect(moveAuthFnIdentityPlacement(directory, {
+      identityKey: 'person:ada',
+      sourceRegionId: 'us-east-1',
+      targetRegionId: 'eu-west-1',
+      callbacks: {
+        async quiesceSource() {},
+        async drainSource() {},
+        async copyToTarget() {},
+        async validateTarget() {},
+        async warmTarget() {},
+        async resumeTarget() {},
+        async resumeSource() { sourceResumes += 1; }
+      }
+    })).rejects.toThrow('changed before activation');
+    expect(sourceResumes).toBe(0);
+    await expect(backing.get('person:ada')).resolves.toMatchObject({
+      regionId: 'us-east-1',
+      epoch: 5,
+      state: 'moving',
+      movingToRegionId: 'eu-west-1'
+    });
+  });
+
   it('does not publish source rollback until source resume succeeds', async () => {
     const directory = createInMemoryAuthFnPlacementDirectory([placement('person:ada', 'us-east-1', 4)]);
     await expect(moveAuthFnIdentityPlacement(directory, {
@@ -637,20 +731,7 @@ function createCell(
   effects: string[],
   replayStore: AuthFnRoutingReplayStore = createInMemoryAuthFnRoutingReplayStore()
 ): Router {
-  const pluginConfig: MultiRegionPluginRuntimeConfig = {
-    routing: {
-      mode: 'gateway',
-      publicAuthority: 'https://account.example.com',
-      placementDirectory: directory,
-      identityKeyForIdentifier: (identifier) => identifier,
-      cell: {
-        regionId,
-        audience: `cell:${regionId}`,
-        keyring,
-        replayStore
-      }
-    }
-  };
+  const pluginConfig = cellPluginConfig(regionId, directory, replayStore);
   const middleware = createAuthFnCellPlacementMiddleware({ basePath: '/auth' }, pluginConfig);
   if (!middleware) throw new Error('cell middleware missing');
   return createRouter({
@@ -665,6 +746,27 @@ function createCell(
       }
     }]
   });
+}
+
+function cellPluginConfig(
+  regionId: string,
+  directory: ReturnType<typeof createInMemoryAuthFnPlacementDirectory>,
+  replayStore: AuthFnRoutingReplayStore
+): MultiRegionPluginRuntimeConfig {
+  return {
+    routing: {
+      mode: 'gateway',
+      publicAuthority: 'https://account.example.com',
+      placementDirectory: directory,
+      identityKeyForIdentifier: (identifier) => identifier,
+      cell: {
+        regionId,
+        audience: `cell:${regionId}`,
+        keyring,
+        replayStore
+      }
+    }
+  };
 }
 
 function identityRequest(headers: Record<string, string> = {}): Request {

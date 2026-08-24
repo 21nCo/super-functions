@@ -5,6 +5,8 @@ import { composePluginHooks } from 'authfn/plugin-runner';
 import {
   authFnMultiRegionEnvironment,
   authFnMultiRegionPlugin,
+  createAuthFnCanonicalGateway,
+  createAuthFnCellPlacementMiddleware,
   createInMemoryAuthFnPlacementDirectory,
   finalizeAuthFnIdentityDeletion
 } from '../index.js';
@@ -130,6 +132,67 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     });
   });
 
+  it('restores the deletion fence when a later before-delete hook aborts', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 3,
+      state: 'active',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    let databaseDeletes = 0;
+    const { config } = gatewayRuntime(directory, {
+      deleteMany: async () => {
+        databaseDeletes += 1;
+        return 1;
+      }
+    } as never);
+    config.plugins = [
+      ...config.plugins,
+      {
+        name: 'laterDeleteGuard',
+        hooks: {
+          beforeAccountDelete: async () => {
+            throw new Error('later guard unavailable');
+          }
+        }
+      } as never
+    ];
+
+    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow('laterDeleteGuard.beforeAccountDelete aborted');
+    expect(databaseDeletes).toBe(0);
+    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'active',
+      epoch: 5
+    });
+  });
+
+  it('fences a gateway-verified account identity even without a primary email', async () => {
+    const { directory, response } = await deleteThroughGateway();
+
+    expect(response.status).toBe(200);
+    await expect(directory.get('person:session-handle')).resolves.toMatchObject({
+      state: 'tombstoned',
+      epoch: 3
+    });
+  });
+
+  it('prefers the gateway-verified identity over an email-derived placement key', async () => {
+    const { directory, response } = await deleteThroughGateway('ada@example.com');
+
+    expect(response.status).toBe(200);
+    await expect(directory.get('person:session-handle')).resolves.toMatchObject({
+      state: 'tombstoned',
+      epoch: 3
+    });
+    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'active',
+      epoch: 7
+    });
+  });
+
   it('leaves a durable deletion fence when finalization fails and supports repair', async () => {
     const backing = createInMemoryAuthFnPlacementDirectory([{
       identityKey: 'email:ada@example.com',
@@ -207,3 +270,74 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     ), {} as never)).rejects.toMatchObject({ code: 'AUTHFN_VALIDATION_ERROR' });
   });
 });
+
+async function deleteThroughGateway(primaryEmail?: string) {
+  const directory = createInMemoryAuthFnPlacementDirectory([{
+    identityKey: 'person:session-handle',
+    regionId: 'us-east-1',
+    epoch: 1,
+    state: 'active',
+    updatedAt: '2026-08-24T00:00:00.000Z'
+  }, {
+    identityKey: 'email:ada@example.com',
+    regionId: 'us-east-1',
+    epoch: 7,
+    state: 'active',
+    updatedAt: '2026-08-24T00:00:00.000Z'
+  }]);
+  const keyring = {
+    active: {
+      keyId: 'routing-2026-08',
+      secret: 'routing-test-secret-with-enough-entropy'
+    }
+  };
+  const routing = {
+    mode: 'gateway' as const,
+    publicAuthority: 'https://account.example.com',
+    placementDirectory: directory,
+    identityKeyForIdentifier: (identifier: string) => `email:${identifier}`,
+    cell: {
+      regionId: 'us-east-1',
+      audience: 'cell:us-east-1',
+      keyring,
+      replayStore: { claim: async () => true }
+    }
+  };
+  const plugin = authFnMultiRegionPlugin();
+  const config = {
+    plugins: [plugin],
+    environment: authFnMultiRegionEnvironment({ routing }),
+    database: { deleteMany: async () => 1 },
+    namespace: 'authfn',
+    basePath: '/auth'
+  } as unknown as AuthFnRuntimeConfig;
+  const middleware = createAuthFnCellPlacementMiddleware(
+    { basePath: '/auth' },
+    { routing }
+  );
+  if (!middleware) throw new Error('cell middleware missing');
+  const gateway = createAuthFnCanonicalGateway<null>({
+    publicAuthority: 'https://account.example.com',
+    placementDirectory: directory,
+    keyring,
+    resolveIdentity: () => ({ identityKey: 'person:session-handle' }),
+    selectInitialRegion: () => 'us-east-1',
+    resolveCell: () => ({
+      regionId: 'us-east-1',
+      audience: 'cell:us-east-1',
+      target: null
+    }),
+    dispatch: (_target, request) => middleware(request, {} as never, async () => {
+      await deleteAccountForUser(config, composePluginHooks(config), {
+        user: { id: 'user_1', primaryEmail } as never,
+        request
+      });
+      return Response.json({ deleted: true });
+    })
+  });
+  const response = await gateway.handle(new Request(
+    'https://account.example.com/auth/account',
+    { method: 'DELETE' }
+  ));
+  return { directory, response };
+}

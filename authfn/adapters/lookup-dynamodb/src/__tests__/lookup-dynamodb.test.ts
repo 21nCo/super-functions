@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AuthFnDynamoDbLookupStoreError,
   createDynamoDbIdentityPlacementDirectory,
@@ -67,13 +68,30 @@ describe('@authfn/lookup-dynamodb', () => {
     } as any)).toThrow('single strongly consistent writer region');
   });
 
-  it('pins an internally constructed placement client to the writer region', () => {
-    expect(() => createDynamoDbIdentityPlacementDirectory({
-      tableName: 'authfn-placement',
-      consistencyModel: 'single-writer-strong',
-      writerRegion: 'us-east-1',
-      region: async () => 'us-east-1'
-    })).not.toThrow();
+  it('pins an internally constructed placement client to the writer region', async () => {
+    let lowLevelClient: { config: { region: () => Promise<string> } } | undefined;
+    const send = vi.fn(async () => ({}));
+    const from = vi.spyOn(DynamoDBDocumentClient, 'from').mockImplementation((client) => {
+      lowLevelClient = client as typeof lowLevelClient;
+      return { send } as never;
+    });
+    try {
+      const directory = createDynamoDbIdentityPlacementDirectory({
+        tableName: 'authfn-placement',
+        consistencyModel: 'single-writer-strong',
+        writerRegion: 'us-east-1',
+        region: async () => 'eu-west-1'
+      });
+
+      await directory.get('person:ada');
+
+      expect(lowLevelClient).toBeDefined();
+      await expect(lowLevelClient!.config.region()).resolves.toBe('us-east-1');
+      expect(send).toHaveBeenCalledOnce();
+      expect(send.mock.calls[0]?.[0].input).toMatchObject({ ConsistentRead: true });
+    } finally {
+      from.mockRestore();
+    }
   });
 
   it('verifies the supplied document client actual region', async () => {

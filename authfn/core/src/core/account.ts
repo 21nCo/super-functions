@@ -97,18 +97,18 @@ export async function deleteAccountForUser(
   const actorId = input.actorId ?? user.id;
   const counts: Record<string, number> = {};
 
-  await hooks.beforeAccountDelete?.({
-    config,
-    request: input.request,
-    session: input.session,
-    actorId
-  }, {
-    userId: user.id,
-    primaryEmail: user.primaryEmail,
-    sessionId: input.session?.id
-  });
-
   try {
+    await hooks.beforeAccountDelete?.({
+      config,
+      request: input.request,
+      session: input.session,
+      actorId
+    }, {
+      userId: user.id,
+      primaryEmail: user.primaryEmail,
+      sessionId: input.session?.id
+    });
+
     if (hasPlugin(config, 'twoFactor')) {
       const enrollments = await config.database.findMany<AuthFnTwoFactorEnrollmentRecord>({
         model: 'two_factor_enrollments',

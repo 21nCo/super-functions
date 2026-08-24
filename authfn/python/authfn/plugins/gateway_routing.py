@@ -47,9 +47,11 @@ class IdentityPlacement:
 class IdentityPlacementDirectory(Protocol):
     """Linearizable placement reads, first claims, and epoch/state CAS across all writers."""
 
-    async def get(self, identity_key: str) -> Optional[IdentityPlacement]: ...
+    async def get(self, identity_key: str) -> Optional[IdentityPlacement]:
+        raise NotImplementedError
 
-    async def put_if_absent(self, placement: IdentityPlacement) -> Dict[str, Any]: ...
+    async def put_if_absent(self, placement: IdentityPlacement) -> Dict[str, Any]:
+        raise NotImplementedError
 
     async def compare_and_set(
         self,
@@ -58,7 +60,8 @@ class IdentityPlacementDirectory(Protocol):
         expected_epoch: int,
         expected_state: str,
         placement: IdentityPlacement,
-    ) -> Dict[str, Any]: ...
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
 
 
 class InMemoryIdentityPlacementDirectory:

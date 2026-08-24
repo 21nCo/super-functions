@@ -310,9 +310,14 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     effects: List[str] = []
     calls: List[str] = []
     replay_expiries: List[int] = []
+    claimed_nonces: set[str] = set()
+    forwarded_requests: List[GatewayRequest] = []
 
     class RecordingReplayStore:
-        async def claim(self, _nonce: str, expires_at: int) -> bool:
+        async def claim(self, nonce: str, expires_at: int) -> bool:
+            if nonce in claimed_nonces:
+                return False
+            claimed_nonces.add(nonce)
             replay_expiries.append(expires_at)
             return True
 
@@ -357,6 +362,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     async def dispatch(target: Any, request: Any) -> Response:
         region_id = next(key for key, value in cells.items() if value is target)
         calls.append(region_id)
+        forwarded_requests.append(request)
         return await target(request)
 
     gateway = CanonicalGateway(
@@ -386,6 +392,11 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     assert first.status == 200
     assert first.body == {"executedIn": "us-east-1"}
     assert replay_expiries == [int(fixed_now) + 25]
+
+    replayed = await cells["us-east-1"](forwarded_requests[0])
+    assert replayed.status == 401
+    assert replayed.body["error"]["code"] == "AUTHFN_ROUTING_ASSERTION_INVALID"
+    assert effects == ["us-east-1"]
 
     moved = await directory.compare_and_set(
         identity_key="person:ada",
