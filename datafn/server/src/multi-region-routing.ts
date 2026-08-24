@@ -23,6 +23,8 @@ export interface DatafnNamespaceMigrationState {
   targetRegionId: string;
   sourceEpoch: number;
   movingEpoch: number;
+  recoveryOwnerId?: string;
+  recoveryLeaseExpiresAt?: number;
   sourceDestinationRef?: string;
   targetDestinationRef?: string;
   sourcePreviousRegionId?: string;
@@ -130,6 +132,8 @@ export const DATAFN_ROUTING_INTERNAL_HEADERS = [
 
 const PLACEMENT_KEY_PREFIX = "datafn:placement:";
 const DEFAULT_ROUTING_MAX_BODY_BYTES = 5 * 1024 * 1024;
+const DEFAULT_GATEWAY_CACHE_MAX_ENTRIES = 10_000;
+const DEFAULT_MIGRATION_RECOVERY_LEASE_MS = 30_000;
 
 export class DatafnRoutingError extends Error {
   readonly code:
@@ -202,8 +206,15 @@ export class DatafnRoutingError extends Error {
 
 export function createConditionalKvDatafnPlacementDirectory(
   store: ConditionalKVStoreAdapter,
-  options: { keyPrefix?: string } = {},
+  options: {
+    /** Explicit acknowledgement that authoritative reads are linearizable. */
+    consistencyModel: "linearizable";
+    keyPrefix?: string;
+  },
 ): DatafnPlacementDirectoryAdapter {
+  if (options.consistencyModel !== "linearizable") {
+    throw new Error("DATAFN_PLACEMENT_LINEARIZABLE_READS_REQUIRED");
+  }
   if (typeof store.compareAndSet !== "function") {
     throw new Error(
       "DATAFN_PLACEMENT_CAS_REQUIRED: placement moves require compareAndSet",
@@ -378,7 +389,7 @@ export async function validateDatafnPlacement(input: {
     trustedInternal: input.trustedInternal,
   });
 
-  if (placement.state === "moving") {
+  if (isPlacementTrafficFenced(placement)) {
     await emitRoutingEvent(input.runtime, {
       type: "moving",
       requestId,
@@ -390,7 +401,7 @@ export async function validateDatafnPlacement(input: {
     });
     throw new DatafnRoutingError({
       code: "DATAFN_NAMESPACE_MOVING",
-      message: "Namespace placement is moving",
+      message: "Namespace placement is fenced for migration",
       status: 409,
       retryable: true,
       placement,
@@ -476,6 +487,8 @@ export interface DatafnGatewayRouterConfig<TTarget> {
   assertionAudience?: string;
   assertionTtlMs?: number;
   cacheTtlMs?: number;
+  /** Maximum namespace placements retained by a gateway. Defaults to 10,000. */
+  maxCacheEntries?: number;
   /** Maximum request body size accepted before dispatch. Defaults to 5 MiB. */
   maxBodyBytes?: number;
   now?: () => number;
@@ -491,7 +504,8 @@ export interface DatafnGatewayRouter {
 export function createDatafnGatewayRouter<TTarget>(
   config: DatafnGatewayRouterConfig<TTarget>,
 ): DatafnGatewayRouter {
-  const maxBodyBytes = routingBodyLimit(config.maxBodyBytes);
+  const maxBodyBytes = validateDatafnRoutingBodyLimit(config.maxBodyBytes);
+  const maxCacheEntries = routingCacheMaxEntries(config.maxCacheEntries);
   const cache = new Map<string, { placement: DatafnNamespacePlacement; expiresAt: number }>();
   const now = config.now ?? Date.now;
   const runtime: Pick<DatafnPlacementRuntimeConfig, "onEvent"> = { onEvent: config.onEvent };
@@ -512,6 +526,7 @@ export function createDatafnGatewayRouter<TTarget>(
       });
       return clonePlacement(cached.placement);
     }
+    if (cached) cache.delete(namespace);
     const startedAt = now();
     let placement: DatafnNamespacePlacement | null;
     try {
@@ -548,10 +563,10 @@ export function createDatafnGatewayRouter<TTarget>(
         retryable: false,
       });
     }
-    if (placement.state === "moving") {
+    if (isPlacementTrafficFenced(placement)) {
       throw new DatafnRoutingError({
         code: "DATAFN_NAMESPACE_MOVING",
-        message: "Namespace placement is moving",
+        message: "Namespace placement is fenced for migration",
         status: 409,
         retryable: true,
       });
@@ -562,19 +577,28 @@ export function createDatafnGatewayRouter<TTarget>(
     const configuredExpiry = Number.isFinite(parsedExpiry)
       ? parsedExpiry
       : Number.POSITIVE_INFINITY;
-    cache.set(namespace, {
+    setBoundedPlacementCache(cache, namespace, {
       placement: clonePlacement(placement),
       expiresAt: Math.min(now() + (config.cacheTtlMs ?? 5_000), configuredExpiry),
-    });
+    }, maxCacheEntries, now());
     return placement;
   };
 
   const handle = async (request: Request): Promise<Response> => {
     const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+    let prepared: PreparedDatafnGatewayRequest;
+    try {
+      prepared = await prepareDatafnGatewayRequest(request, requestId, maxBodyBytes);
+    } catch (error) {
+      if (error instanceof DatafnRequestBodyTooLargeError) {
+        return payloadTooLargeError(error.limit).toResponse();
+      }
+      throw error;
+    }
     let namespace: string;
     let resolvedNamespace: string;
     try {
-      resolvedNamespace = await config.deriveNamespace(request.clone());
+      resolvedNamespace = await config.deriveNamespace(prepared.createRequest());
     } catch {
       return new DatafnRoutingError({
         code: "DATAFN_CELL_UNAVAILABLE",
@@ -593,16 +617,8 @@ export function createDatafnGatewayRouter<TTarget>(
         retryable: false,
       }).toResponse();
     }
-    const cleanRequest = sanitizeDatafnGatewayRequest(request, requestId);
-    let bodyDigest: string | undefined;
-    try {
-      bodyDigest = await requestBodyDigest(cleanRequest.clone(), maxBodyBytes);
-    } catch (error) {
-      if (error instanceof DatafnRequestBodyTooLargeError) {
-        return payloadTooLargeError(error.limit).toResponse();
-      }
-      throw error;
-    }
+    const cleanRequest = prepared.createRequest();
+    const bodyDigest = prepared.bodyDigest;
 
     for (const attempt of [0, 1] as const) {
       try {
@@ -739,6 +755,9 @@ export interface DatafnNamespaceMigrationContext {
   targetRegionId: string;
   sourceEpoch: number;
   movingEpoch: number;
+  /** Durable lease owner that hook implementations may use as a fencing token. */
+  recoveryOwnerId: string;
+  recoveryLeaseExpiresAt: number;
   /** True when replaying idempotent hooks for a persisted recovery state. */
   recovery?: boolean;
 }
@@ -756,9 +775,13 @@ export async function migrateDatafnNamespace(input: {
   targetDestinationRef?: string;
   hooks: DatafnNamespaceMigrationHooks;
   now?: () => number;
+  /** Exclusive recovery lease duration. Defaults to 30 seconds. */
+  recoveryLeaseMs?: number;
   onEvent?: (event: DatafnRoutingEvent) => void | Promise<void>;
 }): Promise<DatafnNamespacePlacement> {
   const now = input.now ?? Date.now;
+  const recoveryLeaseMs = migrationRecoveryLeaseMs(input.recoveryLeaseMs);
+  const recoveryOwnerId = crypto.randomUUID();
   const observed = await input.directory.get(input.namespace);
   if (!observed) {
     throw new Error("DATAFN_MIGRATION_REQUIRES_ACTIVE_PLACEMENT");
@@ -773,11 +796,23 @@ export async function migrateDatafnNamespace(input: {
     ) {
       throw new Error("DATAFN_MIGRATION_RECOVERY_REQUIRED");
     }
-    const recoveryContext = migrationContext(observed.namespace, observed.migration, true);
+    const pendingResume = await claimDatafnMigrationRecovery({
+      directory: input.directory,
+      placement: observed,
+      expectedState: "active",
+      recoveryOwnerId,
+      recoveryLeaseMs,
+      now,
+    });
+    const recoveryContext = migrationContext(
+      pendingResume.namespace,
+      pendingResume.migration!,
+      true,
+    );
     await input.hooks.resumeTarget(recoveryContext);
     return finalizeDatafnMigrationResume({
       directory: input.directory,
-      placement: observed,
+      placement: pendingResume,
       now,
     });
   }
@@ -805,7 +840,15 @@ export async function migrateDatafnNamespace(input: {
     ) {
       throw new Error("DATAFN_MIGRATION_ALREADY_IN_PROGRESS");
     }
-    moving = observed;
+    moving = await claimDatafnMigrationRecovery({
+      directory: input.directory,
+      placement: { ...observed, migration },
+      expectedState: "moving",
+      recoveryOwnerId,
+      recoveryLeaseMs,
+      now,
+    });
+    migration = moving.migration!;
     recovery = true;
   } else if (observed.state === "active") {
     migration = {
@@ -814,6 +857,8 @@ export async function migrateDatafnNamespace(input: {
       targetRegionId: requiredString(input.targetRegionId, "targetRegionId"),
       sourceEpoch: observed.epoch,
       movingEpoch: observed.epoch + 1,
+      recoveryOwnerId,
+      recoveryLeaseExpiresAt: now() + recoveryLeaseMs,
       ...(observed.destinationRef
         ? { sourceDestinationRef: observed.destinationRef }
         : {}),
@@ -911,7 +956,12 @@ export async function migrateDatafnNamespace(input: {
     ...(migration.targetDestinationRef
       ? { destinationRef: migration.targetDestinationRef }
       : {}),
-    migration: { ...migration, phase: "resume-target" },
+    migration: {
+      ...migration,
+      phase: "resume-target",
+      recoveryOwnerId,
+      recoveryLeaseExpiresAt: now() + recoveryLeaseMs,
+    },
   };
   const activated = await input.directory.compareAndSet({
     namespace: moving.namespace,
@@ -922,12 +972,56 @@ export async function migrateDatafnNamespace(input: {
   if (!activated.updated) {
     throw new Error("DATAFN_PLACEMENT_EPOCH_CONFLICT");
   }
-  await input.hooks.resumeTarget(context);
+  await input.hooks.resumeTarget(migrationContext(
+    activePendingResume.namespace,
+    activePendingResume.migration!,
+    recovery,
+  ));
   return finalizeDatafnMigrationResume({
     directory: input.directory,
     placement: activePendingResume,
     now,
   });
+}
+
+async function claimDatafnMigrationRecovery(input: {
+  directory: DatafnPlacementDirectoryAdapter;
+  placement: DatafnNamespacePlacement;
+  expectedState: "active" | "moving";
+  recoveryOwnerId: string;
+  recoveryLeaseMs: number;
+  now: () => number;
+}): Promise<DatafnNamespacePlacement> {
+  const migration = input.placement.migration;
+  if (!migration) throw new Error("DATAFN_MIGRATION_STATE_INVALID");
+  const currentTime = input.now();
+  if (
+    migration.recoveryOwnerId &&
+    migration.recoveryLeaseExpiresAt !== undefined &&
+    migration.recoveryLeaseExpiresAt > currentTime
+  ) {
+    throw new Error("DATAFN_MIGRATION_ALREADY_IN_PROGRESS");
+  }
+  const claimed: DatafnNamespacePlacement = {
+    ...input.placement,
+    epoch: input.placement.epoch + 1,
+    updatedAt: new Date(currentTime).toISOString(),
+    migration: {
+      ...migration,
+      recoveryOwnerId: input.recoveryOwnerId,
+      recoveryLeaseExpiresAt: currentTime + input.recoveryLeaseMs,
+    },
+  };
+  const result = await input.directory.compareAndSet({
+    namespace: input.placement.namespace,
+    expectedEpoch: input.placement.epoch,
+    expectedState: input.expectedState,
+    next: claimed,
+  });
+  if (!result.updated) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_EPOCH_CONFLICT");
+  }
+  return claimed;
 }
 
 async function finalizeDatafnMigrationResume(input: {
@@ -974,12 +1068,24 @@ function migrationContext(
   migration: DatafnNamespaceMigrationState,
   recovery: boolean,
 ): DatafnNamespaceMigrationContext {
+  const recoveryOwnerId = requiredString(
+    migration.recoveryOwnerId,
+    "migration_recovery_owner",
+  );
+  if (
+    !Number.isSafeInteger(migration.recoveryLeaseExpiresAt) ||
+    migration.recoveryLeaseExpiresAt! < 1
+  ) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
+  }
   return {
     namespace,
     sourceRegionId: migration.sourceRegionId,
     targetRegionId: migration.targetRegionId,
     sourceEpoch: migration.sourceEpoch,
     movingEpoch: migration.movingEpoch,
+    recoveryOwnerId,
+    recoveryLeaseExpiresAt: migration.recoveryLeaseExpiresAt!,
     ...(recovery ? { recovery: true } : {}),
   };
 }
@@ -1099,7 +1205,7 @@ async function validateRoutingAssertion(input: {
       try {
         digest = await requestBodyDigest(
           request.clone(),
-          routingBodyLimit(input.runtime.maxBodyBytes),
+          validateDatafnRoutingBodyLimit(input.runtime.maxBodyBytes),
         );
       } catch (error) {
         if (error instanceof DatafnRequestBodyTooLargeError) {
@@ -1137,7 +1243,7 @@ async function invalidAssertion(
 }
 
 async function readPreExecutionMismatch(response: Response): Promise<boolean> {
-  if (response.status !== 409 && response.headers.get("x-datafn-region-mismatch") !== "1") {
+  if (response.status !== 409 || response.headers.get("x-datafn-region-mismatch") !== "1") {
     return false;
   }
   try {
@@ -1151,11 +1257,62 @@ async function readPreExecutionMismatch(response: Response): Promise<boolean> {
   }
 }
 
-function sanitizeDatafnGatewayRequest(request: Request, requestId: string): Request {
+interface PreparedDatafnGatewayRequest {
+  bodyDigest?: string;
+  createRequest(): Request;
+}
+
+async function prepareDatafnGatewayRequest(
+  request: Request,
+  requestId: string,
+  maxBodyBytes: number,
+): Promise<PreparedDatafnGatewayRequest> {
   const headers = new Headers(request.headers);
   for (const header of DATAFN_ROUTING_INTERNAL_HEADERS) headers.delete(header);
   headers.set("x-request-id", requestId);
-  return new Request(request, { headers });
+  if (request.method === "GET" || request.method === "HEAD" || request.body === null) {
+    return {
+      createRequest: () => new Request(request.url, {
+        method: request.method,
+        headers,
+        signal: request.signal,
+      }),
+    };
+  }
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
+    throw new DatafnRequestBodyTooLargeError(maxBodyBytes);
+  }
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  const hash = createHash("sha256");
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBodyBytes) {
+      await reader.cancel("request body limit exceeded").catch(() => undefined);
+      throw new DatafnRequestBodyTooLargeError(maxBodyBytes);
+    }
+    chunks.push(value);
+    hash.update(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return {
+    bodyDigest: hash.digest("base64url"),
+    createRequest: () => new Request(request.url, {
+      method: request.method,
+      headers,
+      body: body.slice(),
+      signal: request.signal,
+    }),
+  };
 }
 
 class DatafnRequestBodyTooLargeError extends Error {
@@ -1200,12 +1357,52 @@ async function requestBodyDigest(
   return hash.digest("base64url");
 }
 
-function routingBodyLimit(value: number | undefined): number {
+export function validateDatafnRoutingBodyLimit(value: number | undefined): number {
   const limit = value ?? DEFAULT_ROUTING_MAX_BODY_BYTES;
   if (!Number.isSafeInteger(limit) || limit < 0) {
     throw new Error("DATAFN_ROUTING_MAX_BODY_BYTES_INVALID");
   }
   return limit;
+}
+
+function routingCacheMaxEntries(value: number | undefined): number {
+  const limit = value ?? DEFAULT_GATEWAY_CACHE_MAX_ENTRIES;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error("DATAFN_ROUTING_CACHE_MAX_ENTRIES_INVALID");
+  }
+  return limit;
+}
+
+function migrationRecoveryLeaseMs(value: number | undefined): number {
+  const leaseMs = value ?? DEFAULT_MIGRATION_RECOVERY_LEASE_MS;
+  if (!Number.isSafeInteger(leaseMs) || leaseMs < 1) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
+  }
+  return leaseMs;
+}
+
+function setBoundedPlacementCache(
+  cache: Map<string, { placement: DatafnNamespacePlacement; expiresAt: number }>,
+  namespace: string,
+  entry: { placement: DatafnNamespacePlacement; expiresAt: number },
+  maxEntries: number,
+  currentTime: number,
+): void {
+  cache.delete(namespace);
+  cache.set(namespace, entry);
+  if (cache.size <= maxEntries) return;
+  for (const [key, candidate] of cache) {
+    if (candidate.expiresAt <= currentTime) cache.delete(key);
+  }
+  while (cache.size > maxEntries) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+function isPlacementTrafficFenced(placement: DatafnNamespacePlacement): boolean {
+  return placement.state === "moving" || placement.migration?.phase === "resume-target";
 }
 
 function requestTarget(url: string): string {
@@ -1281,6 +1478,13 @@ function assertMigrationState(
       (placement.state !== "active" || placement.regionId !== migration.targetRegionId))
   ) {
     throw new Error("DATAFN_MIGRATION_STATE_INVALID");
+  }
+  const hasRecoveryOwner = typeof migration.recoveryOwnerId === "string" &&
+    migration.recoveryOwnerId.trim().length > 0;
+  const hasRecoveryExpiry = Number.isSafeInteger(migration.recoveryLeaseExpiresAt) &&
+    migration.recoveryLeaseExpiresAt! > 0;
+  if (hasRecoveryOwner !== hasRecoveryExpiry) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
   }
 }
 

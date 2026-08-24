@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
@@ -129,31 +129,29 @@ describe("DataFn public-links plugin", () => {
     await db.initialize();
     const memoryDirectory = createMemoryIndexedDirectoryStore();
     let permissionQueries = 0;
+    const get = vi.fn(memoryDirectory.get.bind(memoryDirectory));
     const directory = {
       ...memoryDirectory,
+      get,
       async query(input: Parameters<typeof memoryDirectory.query>[0]) {
         permissionQueries++;
         return memoryDirectory.query(input);
       },
     };
-    await directory.put({
-      key: "datafn:publicLink:existing",
-      value: JSON.stringify({
-        id: "existing",
-        principalId: "public_link:existing",
-        __ns: "tenant:public-link",
-      }),
-      indexes: { "datafn.publicLink.principal": "public_link:existing" },
-    });
     const placement = createMemoryDatafnPlacementDirectory();
     await placement.putIfAbsent({
-      namespace: "tenant:public-link",
+      namespace: "user:owner",
       regionId: "region:public-links",
       epoch: 1,
       state: "active",
       updatedAt: new Date().toISOString(),
     });
+    const authenticateOwner = vi.fn((request: Request) => {
+      const actorId = request.headers.get("x-owner-actor");
+      return actorId ? { actorId } : null;
+    });
     const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner,
       getOwnerActorId: (session) => session.actorId,
       getOwnerNamespace: (actorId) => `user:${actorId}`,
       directory,
@@ -171,12 +169,28 @@ describe("DataFn public-links plugin", () => {
     });
 
     try {
+      const created = await post(
+        server,
+        "/datafn/public-links",
+        { resource: "linkTag", scope: "resource", level: "viewer" },
+        ownerHeaders(),
+      );
+      expect(created.status).toBe(200);
+      expect(authenticateOwner).toHaveBeenCalledOnce();
+      const token = readString(created.body.result.token);
+      get.mockClear();
+      permissionQueries = 0;
+
       const response = await post(
         server,
         "/datafn/public-links/resolve",
-        { token: "link:existing.secret" },
+        { token },
       );
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect(response.body.ok).toBe(true);
+      expect(get).toHaveBeenCalledWith(
+        `datafn:publicLink:${token.slice(0, token.indexOf("."))}`,
+      );
       expect(permissionQueries).toBe(0);
     } finally {
       await server.close();

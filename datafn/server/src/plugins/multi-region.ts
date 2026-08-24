@@ -1,6 +1,9 @@
 import type { DatafnPlugin } from '@datafn/core';
 import type { IndexedDirectoryRecord, IndexedDirectoryStoreAdapter } from '@superfunctions/db';
-import type { DatafnPlacementRuntimeConfig } from '../multi-region-routing.js';
+import {
+  validateDatafnRoutingBodyLimit,
+  type DatafnPlacementRuntimeConfig,
+} from '../multi-region-routing.js';
 
 export const DATAFN_MULTI_REGION_CAPABILITY = Symbol.for(
   '@datafn/server/multi-region',
@@ -68,12 +71,7 @@ function validatePlacementRuntime(placement: DatafnPlacementRuntimeConfig): void
   if (assertionsEnabled && !placement.replayStore) {
     throw new Error("DATAFN_ROUTING_REPLAY_STORE_REQUIRED");
   }
-  if (
-    placement.maxBodyBytes !== undefined &&
-    (!Number.isSafeInteger(placement.maxBodyBytes) || placement.maxBodyBytes < 0)
-  ) {
-    throw new Error("DATAFN_ROUTING_MAX_BODY_BYTES_INVALID");
-  }
+  validateDatafnRoutingBodyLimit(placement.maxBodyBytes);
 }
 
 export const createDatafnMultiRegionPlugin = datafnMultiRegionPlugin;
@@ -262,6 +260,7 @@ export {
   createMemoryDatafnPlacementDirectory,
   createMemoryDatafnRoutingReplayStore,
   migrateDatafnNamespace,
+  validateDatafnRoutingBodyLimit,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
 } from '../multi-region-routing.js';

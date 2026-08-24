@@ -94,6 +94,7 @@ export {
   createMemoryDatafnPlacementDirectory,
   createMemoryDatafnRoutingReplayStore,
   migrateDatafnNamespace,
+  validateDatafnRoutingBodyLimit,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
 } from "./plugins/multi-region.js";

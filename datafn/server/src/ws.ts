@@ -96,6 +96,8 @@ export class WebSocketManager {
    */
   private clientPrincipals = new Map<WebSocketClient, Set<string>>();
   private clientPlacement = new Map<WebSocketClient, { regionId?: string; epoch?: number }>();
+  /** Monotonic namespace fence generation closes the validation/registration race. */
+  private namespaceFenceGeneration = new Map<string, number>();
   /** Clients that have been sent a ping and have not yet replied (REL-007). */
   private pendingPong = new Set<WebSocketClient>();
   /** Heartbeat interval handle. */
@@ -126,6 +128,10 @@ export class WebSocketManager {
 
   private getNamespaceCount(namespace: string): number {
     return this.namespaceClients.get(namespace)?.size ?? 0;
+  }
+
+  getNamespaceFenceGeneration(namespace: string): number {
+    return this.namespaceFenceGeneration.get(namespace) ?? 0;
   }
 
   private normalizeNonEmptyString(value: unknown): string | null {
@@ -348,6 +354,10 @@ export class WebSocketManager {
    * the namespace (used when entering the moving state).
    */
   fenceNamespace(namespace: string, minimumEpoch?: number): number {
+    this.namespaceFenceGeneration.set(
+      namespace,
+      this.getNamespaceFenceGeneration(namespace) + 1,
+    );
     const clients = [...(this.namespaceClients.get(namespace) ?? [])];
     let closed = 0;
     for (const client of clients) {
@@ -487,6 +497,7 @@ export class WebSocketManager {
     this.clientNamespace.clear();
     this.clientPrincipals.clear();
     this.clientPlacement.clear();
+    this.namespaceFenceGeneration.clear();
     this.pendingPong.clear();
   }
 

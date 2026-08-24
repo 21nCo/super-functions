@@ -30,7 +30,9 @@ describe("DataFn tenant placement", () => {
     ["Redis", createRedisTestStore],
     ["Cloudflare Durable Objects", createDurableObjectTestStore],
   ])("passes claim and fenced-move conformance with the %s provider adapter", async (_name, createStore) => {
-    const directory = createConditionalKvDatafnPlacementDirectory(createStore());
+    const directory = createConditionalKvDatafnPlacementDirectory(createStore(), {
+      consistencyModel: "linearizable",
+    });
     const first = await claimDatafnNamespacePlacement({
       directory,
       namespace: "tenant:provider",
@@ -185,6 +187,7 @@ describe("DataFn tenant placement", () => {
       regionId: "eu",
       now: () => fixedNow,
     });
+    let currentTime = fixedNow;
     const hooks = {
       async quiesceSource() {},
       async drainPermissionDirectory() {},
@@ -199,14 +202,43 @@ describe("DataFn tenant placement", () => {
       directory,
       namespace: "tenant:resume",
       targetRegionId: "us",
+      now: () => currentTime,
+      recoveryLeaseMs: 10,
       hooks,
     })).rejects.toThrow("target still paused");
 
+    const pending = await directory.get("tenant:resume");
+    expect(pending).toMatchObject({
+      regionId: "us",
+      state: "active",
+      migration: { phase: "resume-target" },
+    });
+    await expect(validateDatafnPlacement({
+      namespace: "tenant:resume",
+      regionId: "us",
+      runtime: { directory },
+      trustedInternal: true,
+    })).rejects.toMatchObject({ code: "DATAFN_NAMESPACE_MOVING" });
+    const dispatch = vi.fn(async () => Response.json({ ok: true }));
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: () => "tenant:resume",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch },
+      assertionSigner: { sign: () => "unused" },
+    });
+    expect((await gateway.handle(new Request("https://data.example/datafn/query"))).status)
+      .toBe(409);
+    expect(dispatch).not.toHaveBeenCalled();
+
     const resumed: Array<{ recovery?: boolean; sourceRegionId: string }> = [];
+    currentTime += 11;
     const placement = await migrateDatafnNamespace({
       directory,
       namespace: "tenant:resume",
       targetRegionId: "us",
+      now: () => currentTime,
+      recoveryLeaseMs: 10,
       hooks: {
         ...hooks,
         async resumeTarget(context) {
@@ -215,7 +247,7 @@ describe("DataFn tenant placement", () => {
       },
     });
 
-    expect(placement).toMatchObject({ regionId: "us", epoch: 4 });
+    expect(placement).toMatchObject({ regionId: "us", epoch: 5 });
     expect(resumed).toMatchObject([{ recovery: true, sourceRegionId: "eu" }]);
   });
 
@@ -265,8 +297,49 @@ describe("DataFn tenant placement", () => {
     });
 
     expect(recoveries).toEqual([true]);
-    expect(placement).toMatchObject({ regionId: "us", epoch: 4, state: "active" });
+    expect(placement).toMatchObject({ regionId: "us", epoch: 5, state: "active" });
     expect(placement.migration).toBeUndefined();
+  });
+
+  it("serializes moving-state recovery with a durable lease", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:serialized",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    let releaseFirst!: () => void;
+    const blocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let markEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    const first = migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:serialized",
+      targetRegionId: "us",
+      now: () => fixedNow + 1,
+      recoveryLeaseMs: 1_000,
+      hooks: {
+        ...emptyMigrationHooks(),
+        async quiesceSource() {
+          markEntered();
+          await blocked;
+        },
+      },
+    });
+    await entered;
+    const retryHook = vi.fn();
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:serialized",
+      targetRegionId: "us",
+      now: () => fixedNow + 2,
+      recoveryLeaseMs: 1_000,
+      hooks: { ...emptyMigrationHooks(), quiesceSource: retryHook },
+    })).rejects.toThrow("DATAFN_MIGRATION_ALREADY_IN_PROGRESS");
+    expect(retryHook).not.toHaveBeenCalled();
+    releaseFirst();
+    await first;
   });
 
   it("rolls a failed move back without leaving false target-resume evidence", async () => {
@@ -643,10 +716,14 @@ describe("DataFn canonical gateway", () => {
       regionId: "eu",
     });
     const dispatch = vi.fn(async () => Response.json({ ok: true }));
+    const deriveNamespace = vi.fn(async (request: Request) => {
+      await request.text();
+      return "tenant:bounded";
+    });
     const gateway = createDatafnGatewayRouter({
       directory,
       maxBodyBytes: 5,
-      deriveNamespace: () => "tenant:bounded",
+      deriveNamespace,
       cellRegistry: { resolve: () => ({}) },
       dispatcher: { dispatch },
       assertionSigner: { sign: () => "unused" },
@@ -661,6 +738,7 @@ describe("DataFn canonical gateway", () => {
       error: { code: "DATAFN_PAYLOAD_TOO_LARGE", details: { retryable: false } },
     });
     expect(dispatch).not.toHaveBeenCalled();
+    expect(deriveNamespace).not.toHaveBeenCalled();
   });
 
   it("marks a rejected dispatch as an ambiguous non-retryable outcome", async () => {
@@ -695,19 +773,41 @@ describe("DataFn canonical gateway", () => {
       namespace: "tenant:retry",
       regionId: "eu",
     });
-    const dispatch = vi.fn(async () => new DatafnRoutingError({
-      code: "DATAFN_REGION_MISMATCH",
-      message: "stale placement",
-      status: 409,
-      retryable: true,
-      internal: true,
-    }).toResponse());
+    const assertions = createDatafnHmacRoutingAssertions({
+      activeKeyId: "v1",
+      keys: { v1: "test-only-secret" },
+    });
+    const replayStore = createMemoryDatafnRoutingReplayStore();
+    const dispatch = vi.fn(async (input: {
+      request: Request;
+      assertion: string;
+      placement: DatafnNamespacePlacement;
+    }) => {
+      await validateDatafnPlacement({
+        namespace: input.placement.namespace,
+        regionId: input.placement.regionId,
+        runtime: {
+          directory,
+          requireRoutingAssertion: true,
+          assertionVerifier: assertions,
+          replayStore,
+        },
+        request: withDatafnRoutingAssertion(input.request, input.assertion),
+      });
+      return new DatafnRoutingError({
+        code: "DATAFN_REGION_MISMATCH",
+        message: "stale placement",
+        status: 409,
+        retryable: true,
+        internal: true,
+      }).toResponse();
+    });
     const gateway = createDatafnGatewayRouter({
       directory,
       deriveNamespace: () => "tenant:retry",
       cellRegistry: { resolve: () => ({}) },
       dispatcher: { dispatch },
-      assertionSigner: { sign: () => "assertion" },
+      assertionSigner: assertions,
     });
 
     const response = await gateway.handle(new Request("https://data.example/datafn/query"));
@@ -716,6 +816,41 @@ describe("DataFn canonical gateway", () => {
       error: { code: "DATAFN_ROUTING_RETRY_EXHAUSTED" },
     });
     expect(dispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [409, false],
+    [200, true],
+  ])("does not retry a mismatch-shaped response without both internal signals", async (
+    status,
+    includeHeader,
+  ) => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:no-retry",
+      regionId: "eu",
+    });
+    const dispatch = vi.fn(async () => Response.json({
+      error: {
+        code: "DATAFN_REGION_MISMATCH",
+        details: { executionStarted: false },
+      },
+    }, {
+      status,
+      headers: includeHeader ? { "x-datafn-region-mismatch": "1" } : undefined,
+    }));
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: () => "tenant:no-retry",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(status);
+    expect(dispatch).toHaveBeenCalledOnce();
   });
 
   it("falls back to the default cache TTL for malformed placement expiry", async () => {
@@ -738,6 +873,31 @@ describe("DataFn canonical gateway", () => {
     await gateway.handle(new Request("https://data.example/datafn/query"));
     await gateway.handle(new Request("https://data.example/datafn/query"));
     expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("evicts the oldest namespace when the placement cache reaches its bound", async () => {
+    const base = createMemoryDatafnPlacementDirectory();
+    for (const namespace of ["tenant:first", "tenant:second"]) {
+      await claimDatafnNamespacePlacement({ directory: base, namespace, regionId: "eu" });
+    }
+    const get = vi.fn(base.get.bind(base));
+    const gateway = createDatafnGatewayRouter({
+      directory: { ...base, get },
+      maxCacheEntries: 1,
+      deriveNamespace: (request) => request.headers.get("x-namespace") ?? "",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch: async () => Response.json({ ok: true }) },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    const route = (namespace: string) => gateway.handle(new Request(
+      "https://data.example/datafn/query",
+      { headers: { "x-namespace": namespace } },
+    ));
+    await route("tenant:first");
+    await route("tenant:second");
+    await route("tenant:first");
+    expect(get).toHaveBeenCalledTimes(3);
   });
 });
 

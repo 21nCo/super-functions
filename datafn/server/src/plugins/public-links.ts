@@ -172,6 +172,14 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
         401,
       );
     },
+    bindHandlerRequest(placementRequest: Request, handlerRequest: Request) {
+      if (ownerRouteState.has(placementRequest)) {
+        ownerRouteState.set(
+          handlerRequest,
+          ownerRouteState.get(placementRequest) ?? null,
+        );
+      }
+    },
   };
   const publicLinkPlacement = {
     resolveNamespace: async (request: Request): Promise<string | Response> => {

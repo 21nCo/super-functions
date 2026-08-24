@@ -124,6 +124,12 @@ export interface DatafnPluginRoutePlacement<TContext = any> {
     request: Request,
     context: TContext,
   ): DatafnPluginRoutePlacementResult | Promise<DatafnPluginRoutePlacementResult>;
+  /** Transfers validated resolver state from the body-safe clone to the handler request. */
+  bindHandlerRequest?(
+    placementRequest: Request,
+    handlerRequest: Request,
+    context: TContext,
+  ): void | Promise<void>;
 }
 
 export type DatafnComposableRoute<TContext = any> = Route<TContext> & {
@@ -1438,7 +1444,8 @@ export async function createDatafnServer<TContext = any>(
       ...route,
       handler: async (request, context) => {
         const assertionRequest = request.clone();
-        const resolution = await placement.resolveNamespace(request.clone(), context);
+        const placementRequest = request.clone();
+        const resolution = await placement.resolveNamespace(placementRequest, context);
         if (resolution instanceof Response) return resolution;
         try {
           await validateDatafnPlacement({
@@ -1451,6 +1458,7 @@ export async function createDatafnServer<TContext = any>(
           if (error instanceof DatafnRoutingError) return error.toResponse();
           throw error;
         }
+        await placement.bindHandlerRequest?.(placementRequest, request, context);
         return originalHandler(request, context);
       },
     };
@@ -1776,6 +1784,10 @@ export async function createDatafnServer<TContext = any>(
         if (typeof client.close !== "function") {
           return false;
         }
+        const fenceGeneration = wsManager.getNamespaceFenceGeneration(
+          authContext.namespace,
+        );
+        let added = false;
         try {
           const validated = await validateDatafnPlacement({
             namespace: authContext.namespace,
@@ -1785,14 +1797,28 @@ export async function createDatafnServer<TContext = any>(
             trustedInternal:
               !handshakeRequest && !multiRegionRuntime.placement.requireRoutingAssertion,
           });
-          return wsManager.addClient(client, {
+          added = wsManager.addClient(client, {
             ...authContext,
             regionId: validated.placement.regionId,
             routingEpoch: validated.placement.epoch,
           });
+          if (!added) return false;
+          if (
+            wsManager.getNamespaceFenceGeneration(authContext.namespace) !==
+              fenceGeneration
+          ) {
+            wsManager.removeClient(client);
+            client.close(
+              4510,
+              "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
+            );
+            return false;
+          }
+          return true;
         } catch (error) {
+          if (added) wsManager.removeClient(client);
           try {
-            client.close?.(
+            client.close(
               error instanceof DatafnRoutingError ? 4510 : 1011,
               error instanceof Error ? error.message : "Placement validation failed",
             );

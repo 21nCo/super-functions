@@ -149,6 +149,54 @@ describe("DataFn server placement integration", () => {
     }
   });
 
+  it("rejects a routed WebSocket when a namespace fence lands during validation", async () => {
+    const placement = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: placement,
+      namespace: "tenant:one",
+      regionId: "eu",
+    });
+    let releaseRead!: () => void;
+    const blockedRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let markReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+    const directory = {
+      ...placement,
+      async get(namespace: string) {
+        markReadStarted();
+        await blockedRead;
+        return placement.get(namespace);
+      },
+    };
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "eu",
+        directory: permissionDirectory(),
+        placement: { directory },
+      })],
+    });
+    const client = { send: vi.fn(), close: vi.fn() };
+
+    try {
+      const admission = server.websocketHandler.addRoutedClient(
+        client,
+        { namespace: "tenant:one" },
+      );
+      await readStarted;
+      expect(server.websocketHandler.fenceNamespace("tenant:one")).toBe(0);
+      releaseRead();
+      await expect(admission).resolves.toBe(false);
+      expect(client.close).toHaveBeenCalledWith(
+        4510,
+        "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
+      );
+    } finally {
+      releaseRead();
+      await server.close();
+    }
+  });
+
   it("keeps health status available without a tenant placement", async () => {
     const server = await createDatafnServer({
       schema: { resources: [] },
@@ -234,5 +282,10 @@ describe("DataFn server placement integration", () => {
         assertionVerifier: { verify: () => { throw new Error("unused"); } },
       },
     })).toThrow("DATAFN_ROUTING_REPLAY_STORE_REQUIRED");
+    expect(() => datafnMultiRegionPlugin({
+      regionId: "eu",
+      directory: permissionDirectory(),
+      placement: { directory, maxBodyBytes: -1 },
+    })).toThrow("DATAFN_ROUTING_MAX_BODY_BYTES_INVALID");
   });
 });
