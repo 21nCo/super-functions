@@ -35,6 +35,7 @@ for (const fixturePath of catalogDevCropFixturePaths) {
 
 const dependencyWorkspaces = [
   "@uifn/core",
+  "@uifn/dom",
   "@uifn/adapter-kit",
   "@uifn/react",
   "@uifn/svelte",
@@ -43,6 +44,9 @@ const dependencyWorkspaces = [
   "@uifn/theme",
   "@uifn/recipes",
   "@uifn/components",
+  "@uifn/components-react",
+  "@uifn/components-svelte",
+  "@uifn/components-solid",
   "@uifn/patterns",
   "@uifn/sf",
   "@uifn/examples-shared",

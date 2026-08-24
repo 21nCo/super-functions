@@ -87,6 +87,16 @@ function workspaceManifest(relPath) {
 }
 
 async function loadShared() {
+  for (const workspace of [
+    "@uifn/tokens",
+    "@uifn/theme",
+    "@uifn/recipes",
+    "@uifn/components",
+    "@uifn/patterns",
+    "@uifn/sf",
+  ]) {
+    run("npm", ["--workspace", workspace, "run", "build"], `build:${workspace}`);
+  }
   run("npm", ["--workspace", "@uifn/examples-shared", "run", "build"], "build:examples-shared");
   return await import(path.join(rootDir, "uifn/examples/shared/dist/index.js"));
 }

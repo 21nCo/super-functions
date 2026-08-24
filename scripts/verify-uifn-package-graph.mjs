@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseSvelte } from 'svelte/compiler';
 import ts from 'typescript';
 
 const defaultRepoRoot = process.cwd();
@@ -257,52 +258,11 @@ export function sourceImportSpecifiers(source, pathname) {
 }
 
 function svelteScriptSources(source) {
-  const lower = source.toLowerCase();
-  const scripts = [];
-  const isHtmlSpace = (character) => (
-    character === ' ' || character === '\t' || character === '\n'
-    || character === '\r' || character === '\f'
-  );
-  const tagEnd = (start) => {
-    let quote = null;
-    for (let index = start; index < source.length; index += 1) {
-      const character = source[index];
-      if (quote) {
-        if (character === quote) quote = null;
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === '>') {
-        return index;
-      }
-    }
-    return -1;
-  };
-
-  let cursor = 0;
-  while (cursor < source.length) {
-    const open = lower.indexOf('<script', cursor);
-    if (open < 0) break;
-    const openBoundary = source[open + 7];
-    if (openBoundary !== '>' && !isHtmlSpace(openBoundary)) {
-      cursor = open + 7;
-      continue;
-    }
-    const openEnd = tagEnd(open + 7);
-    if (openEnd < 0) break;
-
-    let close = lower.indexOf('</script', openEnd + 1);
-    while (close >= 0) {
-      const closeBoundary = source[close + 8];
-      if (closeBoundary === '>' || isHtmlSpace(closeBoundary)) break;
-      close = lower.indexOf('</script', close + 8);
-    }
-    if (close < 0) break;
-    const closeEnd = tagEnd(close + 8);
-    if (closeEnd < 0) break;
-    scripts.push(source.slice(openEnd + 1, close));
-    cursor = closeEnd + 1;
-  }
-  return scripts;
+  const parsed = parseSvelte(source, { modern: true });
+  return [parsed.instance, parsed.module]
+    .filter((script) => script?.content)
+    .sort((left, right) => left.content.start - right.content.start)
+    .map((script) => source.slice(script.content.start, script.content.end));
 }
 
 export function runPackageGraphVerification(options = {}) {

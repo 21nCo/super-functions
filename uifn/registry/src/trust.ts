@@ -23,10 +23,11 @@ export function verifyRegistryCatalogSignature(
   signature: RegistrySignatureEnvelope = REGISTRY_SIGNATURE,
 ): RegistryTrustResult {
   const catalogSha256 = createHash('sha256').update(payload).digest('hex');
-  const signatureKeyId = signature && typeof signature === 'object' && typeof signature.keyId === 'string'
-    ? signature.keyId
-    : '';
+  let signatureKeyId = '';
   try {
+    signatureKeyId = signature && typeof signature === 'object' && typeof signature.keyId === 'string'
+      ? signature.keyId
+      : '';
     const publicKey = createPublicKey(REGISTRY_TRUST_ROOT_PUBLIC_KEY_PEM);
     const keyId = createHash('sha256').update(publicKey.export({ type: 'spki', format: 'der' })).digest('hex').slice(0, 24);
     const valid = signature && typeof signature === 'object'

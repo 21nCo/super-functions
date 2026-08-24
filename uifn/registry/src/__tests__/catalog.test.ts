@@ -83,4 +83,18 @@ describe('TV-GEN-001-P/N canonical delivery catalog', () => {
       code: 'UIFN_REGISTRY_SIGNATURE_INVALID',
     });
   });
+
+  it('fails closed when a registry signature property getter throws', () => {
+    const signature = new Proxy({} as never, {
+      get(_target, property) {
+        if (property === 'keyId') throw new Error('malformed signature');
+        return undefined;
+      },
+    });
+    expect(verifyRegistryCatalogSignature('catalog', signature)).toMatchObject({
+      ok: false,
+      code: 'UIFN_REGISTRY_SIGNATURE_INVALID',
+      keyId: '',
+    });
+  });
 });
