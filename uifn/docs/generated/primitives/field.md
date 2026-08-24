@@ -147,7 +147,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { FieldRoot } from '@uifn/components-react/field';
+import { FieldRoot } from "@uifn/components-react/field";
 
 export function FieldExample() {
   return React.createElement(FieldRoot, {});
@@ -158,7 +158,7 @@ export function FieldExample() {
 
 ```tsx
 import * as React from 'react';
-import { FieldRoot } from './components/uifn/react/field.js';
+import { FieldRoot } from "./components/uifn/react/field.js";
 
 export function FieldExample() {
   return React.createElement(FieldRoot, {});
@@ -169,7 +169,7 @@ export function FieldExample() {
 
 ```svelte
 <script lang="ts">
-  import { FieldRoot } from '@uifn/components-svelte/field';
+  import { FieldRoot } from "@uifn/components-svelte/field";
 </script>
 
 <FieldRoot  />
@@ -179,7 +179,7 @@ export function FieldExample() {
 
 ```svelte
 <script lang="ts">
-  import { FieldRoot } from './components/uifn/svelte/field/index.js';
+  import { FieldRoot } from "./components/uifn/svelte/field/index.js";
 </script>
 
 <FieldRoot  />
@@ -189,7 +189,7 @@ export function FieldExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FieldRoot } from '@uifn/components-solid/field';
+import { FieldRoot } from "@uifn/components-solid/field";
 
 export function FieldExample() {
   return createComponent(FieldRoot, {});
@@ -200,7 +200,7 @@ export function FieldExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FieldRoot } from './components/uifn/solid/field.js';
+import { FieldRoot } from "./components/uifn/solid/field.js";
 
 export function FieldExample() {
   return createComponent(FieldRoot, {});

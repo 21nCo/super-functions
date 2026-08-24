@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "FIXTURE-P1-INTAKE",
+  "title": "Required overlay behavior is incorrect",
+  "severity": "P1",
+  "status": "triaged",
+  "owner": "uifn-maintainer",
+  "createdAt": "2026-07-17T00:00:00Z",
+  "lastTriagedAt": "2026-07-17T12:00:00Z",
+  "affectedRequirements": ["DOM-002"],
+  "affectedEvidence": ["TV-DOM-002-P"],
+  "targetRelease": "1.0.0",
+  "accessibility": true,
+  "exception": null,
+  "expected": {
+    "acknowledgeDueAt": "2026-07-18T00:00:00.000Z",
+    "triageDueAt": "2026-07-19T00:00:00.000Z",
+    "mitigateDueAt": "2026-07-20T00:00:00.000Z",
+    "remediateDueAt": "2026-07-24T00:00:00.000Z",
+    "releaseBlocking": true,
+    "exceptionAllowed": false
+  }
+}

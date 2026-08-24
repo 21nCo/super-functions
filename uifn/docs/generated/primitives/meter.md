@@ -145,7 +145,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { MeterRoot } from '@uifn/components-react/meter';
+import { MeterRoot } from "@uifn/components-react/meter";
 
 export function MeterExample() {
   return React.createElement(MeterRoot, {"value":1,"aria-label":"Meter example"});
@@ -156,7 +156,7 @@ export function MeterExample() {
 
 ```tsx
 import * as React from 'react';
-import { MeterRoot } from './components/uifn/react/meter.js';
+import { MeterRoot } from "./components/uifn/react/meter.js";
 
 export function MeterExample() {
   return React.createElement(MeterRoot, {"value":1,"aria-label":"Meter example"});
@@ -167,7 +167,7 @@ export function MeterExample() {
 
 ```svelte
 <script lang="ts">
-  import { MeterRoot } from '@uifn/components-svelte/meter';
+  import { MeterRoot } from "@uifn/components-svelte/meter";
 </script>
 
 <MeterRoot value={1} aria-label="Meter example" />
@@ -177,7 +177,7 @@ export function MeterExample() {
 
 ```svelte
 <script lang="ts">
-  import { MeterRoot } from './components/uifn/svelte/meter/index.js';
+  import { MeterRoot } from "./components/uifn/svelte/meter/index.js";
 </script>
 
 <MeterRoot value={1} aria-label="Meter example" />
@@ -187,7 +187,7 @@ export function MeterExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MeterRoot } from '@uifn/components-solid/meter';
+import { MeterRoot } from "@uifn/components-solid/meter";
 
 export function MeterExample() {
   return createComponent(MeterRoot, {"value":1,"aria-label":"Meter example"});
@@ -198,7 +198,7 @@ export function MeterExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MeterRoot } from './components/uifn/solid/meter.js';
+import { MeterRoot } from "./components/uifn/solid/meter.js";
 
 export function MeterExample() {
   return createComponent(MeterRoot, {"value":1,"aria-label":"Meter example"});

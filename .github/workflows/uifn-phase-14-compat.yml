@@ -341,12 +341,8 @@ jobs:
         include:
           - cell: safari-current
             runner: '["self-hosted","uifn-phase14","safari-current"]'
-            webdriver_url_secret: UIFN_PHASE14_SAFARI_CURRENT_WEBDRIVER_URL
-            capabilities_secret: UIFN_PHASE14_SAFARI_CURRENT_CAPABILITIES
           - cell: safari-previous
             runner: '["self-hosted","uifn-phase14","safari-previous"]'
-            webdriver_url_secret: UIFN_PHASE14_SAFARI_PREVIOUS_WEBDRIVER_URL
-            capabilities_secret: UIFN_PHASE14_SAFARI_PREVIOUS_CAPABILITIES
     permissions:
       contents: read
       id-token: write
@@ -373,11 +369,25 @@ jobs:
           while IFS= read -r file; do
             gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
           done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
-      - name: Execute all 183 packed public trees in real Safari
+      - name: Execute all 183 packed public trees in current Safari
+        if: matrix.cell == 'safari-current'
         env:
           UIFN_NPM_PATH: npm
-          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets[matrix.webdriver_url_secret] }}
-          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets[matrix.capabilities_secret] }}
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_SAFARI_CURRENT_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_SAFARI_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_WEBDRIVER_LOCAL: "true"
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees in previous Safari
+        if: matrix.cell == 'safari-previous'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_SAFARI_PREVIOUS_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_SAFARI_PREVIOUS_CAPABILITIES }}
           UIFN_PHASE14_WEBDRIVER_LOCAL: "true"
         run: |
           node scripts/run-uifn-phase-14-browser-cell.mjs \
@@ -505,19 +515,10 @@ jobs:
         include:
           - cell: ios-safari-current
             runner: '["self-hosted","uifn-phase14","device-lab","ios-current"]'
-            capabilities_secret: UIFN_PHASE14_IOS_CURRENT_CAPABILITIES
-            public_host_var: UIFN_PHASE14_IOS_CURRENT_PUBLIC_HOST
-            architecture_var: UIFN_PHASE14_IOS_CURRENT_ARCHITECTURE
           - cell: ios-safari-previous
             runner: '["self-hosted","uifn-phase14","device-lab","ios-previous"]'
-            capabilities_secret: UIFN_PHASE14_IOS_PREVIOUS_CAPABILITIES
-            public_host_var: UIFN_PHASE14_IOS_PREVIOUS_PUBLIC_HOST
-            architecture_var: UIFN_PHASE14_IOS_PREVIOUS_ARCHITECTURE
           - cell: android-chrome-current
             runner: '["self-hosted","uifn-phase14","device-lab","android-current"]'
-            capabilities_secret: UIFN_PHASE14_ANDROID_CURRENT_CAPABILITIES
-            public_host_var: UIFN_PHASE14_ANDROID_CURRENT_PUBLIC_HOST
-            architecture_var: UIFN_PHASE14_ANDROID_CURRENT_ARCHITECTURE
     permissions:
       contents: read
       id-token: write
@@ -544,13 +545,48 @@ jobs:
           while IFS= read -r file; do
             gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
           done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
-      - name: Execute all 183 packed public trees on the physical device
+      - name: Execute all 183 packed public trees on current iOS Safari
+        if: matrix.cell == 'ios-safari-current'
         env:
           UIFN_NPM_PATH: npm
           UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
-          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets[matrix.capabilities_secret] }}
-          UIFN_PHASE14_PUBLIC_HOST: ${{ vars[matrix.public_host_var] }}
-          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars[matrix.architecture_var] }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_IOS_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_IOS_CURRENT_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_IOS_CURRENT_ARCHITECTURE }}
+          UIFN_PHASE14_DEVICE_PHYSICAL: "true"
+          UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
+          UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees on previous iOS Safari
+        if: matrix.cell == 'ios-safari-previous'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_IOS_PREVIOUS_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_IOS_PREVIOUS_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_IOS_PREVIOUS_ARCHITECTURE }}
+          UIFN_PHASE14_DEVICE_PHYSICAL: "true"
+          UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
+          UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees on current Android Chrome
+        if: matrix.cell == 'android-chrome-current'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_ANDROID_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_ANDROID_CURRENT_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_ANDROID_CURRENT_ARCHITECTURE }}
           UIFN_PHASE14_DEVICE_PHYSICAL: "true"
           UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
           UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}

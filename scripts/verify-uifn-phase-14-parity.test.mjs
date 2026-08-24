@@ -9,7 +9,7 @@ import {
 } from './verify-uifn-phase-14-parity.mjs';
 
 const traceRoot = process.env.UIFN_PHASE14_TRACE_DIR;
-const golden = JSON.parse(readFileSync(path.resolve('uifn/.conduct/generated/phase-14/phase-14-semantic-traces.json'), 'utf8'));
+const golden = JSON.parse(readFileSync(path.resolve('uifn/evidence/generated/phase-14/phase-14-semantic-traces.json'), 'utf8'));
 
 test('TV-PARITY-001-P compares every actual source and packed public tree', { skip: !traceRoot }, () => {
   const result = verifyPhase14Parity(path.resolve(traceRoot));

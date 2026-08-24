@@ -155,7 +155,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ButtonRoot } from '@uifn/components-react/button';
+import { ButtonRoot } from "@uifn/components-react/button";
 
 export function ButtonExample() {
   return React.createElement(ButtonRoot, {"aria-label":"Button example"});
@@ -166,7 +166,7 @@ export function ButtonExample() {
 
 ```tsx
 import * as React from 'react';
-import { ButtonRoot } from './components/uifn/react/button.js';
+import { ButtonRoot } from "./components/uifn/react/button.js";
 
 export function ButtonExample() {
   return React.createElement(ButtonRoot, {"aria-label":"Button example"});
@@ -177,7 +177,7 @@ export function ButtonExample() {
 
 ```svelte
 <script lang="ts">
-  import { ButtonRoot } from '@uifn/components-svelte/button';
+  import { ButtonRoot } from "@uifn/components-svelte/button";
 </script>
 
 <ButtonRoot aria-label="Button example" />
@@ -187,7 +187,7 @@ export function ButtonExample() {
 
 ```svelte
 <script lang="ts">
-  import { ButtonRoot } from './components/uifn/svelte/button/index.js';
+  import { ButtonRoot } from "./components/uifn/svelte/button/index.js";
 </script>
 
 <ButtonRoot aria-label="Button example" />
@@ -197,7 +197,7 @@ export function ButtonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ButtonRoot } from '@uifn/components-solid/button';
+import { ButtonRoot } from "@uifn/components-solid/button";
 
 export function ButtonExample() {
   return createComponent(ButtonRoot, {"aria-label":"Button example"});
@@ -208,7 +208,7 @@ export function ButtonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ButtonRoot } from './components/uifn/solid/button.js';
+import { ButtonRoot } from "./components/uifn/solid/button.js";
 
 export function ButtonExample() {
   return createComponent(ButtonRoot, {"aria-label":"Button example"});

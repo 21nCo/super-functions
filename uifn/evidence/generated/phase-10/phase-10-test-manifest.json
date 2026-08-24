@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-10.mjs",
+  "phase": "PHASE_10",
+  "implementationEvidence": true,
+  "requirements": [
+    "PRIM-006",
+    "PRIM-007",
+    "PRIM-008",
+    "I18N-001"
+  ],
+  "vectors": [
+    "TV-PRIM-006-P",
+    "TV-PRIM-006-N",
+    "TV-PRIM-007-P",
+    "TV-PRIM-007-N",
+    "TV-PRIM-008-P",
+    "TV-PRIM-008-N",
+    "TV-I18N-001-P",
+    "TV-I18N-001-N"
+  ],
+  "fixtures": [
+    "lost-pointer-capture",
+    "pointer-cancel",
+    "zoom",
+    "rtl-axis",
+    "mobile-touch",
+    "dst-gap",
+    "dst-fold",
+    "locale-calendar",
+    "color-alpha-round-trip",
+    "timer-drift",
+    "toast-queue-pause-destroy",
+    "announcement-flood"
+  ],
+  "browsers": [
+    "chromium",
+    "firefox",
+    "webkit",
+    "mobile-chromium",
+    "mobile-webkit"
+  ],
+  "suites": [
+    "uifn/core/src/__tests__/phase-10-gesture-date-feedback.test.ts",
+    "uifn/dom/browser/phase10-primitives.spec.ts",
+    "scripts/verify-uifn-phase-10-contract.test.mjs"
+  ]
+}

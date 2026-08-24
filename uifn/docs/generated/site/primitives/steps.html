@@ -82,7 +82,7 @@ CSS variables:
 
 ```tsx
 import * as React from 'react';
-import { StepsRoot } from '@uifn/components-react/steps';
+import { StepsRoot } from &quot;@uifn/components-react/steps&quot;;
 
 export function StepsExample() {
   return React.createElement(StepsRoot, {&quot;count&quot;:1,&quot;aria-label&quot;:&quot;Steps example&quot;});
@@ -93,7 +93,7 @@ export function StepsExample() {
 
 ```tsx
 import * as React from 'react';
-import { StepsRoot } from './components/uifn/react/steps.js';
+import { StepsRoot } from &quot;./components/uifn/react/steps.js&quot;;
 
 export function StepsExample() {
   return React.createElement(StepsRoot, {&quot;count&quot;:1,&quot;aria-label&quot;:&quot;Steps example&quot;});
@@ -104,7 +104,7 @@ export function StepsExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { StepsRoot } from '@uifn/components-svelte/steps';
+  import { StepsRoot } from &quot;@uifn/components-svelte/steps&quot;;
 &lt;/script&gt;
 
 &lt;StepsRoot count={1} aria-label=&quot;Steps example&quot; /&gt;
@@ -114,7 +114,7 @@ export function StepsExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { StepsRoot } from './components/uifn/svelte/steps/index.js';
+  import { StepsRoot } from &quot;./components/uifn/svelte/steps/index.js&quot;;
 &lt;/script&gt;
 
 &lt;StepsRoot count={1} aria-label=&quot;Steps example&quot; /&gt;
@@ -124,7 +124,7 @@ export function StepsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { StepsRoot } from '@uifn/components-solid/steps';
+import { StepsRoot } from &quot;@uifn/components-solid/steps&quot;;
 
 export function StepsExample() {
   return createComponent(StepsRoot, {&quot;count&quot;:1,&quot;aria-label&quot;:&quot;Steps example&quot;});
@@ -135,7 +135,7 @@ export function StepsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { StepsRoot } from './components/uifn/solid/steps.js';
+import { StepsRoot } from &quot;./components/uifn/solid/steps.js&quot;;
 
 export function StepsExample() {
   return createComponent(StepsRoot, {&quot;count&quot;:1,&quot;aria-label&quot;:&quot;Steps example&quot;});

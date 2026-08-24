@@ -140,7 +140,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { FormRoot } from '@uifn/components-react/form';
+import { FormRoot } from "@uifn/components-react/form";
 
 export function FormExample() {
   return React.createElement(FormRoot, {});
@@ -151,7 +151,7 @@ export function FormExample() {
 
 ```tsx
 import * as React from 'react';
-import { FormRoot } from './components/uifn/react/form.js';
+import { FormRoot } from "./components/uifn/react/form.js";
 
 export function FormExample() {
   return React.createElement(FormRoot, {});
@@ -162,7 +162,7 @@ export function FormExample() {
 
 ```svelte
 <script lang="ts">
-  import { FormRoot } from '@uifn/components-svelte/form';
+  import { FormRoot } from "@uifn/components-svelte/form";
 </script>
 
 <FormRoot  />
@@ -172,7 +172,7 @@ export function FormExample() {
 
 ```svelte
 <script lang="ts">
-  import { FormRoot } from './components/uifn/svelte/form/index.js';
+  import { FormRoot } from "./components/uifn/svelte/form/index.js";
 </script>
 
 <FormRoot  />
@@ -182,7 +182,7 @@ export function FormExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FormRoot } from '@uifn/components-solid/form';
+import { FormRoot } from "@uifn/components-solid/form";
 
 export function FormExample() {
   return createComponent(FormRoot, {});
@@ -193,7 +193,7 @@ export function FormExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FormRoot } from './components/uifn/solid/form.js';
+import { FormRoot } from "./components/uifn/solid/form.js";
 
 export function FormExample() {
   return createComponent(FormRoot, {});

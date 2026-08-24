@@ -102,7 +102,7 @@ CSS variables:
 
 ```tsx
 import * as React from 'react';
-import { CommandRoot } from '@uifn/components-react/command';
+import { CommandRoot } from &quot;@uifn/components-react/command&quot;;
 
 export function CommandExample() {
   return React.createElement(CommandRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
@@ -113,7 +113,7 @@ export function CommandExample() {
 
 ```tsx
 import * as React from 'react';
-import { CommandRoot } from './components/uifn/react/command.js';
+import { CommandRoot } from &quot;./components/uifn/react/command.js&quot;;
 
 export function CommandExample() {
   return React.createElement(CommandRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
@@ -124,7 +124,7 @@ export function CommandExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { CommandRoot } from '@uifn/components-svelte/command';
+  import { CommandRoot } from &quot;@uifn/components-svelte/command&quot;;
 &lt;/script&gt;
 
 &lt;CommandRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]} /&gt;
@@ -134,7 +134,7 @@ export function CommandExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { CommandRoot } from './components/uifn/svelte/command/index.js';
+  import { CommandRoot } from &quot;./components/uifn/svelte/command/index.js&quot;;
 &lt;/script&gt;
 
 &lt;CommandRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]} /&gt;
@@ -144,7 +144,7 @@ export function CommandExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CommandRoot } from '@uifn/components-solid/command';
+import { CommandRoot } from &quot;@uifn/components-solid/command&quot;;
 
 export function CommandExample() {
   return createComponent(CommandRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
@@ -155,7 +155,7 @@ export function CommandExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CommandRoot } from './components/uifn/solid/command.js';
+import { CommandRoot } from &quot;./components/uifn/solid/command.js&quot;;
 
 export function CommandExample() {
   return createComponent(CommandRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});

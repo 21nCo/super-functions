@@ -156,7 +156,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { AutocompleteRoot } from '@uifn/components-react/autocomplete';
+import { AutocompleteRoot } from "@uifn/components-react/autocomplete";
 
 export function AutocompleteExample() {
   return React.createElement(AutocompleteRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -167,7 +167,7 @@ export function AutocompleteExample() {
 
 ```tsx
 import * as React from 'react';
-import { AutocompleteRoot } from './components/uifn/react/autocomplete.js';
+import { AutocompleteRoot } from "./components/uifn/react/autocomplete.js";
 
 export function AutocompleteExample() {
   return React.createElement(AutocompleteRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -178,7 +178,7 @@ export function AutocompleteExample() {
 
 ```svelte
 <script lang="ts">
-  import { AutocompleteRoot } from '@uifn/components-svelte/autocomplete';
+  import { AutocompleteRoot } from "@uifn/components-svelte/autocomplete";
 </script>
 
 <AutocompleteRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -188,7 +188,7 @@ export function AutocompleteExample() {
 
 ```svelte
 <script lang="ts">
-  import { AutocompleteRoot } from './components/uifn/svelte/autocomplete/index.js';
+  import { AutocompleteRoot } from "./components/uifn/svelte/autocomplete/index.js";
 </script>
 
 <AutocompleteRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -198,7 +198,7 @@ export function AutocompleteExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AutocompleteRoot } from '@uifn/components-solid/autocomplete';
+import { AutocompleteRoot } from "@uifn/components-solid/autocomplete";
 
 export function AutocompleteExample() {
   return createComponent(AutocompleteRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -209,7 +209,7 @@ export function AutocompleteExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AutocompleteRoot } from './components/uifn/solid/autocomplete.js';
+import { AutocompleteRoot } from "./components/uifn/solid/autocomplete.js";
 
 export function AutocompleteExample() {
   return createComponent(AutocompleteRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});

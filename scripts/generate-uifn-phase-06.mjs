@@ -3,7 +3,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const outputRoot = path.resolve(process.cwd(), 'uifn/.conduct/generated/phase-06');
+const outputRoot = path.resolve(process.cwd(), 'uifn/evidence/generated/phase-06');
 const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : null;
 if (!mode) { console.error('Usage: node scripts/generate-uifn-phase-06.mjs (--write|--check)'); process.exit(2); }
 

@@ -157,7 +157,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { PinInputRoot } from '@uifn/components-react/pin-input';
+import { PinInputRoot } from "@uifn/components-react/pin-input";
 
 export function PinInputExample() {
   return React.createElement(PinInputRoot, {});
@@ -168,7 +168,7 @@ export function PinInputExample() {
 
 ```tsx
 import * as React from 'react';
-import { PinInputRoot } from './components/uifn/react/pin-input.js';
+import { PinInputRoot } from "./components/uifn/react/pin-input.js";
 
 export function PinInputExample() {
   return React.createElement(PinInputRoot, {});
@@ -179,7 +179,7 @@ export function PinInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { PinInputRoot } from '@uifn/components-svelte/pin-input';
+  import { PinInputRoot } from "@uifn/components-svelte/pin-input";
 </script>
 
 <PinInputRoot  />
@@ -189,7 +189,7 @@ export function PinInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { PinInputRoot } from './components/uifn/svelte/pin-input/index.js';
+  import { PinInputRoot } from "./components/uifn/svelte/pin-input/index.js";
 </script>
 
 <PinInputRoot  />
@@ -199,7 +199,7 @@ export function PinInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PinInputRoot } from '@uifn/components-solid/pin-input';
+import { PinInputRoot } from "@uifn/components-solid/pin-input";
 
 export function PinInputExample() {
   return createComponent(PinInputRoot, {});
@@ -210,7 +210,7 @@ export function PinInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PinInputRoot } from './components/uifn/solid/pin-input.js';
+import { PinInputRoot } from "./components/uifn/solid/pin-input.js";
 
 export function PinInputExample() {
   return createComponent(PinInputRoot, {});

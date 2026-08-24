@@ -143,7 +143,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { CollapsibleRoot } from '@uifn/components-react/collapsible';
+import { CollapsibleRoot } from "@uifn/components-react/collapsible";
 
 export function CollapsibleExample() {
   return React.createElement(CollapsibleRoot, {});
@@ -154,7 +154,7 @@ export function CollapsibleExample() {
 
 ```tsx
 import * as React from 'react';
-import { CollapsibleRoot } from './components/uifn/react/collapsible.js';
+import { CollapsibleRoot } from "./components/uifn/react/collapsible.js";
 
 export function CollapsibleExample() {
   return React.createElement(CollapsibleRoot, {});
@@ -165,7 +165,7 @@ export function CollapsibleExample() {
 
 ```svelte
 <script lang="ts">
-  import { CollapsibleRoot } from '@uifn/components-svelte/collapsible';
+  import { CollapsibleRoot } from "@uifn/components-svelte/collapsible";
 </script>
 
 <CollapsibleRoot  />
@@ -175,7 +175,7 @@ export function CollapsibleExample() {
 
 ```svelte
 <script lang="ts">
-  import { CollapsibleRoot } from './components/uifn/svelte/collapsible/index.js';
+  import { CollapsibleRoot } from "./components/uifn/svelte/collapsible/index.js";
 </script>
 
 <CollapsibleRoot  />
@@ -185,7 +185,7 @@ export function CollapsibleExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CollapsibleRoot } from '@uifn/components-solid/collapsible';
+import { CollapsibleRoot } from "@uifn/components-solid/collapsible";
 
 export function CollapsibleExample() {
   return createComponent(CollapsibleRoot, {});
@@ -196,7 +196,7 @@ export function CollapsibleExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CollapsibleRoot } from './components/uifn/solid/collapsible.js';
+import { CollapsibleRoot } from "./components/uifn/solid/collapsible.js";
 
 export function CollapsibleExample() {
   return createComponent(CollapsibleRoot, {});

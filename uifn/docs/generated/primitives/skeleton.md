@@ -136,7 +136,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SkeletonRoot } from '@uifn/components-react/skeleton';
+import { SkeletonRoot } from "@uifn/components-react/skeleton";
 
 export function SkeletonExample() {
   return React.createElement(SkeletonRoot, {});
@@ -147,7 +147,7 @@ export function SkeletonExample() {
 
 ```tsx
 import * as React from 'react';
-import { SkeletonRoot } from './components/uifn/react/skeleton.js';
+import { SkeletonRoot } from "./components/uifn/react/skeleton.js";
 
 export function SkeletonExample() {
   return React.createElement(SkeletonRoot, {});
@@ -158,7 +158,7 @@ export function SkeletonExample() {
 
 ```svelte
 <script lang="ts">
-  import { SkeletonRoot } from '@uifn/components-svelte/skeleton';
+  import { SkeletonRoot } from "@uifn/components-svelte/skeleton";
 </script>
 
 <SkeletonRoot  />
@@ -168,7 +168,7 @@ export function SkeletonExample() {
 
 ```svelte
 <script lang="ts">
-  import { SkeletonRoot } from './components/uifn/svelte/skeleton/index.js';
+  import { SkeletonRoot } from "./components/uifn/svelte/skeleton/index.js";
 </script>
 
 <SkeletonRoot  />
@@ -178,7 +178,7 @@ export function SkeletonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SkeletonRoot } from '@uifn/components-solid/skeleton';
+import { SkeletonRoot } from "@uifn/components-solid/skeleton";
 
 export function SkeletonExample() {
   return createComponent(SkeletonRoot, {});
@@ -189,7 +189,7 @@ export function SkeletonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SkeletonRoot } from './components/uifn/solid/skeleton.js';
+import { SkeletonRoot } from "./components/uifn/solid/skeleton.js";
 
 export function SkeletonExample() {
   return createComponent(SkeletonRoot, {});

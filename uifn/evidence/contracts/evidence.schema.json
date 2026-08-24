@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "uifn-evidence.schema.json",
+  "title": "uifn requirement and release evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "evidenceId", "evidenceClass", "requirementIds", "vectorIds", "status", "source", "environment", "timing", "counts", "artifacts", "defects", "signatures", "expiresAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$" },
+    "evidenceClass": { "enum": ["governance", "automated-unit-contract", "browser-compatibility", "security-dependency-license", "performance-leak", "manual-assistive-technology", "independent-accessibility-review", "release-manifest"] },
+    "requirementIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z0-9]+-[0-9]{3}$" } },
+    "vectorIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^TV-[A-Z0-9]+-[0-9]{3}-[PN]$" } },
+    "status": { "enum": ["passed", "failed", "blocked", "skipped", "not-applicable"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty", "lockfileSha256", "definitionSha256", "artifactHashes"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "dirty": { "type": "boolean" },
+        "dirtyReason": { "type": ["string", "null"] },
+        "lockfileSha256": { "$ref": "#/$defs/sha256" },
+        "definitionSha256": { "$ref": "#/$defs/sha256" },
+        "artifactHashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "runtime", "tools"],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "arch": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "tools": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } },
+        "framework": { "type": ["string", "null"] },
+        "browser": { "type": ["string", "null"] },
+        "assistiveTechnology": { "type": ["string", "null"] }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt", "completedAt", "durationMs"],
+      "properties": {
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "executed", "passed", "failed", "blocked", "skipped", "notApplicable"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "executed": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "notApplicable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" }
+    },
+    "defects": { "type": "array", "items": { "type": "string" } },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "signer", "signedAt", "attestation"],
+        "properties": {
+          "kind": { "enum": ["automation", "human", "independent-reviewer"] },
+          "signer": { "type": "string", "minLength": 1 },
+          "signedAt": { "type": "string", "format": "date-time" },
+          "attestation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "supersedes": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

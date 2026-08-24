@@ -1,4 +1,4 @@
-import type manifest from '../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import type manifest from '../../evidence/generated/phase-14/phase-14-public-vectors.json';
 
 type Vector = (typeof manifest.vectors)[number];
 

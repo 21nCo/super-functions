@@ -87,7 +87,7 @@ CSS variables:
 
 ```tsx
 import * as React from 'react';
-import { ButtonRoot } from '@uifn/components-react/button';
+import { ButtonRoot } from &quot;@uifn/components-react/button&quot;;
 
 export function ButtonExample() {
   return React.createElement(ButtonRoot, {&quot;aria-label&quot;:&quot;Button example&quot;});
@@ -98,7 +98,7 @@ export function ButtonExample() {
 
 ```tsx
 import * as React from 'react';
-import { ButtonRoot } from './components/uifn/react/button.js';
+import { ButtonRoot } from &quot;./components/uifn/react/button.js&quot;;
 
 export function ButtonExample() {
   return React.createElement(ButtonRoot, {&quot;aria-label&quot;:&quot;Button example&quot;});
@@ -109,7 +109,7 @@ export function ButtonExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { ButtonRoot } from '@uifn/components-svelte/button';
+  import { ButtonRoot } from &quot;@uifn/components-svelte/button&quot;;
 &lt;/script&gt;
 
 &lt;ButtonRoot aria-label=&quot;Button example&quot; /&gt;
@@ -119,7 +119,7 @@ export function ButtonExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { ButtonRoot } from './components/uifn/svelte/button/index.js';
+  import { ButtonRoot } from &quot;./components/uifn/svelte/button/index.js&quot;;
 &lt;/script&gt;
 
 &lt;ButtonRoot aria-label=&quot;Button example&quot; /&gt;
@@ -129,7 +129,7 @@ export function ButtonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ButtonRoot } from '@uifn/components-solid/button';
+import { ButtonRoot } from &quot;@uifn/components-solid/button&quot;;
 
 export function ButtonExample() {
   return createComponent(ButtonRoot, {&quot;aria-label&quot;:&quot;Button example&quot;});
@@ -140,7 +140,7 @@ export function ButtonExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ButtonRoot } from './components/uifn/solid/button.js';
+import { ButtonRoot } from &quot;./components/uifn/solid/button.js&quot;;
 
 export function ButtonExample() {
   return createComponent(ButtonRoot, {&quot;aria-label&quot;:&quot;Button example&quot;});

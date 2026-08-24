@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const catalogPath = resolve(root, 'uifn/catalog/generated/catalog.json');
-const outputPath = resolve(root, 'uifn/.conduct/generated/phase-14/phase-14-public-vectors.json');
+const outputPath = resolve(root, 'uifn/evidence/generated/phase-14/phase-14-public-vectors.json');
 const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : null;
 
 if (!mode) {

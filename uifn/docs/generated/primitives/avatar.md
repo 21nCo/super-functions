@@ -107,6 +107,7 @@ Stable data attributes:
 
 CSS variables:
 
+- `--uifn-avatar-size` (component)
 - `--uifn-component-accent` (shared)
 - `--uifn-component-accent-contrast` (shared)
 - `--uifn-component-bg` (shared)
@@ -122,6 +123,9 @@ CSS variables:
 - `--uifn-component-shadow` (shared)
 - `--uifn-control-block-size` (shared)
 - `--uifn-control-gap` (shared)
+- `--uifn-control-size-lg` (shared)
+- `--uifn-control-size-md` (shared)
+- `--uifn-control-size-sm` (shared)
 
 ## Package install
 
@@ -139,7 +143,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { AvatarRoot } from '@uifn/components-react/avatar';
+import { AvatarRoot } from "@uifn/components-react/avatar";
 
 export function AvatarExample() {
   return React.createElement(AvatarRoot, {"alt":"Example"});
@@ -150,7 +154,7 @@ export function AvatarExample() {
 
 ```tsx
 import * as React from 'react';
-import { AvatarRoot } from './components/uifn/react/avatar.js';
+import { AvatarRoot } from "./components/uifn/react/avatar.js";
 
 export function AvatarExample() {
   return React.createElement(AvatarRoot, {"alt":"Example"});
@@ -161,7 +165,7 @@ export function AvatarExample() {
 
 ```svelte
 <script lang="ts">
-  import { AvatarRoot } from '@uifn/components-svelte/avatar';
+  import { AvatarRoot } from "@uifn/components-svelte/avatar";
 </script>
 
 <AvatarRoot alt="Example" />
@@ -171,7 +175,7 @@ export function AvatarExample() {
 
 ```svelte
 <script lang="ts">
-  import { AvatarRoot } from './components/uifn/svelte/avatar/index.js';
+  import { AvatarRoot } from "./components/uifn/svelte/avatar/index.js";
 </script>
 
 <AvatarRoot alt="Example" />
@@ -181,7 +185,7 @@ export function AvatarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AvatarRoot } from '@uifn/components-solid/avatar';
+import { AvatarRoot } from "@uifn/components-solid/avatar";
 
 export function AvatarExample() {
   return createComponent(AvatarRoot, {"alt":"Example"});
@@ -192,7 +196,7 @@ export function AvatarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AvatarRoot } from './components/uifn/solid/avatar.js';
+import { AvatarRoot } from "./components/uifn/solid/avatar.js";
 
 export function AvatarExample() {
   return createComponent(AvatarRoot, {"alt":"Example"});

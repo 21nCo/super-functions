@@ -1,0 +1,6 @@
+{
+  "description": "Negative cleanup vector containing a removed peer and registry selection.",
+  "expectedCode": "UIFN_REMOVED_FRAMEWORK_REFERENCE",
+  "peerDependency": "@uifn/vue",
+  "registryFramework": "angular"
+}

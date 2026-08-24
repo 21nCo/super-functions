@@ -138,7 +138,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ToggleRoot } from '@uifn/components-react/toggle';
+import { ToggleRoot } from "@uifn/components-react/toggle";
 
 export function ToggleExample() {
   return React.createElement(ToggleRoot, {"aria-label":"Toggle example"});
@@ -149,7 +149,7 @@ export function ToggleExample() {
 
 ```tsx
 import * as React from 'react';
-import { ToggleRoot } from './components/uifn/react/toggle.js';
+import { ToggleRoot } from "./components/uifn/react/toggle.js";
 
 export function ToggleExample() {
   return React.createElement(ToggleRoot, {"aria-label":"Toggle example"});
@@ -160,7 +160,7 @@ export function ToggleExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToggleRoot } from '@uifn/components-svelte/toggle';
+  import { ToggleRoot } from "@uifn/components-svelte/toggle";
 </script>
 
 <ToggleRoot aria-label="Toggle example" />
@@ -170,7 +170,7 @@ export function ToggleExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToggleRoot } from './components/uifn/svelte/toggle/index.js';
+  import { ToggleRoot } from "./components/uifn/svelte/toggle/index.js";
 </script>
 
 <ToggleRoot aria-label="Toggle example" />
@@ -180,7 +180,7 @@ export function ToggleExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToggleRoot } from '@uifn/components-solid/toggle';
+import { ToggleRoot } from "@uifn/components-solid/toggle";
 
 export function ToggleExample() {
   return createComponent(ToggleRoot, {"aria-label":"Toggle example"});
@@ -191,7 +191,7 @@ export function ToggleExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToggleRoot } from './components/uifn/solid/toggle.js';
+import { ToggleRoot } from "./components/uifn/solid/toggle.js";
 
 export function ToggleExample() {
   return createComponent(ToggleRoot, {"aria-label":"Toggle example"});

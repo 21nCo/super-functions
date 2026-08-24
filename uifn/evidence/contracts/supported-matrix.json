@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "matrixId": "uifn-1.0-supported-matrix",
+  "status": "target-not-yet-proven",
+  "rollingVersionPolicy": "Resolve and freeze exact current versions at release-candidate start; evidence cannot float during one candidate run.",
+  "nodes": ["20", "22", "24"],
+  "frameworks": [
+    { "name": "react", "versions": ["18.3.x", "19.x"], "modes": ["csr", "strict-mode", "ssr", "hydration", "rsc-import"] },
+    { "name": "svelte", "versions": ["5.x"], "modes": ["csr", "sveltekit-ssr", "hydration"] },
+    { "name": "solid", "versions": ["current-1.x"], "modes": ["csr", "ssr", "hydration"] }
+  ],
+  "desktopBrowsers": [
+    { "name": "chrome", "versions": ["latest", "latest-1"] },
+    { "name": "firefox", "versions": ["latest", "latest-1"] },
+    { "name": "edge", "versions": ["latest", "latest-1"] },
+    { "name": "safari", "versions": ["current", "previous"] }
+  ],
+  "mobileBrowsers": [
+    { "name": "ios-safari", "versions": ["current", "previous"], "deviceEvidenceRequired": true },
+    { "name": "android-chrome", "versions": ["current"], "deviceEvidenceRequired": true }
+  ],
+  "renderingModes": ["ltr", "rtl", "forced-colors", "reduced-motion", "zoom-200", "zoom-400", "light", "dark", "high-contrast"],
+  "assistiveTechnology": [
+    { "platform": "macos", "browser": "safari-current-and-previous", "at": "voiceover", "required": true },
+    { "platform": "ios", "browser": "safari-current", "at": "voiceover", "required": true },
+    { "platform": "windows", "browser": "firefox-current-and-chrome-or-edge-current", "at": "nvda", "required": true },
+    { "platform": "android", "browser": "chrome-current", "at": "talkback", "required": true },
+    { "platform": "windows", "browser": "unspecified", "at": "jaws", "required": false, "status": "not-tested-user-deferred" }
+  ],
+  "missingCellPolicy": "release-blocking",
+  "evidenceMode": "exact-packed-artifact-and-source-install-hashes"
+}

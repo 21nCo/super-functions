@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SplitterRoot } from '@uifn/components-react/splitter';
+import { SplitterRoot } from "@uifn/components-react/splitter";
 
 export function SplitterExample() {
   return React.createElement(SplitterRoot, {"aria-label":"Splitter example"});
@@ -163,7 +163,7 @@ export function SplitterExample() {
 
 ```tsx
 import * as React from 'react';
-import { SplitterRoot } from './components/uifn/react/splitter.js';
+import { SplitterRoot } from "./components/uifn/react/splitter.js";
 
 export function SplitterExample() {
   return React.createElement(SplitterRoot, {"aria-label":"Splitter example"});
@@ -174,7 +174,7 @@ export function SplitterExample() {
 
 ```svelte
 <script lang="ts">
-  import { SplitterRoot } from '@uifn/components-svelte/splitter';
+  import { SplitterRoot } from "@uifn/components-svelte/splitter";
 </script>
 
 <SplitterRoot aria-label="Splitter example" />
@@ -184,7 +184,7 @@ export function SplitterExample() {
 
 ```svelte
 <script lang="ts">
-  import { SplitterRoot } from './components/uifn/svelte/splitter/index.js';
+  import { SplitterRoot } from "./components/uifn/svelte/splitter/index.js";
 </script>
 
 <SplitterRoot aria-label="Splitter example" />
@@ -194,7 +194,7 @@ export function SplitterExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SplitterRoot } from '@uifn/components-solid/splitter';
+import { SplitterRoot } from "@uifn/components-solid/splitter";
 
 export function SplitterExample() {
   return createComponent(SplitterRoot, {"aria-label":"Splitter example"});
@@ -205,7 +205,7 @@ export function SplitterExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SplitterRoot } from './components/uifn/solid/splitter.js';
+import { SplitterRoot } from "./components/uifn/solid/splitter.js";
 
 export function SplitterExample() {
   return createComponent(SplitterRoot, {"aria-label":"Splitter example"});

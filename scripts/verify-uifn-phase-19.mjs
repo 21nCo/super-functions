@@ -24,15 +24,15 @@ import {
 } from './uifn-phase-19-contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const node = process.env.UIFN_NODE_PATH ?? '/opt/homebrew/bin/node';
+const node = process.env.UIFN_NODE_PATH ?? process.execPath;
 const startedAt = new Date();
 const evidenceRoot = process.env.UIFN_PHASE19_EVIDENCE_DIR
   ? path.resolve(process.env.UIFN_PHASE19_EVIDENCE_DIR)
   : null;
 const matrixPath = path.join(root, 'uifn/.conduct/accessibility/phase-19/matrix.json');
-const defectPolicyPath = path.join(root, 'uifn/.conduct/contracts/defect-policy.json');
-const ownershipPath = path.join(root, 'uifn/.conduct/contracts/ownership.json');
-const defaultTrustPolicyPath = path.join(root, 'uifn/.conduct/contracts/phase-19-trust-policy.json');
+const defectPolicyPath = path.join(root, 'uifn/evidence/contracts/defect-policy.json');
+const ownershipPath = path.join(root, 'uifn/evidence/contracts/ownership.json');
+const defaultTrustPolicyPath = path.join(root, 'uifn/evidence/contracts/phase-19-trust-policy.json');
 const packageLockPath = path.join(root, 'package-lock.json');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const fileHash = (absolute) => sha256(readFileSync(absolute));
@@ -52,7 +52,7 @@ function sanitize(value) {
 function run(command, args, env = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
-    env: { ...process.env, ...env, PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
+    env: { ...process.env, ...env },
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   });

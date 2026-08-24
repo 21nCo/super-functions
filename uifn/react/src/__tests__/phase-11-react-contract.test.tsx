@@ -2,7 +2,7 @@ import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import catalog from '../../../catalog/generated/catalog.json';
-import manifest from '../../../.conduct/generated/phase-11/phase-11-react-compounds.json';
+import manifest from '../../../evidence/generated/phase-11/phase-11-react-compounds.json';
 import * as UIFnReact from '../index';
 
 const fixture: Record<string, Record<string, unknown>> = {

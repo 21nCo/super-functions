@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { HoverCardRoot } from '@uifn/components-react/hover-card';
+import { HoverCardRoot } from "@uifn/components-react/hover-card";
 
 export function HoverCardExample() {
   return React.createElement(HoverCardRoot, {});
@@ -160,7 +160,7 @@ export function HoverCardExample() {
 
 ```tsx
 import * as React from 'react';
-import { HoverCardRoot } from './components/uifn/react/hover-card.js';
+import { HoverCardRoot } from "./components/uifn/react/hover-card.js";
 
 export function HoverCardExample() {
   return React.createElement(HoverCardRoot, {});
@@ -171,7 +171,7 @@ export function HoverCardExample() {
 
 ```svelte
 <script lang="ts">
-  import { HoverCardRoot } from '@uifn/components-svelte/hover-card';
+  import { HoverCardRoot } from "@uifn/components-svelte/hover-card";
 </script>
 
 <HoverCardRoot  />
@@ -181,7 +181,7 @@ export function HoverCardExample() {
 
 ```svelte
 <script lang="ts">
-  import { HoverCardRoot } from './components/uifn/svelte/hover-card/index.js';
+  import { HoverCardRoot } from "./components/uifn/svelte/hover-card/index.js";
 </script>
 
 <HoverCardRoot  />
@@ -191,7 +191,7 @@ export function HoverCardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { HoverCardRoot } from '@uifn/components-solid/hover-card';
+import { HoverCardRoot } from "@uifn/components-solid/hover-card";
 
 export function HoverCardExample() {
   return createComponent(HoverCardRoot, {});
@@ -202,7 +202,7 @@ export function HoverCardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { HoverCardRoot } from './components/uifn/solid/hover-card.js';
+import { HoverCardRoot } from "./components/uifn/solid/hover-card.js";
 
 export function HoverCardExample() {
   return createComponent(HoverCardRoot, {});

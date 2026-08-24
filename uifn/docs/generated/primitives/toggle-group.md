@@ -145,7 +145,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ToggleGroupRoot } from '@uifn/components-react/toggle-group';
+import { ToggleGroupRoot } from "@uifn/components-react/toggle-group";
 
 export function ToggleGroupExample() {
   return React.createElement(ToggleGroupRoot, {"aria-label":"ToggleGroup example"});
@@ -156,7 +156,7 @@ export function ToggleGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { ToggleGroupRoot } from './components/uifn/react/toggle-group.js';
+import { ToggleGroupRoot } from "./components/uifn/react/toggle-group.js";
 
 export function ToggleGroupExample() {
   return React.createElement(ToggleGroupRoot, {"aria-label":"ToggleGroup example"});
@@ -167,7 +167,7 @@ export function ToggleGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToggleGroupRoot } from '@uifn/components-svelte/toggle-group';
+  import { ToggleGroupRoot } from "@uifn/components-svelte/toggle-group";
 </script>
 
 <ToggleGroupRoot aria-label="ToggleGroup example" />
@@ -177,7 +177,7 @@ export function ToggleGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToggleGroupRoot } from './components/uifn/svelte/toggle-group/index.js';
+  import { ToggleGroupRoot } from "./components/uifn/svelte/toggle-group/index.js";
 </script>
 
 <ToggleGroupRoot aria-label="ToggleGroup example" />
@@ -187,7 +187,7 @@ export function ToggleGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToggleGroupRoot } from '@uifn/components-solid/toggle-group';
+import { ToggleGroupRoot } from "@uifn/components-solid/toggle-group";
 
 export function ToggleGroupExample() {
   return createComponent(ToggleGroupRoot, {"aria-label":"ToggleGroup example"});
@@ -198,7 +198,7 @@ export function ToggleGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToggleGroupRoot } from './components/uifn/solid/toggle-group.js';
+import { ToggleGroupRoot } from "./components/uifn/solid/toggle-group.js";
 
 export function ToggleGroupExample() {
   return createComponent(ToggleGroupRoot, {"aria-label":"ToggleGroup example"});

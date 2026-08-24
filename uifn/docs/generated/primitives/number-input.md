@@ -164,7 +164,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { NumberInputRoot } from '@uifn/components-react/number-input';
+import { NumberInputRoot } from "@uifn/components-react/number-input";
 
 export function NumberInputExample() {
   return React.createElement(NumberInputRoot, {});
@@ -175,7 +175,7 @@ export function NumberInputExample() {
 
 ```tsx
 import * as React from 'react';
-import { NumberInputRoot } from './components/uifn/react/number-input.js';
+import { NumberInputRoot } from "./components/uifn/react/number-input.js";
 
 export function NumberInputExample() {
   return React.createElement(NumberInputRoot, {});
@@ -186,7 +186,7 @@ export function NumberInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { NumberInputRoot } from '@uifn/components-svelte/number-input';
+  import { NumberInputRoot } from "@uifn/components-svelte/number-input";
 </script>
 
 <NumberInputRoot  />
@@ -196,7 +196,7 @@ export function NumberInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { NumberInputRoot } from './components/uifn/svelte/number-input/index.js';
+  import { NumberInputRoot } from "./components/uifn/svelte/number-input/index.js";
 </script>
 
 <NumberInputRoot  />
@@ -206,7 +206,7 @@ export function NumberInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { NumberInputRoot } from '@uifn/components-solid/number-input';
+import { NumberInputRoot } from "@uifn/components-solid/number-input";
 
 export function NumberInputExample() {
   return createComponent(NumberInputRoot, {});
@@ -217,7 +217,7 @@ export function NumberInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { NumberInputRoot } from './components/uifn/solid/number-input.js';
+import { NumberInputRoot } from "./components/uifn/solid/number-input.js";
 
 export function NumberInputExample() {
   return createComponent(NumberInputRoot, {});

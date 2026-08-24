@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { validateEvidence } from './verify-uifn-governance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const node = process.env.UIFN_NODE_PATH ?? '/opt/homebrew/bin/node';
-const npm = process.env.UIFN_NPM_PATH ?? '/opt/homebrew/bin/npm';
+const node = process.env.UIFN_NODE_PATH ?? process.execPath;
+const npm = process.env.UIFN_NPM_PATH ?? (process.platform === 'win32' ? 'npm.cmd' : 'npm');
 const evidenceRoot = process.env.UIFN_PHASE18_EVIDENCE_DIR ? path.resolve(process.env.UIFN_PHASE18_EVIDENCE_DIR) : null;
 const useExistingBrowser = process.argv.includes('--use-existing-browser');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -40,7 +40,7 @@ function latestEvidenceRoot(phase, required) {
 function run(command, args, env = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
-    env: { ...process.env, ...env, PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
+    env: { ...process.env, ...env },
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -81,9 +81,9 @@ const docsPath = phase17Root ? path.join(phase17Root, 'docs.json') : null;
 const browserPath = evidenceRoot ? path.join(evidenceRoot, 'browser.json') : null;
 const ledgerPath = evidenceRoot ? path.join(evidenceRoot, 'ledger.json') : null;
 
-const ledgerSourcePath = path.join(root, 'uifn/.conduct/generated/phase-18/normative-ledger.json');
-const automationPath = path.join(root, 'uifn/.conduct/generated/phase-18/automation-manifest.json');
-const handoffPath = path.join(root, 'uifn/.conduct/generated/phase-18/manual-handoff.json');
+const ledgerSourcePath = path.join(root, 'uifn/evidence/generated/phase-18/normative-ledger.json');
+const automationPath = path.join(root, 'uifn/evidence/generated/phase-18/automation-manifest.json');
+const handoffPath = path.join(root, 'uifn/evidence/generated/phase-18/manual-handoff.json');
 const ledgerSource = readJson(ledgerSourcePath);
 const handoffSource = readJson(handoffPath);
 const storyInventory = readJson(path.join(root, 'uifn/storybook/generated/story-inventory.json'));
@@ -234,7 +234,7 @@ if (evidenceRoot && browser && ledger && story && docs) {
   const total = (browser.counts?.browserAssertions ?? 0) + (ledger.counts?.rules ?? 0) + (ledger.counts?.mutations ?? 0);
   evidence = {
     schemaVersion: 1,
-    evidenceId: `phase18-a11y-${completedAt.toISOString().replace(/[-:.]/g, '').replace('Z', 'Z')}`,
+    evidenceId: `phase18-a11y-${completedAt.toISOString().replace(/[-:.]/g, '')}`,
     evidenceClass: 'browser-compatibility',
     requirementIds: ['A11Y-001', 'A11Y-002'],
     vectorIds: ['TV-A11Y-001-P', 'TV-A11Y-001-N', 'TV-A11Y-002-P', 'TV-A11Y-002-N'],

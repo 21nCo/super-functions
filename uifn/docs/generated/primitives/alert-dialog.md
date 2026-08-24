@@ -154,7 +154,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { AlertDialogRoot } from '@uifn/components-react/alert-dialog';
+import { AlertDialogRoot } from "@uifn/components-react/alert-dialog";
 
 export function AlertDialogExample() {
   return React.createElement(AlertDialogRoot, {});
@@ -165,7 +165,7 @@ export function AlertDialogExample() {
 
 ```tsx
 import * as React from 'react';
-import { AlertDialogRoot } from './components/uifn/react/alert-dialog.js';
+import { AlertDialogRoot } from "./components/uifn/react/alert-dialog.js";
 
 export function AlertDialogExample() {
   return React.createElement(AlertDialogRoot, {});
@@ -176,7 +176,7 @@ export function AlertDialogExample() {
 
 ```svelte
 <script lang="ts">
-  import { AlertDialogRoot } from '@uifn/components-svelte/alert-dialog';
+  import { AlertDialogRoot } from "@uifn/components-svelte/alert-dialog";
 </script>
 
 <AlertDialogRoot  />
@@ -186,7 +186,7 @@ export function AlertDialogExample() {
 
 ```svelte
 <script lang="ts">
-  import { AlertDialogRoot } from './components/uifn/svelte/alert-dialog/index.js';
+  import { AlertDialogRoot } from "./components/uifn/svelte/alert-dialog/index.js";
 </script>
 
 <AlertDialogRoot  />
@@ -196,7 +196,7 @@ export function AlertDialogExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AlertDialogRoot } from '@uifn/components-solid/alert-dialog';
+import { AlertDialogRoot } from "@uifn/components-solid/alert-dialog";
 
 export function AlertDialogExample() {
   return createComponent(AlertDialogRoot, {});
@@ -207,7 +207,7 @@ export function AlertDialogExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AlertDialogRoot } from './components/uifn/solid/alert-dialog.js';
+import { AlertDialogRoot } from "./components/uifn/solid/alert-dialog.js";
 
 export function AlertDialogExample() {
   return createComponent(AlertDialogRoot, {});

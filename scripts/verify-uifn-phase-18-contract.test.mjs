@@ -10,7 +10,7 @@ import {
 } from './uifn-phase-18-contract.mjs';
 
 const catalog = JSON.parse(readFileSync(new URL('../uifn/catalog/generated/catalog.json', import.meta.url), 'utf8'));
-const ledger = JSON.parse(readFileSync(new URL('../uifn/.conduct/generated/phase-18/normative-ledger.json', import.meta.url), 'utf8'));
+const ledger = JSON.parse(readFileSync(new URL('../uifn/evidence/generated/phase-18/normative-ledger.json', import.meta.url), 'utf8'));
 const traces = [];
 for (const installMode of ['package', 'source']) {
   for (const framework of ['react', 'svelte', 'solid']) {

@@ -46,7 +46,7 @@ describe('TV-REG-001-P/N transaction-safe registry', () => {
       expect(result.ok).toBe(true);
       expect(result.dryRun).toBe(true);
       expect(result.plan?.resolved).toEqual(['button']);
-      expect(result.plan?.dependencies.map((dependency) => dependency.name)).toEqual(['@uifn/components', '@uifn/react', 'react', 'react-dom']);
+      expect(result.plan?.dependencies.map((dependency) => dependency.name)).toEqual(['@uifn/components', '@uifn/react', '@uifn/recipes', 'react', 'react-dom']);
       expect(result.plan?.files.map((file) => file.path)).toEqual(expect.arrayContaining(['components/uifn/react/button.ts', 'package.json', '.uifn/registry.lock', '.uifn/selected-components.json']));
       expect(snapshot(rootDir)).toBe(before);
     });

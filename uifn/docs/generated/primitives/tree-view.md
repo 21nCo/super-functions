@@ -157,7 +157,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TreeViewRoot } from '@uifn/components-react/tree-view';
+import { TreeViewRoot } from "@uifn/components-react/tree-view";
 
 export function TreeViewExample() {
   return React.createElement(TreeViewRoot, {"items":[{"id":"item-1","textValue":"Item 1"}]});
@@ -168,7 +168,7 @@ export function TreeViewExample() {
 
 ```tsx
 import * as React from 'react';
-import { TreeViewRoot } from './components/uifn/react/tree-view.js';
+import { TreeViewRoot } from "./components/uifn/react/tree-view.js";
 
 export function TreeViewExample() {
   return React.createElement(TreeViewRoot, {"items":[{"id":"item-1","textValue":"Item 1"}]});
@@ -179,7 +179,7 @@ export function TreeViewExample() {
 
 ```svelte
 <script lang="ts">
-  import { TreeViewRoot } from '@uifn/components-svelte/tree-view';
+  import { TreeViewRoot } from "@uifn/components-svelte/tree-view";
 </script>
 
 <TreeViewRoot items={[{"id":"item-1","textValue":"Item 1"}]} />
@@ -189,7 +189,7 @@ export function TreeViewExample() {
 
 ```svelte
 <script lang="ts">
-  import { TreeViewRoot } from './components/uifn/svelte/tree-view/index.js';
+  import { TreeViewRoot } from "./components/uifn/svelte/tree-view/index.js";
 </script>
 
 <TreeViewRoot items={[{"id":"item-1","textValue":"Item 1"}]} />
@@ -199,7 +199,7 @@ export function TreeViewExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TreeViewRoot } from '@uifn/components-solid/tree-view';
+import { TreeViewRoot } from "@uifn/components-solid/tree-view";
 
 export function TreeViewExample() {
   return createComponent(TreeViewRoot, {"items":[{"id":"item-1","textValue":"Item 1"}]});
@@ -210,7 +210,7 @@ export function TreeViewExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TreeViewRoot } from './components/uifn/solid/tree-view.js';
+import { TreeViewRoot } from "./components/uifn/solid/tree-view.js";
 
 export function TreeViewExample() {
   return createComponent(TreeViewRoot, {"items":[{"id":"item-1","textValue":"Item 1"}]});

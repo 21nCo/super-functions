@@ -220,7 +220,7 @@ function validateSourceImports(repoRoot, node, allowedDependencies) {
 function sourceImportSpecifiers(source, pathname) {
   const extension = path.extname(pathname);
   const executableSources = extension === '.svelte'
-    ? [...source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1])
+    ? [...source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1])
     : [source];
   const dependencies = new Set();
 
@@ -269,7 +269,7 @@ export function runPackageGraphVerification(options = {}) {
   const experimentalNames = new Set(experimentalNodes.map((node) => node.name));
   const privateNames = new Set((graph.private ?? []).map((node) => node.name));
   const ownershipIds = inspectWorktree
-    ? new Set(readJson(repoRoot, 'uifn/.conduct/contracts/ownership.json').packages.map((entry) => entry.id))
+    ? new Set(readJson(repoRoot, 'uifn/evidence/contracts/ownership.json').packages.map((entry) => entry.id))
     : new Set(nodes.map((node) => node.name));
   const manifests = new Map();
 

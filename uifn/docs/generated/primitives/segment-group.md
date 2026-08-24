@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SegmentGroupRoot } from '@uifn/components-react/segment-group';
+import { SegmentGroupRoot } from "@uifn/components-react/segment-group";
 
 export function SegmentGroupExample() {
   return React.createElement(SegmentGroupRoot, {"aria-label":"SegmentGroup example"});
@@ -163,7 +163,7 @@ export function SegmentGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { SegmentGroupRoot } from './components/uifn/react/segment-group.js';
+import { SegmentGroupRoot } from "./components/uifn/react/segment-group.js";
 
 export function SegmentGroupExample() {
   return React.createElement(SegmentGroupRoot, {"aria-label":"SegmentGroup example"});
@@ -174,7 +174,7 @@ export function SegmentGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { SegmentGroupRoot } from '@uifn/components-svelte/segment-group';
+  import { SegmentGroupRoot } from "@uifn/components-svelte/segment-group";
 </script>
 
 <SegmentGroupRoot aria-label="SegmentGroup example" />
@@ -184,7 +184,7 @@ export function SegmentGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { SegmentGroupRoot } from './components/uifn/svelte/segment-group/index.js';
+  import { SegmentGroupRoot } from "./components/uifn/svelte/segment-group/index.js";
 </script>
 
 <SegmentGroupRoot aria-label="SegmentGroup example" />
@@ -194,7 +194,7 @@ export function SegmentGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SegmentGroupRoot } from '@uifn/components-solid/segment-group';
+import { SegmentGroupRoot } from "@uifn/components-solid/segment-group";
 
 export function SegmentGroupExample() {
   return createComponent(SegmentGroupRoot, {"aria-label":"SegmentGroup example"});
@@ -205,7 +205,7 @@ export function SegmentGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SegmentGroupRoot } from './components/uifn/solid/segment-group.js';
+import { SegmentGroupRoot } from "./components/uifn/solid/segment-group.js";
 
 export function SegmentGroupExample() {
   return createComponent(SegmentGroupRoot, {"aria-label":"SegmentGroup example"});

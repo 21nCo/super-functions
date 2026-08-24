@@ -86,12 +86,13 @@ async function waitForDeploymentReadiness(origin, expected, expectedWorkerBuildH
         const expectedStatus = sentinelPath.endsWith("does-not-exist") ? 404 : 200;
         const contentSecurityPolicy =
           response.headers.get("content-security-policy") ?? "";
+        const cspSources = new Set(contentSecurityPolicy.split(/\s+/));
         const ready =
           response.status === expectedStatus &&
           response.headers.get("x-uifn-catalog-build") === expected.generatedAt &&
           response.headers.get("x-uifn-catalog-worker") === expectedWorkerBuildHash &&
-          contentSecurityPolicy.includes("https://static.cloudflareinsights.com") &&
-          contentSecurityPolicy.includes("https://cloudflareinsights.com") &&
+          cspSources.has("https://static.cloudflareinsights.com") &&
+          cspSources.has("https://cloudflareinsights.com") &&
           (
             sentinelPath !== "/catalog-manifest.json" ||
             (

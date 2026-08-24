@@ -148,7 +148,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { InputRoot } from '@uifn/components-react/input';
+import { InputRoot } from "@uifn/components-react/input";
 
 export function InputExample() {
   return React.createElement(InputRoot, {"aria-label":"Input example"});
@@ -159,7 +159,7 @@ export function InputExample() {
 
 ```tsx
 import * as React from 'react';
-import { InputRoot } from './components/uifn/react/input.js';
+import { InputRoot } from "./components/uifn/react/input.js";
 
 export function InputExample() {
   return React.createElement(InputRoot, {"aria-label":"Input example"});
@@ -170,7 +170,7 @@ export function InputExample() {
 
 ```svelte
 <script lang="ts">
-  import { InputRoot } from '@uifn/components-svelte/input';
+  import { InputRoot } from "@uifn/components-svelte/input";
 </script>
 
 <InputRoot aria-label="Input example" />
@@ -180,7 +180,7 @@ export function InputExample() {
 
 ```svelte
 <script lang="ts">
-  import { InputRoot } from './components/uifn/svelte/input/index.js';
+  import { InputRoot } from "./components/uifn/svelte/input/index.js";
 </script>
 
 <InputRoot aria-label="Input example" />
@@ -190,7 +190,7 @@ export function InputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { InputRoot } from '@uifn/components-solid/input';
+import { InputRoot } from "@uifn/components-solid/input";
 
 export function InputExample() {
   return createComponent(InputRoot, {"aria-label":"Input example"});
@@ -201,7 +201,7 @@ export function InputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { InputRoot } from './components/uifn/solid/input.js';
+import { InputRoot } from "./components/uifn/solid/input.js";
 
 export function InputExample() {
   return createComponent(InputRoot, {"aria-label":"Input example"});

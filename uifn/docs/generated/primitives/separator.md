@@ -135,7 +135,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SeparatorRoot } from '@uifn/components-react/separator';
+import { SeparatorRoot } from "@uifn/components-react/separator";
 
 export function SeparatorExample() {
   return React.createElement(SeparatorRoot, {});
@@ -146,7 +146,7 @@ export function SeparatorExample() {
 
 ```tsx
 import * as React from 'react';
-import { SeparatorRoot } from './components/uifn/react/separator.js';
+import { SeparatorRoot } from "./components/uifn/react/separator.js";
 
 export function SeparatorExample() {
   return React.createElement(SeparatorRoot, {});
@@ -157,7 +157,7 @@ export function SeparatorExample() {
 
 ```svelte
 <script lang="ts">
-  import { SeparatorRoot } from '@uifn/components-svelte/separator';
+  import { SeparatorRoot } from "@uifn/components-svelte/separator";
 </script>
 
 <SeparatorRoot  />
@@ -167,7 +167,7 @@ export function SeparatorExample() {
 
 ```svelte
 <script lang="ts">
-  import { SeparatorRoot } from './components/uifn/svelte/separator/index.js';
+  import { SeparatorRoot } from "./components/uifn/svelte/separator/index.js";
 </script>
 
 <SeparatorRoot  />
@@ -177,7 +177,7 @@ export function SeparatorExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SeparatorRoot } from '@uifn/components-solid/separator';
+import { SeparatorRoot } from "@uifn/components-solid/separator";
 
 export function SeparatorExample() {
   return createComponent(SeparatorRoot, {});
@@ -188,7 +188,7 @@ export function SeparatorExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SeparatorRoot } from './components/uifn/solid/separator.js';
+import { SeparatorRoot } from "./components/uifn/solid/separator.js";
 
 export function SeparatorExample() {
   return createComponent(SeparatorRoot, {});

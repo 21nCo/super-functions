@@ -162,7 +162,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SliderRoot } from '@uifn/components-react/slider';
+import { SliderRoot } from "@uifn/components-react/slider";
 
 export function SliderExample() {
   return React.createElement(SliderRoot, {"aria-label":"Slider example"});
@@ -173,7 +173,7 @@ export function SliderExample() {
 
 ```tsx
 import * as React from 'react';
-import { SliderRoot } from './components/uifn/react/slider.js';
+import { SliderRoot } from "./components/uifn/react/slider.js";
 
 export function SliderExample() {
   return React.createElement(SliderRoot, {"aria-label":"Slider example"});
@@ -184,7 +184,7 @@ export function SliderExample() {
 
 ```svelte
 <script lang="ts">
-  import { SliderRoot } from '@uifn/components-svelte/slider';
+  import { SliderRoot } from "@uifn/components-svelte/slider";
 </script>
 
 <SliderRoot aria-label="Slider example" />
@@ -194,7 +194,7 @@ export function SliderExample() {
 
 ```svelte
 <script lang="ts">
-  import { SliderRoot } from './components/uifn/svelte/slider/index.js';
+  import { SliderRoot } from "./components/uifn/svelte/slider/index.js";
 </script>
 
 <SliderRoot aria-label="Slider example" />
@@ -204,7 +204,7 @@ export function SliderExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SliderRoot } from '@uifn/components-solid/slider';
+import { SliderRoot } from "@uifn/components-solid/slider";
 
 export function SliderExample() {
   return createComponent(SliderRoot, {"aria-label":"Slider example"});
@@ -215,7 +215,7 @@ export function SliderExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SliderRoot } from './components/uifn/solid/slider.js';
+import { SliderRoot } from "./components/uifn/solid/slider.js";
 
 export function SliderExample() {
   return createComponent(SliderRoot, {"aria-label":"Slider example"});

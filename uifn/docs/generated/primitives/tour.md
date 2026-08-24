@@ -161,7 +161,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TourRoot } from '@uifn/components-react/tour';
+import { TourRoot } from "@uifn/components-react/tour";
 
 export function TourExample() {
   return React.createElement(TourRoot, {"steps":[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]});
@@ -172,7 +172,7 @@ export function TourExample() {
 
 ```tsx
 import * as React from 'react';
-import { TourRoot } from './components/uifn/react/tour.js';
+import { TourRoot } from "./components/uifn/react/tour.js";
 
 export function TourExample() {
   return React.createElement(TourRoot, {"steps":[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]});
@@ -183,7 +183,7 @@ export function TourExample() {
 
 ```svelte
 <script lang="ts">
-  import { TourRoot } from '@uifn/components-svelte/tour';
+  import { TourRoot } from "@uifn/components-svelte/tour";
 </script>
 
 <TourRoot steps={[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]} />
@@ -193,7 +193,7 @@ export function TourExample() {
 
 ```svelte
 <script lang="ts">
-  import { TourRoot } from './components/uifn/svelte/tour/index.js';
+  import { TourRoot } from "./components/uifn/svelte/tour/index.js";
 </script>
 
 <TourRoot steps={[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]} />
@@ -203,7 +203,7 @@ export function TourExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TourRoot } from '@uifn/components-solid/tour';
+import { TourRoot } from "@uifn/components-solid/tour";
 
 export function TourExample() {
   return createComponent(TourRoot, {"steps":[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]});
@@ -214,7 +214,7 @@ export function TourExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TourRoot } from './components/uifn/solid/tour.js';
+import { TourRoot } from "./components/uifn/solid/tour.js";
 
 export function TourExample() {
   return createComponent(TourRoot, {"steps":[{"id":"intro","title":"Introduction","target":"#uifn-tour-target"}]});

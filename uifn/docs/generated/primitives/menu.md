@@ -157,7 +157,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { MenuRoot } from '@uifn/components-react/menu';
+import { MenuRoot } from "@uifn/components-react/menu";
 
 export function MenuExample() {
   return React.createElement(MenuRoot, {});
@@ -168,7 +168,7 @@ export function MenuExample() {
 
 ```tsx
 import * as React from 'react';
-import { MenuRoot } from './components/uifn/react/menu.js';
+import { MenuRoot } from "./components/uifn/react/menu.js";
 
 export function MenuExample() {
   return React.createElement(MenuRoot, {});
@@ -179,7 +179,7 @@ export function MenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { MenuRoot } from '@uifn/components-svelte/menu';
+  import { MenuRoot } from "@uifn/components-svelte/menu";
 </script>
 
 <MenuRoot  />
@@ -189,7 +189,7 @@ export function MenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { MenuRoot } from './components/uifn/svelte/menu/index.js';
+  import { MenuRoot } from "./components/uifn/svelte/menu/index.js";
 </script>
 
 <MenuRoot  />
@@ -199,7 +199,7 @@ export function MenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MenuRoot } from '@uifn/components-solid/menu';
+import { MenuRoot } from "@uifn/components-solid/menu";
 
 export function MenuExample() {
   return createComponent(MenuRoot, {});
@@ -210,7 +210,7 @@ export function MenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MenuRoot } from './components/uifn/solid/menu.js';
+import { MenuRoot } from "./components/uifn/solid/menu.js";
 
 export function MenuExample() {
   return createComponent(MenuRoot, {});

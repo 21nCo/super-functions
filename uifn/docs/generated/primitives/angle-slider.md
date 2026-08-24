@@ -150,7 +150,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { AngleSliderRoot } from '@uifn/components-react/angle-slider';
+import { AngleSliderRoot } from "@uifn/components-react/angle-slider";
 
 export function AngleSliderExample() {
   return React.createElement(AngleSliderRoot, {});
@@ -161,7 +161,7 @@ export function AngleSliderExample() {
 
 ```tsx
 import * as React from 'react';
-import { AngleSliderRoot } from './components/uifn/react/angle-slider.js';
+import { AngleSliderRoot } from "./components/uifn/react/angle-slider.js";
 
 export function AngleSliderExample() {
   return React.createElement(AngleSliderRoot, {});
@@ -172,7 +172,7 @@ export function AngleSliderExample() {
 
 ```svelte
 <script lang="ts">
-  import { AngleSliderRoot } from '@uifn/components-svelte/angle-slider';
+  import { AngleSliderRoot } from "@uifn/components-svelte/angle-slider";
 </script>
 
 <AngleSliderRoot  />
@@ -182,7 +182,7 @@ export function AngleSliderExample() {
 
 ```svelte
 <script lang="ts">
-  import { AngleSliderRoot } from './components/uifn/svelte/angle-slider/index.js';
+  import { AngleSliderRoot } from "./components/uifn/svelte/angle-slider/index.js";
 </script>
 
 <AngleSliderRoot  />
@@ -192,7 +192,7 @@ export function AngleSliderExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AngleSliderRoot } from '@uifn/components-solid/angle-slider';
+import { AngleSliderRoot } from "@uifn/components-solid/angle-slider";
 
 export function AngleSliderExample() {
   return createComponent(AngleSliderRoot, {});
@@ -203,7 +203,7 @@ export function AngleSliderExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AngleSliderRoot } from './components/uifn/solid/angle-slider.js';
+import { AngleSliderRoot } from "./components/uifn/solid/angle-slider.js";
 
 export function AngleSliderExample() {
   return createComponent(AngleSliderRoot, {});

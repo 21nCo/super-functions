@@ -162,7 +162,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ToastViewport } from '@uifn/components-react/toast';
+import { ToastViewport } from "@uifn/components-react/toast";
 
 export function ToastExample() {
   return React.createElement(ToastViewport, {"aria-label":"Toast example"});
@@ -173,7 +173,7 @@ export function ToastExample() {
 
 ```tsx
 import * as React from 'react';
-import { ToastViewport } from './components/uifn/react/toast.js';
+import { ToastViewport } from "./components/uifn/react/toast.js";
 
 export function ToastExample() {
   return React.createElement(ToastViewport, {"aria-label":"Toast example"});
@@ -184,7 +184,7 @@ export function ToastExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToastViewport } from '@uifn/components-svelte/toast';
+  import { ToastViewport } from "@uifn/components-svelte/toast";
 </script>
 
 <ToastViewport aria-label="Toast example" />
@@ -194,7 +194,7 @@ export function ToastExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToastViewport } from './components/uifn/svelte/toast/index.js';
+  import { ToastViewport } from "./components/uifn/svelte/toast/index.js";
 </script>
 
 <ToastViewport aria-label="Toast example" />
@@ -204,7 +204,7 @@ export function ToastExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToastViewport } from '@uifn/components-solid/toast';
+import { ToastViewport } from "@uifn/components-solid/toast";
 
 export function ToastExample() {
   return createComponent(ToastViewport, {"aria-label":"Toast example"});
@@ -215,7 +215,7 @@ export function ToastExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToastViewport } from './components/uifn/solid/toast.js';
+import { ToastViewport } from "./components/uifn/solid/toast.js";
 
 export function ToastExample() {
   return createComponent(ToastViewport, {"aria-label":"Toast example"});

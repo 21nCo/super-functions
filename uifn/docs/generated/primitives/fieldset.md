@@ -142,7 +142,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { FieldsetRoot } from '@uifn/components-react/fieldset';
+import { FieldsetRoot } from "@uifn/components-react/fieldset";
 
 export function FieldsetExample() {
   return React.createElement(FieldsetRoot, {});
@@ -153,7 +153,7 @@ export function FieldsetExample() {
 
 ```tsx
 import * as React from 'react';
-import { FieldsetRoot } from './components/uifn/react/fieldset.js';
+import { FieldsetRoot } from "./components/uifn/react/fieldset.js";
 
 export function FieldsetExample() {
   return React.createElement(FieldsetRoot, {});
@@ -164,7 +164,7 @@ export function FieldsetExample() {
 
 ```svelte
 <script lang="ts">
-  import { FieldsetRoot } from '@uifn/components-svelte/fieldset';
+  import { FieldsetRoot } from "@uifn/components-svelte/fieldset";
 </script>
 
 <FieldsetRoot  />
@@ -174,7 +174,7 @@ export function FieldsetExample() {
 
 ```svelte
 <script lang="ts">
-  import { FieldsetRoot } from './components/uifn/svelte/fieldset/index.js';
+  import { FieldsetRoot } from "./components/uifn/svelte/fieldset/index.js";
 </script>
 
 <FieldsetRoot  />
@@ -184,7 +184,7 @@ export function FieldsetExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FieldsetRoot } from '@uifn/components-solid/fieldset';
+import { FieldsetRoot } from "@uifn/components-solid/fieldset";
 
 export function FieldsetExample() {
   return createComponent(FieldsetRoot, {});
@@ -195,7 +195,7 @@ export function FieldsetExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FieldsetRoot } from './components/uifn/solid/fieldset.js';
+import { FieldsetRoot } from "./components/uifn/solid/fieldset.js";
 
 export function FieldsetExample() {
   return createComponent(FieldsetRoot, {});

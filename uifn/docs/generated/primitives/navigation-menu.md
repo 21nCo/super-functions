@@ -153,7 +153,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { NavigationMenuRoot } from '@uifn/components-react/navigation-menu';
+import { NavigationMenuRoot } from "@uifn/components-react/navigation-menu";
 
 export function NavigationMenuExample() {
   return React.createElement(NavigationMenuRoot, {"aria-label":"NavigationMenu example"});
@@ -164,7 +164,7 @@ export function NavigationMenuExample() {
 
 ```tsx
 import * as React from 'react';
-import { NavigationMenuRoot } from './components/uifn/react/navigation-menu.js';
+import { NavigationMenuRoot } from "./components/uifn/react/navigation-menu.js";
 
 export function NavigationMenuExample() {
   return React.createElement(NavigationMenuRoot, {"aria-label":"NavigationMenu example"});
@@ -175,7 +175,7 @@ export function NavigationMenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { NavigationMenuRoot } from '@uifn/components-svelte/navigation-menu';
+  import { NavigationMenuRoot } from "@uifn/components-svelte/navigation-menu";
 </script>
 
 <NavigationMenuRoot aria-label="NavigationMenu example" />
@@ -185,7 +185,7 @@ export function NavigationMenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { NavigationMenuRoot } from './components/uifn/svelte/navigation-menu/index.js';
+  import { NavigationMenuRoot } from "./components/uifn/svelte/navigation-menu/index.js";
 </script>
 
 <NavigationMenuRoot aria-label="NavigationMenu example" />
@@ -195,7 +195,7 @@ export function NavigationMenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { NavigationMenuRoot } from '@uifn/components-solid/navigation-menu';
+import { NavigationMenuRoot } from "@uifn/components-solid/navigation-menu";
 
 export function NavigationMenuExample() {
   return createComponent(NavigationMenuRoot, {"aria-label":"NavigationMenu example"});
@@ -206,7 +206,7 @@ export function NavigationMenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { NavigationMenuRoot } from './components/uifn/solid/navigation-menu.js';
+import { NavigationMenuRoot } from "./components/uifn/solid/navigation-menu.js";
 
 export function NavigationMenuExample() {
   return createComponent(NavigationMenuRoot, {"aria-label":"NavigationMenu example"});

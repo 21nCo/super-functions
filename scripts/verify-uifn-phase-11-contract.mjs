@@ -29,9 +29,9 @@ export function classifyPhase11Mutations(mutations) {
 export async function verifyPhase11Contract({ requireDist = false } = {}) {
   const issues = [];
   const catalog = JSON.parse(read('uifn/catalog/generated/catalog.json'));
-  const manifest = JSON.parse(read('uifn/.conduct/generated/phase-11/phase-11-react-compounds.json'));
+  const manifest = JSON.parse(read('uifn/evidence/generated/phase-11/phase-11-react-compounds.json'));
   if (manifest.primitiveCount !== catalog.primitives.length || manifest.primitives.length !== catalog.primitives.length) {
-    issues.push(issue('UIFN_ADAPTER_COVERAGE_MISSING', `React manifest MUST cover exactly ${catalog.primitives.length} catalog primitives.`, 'uifn/.conduct/generated/phase-11/phase-11-react-compounds.json'));
+    issues.push(issue('UIFN_ADAPTER_COVERAGE_MISSING', `React manifest MUST cover exactly ${catalog.primitives.length} catalog primitives.`, 'uifn/evidence/generated/phase-11/phase-11-react-compounds.json'));
   }
 
   for (const primitive of catalog.primitives) {

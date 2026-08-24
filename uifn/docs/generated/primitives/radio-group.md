@@ -154,7 +154,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { RadioGroupRoot } from '@uifn/components-react/radio-group';
+import { RadioGroupRoot } from "@uifn/components-react/radio-group";
 
 export function RadioGroupExample() {
   return React.createElement(RadioGroupRoot, {"aria-label":"RadioGroup example"});
@@ -165,7 +165,7 @@ export function RadioGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { RadioGroupRoot } from './components/uifn/react/radio-group.js';
+import { RadioGroupRoot } from "./components/uifn/react/radio-group.js";
 
 export function RadioGroupExample() {
   return React.createElement(RadioGroupRoot, {"aria-label":"RadioGroup example"});
@@ -176,7 +176,7 @@ export function RadioGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { RadioGroupRoot } from '@uifn/components-svelte/radio-group';
+  import { RadioGroupRoot } from "@uifn/components-svelte/radio-group";
 </script>
 
 <RadioGroupRoot aria-label="RadioGroup example" />
@@ -186,7 +186,7 @@ export function RadioGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { RadioGroupRoot } from './components/uifn/svelte/radio-group/index.js';
+  import { RadioGroupRoot } from "./components/uifn/svelte/radio-group/index.js";
 </script>
 
 <RadioGroupRoot aria-label="RadioGroup example" />
@@ -196,7 +196,7 @@ export function RadioGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { RadioGroupRoot } from '@uifn/components-solid/radio-group';
+import { RadioGroupRoot } from "@uifn/components-solid/radio-group";
 
 export function RadioGroupExample() {
   return createComponent(RadioGroupRoot, {"aria-label":"RadioGroup example"});
@@ -207,7 +207,7 @@ export function RadioGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { RadioGroupRoot } from './components/uifn/solid/radio-group.js';
+import { RadioGroupRoot } from "./components/uifn/solid/radio-group.js";
 
 export function RadioGroupExample() {
   return createComponent(RadioGroupRoot, {"aria-label":"RadioGroup example"});

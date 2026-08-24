@@ -18,17 +18,17 @@
   "frameworks": {
     "react": {
       "supported": true,
-      "entry": "uifn/components-react/src/data-rich.ts",
+      "entry": "uifn/components-react/src/generated/date-picker.ts",
       "exportName": "DatePicker"
     },
     "svelte": {
       "supported": true,
-      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "entry": "uifn/components-svelte/src/generated/date-picker/index.ts",
       "exportName": "DatePicker"
     },
     "solid": {
       "supported": true,
-      "entry": "uifn/components-solid/src/data-rich.ts",
+      "entry": "uifn/components-solid/src/generated/date-picker.ts",
       "exportName": "DatePicker"
     }
   },

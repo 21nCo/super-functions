@@ -1,6 +1,6 @@
 import { createComponent, type Component, type JSX } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
-import manifest from '../../../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import manifest from '../../../../evidence/generated/phase-14/phase-14-public-vectors.json';
 import { phase14PartProps } from '../../../../parity/src/trace.mjs';
 import * as UIFnSolid from '../../index.js';
 import type { SolidPrimitiveBridge, SolidPrimitiveRenderPayload } from '../../internal/compound.jsx';

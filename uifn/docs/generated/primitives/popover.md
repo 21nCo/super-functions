@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { PopoverRoot } from '@uifn/components-react/popover';
+import { PopoverRoot } from "@uifn/components-react/popover";
 
 export function PopoverExample() {
   return React.createElement(PopoverRoot, {});
@@ -163,7 +163,7 @@ export function PopoverExample() {
 
 ```tsx
 import * as React from 'react';
-import { PopoverRoot } from './components/uifn/react/popover.js';
+import { PopoverRoot } from "./components/uifn/react/popover.js";
 
 export function PopoverExample() {
   return React.createElement(PopoverRoot, {});
@@ -174,7 +174,7 @@ export function PopoverExample() {
 
 ```svelte
 <script lang="ts">
-  import { PopoverRoot } from '@uifn/components-svelte/popover';
+  import { PopoverRoot } from "@uifn/components-svelte/popover";
 </script>
 
 <PopoverRoot  />
@@ -184,7 +184,7 @@ export function PopoverExample() {
 
 ```svelte
 <script lang="ts">
-  import { PopoverRoot } from './components/uifn/svelte/popover/index.js';
+  import { PopoverRoot } from "./components/uifn/svelte/popover/index.js";
 </script>
 
 <PopoverRoot  />
@@ -194,7 +194,7 @@ export function PopoverExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PopoverRoot } from '@uifn/components-solid/popover';
+import { PopoverRoot } from "@uifn/components-solid/popover";
 
 export function PopoverExample() {
   return createComponent(PopoverRoot, {});
@@ -205,7 +205,7 @@ export function PopoverExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PopoverRoot } from './components/uifn/solid/popover.js';
+import { PopoverRoot } from "./components/uifn/solid/popover.js";
 
 export function PopoverExample() {
   return createComponent(PopoverRoot, {});

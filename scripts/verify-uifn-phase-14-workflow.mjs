@@ -8,7 +8,7 @@ import { requiredPhase14CompatibilityCells } from './verify-uifn-phase-14-compat
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(repoRoot, '.github/workflows/uifn-phase-14-compat.yml');
-const trustPolicyPath = path.join(repoRoot, 'uifn/.conduct/compatibility/phase-14-trust-policy.json');
+const trustPolicyPath = path.join(repoRoot, 'uifn/evidence/compatibility/phase-14-trust-policy.json');
 const consumerJobs = ['node', 'framework-client', 'desktop-product', 'safari-product', 'rendering', 'physical-device'];
 
 function setDifference(left, right) {

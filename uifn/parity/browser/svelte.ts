@@ -1,5 +1,5 @@
 import { mount, tick, unmount } from 'svelte';
-import manifest from '../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import manifest from '../../evidence/generated/phase-14/phase-14-public-vectors.json';
 import {
   assemblePhase14Trace,
   capturePhase14Checkpoint,

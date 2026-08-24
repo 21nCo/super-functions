@@ -33,17 +33,17 @@
   "frameworks": {
     "react": {
       "supported": true,
-      "entry": "uifn/components-react/src/batch-b.ts",
+      "entry": "uifn/components-react/src/generated/collapsible.ts",
       "exportName": "Collapsible"
     },
     "svelte": {
       "supported": true,
-      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "entry": "uifn/components-svelte/src/generated/collapsible/index.ts",
       "exportName": "Collapsible"
     },
     "solid": {
       "supported": true,
-      "entry": "uifn/components-solid/src/batch-b.ts",
+      "entry": "uifn/components-solid/src/generated/collapsible.ts",
       "exportName": "Collapsible"
     }
   },

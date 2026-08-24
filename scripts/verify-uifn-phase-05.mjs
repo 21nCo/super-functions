@@ -6,6 +6,7 @@ const commands = [
   [process.execPath, ['--test', 'scripts/verify-uifn-dom-platform.test.mjs']],
   [process.execPath, ['scripts/verify-uifn-dom-platform.mjs', '--fixture-negative']],
   [process.execPath, ['scripts/verify-uifn-dom-pack.mjs']],
+  [process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--workspace', '@uifn/dom', 'run', 'test:browser']],
   [process.execPath, ['scripts/verify-uifn-stable.mjs']],
 ];
 

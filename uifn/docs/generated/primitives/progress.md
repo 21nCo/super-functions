@@ -145,7 +145,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ProgressRoot } from '@uifn/components-react/progress';
+import { ProgressRoot } from "@uifn/components-react/progress";
 
 export function ProgressExample() {
   return React.createElement(ProgressRoot, {"aria-label":"Progress example"});
@@ -156,7 +156,7 @@ export function ProgressExample() {
 
 ```tsx
 import * as React from 'react';
-import { ProgressRoot } from './components/uifn/react/progress.js';
+import { ProgressRoot } from "./components/uifn/react/progress.js";
 
 export function ProgressExample() {
   return React.createElement(ProgressRoot, {"aria-label":"Progress example"});
@@ -167,7 +167,7 @@ export function ProgressExample() {
 
 ```svelte
 <script lang="ts">
-  import { ProgressRoot } from '@uifn/components-svelte/progress';
+  import { ProgressRoot } from "@uifn/components-svelte/progress";
 </script>
 
 <ProgressRoot aria-label="Progress example" />
@@ -177,7 +177,7 @@ export function ProgressExample() {
 
 ```svelte
 <script lang="ts">
-  import { ProgressRoot } from './components/uifn/svelte/progress/index.js';
+  import { ProgressRoot } from "./components/uifn/svelte/progress/index.js";
 </script>
 
 <ProgressRoot aria-label="Progress example" />
@@ -187,7 +187,7 @@ export function ProgressExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ProgressRoot } from '@uifn/components-solid/progress';
+import { ProgressRoot } from "@uifn/components-solid/progress";
 
 export function ProgressExample() {
   return createComponent(ProgressRoot, {"aria-label":"Progress example"});
@@ -198,7 +198,7 @@ export function ProgressExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ProgressRoot } from './components/uifn/solid/progress.js';
+import { ProgressRoot } from "./components/uifn/solid/progress.js";
 
 export function ProgressExample() {
   return createComponent(ProgressRoot, {"aria-label":"Progress example"});

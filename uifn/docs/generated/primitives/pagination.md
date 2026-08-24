@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { PaginationRoot } from '@uifn/components-react/pagination';
+import { PaginationRoot } from "@uifn/components-react/pagination";
 
 export function PaginationExample() {
   return React.createElement(PaginationRoot, {"count":1,"aria-label":"Pagination example"});
@@ -163,7 +163,7 @@ export function PaginationExample() {
 
 ```tsx
 import * as React from 'react';
-import { PaginationRoot } from './components/uifn/react/pagination.js';
+import { PaginationRoot } from "./components/uifn/react/pagination.js";
 
 export function PaginationExample() {
   return React.createElement(PaginationRoot, {"count":1,"aria-label":"Pagination example"});
@@ -174,7 +174,7 @@ export function PaginationExample() {
 
 ```svelte
 <script lang="ts">
-  import { PaginationRoot } from '@uifn/components-svelte/pagination';
+  import { PaginationRoot } from "@uifn/components-svelte/pagination";
 </script>
 
 <PaginationRoot count={1} aria-label="Pagination example" />
@@ -184,7 +184,7 @@ export function PaginationExample() {
 
 ```svelte
 <script lang="ts">
-  import { PaginationRoot } from './components/uifn/svelte/pagination/index.js';
+  import { PaginationRoot } from "./components/uifn/svelte/pagination/index.js";
 </script>
 
 <PaginationRoot count={1} aria-label="Pagination example" />
@@ -194,7 +194,7 @@ export function PaginationExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PaginationRoot } from '@uifn/components-solid/pagination';
+import { PaginationRoot } from "@uifn/components-solid/pagination";
 
 export function PaginationExample() {
   return createComponent(PaginationRoot, {"count":1,"aria-label":"Pagination example"});
@@ -205,7 +205,7 @@ export function PaginationExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PaginationRoot } from './components/uifn/solid/pagination.js';
+import { PaginationRoot } from "./components/uifn/solid/pagination.js";
 
 export function PaginationExample() {
   return createComponent(PaginationRoot, {"count":1,"aria-label":"Pagination example"});

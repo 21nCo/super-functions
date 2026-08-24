@@ -13,6 +13,8 @@ function withProject(callback: (rootDir: string) => void) {
 }
 
 describe('stable source delivery lane', () => {
+  const adapterVersions = { react: '0.0.2', svelte: '0.0.2', solid: '0.0.1' } as const;
+
   it('contains only the current canonical components', () => {
     const registry = buildRegistry();
     expect(registry.ok).toBe(true);
@@ -33,7 +35,7 @@ describe('stable source delivery lane', () => {
       const manifest = JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
       expect(manifest.dependencies).toMatchObject({
         '@uifn/recipes': '0.0.1',
-        [`@uifn/${framework}`]: '0.0.1',
+        [`@uifn/${framework}`]: adapterVersions[framework],
       });
     });
   });

@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ScrollAreaRoot } from '@uifn/components-react/scroll-area';
+import { ScrollAreaRoot } from "@uifn/components-react/scroll-area";
 
 export function ScrollAreaExample() {
   return React.createElement(ScrollAreaRoot, {});
@@ -160,7 +160,7 @@ export function ScrollAreaExample() {
 
 ```tsx
 import * as React from 'react';
-import { ScrollAreaRoot } from './components/uifn/react/scroll-area.js';
+import { ScrollAreaRoot } from "./components/uifn/react/scroll-area.js";
 
 export function ScrollAreaExample() {
   return React.createElement(ScrollAreaRoot, {});
@@ -171,7 +171,7 @@ export function ScrollAreaExample() {
 
 ```svelte
 <script lang="ts">
-  import { ScrollAreaRoot } from '@uifn/components-svelte/scroll-area';
+  import { ScrollAreaRoot } from "@uifn/components-svelte/scroll-area";
 </script>
 
 <ScrollAreaRoot  />
@@ -181,7 +181,7 @@ export function ScrollAreaExample() {
 
 ```svelte
 <script lang="ts">
-  import { ScrollAreaRoot } from './components/uifn/svelte/scroll-area/index.js';
+  import { ScrollAreaRoot } from "./components/uifn/svelte/scroll-area/index.js";
 </script>
 
 <ScrollAreaRoot  />
@@ -191,7 +191,7 @@ export function ScrollAreaExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ScrollAreaRoot } from '@uifn/components-solid/scroll-area';
+import { ScrollAreaRoot } from "@uifn/components-solid/scroll-area";
 
 export function ScrollAreaExample() {
   return createComponent(ScrollAreaRoot, {});
@@ -202,7 +202,7 @@ export function ScrollAreaExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ScrollAreaRoot } from './components/uifn/solid/scroll-area.js';
+import { ScrollAreaRoot } from "./components/uifn/solid/scroll-area.js";
 
 export function ScrollAreaExample() {
   return createComponent(ScrollAreaRoot, {});

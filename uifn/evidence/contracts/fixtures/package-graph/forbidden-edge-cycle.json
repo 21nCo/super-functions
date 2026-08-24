@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "vectorId": "TV-SCOPE-001-N",
+  "mutations": [
+    { "package": "@uifn/components", "addDependency": "@uifn/react" },
+    { "package": "@uifn/core", "addDependency": "@uifn/adapter-kit" }
+  ],
+  "expectedErrorCodes": ["UIFN_PACKAGE_GRAPH_FORBIDDEN_EDGE", "UIFN_PACKAGE_GRAPH_CYCLE"]
+}

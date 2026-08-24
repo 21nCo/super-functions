@@ -142,7 +142,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { MarqueeRoot } from '@uifn/components-react/marquee';
+import { MarqueeRoot } from "@uifn/components-react/marquee";
 
 export function MarqueeExample() {
   return React.createElement(MarqueeRoot, {});
@@ -153,7 +153,7 @@ export function MarqueeExample() {
 
 ```tsx
 import * as React from 'react';
-import { MarqueeRoot } from './components/uifn/react/marquee.js';
+import { MarqueeRoot } from "./components/uifn/react/marquee.js";
 
 export function MarqueeExample() {
   return React.createElement(MarqueeRoot, {});
@@ -164,7 +164,7 @@ export function MarqueeExample() {
 
 ```svelte
 <script lang="ts">
-  import { MarqueeRoot } from '@uifn/components-svelte/marquee';
+  import { MarqueeRoot } from "@uifn/components-svelte/marquee";
 </script>
 
 <MarqueeRoot  />
@@ -174,7 +174,7 @@ export function MarqueeExample() {
 
 ```svelte
 <script lang="ts">
-  import { MarqueeRoot } from './components/uifn/svelte/marquee/index.js';
+  import { MarqueeRoot } from "./components/uifn/svelte/marquee/index.js";
 </script>
 
 <MarqueeRoot  />
@@ -184,7 +184,7 @@ export function MarqueeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MarqueeRoot } from '@uifn/components-solid/marquee';
+import { MarqueeRoot } from "@uifn/components-solid/marquee";
 
 export function MarqueeExample() {
   return createComponent(MarqueeRoot, {});
@@ -195,7 +195,7 @@ export function MarqueeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MarqueeRoot } from './components/uifn/solid/marquee.js';
+import { MarqueeRoot } from "./components/uifn/solid/marquee.js";
 
 export function MarqueeExample() {
   return createComponent(MarqueeRoot, {});

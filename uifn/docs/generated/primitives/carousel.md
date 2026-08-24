@@ -155,7 +155,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { CarouselRoot } from '@uifn/components-react/carousel';
+import { CarouselRoot } from "@uifn/components-react/carousel";
 
 export function CarouselExample() {
   return React.createElement(CarouselRoot, {"itemCount":1,"aria-label":"Carousel example"});
@@ -166,7 +166,7 @@ export function CarouselExample() {
 
 ```tsx
 import * as React from 'react';
-import { CarouselRoot } from './components/uifn/react/carousel.js';
+import { CarouselRoot } from "./components/uifn/react/carousel.js";
 
 export function CarouselExample() {
   return React.createElement(CarouselRoot, {"itemCount":1,"aria-label":"Carousel example"});
@@ -177,7 +177,7 @@ export function CarouselExample() {
 
 ```svelte
 <script lang="ts">
-  import { CarouselRoot } from '@uifn/components-svelte/carousel';
+  import { CarouselRoot } from "@uifn/components-svelte/carousel";
 </script>
 
 <CarouselRoot itemCount={1} aria-label="Carousel example" />
@@ -187,7 +187,7 @@ export function CarouselExample() {
 
 ```svelte
 <script lang="ts">
-  import { CarouselRoot } from './components/uifn/svelte/carousel/index.js';
+  import { CarouselRoot } from "./components/uifn/svelte/carousel/index.js";
 </script>
 
 <CarouselRoot itemCount={1} aria-label="Carousel example" />
@@ -197,7 +197,7 @@ export function CarouselExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CarouselRoot } from '@uifn/components-solid/carousel';
+import { CarouselRoot } from "@uifn/components-solid/carousel";
 
 export function CarouselExample() {
   return createComponent(CarouselRoot, {"itemCount":1,"aria-label":"Carousel example"});
@@ -208,7 +208,7 @@ export function CarouselExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CarouselRoot } from './components/uifn/solid/carousel.js';
+import { CarouselRoot } from "./components/uifn/solid/carousel.js";
 
 export function CarouselExample() {
   return createComponent(CarouselRoot, {"itemCount":1,"aria-label":"Carousel example"});

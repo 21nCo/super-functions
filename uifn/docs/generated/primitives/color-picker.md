@@ -162,7 +162,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ColorPickerRoot } from '@uifn/components-react/color-picker';
+import { ColorPickerRoot } from "@uifn/components-react/color-picker";
 
 export function ColorPickerExample() {
   return React.createElement(ColorPickerRoot, {});
@@ -173,7 +173,7 @@ export function ColorPickerExample() {
 
 ```tsx
 import * as React from 'react';
-import { ColorPickerRoot } from './components/uifn/react/color-picker.js';
+import { ColorPickerRoot } from "./components/uifn/react/color-picker.js";
 
 export function ColorPickerExample() {
   return React.createElement(ColorPickerRoot, {});
@@ -184,7 +184,7 @@ export function ColorPickerExample() {
 
 ```svelte
 <script lang="ts">
-  import { ColorPickerRoot } from '@uifn/components-svelte/color-picker';
+  import { ColorPickerRoot } from "@uifn/components-svelte/color-picker";
 </script>
 
 <ColorPickerRoot  />
@@ -194,7 +194,7 @@ export function ColorPickerExample() {
 
 ```svelte
 <script lang="ts">
-  import { ColorPickerRoot } from './components/uifn/svelte/color-picker/index.js';
+  import { ColorPickerRoot } from "./components/uifn/svelte/color-picker/index.js";
 </script>
 
 <ColorPickerRoot  />
@@ -204,7 +204,7 @@ export function ColorPickerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ColorPickerRoot } from '@uifn/components-solid/color-picker';
+import { ColorPickerRoot } from "@uifn/components-solid/color-picker";
 
 export function ColorPickerExample() {
   return createComponent(ColorPickerRoot, {});
@@ -215,7 +215,7 @@ export function ColorPickerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ColorPickerRoot } from './components/uifn/solid/color-picker.js';
+import { ColorPickerRoot } from "./components/uifn/solid/color-picker.js";
 
 export function ColorPickerExample() {
   return createComponent(ColorPickerRoot, {});

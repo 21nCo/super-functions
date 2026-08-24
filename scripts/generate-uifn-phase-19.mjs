@@ -16,9 +16,9 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mode = process.argv.includes('--write') ? 'write' : 'check';
 const readJson = (relative) => JSON.parse(readFileSync(path.join(root, relative), 'utf8'));
-const handoff = readJson('uifn/.conduct/generated/phase-18/manual-handoff.json');
+const handoff = readJson('uifn/evidence/generated/phase-18/manual-handoff.json');
 const catalog = readJson('uifn/catalog/generated/catalog.json');
-const ledger = readJson('uifn/.conduct/generated/phase-18/normative-ledger.json');
+const ledger = readJson('uifn/evidence/generated/phase-18/normative-ledger.json');
 const matrix = buildPhase19Matrix(handoff, catalog, ledger);
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 

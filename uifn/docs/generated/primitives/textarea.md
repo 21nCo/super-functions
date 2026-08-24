@@ -147,7 +147,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TextareaRoot } from '@uifn/components-react/textarea';
+import { TextareaRoot } from "@uifn/components-react/textarea";
 
 export function TextareaExample() {
   return React.createElement(TextareaRoot, {"aria-label":"Textarea example"});
@@ -158,7 +158,7 @@ export function TextareaExample() {
 
 ```tsx
 import * as React from 'react';
-import { TextareaRoot } from './components/uifn/react/textarea.js';
+import { TextareaRoot } from "./components/uifn/react/textarea.js";
 
 export function TextareaExample() {
   return React.createElement(TextareaRoot, {"aria-label":"Textarea example"});
@@ -169,7 +169,7 @@ export function TextareaExample() {
 
 ```svelte
 <script lang="ts">
-  import { TextareaRoot } from '@uifn/components-svelte/textarea';
+  import { TextareaRoot } from "@uifn/components-svelte/textarea";
 </script>
 
 <TextareaRoot aria-label="Textarea example" />
@@ -179,7 +179,7 @@ export function TextareaExample() {
 
 ```svelte
 <script lang="ts">
-  import { TextareaRoot } from './components/uifn/svelte/textarea/index.js';
+  import { TextareaRoot } from "./components/uifn/svelte/textarea/index.js";
 </script>
 
 <TextareaRoot aria-label="Textarea example" />
@@ -189,7 +189,7 @@ export function TextareaExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TextareaRoot } from '@uifn/components-solid/textarea';
+import { TextareaRoot } from "@uifn/components-solid/textarea";
 
 export function TextareaExample() {
   return createComponent(TextareaRoot, {"aria-label":"Textarea example"});
@@ -200,7 +200,7 @@ export function TextareaExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TextareaRoot } from './components/uifn/solid/textarea.js';
+import { TextareaRoot } from "./components/uifn/solid/textarea.js";
 
 export function TextareaExample() {
   return createComponent(TextareaRoot, {"aria-label":"Textarea example"});

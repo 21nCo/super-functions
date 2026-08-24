@@ -145,7 +145,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { AccordionRoot } from '@uifn/components-react/accordion';
+import { AccordionRoot } from "@uifn/components-react/accordion";
 
 export function AccordionExample() {
   return React.createElement(AccordionRoot, {});
@@ -156,7 +156,7 @@ export function AccordionExample() {
 
 ```tsx
 import * as React from 'react';
-import { AccordionRoot } from './components/uifn/react/accordion.js';
+import { AccordionRoot } from "./components/uifn/react/accordion.js";
 
 export function AccordionExample() {
   return React.createElement(AccordionRoot, {});
@@ -167,7 +167,7 @@ export function AccordionExample() {
 
 ```svelte
 <script lang="ts">
-  import { AccordionRoot } from '@uifn/components-svelte/accordion';
+  import { AccordionRoot } from "@uifn/components-svelte/accordion";
 </script>
 
 <AccordionRoot  />
@@ -177,7 +177,7 @@ export function AccordionExample() {
 
 ```svelte
 <script lang="ts">
-  import { AccordionRoot } from './components/uifn/svelte/accordion/index.js';
+  import { AccordionRoot } from "./components/uifn/svelte/accordion/index.js";
 </script>
 
 <AccordionRoot  />
@@ -187,7 +187,7 @@ export function AccordionExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AccordionRoot } from '@uifn/components-solid/accordion';
+import { AccordionRoot } from "@uifn/components-solid/accordion";
 
 export function AccordionExample() {
   return createComponent(AccordionRoot, {});
@@ -198,7 +198,7 @@ export function AccordionExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { AccordionRoot } from './components/uifn/solid/accordion.js';
+import { AccordionRoot } from "./components/uifn/solid/accordion.js";
 
 export function AccordionExample() {
   return createComponent(AccordionRoot, {});

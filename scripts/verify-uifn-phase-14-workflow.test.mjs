@@ -4,7 +4,7 @@ import test from 'node:test';
 import { verifyPhase14WorkflowContract } from './verify-uifn-phase-14-workflow.mjs';
 
 const workflow = readFileSync(new URL('../.github/workflows/uifn-phase-14-compat.yml', import.meta.url), 'utf8');
-const trustPolicy = JSON.parse(readFileSync(new URL('../uifn/.conduct/compatibility/phase-14-trust-policy.json', import.meta.url), 'utf8'));
+const trustPolicy = JSON.parse(readFileSync(new URL('../uifn/evidence/compatibility/phase-14-trust-policy.json', import.meta.url), 'utf8'));
 
 test('accepts the fail-closed attested exact 35-cell workflow', () => {
   const result = verifyPhase14WorkflowContract({ workflow, trustPolicy });

@@ -1,0 +1,3944 @@
+{
+  "schemaVersion": 1,
+  "phase": "PHASE_12",
+  "generatedBy": "generate-uifn-phase-12.mjs",
+  "implementationEvidence": true,
+  "catalogSha256": "f90d50283106d40b028d205350733200d2d9f6982287db54fe7f52429774d282",
+  "outputSha256": "948ff81f1867abe097d818004f7b9ae51c72bfc5bfd6a007e225ea9ad418e3ba",
+  "primitiveCount": 69,
+  "anatomyCount": 465,
+  "primitives": [
+    {
+      "id": "accordion",
+      "name": "Accordion",
+      "kind": "interactive-controller",
+      "family": "disclosure",
+      "source": "lib/generated/accordion/Root.svelte",
+      "module": "lib/generated/accordion/index.ts",
+      "provider": "AccordionProvider",
+      "namespace": "Accordion",
+      "components": [
+        "AccordionRoot",
+        "AccordionItem",
+        "AccordionHeader",
+        "AccordionTrigger",
+        "AccordionContent",
+        "AccordionIndicator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "heading",
+          "id": "header"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "indicator"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "alert-dialog",
+      "name": "AlertDialog",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/alert-dialog/Root.svelte",
+      "module": "lib/generated/alert-dialog/index.ts",
+      "provider": "AlertDialogProvider",
+      "namespace": "AlertDialog",
+      "components": [
+        "AlertDialogRoot",
+        "AlertDialogTrigger",
+        "AlertDialogPortal",
+        "AlertDialogBackdrop",
+        "AlertDialogPositioner",
+        "AlertDialogContent",
+        "AlertDialogTitle",
+        "AlertDialogDescription",
+        "AlertDialogCancel",
+        "AlertDialogAction",
+        "AlertDialogClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "portal"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "backdrop"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "cancel"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "action"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "angle-slider",
+      "name": "AngleSlider",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/angle-slider/Root.svelte",
+      "module": "lib/generated/angle-slider/index.ts",
+      "provider": "AngleSliderProvider",
+      "namespace": "AngleSlider",
+      "components": [
+        "AngleSliderRoot",
+        "AngleSliderTrack",
+        "AngleSliderThumb",
+        "AngleSliderValueText",
+        "AngleSliderHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "track"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "thumb"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "valueText"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "autocomplete",
+      "name": "Autocomplete",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/autocomplete/Root.svelte",
+      "module": "lib/generated/autocomplete/index.ts",
+      "provider": "AutocompleteProvider",
+      "namespace": "Autocomplete",
+      "components": [
+        "AutocompleteRoot",
+        "AutocompleteLabel",
+        "AutocompleteControl",
+        "AutocompleteInput",
+        "AutocompleteClear",
+        "AutocompletePositioner",
+        "AutocompleteContent",
+        "AutocompleteItem",
+        "AutocompleteEmpty"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "clear"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "empty"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "avatar",
+      "name": "Avatar",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/avatar/Root.svelte",
+      "module": "lib/generated/avatar/index.ts",
+      "provider": "AvatarProvider",
+      "namespace": "Avatar",
+      "components": [
+        "AvatarRoot",
+        "AvatarImage",
+        "AvatarFallback"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "img",
+          "id": "image"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "fallback"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "button",
+      "name": "Button",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/button/Root.svelte",
+      "module": "lib/generated/button/index.ts",
+      "provider": "ButtonProvider",
+      "namespace": "Button",
+      "components": [
+        "ButtonRoot",
+        "ButtonIcon",
+        "ButtonLabel",
+        "ButtonSpinner"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "icon"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "spinner"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "carousel",
+      "name": "Carousel",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/carousel/Root.svelte",
+      "module": "lib/generated/carousel/index.ts",
+      "provider": "CarouselProvider",
+      "namespace": "Carousel",
+      "components": [
+        "CarouselRoot",
+        "CarouselViewport",
+        "CarouselItem",
+        "CarouselPrevious",
+        "CarouselNext",
+        "CarouselIndicatorGroup",
+        "CarouselIndicator",
+        "CarouselLiveRegion"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "section",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "previous"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "next"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "indicatorGroup"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "indicator"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "liveRegion"
+        }
+      ],
+      "bindableValues": [
+        "index"
+      ]
+    },
+    {
+      "id": "checkbox",
+      "name": "Checkbox",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/checkbox/Root.svelte",
+      "module": "lib/generated/checkbox/index.ts",
+      "provider": "CheckboxProvider",
+      "namespace": "Checkbox",
+      "components": [
+        "CheckboxRoot",
+        "CheckboxControl",
+        "CheckboxIndicator",
+        "CheckboxLabel",
+        "CheckboxHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "indicator"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "checked"
+      ]
+    },
+    {
+      "id": "checkbox-group",
+      "name": "CheckboxGroup",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/checkbox-group/Root.svelte",
+      "module": "lib/generated/checkbox-group/index.ts",
+      "provider": "CheckboxGroupProvider",
+      "namespace": "CheckboxGroup",
+      "components": [
+        "CheckboxGroupRoot",
+        "CheckboxGroupLabel",
+        "CheckboxGroupItem",
+        "CheckboxGroupItemControl",
+        "CheckboxGroupItemIndicator",
+        "CheckboxGroupHiddenInput",
+        "CheckboxGroupError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "fieldset",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "legend",
+          "id": "label"
+        },
+        {
+          "cardinality": "many",
+          "element": "label",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "itemControl"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "clipboard",
+      "name": "Clipboard",
+      "kind": "interactive-controller",
+      "family": "status-feedback",
+      "source": "lib/generated/clipboard/Root.svelte",
+      "module": "lib/generated/clipboard/index.ts",
+      "provider": "ClipboardProvider",
+      "namespace": "Clipboard",
+      "components": [
+        "ClipboardRoot",
+        "ClipboardTrigger",
+        "ClipboardStatus"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "status"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "collapsible",
+      "name": "Collapsible",
+      "kind": "interactive-controller",
+      "family": "disclosure",
+      "source": "lib/generated/collapsible/Root.svelte",
+      "module": "lib/generated/collapsible/index.ts",
+      "provider": "CollapsibleProvider",
+      "namespace": "Collapsible",
+      "components": [
+        "CollapsibleRoot",
+        "CollapsibleTrigger",
+        "CollapsibleContent"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "color-picker",
+      "name": "ColorPicker",
+      "kind": "interactive-controller",
+      "family": "date-color",
+      "source": "lib/generated/color-picker/Root.svelte",
+      "module": "lib/generated/color-picker/index.ts",
+      "provider": "ColorPickerProvider",
+      "namespace": "ColorPicker",
+      "components": [
+        "ColorPickerRoot",
+        "ColorPickerLabel",
+        "ColorPickerControl",
+        "ColorPickerTrigger",
+        "ColorPickerPositioner",
+        "ColorPickerContent",
+        "ColorPickerArea",
+        "ColorPickerAreaThumb",
+        "ColorPickerChannelSlider",
+        "ColorPickerChannelInput",
+        "ColorPickerSwatch",
+        "ColorPickerHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "area"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "areaThumb"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "channelSlider"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "channelInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "swatch"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value",
+        "open"
+      ]
+    },
+    {
+      "id": "combobox",
+      "name": "Combobox",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/combobox/Root.svelte",
+      "module": "lib/generated/combobox/index.ts",
+      "provider": "ComboboxProvider",
+      "namespace": "Combobox",
+      "components": [
+        "ComboboxRoot",
+        "ComboboxLabel",
+        "ComboboxControl",
+        "ComboboxInput",
+        "ComboboxTrigger",
+        "ComboboxClear",
+        "ComboboxPositioner",
+        "ComboboxContent",
+        "ComboboxItem",
+        "ComboboxItemIndicator",
+        "ComboboxEmpty",
+        "ComboboxHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "clear"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "empty"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "context-menu",
+      "name": "ContextMenu",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/context-menu/Root.svelte",
+      "module": "lib/generated/context-menu/index.ts",
+      "provider": "ContextMenuProvider",
+      "namespace": "ContextMenu",
+      "components": [
+        "ContextMenuRoot",
+        "ContextMenuTrigger",
+        "ContextMenuPositioner",
+        "ContextMenuContent",
+        "ContextMenuItem",
+        "ContextMenuItemIndicator",
+        "ContextMenuSeparator",
+        "ContextMenuGroup",
+        "ContextMenuGroupLabel",
+        "ContextMenuSubmenuTrigger",
+        "ContextMenuSubmenuContent"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "separator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "group"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "groupLabel"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuTrigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuContent"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "date-input",
+      "name": "DateInput",
+      "kind": "interactive-controller",
+      "family": "date-color",
+      "source": "lib/generated/date-input/Root.svelte",
+      "module": "lib/generated/date-input/index.ts",
+      "provider": "DateInputProvider",
+      "namespace": "DateInput",
+      "components": [
+        "DateInputRoot",
+        "DateInputLabel",
+        "DateInputSegment",
+        "DateInputHiddenInput",
+        "DateInputError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "segment"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "date-picker",
+      "name": "DatePicker",
+      "kind": "interactive-controller",
+      "family": "date-color",
+      "source": "lib/generated/date-picker/Root.svelte",
+      "module": "lib/generated/date-picker/index.ts",
+      "provider": "DatePickerProvider",
+      "namespace": "DatePicker",
+      "components": [
+        "DatePickerRoot",
+        "DatePickerLabel",
+        "DatePickerInput",
+        "DatePickerSegment",
+        "DatePickerTrigger",
+        "DatePickerPositioner",
+        "DatePickerContent",
+        "DatePickerHeader",
+        "DatePickerPrevious",
+        "DatePickerNext",
+        "DatePickerGrid",
+        "DatePickerGridLabel",
+        "DatePickerCell",
+        "DatePickerCellTrigger",
+        "DatePickerHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "input"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "segment"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "header"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "previous"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "next"
+        },
+        {
+          "cardinality": "one",
+          "element": "table",
+          "id": "grid"
+        },
+        {
+          "cardinality": "one",
+          "element": "caption",
+          "id": "gridLabel"
+        },
+        {
+          "cardinality": "many",
+          "element": "td",
+          "id": "cell"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "cellTrigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value",
+        "open"
+      ]
+    },
+    {
+      "id": "dialog",
+      "name": "Dialog",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/dialog/Root.svelte",
+      "module": "lib/generated/dialog/index.ts",
+      "provider": "DialogProvider",
+      "namespace": "Dialog",
+      "components": [
+        "DialogRoot",
+        "DialogTrigger",
+        "DialogPortal",
+        "DialogBackdrop",
+        "DialogPositioner",
+        "DialogContent",
+        "DialogTitle",
+        "DialogDescription",
+        "DialogClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "portal"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "backdrop"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "drawer",
+      "name": "Drawer",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/drawer/Root.svelte",
+      "module": "lib/generated/drawer/index.ts",
+      "provider": "DrawerProvider",
+      "namespace": "Drawer",
+      "components": [
+        "DrawerRoot",
+        "DrawerTrigger",
+        "DrawerPortal",
+        "DrawerBackdrop",
+        "DrawerPositioner",
+        "DrawerContent",
+        "DrawerHandle",
+        "DrawerTitle",
+        "DrawerDescription",
+        "DrawerClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "portal"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "backdrop"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "handle"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "editable",
+      "name": "Editable",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/editable/Root.svelte",
+      "module": "lib/generated/editable/index.ts",
+      "provider": "EditableProvider",
+      "namespace": "Editable",
+      "components": [
+        "EditableRoot",
+        "EditableLabel",
+        "EditablePreview",
+        "EditableInput",
+        "EditableControl",
+        "EditableSubmit",
+        "EditableCancel",
+        "EditableError",
+        "EditableHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "preview"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "submit"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "cancel"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "field",
+      "name": "Field",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/field/Root.svelte",
+      "module": "lib/generated/field/index.ts",
+      "provider": "FieldProvider",
+      "namespace": "Field",
+      "components": [
+        "FieldRoot",
+        "FieldLabel",
+        "FieldControl",
+        "FieldDescription",
+        "FieldError",
+        "FieldRequiredIndicator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "requiredIndicator"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "fieldset",
+      "name": "Fieldset",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/fieldset/Root.svelte",
+      "module": "lib/generated/fieldset/index.ts",
+      "provider": "FieldsetProvider",
+      "namespace": "Fieldset",
+      "components": [
+        "FieldsetRoot",
+        "FieldsetLegend",
+        "FieldsetContent",
+        "FieldsetDescription",
+        "FieldsetError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "fieldset",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "legend",
+          "id": "legend"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "file-upload",
+      "name": "FileUpload",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/file-upload/Root.svelte",
+      "module": "lib/generated/file-upload/index.ts",
+      "provider": "FileUploadProvider",
+      "namespace": "FileUpload",
+      "components": [
+        "FileUploadRoot",
+        "FileUploadLabel",
+        "FileUploadDropzone",
+        "FileUploadTrigger",
+        "FileUploadInput",
+        "FileUploadItemGroup",
+        "FileUploadItem",
+        "FileUploadItemName",
+        "FileUploadItemSize",
+        "FileUploadItemDelete",
+        "FileUploadError",
+        "FileUploadStatus"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "dropzone"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "ul",
+          "id": "itemGroup"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemName"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemSize"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "itemDelete"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "status"
+        }
+      ],
+      "bindableValues": [
+        "files"
+      ]
+    },
+    {
+      "id": "floating-panel",
+      "name": "FloatingPanel",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/floating-panel/Root.svelte",
+      "module": "lib/generated/floating-panel/index.ts",
+      "provider": "FloatingPanelProvider",
+      "namespace": "FloatingPanel",
+      "components": [
+        "FloatingPanelRoot",
+        "FloatingPanelTrigger",
+        "FloatingPanelPositioner",
+        "FloatingPanelContent",
+        "FloatingPanelHeader",
+        "FloatingPanelTitle",
+        "FloatingPanelDescription",
+        "FloatingPanelDragHandle",
+        "FloatingPanelResizeHandle",
+        "FloatingPanelClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "header"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "dragHandle"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "resizeHandle"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "form",
+      "name": "Form",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/form/Root.svelte",
+      "module": "lib/generated/form/index.ts",
+      "provider": "FormProvider",
+      "namespace": "Form",
+      "components": [
+        "FormRoot",
+        "FormErrorSummary",
+        "FormActions"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "form",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "errorSummary"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "actions"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "hover-card",
+      "name": "HoverCard",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/hover-card/Root.svelte",
+      "module": "lib/generated/hover-card/index.ts",
+      "provider": "HoverCardProvider",
+      "namespace": "HoverCard",
+      "components": [
+        "HoverCardRoot",
+        "HoverCardTrigger",
+        "HoverCardPositioner",
+        "HoverCardContent",
+        "HoverCardArrow"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "a",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "arrow"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "image-cropper",
+      "name": "ImageCropper",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/image-cropper/Root.svelte",
+      "module": "lib/generated/image-cropper/index.ts",
+      "provider": "ImageCropperProvider",
+      "namespace": "ImageCropper",
+      "components": [
+        "ImageCropperRoot",
+        "ImageCropperViewport",
+        "ImageCropperImage",
+        "ImageCropperCropArea",
+        "ImageCropperHandle",
+        "ImageCropperZoomControl",
+        "ImageCropperStatus"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "one",
+          "element": "img",
+          "id": "image"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "cropArea"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "handle"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "zoomControl"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "status"
+        }
+      ],
+      "bindableValues": [
+        "crop"
+      ]
+    },
+    {
+      "id": "input",
+      "name": "Input",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/input/Root.svelte",
+      "module": "lib/generated/input/index.ts",
+      "provider": "InputProvider",
+      "namespace": "Input",
+      "components": [
+        "InputRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "root"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "listbox",
+      "name": "Listbox",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/listbox/Root.svelte",
+      "module": "lib/generated/listbox/index.ts",
+      "provider": "ListboxProvider",
+      "namespace": "Listbox",
+      "components": [
+        "ListboxRoot",
+        "ListboxLabel",
+        "ListboxContent",
+        "ListboxItem",
+        "ListboxItemIndicator",
+        "ListboxGroup",
+        "ListboxGroupLabel",
+        "ListboxHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "group"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "groupLabel"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "marquee",
+      "name": "Marquee",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/marquee/Root.svelte",
+      "module": "lib/generated/marquee/index.ts",
+      "provider": "MarqueeProvider",
+      "namespace": "Marquee",
+      "components": [
+        "MarqueeRoot",
+        "MarqueeViewport",
+        "MarqueeTrack",
+        "MarqueeItem"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "track"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "menu",
+      "name": "Menu",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/menu/Root.svelte",
+      "module": "lib/generated/menu/index.ts",
+      "provider": "MenuProvider",
+      "namespace": "Menu",
+      "components": [
+        "MenuRoot",
+        "MenuTrigger",
+        "MenuPositioner",
+        "MenuContent",
+        "MenuItem",
+        "MenuItemIndicator",
+        "MenuSeparator",
+        "MenuGroup",
+        "MenuGroupLabel",
+        "MenuSubmenuTrigger",
+        "MenuSubmenuContent"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "separator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "group"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "groupLabel"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuTrigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuContent"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "menubar",
+      "name": "Menubar",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/menubar/Root.svelte",
+      "module": "lib/generated/menubar/index.ts",
+      "provider": "MenubarProvider",
+      "namespace": "Menubar",
+      "components": [
+        "MenubarRoot",
+        "MenubarMenu",
+        "MenubarTrigger",
+        "MenubarContent",
+        "MenubarItem",
+        "MenubarSubmenuTrigger",
+        "MenubarSubmenuContent"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "menu"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuTrigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "submenuContent"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "meter",
+      "name": "Meter",
+      "kind": "typed-static-contract",
+      "family": "status-feedback",
+      "source": "lib/generated/meter/Root.svelte",
+      "module": "lib/generated/meter/index.ts",
+      "provider": "MeterProvider",
+      "namespace": "Meter",
+      "components": [
+        "MeterRoot",
+        "MeterLabel",
+        "MeterTrack",
+        "MeterRange",
+        "MeterValueText"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "track"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "range"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "valueText"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "navigation-menu",
+      "name": "NavigationMenu",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/navigation-menu/Root.svelte",
+      "module": "lib/generated/navigation-menu/index.ts",
+      "provider": "NavigationMenuProvider",
+      "namespace": "NavigationMenu",
+      "components": [
+        "NavigationMenuRoot",
+        "NavigationMenuList",
+        "NavigationMenuItem",
+        "NavigationMenuTrigger",
+        "NavigationMenuContent",
+        "NavigationMenuLink",
+        "NavigationMenuViewport",
+        "NavigationMenuIndicator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "nav",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "ul",
+          "id": "list"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "a",
+          "id": "link"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "indicator"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "number-input",
+      "name": "NumberInput",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/number-input/Root.svelte",
+      "module": "lib/generated/number-input/index.ts",
+      "provider": "NumberInputProvider",
+      "namespace": "NumberInput",
+      "components": [
+        "NumberInputRoot",
+        "NumberInputLabel",
+        "NumberInputControl",
+        "NumberInputInput",
+        "NumberInputIncrement",
+        "NumberInputDecrement",
+        "NumberInputScrubber",
+        "NumberInputHiddenInput",
+        "NumberInputError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "increment"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "decrement"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "scrubber"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "pagination",
+      "name": "Pagination",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/pagination/Root.svelte",
+      "module": "lib/generated/pagination/index.ts",
+      "provider": "PaginationProvider",
+      "namespace": "Pagination",
+      "components": [
+        "PaginationRoot",
+        "PaginationList",
+        "PaginationItem",
+        "PaginationPageTrigger",
+        "PaginationPrevious",
+        "PaginationNext",
+        "PaginationEllipsis"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "nav",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "ul",
+          "id": "list"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "pageTrigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "previous"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "next"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "ellipsis"
+        }
+      ],
+      "bindableValues": [
+        "page"
+      ]
+    },
+    {
+      "id": "password-input",
+      "name": "PasswordInput",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/password-input/Root.svelte",
+      "module": "lib/generated/password-input/index.ts",
+      "provider": "PasswordInputProvider",
+      "namespace": "PasswordInput",
+      "components": [
+        "PasswordInputRoot",
+        "PasswordInputLabel",
+        "PasswordInputInput",
+        "PasswordInputVisibilityTrigger",
+        "PasswordInputStrength",
+        "PasswordInputError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "visibilityTrigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "strength"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "pin-input",
+      "name": "PinInput",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/pin-input/Root.svelte",
+      "module": "lib/generated/pin-input/index.ts",
+      "provider": "PinInputProvider",
+      "namespace": "PinInput",
+      "components": [
+        "PinInputRoot",
+        "PinInputLabel",
+        "PinInputControl",
+        "PinInputInput",
+        "PinInputHiddenInput",
+        "PinInputError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "popover",
+      "name": "Popover",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/popover/Root.svelte",
+      "module": "lib/generated/popover/index.ts",
+      "provider": "PopoverProvider",
+      "namespace": "Popover",
+      "components": [
+        "PopoverRoot",
+        "PopoverAnchor",
+        "PopoverTrigger",
+        "PopoverPositioner",
+        "PopoverContent",
+        "PopoverTitle",
+        "PopoverDescription",
+        "PopoverArrow",
+        "PopoverClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "anchor"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "arrow"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "progress",
+      "name": "Progress",
+      "kind": "typed-static-contract",
+      "family": "status-feedback",
+      "source": "lib/generated/progress/Root.svelte",
+      "module": "lib/generated/progress/index.ts",
+      "provider": "ProgressProvider",
+      "namespace": "Progress",
+      "components": [
+        "ProgressRoot",
+        "ProgressLabel",
+        "ProgressTrack",
+        "ProgressRange",
+        "ProgressCircle",
+        "ProgressValueText"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "track"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "range"
+        },
+        {
+          "cardinality": "one",
+          "element": "svg",
+          "id": "circle"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "valueText"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "qr-code",
+      "name": "QRCode",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/qr-code/Root.svelte",
+      "module": "lib/generated/qr-code/index.ts",
+      "provider": "QRCodeProvider",
+      "namespace": "QRCode",
+      "components": [
+        "QRCodeRoot",
+        "QRCodeImage",
+        "QRCodeCaption"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "figure",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "svg",
+          "id": "image"
+        },
+        {
+          "cardinality": "one",
+          "element": "figcaption",
+          "id": "caption"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "radio-group",
+      "name": "RadioGroup",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/radio-group/Root.svelte",
+      "module": "lib/generated/radio-group/index.ts",
+      "provider": "RadioGroupProvider",
+      "namespace": "RadioGroup",
+      "components": [
+        "RadioGroupRoot",
+        "RadioGroupLabel",
+        "RadioGroupItem",
+        "RadioGroupItemControl",
+        "RadioGroupItemIndicator",
+        "RadioGroupHiddenInput",
+        "RadioGroupError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "fieldset",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "legend",
+          "id": "label"
+        },
+        {
+          "cardinality": "many",
+          "element": "label",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "itemControl"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "rating-group",
+      "name": "RatingGroup",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/rating-group/Root.svelte",
+      "module": "lib/generated/rating-group/index.ts",
+      "provider": "RatingGroupProvider",
+      "namespace": "RatingGroup",
+      "components": [
+        "RatingGroupRoot",
+        "RatingGroupLabel",
+        "RatingGroupControl",
+        "RatingGroupItem",
+        "RatingGroupItemIndicator",
+        "RatingGroupHiddenInput",
+        "RatingGroupValueText"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "valueText"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "scroll-area",
+      "name": "ScrollArea",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/scroll-area/Root.svelte",
+      "module": "lib/generated/scroll-area/index.ts",
+      "provider": "ScrollAreaProvider",
+      "namespace": "ScrollArea",
+      "components": [
+        "ScrollAreaRoot",
+        "ScrollAreaViewport",
+        "ScrollAreaContent",
+        "ScrollAreaScrollbar",
+        "ScrollAreaThumb",
+        "ScrollAreaCorner"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "scrollbar"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "thumb"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "corner"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "segment-group",
+      "name": "SegmentGroup",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/segment-group/Root.svelte",
+      "module": "lib/generated/segment-group/index.ts",
+      "provider": "SegmentGroupProvider",
+      "namespace": "SegmentGroup",
+      "components": [
+        "SegmentGroupRoot",
+        "SegmentGroupLabel",
+        "SegmentGroupItem",
+        "SegmentGroupItemText",
+        "SegmentGroupIndicator",
+        "SegmentGroupHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemText"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "indicator"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "select",
+      "name": "Select",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/select/Root.svelte",
+      "module": "lib/generated/select/index.ts",
+      "provider": "SelectProvider",
+      "namespace": "Select",
+      "components": [
+        "SelectRoot",
+        "SelectLabel",
+        "SelectControl",
+        "SelectTrigger",
+        "SelectValueText",
+        "SelectClear",
+        "SelectPositioner",
+        "SelectContent",
+        "SelectItem",
+        "SelectItemText",
+        "SelectItemIndicator",
+        "SelectGroup",
+        "SelectGroupLabel",
+        "SelectHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "valueText"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "clear"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemText"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "group"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "groupLabel"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "separator",
+      "name": "Separator",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/separator/Root.svelte",
+      "module": "lib/generated/separator/index.ts",
+      "provider": "SeparatorProvider",
+      "namespace": "Separator",
+      "components": [
+        "SeparatorRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "signature-pad",
+      "name": "SignaturePad",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/signature-pad/Root.svelte",
+      "module": "lib/generated/signature-pad/index.ts",
+      "provider": "SignaturePadProvider",
+      "namespace": "SignaturePad",
+      "components": [
+        "SignaturePadRoot",
+        "SignaturePadLabel",
+        "SignaturePadCanvas",
+        "SignaturePadClear",
+        "SignaturePadUndo",
+        "SignaturePadStatus",
+        "SignaturePadHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "canvas",
+          "id": "canvas"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "clear"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "undo"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "status"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "slider",
+      "name": "Slider",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/slider/Root.svelte",
+      "module": "lib/generated/slider/index.ts",
+      "provider": "SliderProvider",
+      "namespace": "Slider",
+      "components": [
+        "SliderRoot",
+        "SliderLabel",
+        "SliderControl",
+        "SliderTrack",
+        "SliderRange",
+        "SliderThumb",
+        "SliderValueText",
+        "SliderHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "track"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "range"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "thumb"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "valueText"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "splitter",
+      "name": "Splitter",
+      "kind": "interactive-controller",
+      "family": "range-gesture",
+      "source": "lib/generated/splitter/Root.svelte",
+      "module": "lib/generated/splitter/index.ts",
+      "provider": "SplitterProvider",
+      "namespace": "Splitter",
+      "components": [
+        "SplitterRoot",
+        "SplitterPanel",
+        "SplitterResizeTrigger",
+        "SplitterResizeHandle"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "panel"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "resizeTrigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "resizeHandle"
+        }
+      ],
+      "bindableValues": [
+        "sizes"
+      ]
+    },
+    {
+      "id": "steps",
+      "name": "Steps",
+      "kind": "interactive-controller",
+      "family": "status-feedback",
+      "source": "lib/generated/steps/Root.svelte",
+      "module": "lib/generated/steps/index.ts",
+      "provider": "StepsProvider",
+      "namespace": "Steps",
+      "components": [
+        "StepsRoot",
+        "StepsList",
+        "StepsItem",
+        "StepsTrigger",
+        "StepsIndicator",
+        "StepsSeparator",
+        "StepsContent",
+        "StepsCompleted"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "nav",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "ol",
+          "id": "list"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "indicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "separator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "completed"
+        }
+      ],
+      "bindableValues": [
+        "step"
+      ]
+    },
+    {
+      "id": "switch",
+      "name": "Switch",
+      "kind": "interactive-controller",
+      "family": "forms-input",
+      "source": "lib/generated/switch/Root.svelte",
+      "module": "lib/generated/switch/index.ts",
+      "provider": "SwitchProvider",
+      "namespace": "Switch",
+      "components": [
+        "SwitchRoot",
+        "SwitchControl",
+        "SwitchThumb",
+        "SwitchLabel",
+        "SwitchHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "thumb"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "checked"
+      ]
+    },
+    {
+      "id": "tabs",
+      "name": "Tabs",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/tabs/Root.svelte",
+      "module": "lib/generated/tabs/index.ts",
+      "provider": "TabsProvider",
+      "namespace": "Tabs",
+      "components": [
+        "TabsRoot",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent",
+        "TabsIndicator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "list"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "indicator"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "tags-input",
+      "name": "TagsInput",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/tags-input/Root.svelte",
+      "module": "lib/generated/tags-input/index.ts",
+      "provider": "TagsInputProvider",
+      "namespace": "TagsInput",
+      "components": [
+        "TagsInputRoot",
+        "TagsInputLabel",
+        "TagsInputControl",
+        "TagsInputItem",
+        "TagsInputItemText",
+        "TagsInputItemDelete",
+        "TagsInputInput",
+        "TagsInputClear",
+        "TagsInputHiddenInput",
+        "TagsInputError"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemText"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "itemDelete"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "clear"
+        },
+        {
+          "cardinality": "many",
+          "element": "input",
+          "id": "hiddenInput"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "error"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "timer",
+      "name": "Timer",
+      "kind": "interactive-controller",
+      "family": "status-feedback",
+      "source": "lib/generated/timer/Root.svelte",
+      "module": "lib/generated/timer/index.ts",
+      "provider": "TimerProvider",
+      "namespace": "Timer",
+      "components": [
+        "TimerRoot",
+        "TimerValue",
+        "TimerStart",
+        "TimerPause",
+        "TimerReset",
+        "TimerStatus"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "time",
+          "id": "value"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "start"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "pause"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "reset"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "status"
+        }
+      ],
+      "bindableValues": [
+        "remaining"
+      ]
+    },
+    {
+      "id": "toast",
+      "name": "Toast",
+      "kind": "interactive-controller",
+      "family": "status-feedback",
+      "source": "lib/generated/toast/Viewport.svelte",
+      "module": "lib/generated/toast/index.ts",
+      "provider": "ToastProvider",
+      "namespace": "Toast",
+      "components": [
+        "ToastViewport",
+        "ToastRoot",
+        "ToastTitle",
+        "ToastDescription",
+        "ToastAction",
+        "ToastClose"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "viewport"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "title"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "description"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "action"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "close"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "toggle",
+      "name": "Toggle",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/toggle/Root.svelte",
+      "module": "lib/generated/toggle/index.ts",
+      "provider": "ToggleProvider",
+      "namespace": "Toggle",
+      "components": [
+        "ToggleRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "root"
+        }
+      ],
+      "bindableValues": [
+        "pressed"
+      ]
+    },
+    {
+      "id": "toggle-group",
+      "name": "ToggleGroup",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/toggle-group/Root.svelte",
+      "module": "lib/generated/toggle-group/index.ts",
+      "provider": "ToggleGroupProvider",
+      "namespace": "ToggleGroup",
+      "components": [
+        "ToggleGroupRoot",
+        "ToggleGroupItem"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "item"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    },
+    {
+      "id": "toolbar",
+      "name": "Toolbar",
+      "kind": "interactive-controller",
+      "family": "menu-navigation",
+      "source": "lib/generated/toolbar/Root.svelte",
+      "module": "lib/generated/toolbar/index.ts",
+      "provider": "ToolbarProvider",
+      "namespace": "Toolbar",
+      "components": [
+        "ToolbarRoot",
+        "ToolbarButton",
+        "ToolbarLink",
+        "ToolbarToggleGroup",
+        "ToolbarSeparator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "button"
+        },
+        {
+          "cardinality": "many",
+          "element": "a",
+          "id": "link"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "toggleGroup"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "separator"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "tooltip",
+      "name": "Tooltip",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/tooltip/Root.svelte",
+      "module": "lib/generated/tooltip/index.ts",
+      "provider": "TooltipProvider",
+      "namespace": "Tooltip",
+      "components": [
+        "TooltipRoot",
+        "TooltipTrigger",
+        "TooltipPositioner",
+        "TooltipContent",
+        "TooltipArrow"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "trigger"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "arrow"
+        }
+      ],
+      "bindableValues": [
+        "open"
+      ]
+    },
+    {
+      "id": "tour",
+      "name": "Tour",
+      "kind": "interactive-controller",
+      "family": "modal-overlay",
+      "source": "lib/generated/tour/Root.svelte",
+      "module": "lib/generated/tour/index.ts",
+      "provider": "TourProvider",
+      "namespace": "Tour",
+      "components": [
+        "TourRoot",
+        "TourPortal",
+        "TourBackdrop",
+        "TourSpotlight",
+        "TourPositioner",
+        "TourContent",
+        "TourTitle",
+        "TourDescription",
+        "TourPrevious",
+        "TourNext",
+        "TourSkip",
+        "TourClose",
+        "TourProgress"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "portal"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "backdrop"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "spotlight"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "positioner"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "heading",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "previous"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "next"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "skip"
+        },
+        {
+          "cardinality": "one",
+          "element": "button",
+          "id": "close"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "progress"
+        }
+      ],
+      "bindableValues": [
+        "open",
+        "step"
+      ]
+    },
+    {
+      "id": "tree-view",
+      "name": "TreeView",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/tree-view/Root.svelte",
+      "module": "lib/generated/tree-view/index.ts",
+      "provider": "TreeViewProvider",
+      "namespace": "TreeView",
+      "components": [
+        "TreeViewRoot",
+        "TreeViewLabel",
+        "TreeViewTree",
+        "TreeViewItem",
+        "TreeViewItemTrigger",
+        "TreeViewItemText",
+        "TreeViewBranch",
+        "TreeViewIndicator"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "tree"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "itemTrigger"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemText"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "branch"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "indicator"
+        }
+      ],
+      "bindableValues": [
+        "expanded",
+        "selection"
+      ]
+    },
+    {
+      "id": "badge",
+      "name": "Badge",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/badge/Root.svelte",
+      "module": "lib/generated/badge/index.ts",
+      "provider": "BadgeProvider",
+      "namespace": "Badge",
+      "components": [
+        "BadgeRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "root"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "breadcrumb",
+      "name": "Breadcrumb",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/breadcrumb/Root.svelte",
+      "module": "lib/generated/breadcrumb/index.ts",
+      "provider": "BreadcrumbProvider",
+      "namespace": "Breadcrumb",
+      "components": [
+        "BreadcrumbRoot",
+        "BreadcrumbList",
+        "BreadcrumbItem",
+        "BreadcrumbLink",
+        "BreadcrumbPage",
+        "BreadcrumbSeparator",
+        "BreadcrumbEllipsis"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "nav",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "ol",
+          "id": "list"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "a",
+          "id": "link"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "page"
+        },
+        {
+          "cardinality": "many",
+          "element": "li",
+          "id": "separator"
+        },
+        {
+          "cardinality": "one",
+          "element": "span",
+          "id": "ellipsis"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "card",
+      "name": "Card",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/card/Root.svelte",
+      "module": "lib/generated/card/index.ts",
+      "provider": "CardProvider",
+      "namespace": "Card",
+      "components": [
+        "CardRoot",
+        "CardHeader",
+        "CardTitle",
+        "CardDescription",
+        "CardAction",
+        "CardContent",
+        "CardFooter"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "header"
+        },
+        {
+          "cardinality": "one",
+          "element": "h3",
+          "id": "title"
+        },
+        {
+          "cardinality": "one",
+          "element": "p",
+          "id": "description"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "action"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "content"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "footer"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "command",
+      "name": "Command",
+      "kind": "interactive-controller",
+      "family": "selection-collection",
+      "source": "lib/generated/command/Root.svelte",
+      "module": "lib/generated/command/index.ts",
+      "provider": "CommandProvider",
+      "namespace": "Command",
+      "components": [
+        "CommandRoot",
+        "CommandLabel",
+        "CommandInput",
+        "CommandList",
+        "CommandEmpty",
+        "CommandLoading",
+        "CommandGroup",
+        "CommandGroupHeading",
+        "CommandItem",
+        "CommandItemIndicator",
+        "CommandSeparator",
+        "CommandShortcut",
+        "CommandHiddenInput"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "label",
+          "id": "label"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "list"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "empty"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "loading"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "group"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "groupHeading"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "item"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "itemIndicator"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "separator"
+        },
+        {
+          "cardinality": "many",
+          "element": "kbd",
+          "id": "shortcut"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "hiddenInput"
+        }
+      ],
+      "bindableValues": [
+        "value",
+        "inputValue"
+      ]
+    },
+    {
+      "id": "input-group",
+      "name": "InputGroup",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/input-group/Root.svelte",
+      "module": "lib/generated/input-group/index.ts",
+      "provider": "InputGroupProvider",
+      "namespace": "InputGroup",
+      "components": [
+        "InputGroupRoot",
+        "InputGroupAddon",
+        "InputGroupText",
+        "InputGroupControl",
+        "InputGroupInput",
+        "InputGroupTextarea",
+        "InputGroupButton"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "many",
+          "element": "div",
+          "id": "addon"
+        },
+        {
+          "cardinality": "many",
+          "element": "span",
+          "id": "text"
+        },
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "control"
+        },
+        {
+          "cardinality": "one",
+          "element": "input",
+          "id": "input"
+        },
+        {
+          "cardinality": "one",
+          "element": "textarea",
+          "id": "textarea"
+        },
+        {
+          "cardinality": "many",
+          "element": "button",
+          "id": "button"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "skeleton",
+      "name": "Skeleton",
+      "kind": "typed-static-contract",
+      "family": "status-feedback",
+      "source": "lib/generated/skeleton/Root.svelte",
+      "module": "lib/generated/skeleton/index.ts",
+      "provider": "SkeletonProvider",
+      "namespace": "Skeleton",
+      "components": [
+        "SkeletonRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "table",
+      "name": "Table",
+      "kind": "typed-static-contract",
+      "family": "static-foundation",
+      "source": "lib/generated/table/Root.svelte",
+      "module": "lib/generated/table/index.ts",
+      "provider": "TableProvider",
+      "namespace": "Table",
+      "components": [
+        "TableRoot",
+        "TableTable",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableRow",
+        "TableHead",
+        "TableCell",
+        "TableCaption"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "div",
+          "id": "root"
+        },
+        {
+          "cardinality": "one",
+          "element": "table",
+          "id": "table"
+        },
+        {
+          "cardinality": "one",
+          "element": "thead",
+          "id": "header"
+        },
+        {
+          "cardinality": "one",
+          "element": "tbody",
+          "id": "body"
+        },
+        {
+          "cardinality": "one",
+          "element": "tfoot",
+          "id": "footer"
+        },
+        {
+          "cardinality": "many",
+          "element": "tr",
+          "id": "row"
+        },
+        {
+          "cardinality": "many",
+          "element": "th",
+          "id": "head"
+        },
+        {
+          "cardinality": "many",
+          "element": "td",
+          "id": "cell"
+        },
+        {
+          "cardinality": "one",
+          "element": "caption",
+          "id": "caption"
+        }
+      ],
+      "bindableValues": []
+    },
+    {
+      "id": "textarea",
+      "name": "Textarea",
+      "kind": "typed-static-contract",
+      "family": "forms-input",
+      "source": "lib/generated/textarea/Root.svelte",
+      "module": "lib/generated/textarea/index.ts",
+      "provider": "TextareaProvider",
+      "namespace": "Textarea",
+      "components": [
+        "TextareaRoot"
+      ],
+      "anatomy": [
+        {
+          "cardinality": "one",
+          "element": "textarea",
+          "id": "root"
+        }
+      ],
+      "bindableValues": [
+        "value"
+      ]
+    }
+  ]
+}

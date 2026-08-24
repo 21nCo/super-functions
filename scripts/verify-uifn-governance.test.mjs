@@ -14,7 +14,7 @@ import {
   validateProgramDecisions,
 } from './verify-uifn-governance.mjs';
 
-const contracts = 'uifn/.conduct/contracts';
+const contracts = 'uifn/evidence/contracts';
 
 test('PHASE_00 governance verification passes both OPS-001 vectors', () => {
   const result = runGovernanceVerification();

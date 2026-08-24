@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const catalogPath = path.join(root, 'uifn/catalog/generated/catalog.json');
 const outputDirectory = path.join(root, 'uifn/svelte/lib/generated');
-const manifestPath = path.join(root, 'uifn/.conduct/generated/phase-12/phase-12-svelte-compounds.json');
+const manifestPath = path.join(root, 'uifn/evidence/generated/phase-12/phase-12-svelte-compounds.json');
 const allRootsHarnessPath = path.join(root, 'uifn/svelte/tests/fixtures/AllRootsHarness.svelte');
 const check = process.argv.includes('--check');
 const write = process.argv.includes('--write');

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import manifest from '../../../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import manifest from '../../../../evidence/generated/phase-14/phase-14-public-vectors.json';
 import { createPhase14HarnessRuntime, phase14PartProps } from '../../../../parity/src/trace.mjs';
 import * as UIFnReact from '../../index';
 import type { ReactPrimitiveBridge, ReactPrimitiveRenderPayload } from '../../internal/compound';

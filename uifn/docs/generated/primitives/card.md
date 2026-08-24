@@ -142,7 +142,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { CardRoot } from '@uifn/components-react/card';
+import { CardRoot } from "@uifn/components-react/card";
 
 export function CardExample() {
   return React.createElement(CardRoot, {});
@@ -153,7 +153,7 @@ export function CardExample() {
 
 ```tsx
 import * as React from 'react';
-import { CardRoot } from './components/uifn/react/card.js';
+import { CardRoot } from "./components/uifn/react/card.js";
 
 export function CardExample() {
   return React.createElement(CardRoot, {});
@@ -164,7 +164,7 @@ export function CardExample() {
 
 ```svelte
 <script lang="ts">
-  import { CardRoot } from '@uifn/components-svelte/card';
+  import { CardRoot } from "@uifn/components-svelte/card";
 </script>
 
 <CardRoot  />
@@ -174,7 +174,7 @@ export function CardExample() {
 
 ```svelte
 <script lang="ts">
-  import { CardRoot } from './components/uifn/svelte/card/index.js';
+  import { CardRoot } from "./components/uifn/svelte/card/index.js";
 </script>
 
 <CardRoot  />
@@ -184,7 +184,7 @@ export function CardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CardRoot } from '@uifn/components-solid/card';
+import { CardRoot } from "@uifn/components-solid/card";
 
 export function CardExample() {
   return createComponent(CardRoot, {});
@@ -195,7 +195,7 @@ export function CardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CardRoot } from './components/uifn/solid/card.js';
+import { CardRoot } from "./components/uifn/solid/card.js";
 
 export function CardExample() {
   return createComponent(CardRoot, {});

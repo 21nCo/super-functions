@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = process.cwd();
-const contractsRoot = 'uifn/.conduct/contracts';
+const contractsRoot = 'uifn/evidence/contracts';
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const commitPattern = /^[a-f0-9]{40}$/;
 const requirementPattern = /^[A-Z0-9]+-[0-9]{3}$/;

@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createGeneratedOutputs, verifyGeneratedDirectory, writeGeneratedOutputs } from '../uifn/catalog/src/compiler.mjs';
 
 const args = process.argv.slice(2);
+if (args.includes('--write') && args.includes('--check')) {
+  console.error('Choose exactly one of --write or --check.');
+  process.exit(2);
+}
 const mode = args.includes('--write') ? 'write' : args.includes('--check') ? 'check' : null;
 const outputIndex = args.indexOf('--output-dir');
 const outputDirectory = outputIndex >= 0
   ? path.resolve(args[outputIndex + 1] ?? '')
-  : path.resolve(import.meta.dirname, '../uifn/catalog/generated');
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../uifn/catalog/generated');
 
 if (!mode || (outputIndex >= 0 && !args[outputIndex + 1])) {
   console.error('Usage: node scripts/generate-uifn-catalog.mjs (--write|--check) [--output-dir <directory>]');

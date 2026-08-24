@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SwitchRoot } from '@uifn/components-react/switch';
+import { SwitchRoot } from "@uifn/components-react/switch";
 
 export function SwitchExample() {
   return React.createElement(SwitchRoot, {});
@@ -160,7 +160,7 @@ export function SwitchExample() {
 
 ```tsx
 import * as React from 'react';
-import { SwitchRoot } from './components/uifn/react/switch.js';
+import { SwitchRoot } from "./components/uifn/react/switch.js";
 
 export function SwitchExample() {
   return React.createElement(SwitchRoot, {});
@@ -171,7 +171,7 @@ export function SwitchExample() {
 
 ```svelte
 <script lang="ts">
-  import { SwitchRoot } from '@uifn/components-svelte/switch';
+  import { SwitchRoot } from "@uifn/components-svelte/switch";
 </script>
 
 <SwitchRoot  />
@@ -181,7 +181,7 @@ export function SwitchExample() {
 
 ```svelte
 <script lang="ts">
-  import { SwitchRoot } from './components/uifn/svelte/switch/index.js';
+  import { SwitchRoot } from "./components/uifn/svelte/switch/index.js";
 </script>
 
 <SwitchRoot  />
@@ -191,7 +191,7 @@ export function SwitchExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SwitchRoot } from '@uifn/components-solid/switch';
+import { SwitchRoot } from "@uifn/components-solid/switch";
 
 export function SwitchExample() {
   return createComponent(SwitchRoot, {});
@@ -202,7 +202,7 @@ export function SwitchExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SwitchRoot } from './components/uifn/solid/switch.js';
+import { SwitchRoot } from "./components/uifn/solid/switch.js";
 
 export function SwitchExample() {
   return createComponent(SwitchRoot, {});

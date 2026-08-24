@@ -1,5 +1,5 @@
 import { hydrate, tick } from 'svelte';
-import manifest from '../../.conduct/generated/phase-14/phase-14-public-vectors.json';
+import manifest from '../../evidence/generated/phase-14/phase-14-public-vectors.json';
 import { createPhase14HarnessRuntime } from '../../parity/src/trace.mjs';
 import Phase14AccordionSsrHarness from './fixtures/Phase14AccordionSsrHarness.svelte';
 import Phase14PublicTreeSsrHarness from './fixtures/Phase14PublicTreeSsrHarness.svelte';

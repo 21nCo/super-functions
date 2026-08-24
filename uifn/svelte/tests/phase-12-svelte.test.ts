@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render as renderClient, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import catalog from '../../catalog/generated/catalog.json';
-import manifest from '../../.conduct/generated/phase-12/phase-12-svelte-compounds.json';
+import manifest from '../../evidence/generated/phase-12/phase-12-svelte-compounds.json';
 import AccordionHarness from './fixtures/AccordionHarness.svelte';
 import AllRootsHarness from './fixtures/AllRootsHarness.svelte';
 import LifecycleHarness from './fixtures/LifecycleHarness.svelte';

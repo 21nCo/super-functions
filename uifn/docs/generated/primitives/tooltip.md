@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TooltipRoot } from '@uifn/components-react/tooltip';
+import { TooltipRoot } from "@uifn/components-react/tooltip";
 
 export function TooltipExample() {
   return React.createElement(TooltipRoot, {});
@@ -163,7 +163,7 @@ export function TooltipExample() {
 
 ```tsx
 import * as React from 'react';
-import { TooltipRoot } from './components/uifn/react/tooltip.js';
+import { TooltipRoot } from "./components/uifn/react/tooltip.js";
 
 export function TooltipExample() {
   return React.createElement(TooltipRoot, {});
@@ -174,7 +174,7 @@ export function TooltipExample() {
 
 ```svelte
 <script lang="ts">
-  import { TooltipRoot } from '@uifn/components-svelte/tooltip';
+  import { TooltipRoot } from "@uifn/components-svelte/tooltip";
 </script>
 
 <TooltipRoot  />
@@ -184,7 +184,7 @@ export function TooltipExample() {
 
 ```svelte
 <script lang="ts">
-  import { TooltipRoot } from './components/uifn/svelte/tooltip/index.js';
+  import { TooltipRoot } from "./components/uifn/svelte/tooltip/index.js";
 </script>
 
 <TooltipRoot  />
@@ -194,7 +194,7 @@ export function TooltipExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TooltipRoot } from '@uifn/components-solid/tooltip';
+import { TooltipRoot } from "@uifn/components-solid/tooltip";
 
 export function TooltipExample() {
   return createComponent(TooltipRoot, {});
@@ -205,7 +205,7 @@ export function TooltipExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TooltipRoot } from './components/uifn/solid/tooltip.js';
+import { TooltipRoot } from "./components/uifn/solid/tooltip.js";
 
 export function TooltipExample() {
   return createComponent(TooltipRoot, {});

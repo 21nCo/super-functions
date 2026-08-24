@@ -157,7 +157,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { FloatingPanelRoot } from '@uifn/components-react/floating-panel';
+import { FloatingPanelRoot } from "@uifn/components-react/floating-panel";
 
 export function FloatingPanelExample() {
   return React.createElement(FloatingPanelRoot, {});
@@ -168,7 +168,7 @@ export function FloatingPanelExample() {
 
 ```tsx
 import * as React from 'react';
-import { FloatingPanelRoot } from './components/uifn/react/floating-panel.js';
+import { FloatingPanelRoot } from "./components/uifn/react/floating-panel.js";
 
 export function FloatingPanelExample() {
   return React.createElement(FloatingPanelRoot, {});
@@ -179,7 +179,7 @@ export function FloatingPanelExample() {
 
 ```svelte
 <script lang="ts">
-  import { FloatingPanelRoot } from '@uifn/components-svelte/floating-panel';
+  import { FloatingPanelRoot } from "@uifn/components-svelte/floating-panel";
 </script>
 
 <FloatingPanelRoot  />
@@ -189,7 +189,7 @@ export function FloatingPanelExample() {
 
 ```svelte
 <script lang="ts">
-  import { FloatingPanelRoot } from './components/uifn/svelte/floating-panel/index.js';
+  import { FloatingPanelRoot } from "./components/uifn/svelte/floating-panel/index.js";
 </script>
 
 <FloatingPanelRoot  />
@@ -199,7 +199,7 @@ export function FloatingPanelExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FloatingPanelRoot } from '@uifn/components-solid/floating-panel';
+import { FloatingPanelRoot } from "@uifn/components-solid/floating-panel";
 
 export function FloatingPanelExample() {
   return createComponent(FloatingPanelRoot, {});
@@ -210,7 +210,7 @@ export function FloatingPanelExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FloatingPanelRoot } from './components/uifn/solid/floating-panel.js';
+import { FloatingPanelRoot } from "./components/uifn/solid/floating-panel.js";
 
 export function FloatingPanelExample() {
   return createComponent(FloatingPanelRoot, {});

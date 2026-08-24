@@ -19,6 +19,12 @@ const semanticAllowlist = new Set([
   'uifn/registry/src/__tests__/stable-lane.test.ts',
   'uifn/registry/README.md',
   'uifn/docs/generated/migration.md',
+  'uifn/evidence/contracts/baseline.json',
+  'uifn/evidence/contracts/fixtures/phase-01/removed-framework-reference.json',
+  'uifn/evidence/contracts/ownership.json',
+  'uifn/evidence/contracts/program-decisions.json',
+  'uifn/evidence/provenance/readiness-audit.md',
+  'uifn/evidence/provenance/readiness-spec.md',
   'scripts/generate-uifn-phase-17.mjs',
   'scripts/verify-uifn-phase-17-contract.test.mjs',
   'scripts/verify-uifn-phase-17-docs.mjs',
@@ -97,7 +103,7 @@ export function runCleanVerification(options = {}) {
 
   const migration = path.join(repoRoot, 'uifn', 'MIGRATION_REMOVED_FRAMEWORKS.md');
   if (!existsSync(migration)) failures.push({ code: 'UIFN_REMOVED_FRAMEWORK_MIGRATION_MISSING' });
-  const historicalRoot = path.join(repoRoot, 'uifn', '.conduct');
+  const historicalRoot = path.join(repoRoot, 'uifn', 'evidence');
   const historicalReferences = walkIncludingConduct(historicalRoot).reduce((count, pathname) => {
     const source = readFileSync(pathname, 'utf8');
     return count + removedTokens.reduce((sum, token) => sum + (source.match(new RegExp(`\\b${token}\\b`, 'gi'))?.length ?? 0), 0);

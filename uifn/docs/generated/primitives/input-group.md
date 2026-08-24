@@ -144,7 +144,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { InputGroupRoot } from '@uifn/components-react/input-group';
+import { InputGroupRoot } from "@uifn/components-react/input-group";
 
 export function InputGroupExample() {
   return React.createElement(InputGroupRoot, {});
@@ -155,7 +155,7 @@ export function InputGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { InputGroupRoot } from './components/uifn/react/input-group.js';
+import { InputGroupRoot } from "./components/uifn/react/input-group.js";
 
 export function InputGroupExample() {
   return React.createElement(InputGroupRoot, {});
@@ -166,7 +166,7 @@ export function InputGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { InputGroupRoot } from '@uifn/components-svelte/input-group';
+  import { InputGroupRoot } from "@uifn/components-svelte/input-group";
 </script>
 
 <InputGroupRoot  />
@@ -176,7 +176,7 @@ export function InputGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { InputGroupRoot } from './components/uifn/svelte/input-group/index.js';
+  import { InputGroupRoot } from "./components/uifn/svelte/input-group/index.js";
 </script>
 
 <InputGroupRoot  />
@@ -186,7 +186,7 @@ export function InputGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { InputGroupRoot } from '@uifn/components-solid/input-group';
+import { InputGroupRoot } from "@uifn/components-solid/input-group";
 
 export function InputGroupExample() {
   return createComponent(InputGroupRoot, {});
@@ -197,7 +197,7 @@ export function InputGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { InputGroupRoot } from './components/uifn/solid/input-group.js';
+import { InputGroupRoot } from "./components/uifn/solid/input-group.js";
 
 export function InputGroupExample() {
   return createComponent(InputGroupRoot, {});

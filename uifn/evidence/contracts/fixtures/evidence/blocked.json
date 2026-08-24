@@ -1,0 +1,11 @@
+{
+  "fixtureId": "evidence-blocked",
+  "base": "complete.json",
+  "set": {
+    "status": "blocked",
+    "counts.executed": 0,
+    "counts.passed": 0,
+    "counts.blocked": 1
+  },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_BLOCKED"]
+}

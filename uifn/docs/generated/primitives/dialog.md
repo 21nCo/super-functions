@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { DialogRoot } from '@uifn/components-react/dialog';
+import { DialogRoot } from "@uifn/components-react/dialog";
 
 export function DialogExample() {
   return React.createElement(DialogRoot, {});
@@ -163,7 +163,7 @@ export function DialogExample() {
 
 ```tsx
 import * as React from 'react';
-import { DialogRoot } from './components/uifn/react/dialog.js';
+import { DialogRoot } from "./components/uifn/react/dialog.js";
 
 export function DialogExample() {
   return React.createElement(DialogRoot, {});
@@ -174,7 +174,7 @@ export function DialogExample() {
 
 ```svelte
 <script lang="ts">
-  import { DialogRoot } from '@uifn/components-svelte/dialog';
+  import { DialogRoot } from "@uifn/components-svelte/dialog";
 </script>
 
 <DialogRoot  />
@@ -184,7 +184,7 @@ export function DialogExample() {
 
 ```svelte
 <script lang="ts">
-  import { DialogRoot } from './components/uifn/svelte/dialog/index.js';
+  import { DialogRoot } from "./components/uifn/svelte/dialog/index.js";
 </script>
 
 <DialogRoot  />
@@ -194,7 +194,7 @@ export function DialogExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DialogRoot } from '@uifn/components-solid/dialog';
+import { DialogRoot } from "@uifn/components-solid/dialog";
 
 export function DialogExample() {
   return createComponent(DialogRoot, {});
@@ -205,7 +205,7 @@ export function DialogExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DialogRoot } from './components/uifn/solid/dialog.js';
+import { DialogRoot } from "./components/uifn/solid/dialog.js";
 
 export function DialogExample() {
   return createComponent(DialogRoot, {});

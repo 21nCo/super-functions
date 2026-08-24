@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { CheckboxRoot } from '@uifn/components-react/checkbox';
+import { CheckboxRoot } from "@uifn/components-react/checkbox";
 
 export function CheckboxExample() {
   return React.createElement(CheckboxRoot, {});
@@ -160,7 +160,7 @@ export function CheckboxExample() {
 
 ```tsx
 import * as React from 'react';
-import { CheckboxRoot } from './components/uifn/react/checkbox.js';
+import { CheckboxRoot } from "./components/uifn/react/checkbox.js";
 
 export function CheckboxExample() {
   return React.createElement(CheckboxRoot, {});
@@ -171,7 +171,7 @@ export function CheckboxExample() {
 
 ```svelte
 <script lang="ts">
-  import { CheckboxRoot } from '@uifn/components-svelte/checkbox';
+  import { CheckboxRoot } from "@uifn/components-svelte/checkbox";
 </script>
 
 <CheckboxRoot  />
@@ -181,7 +181,7 @@ export function CheckboxExample() {
 
 ```svelte
 <script lang="ts">
-  import { CheckboxRoot } from './components/uifn/svelte/checkbox/index.js';
+  import { CheckboxRoot } from "./components/uifn/svelte/checkbox/index.js";
 </script>
 
 <CheckboxRoot  />
@@ -191,7 +191,7 @@ export function CheckboxExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CheckboxRoot } from '@uifn/components-solid/checkbox';
+import { CheckboxRoot } from "@uifn/components-solid/checkbox";
 
 export function CheckboxExample() {
   return createComponent(CheckboxRoot, {});
@@ -202,7 +202,7 @@ export function CheckboxExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CheckboxRoot } from './components/uifn/solid/checkbox.js';
+import { CheckboxRoot } from "./components/uifn/solid/checkbox.js";
 
 export function CheckboxExample() {
   return createComponent(CheckboxRoot, {});

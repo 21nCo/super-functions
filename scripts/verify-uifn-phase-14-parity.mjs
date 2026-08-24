@@ -12,8 +12,8 @@ import {
 } from '../uifn/adapter-kit/dist/index.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const goldenPath = path.join(repoRoot, 'uifn/.conduct/generated/phase-14/phase-14-semantic-traces.json');
-const vectorPath = path.join(repoRoot, 'uifn/.conduct/generated/phase-14/phase-14-public-vectors.json');
+const goldenPath = path.join(repoRoot, 'uifn/evidence/generated/phase-14/phase-14-semantic-traces.json');
+const vectorPath = path.join(repoRoot, 'uifn/evidence/generated/phase-14/phase-14-public-vectors.json');
 const frameworks = ['react', 'svelte', 'solid'];
 const installModes = ['source', 'package'];
 const expectedPrimitiveCount = JSON.parse(readFileSync(vectorPath, 'utf8')).vectors.length;

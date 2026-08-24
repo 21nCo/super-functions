@@ -7,7 +7,7 @@ import path from 'node:path';
 const root = process.cwd();
 const catalogPath = path.join(root, 'uifn/catalog/generated/catalog.json');
 const outputDirectory = path.join(root, 'uifn/react/src/generated');
-const manifestPath = path.join(root, 'uifn/.conduct/generated/phase-11/phase-11-react-compounds.json');
+const manifestPath = path.join(root, 'uifn/evidence/generated/phase-11/phase-11-react-compounds.json');
 const check = process.argv.includes('--check');
 const write = process.argv.includes('--write');
 

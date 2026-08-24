@@ -150,7 +150,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { StepsRoot } from '@uifn/components-react/steps';
+import { StepsRoot } from "@uifn/components-react/steps";
 
 export function StepsExample() {
   return React.createElement(StepsRoot, {"count":1,"aria-label":"Steps example"});
@@ -161,7 +161,7 @@ export function StepsExample() {
 
 ```tsx
 import * as React from 'react';
-import { StepsRoot } from './components/uifn/react/steps.js';
+import { StepsRoot } from "./components/uifn/react/steps.js";
 
 export function StepsExample() {
   return React.createElement(StepsRoot, {"count":1,"aria-label":"Steps example"});
@@ -172,7 +172,7 @@ export function StepsExample() {
 
 ```svelte
 <script lang="ts">
-  import { StepsRoot } from '@uifn/components-svelte/steps';
+  import { StepsRoot } from "@uifn/components-svelte/steps";
 </script>
 
 <StepsRoot count={1} aria-label="Steps example" />
@@ -182,7 +182,7 @@ export function StepsExample() {
 
 ```svelte
 <script lang="ts">
-  import { StepsRoot } from './components/uifn/svelte/steps/index.js';
+  import { StepsRoot } from "./components/uifn/svelte/steps/index.js";
 </script>
 
 <StepsRoot count={1} aria-label="Steps example" />
@@ -192,7 +192,7 @@ export function StepsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { StepsRoot } from '@uifn/components-solid/steps';
+import { StepsRoot } from "@uifn/components-solid/steps";
 
 export function StepsExample() {
   return createComponent(StepsRoot, {"count":1,"aria-label":"Steps example"});
@@ -203,7 +203,7 @@ export function StepsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { StepsRoot } from './components/uifn/solid/steps.js';
+import { StepsRoot } from "./components/uifn/solid/steps.js";
 
 export function StepsExample() {
   return createComponent(StepsRoot, {"count":1,"aria-label":"Steps example"});

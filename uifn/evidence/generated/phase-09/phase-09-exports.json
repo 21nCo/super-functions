@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-09.mjs",
+  "phase": "PHASE_09",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "name": "Checkbox",
+      "requirement": "PRIM-004",
+      "factory": "createCheckboxController",
+      "parts": [
+        "root",
+        "control",
+        "indicator",
+        "label",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "CheckboxGroup",
+      "requirement": "PRIM-004",
+      "factory": "createCheckboxGroupController",
+      "parts": [
+        "root",
+        "label",
+        "item",
+        "itemControl",
+        "itemIndicator",
+        "hiddenInput",
+        "error"
+      ]
+    },
+    {
+      "name": "Combobox",
+      "requirement": "PRIM-004",
+      "factory": "createComboboxController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "input",
+        "trigger",
+        "clear",
+        "positioner",
+        "content",
+        "item",
+        "itemIndicator",
+        "empty",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Listbox",
+      "requirement": "PRIM-004",
+      "factory": "createListboxController",
+      "parts": [
+        "root",
+        "label",
+        "content",
+        "item",
+        "itemIndicator",
+        "group",
+        "groupLabel",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "RadioGroup",
+      "requirement": "PRIM-004",
+      "factory": "createRadioGroupController",
+      "parts": [
+        "root",
+        "label",
+        "item",
+        "itemControl",
+        "itemIndicator",
+        "hiddenInput",
+        "error"
+      ]
+    },
+    {
+      "name": "SegmentGroup",
+      "requirement": "PRIM-004",
+      "factory": "createSegmentGroupController",
+      "parts": [
+        "root",
+        "label",
+        "item",
+        "itemText",
+        "indicator",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Select",
+      "requirement": "PRIM-004",
+      "factory": "createSelectController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "trigger",
+        "valueText",
+        "clear",
+        "positioner",
+        "content",
+        "item",
+        "itemText",
+        "itemIndicator",
+        "group",
+        "groupLabel",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "TagsInput",
+      "requirement": "PRIM-004",
+      "factory": "createTagsInputController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "item",
+        "itemText",
+        "itemDelete",
+        "input",
+        "clear",
+        "hiddenInput",
+        "error"
+      ]
+    },
+    {
+      "name": "Toggle",
+      "requirement": "PRIM-004",
+      "factory": "createToggleController",
+      "parts": [
+        "root"
+      ]
+    },
+    {
+      "name": "ToggleGroup",
+      "requirement": "PRIM-004",
+      "factory": "createToggleGroupController",
+      "parts": [
+        "root",
+        "item"
+      ]
+    },
+    {
+      "name": "Autocomplete",
+      "requirement": "PRIM-005",
+      "factory": "createAutocompleteController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "input",
+        "clear",
+        "positioner",
+        "content",
+        "item",
+        "empty"
+      ]
+    },
+    {
+      "name": "Clipboard",
+      "requirement": "PRIM-005",
+      "factory": "createClipboardController",
+      "parts": [
+        "root",
+        "trigger",
+        "status"
+      ]
+    },
+    {
+      "name": "Editable",
+      "requirement": "PRIM-005",
+      "factory": "createEditableController",
+      "parts": [
+        "root",
+        "label",
+        "preview",
+        "input",
+        "control",
+        "submit",
+        "cancel",
+        "error",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "FileUpload",
+      "requirement": "PRIM-005",
+      "factory": "createFileUploadController",
+      "parts": [
+        "root",
+        "label",
+        "dropzone",
+        "trigger",
+        "input",
+        "itemGroup",
+        "item",
+        "itemName",
+        "itemSize",
+        "itemDelete",
+        "error",
+        "status"
+      ]
+    },
+    {
+      "name": "NumberInput",
+      "requirement": "PRIM-005",
+      "factory": "createNumberInputController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "input",
+        "increment",
+        "decrement",
+        "scrubber",
+        "hiddenInput",
+        "error"
+      ]
+    },
+    {
+      "name": "PasswordInput",
+      "requirement": "PRIM-005",
+      "factory": "createPasswordInputController",
+      "parts": [
+        "root",
+        "label",
+        "input",
+        "visibilityTrigger",
+        "strength",
+        "error"
+      ]
+    },
+    {
+      "name": "PinInput",
+      "requirement": "PRIM-005",
+      "factory": "createPinInputController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "input",
+        "hiddenInput",
+        "error"
+      ]
+    }
+  ]
+}

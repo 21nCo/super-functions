@@ -140,7 +140,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { QRCodeRoot } from '@uifn/components-react/qr-code';
+import { QRCodeRoot } from "@uifn/components-react/qr-code";
 
 export function QRCodeExample() {
   return React.createElement(QRCodeRoot, {"value":"item-1","label":"Example"});
@@ -151,7 +151,7 @@ export function QRCodeExample() {
 
 ```tsx
 import * as React from 'react';
-import { QRCodeRoot } from './components/uifn/react/qr-code.js';
+import { QRCodeRoot } from "./components/uifn/react/qr-code.js";
 
 export function QRCodeExample() {
   return React.createElement(QRCodeRoot, {"value":"item-1","label":"Example"});
@@ -162,7 +162,7 @@ export function QRCodeExample() {
 
 ```svelte
 <script lang="ts">
-  import { QRCodeRoot } from '@uifn/components-svelte/qr-code';
+  import { QRCodeRoot } from "@uifn/components-svelte/qr-code";
 </script>
 
 <QRCodeRoot value="item-1" label="Example" />
@@ -172,7 +172,7 @@ export function QRCodeExample() {
 
 ```svelte
 <script lang="ts">
-  import { QRCodeRoot } from './components/uifn/svelte/qr-code/index.js';
+  import { QRCodeRoot } from "./components/uifn/svelte/qr-code/index.js";
 </script>
 
 <QRCodeRoot value="item-1" label="Example" />
@@ -182,7 +182,7 @@ export function QRCodeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { QRCodeRoot } from '@uifn/components-solid/qr-code';
+import { QRCodeRoot } from "@uifn/components-solid/qr-code";
 
 export function QRCodeExample() {
   return createComponent(QRCodeRoot, {"value":"item-1","label":"Example"});
@@ -193,7 +193,7 @@ export function QRCodeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { QRCodeRoot } from './components/uifn/solid/qr-code.js';
+import { QRCodeRoot } from "./components/uifn/solid/qr-code.js";
 
 export function QRCodeExample() {
   return createComponent(QRCodeRoot, {"value":"item-1","label":"Example"});

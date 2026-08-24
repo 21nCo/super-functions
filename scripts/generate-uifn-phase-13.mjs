@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const catalogPath = path.join(root, 'uifn/catalog/generated/catalog.json');
 const outputDirectory = path.join(root, 'uifn/solid/src/generated');
-const manifestPath = path.join(root, 'uifn/.conduct/generated/phase-13/phase-13-solid-compounds.json');
+const manifestPath = path.join(root, 'uifn/evidence/generated/phase-13/phase-13-solid-compounds.json');
 const allRootsHarnessPath = path.join(root, 'uifn/solid/src/__tests__/fixtures/AllRootsHarness.tsx');
 const publicIndexPath = path.join(root, 'uifn/solid/src/index.ts');
 const check = process.argv.includes('--check');

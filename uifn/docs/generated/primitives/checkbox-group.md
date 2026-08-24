@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { CheckboxGroupRoot } from '@uifn/components-react/checkbox-group';
+import { CheckboxGroupRoot } from "@uifn/components-react/checkbox-group";
 
 export function CheckboxGroupExample() {
   return React.createElement(CheckboxGroupRoot, {});
@@ -160,7 +160,7 @@ export function CheckboxGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { CheckboxGroupRoot } from './components/uifn/react/checkbox-group.js';
+import { CheckboxGroupRoot } from "./components/uifn/react/checkbox-group.js";
 
 export function CheckboxGroupExample() {
   return React.createElement(CheckboxGroupRoot, {});
@@ -171,7 +171,7 @@ export function CheckboxGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { CheckboxGroupRoot } from '@uifn/components-svelte/checkbox-group';
+  import { CheckboxGroupRoot } from "@uifn/components-svelte/checkbox-group";
 </script>
 
 <CheckboxGroupRoot  />
@@ -181,7 +181,7 @@ export function CheckboxGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { CheckboxGroupRoot } from './components/uifn/svelte/checkbox-group/index.js';
+  import { CheckboxGroupRoot } from "./components/uifn/svelte/checkbox-group/index.js";
 </script>
 
 <CheckboxGroupRoot  />
@@ -191,7 +191,7 @@ export function CheckboxGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CheckboxGroupRoot } from '@uifn/components-solid/checkbox-group';
+import { CheckboxGroupRoot } from "@uifn/components-solid/checkbox-group";
 
 export function CheckboxGroupExample() {
   return createComponent(CheckboxGroupRoot, {});
@@ -202,7 +202,7 @@ export function CheckboxGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { CheckboxGroupRoot } from './components/uifn/solid/checkbox-group.js';
+import { CheckboxGroupRoot } from "./components/uifn/solid/checkbox-group.js";
 
 export function CheckboxGroupExample() {
   return createComponent(CheckboxGroupRoot, {});

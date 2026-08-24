@@ -164,7 +164,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ComboboxRoot } from '@uifn/components-react/combobox';
+import { ComboboxRoot } from "@uifn/components-react/combobox";
 
 export function ComboboxExample() {
   return React.createElement(ComboboxRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -175,7 +175,7 @@ export function ComboboxExample() {
 
 ```tsx
 import * as React from 'react';
-import { ComboboxRoot } from './components/uifn/react/combobox.js';
+import { ComboboxRoot } from "./components/uifn/react/combobox.js";
 
 export function ComboboxExample() {
   return React.createElement(ComboboxRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -186,7 +186,7 @@ export function ComboboxExample() {
 
 ```svelte
 <script lang="ts">
-  import { ComboboxRoot } from '@uifn/components-svelte/combobox';
+  import { ComboboxRoot } from "@uifn/components-svelte/combobox";
 </script>
 
 <ComboboxRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -196,7 +196,7 @@ export function ComboboxExample() {
 
 ```svelte
 <script lang="ts">
-  import { ComboboxRoot } from './components/uifn/svelte/combobox/index.js';
+  import { ComboboxRoot } from "./components/uifn/svelte/combobox/index.js";
 </script>
 
 <ComboboxRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -206,7 +206,7 @@ export function ComboboxExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ComboboxRoot } from '@uifn/components-solid/combobox';
+import { ComboboxRoot } from "@uifn/components-solid/combobox";
 
 export function ComboboxExample() {
   return createComponent(ComboboxRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -217,7 +217,7 @@ export function ComboboxExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ComboboxRoot } from './components/uifn/solid/combobox.js';
+import { ComboboxRoot } from "./components/uifn/solid/combobox.js";
 
 export function ComboboxExample() {
   return createComponent(ComboboxRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});

@@ -1,14 +1,10 @@
 export function normalizeCatalogBasePath(basePath: string): string {
-  const normalized = `/${basePath}`.replace(/\/+/g, '/').replace(/\/$/, '');
+  const normalized = `/${String(basePath).split('/').filter(Boolean).join('/')}`;
   return normalized === '/' ? '' : normalized;
 }
 
 export function normalizeCatalogInternalPath(pathname: string): string {
-  const normalized = `/${pathname}`.replace(/\/+/g, '/');
-  const withoutTrailingSlash = normalized.length > 1
-    ? normalized.replace(/\/+$/, '')
-    : normalized;
-  return withoutTrailingSlash || '/';
+  return `/${String(pathname).split('/').filter(Boolean).join('/')}`;
 }
 
 export function stripCatalogBasePath(pathname: string, basePath: string): string {

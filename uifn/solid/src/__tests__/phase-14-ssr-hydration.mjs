@@ -73,10 +73,10 @@ const server = createHttpServer(async (request, response) => {
     response.statusCode = 200;
     response.setHeader('content-type', 'text/html; charset=utf-8');
     response.end(html);
-  } catch (cause) {
-    vite.ssrFixStacktrace(cause);
+  } catch {
     response.statusCode = 500;
-    response.end(cause instanceof Error ? cause.stack : String(cause));
+    response.setHeader('content-type', 'text/plain; charset=utf-8');
+    response.end('Internal Server Error');
   }
 });
 await new Promise((resolve, reject) => {

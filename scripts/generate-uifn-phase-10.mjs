@@ -15,7 +15,7 @@ if (!mode) {
   process.exit(2);
 }
 
-const outputRoot = path.resolve(process.cwd(), "uifn/.conduct/generated/phase-10");
+const outputRoot = path.resolve(process.cwd(), "uifn/evidence/generated/phase-10");
 const catalogPrimitiveCount = JSON.parse(
   await readFile(
     path.resolve(process.cwd(), "uifn/catalog/generated/catalog.json"),

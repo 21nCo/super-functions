@@ -149,7 +149,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TabsRoot } from '@uifn/components-react/tabs';
+import { TabsRoot } from "@uifn/components-react/tabs";
 
 export function TabsExample() {
   return React.createElement(TabsRoot, {});
@@ -160,7 +160,7 @@ export function TabsExample() {
 
 ```tsx
 import * as React from 'react';
-import { TabsRoot } from './components/uifn/react/tabs.js';
+import { TabsRoot } from "./components/uifn/react/tabs.js";
 
 export function TabsExample() {
   return React.createElement(TabsRoot, {});
@@ -171,7 +171,7 @@ export function TabsExample() {
 
 ```svelte
 <script lang="ts">
-  import { TabsRoot } from '@uifn/components-svelte/tabs';
+  import { TabsRoot } from "@uifn/components-svelte/tabs";
 </script>
 
 <TabsRoot  />
@@ -181,7 +181,7 @@ export function TabsExample() {
 
 ```svelte
 <script lang="ts">
-  import { TabsRoot } from './components/uifn/svelte/tabs/index.js';
+  import { TabsRoot } from "./components/uifn/svelte/tabs/index.js";
 </script>
 
 <TabsRoot  />
@@ -191,7 +191,7 @@ export function TabsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TabsRoot } from '@uifn/components-solid/tabs';
+import { TabsRoot } from "@uifn/components-solid/tabs";
 
 export function TabsExample() {
   return createComponent(TabsRoot, {});
@@ -202,7 +202,7 @@ export function TabsExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TabsRoot } from './components/uifn/solid/tabs.js';
+import { TabsRoot } from "./components/uifn/solid/tabs.js";
 
 export function TabsExample() {
   return createComponent(TabsRoot, {});

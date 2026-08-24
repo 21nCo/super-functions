@@ -18,9 +18,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const evidencePath = process.env.UIFN_PHASE18_LEDGER_EVIDENCE ? path.resolve(process.env.UIFN_PHASE18_LEDGER_EVIDENCE) : null;
 const readJson = (relative) => JSON.parse(readFileSync(path.join(root, relative), 'utf8'));
 const catalog = readJson('uifn/catalog/generated/catalog.json');
-const ledger = readJson('uifn/.conduct/generated/phase-18/normative-ledger.json');
-const automation = readJson('uifn/.conduct/generated/phase-18/automation-manifest.json');
-const handoff = readJson('uifn/.conduct/generated/phase-18/manual-handoff.json');
+const ledger = readJson('uifn/evidence/generated/phase-18/normative-ledger.json');
+const automation = readJson('uifn/evidence/generated/phase-18/automation-manifest.json');
+const handoff = readJson('uifn/evidence/generated/phase-18/manual-handoff.json');
 const traceRoot = 'uifn/.conduct/evidence/phase-14/2026-07-30T19-00-00-000Z-PHASE-14-69-production-readiness/traces';
 const traces = [];
 for (const deliveryMode of ['package', 'source']) for (const framework of ['react', 'svelte', 'solid']) traces.push(...readJson(`${traceRoot}/${deliveryMode}-${framework}.json`));
@@ -111,9 +111,9 @@ const result = {
     unjustifiedNotApplicable: ledger.primitives.flatMap((primitive) => primitive.rules.filter((rule) => rule.applicability === 'not-applicable' && rule.rationale.length < 12)).length,
   },
   artifacts: {
-    ledger: { path: 'uifn/.conduct/generated/phase-18/normative-ledger.json', sha256: sha256(readFileSync(path.join(root, 'uifn/.conduct/generated/phase-18/normative-ledger.json'))) },
-    automation: { path: 'uifn/.conduct/generated/phase-18/automation-manifest.json', sha256: sha256(readFileSync(path.join(root, 'uifn/.conduct/generated/phase-18/automation-manifest.json'))) },
-    handoff: { path: 'uifn/.conduct/generated/phase-18/manual-handoff.json', sha256: sha256(readFileSync(path.join(root, 'uifn/.conduct/generated/phase-18/manual-handoff.json'))) },
+    ledger: { path: 'uifn/evidence/generated/phase-18/normative-ledger.json', sha256: sha256(readFileSync(path.join(root, 'uifn/evidence/generated/phase-18/normative-ledger.json'))) },
+    automation: { path: 'uifn/evidence/generated/phase-18/automation-manifest.json', sha256: sha256(readFileSync(path.join(root, 'uifn/evidence/generated/phase-18/automation-manifest.json'))) },
+    handoff: { path: 'uifn/evidence/generated/phase-18/manual-handoff.json', sha256: sha256(readFileSync(path.join(root, 'uifn/evidence/generated/phase-18/manual-handoff.json'))) },
   },
   mutations,
   provisionalUntil: ['signed-external-phase-14-compatibility', 'signed-phase-19-assistive-technology', 'independent-phase-19-review'],

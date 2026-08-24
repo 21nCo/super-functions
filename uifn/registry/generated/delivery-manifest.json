@@ -3385,13 +3385,13 @@
     },
     {
       "path": "uifn/components/src/generated/catalog.ts",
-      "sha256": "d188c8b1db9ca1ca25ee355c7e4b4891f4827a535773622d744c22106002f67b",
-      "bytes": 397107
+      "sha256": "544ab767483380016474b56a4c42618b71baed9b12ea89ed1eac14b6bf4d1839",
+      "bytes": 397450
     },
     {
       "path": "uifn/components/styles.css",
-      "sha256": "9c920a92b779a691b9169281d1a24adb90e8d295216f552dfc14ecc1b2d13bf9",
-      "bytes": 91349
+      "sha256": "217899dff7bb01a656b936db994fa464399e276ef68fbcd8c335278e0b439b95",
+      "bytes": 93645
     },
     {
       "path": "uifn/registry/generated/templates/react/accordion.ts",

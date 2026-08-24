@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "phase": "PHASE_18",
+  "generatorVersion": "18.0.0",
+  "definitionSha256": "51932f86f5558eaed81c6dec1d946479db4ec1b60407678ce98a974eba0804b6",
+  "matrix": [
+    {
+      "id": "chromium-package-all-stories",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "all"
+      ],
+      "viewport": "desktop",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-package-source-roots",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package",
+        "source"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "default"
+      ],
+      "viewport": "desktop",
+      "vectors": [
+        "TV-A11Y-001-P",
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "firefox-keyboard-semantics",
+      "engine": "firefox",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "default",
+        "keyboard-focus"
+      ],
+      "viewport": "desktop",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "webkit-keyboard-semantics",
+      "engine": "webkit",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "default",
+        "keyboard-focus"
+      ],
+      "viewport": "desktop",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-forced-colors",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "forced-colors"
+      ],
+      "viewport": "desktop",
+      "forcedColors": "active",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-reduced-motion",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "reduced-motion"
+      ],
+      "viewport": "desktop",
+      "reducedMotion": "reduce",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-rtl",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "rtl"
+      ],
+      "viewport": "desktop",
+      "direction": "rtl",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-zoom-200",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "responsive"
+      ],
+      "viewport": "desktop",
+      "zoomPercent": 200,
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-zoom-400",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "responsive"
+      ],
+      "viewport": "desktop",
+      "zoomPercent": 400,
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "chromium-android-emulation",
+      "engine": "chromium",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "responsive",
+        "keyboard-focus"
+      ],
+      "viewport": "mobile-emulation",
+      "pointer": "touch",
+      "certification": "emulation-not-device",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    },
+    {
+      "id": "webkit-ios-emulation",
+      "engine": "webkit",
+      "deliveryModes": [
+        "package"
+      ],
+      "frameworks": [
+        "react",
+        "svelte",
+        "solid"
+      ],
+      "scenarios": [
+        "responsive",
+        "keyboard-focus"
+      ],
+      "viewport": "mobile-emulation",
+      "pointer": "touch",
+      "certification": "emulation-not-device",
+      "vectors": [
+        "TV-A11Y-002-P"
+      ]
+    }
+  ],
+  "requiredAssertions": [
+    "axe-serious-critical-zero",
+    "exact-semantic-tree",
+    "accessible-name-description",
+    "role-state-transition",
+    "keyboard-focus-path",
+    "pointer-touch-result",
+    "form-result",
+    "announcement-semantics",
+    "forced-colors",
+    "reduced-motion",
+    "rtl-bidi",
+    "zoom-reflow",
+    "cleanup"
+  ],
+  "fixturePolicy": {
+    "package": "Packed public npm tarballs installed into clean consumers and built Storybook workbenches.",
+    "source": "Registry CLI materialization into clean consumers; browser roots plus canonical semantic traces must match package behavior.",
+    "irrelevantAssertions": "forbidden",
+    "zeroDurationAutoPass": "forbidden"
+  },
+  "failureArtifacts": {
+    "required": [
+      "failure.json",
+      "screenshot.png"
+    ],
+    "fields": [
+      "sanitized-dom",
+      "semantic-trace",
+      "event-trace",
+      "focus-path",
+      "browser-framework-version",
+      "source-hash",
+      "stable-code"
+    ],
+    "retentionDays": 7,
+    "absolutePaths": "forbidden",
+    "secrets": "forbidden"
+  },
+  "mutationCodes": [
+    "UIFN_A11Y_NA_UNJUSTIFIED",
+    "UIFN_A11Y_RULE_MISSING",
+    "UIFN_A11Y_FOCUS_ESCAPE",
+    "UIFN_ASSERTION_NOT_OBSERVED",
+    "UIFN_A11Y_PACKAGE_SOURCE_DRIFT",
+    "UIFN_A11Y_FRAMEWORK_DIVERGENCE",
+    "UIFN_A11Y_CLEANUP_LEAK"
+  ]
+}

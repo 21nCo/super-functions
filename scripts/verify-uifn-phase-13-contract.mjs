@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 const repoRoot = process.cwd();
 const requireDist = process.argv.includes('--require-dist');
 const catalog = JSON.parse(readFileSync(path.join(repoRoot, 'uifn/catalog/generated/catalog.json'), 'utf8'));
-const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'uifn/.conduct/generated/phase-13/phase-13-solid-compounds.json'), 'utf8'));
+const manifest = JSON.parse(readFileSync(path.join(repoRoot, 'uifn/evidence/generated/phase-13/phase-13-solid-compounds.json'), 'utf8'));
 const packageJson = JSON.parse(readFileSync(path.join(repoRoot, 'uifn/solid/package.json'), 'utf8'));
 
 export const PHASE_13_MUTATION_CODES = Object.freeze({

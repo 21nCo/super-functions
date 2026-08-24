@@ -154,7 +154,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { RatingGroupRoot } from '@uifn/components-react/rating-group';
+import { RatingGroupRoot } from "@uifn/components-react/rating-group";
 
 export function RatingGroupExample() {
   return React.createElement(RatingGroupRoot, {"aria-label":"RatingGroup example"});
@@ -165,7 +165,7 @@ export function RatingGroupExample() {
 
 ```tsx
 import * as React from 'react';
-import { RatingGroupRoot } from './components/uifn/react/rating-group.js';
+import { RatingGroupRoot } from "./components/uifn/react/rating-group.js";
 
 export function RatingGroupExample() {
   return React.createElement(RatingGroupRoot, {"aria-label":"RatingGroup example"});
@@ -176,7 +176,7 @@ export function RatingGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { RatingGroupRoot } from '@uifn/components-svelte/rating-group';
+  import { RatingGroupRoot } from "@uifn/components-svelte/rating-group";
 </script>
 
 <RatingGroupRoot aria-label="RatingGroup example" />
@@ -186,7 +186,7 @@ export function RatingGroupExample() {
 
 ```svelte
 <script lang="ts">
-  import { RatingGroupRoot } from './components/uifn/svelte/rating-group/index.js';
+  import { RatingGroupRoot } from "./components/uifn/svelte/rating-group/index.js";
 </script>
 
 <RatingGroupRoot aria-label="RatingGroup example" />
@@ -196,7 +196,7 @@ export function RatingGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { RatingGroupRoot } from '@uifn/components-solid/rating-group';
+import { RatingGroupRoot } from "@uifn/components-solid/rating-group";
 
 export function RatingGroupExample() {
   return createComponent(RatingGroupRoot, {"aria-label":"RatingGroup example"});
@@ -207,7 +207,7 @@ export function RatingGroupExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { RatingGroupRoot } from './components/uifn/solid/rating-group.js';
+import { RatingGroupRoot } from "./components/uifn/solid/rating-group.js";
 
 export function RatingGroupExample() {
   return createComponent(RatingGroupRoot, {"aria-label":"RatingGroup example"});

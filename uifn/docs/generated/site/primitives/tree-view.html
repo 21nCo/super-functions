@@ -89,7 +89,7 @@ CSS variables:
 
 ```tsx
 import * as React from 'react';
-import { TreeViewRoot } from '@uifn/components-react/tree-view';
+import { TreeViewRoot } from &quot;@uifn/components-react/tree-view&quot;;
 
 export function TreeViewExample() {
   return React.createElement(TreeViewRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]});
@@ -100,7 +100,7 @@ export function TreeViewExample() {
 
 ```tsx
 import * as React from 'react';
-import { TreeViewRoot } from './components/uifn/react/tree-view.js';
+import { TreeViewRoot } from &quot;./components/uifn/react/tree-view.js&quot;;
 
 export function TreeViewExample() {
   return React.createElement(TreeViewRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]});
@@ -111,7 +111,7 @@ export function TreeViewExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { TreeViewRoot } from '@uifn/components-svelte/tree-view';
+  import { TreeViewRoot } from &quot;@uifn/components-svelte/tree-view&quot;;
 &lt;/script&gt;
 
 &lt;TreeViewRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]} /&gt;
@@ -121,7 +121,7 @@ export function TreeViewExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { TreeViewRoot } from './components/uifn/svelte/tree-view/index.js';
+  import { TreeViewRoot } from &quot;./components/uifn/svelte/tree-view/index.js&quot;;
 &lt;/script&gt;
 
 &lt;TreeViewRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]} /&gt;
@@ -131,7 +131,7 @@ export function TreeViewExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TreeViewRoot } from '@uifn/components-solid/tree-view';
+import { TreeViewRoot } from &quot;@uifn/components-solid/tree-view&quot;;
 
 export function TreeViewExample() {
   return createComponent(TreeViewRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]});
@@ -142,7 +142,7 @@ export function TreeViewExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TreeViewRoot } from './components/uifn/solid/tree-view.js';
+import { TreeViewRoot } from &quot;./components/uifn/solid/tree-view.js&quot;;
 
 export function TreeViewExample() {
   return createComponent(TreeViewRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;textValue&quot;:&quot;Item 1&quot;}]});

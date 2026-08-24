@@ -157,7 +157,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { DrawerRoot } from '@uifn/components-react/drawer';
+import { DrawerRoot } from "@uifn/components-react/drawer";
 
 export function DrawerExample() {
   return React.createElement(DrawerRoot, {});
@@ -168,7 +168,7 @@ export function DrawerExample() {
 
 ```tsx
 import * as React from 'react';
-import { DrawerRoot } from './components/uifn/react/drawer.js';
+import { DrawerRoot } from "./components/uifn/react/drawer.js";
 
 export function DrawerExample() {
   return React.createElement(DrawerRoot, {});
@@ -179,7 +179,7 @@ export function DrawerExample() {
 
 ```svelte
 <script lang="ts">
-  import { DrawerRoot } from '@uifn/components-svelte/drawer';
+  import { DrawerRoot } from "@uifn/components-svelte/drawer";
 </script>
 
 <DrawerRoot  />
@@ -189,7 +189,7 @@ export function DrawerExample() {
 
 ```svelte
 <script lang="ts">
-  import { DrawerRoot } from './components/uifn/svelte/drawer/index.js';
+  import { DrawerRoot } from "./components/uifn/svelte/drawer/index.js";
 </script>
 
 <DrawerRoot  />
@@ -199,7 +199,7 @@ export function DrawerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DrawerRoot } from '@uifn/components-solid/drawer';
+import { DrawerRoot } from "@uifn/components-solid/drawer";
 
 export function DrawerExample() {
   return createComponent(DrawerRoot, {});
@@ -210,7 +210,7 @@ export function DrawerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DrawerRoot } from './components/uifn/solid/drawer.js';
+import { DrawerRoot } from "./components/uifn/solid/drawer.js";
 
 export function DrawerExample() {
   return createComponent(DrawerRoot, {});

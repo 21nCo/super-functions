@@ -146,7 +146,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ToolbarRoot } from '@uifn/components-react/toolbar';
+import { ToolbarRoot } from "@uifn/components-react/toolbar";
 
 export function ToolbarExample() {
   return React.createElement(ToolbarRoot, {"aria-label":"Toolbar example"});
@@ -157,7 +157,7 @@ export function ToolbarExample() {
 
 ```tsx
 import * as React from 'react';
-import { ToolbarRoot } from './components/uifn/react/toolbar.js';
+import { ToolbarRoot } from "./components/uifn/react/toolbar.js";
 
 export function ToolbarExample() {
   return React.createElement(ToolbarRoot, {"aria-label":"Toolbar example"});
@@ -168,7 +168,7 @@ export function ToolbarExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToolbarRoot } from '@uifn/components-svelte/toolbar';
+  import { ToolbarRoot } from "@uifn/components-svelte/toolbar";
 </script>
 
 <ToolbarRoot aria-label="Toolbar example" />
@@ -178,7 +178,7 @@ export function ToolbarExample() {
 
 ```svelte
 <script lang="ts">
-  import { ToolbarRoot } from './components/uifn/svelte/toolbar/index.js';
+  import { ToolbarRoot } from "./components/uifn/svelte/toolbar/index.js";
 </script>
 
 <ToolbarRoot aria-label="Toolbar example" />
@@ -188,7 +188,7 @@ export function ToolbarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToolbarRoot } from '@uifn/components-solid/toolbar';
+import { ToolbarRoot } from "@uifn/components-solid/toolbar";
 
 export function ToolbarExample() {
   return createComponent(ToolbarRoot, {"aria-label":"Toolbar example"});
@@ -199,7 +199,7 @@ export function ToolbarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ToolbarRoot } from './components/uifn/solid/toolbar.js';
+import { ToolbarRoot } from "./components/uifn/solid/toolbar.js";
 
 export function ToolbarExample() {
   return createComponent(ToolbarRoot, {"aria-label":"Toolbar example"});

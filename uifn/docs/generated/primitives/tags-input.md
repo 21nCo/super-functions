@@ -161,7 +161,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TagsInputRoot } from '@uifn/components-react/tags-input';
+import { TagsInputRoot } from "@uifn/components-react/tags-input";
 
 export function TagsInputExample() {
   return React.createElement(TagsInputRoot, {});
@@ -172,7 +172,7 @@ export function TagsInputExample() {
 
 ```tsx
 import * as React from 'react';
-import { TagsInputRoot } from './components/uifn/react/tags-input.js';
+import { TagsInputRoot } from "./components/uifn/react/tags-input.js";
 
 export function TagsInputExample() {
   return React.createElement(TagsInputRoot, {});
@@ -183,7 +183,7 @@ export function TagsInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { TagsInputRoot } from '@uifn/components-svelte/tags-input';
+  import { TagsInputRoot } from "@uifn/components-svelte/tags-input";
 </script>
 
 <TagsInputRoot  />
@@ -193,7 +193,7 @@ export function TagsInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { TagsInputRoot } from './components/uifn/svelte/tags-input/index.js';
+  import { TagsInputRoot } from "./components/uifn/svelte/tags-input/index.js";
 </script>
 
 <TagsInputRoot  />
@@ -203,7 +203,7 @@ export function TagsInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TagsInputRoot } from '@uifn/components-solid/tags-input';
+import { TagsInputRoot } from "@uifn/components-solid/tags-input";
 
 export function TagsInputExample() {
   return createComponent(TagsInputRoot, {});
@@ -214,7 +214,7 @@ export function TagsInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TagsInputRoot } from './components/uifn/solid/tags-input.js';
+import { TagsInputRoot } from "./components/uifn/solid/tags-input.js";
 
 export function TagsInputExample() {
   return createComponent(TagsInputRoot, {});

@@ -164,7 +164,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SelectRoot } from '@uifn/components-react/select';
+import { SelectRoot } from "@uifn/components-react/select";
 
 export function SelectExample() {
   return React.createElement(SelectRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -175,7 +175,7 @@ export function SelectExample() {
 
 ```tsx
 import * as React from 'react';
-import { SelectRoot } from './components/uifn/react/select.js';
+import { SelectRoot } from "./components/uifn/react/select.js";
 
 export function SelectExample() {
   return React.createElement(SelectRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -186,7 +186,7 @@ export function SelectExample() {
 
 ```svelte
 <script lang="ts">
-  import { SelectRoot } from '@uifn/components-svelte/select';
+  import { SelectRoot } from "@uifn/components-svelte/select";
 </script>
 
 <SelectRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -196,7 +196,7 @@ export function SelectExample() {
 
 ```svelte
 <script lang="ts">
-  import { SelectRoot } from './components/uifn/svelte/select/index.js';
+  import { SelectRoot } from "./components/uifn/svelte/select/index.js";
 </script>
 
 <SelectRoot items={[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]} />
@@ -206,7 +206,7 @@ export function SelectExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SelectRoot } from '@uifn/components-solid/select';
+import { SelectRoot } from "@uifn/components-solid/select";
 
 export function SelectExample() {
   return createComponent(SelectRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});
@@ -217,7 +217,7 @@ export function SelectExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SelectRoot } from './components/uifn/solid/select.js';
+import { SelectRoot } from "./components/uifn/solid/select.js";
 
 export function SelectExample() {
   return createComponent(SelectRoot, {"items":[{"id":"item-1","value":"item-1","label":"First option","textValue":"First option"},{"id":"item-2","value":"item-2","label":"Second option","textValue":"Second option"},{"id":"item-3","value":"item-3","label":"Unavailable option","textValue":"Unavailable option","disabled":true}]});

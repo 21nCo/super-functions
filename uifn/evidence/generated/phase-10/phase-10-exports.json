@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-10.mjs",
+  "phase": "PHASE_10",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "name": "AngleSlider",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createAngleSliderController",
+      "parts": [
+        "root",
+        "track",
+        "thumb",
+        "valueText",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Carousel",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createCarouselController",
+      "parts": [
+        "root",
+        "viewport",
+        "item",
+        "previous",
+        "next",
+        "indicatorGroup",
+        "indicator",
+        "liveRegion"
+      ]
+    },
+    {
+      "name": "ColorPicker",
+      "requirement": "PRIM-007",
+      "kind": "interactive-controller",
+      "factory": "createColorPickerController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "trigger",
+        "positioner",
+        "content",
+        "area",
+        "areaThumb",
+        "channelSlider",
+        "channelInput",
+        "swatch",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "DateInput",
+      "requirement": "PRIM-007",
+      "kind": "interactive-controller",
+      "factory": "createDateInputController",
+      "parts": [
+        "root",
+        "label",
+        "segment",
+        "hiddenInput",
+        "error"
+      ]
+    },
+    {
+      "name": "DatePicker",
+      "requirement": "PRIM-007",
+      "kind": "interactive-controller",
+      "factory": "createDatePickerController",
+      "parts": [
+        "root",
+        "label",
+        "input",
+        "segment",
+        "trigger",
+        "positioner",
+        "content",
+        "header",
+        "previous",
+        "next",
+        "grid",
+        "gridLabel",
+        "cell",
+        "cellTrigger",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Meter",
+      "requirement": "PRIM-008",
+      "kind": "typed-static-contract",
+      "contract": "MeterContract",
+      "parts": [
+        "root",
+        "label",
+        "track",
+        "range",
+        "valueText"
+      ]
+    },
+    {
+      "name": "Progress",
+      "requirement": "PRIM-008",
+      "kind": "typed-static-contract",
+      "contract": "ProgressContract",
+      "parts": [
+        "root",
+        "label",
+        "track",
+        "range",
+        "circle",
+        "valueText"
+      ]
+    },
+    {
+      "name": "RatingGroup",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createRatingGroupController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "item",
+        "itemIndicator",
+        "hiddenInput",
+        "valueText"
+      ]
+    },
+    {
+      "name": "SignaturePad",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createSignaturePadController",
+      "parts": [
+        "root",
+        "label",
+        "canvas",
+        "clear",
+        "undo",
+        "status",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Slider",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createSliderController",
+      "parts": [
+        "root",
+        "label",
+        "control",
+        "track",
+        "range",
+        "thumb",
+        "valueText",
+        "hiddenInput"
+      ]
+    },
+    {
+      "name": "Splitter",
+      "requirement": "PRIM-006",
+      "kind": "interactive-controller",
+      "factory": "createSplitterController",
+      "parts": [
+        "root",
+        "panel",
+        "resizeTrigger",
+        "resizeHandle"
+      ]
+    },
+    {
+      "name": "Steps",
+      "requirement": "PRIM-008",
+      "kind": "interactive-controller",
+      "factory": "createStepsController",
+      "parts": [
+        "root",
+        "list",
+        "item",
+        "trigger",
+        "indicator",
+        "separator",
+        "content",
+        "completed"
+      ]
+    },
+    {
+      "name": "Timer",
+      "requirement": "PRIM-007",
+      "kind": "interactive-controller",
+      "factory": "createTimerController",
+      "parts": [
+        "root",
+        "value",
+        "start",
+        "pause",
+        "reset",
+        "status"
+      ]
+    },
+    {
+      "name": "Toast",
+      "requirement": "PRIM-008",
+      "kind": "interactive-controller",
+      "factory": "createToastController",
+      "parts": [
+        "viewport",
+        "root",
+        "title",
+        "description",
+        "action",
+        "close"
+      ]
+    }
+  ]
+}

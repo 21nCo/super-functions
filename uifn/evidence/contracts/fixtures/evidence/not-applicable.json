@@ -1,0 +1,11 @@
+{
+  "fixtureId": "evidence-not-applicable-without-approval",
+  "base": "complete.json",
+  "set": {
+    "status": "not-applicable",
+    "counts.executed": 0,
+    "counts.passed": 0,
+    "counts.notApplicable": 1
+  },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_NOT_APPLICABLE"]
+}

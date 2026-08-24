@@ -141,7 +141,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TableRoot } from '@uifn/components-react/table';
+import { TableRoot } from "@uifn/components-react/table";
 
 export function TableExample() {
   return React.createElement(TableRoot, {});
@@ -152,7 +152,7 @@ export function TableExample() {
 
 ```tsx
 import * as React from 'react';
-import { TableRoot } from './components/uifn/react/table.js';
+import { TableRoot } from "./components/uifn/react/table.js";
 
 export function TableExample() {
   return React.createElement(TableRoot, {});
@@ -163,7 +163,7 @@ export function TableExample() {
 
 ```svelte
 <script lang="ts">
-  import { TableRoot } from '@uifn/components-svelte/table';
+  import { TableRoot } from "@uifn/components-svelte/table";
 </script>
 
 <TableRoot  />
@@ -173,7 +173,7 @@ export function TableExample() {
 
 ```svelte
 <script lang="ts">
-  import { TableRoot } from './components/uifn/svelte/table/index.js';
+  import { TableRoot } from "./components/uifn/svelte/table/index.js";
 </script>
 
 <TableRoot  />
@@ -183,7 +183,7 @@ export function TableExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TableRoot } from '@uifn/components-solid/table';
+import { TableRoot } from "@uifn/components-solid/table";
 
 export function TableExample() {
   return createComponent(TableRoot, {});
@@ -194,7 +194,7 @@ export function TableExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TableRoot } from './components/uifn/solid/table.js';
+import { TableRoot } from "./components/uifn/solid/table.js";
 
 export function TableExample() {
   return createComponent(TableRoot, {});

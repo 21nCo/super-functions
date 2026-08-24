@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.env.UIFN_NPM_PATH ?? '/opt/homebrew/bin/npm';
-const node = process.env.UIFN_NODE_PATH ?? '/opt/homebrew/bin/node';
+const npm = process.env.UIFN_NPM_PATH ?? (process.platform === 'win32' ? 'npm.cmd' : 'npm');
+const node = process.env.UIFN_NODE_PATH ?? process.execPath;
 const productPattern = /\b(team workspace|invoice rows?|project settings|user identities?|fixed calendar dates?|sidebar navigation|sample customer records?)\b/i;
 const behaviorPattern = /create[A-Z][A-Za-z]+Controller|createStore|addEventListener\s*\(\s*['"](?:pointerdown|keydown|focusin)|onOutsideInteraction|onEscapeKeyDown/;
 
@@ -104,7 +104,7 @@ export function inspectHookSource(source) {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, { cwd: root, env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/bin:/bin' }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const result = spawnSync(command, args, { cwd: root, env: process.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return { command: [command, ...args].join(' '), passed: result.status === 0, status: result.status, stdoutTail: (result.stdout ?? '').split('\n').slice(-16).join('\n'), stderrTail: (result.stderr ?? '').split('\n').slice(-16).join('\n') };
 }
 
@@ -170,7 +170,7 @@ export function verifyPhase15(options = {}) {
     ...walk('uifn/solid/src/hooks'),
   ];
   hookFiles.forEach((file) => failures.push(...inspectHookSource(read(file)).map((failure) => ({ ...failure, path: file }))));
-  const inventory = json('uifn/.conduct/inventories/phase-15-hooks.json');
+  const inventory = json('uifn/evidence/inventories/phase-15-hooks.json');
   const requiredCapabilities = ['media-query', 'copy-to-clipboard', 'controllable-state', 'stable-id', 'presence', 'direction-locale-environment', 'composed-refs', 'escape-and-outside-interaction'];
   for (const id of requiredCapabilities) {
     const capability = inventory.capabilities.find((entry) => entry.id === id);

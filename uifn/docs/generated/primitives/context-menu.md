@@ -155,7 +155,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ContextMenuRoot } from '@uifn/components-react/context-menu';
+import { ContextMenuRoot } from "@uifn/components-react/context-menu";
 
 export function ContextMenuExample() {
   return React.createElement(ContextMenuRoot, {});
@@ -166,7 +166,7 @@ export function ContextMenuExample() {
 
 ```tsx
 import * as React from 'react';
-import { ContextMenuRoot } from './components/uifn/react/context-menu.js';
+import { ContextMenuRoot } from "./components/uifn/react/context-menu.js";
 
 export function ContextMenuExample() {
   return React.createElement(ContextMenuRoot, {});
@@ -177,7 +177,7 @@ export function ContextMenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { ContextMenuRoot } from '@uifn/components-svelte/context-menu';
+  import { ContextMenuRoot } from "@uifn/components-svelte/context-menu";
 </script>
 
 <ContextMenuRoot  />
@@ -187,7 +187,7 @@ export function ContextMenuExample() {
 
 ```svelte
 <script lang="ts">
-  import { ContextMenuRoot } from './components/uifn/svelte/context-menu/index.js';
+  import { ContextMenuRoot } from "./components/uifn/svelte/context-menu/index.js";
 </script>
 
 <ContextMenuRoot  />
@@ -197,7 +197,7 @@ export function ContextMenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ContextMenuRoot } from '@uifn/components-solid/context-menu';
+import { ContextMenuRoot } from "@uifn/components-solid/context-menu";
 
 export function ContextMenuExample() {
   return createComponent(ContextMenuRoot, {});
@@ -208,7 +208,7 @@ export function ContextMenuExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ContextMenuRoot } from './components/uifn/solid/context-menu.js';
+import { ContextMenuRoot } from "./components/uifn/solid/context-menu.js";
 
 export function ContextMenuExample() {
   return createComponent(ContextMenuRoot, {});

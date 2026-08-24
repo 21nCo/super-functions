@@ -153,7 +153,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { PasswordInputRoot } from '@uifn/components-react/password-input';
+import { PasswordInputRoot } from "@uifn/components-react/password-input";
 
 export function PasswordInputExample() {
   return React.createElement(PasswordInputRoot, {});
@@ -164,7 +164,7 @@ export function PasswordInputExample() {
 
 ```tsx
 import * as React from 'react';
-import { PasswordInputRoot } from './components/uifn/react/password-input.js';
+import { PasswordInputRoot } from "./components/uifn/react/password-input.js";
 
 export function PasswordInputExample() {
   return React.createElement(PasswordInputRoot, {});
@@ -175,7 +175,7 @@ export function PasswordInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { PasswordInputRoot } from '@uifn/components-svelte/password-input';
+  import { PasswordInputRoot } from "@uifn/components-svelte/password-input";
 </script>
 
 <PasswordInputRoot  />
@@ -185,7 +185,7 @@ export function PasswordInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { PasswordInputRoot } from './components/uifn/svelte/password-input/index.js';
+  import { PasswordInputRoot } from "./components/uifn/svelte/password-input/index.js";
 </script>
 
 <PasswordInputRoot  />
@@ -195,7 +195,7 @@ export function PasswordInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PasswordInputRoot } from '@uifn/components-solid/password-input';
+import { PasswordInputRoot } from "@uifn/components-solid/password-input";
 
 export function PasswordInputExample() {
   return createComponent(PasswordInputRoot, {});
@@ -206,7 +206,7 @@ export function PasswordInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { PasswordInputRoot } from './components/uifn/solid/password-input.js';
+import { PasswordInputRoot } from "./components/uifn/solid/password-input.js";
 
 export function PasswordInputExample() {
   return createComponent(PasswordInputRoot, {});

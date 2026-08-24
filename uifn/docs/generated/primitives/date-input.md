@@ -154,7 +154,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { DateInputRoot } from '@uifn/components-react/date-input';
+import { DateInputRoot } from "@uifn/components-react/date-input";
 
 export function DateInputExample() {
   return React.createElement(DateInputRoot, {"aria-label":"DateInput example"});
@@ -165,7 +165,7 @@ export function DateInputExample() {
 
 ```tsx
 import * as React from 'react';
-import { DateInputRoot } from './components/uifn/react/date-input.js';
+import { DateInputRoot } from "./components/uifn/react/date-input.js";
 
 export function DateInputExample() {
   return React.createElement(DateInputRoot, {"aria-label":"DateInput example"});
@@ -176,7 +176,7 @@ export function DateInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { DateInputRoot } from '@uifn/components-svelte/date-input';
+  import { DateInputRoot } from "@uifn/components-svelte/date-input";
 </script>
 
 <DateInputRoot aria-label="DateInput example" />
@@ -186,7 +186,7 @@ export function DateInputExample() {
 
 ```svelte
 <script lang="ts">
-  import { DateInputRoot } from './components/uifn/svelte/date-input/index.js';
+  import { DateInputRoot } from "./components/uifn/svelte/date-input/index.js";
 </script>
 
 <DateInputRoot aria-label="DateInput example" />
@@ -196,7 +196,7 @@ export function DateInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DateInputRoot } from '@uifn/components-solid/date-input';
+import { DateInputRoot } from "@uifn/components-solid/date-input";
 
 export function DateInputExample() {
   return createComponent(DateInputRoot, {"aria-label":"DateInput example"});
@@ -207,7 +207,7 @@ export function DateInputExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DateInputRoot } from './components/uifn/solid/date-input.js';
+import { DateInputRoot } from "./components/uifn/solid/date-input.js";
 
 export function DateInputExample() {
   return createComponent(DateInputRoot, {"aria-label":"DateInput example"});

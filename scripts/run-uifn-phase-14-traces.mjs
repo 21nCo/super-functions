@@ -195,7 +195,7 @@ commands.push(install);
 requireSuccess(install);
 
 copyFileSync(
-  path.join(repoRoot, 'uifn/.conduct/generated/phase-14/phase-14-public-vectors.json'),
+  path.join(repoRoot, 'uifn/evidence/generated/phase-14/phase-14-public-vectors.json'),
   path.join(consumerRoot, 'vectors.json'),
 );
 writeFileSync(path.join(consumerRoot, 'trace.mjs'), transform(
@@ -206,7 +206,7 @@ writeFileSync(path.join(consumerRoot, 'trace.mjs'), transform(
 writeFileSync(path.join(consumerRoot, 'react.test.tsx'), transform(
   path.join(repoRoot, 'uifn/react/src/__tests__/phase-14-public-parity.test.tsx'),
   [
-    ['../../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../../parity/src/trace.mjs', './trace.mjs'],
     ["'./fixtures/phase-14-public-tree'", "'./Phase14ReactPublicTree'"],
   ],
@@ -214,7 +214,7 @@ writeFileSync(path.join(consumerRoot, 'react.test.tsx'), transform(
 writeFileSync(path.join(consumerRoot, 'react-ssr.test.tsx'), transform(
   path.join(repoRoot, 'uifn/react/src/__tests__/phase-14-ssr-hydration.test.tsx'),
   [
-    ['../../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../../parity/src/trace.mjs', './trace.mjs'],
     ["'./fixtures/phase-14-public-tree'", "'./Phase14ReactPublicTree'"],
   ],
@@ -222,7 +222,7 @@ writeFileSync(path.join(consumerRoot, 'react-ssr.test.tsx'), transform(
 writeFileSync(path.join(consumerRoot, 'Phase14ReactPublicTree.ts'), transform(
   path.join(repoRoot, 'uifn/react/src/__tests__/fixtures/phase-14-public-tree.ts'),
   [
-    ['../../../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../../../parity/src/trace.mjs', './trace.mjs'],
     ["from '../../index'", "from '@uifn/react'"],
     [
@@ -234,7 +234,7 @@ writeFileSync(path.join(consumerRoot, 'Phase14ReactPublicTree.ts'), transform(
 writeFileSync(path.join(consumerRoot, 'svelte.test.ts'), transform(
   path.join(repoRoot, 'uifn/svelte/tests/phase-14-public-parity.test.ts'),
   [
-    ['../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../parity/src/trace.mjs', './trace.mjs'],
     ["'./fixtures/Phase14PublicTreeHarness.svelte'", "'./Phase14PublicTreeHarness.svelte'"],
     [
@@ -253,7 +253,7 @@ writeFileSync(path.join(consumerRoot, 'Phase14PublicTreeHarness.svelte'), transf
 writeFileSync(path.join(consumerRoot, 'solid.test.tsx'), transform(
   path.join(repoRoot, 'uifn/solid/src/__tests__/phase-14-public-parity.test.tsx'),
   [
-    ['../../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../../parity/src/trace.mjs', './trace.mjs'],
     ["'./fixtures/phase-14-public-tree.jsx'", "'./Phase14SolidPublicTree.tsx'"],
     [
@@ -265,7 +265,7 @@ writeFileSync(path.join(consumerRoot, 'solid.test.tsx'), transform(
 writeFileSync(path.join(consumerRoot, 'Phase14SolidPublicTree.tsx'), transform(
   path.join(repoRoot, 'uifn/solid/src/__tests__/fixtures/phase-14-public-tree.tsx'),
   [
-    ['../../../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../../../../parity/src/trace.mjs', './trace.mjs'],
     ["from '../../index.js'", "from '@uifn/solid'"],
     [
@@ -284,7 +284,7 @@ for (const file of ['index.html', 'main.ts', 'runtime.ts', 'profile.ts', 'vite.c
   const replacements = file === 'main.ts'
     ? [["'./profile'", "'./browser-profile'"], ["'./react'", "'./browser-react'"], ["'./svelte'", "'./browser-svelte'"], ["'./solid'", "'./browser-solid'"]]
     : file === 'runtime.ts'
-      ? [['../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json']]
+      ? [['../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json']]
       : file === 'index.html'
         ? [['/browser-main.ts', '/browser-main.ts']]
         : [];
@@ -293,7 +293,7 @@ for (const file of ['index.html', 'main.ts', 'runtime.ts', 'profile.ts', 'vite.c
 writeFileSync(path.join(consumerRoot, 'browser-react.ts'), transform(
   path.join(repoRoot, 'uifn/parity/browser/react.ts'),
   [
-    ['../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../src/trace.mjs', './trace.mjs'],
     ["import type { ReactPrimitiveBridge } from '../../react/src/internal/compound';", 'type ReactPrimitiveBridge = any;'],
     ["'../../react/src/__tests__/fixtures/phase-14-public-tree'", "'./Phase14ReactPublicTree'"],
@@ -303,7 +303,7 @@ writeFileSync(path.join(consumerRoot, 'browser-react.ts'), transform(
 writeFileSync(path.join(consumerRoot, 'browser-svelte.ts'), transform(
   path.join(repoRoot, 'uifn/parity/browser/svelte.ts'),
   [
-    ['../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../src/trace.mjs', './trace.mjs'],
     ["import type { SveltePrimitiveBridge } from '../../svelte/lib/internal/compound.js';", 'type SveltePrimitiveBridge = any;'],
     ["'../../svelte/tests/fixtures/Phase14PublicTreeHarness.svelte'", "'./Phase14PublicTreeHarness.svelte'"],
@@ -314,7 +314,7 @@ writeFileSync(path.join(consumerRoot, 'browser-svelte.ts'), transform(
 writeFileSync(path.join(consumerRoot, 'browser-solid.tsx'), transform(
   path.join(repoRoot, 'uifn/parity/browser/solid.tsx'),
   [
-    ['../../.conduct/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
+    ['../../evidence/generated/phase-14/phase-14-public-vectors.json', './vectors.json'],
     ['../src/trace.mjs', './trace.mjs'],
     ["import type { SolidPrimitiveBridge } from '../../solid/src/internal/compound.jsx';", 'type SolidPrimitiveBridge = any;'],
     ["'../../solid/src/__tests__/fixtures/phase-14-public-tree.jsx'", "'./Phase14SolidPublicTree'"],
@@ -329,7 +329,7 @@ mkdirSync(solidSsrFixtureRoot, { recursive: true });
 writeFileSync(path.join(solidSsrFixtureRoot, 'phase-14-public-tree.tsx'), transform(
   path.join(repoRoot, 'uifn/solid/src/__tests__/fixtures/phase-14-public-tree.tsx'),
   [
-    ['../../../../.conduct/generated/phase-14/phase-14-public-vectors.json', '../../../vectors.json'],
+    ['../../../../evidence/generated/phase-14/phase-14-public-vectors.json', '../../../vectors.json'],
     ['../../../../parity/src/trace.mjs', '../../../trace.mjs'],
     ["from '../../index.js'", "from '@uifn/solid'"],
     [
@@ -345,7 +345,7 @@ for (const [source, destination] of [
   writeFileSync(path.join(solidSsrTestRoot, destination), transform(
     path.join(repoRoot, 'uifn/solid/src/__tests__', source),
     [
-      ['../../../.conduct/generated/phase-14/phase-14-public-vectors.json', '../../vectors.json'],
+      ['../../../evidence/generated/phase-14/phase-14-public-vectors.json', '../../vectors.json'],
       ['../../../parity/src/trace.mjs', '../../trace.mjs'],
     ],
   ));
@@ -424,7 +424,7 @@ for (const file of ['phase-14-ssr-entry.ts', 'phase-14-browser-hydrate.ts']) {
   writeFileSync(path.join(svelteSsrTestsRoot, file), transform(
     path.join(repoRoot, 'uifn/svelte/tests', file),
     [
-      ['../../.conduct/generated/phase-14/phase-14-public-vectors.json', '../vectors.json'],
+      ['../../evidence/generated/phase-14/phase-14-public-vectors.json', '../vectors.json'],
       ['../../parity/src/trace.mjs', '../trace.mjs'],
     ],
   ));

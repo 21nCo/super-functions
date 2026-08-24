@@ -166,7 +166,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { DatePickerRoot } from '@uifn/components-react/date-picker';
+import { DatePickerRoot } from "@uifn/components-react/date-picker";
 
 export function DatePickerExample() {
   return React.createElement(DatePickerRoot, {});
@@ -177,7 +177,7 @@ export function DatePickerExample() {
 
 ```tsx
 import * as React from 'react';
-import { DatePickerRoot } from './components/uifn/react/date-picker.js';
+import { DatePickerRoot } from "./components/uifn/react/date-picker.js";
 
 export function DatePickerExample() {
   return React.createElement(DatePickerRoot, {});
@@ -188,7 +188,7 @@ export function DatePickerExample() {
 
 ```svelte
 <script lang="ts">
-  import { DatePickerRoot } from '@uifn/components-svelte/date-picker';
+  import { DatePickerRoot } from "@uifn/components-svelte/date-picker";
 </script>
 
 <DatePickerRoot  />
@@ -198,7 +198,7 @@ export function DatePickerExample() {
 
 ```svelte
 <script lang="ts">
-  import { DatePickerRoot } from './components/uifn/svelte/date-picker/index.js';
+  import { DatePickerRoot } from "./components/uifn/svelte/date-picker/index.js";
 </script>
 
 <DatePickerRoot  />
@@ -208,7 +208,7 @@ export function DatePickerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DatePickerRoot } from '@uifn/components-solid/date-picker';
+import { DatePickerRoot } from "@uifn/components-solid/date-picker";
 
 export function DatePickerExample() {
   return createComponent(DatePickerRoot, {});
@@ -219,7 +219,7 @@ export function DatePickerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { DatePickerRoot } from './components/uifn/solid/date-picker.js';
+import { DatePickerRoot } from "./components/uifn/solid/date-picker.js";
 
 export function DatePickerExample() {
   return createComponent(DatePickerRoot, {});

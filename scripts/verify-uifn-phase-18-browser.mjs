@@ -14,7 +14,7 @@ const storyEvidencePath = process.env.UIFN_PHASE18_PHASE17_STORY_EVIDENCE ? path
 const docsEvidencePath = process.env.UIFN_PHASE18_PHASE17_DOCS_EVIDENCE ? path.resolve(process.env.UIFN_PHASE18_PHASE17_DOCS_EVIDENCE) : null;
 const staticRoot = path.resolve(process.env.UIFN_PHASE18_STORYBOOK_STATIC ?? path.join(root, 'uifn/storybook/storybook-static'));
 const inventory = JSON.parse(readFileSync(path.join(root, 'uifn/storybook/generated/story-inventory.json'), 'utf8'));
-const ledger = JSON.parse(readFileSync(path.join(root, 'uifn/.conduct/generated/phase-18/normative-ledger.json'), 'utf8'));
+const ledger = JSON.parse(readFileSync(path.join(root, 'uifn/evidence/generated/phase-18/normative-ledger.json'), 'utf8'));
 const axeSource = readFileSync(path.join(root, 'node_modules/axe-core/axe.min.js'), 'utf8');
 const frameworkRotation = new Map(ledger.primitives.map((entry, index) => [entry.primitive, ['react', 'svelte', 'solid'][index % 3]]));
 const twoDimensionalExceptions = new Set(['carousel', 'color-picker', 'data-table', 'image-cropper', 'slider', 'splitter', 'tree-view']);

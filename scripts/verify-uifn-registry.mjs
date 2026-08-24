@@ -3,11 +3,11 @@
 import { spawnSync } from 'node:child_process';
 import { inspectPhase16 } from './verify-uifn-phase-16.mjs';
 
-const npm = process.env.UIFN_NPM_PATH ?? '/opt/homebrew/bin/npm';
+const npm = process.env.UIFN_NPM_PATH ?? (process.platform === 'win32' ? 'npm.cmd' : 'npm');
 const checks = ['typecheck', 'test', 'build'].map((script) => {
   const result = spawnSync(npm, ['--workspace', '@uifn/registry', 'run', script], {
     cwd: process.cwd(),
-    env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
+    env: process.env,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });

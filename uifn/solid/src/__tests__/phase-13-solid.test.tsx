@@ -2,7 +2,7 @@ import { For, createSignal, type Setter } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, it } from 'vitest';
 import catalog from '../../../catalog/generated/catalog.json';
-import manifest from '../../../.conduct/generated/phase-13/phase-13-solid-compounds.json';
+import manifest from '../../../evidence/generated/phase-13/phase-13-solid-compounds.json';
 import { Accordion, Checkbox, Command, Dialog, Input } from '../index.js';
 import type { SolidPrimitiveBridge } from '../internal/compound.jsx';
 import { createSolidPartPropsBinding, toSolidUserPartProps } from '../props.js';

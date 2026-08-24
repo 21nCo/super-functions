@@ -152,7 +152,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { MenubarRoot } from '@uifn/components-react/menubar';
+import { MenubarRoot } from "@uifn/components-react/menubar";
 
 export function MenubarExample() {
   return React.createElement(MenubarRoot, {"aria-label":"Menubar example"});
@@ -163,7 +163,7 @@ export function MenubarExample() {
 
 ```tsx
 import * as React from 'react';
-import { MenubarRoot } from './components/uifn/react/menubar.js';
+import { MenubarRoot } from "./components/uifn/react/menubar.js";
 
 export function MenubarExample() {
   return React.createElement(MenubarRoot, {"aria-label":"Menubar example"});
@@ -174,7 +174,7 @@ export function MenubarExample() {
 
 ```svelte
 <script lang="ts">
-  import { MenubarRoot } from '@uifn/components-svelte/menubar';
+  import { MenubarRoot } from "@uifn/components-svelte/menubar";
 </script>
 
 <MenubarRoot aria-label="Menubar example" />
@@ -184,7 +184,7 @@ export function MenubarExample() {
 
 ```svelte
 <script lang="ts">
-  import { MenubarRoot } from './components/uifn/svelte/menubar/index.js';
+  import { MenubarRoot } from "./components/uifn/svelte/menubar/index.js";
 </script>
 
 <MenubarRoot aria-label="Menubar example" />
@@ -194,7 +194,7 @@ export function MenubarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MenubarRoot } from '@uifn/components-solid/menubar';
+import { MenubarRoot } from "@uifn/components-solid/menubar";
 
 export function MenubarExample() {
   return createComponent(MenubarRoot, {"aria-label":"Menubar example"});
@@ -205,7 +205,7 @@ export function MenubarExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { MenubarRoot } from './components/uifn/solid/menubar.js';
+import { MenubarRoot } from "./components/uifn/solid/menubar.js";
 
 export function MenubarExample() {
   return createComponent(MenubarRoot, {"aria-label":"Menubar example"});

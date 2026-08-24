@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const defaultTrustPolicyPath = path.join(repoRoot, 'uifn/.conduct/compatibility/phase-14-trust-policy.json');
+const defaultTrustPolicyPath = path.join(repoRoot, 'uifn/evidence/compatibility/phase-14-trust-policy.json');
 const catalogPrimitiveCount = JSON.parse(
   readFileSync(path.join(repoRoot, 'uifn/catalog/generated/catalog.json'), 'utf8'),
 ).primitives.length;

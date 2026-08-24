@@ -154,7 +154,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { SignaturePadRoot } from '@uifn/components-react/signature-pad';
+import { SignaturePadRoot } from "@uifn/components-react/signature-pad";
 
 export function SignaturePadExample() {
   return React.createElement(SignaturePadRoot, {});
@@ -165,7 +165,7 @@ export function SignaturePadExample() {
 
 ```tsx
 import * as React from 'react';
-import { SignaturePadRoot } from './components/uifn/react/signature-pad.js';
+import { SignaturePadRoot } from "./components/uifn/react/signature-pad.js";
 
 export function SignaturePadExample() {
   return React.createElement(SignaturePadRoot, {});
@@ -176,7 +176,7 @@ export function SignaturePadExample() {
 
 ```svelte
 <script lang="ts">
-  import { SignaturePadRoot } from '@uifn/components-svelte/signature-pad';
+  import { SignaturePadRoot } from "@uifn/components-svelte/signature-pad";
 </script>
 
 <SignaturePadRoot  />
@@ -186,7 +186,7 @@ export function SignaturePadExample() {
 
 ```svelte
 <script lang="ts">
-  import { SignaturePadRoot } from './components/uifn/svelte/signature-pad/index.js';
+  import { SignaturePadRoot } from "./components/uifn/svelte/signature-pad/index.js";
 </script>
 
 <SignaturePadRoot  />
@@ -196,7 +196,7 @@ export function SignaturePadExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SignaturePadRoot } from '@uifn/components-solid/signature-pad';
+import { SignaturePadRoot } from "@uifn/components-solid/signature-pad";
 
 export function SignaturePadExample() {
   return createComponent(SignaturePadRoot, {});
@@ -207,7 +207,7 @@ export function SignaturePadExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { SignaturePadRoot } from './components/uifn/solid/signature-pad.js';
+import { SignaturePadRoot } from "./components/uifn/solid/signature-pad.js";
 
 export function SignaturePadExample() {
   return createComponent(SignaturePadRoot, {});

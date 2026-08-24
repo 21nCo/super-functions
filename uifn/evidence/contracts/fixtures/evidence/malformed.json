@@ -1,0 +1,6 @@
+{
+  "fixtureId": "evidence-malformed",
+  "base": "complete.json",
+  "set": { "schemaVersion": 99 },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_MALFORMED"]
+}

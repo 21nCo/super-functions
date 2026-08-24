@@ -160,7 +160,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { EditableRoot } from '@uifn/components-react/editable';
+import { EditableRoot } from "@uifn/components-react/editable";
 
 export function EditableExample() {
   return React.createElement(EditableRoot, {});
@@ -171,7 +171,7 @@ export function EditableExample() {
 
 ```tsx
 import * as React from 'react';
-import { EditableRoot } from './components/uifn/react/editable.js';
+import { EditableRoot } from "./components/uifn/react/editable.js";
 
 export function EditableExample() {
   return React.createElement(EditableRoot, {});
@@ -182,7 +182,7 @@ export function EditableExample() {
 
 ```svelte
 <script lang="ts">
-  import { EditableRoot } from '@uifn/components-svelte/editable';
+  import { EditableRoot } from "@uifn/components-svelte/editable";
 </script>
 
 <EditableRoot  />
@@ -192,7 +192,7 @@ export function EditableExample() {
 
 ```svelte
 <script lang="ts">
-  import { EditableRoot } from './components/uifn/svelte/editable/index.js';
+  import { EditableRoot } from "./components/uifn/svelte/editable/index.js";
 </script>
 
 <EditableRoot  />
@@ -202,7 +202,7 @@ export function EditableExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { EditableRoot } from '@uifn/components-solid/editable';
+import { EditableRoot } from "@uifn/components-solid/editable";
 
 export function EditableExample() {
   return createComponent(EditableRoot, {});
@@ -213,7 +213,7 @@ export function EditableExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { EditableRoot } from './components/uifn/solid/editable.js';
+import { EditableRoot } from "./components/uifn/solid/editable.js";
 
 export function EditableExample() {
   return createComponent(EditableRoot, {});

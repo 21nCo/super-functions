@@ -264,13 +264,13 @@ export function patternModelHtml(input: {
   metadata?: Record<string, unknown>;
 }): string {
   const attrs = input.family === 'sf'
-    ? `data-uifn-sf="${input.slug}"`
-    : `data-uifn-pattern="${input.slug}"`;
+    ? `data-uifn-sf="${escapeHtml(input.slug)}"`
+    : `data-uifn-pattern="${escapeHtml(input.slug)}"`;
   const metadata = input.metadata
-    ? `<dl class="workbench-model-metadata" hidden aria-hidden="true">${Object.entries(input.metadata).map(([key, value]) => `<dt>${key}</dt><dd>${String(value)}</dd>`).join('')}</dl>`
+    ? `<dl class="workbench-model-metadata" hidden aria-hidden="true">${Object.entries(input.metadata).map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`).join('')}</dl>`
     : '';
   const metadataAttrs = input.metadata
-    ? Object.entries(input.metadata).map(([key, value]) => `data-uifn-meta-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${escapeHtml(String(value))}"`).join(' ')
+    ? Object.entries(input.metadata).map(([key, value]) => `data-uifn-meta-${metadataAttributeName(key)}="${escapeHtml(String(value))}"`).join(' ')
     : '';
   const callbackList = input.callbacks.map((callback) => escapeHtml(callback)).join(',');
   const productData = renderProductData(input.data);
@@ -285,11 +285,11 @@ export function patternModelHtml(input: {
   const statusLabel = humanizeStatus(input.status);
 
   return `
-    <article class="workbench-model-card" ${attrs} ${metadataAttrs} data-status="${input.status}" data-item-count="${input.itemCount}" data-backend-import-count="${input.backendImports?.length ?? 0}" data-callback-count="${input.callbacks.length}" data-callbacks="${callbackList}" tabindex="0">
+    <article class="workbench-model-card" ${attrs} ${metadataAttrs} data-status="${escapeHtml(input.status)}" data-item-count="${Number(input.itemCount)}" data-backend-import-count="${input.backendImports?.length ?? 0}" data-callback-count="${input.callbacks.length}" data-callbacks="${callbackList}" tabindex="0">
       <header>
         <div>
           <p class="eyebrow">${input.family === 'sf' ? 'Superfunction UI' : 'Application pattern'}</p>
-          <h2>${input.name}</h2>
+          <h2>${escapeHtml(input.name)}</h2>
         </div>
         <span class="workbench-status-pill" data-status="${input.status}">${statusLabel}</span>
       </header>
@@ -302,6 +302,18 @@ export function patternModelHtml(input: {
       <output class="workbench-action-result" data-uifn-action-result aria-live="polite">idle</output>
     </article>
   `;
+}
+
+function metadataAttributeName(value: string): string {
+  let result = '';
+  for (const character of value) {
+    const lower = character.toLowerCase();
+    const code = lower.charCodeAt(0);
+    const allowed = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+    if (allowed) result += lower;
+    else if (result && !result.endsWith('-')) result += '-';
+  }
+  return result.replace(/-$/, '') || 'value';
 }
 
 const preferredModelCallbacks: Record<string, string[]> = {

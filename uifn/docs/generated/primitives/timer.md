@@ -151,7 +151,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { TimerRoot } from '@uifn/components-react/timer';
+import { TimerRoot } from "@uifn/components-react/timer";
 
 export function TimerExample() {
   return React.createElement(TimerRoot, {"duration":1,"aria-label":"Timer example"});
@@ -162,7 +162,7 @@ export function TimerExample() {
 
 ```tsx
 import * as React from 'react';
-import { TimerRoot } from './components/uifn/react/timer.js';
+import { TimerRoot } from "./components/uifn/react/timer.js";
 
 export function TimerExample() {
   return React.createElement(TimerRoot, {"duration":1,"aria-label":"Timer example"});
@@ -173,7 +173,7 @@ export function TimerExample() {
 
 ```svelte
 <script lang="ts">
-  import { TimerRoot } from '@uifn/components-svelte/timer';
+  import { TimerRoot } from "@uifn/components-svelte/timer";
 </script>
 
 <TimerRoot duration={1} aria-label="Timer example" />
@@ -183,7 +183,7 @@ export function TimerExample() {
 
 ```svelte
 <script lang="ts">
-  import { TimerRoot } from './components/uifn/svelte/timer/index.js';
+  import { TimerRoot } from "./components/uifn/svelte/timer/index.js";
 </script>
 
 <TimerRoot duration={1} aria-label="Timer example" />
@@ -193,7 +193,7 @@ export function TimerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TimerRoot } from '@uifn/components-solid/timer';
+import { TimerRoot } from "@uifn/components-solid/timer";
 
 export function TimerExample() {
   return createComponent(TimerRoot, {"duration":1,"aria-label":"Timer example"});
@@ -204,7 +204,7 @@ export function TimerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TimerRoot } from './components/uifn/solid/timer.js';
+import { TimerRoot } from "./components/uifn/solid/timer.js";
 
 export function TimerExample() {
   return createComponent(TimerRoot, {"duration":1,"aria-label":"Timer example"});

@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : null;
 if (!mode) { console.error('Usage: node scripts/generate-uifn-phase-07.mjs (--write|--check)'); process.exit(2); }
-const outputRoot = path.resolve(process.cwd(), 'uifn/.conduct/generated/phase-07');
+const outputRoot = path.resolve(process.cwd(), 'uifn/evidence/generated/phase-07');
 const primitives = [
   { name: 'AlertDialog', factory: 'createAlertDialogController', parts: ['root','trigger','portal','backdrop','positioner','content','title','description','cancel','action','close'] },
   { name: 'Dialog', factory: 'createDialogController', parts: ['root','trigger','portal','backdrop','positioner','content','title','description','close'] },

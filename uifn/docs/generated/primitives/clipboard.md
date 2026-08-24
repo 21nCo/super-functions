@@ -144,7 +144,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ClipboardRoot } from '@uifn/components-react/clipboard';
+import { ClipboardRoot } from "@uifn/components-react/clipboard";
 
 export function ClipboardExample() {
   return React.createElement(ClipboardRoot, {});
@@ -155,7 +155,7 @@ export function ClipboardExample() {
 
 ```tsx
 import * as React from 'react';
-import { ClipboardRoot } from './components/uifn/react/clipboard.js';
+import { ClipboardRoot } from "./components/uifn/react/clipboard.js";
 
 export function ClipboardExample() {
   return React.createElement(ClipboardRoot, {});
@@ -166,7 +166,7 @@ export function ClipboardExample() {
 
 ```svelte
 <script lang="ts">
-  import { ClipboardRoot } from '@uifn/components-svelte/clipboard';
+  import { ClipboardRoot } from "@uifn/components-svelte/clipboard";
 </script>
 
 <ClipboardRoot  />
@@ -176,7 +176,7 @@ export function ClipboardExample() {
 
 ```svelte
 <script lang="ts">
-  import { ClipboardRoot } from './components/uifn/svelte/clipboard/index.js';
+  import { ClipboardRoot } from "./components/uifn/svelte/clipboard/index.js";
 </script>
 
 <ClipboardRoot  />
@@ -186,7 +186,7 @@ export function ClipboardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ClipboardRoot } from '@uifn/components-solid/clipboard';
+import { ClipboardRoot } from "@uifn/components-solid/clipboard";
 
 export function ClipboardExample() {
   return createComponent(ClipboardRoot, {});
@@ -197,7 +197,7 @@ export function ClipboardExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ClipboardRoot } from './components/uifn/solid/clipboard.js';
+import { ClipboardRoot } from "./components/uifn/solid/clipboard.js";
 
 export function ClipboardExample() {
   return createComponent(ClipboardRoot, {});

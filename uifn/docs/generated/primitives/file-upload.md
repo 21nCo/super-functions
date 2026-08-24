@@ -163,7 +163,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { FileUploadRoot } from '@uifn/components-react/file-upload';
+import { FileUploadRoot } from "@uifn/components-react/file-upload";
 
 export function FileUploadExample() {
   return React.createElement(FileUploadRoot, {});
@@ -174,7 +174,7 @@ export function FileUploadExample() {
 
 ```tsx
 import * as React from 'react';
-import { FileUploadRoot } from './components/uifn/react/file-upload.js';
+import { FileUploadRoot } from "./components/uifn/react/file-upload.js";
 
 export function FileUploadExample() {
   return React.createElement(FileUploadRoot, {});
@@ -185,7 +185,7 @@ export function FileUploadExample() {
 
 ```svelte
 <script lang="ts">
-  import { FileUploadRoot } from '@uifn/components-svelte/file-upload';
+  import { FileUploadRoot } from "@uifn/components-svelte/file-upload";
 </script>
 
 <FileUploadRoot  />
@@ -195,7 +195,7 @@ export function FileUploadExample() {
 
 ```svelte
 <script lang="ts">
-  import { FileUploadRoot } from './components/uifn/svelte/file-upload/index.js';
+  import { FileUploadRoot } from "./components/uifn/svelte/file-upload/index.js";
 </script>
 
 <FileUploadRoot  />
@@ -205,7 +205,7 @@ export function FileUploadExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FileUploadRoot } from '@uifn/components-solid/file-upload';
+import { FileUploadRoot } from "@uifn/components-solid/file-upload";
 
 export function FileUploadExample() {
   return createComponent(FileUploadRoot, {});
@@ -216,7 +216,7 @@ export function FileUploadExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { FileUploadRoot } from './components/uifn/solid/file-upload.js';
+import { FileUploadRoot } from "./components/uifn/solid/file-upload.js";
 
 export function FileUploadExample() {
   return createComponent(FileUploadRoot, {});

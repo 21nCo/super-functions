@@ -139,7 +139,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { BreadcrumbRoot } from '@uifn/components-react/breadcrumb';
+import { BreadcrumbRoot } from "@uifn/components-react/breadcrumb";
 
 export function BreadcrumbExample() {
   return React.createElement(BreadcrumbRoot, {});
@@ -150,7 +150,7 @@ export function BreadcrumbExample() {
 
 ```tsx
 import * as React from 'react';
-import { BreadcrumbRoot } from './components/uifn/react/breadcrumb.js';
+import { BreadcrumbRoot } from "./components/uifn/react/breadcrumb.js";
 
 export function BreadcrumbExample() {
   return React.createElement(BreadcrumbRoot, {});
@@ -161,7 +161,7 @@ export function BreadcrumbExample() {
 
 ```svelte
 <script lang="ts">
-  import { BreadcrumbRoot } from '@uifn/components-svelte/breadcrumb';
+  import { BreadcrumbRoot } from "@uifn/components-svelte/breadcrumb";
 </script>
 
 <BreadcrumbRoot  />
@@ -171,7 +171,7 @@ export function BreadcrumbExample() {
 
 ```svelte
 <script lang="ts">
-  import { BreadcrumbRoot } from './components/uifn/svelte/breadcrumb/index.js';
+  import { BreadcrumbRoot } from "./components/uifn/svelte/breadcrumb/index.js";
 </script>
 
 <BreadcrumbRoot  />
@@ -181,7 +181,7 @@ export function BreadcrumbExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { BreadcrumbRoot } from '@uifn/components-solid/breadcrumb';
+import { BreadcrumbRoot } from "@uifn/components-solid/breadcrumb";
 
 export function BreadcrumbExample() {
   return createComponent(BreadcrumbRoot, {});
@@ -192,7 +192,7 @@ export function BreadcrumbExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { BreadcrumbRoot } from './components/uifn/solid/breadcrumb.js';
+import { BreadcrumbRoot } from "./components/uifn/solid/breadcrumb.js";
 
 export function BreadcrumbExample() {
   return createComponent(BreadcrumbRoot, {});

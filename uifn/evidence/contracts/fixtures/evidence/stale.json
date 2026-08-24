@@ -1,0 +1,6 @@
+{
+  "fixtureId": "evidence-stale",
+  "base": "complete.json",
+  "set": { "expiresAt": "2020-01-01T00:00:00Z" },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_STALE"]
+}

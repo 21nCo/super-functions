@@ -83,7 +83,7 @@ CSS variables:
 
 ```tsx
 import * as React from 'react';
-import { TimerRoot } from '@uifn/components-react/timer';
+import { TimerRoot } from &quot;@uifn/components-react/timer&quot;;
 
 export function TimerExample() {
   return React.createElement(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
@@ -94,7 +94,7 @@ export function TimerExample() {
 
 ```tsx
 import * as React from 'react';
-import { TimerRoot } from './components/uifn/react/timer.js';
+import { TimerRoot } from &quot;./components/uifn/react/timer.js&quot;;
 
 export function TimerExample() {
   return React.createElement(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
@@ -105,7 +105,7 @@ export function TimerExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { TimerRoot } from '@uifn/components-svelte/timer';
+  import { TimerRoot } from &quot;@uifn/components-svelte/timer&quot;;
 &lt;/script&gt;
 
 &lt;TimerRoot duration={1} aria-label=&quot;Timer example&quot; /&gt;
@@ -115,7 +115,7 @@ export function TimerExample() {
 
 ```svelte
 &lt;script lang=&quot;ts&quot;&gt;
-  import { TimerRoot } from './components/uifn/svelte/timer/index.js';
+  import { TimerRoot } from &quot;./components/uifn/svelte/timer/index.js&quot;;
 &lt;/script&gt;
 
 &lt;TimerRoot duration={1} aria-label=&quot;Timer example&quot; /&gt;
@@ -125,7 +125,7 @@ export function TimerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TimerRoot } from '@uifn/components-solid/timer';
+import { TimerRoot } from &quot;@uifn/components-solid/timer&quot;;
 
 export function TimerExample() {
   return createComponent(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
@@ -136,7 +136,7 @@ export function TimerExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { TimerRoot } from './components/uifn/solid/timer.js';
+import { TimerRoot } from &quot;./components/uifn/solid/timer.js&quot;;
 
 export function TimerExample() {
   return createComponent(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});

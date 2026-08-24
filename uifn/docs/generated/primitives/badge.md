@@ -137,7 +137,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { BadgeRoot } from '@uifn/components-react/badge';
+import { BadgeRoot } from "@uifn/components-react/badge";
 
 export function BadgeExample() {
   return React.createElement(BadgeRoot, {});
@@ -148,7 +148,7 @@ export function BadgeExample() {
 
 ```tsx
 import * as React from 'react';
-import { BadgeRoot } from './components/uifn/react/badge.js';
+import { BadgeRoot } from "./components/uifn/react/badge.js";
 
 export function BadgeExample() {
   return React.createElement(BadgeRoot, {});
@@ -159,7 +159,7 @@ export function BadgeExample() {
 
 ```svelte
 <script lang="ts">
-  import { BadgeRoot } from '@uifn/components-svelte/badge';
+  import { BadgeRoot } from "@uifn/components-svelte/badge";
 </script>
 
 <BadgeRoot  />
@@ -169,7 +169,7 @@ export function BadgeExample() {
 
 ```svelte
 <script lang="ts">
-  import { BadgeRoot } from './components/uifn/svelte/badge/index.js';
+  import { BadgeRoot } from "./components/uifn/svelte/badge/index.js";
 </script>
 
 <BadgeRoot  />
@@ -179,7 +179,7 @@ export function BadgeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { BadgeRoot } from '@uifn/components-solid/badge';
+import { BadgeRoot } from "@uifn/components-solid/badge";
 
 export function BadgeExample() {
   return createComponent(BadgeRoot, {});
@@ -190,7 +190,7 @@ export function BadgeExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { BadgeRoot } from './components/uifn/solid/badge.js';
+import { BadgeRoot } from "./components/uifn/solid/badge.js";
 
 export function BadgeExample() {
   return createComponent(BadgeRoot, {});

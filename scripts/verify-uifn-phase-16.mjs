@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { DELIVERY_GENERATOR_VERSION } from './uifn-delivery-generator.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.env.UIFN_NPM_PATH ?? '/opt/homebrew/bin/npm';
-const node = process.env.UIFN_NODE_PATH ?? '/opt/homebrew/bin/node';
+const npm = process.env.UIFN_NPM_PATH ?? (process.platform === 'win32' ? 'npm.cmd' : 'npm');
+const node = process.env.UIFN_NODE_PATH ?? process.execPath;
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const read = (relative) => readFileSync(path.join(root, relative), 'utf8');
 const json = (relative) => JSON.parse(read(relative));
@@ -47,7 +47,7 @@ export function classifyPhase16Requirements(failures) {
 function run(command, args, env = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
-    env: { ...process.env, ...env, PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
+    env: { ...process.env, ...env },
     encoding: 'utf8',
     maxBuffer: 128 * 1024 * 1024,
   });

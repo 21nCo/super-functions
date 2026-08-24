@@ -159,7 +159,7 @@ Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
 
 ```tsx
 import * as React from 'react';
-import { ImageCropperRoot } from '@uifn/components-react/image-cropper';
+import { ImageCropperRoot } from "@uifn/components-react/image-cropper";
 
 export function ImageCropperExample() {
   return React.createElement(ImageCropperRoot, {"src":"data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="});
@@ -170,7 +170,7 @@ export function ImageCropperExample() {
 
 ```tsx
 import * as React from 'react';
-import { ImageCropperRoot } from './components/uifn/react/image-cropper.js';
+import { ImageCropperRoot } from "./components/uifn/react/image-cropper.js";
 
 export function ImageCropperExample() {
   return React.createElement(ImageCropperRoot, {"src":"data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="});
@@ -181,7 +181,7 @@ export function ImageCropperExample() {
 
 ```svelte
 <script lang="ts">
-  import { ImageCropperRoot } from '@uifn/components-svelte/image-cropper';
+  import { ImageCropperRoot } from "@uifn/components-svelte/image-cropper";
 </script>
 
 <ImageCropperRoot src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" />
@@ -191,7 +191,7 @@ export function ImageCropperExample() {
 
 ```svelte
 <script lang="ts">
-  import { ImageCropperRoot } from './components/uifn/svelte/image-cropper/index.js';
+  import { ImageCropperRoot } from "./components/uifn/svelte/image-cropper/index.js";
 </script>
 
 <ImageCropperRoot src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" />
@@ -201,7 +201,7 @@ export function ImageCropperExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ImageCropperRoot } from '@uifn/components-solid/image-cropper';
+import { ImageCropperRoot } from "@uifn/components-solid/image-cropper";
 
 export function ImageCropperExample() {
   return createComponent(ImageCropperRoot, {"src":"data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="});
@@ -212,7 +212,7 @@ export function ImageCropperExample() {
 
 ```tsx
 import { createComponent } from 'solid-js';
-import { ImageCropperRoot } from './components/uifn/solid/image-cropper.js';
+import { ImageCropperRoot } from "./components/uifn/solid/image-cropper.js";
 
 export function ImageCropperExample() {
   return createComponent(ImageCropperRoot, {"src":"data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="});

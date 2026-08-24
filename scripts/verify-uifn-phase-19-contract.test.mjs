@@ -20,7 +20,7 @@ import {
 } from './uifn-phase-19-contract.mjs';
 
 const matrix = JSON.parse(readFileSync(new URL('../uifn/.conduct/accessibility/phase-19/matrix.json', import.meta.url), 'utf8'));
-const defectPolicy = JSON.parse(readFileSync(new URL('../uifn/.conduct/contracts/defect-policy.json', import.meta.url), 'utf8'));
+const defectPolicy = JSON.parse(readFileSync(new URL('../uifn/evidence/contracts/defect-policy.json', import.meta.url), 'utf8'));
 const now = new Date('2026-07-26T12:00:00.000Z');
 const timing = {
   startedAt: '2026-07-25T08:00:00.000Z',

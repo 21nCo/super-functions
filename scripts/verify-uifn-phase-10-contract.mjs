@@ -82,13 +82,13 @@ export async function verifyPhase10Contract({ requireDist = false } = {}) {
   const tree = source('uifn/core/src/primitives/tree-view.ts');
   for (const symbol of ['TreeViewWorkflowStatus','setStatus','statuses']) if (!tree.includes(symbol)) issues.push(issue('UIFN_WORKFLOW_STATUS_INCOMPLETE', `TreeView workflow status omits ${symbol}.`, 'uifn/core/src/primitives/tree-view.ts'));
 
-  const generated = JSON.parse(source('uifn/.conduct/generated/phase-10/phase-10-golden-corpus.json'));
+  const generated = JSON.parse(source('uifn/evidence/generated/phase-10/phase-10-golden-corpus.json'));
   if (
     generated.primitiveCount !== 14
     || generated.catalogPrimitiveCount !== catalog.primitives.length
     || generated.corpus?.length !== 14
   ) {
-    issues.push(issue('UIFN_PHASE_10_GENERATED_DRIFT', 'Golden corpus does not cover all Phase 10 and catalog contracts.', 'uifn/.conduct/generated/phase-10/phase-10-golden-corpus.json'));
+    issues.push(issue('UIFN_PHASE_10_GENERATED_DRIFT', 'Golden corpus does not cover all Phase 10 and catalog contracts.', 'uifn/evidence/generated/phase-10/phase-10-golden-corpus.json'));
   }
 
   let publicCore = null;

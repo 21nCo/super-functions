@@ -6,7 +6,7 @@ import path from 'node:path';
 const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : null;
 if (!mode) { console.error('Usage: node scripts/generate-uifn-phase-09.mjs (--write|--check)'); process.exit(2); }
 
-const outputRoot = path.resolve(process.cwd(), 'uifn/.conduct/generated/phase-09');
+const outputRoot = path.resolve(process.cwd(), 'uifn/evidence/generated/phase-09');
 const primitives = [
   { name: 'Checkbox', requirement: 'PRIM-004', factory: 'createCheckboxController', parts: ['root','control','indicator','label','hiddenInput'] },
   { name: 'CheckboxGroup', requirement: 'PRIM-004', factory: 'createCheckboxGroupController', parts: ['root','label','item','itemControl','itemIndicator','hiddenInput','error'] },
