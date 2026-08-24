@@ -16,6 +16,7 @@ import {
   createDatafnGatewayRouter,
   createDatafnHmacRoutingAssertions,
   createMemoryDatafnPlacementDirectory,
+  createMemoryDatafnRoutingReplayStore,
   migrateDatafnNamespace,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
@@ -118,6 +119,92 @@ describe("DataFn tenant placement", () => {
       previousRegionId: "eu",
     });
   });
+
+  it("does not resume the source when a rollback CAS loses a race", async () => {
+    const base = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: base,
+      namespace: "tenant:rollback-race",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const directory = {
+      ...base,
+      async compareAndSet(input: Parameters<typeof base.compareAndSet>[0]) {
+        if (input.expectedState === "moving" && input.next.regionId === "eu") {
+          return {
+            updated: false,
+            placement: { ...input.next, regionId: "ap", epoch: input.next.epoch + 1 },
+          };
+        }
+        return base.compareAndSet(input);
+      },
+    };
+    const original = new Error("copy failed");
+    let rollbackSourceCalled = false;
+
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:rollback-race",
+      targetRegionId: "us",
+      hooks: {
+        async quiesceSource() {},
+        async drainPermissionDirectory() {},
+        async copyTenantData() { throw original; },
+        async validateTenantData() {},
+        async rebuildPermissionDirectory() {},
+        async warmTarget() {},
+        async resumeTarget() {},
+        async rollbackSource() { rollbackSourceCalled = true; },
+      },
+    })).rejects.toMatchObject({
+      message: "DATAFN_MIGRATION_ROLLBACK_EPOCH_CONFLICT",
+      cause: original,
+    });
+    expect(rollbackSourceCalled).toBe(false);
+  });
+
+  it("retries only the idempotent target resume after activation", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:resume",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const hooks = {
+      async quiesceSource() {},
+      async drainPermissionDirectory() {},
+      async copyTenantData() {},
+      async validateTenantData() {},
+      async rebuildPermissionDirectory() {},
+      async warmTarget() {},
+      async resumeTarget() { throw new Error("target still paused"); },
+    };
+
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:resume",
+      targetRegionId: "us",
+      hooks,
+    })).rejects.toThrow("target still paused");
+
+    const resumed: Array<{ recovery?: boolean; sourceRegionId: string }> = [];
+    const placement = await migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:resume",
+      targetRegionId: "us",
+      hooks: {
+        ...hooks,
+        async resumeTarget(context) {
+          resumed.push(context);
+        },
+      },
+    });
+
+    expect(placement).toMatchObject({ regionId: "us", epoch: 3 });
+    expect(resumed).toMatchObject([{ recovery: true, sourceRegionId: "eu" }]);
+  });
 });
 
 function createRedisTestStore(): ConditionalKVStoreAdapter {
@@ -184,6 +271,7 @@ describe("DataFn canonical gateway", () => {
       activeKeyId: "v1",
       keys: { v1: "test-only-secret" },
     });
+    const replayStore = createMemoryDatafnRoutingReplayStore();
     const executed: Array<{ region: string; namespace: string }> = [];
     const cells = new Map([
       ["eu", cell("eu")],
@@ -198,6 +286,7 @@ describe("DataFn canonical gateway", () => {
             directory,
             requireRoutingAssertion: true,
             assertionVerifier: assertions,
+            replayStore,
           },
           request,
         });
@@ -242,6 +331,57 @@ describe("DataFn canonical gateway", () => {
     expect(JSON.stringify(await us.json())).not.toContain("destination");
   });
 
+  it("keeps the request body available when namespace derivation reads it", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:body",
+      regionId: "eu",
+    });
+    const assertions = createDatafnHmacRoutingAssertions({
+      activeKeyId: "v1",
+      keys: { v1: "test-only-secret" },
+    });
+    const replayStore = createMemoryDatafnRoutingReplayStore();
+    let forwardedBody = "";
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: async (request) => {
+        const body = await request.json() as { namespace: string };
+        return body.namespace;
+      },
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: {
+        async dispatch({ request, assertion, placement }) {
+          const forwarded = withDatafnRoutingAssertion(request, assertion);
+          await validateDatafnPlacement({
+            namespace: placement.namespace,
+            regionId: placement.regionId,
+            runtime: {
+              directory,
+              requireRoutingAssertion: true,
+              assertionVerifier: assertions,
+              replayStore,
+            },
+            request: forwarded,
+          });
+          forwardedBody = await forwarded.text();
+          return Response.json({ ok: true });
+        },
+      },
+      assertionSigner: assertions,
+    });
+
+    const body = JSON.stringify({ namespace: "tenant:body", value: "preserved" });
+    const response = await gateway.handle(new Request(
+      "https://data.example/datafn/mutation?mode=strict",
+      { method: "POST", body },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(forwardedBody).toBe(body);
+  });
+
   it("strips spoofed headers and retries a stale epoch once before any mutation effect", async () => {
     const directory = createMemoryDatafnPlacementDirectory();
     const claimed = await claimDatafnNamespacePlacement({
@@ -253,6 +393,7 @@ describe("DataFn canonical gateway", () => {
       activeKeyId: "v1",
       keys: { v1: "test-only-secret" },
     });
+    const replayStore = createMemoryDatafnRoutingReplayStore();
     const effects = { eu: 0, us: 0 };
     const dispatches: string[] = [];
     const target = (regionId: "eu" | "us") => async (
@@ -263,7 +404,12 @@ describe("DataFn canonical gateway", () => {
         await validateDatafnPlacement({
           namespace,
           regionId,
-          runtime: { directory, requireRoutingAssertion: true, assertionVerifier: assertions },
+          runtime: {
+            directory,
+            requireRoutingAssertion: true,
+            assertionVerifier: assertions,
+            replayStore,
+          },
           request,
         });
       } catch (error) {
@@ -360,7 +506,12 @@ describe("DataFn cell fencing", () => {
     await expect(validateDatafnPlacement({
       namespace: "tenant:one",
       regionId: "eu",
-      runtime: { directory, requireRoutingAssertion: true, assertionVerifier: assertions },
+      runtime: {
+        directory,
+        requireRoutingAssertion: true,
+        assertionVerifier: assertions,
+        replayStore: createMemoryDatafnRoutingReplayStore(),
+      },
       request: new Request("https://cell.internal/datafn/query", {
         headers: { "x-datafn-routing-assertion": "forged" },
       }),
@@ -368,5 +519,97 @@ describe("DataFn cell fencing", () => {
       code: "DATAFN_ROUTING_ASSERTION_INVALID",
       executionStarted: false,
     });
+  });
+
+  it("binds assertions to query, body presence, and a single nonce claim", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:bound",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const assertions = createDatafnHmacRoutingAssertions({
+      activeKeyId: "v1",
+      keys: { v1: "test-only-secret" },
+      now: () => fixedNow,
+    });
+    const replayStore = createMemoryDatafnRoutingReplayStore({ now: () => fixedNow });
+    const runtime = {
+      directory,
+      requireRoutingAssertion: true,
+      assertionVerifier: assertions,
+      replayStore,
+    };
+    const claims = {
+      version: 1 as const,
+      namespace: "tenant:bound",
+      regionId: "eu",
+      epoch: 1,
+      requestId: "request:bound",
+      method: "GET",
+      path: "/datafn/query",
+      audience: "datafn-cell",
+      issuedAt: fixedNow,
+      expiresAt: fixedNow + 30_000,
+      nonce: "nonce:path",
+    };
+    const queryAssertion = await assertions.sign(claims);
+    await expect(validateDatafnPlacement({
+      namespace: claims.namespace,
+      regionId: claims.regionId,
+      runtime,
+      request: withDatafnRoutingAssertion(new Request(
+        "https://cell.internal/datafn/query?scope=all",
+        { headers: { "x-request-id": claims.requestId } },
+      ), queryAssertion),
+    })).rejects.toMatchObject({ code: "DATAFN_ROUTING_ASSERTION_INVALID" });
+
+    const bodyClaims = {
+      ...claims,
+      method: "POST",
+      path: "/datafn/query?scope=all",
+      nonce: "nonce:body",
+    };
+    const bodyAssertion = await assertions.sign(bodyClaims);
+    await expect(validateDatafnPlacement({
+      namespace: claims.namespace,
+      regionId: claims.regionId,
+      runtime,
+      request: withDatafnRoutingAssertion(new Request(
+        "https://cell.internal/datafn/query?scope=all",
+        {
+          method: "POST",
+          headers: { "x-request-id": claims.requestId },
+          body: "unexpected",
+        },
+      ), bodyAssertion),
+    })).rejects.toMatchObject({ code: "DATAFN_ROUTING_ASSERTION_INVALID" });
+
+    const replayClaims = {
+      ...claims,
+      path: "/datafn/query?scope=all",
+      nonce: "nonce:replay",
+    };
+    const replayAssertion = await assertions.sign(replayClaims);
+    const replayRequest = () => withDatafnRoutingAssertion(new Request(
+      "https://cell.internal/datafn/query?scope=all",
+      { headers: { "x-request-id": claims.requestId } },
+    ), replayAssertion);
+    await expect(validateDatafnPlacement({
+      namespace: claims.namespace,
+      regionId: claims.regionId,
+      runtime,
+      request: replayRequest(),
+    })).resolves.toMatchObject({
+      placement: { namespace: claims.namespace },
+      assertion: { nonce: replayClaims.nonce },
+    });
+    await expect(validateDatafnPlacement({
+      namespace: claims.namespace,
+      regionId: claims.regionId,
+      runtime,
+      request: replayRequest(),
+    })).rejects.toMatchObject({ code: "DATAFN_ROUTING_ASSERTION_INVALID" });
   });
 });

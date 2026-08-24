@@ -64,6 +64,11 @@ export interface DatafnRoutingAssertionVerifier {
   verify(assertion: string): Promise<DatafnRoutingAssertionClaims> | DatafnRoutingAssertionClaims;
 }
 
+/** Atomically claims a signed request nonce until the assertion expires. */
+export interface DatafnRoutingReplayStore {
+  claim(nonce: string, expiresAt: number): Promise<boolean> | boolean;
+}
+
 export type DatafnRoutingEventType =
   | "placement_lookup"
   | "cache_hit"
@@ -94,6 +99,7 @@ export interface DatafnPlacementRuntimeConfig {
   directory: DatafnPlacementDirectoryAdapter;
   requireRoutingAssertion?: boolean;
   assertionVerifier?: DatafnRoutingAssertionVerifier;
+  replayStore?: DatafnRoutingReplayStore;
   assertionAudience?: string;
   assertionHeader?: string;
   now?: () => number;
@@ -534,7 +540,7 @@ export function createDatafnGatewayRouter<TTarget>(
   const handle = async (request: Request): Promise<Response> => {
     let namespace: string;
     try {
-      namespace = requiredString(await config.deriveNamespace(request), "namespace");
+      namespace = requiredString(await config.deriveNamespace(request.clone()), "namespace");
     } catch {
       return new DatafnRoutingError({
         code: "DATAFN_PLACEMENT_NOT_FOUND",
@@ -582,7 +588,7 @@ export function createDatafnGatewayRouter<TTarget>(
           epoch: placement.epoch,
           requestId,
           method: cleanRequest.method.toUpperCase(),
-          path: new URL(cleanRequest.url).pathname,
+          path: requestTarget(cleanRequest.url),
           audience: config.assertionAudience ?? "datafn-cell",
           issuedAt,
           expiresAt: issuedAt + (config.assertionTtlMs ?? 30_000),
@@ -680,6 +686,8 @@ export interface DatafnNamespaceMigrationContext {
   targetRegionId: string;
   sourceEpoch: number;
   movingEpoch: number;
+  /** True when retrying the idempotent resume hook after activation succeeded. */
+  recovery?: boolean;
 }
 
 /**
@@ -701,7 +709,19 @@ export async function migrateDatafnNamespace(input: {
   if (!current || current.state !== "active") {
     throw new Error("DATAFN_MIGRATION_REQUIRES_ACTIVE_PLACEMENT");
   }
-  if (current.regionId === input.targetRegionId) return current;
+  if (current.regionId === input.targetRegionId) {
+    if (current.previousRegionId && current.epoch >= 3) {
+      await input.hooks.resumeTarget({
+        namespace: current.namespace,
+        sourceRegionId: current.previousRegionId,
+        targetRegionId: current.regionId,
+        sourceEpoch: current.epoch - 2,
+        movingEpoch: current.epoch - 1,
+        recovery: true,
+      });
+    }
+    return current;
+  }
   const moving: DatafnNamespacePlacement = {
     ...current,
     epoch: current.epoch + 1,
@@ -749,12 +769,28 @@ export async function migrateDatafnNamespace(input: {
       previousRegionId: current.regionId,
       updatedAt: new Date(now()).toISOString(),
     };
-    await input.directory.compareAndSet({
+    const restored = await input.directory.compareAndSet({
       namespace: current.namespace,
       expectedEpoch: moving.epoch,
       expectedState: "moving",
       next: rollback,
     });
+    if (!restored.updated) {
+      await input.onEvent?.({
+        type: "epoch_conflict",
+        sourceRegion: current.regionId,
+        targetRegion: input.targetRegionId,
+        epoch: restored.placement.epoch,
+        state: restored.placement.state,
+        retryable: true,
+        outcome: "rollback-cas-lost",
+      });
+      const conflict = new Error("DATAFN_MIGRATION_ROLLBACK_EPOCH_CONFLICT") as Error & {
+        cause?: unknown;
+      };
+      conflict.cause = cause;
+      throw conflict;
+    }
     await input.hooks.rollbackSource?.({ ...context, cause });
     throw cause;
   }
@@ -813,6 +849,25 @@ export function createDatafnHmacRoutingAssertions(input: {
   };
 }
 
+/** In-memory replay protection for tests and single-process deployments. */
+export function createMemoryDatafnRoutingReplayStore(
+  options: { now?: () => number } = {},
+): DatafnRoutingReplayStore {
+  const claimed = new Map<string, number>();
+  const now = options.now ?? Date.now;
+  return {
+    claim(nonce, expiresAt) {
+      const current = now();
+      for (const [value, expiry] of claimed) {
+        if (expiry <= current) claimed.delete(value);
+      }
+      if (expiresAt <= current || claimed.has(nonce)) return false;
+      claimed.set(nonce, expiresAt);
+      return true;
+    },
+  };
+}
+
 export function withDatafnRoutingAssertion(
   request: Request,
   assertion: string,
@@ -849,6 +904,9 @@ async function validateRoutingAssertion(input: {
   if (!input.runtime.assertionVerifier) {
     throw await invalidAssertion(input.runtime, "No routing assertion verifier is configured");
   }
+  if (!input.runtime.replayStore) {
+    throw await invalidAssertion(input.runtime, "No routing assertion replay store is configured");
+  }
   try {
     const claims = await input.runtime.assertionVerifier.verify(assertion);
     const request = input.request;
@@ -857,15 +915,18 @@ async function validateRoutingAssertion(input: {
       claims.regionId !== input.regionId ||
       claims.audience !== (input.runtime.assertionAudience ?? "datafn-cell") ||
       (request && claims.method !== request.method.toUpperCase()) ||
-      (request && claims.path !== new URL(request.url).pathname) ||
+      (request && claims.path !== requestTarget(request.url)) ||
       (request?.headers.get("x-request-id") &&
         claims.requestId !== request.headers.get("x-request-id"))
     ) {
       throw new Error("routing assertion does not match the request or placement");
     }
-    if (request && claims.bodyDigest) {
+    if (request) {
       const digest = await requestBodyDigest(request.clone());
       if (digest !== claims.bodyDigest) throw new Error("routing assertion body digest mismatch");
+    }
+    if (!(await input.runtime.replayStore.claim(claims.nonce, claims.expiresAt))) {
+      throw new Error("routing assertion nonce was replayed");
     }
     return claims;
   } catch {
@@ -919,6 +980,11 @@ async function requestBodyDigest(request: Request): Promise<string | undefined> 
   const data = new Uint8Array(await request.arrayBuffer());
   const digest = await crypto.subtle.digest("SHA-256", data);
   return base64UrlBytes(new Uint8Array(digest));
+}
+
+function requestTarget(url: string): string {
+  const parsed = new URL(url);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function serializePlacement(placement: DatafnNamespacePlacement): string {

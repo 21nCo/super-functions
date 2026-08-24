@@ -193,10 +193,22 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
           503,
         );
       }
-      const namespace = await resolvePublicLinkNamespaceFromDirectory(
-        config.directory,
-        `${principalPrefix}${parsed.id}`,
-      );
+      let namespace: string | null;
+      try {
+        namespace = await resolvePublicLinkNamespaceFromDirectory(
+          config.directory,
+          `${principalPrefix}${parsed.id}`,
+        );
+      } catch {
+        return errorResponse(
+          {
+            code: "DATAFN_PLACEMENT_UNAVAILABLE",
+            message: "Public-link placement directory is unavailable",
+            details: { retryable: true, executionStarted: false },
+          },
+          503,
+        );
+      }
       return namespace ?? errorResponse(
         { code: "NOT_FOUND", message: "Public link is invalid or revoked" },
         404,

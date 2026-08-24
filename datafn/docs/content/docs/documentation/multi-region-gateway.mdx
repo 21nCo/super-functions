@@ -23,6 +23,7 @@ The built-in `createConditionalKvDatafnPlacementDirectory` composes the focused 
 import {
   createConditionalKvDatafnPlacementDirectory,
   createDatafnHmacRoutingAssertions,
+  createMemoryDatafnRoutingReplayStore,
   createDatafnServer,
   datafnMultiRegionPlugin,
 } from "@datafn/server";
@@ -31,6 +32,7 @@ const assertions = createDatafnHmacRoutingAssertions({
   activeKeyId: "2026-08",
   keys: { "2026-08": env.DATAFN_ROUTING_KEY },
 });
+const replayStore = createMemoryDatafnRoutingReplayStore(); // tests and one-process deployments only
 
 const placement = createConditionalKvDatafnPlacementDirectory(
   stores.atomicKv,
@@ -51,6 +53,7 @@ const server = await createDatafnServer({
         directory: placement,
         requireRoutingAssertion: true,
         assertionVerifier: assertions,
+        replayStore,
       },
     }),
   ],
@@ -85,7 +88,7 @@ const gateway = createDatafnGatewayRouter({
 });
 ```
 
-The gateway strips caller-supplied internal headers, preserves the method, path, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/path, body digest, audience, timestamps, and a nonce. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference; it is never serialized into a public response.
+The gateway strips caller-supplied internal headers, preserves the method, complete path and query string, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/request target, body presence and digest, audience, timestamps, and a nonce. Each cell atomically consumes that nonce through a shared replay store before execution. The in-memory replay store is for tests and one-process deployments only; production cells sharing an audience need a bounded durable store with atomic first claim. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference; it is never serialized into a public response.
 
 On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gateway invalidates its cache, re-resolves placement, and retries exactly once. It does not replay ambiguous timeouts or responses produced after execution began. Existing mutation IDs and idempotency keys remain authoritative for application-level retries.
 
@@ -121,7 +124,7 @@ When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum
 6. CAS the moving record to the target `active` placement at another epoch.
 7. Resume target writes.
 
-Failure before activation rolls the placement back through a new epoch and retains `previousRegionId` evidence. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
+Failure before activation rolls the placement back through a new epoch and retains `previousRegionId` evidence. The source rollback hook runs only if that rollback CAS succeeds. `resumeTarget` must be idempotent: if activation succeeds but target resume fails, retrying the same migration invokes only the resume recovery hook. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
 
 ## Observability and operations
 

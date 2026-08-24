@@ -8,6 +8,8 @@ import type { DatafnSchema } from "@datafn/core";
 import {
   createDatafnPublicLinksPlugin,
   createDatafnServer,
+  createMemoryDatafnPlacementDirectory,
+  datafnMultiRegionPlugin,
   withDatafnPublicLinksSchema,
   type DatafnPublicLinkPrincipal,
   type DatafnServer,
@@ -71,6 +73,57 @@ const schema = {
 } satisfies DatafnSchema;
 
 describe("DataFn public-links plugin", () => {
+  it("returns a retryable placement error when public-link directory lookup fails", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const memoryDirectory = createMemoryIndexedDirectoryStore();
+    const unavailableDirectory = {
+      ...memoryDirectory,
+      async query() {
+        throw new Error("directory offline");
+      },
+    };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory: unavailableDirectory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      publicLinks,
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "region:public-links",
+          directory: unavailableDirectory,
+          placement: {
+            directory: createMemoryDatafnPlacementDirectory(),
+          },
+        }),
+      ],
+    });
+
+    try {
+      const response = await post(
+        server,
+        "/datafn/public-links/resolve",
+        { token: "link:missing.secret" },
+      );
+      expect(response).toMatchObject({
+        status: 503,
+        body: {
+          error: {
+            code: "DATAFN_PLACEMENT_UNAVAILABLE",
+            details: { retryable: true, executionStarted: false },
+          },
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("keeps public-link storage plugin-owned and blocks direct data endpoint access", async () => {
     const db = memoryAdapter();
     await db.initialize();

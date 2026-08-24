@@ -241,6 +241,7 @@ export {
   createDatafnGatewayRouter,
   createDatafnHmacRoutingAssertions,
   createMemoryDatafnPlacementDirectory,
+  createMemoryDatafnRoutingReplayStore,
   migrateDatafnNamespace,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
@@ -260,6 +261,7 @@ export type {
   DatafnRoutingAssertionClaims,
   DatafnRoutingAssertionSigner,
   DatafnRoutingAssertionVerifier,
+  DatafnRoutingReplayStore,
   DatafnRoutingEvent,
   DatafnRoutingEventType,
 } from '../multi-region-routing.js';

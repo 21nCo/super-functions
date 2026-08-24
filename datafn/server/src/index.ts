@@ -77,6 +77,7 @@ export type {
   DatafnRoutingAssertionClaims,
   DatafnRoutingAssertionSigner,
   DatafnRoutingAssertionVerifier,
+  DatafnRoutingReplayStore,
   DatafnRoutingEvent,
   DatafnRoutingEventType,
 } from "./plugins/multi-region.js";
@@ -90,6 +91,7 @@ export {
   createDatafnGatewayRouter,
   createDatafnHmacRoutingAssertions,
   createMemoryDatafnPlacementDirectory,
+  createMemoryDatafnRoutingReplayStore,
   migrateDatafnNamespace,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
