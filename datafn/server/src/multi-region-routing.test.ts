@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   SuperfunctionsStoresDurableObject,
   cloudflareDurableObjectAtomicKVStore,
@@ -76,6 +76,19 @@ describe("DataFn tenant placement", () => {
     });
     expect(stale.updated).toBe(false);
     await expect(directory.get("tenant:one")).resolves.toMatchObject({ regionId: "eu", epoch: 1 });
+
+    await expect(directory.compareAndSet({
+      namespace: "tenant:one",
+      expectedEpoch: 1,
+      expectedState: "active",
+      next: { ...first.placement, namespace: "tenant:other", epoch: 2 },
+    })).rejects.toThrow("DATAFN_PLACEMENT_NAMESPACE_IMMUTABLE");
+    await expect(directory.compareAndSet({
+      namespace: "tenant:one",
+      expectedEpoch: 1,
+      expectedState: "active",
+      next: { ...first.placement, epoch: 1, regionId: "us" },
+    })).rejects.toThrow("DATAFN_PLACEMENT_EPOCH_NON_MONOTONIC");
   });
 
   it("runs the fenced migration protocol in order and preserves rollback evidence", async () => {
@@ -114,7 +127,7 @@ describe("DataFn tenant placement", () => {
     ]);
     expect(placement).toMatchObject({
       regionId: "us",
-      epoch: 3,
+      epoch: 4,
       state: "active",
       previousRegionId: "eu",
     });
@@ -202,10 +215,123 @@ describe("DataFn tenant placement", () => {
       },
     });
 
-    expect(placement).toMatchObject({ regionId: "us", epoch: 3 });
+    expect(placement).toMatchObject({ regionId: "us", epoch: 4 });
     expect(resumed).toMatchObject([{ recovery: true, sourceRegionId: "eu" }]);
   });
+
+  it("recovers a matching migration left in the moving state", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    const claimed = await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:interrupted",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const moving: DatafnNamespacePlacement = {
+      ...claimed.placement,
+      epoch: 2,
+      state: "moving",
+      movingToRegionId: "us",
+      previousRegionId: "eu",
+      migration: {
+        phase: "moving",
+        sourceRegionId: "eu",
+        targetRegionId: "us",
+        sourceEpoch: 1,
+        movingEpoch: 2,
+      },
+    };
+    expect((await directory.compareAndSet({
+      namespace: moving.namespace,
+      expectedEpoch: 1,
+      expectedState: "active",
+      next: moving,
+    })).updated).toBe(true);
+    const recoveries: boolean[] = [];
+
+    const placement = await migrateDatafnNamespace({
+      directory,
+      namespace: moving.namespace,
+      targetRegionId: "us",
+      hooks: {
+        async quiesceSource(context) { recoveries.push(Boolean(context.recovery)); },
+        async drainPermissionDirectory() {},
+        async copyTenantData() {},
+        async validateTenantData() {},
+        async rebuildPermissionDirectory() {},
+        async warmTarget() {},
+        async resumeTarget() {},
+      },
+    });
+
+    expect(recoveries).toEqual([true]);
+    expect(placement).toMatchObject({ regionId: "us", epoch: 4, state: "active" });
+    expect(placement.migration).toBeUndefined();
+  });
+
+  it("rolls a failed move back without leaving false target-resume evidence", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:rollback",
+      regionId: "eu",
+    });
+    const rollbackSource = vi.fn();
+
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:rollback",
+      targetRegionId: "us",
+      hooks: {
+        async quiesceSource() {},
+        async drainPermissionDirectory() {},
+        async copyTenantData() { throw new Error("copy failed"); },
+        async validateTenantData() {},
+        async rebuildPermissionDirectory() {},
+        async warmTarget() {},
+        async resumeTarget() {},
+        rollbackSource,
+      },
+    })).rejects.toThrow("copy failed");
+
+    await expect(directory.get("tenant:rollback")).resolves.toMatchObject({
+      regionId: "eu",
+      epoch: 3,
+      state: "active",
+    });
+    expect((await directory.get("tenant:rollback"))?.migration).toBeUndefined();
+    expect(rollbackSource).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a same-region destination-only update instead of ignoring it", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:destination",
+      regionId: "eu",
+      destinationRef: "cell:v1",
+    });
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:destination",
+      targetRegionId: "eu",
+      targetDestinationRef: "cell:v2",
+      hooks: emptyMigrationHooks(),
+    })).rejects.toThrow("DATAFN_MIGRATION_DESTINATION_UPDATE_REQUIRES_MOVE");
+  });
 });
+
+function emptyMigrationHooks() {
+  return {
+    async quiesceSource() {},
+    async drainPermissionDirectory() {},
+    async copyTenantData() {},
+    async validateTenantData() {},
+    async rebuildPermissionDirectory() {},
+    async warmTarget() {},
+    async resumeTarget() {},
+  };
+}
 
 function createRedisTestStore(): ConditionalKVStoreAdapter {
   const values = new Map<string, string>();
@@ -489,9 +615,183 @@ describe("DataFn canonical gateway", () => {
       error: { code: "DATAFN_PLACEMENT_UNAVAILABLE", details: { retryable: true } },
     });
   });
+
+  it("reports namespace-provider outages as retryable availability failures", async () => {
+    const gateway = createDatafnGatewayRouter({
+      directory: createMemoryDatafnPlacementDirectory(),
+      deriveNamespace: () => { throw new Error("session store offline"); },
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch: async () => Response.json({ ok: true }) },
+      assertionSigner: { sign: () => "unused" },
+    });
+
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "DATAFN_CELL_UNAVAILABLE",
+        details: { retryable: true, executionStarted: false },
+      },
+    });
+  });
+
+  it("bounds request bodies before dispatch", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:bounded",
+      regionId: "eu",
+    });
+    const dispatch = vi.fn(async () => Response.json({ ok: true }));
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      maxBodyBytes: 5,
+      deriveNamespace: () => "tenant:bounded",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch },
+      assertionSigner: { sign: () => "unused" },
+    });
+
+    const response = await gateway.handle(new Request(
+      "https://data.example/datafn/mutation",
+      { method: "POST", body: "123456" },
+    ));
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "DATAFN_PAYLOAD_TOO_LARGE", details: { retryable: false } },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("marks a rejected dispatch as an ambiguous non-retryable outcome", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:ambiguous",
+      regionId: "eu",
+    });
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: () => "tenant:ambiguous",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch: async () => { throw new Error("connection reset"); } },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "DATAFN_CELL_UNAVAILABLE",
+        details: { retryable: false, executionStarted: true },
+      },
+    });
+  });
+
+  it("stops after one authenticated pre-execution retry", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:retry",
+      regionId: "eu",
+    });
+    const dispatch = vi.fn(async () => new DatafnRoutingError({
+      code: "DATAFN_REGION_MISMATCH",
+      message: "stale placement",
+      status: 409,
+      retryable: true,
+      internal: true,
+    }).toResponse());
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: () => "tenant:retry",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "DATAFN_ROUTING_RETRY_EXHAUSTED" },
+    });
+    expect(dispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the default cache TTL for malformed placement expiry", async () => {
+    const base = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: base,
+      namespace: "tenant:cache",
+      regionId: "eu",
+      cacheExpiresAt: "not-a-date",
+    });
+    const get = vi.fn(base.get.bind(base));
+    const gateway = createDatafnGatewayRouter({
+      directory: { ...base, get },
+      deriveNamespace: () => "tenant:cache",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch: async () => Response.json({ ok: true }) },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    await gateway.handle(new Request("https://data.example/datafn/query"));
+    await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(get).toHaveBeenCalledOnce();
+  });
 });
 
 describe("DataFn cell fencing", () => {
+  it("fails closed while a namespace migration is moving", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    const claimed = await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:moving",
+      regionId: "eu",
+    });
+    await directory.compareAndSet({
+      namespace: claimed.placement.namespace,
+      expectedEpoch: 1,
+      expectedState: "active",
+      next: {
+        ...claimed.placement,
+        epoch: 2,
+        state: "moving",
+        movingToRegionId: "us",
+        previousRegionId: "eu",
+      },
+    });
+
+    await expect(validateDatafnPlacement({
+      namespace: claimed.placement.namespace,
+      regionId: "eu",
+      runtime: { directory },
+      trustedInternal: true,
+    })).rejects.toMatchObject({
+      code: "DATAFN_NAMESPACE_MOVING",
+      status: 409,
+      executionStarted: false,
+    });
+  });
+
+  it("does not expose the gateway retry header to unauthenticated direct callers", async () => {
+    const error = new DatafnRoutingError({
+      code: "DATAFN_REGION_MISMATCH",
+      message: "wrong cell",
+      status: 409,
+      retryable: true,
+    });
+    expect(error.toResponse().headers.get("x-datafn-region-mismatch")).toBeNull();
+    const internal = new DatafnRoutingError({
+      code: "DATAFN_REGION_MISMATCH",
+      message: "wrong cell",
+      status: 409,
+      retryable: true,
+      internal: true,
+    });
+    expect(internal.toResponse().headers.get("x-datafn-region-mismatch")).toBe("1");
+  });
+
   it("rejects spoofed assertions before execution", async () => {
     const directory = createMemoryDatafnPlacementDirectory();
     await claimDatafnNamespacePlacement({

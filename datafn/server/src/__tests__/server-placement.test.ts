@@ -1,4 +1,5 @@
 import type { IndexedDirectoryRecord, IndexedDirectoryStoreAdapter } from "@superfunctions/db";
+import { memoryAdapter } from "@superfunctions/db/testing";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -35,8 +36,19 @@ describe("DataFn server placement integration", () => {
     });
     const authorize = vi.fn(() => true);
     const pluginAuthorize = vi.fn(() => true);
+    const database = memoryAdapter();
+    const create = vi.spyOn(database, "create");
     const server = await createDatafnServer({
-      schema: { resources: [] },
+      schema: {
+        version: 1,
+        resources: [{
+          name: "note",
+          version: 1,
+          fields: [{ name: "title", type: "string", required: false }],
+        }],
+        relations: [],
+      },
+      database,
       context: { namespace: "tenant:one" },
       namespaceProvider: {
         getNamespace: (context: { namespace: string }) => context.namespace,
@@ -67,6 +79,7 @@ describe("DataFn server placement integration", () => {
       });
       expect(pluginAuthorize).not.toHaveBeenCalled();
       expect(authorize).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
@@ -108,5 +121,118 @@ describe("DataFn server placement integration", () => {
     } finally {
       await server.close();
     }
+  });
+
+  it("rejects routed WebSocket clients that cannot be closed by the transport", async () => {
+    const placement = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: placement,
+      namespace: "tenant:one",
+      regionId: "eu",
+    });
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "eu",
+        directory: permissionDirectory(),
+        placement: { directory: placement },
+      })],
+    });
+    try {
+      await expect(server.websocketHandler.addRoutedClient(
+        { send: vi.fn() },
+        { namespace: "tenant:one" },
+      )).resolves.toBe(false);
+      expect(server.websocketHandler.fenceNamespace("tenant:one")).toBe(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps health status available without a tenant placement", async () => {
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      context: { namespace: "unclaimed" },
+      namespaceProvider: {
+        getNamespace: (context: { namespace: string }) => context.namespace,
+      },
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "eu",
+        directory: permissionDirectory(),
+        placement: { directory: createMemoryDatafnPlacementDirectory() },
+      })],
+    });
+    try {
+      const response = await server.router.handle(
+        new Request("https://cell.internal/datafn/status"),
+      );
+      expect(response.status).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("passes an unread request body to a custom route after placement resolution", async () => {
+    const placement = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: placement,
+      namespace: "tenant:plugin",
+      regionId: "eu",
+    });
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      database: memoryAdapter(),
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "eu",
+          directory: permissionDirectory(),
+          placement: { directory: placement },
+        }),
+        {
+          name: "body-route",
+          runsOn: ["server"],
+          routes: () => [{
+            method: "POST",
+            path: "/plugin/body",
+            meta: {
+              datafnPlacement: {
+                resolveNamespace: async (request: Request) => {
+                  const body = await request.json() as { namespace: string };
+                  return body.namespace;
+                },
+              },
+            },
+            handler: async (request: Request) => new Response(await request.text()),
+          }],
+        },
+      ] as any,
+    });
+    const body = JSON.stringify({ namespace: "tenant:plugin", value: "preserved" });
+    try {
+      const response = await server.router.handle(new Request(
+        "https://cell.internal/plugin/body",
+        { method: "POST", body },
+      ));
+      expect(await response.text()).toBe(body);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects assertion runtimes without a verifier and replay store at startup", () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    expect(() => datafnMultiRegionPlugin({
+      regionId: "eu",
+      directory: permissionDirectory(),
+      placement: { directory, requireRoutingAssertion: true },
+    })).toThrow("DATAFN_ROUTING_ASSERTION_VERIFIER_REQUIRED");
+    expect(() => datafnMultiRegionPlugin({
+      regionId: "eu",
+      directory: permissionDirectory(),
+      placement: {
+        directory,
+        assertionVerifier: { verify: () => { throw new Error("unused"); } },
+      },
+    })).toThrow("DATAFN_ROUTING_REPLAY_STORE_REQUIRED");
   });
 });

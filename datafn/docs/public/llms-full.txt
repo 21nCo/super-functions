@@ -12553,7 +12553,7 @@ This capability does not provide active-active writes or automatic failover to a
 
 ## Separate ownership from permission projections
 
-`DatafnPlacementDirectoryAdapter` is the authority for namespace ownership. Its records contain a namespace, owning `regionId`, monotonically increasing `epoch`, lifecycle state, update time, and optional cache/destination metadata. `putIfAbsent` must be linearizable for the first claim, and `compareAndSet` must fence moves by epoch and state.
+`DatafnPlacementDirectoryAdapter` is the authority for namespace ownership. Its records contain a namespace, owning `regionId`, monotonically increasing `epoch`, lifecycle state, update time, and optional cache/destination metadata. `get`, `putIfAbsent`, and `compareAndSet` must all be linearizable for a namespace; for DynamoDB-backed atomic KV stores, configure strong reads (`consistentRead: true`).
 
 The indexed permission directory is a separate projection. Permission-directory lag can affect sharing discovery, but it never changes a namespace's database owner. Migration must drain its outbox and rebuild the target projection explicitly.
 
@@ -12602,7 +12602,7 @@ const server = await createDatafnServer({
 });
 ```
 
-The server derives the trusted namespace from authenticated context, verifies the gateway assertion, and checks region + epoch before plugin authorization, application authorization, or a database/sync operation. Built-in HTTP, REST, sync, in-process search, public-link routes, and routed WebSocket handshakes use this fence.
+The server derives the trusted namespace from authenticated context, verifies the gateway assertion, and checks region + epoch before plugin authorization, application authorization, or a database/sync operation. The built-in payload containment guard may reject internal-resource references before this placement check; it does not perform route or application authorization. Built-in HTTP, REST, sync, in-process search, public-link routes, and routed WebSocket handshakes use this fence. Health status remains cell-local and does not require a tenant placement.
 
 Custom plugin routes must declare `meta.datafnPlacement.resolveNamespace`. The resolver either returns the authenticated namespace or an early `Response`. An undeclared custom route is rejected at startup in placement mode. Routes that are proven global and do not touch regional data may declare `datafnPlacement: "none"`.
 
@@ -12624,13 +12624,15 @@ const gateway = createDatafnGatewayRouter({
   },
   assertionSigner: assertions,
   dispatcher: {
+    // HTTP-origin example. Adapt this call when resolve() returns an RPC stub,
+    // service binding, or function reference instead of a fetch-capable target.
     dispatch: ({ target, request, assertion }) =>
       target.fetch(withDatafnRoutingAssertion(request, assertion)),
   },
 });
 ```
 
-The gateway strips caller-supplied internal headers, preserves the method, complete path and query string, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/request target, body presence and digest, audience, timestamps, and a nonce. Each cell atomically consumes that nonce through a shared replay store before execution. The in-memory replay store is for tests and one-process deployments only; production cells sharing an audience need a bounded durable store with atomic first claim. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference; it is never serialized into a public response.
+The gateway strips caller-supplied internal headers, preserves the method, complete path and query string, body, cookies, authorization, correlation/idempotency headers, and request ID, then signs namespace, region, epoch, method/request target, body presence and digest, audience, timestamps, and a nonce. Body hashing is streaming and bounded to 5 MiB by default; set `maxBodyBytes` on the gateway and placement runtime when a deployment uses another limit. Each cell atomically consumes that nonce through a shared replay store before execution. Assertion-enabled placement configuration fails at startup unless it supplies both a verifier and replay store. The in-memory replay store is for tests and one-process deployments only; production cells sharing an audience need a bounded durable store with atomic first claim. The destination resolver may return an HTTP origin, service binding, RPC stub, or function reference, and the dispatcher must adapt the request for that target type; destination details are never serialized into a public response.
 
 On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gateway invalidates its cache, re-resolves placement, and retries exactly once. It does not replay ambiguous timeouts or responses produced after execution began. Existing mutation IDs and idempotency keys remain authoritative for application-level retries.
 
@@ -12642,15 +12644,16 @@ On an authenticated, guaranteed pre-execution `DATAFN_REGION_MISMATCH`, the gate
 | `DATAFN_PLACEMENT_UNAVAILABLE` | Directory read failed | Retryable 503; a miss is not inferred |
 | `DATAFN_REGION_MISMATCH` | Wrong cell or stale epoch before execution | Internal metadata may trigger one gateway retry |
 | `DATAFN_NAMESPACE_MOVING` | The move fence is active | Retryable 409; no cell accepts new work |
-| `DATAFN_CELL_UNAVAILABLE` | Destination resolution/dispatch failed | Retryable 503; no random failover |
+| `DATAFN_CELL_UNAVAILABLE` | Destination resolution or dispatch failed | Pre-send resolution failures are retryable; ambiguous dispatch failures report `executionStarted: true` and are not retry-safe |
 | `DATAFN_ROUTING_ASSERTION_INVALID` | Spoofed, expired, or mismatched assertion | Non-retryable 401 |
 | `DATAFN_ROUTING_RETRY_EXHAUSTED` | The bounded re-resolution was insufficient | Retryable 409; operator review may be required |
+| `DATAFN_PAYLOAD_TOO_LARGE` | The gateway body limit was exceeded | Non-retryable 413 before dispatch |
 
 Only a verified internal assertion receives region/epoch hints. Public direct responses do not reveal internal topology.
 
 ## WebSocket and sync epochs
 
-Use `server.websocketHandler.addRoutedClient(client, authContext, handshakeRequest)` in placement mode. The handshake pins namespace, region, and epoch. The legacy synchronous `addClient` rejects connections while placement mode is enabled so an adapter cannot accidentally bypass the fence.
+Use `server.websocketHandler.addRoutedClient(client, authContext, handshakeRequest)` in placement mode. Routed clients must expose a transport-level `close` operation so fencing can deliver code `4510` before removing the session. The handshake pins namespace, region, and epoch. The legacy synchronous `addClient` rejects connections while placement mode is enabled so an adapter cannot accidentally bypass the fence.
 
 When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum epoch) on the source cell. Stale sessions close with code `4510` and reconnect through the canonical `wsUrl`. Mutation IDs, pull cursors, and reconcile checkpoints remain valid only if the migration copy/validation hooks preserve them; otherwise the application must fail explicitly and require a fresh clone.
 
@@ -12663,10 +12666,10 @@ When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum
 3. Drain permission-directory outbox work.
 4. Copy and validate tenant data, cursors, mutation IDs, and checkpoints.
 5. Rebuild the permission projection and warm the target.
-6. CAS the moving record to the target `active` placement at another epoch.
-7. Resume target writes.
+6. CAS the moving record to a target `active` placement with explicit `resume-target` recovery state at another epoch.
+7. Resume target writes, then clear the recovery state through one final epoch CAS.
 
-Failure before activation rolls the placement back through a new epoch and retains `previousRegionId` evidence. The source rollback hook runs only if that rollback CAS succeeds. `resumeTarget` must be idempotent: if activation succeeds but target resume fails, retrying the same migration invokes only the resume recovery hook. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
+Failure before activation rolls the placement back through a new epoch. The source rollback hook runs only if that rollback CAS succeeds. All pre-activation hooks must be idempotent because retrying a matching persisted `moving` state replays them safely. `resumeTarget` must also be idempotent: if activation succeeds but target resume fails, explicit recovery state makes retrying the same migration invoke only that hook before finalization. A same-region destination-only change is rejected instead of silently ignored. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
 
 ## Observability and operations
 
@@ -16657,33 +16660,32 @@ async mergeRecord(
   partial: Record<string, unknown>,
   options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
-  // Begin a real database transaction or optimistic-concurrency operation.
-  const existing = await this.getRecord(resource, id);
-  if (!existing && options?.ifMissing) {
-    // ifMissing is the complete create payload. Insert it atomically only if
-    // the row is still absent; do not merge partial over it.
-    const created = { ...options.ifMissing, id };
-    await this.upsertRecord(resource, created);
-    // Commit transaction
-    return created;
-  }
-  const merged = existing ? { ...existing } : { ...partial, id };
-
-  for (const [key, value] of Object.entries(partial)) {
-    if (
-      value !== null && typeof value === "object" && !Array.isArray(value) &&
-      merged[key] !== null && typeof merged[key] === "object" && !Array.isArray(merged[key])
-    ) {
-      merged[key] = { ...(merged[key] as object), ...(value as object) };
-    } else {
-      merged[key] = value;
+  // Adapt these transaction APIs to your backend. The isolation/row lock (or
+  // an equivalent compare-and-swap) is required; a plain read + upsert races.
+  return this.db.transaction({ isolation: "serializable" }, async (tx) => {
+    const existing = await tx.getRecordForUpdate(resource, id);
+    if (!existing && options?.ifMissing) {
+      const created = { ...options.ifMissing, id };
+      await tx.insertRecord(resource, created); // unique key rejects a second creator
+      return created;
     }
-  }
+    const merged = existing ? { ...existing } : { ...partial, id };
 
-  merged.id = id;
-  await this.upsertRecord(resource, merged);
-  // Commit transaction
-  return merged;
+    for (const [key, value] of Object.entries(partial)) {
+      if (
+        value !== null && typeof value === "object" && !Array.isArray(value) &&
+        merged[key] !== null && typeof merged[key] === "object" && !Array.isArray(merged[key])
+      ) {
+        merged[key] = { ...(merged[key] as object), ...(value as object) };
+      } else {
+        merged[key] = value;
+      }
+    }
+
+    merged.id = id;
+    await tx.upsertRecord(resource, merged);
+    return merged;
+  });
 }
 ```
 

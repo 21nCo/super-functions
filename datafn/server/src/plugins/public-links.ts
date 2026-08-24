@@ -197,6 +197,7 @@ export function createDatafnPublicLinksPlugin<TSession = unknown>(
       try {
         namespace = await resolvePublicLinkNamespaceFromDirectory(
           config.directory,
+          parsed.id,
           `${principalPrefix}${parsed.id}`,
         );
       } catch {
@@ -628,36 +629,22 @@ async function readPublicLinkTokenFromRequest(
 
 async function resolvePublicLinkNamespaceFromDirectory(
   directory: IndexedDirectoryStoreAdapter,
+  publicLinkId: string,
   principalId: string,
 ): Promise<string | null> {
-  const namespaces = new Set<string>();
-  const cursors = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const page = await directory.query({
-      index: "datafn.permission.principal",
-      value: principalId,
-      ...(cursor ? { cursor } : {}),
-    });
-    for (const record of page.records) {
-      try {
-        const grant = JSON.parse(record.value) as Record<string, unknown>;
-        if (
-          grant.principalId === principalId &&
-          typeof grant.resourceNs === "string" &&
-          grant.resourceNs.length > 0 &&
-          (grant.revokedAt === null || grant.revokedAt === undefined)
-        ) {
-          namespaces.add(grant.resourceNs);
-        }
-      } catch {
-      }
-    }
-    cursor = page.cursor;
-    if (cursor && cursors.has(cursor)) break;
-    if (cursor) cursors.add(cursor);
-  } while (cursor);
-  return namespaces.size === 1 ? [...namespaces][0] : null;
+  const record = await directory.get(publicLinkDirectoryKey(publicLinkId));
+  if (!record) return null;
+  try {
+    const link = JSON.parse(record.value) as Partial<DatafnPublicLinkRecord>;
+    return link.id === publicLinkId &&
+      link.principalId === principalId &&
+      typeof link.__ns === "string" &&
+      link.__ns.length > 0
+      ? link.__ns
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

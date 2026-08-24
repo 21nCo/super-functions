@@ -70,6 +70,7 @@ export type {
   DatafnGatewayRouterConfig,
   DatafnNamespaceMigrationContext,
   DatafnNamespaceMigrationHooks,
+  DatafnNamespaceMigrationState,
   DatafnNamespacePlacement,
   DatafnPlacementDirectoryAdapter,
   DatafnPlacementRuntimeConfig,

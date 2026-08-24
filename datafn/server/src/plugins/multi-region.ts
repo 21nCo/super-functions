@@ -44,6 +44,7 @@ export interface DatafnPermissionDirectoryGrant {
 export function datafnMultiRegionPlugin(
   config: DatafnMultiRegionPluginConfig,
 ): DatafnPlugin & DatafnMultiRegionRuntimeConfig {
+  if (config.placement) validatePlacementRuntime(config.placement);
   const runtime = {
     regionId: config.regionId,
     directory: resolveDirectory(config.directory),
@@ -55,6 +56,24 @@ export function datafnMultiRegionPlugin(
     [DATAFN_MULTI_REGION_CAPABILITY]: true,
     ...runtime,
   } as DatafnPlugin & DatafnMultiRegionRuntimeConfig;
+}
+
+function validatePlacementRuntime(placement: DatafnPlacementRuntimeConfig): void {
+  const assertionsEnabled = Boolean(
+    placement.requireRoutingAssertion || placement.assertionVerifier,
+  );
+  if (assertionsEnabled && !placement.assertionVerifier) {
+    throw new Error("DATAFN_ROUTING_ASSERTION_VERIFIER_REQUIRED");
+  }
+  if (assertionsEnabled && !placement.replayStore) {
+    throw new Error("DATAFN_ROUTING_REPLAY_STORE_REQUIRED");
+  }
+  if (
+    placement.maxBodyBytes !== undefined &&
+    (!Number.isSafeInteger(placement.maxBodyBytes) || placement.maxBodyBytes < 0)
+  ) {
+    throw new Error("DATAFN_ROUTING_MAX_BODY_BYTES_INVALID");
+  }
 }
 
 export const createDatafnMultiRegionPlugin = datafnMultiRegionPlugin;
@@ -254,6 +273,7 @@ export type {
   DatafnGatewayRouterConfig,
   DatafnNamespaceMigrationContext,
   DatafnNamespaceMigrationHooks,
+  DatafnNamespaceMigrationState,
   DatafnNamespacePlacement,
   DatafnPlacementDirectoryAdapter,
   DatafnPlacementRuntimeConfig,

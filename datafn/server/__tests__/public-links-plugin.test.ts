@@ -79,7 +79,7 @@ describe("DataFn public-links plugin", () => {
     const memoryDirectory = createMemoryIndexedDirectoryStore();
     const unavailableDirectory = {
       ...memoryDirectory,
-      async query() {
+      async get() {
         throw new Error("directory offline");
       },
     };
@@ -119,6 +119,65 @@ describe("DataFn public-links plugin", () => {
           },
         },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("routes public links from their direct directory record without the permission index", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const memoryDirectory = createMemoryIndexedDirectoryStore();
+    let permissionQueries = 0;
+    const directory = {
+      ...memoryDirectory,
+      async query(input: Parameters<typeof memoryDirectory.query>[0]) {
+        permissionQueries++;
+        return memoryDirectory.query(input);
+      },
+    };
+    await directory.put({
+      key: "datafn:publicLink:existing",
+      value: JSON.stringify({
+        id: "existing",
+        principalId: "public_link:existing",
+        __ns: "tenant:public-link",
+      }),
+      indexes: { "datafn.publicLink.principal": "public_link:existing" },
+    });
+    const placement = createMemoryDatafnPlacementDirectory();
+    await placement.putIfAbsent({
+      namespace: "tenant:public-link",
+      regionId: "region:public-links",
+      epoch: 1,
+      state: "active",
+      updatedAt: new Date().toISOString(),
+    });
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      publicLinks,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:public-links",
+        directory,
+        placement: { directory: placement },
+      })],
+    });
+
+    try {
+      const response = await post(
+        server,
+        "/datafn/public-links/resolve",
+        { token: "link:existing.secret" },
+      );
+      expect(response.status).toBe(404);
+      expect(permissionQueries).toBe(0);
     } finally {
       await server.close();
     }

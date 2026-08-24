@@ -85,7 +85,7 @@ interface DatafnServerConfig<TContext = any> {
   schema: DatafnSchema;
 
   /** Database adapter (e.g. drizzleAdapter, memoryAdapter) */
-  db?: Adapter;
+  database?: Adapter;
 
   /** Server-side plugins */
   plugins?: DatafnPlugin[];
@@ -101,6 +101,9 @@ interface DatafnServerConfig<TContext = any> {
       | "seed" | "clone" | "pull" | "push" | "reconcile",
     payload: unknown,
   ) => Promise<boolean> | boolean;
+
+  /** Static request context or a request-scoped context factory. */
+  context?: TContext | ((request: Request) => Promise<TContext> | TContext);
 
   /** Configurable limits */
   limits?: {
@@ -127,6 +130,12 @@ interface DatafnServerConfig<TContext = any> {
    */
   authContextProvider?: {
     getContext: (ctx: TContext) => AuthContext | Promise<AuthContext>;
+  };
+
+  /** Trusted namespace and optional actor derivation from request context. */
+  namespaceProvider?: {
+    getNamespace: (ctx: TContext) => string | Promise<string>;
+    getActorId?: (ctx: TContext) => string | undefined | Promise<string | undefined>;
   };
 
   /**

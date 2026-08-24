@@ -1325,7 +1325,7 @@ export async function createDatafnServer<TContext = any>(
           });
         }
 
-        if (multiRegionRuntime?.placement) {
+        if (multiRegionRuntime?.placement && action !== "status") {
           try {
             await validateDatafnPlacement({
               namespace: await extractNamespace(enrichedCtx),
@@ -1438,7 +1438,7 @@ export async function createDatafnServer<TContext = any>(
       ...route,
       handler: async (request, context) => {
         const assertionRequest = request.clone();
-        const resolution = await placement.resolveNamespace(request, context);
+        const resolution = await placement.resolveNamespace(request.clone(), context);
         if (resolution instanceof Response) return resolution;
         try {
           await validateDatafnPlacement({
@@ -1772,6 +1772,9 @@ export async function createDatafnServer<TContext = any>(
       addRoutedClient: async (client, authContext, handshakeRequest) => {
         if (!multiRegionRuntime?.placement) {
           return wsManager.addClient(client, authContext);
+        }
+        if (typeof client.close !== "function") {
+          return false;
         }
         try {
           const validated = await validateDatafnPlacement({
