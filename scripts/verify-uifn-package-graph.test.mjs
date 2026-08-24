@@ -47,7 +47,10 @@ test('stable-only graph does not require experimental workspaces', () => {
 
 test('Svelte import filtering accepts whitespace before a script end tag', () => {
   assert.deepEqual(
-    [...sourceImportSpecifiers('<script>import "@uifn/core";</script >', 'fixture.svelte')],
-    ['@uifn/core'],
+    [...sourceImportSpecifiers(
+      '<script>import "@uifn/core";</script\t\n ignored><script context="module">export { value } from "@uifn/dom";</script >',
+      'fixture.svelte',
+    )],
+    ['@uifn/core', '@uifn/dom'],
   );
 });

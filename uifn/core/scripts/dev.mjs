@@ -17,6 +17,7 @@ build.once('exit', (status) => {
     cwd: packageRoot,
     env: { ...process.env, UIFN_CORE_DEV_WATCH: '1' },
     stdio: 'inherit',
+    shell: process.platform === 'win32',
   });
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => watch.kill(signal));

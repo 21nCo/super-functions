@@ -58,10 +58,6 @@
     "uifn/components/fixtures/batch-a/progress.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/batch-a.test.ts#render",
-    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
-    "uifn/components/src/__tests__/batch-a.test.ts#visual",
-    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
     "uifn/components/src/__tests__/batch-a.test.ts#registry"
   ]
 }

@@ -550,6 +550,9 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
     update(next) {
       if (next.value !== undefined) actions.syncValue(next.value, next.syncSequence);
       const patchable: Partial<UIFnTextInputState> = {
+        ...(config.kind === 'editable' && editingControlled && next.editing !== undefined
+          ? { editing: next.editing }
+          : {}),
         ...(next.disabled !== undefined ? { disabled: next.disabled } : {}),
         ...(next.readOnly !== undefined ? { readOnly: next.readOnly } : {}),
         ...(next.required !== undefined ? { required: next.required } : {}),

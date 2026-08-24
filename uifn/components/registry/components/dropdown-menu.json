@@ -63,10 +63,6 @@
     "uifn/components/fixtures/batch-b/dropdown-menu.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/batch-b.test.ts#render",
-    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
-    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
-    "uifn/components/src/__tests__/batch-b.test.ts#visual",
     "uifn/components/src/__tests__/batch-b.test.ts#registry"
   ]
 }

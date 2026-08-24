@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { addArtifact } from './add';
-import { buildRegistry } from './build-registry';
+import { buildRegistry, type BuiltRegistry } from './build-registry';
 import { redactDiagnostic } from './diagnostics';
 import { diffInstalled } from './diff';
 import { planInstall } from './plan';
@@ -18,9 +18,12 @@ export function listArtifacts() {
   return { ok: registry.ok, catalogTrusted: registry.trust.ok, artifacts: registry.artifacts.map((manifest) => ({ name: manifest.name, version: manifest.version, canonicalVersion: manifest.canonicalVersion, slug: manifest.slug, kind: manifest.kind, status: manifest.status, license: manifest.license, frameworks: [...REQUIRED_FRAMEWORKS], lockKey: manifest.lockKey })), errors: registry.errors };
 }
 
-export function infoArtifact(options: { artifact: string; framework: string; registryRoot?: string }): { ok: true; name: string; version: string; canonicalVersion: string; slug: string; kind: RegistryManifest['kind']; framework: RegistryFramework; packageImport: string; sourceFiles: string[]; dependencies: unknown[]; lockKey: string; provenance: RegistryManifest['provenance'] } | { ok: false; error: { code: string; message: string } } {
+export function infoArtifact(options: { artifact: string; framework: string; registryRoot?: string }, registry: BuiltRegistry = buildRegistry()): { ok: true; name: string; version: string; canonicalVersion: string; slug: string; kind: RegistryManifest['kind']; framework: RegistryFramework; packageImport: string; sourceFiles: string[]; dependencies: unknown[]; lockKey: string; provenance: RegistryManifest['provenance'] } | { ok: false; error: { code: string; message: string } } {
   if (!REQUIRED_FRAMEWORKS.includes(options.framework as RegistryFramework)) return { ok: false, error: { code: 'UIFN_REGISTRY_UNSUPPORTED_FRAMEWORK', message: `Unsupported framework: ${options.framework}` } };
-  const registry = buildRegistry();
+  if (!registry.ok) {
+    const error = registry.errors[0] ?? { code: 'UIFN_REGISTRY_SIGNATURE_INVALID', message: 'The offline registry catalog is not trusted.' };
+    return { ok: false, error: { code: error.code, message: error.message } };
+  }
   const manifest = registry.bySlug[options.artifact] ?? registry.artifacts.find((candidate) => candidate.name.toLowerCase() === options.artifact.toLowerCase());
   if (!manifest) return { ok: false, error: { code: 'UIFN_REGISTRY_ARTIFACT_NOT_FOUND', message: `Unknown registry artifact: ${options.artifact}` } };
   const framework = options.framework as RegistryFramework;

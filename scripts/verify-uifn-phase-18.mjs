@@ -113,7 +113,7 @@ const commands = [
 ];
 if (traceRoot) {
   commands.push(
-    [node, ['scripts/run-uifn-phase-14-traces.mjs', '--output-dir', relative(traceRoot)]],
+    [node, ['scripts/run-uifn-phase-14-traces.mjs', '--output-dir', relative(traceRoot)], { UIFN_NPM_PATH: npm }],
     [node, ['scripts/verify-uifn-phase-14-parity.mjs', '--trace-dir', relative(traceRoot)]],
   );
 }

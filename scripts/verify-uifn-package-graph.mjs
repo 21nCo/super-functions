@@ -220,7 +220,7 @@ function validateSourceImports(repoRoot, node, allowedDependencies) {
 export function sourceImportSpecifiers(source, pathname) {
   const extension = path.extname(pathname);
   const executableSources = extension === '.svelte'
-    ? [...source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)].map((match) => match[1])
+    ? svelteScriptSources(source)
     : [source];
   const dependencies = new Set();
 
@@ -254,6 +254,55 @@ export function sourceImportSpecifiers(source, pathname) {
     visit(sourceFile);
   }
   return dependencies;
+}
+
+function svelteScriptSources(source) {
+  const lower = source.toLowerCase();
+  const scripts = [];
+  const isHtmlSpace = (character) => (
+    character === ' ' || character === '\t' || character === '\n'
+    || character === '\r' || character === '\f'
+  );
+  const tagEnd = (start) => {
+    let quote = null;
+    for (let index = start; index < source.length; index += 1) {
+      const character = source[index];
+      if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === '>') {
+        return index;
+      }
+    }
+    return -1;
+  };
+
+  let cursor = 0;
+  while (cursor < source.length) {
+    const open = lower.indexOf('<script', cursor);
+    if (open < 0) break;
+    const openBoundary = source[open + 7];
+    if (openBoundary !== '>' && !isHtmlSpace(openBoundary)) {
+      cursor = open + 7;
+      continue;
+    }
+    const openEnd = tagEnd(open + 7);
+    if (openEnd < 0) break;
+
+    let close = lower.indexOf('</script', openEnd + 1);
+    while (close >= 0) {
+      const closeBoundary = source[close + 8];
+      if (closeBoundary === '>' || isHtmlSpace(closeBoundary)) break;
+      close = lower.indexOf('</script', close + 8);
+    }
+    if (close < 0) break;
+    const closeEnd = tagEnd(close + 8);
+    if (closeEnd < 0) break;
+    scripts.push(source.slice(openEnd + 1, close));
+    cursor = closeEnd + 1;
+  }
+  return scripts;
 }
 
 export function runPackageGraphVerification(options = {}) {

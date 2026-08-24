@@ -225,6 +225,10 @@ describe('PHASE_09 selection and input vectors', () => {
     controlled.actions.submit();
     expect(controlled.state.editing).toBe(true);
     expect(changes).toEqual([false]);
+    controlled.update({ editing: false });
+    expect(controlled.state.editing).toBe(false);
+    controlled.update({ editing: true });
+    expect(controlled.state.editing).toBe(true);
     controlled.destroy();
   });
 

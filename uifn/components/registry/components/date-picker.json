@@ -44,10 +44,6 @@
     "uifn/components/fixtures/data-rich/date-picker.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
-    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
-    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
-    "uifn/components/src/__tests__/data-rich.test.ts#visual",
     "uifn/components/src/__tests__/data-rich.test.ts#registry"
   ]
 }

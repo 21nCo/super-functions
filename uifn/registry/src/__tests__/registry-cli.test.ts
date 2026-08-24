@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addArtifact } from '../add';
 import { buildRegistry } from '../build-registry';
-import { runCli } from '../cli';
+import { infoArtifact, runCli } from '../cli';
 import { diffInstalled } from '../diff';
 import { readLockFile } from '../lockfile';
 import { planInstall } from '../plan';
@@ -114,6 +114,10 @@ describe('TV-REG-001-P/N transaction-safe registry', () => {
     cycleArtifacts[0].artifactDependencies = [cycleArtifacts[1].slug];
     cycleArtifacts[1].artifactDependencies = [cycleArtifacts[0].slug];
     expect(buildRegistry(undefined, { catalogOverride: cycleArtifacts }).errors.map((error) => error.code)).toContain('UIFN_REGISTRY_DEPENDENCY_CYCLE');
+    expect(infoArtifact(
+      { artifact: 'button', framework: 'react' },
+      buildRegistry(undefined, { payloadOverride: 'tampered catalog' }),
+    )).toMatchObject({ ok: false, error: { code: 'UIFN_REGISTRY_SIGNATURE_INVALID' } });
     withProject((rootDir) => expect(planInstall({ rootDir, artifacts: ['button'], framework: 'vue' })).toMatchObject({ ok: false, error: { code: 'UIFN_REGISTRY_UNSUPPORTED_FRAMEWORK' } }));
   });
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect } from 'vitest';
@@ -7,10 +7,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 
 export function verifyRegistryBatch(batch: string): void {
   const registryRoot = path.join(repoRoot, 'uifn/components/registry/components');
-  const manifests = Object.values(import.meta.glob('../../registry/components/*.json', {
-    eager: true,
-    import: 'default',
-  })) as Array<{
+  const manifests = readdirSync(registryRoot)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => JSON.parse(readFileSync(path.join(registryRoot, name), 'utf8'))) as Array<{
     batch: string;
     slug: string;
     frameworks: Record<string, { supported: boolean; entry?: string; exportName?: string }>;

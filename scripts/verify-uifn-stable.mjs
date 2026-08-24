@@ -26,7 +26,7 @@ const checks = [
   [process.execPath, ['--test', 'scripts/verify-uifn-runtime-architecture.test.mjs']],
   [process.execPath, ['scripts/verify-uifn-runtime-architecture.mjs', '--require-dist']],
   [process.execPath, ['scripts/verify-uifn-core-node-matrix.mjs']],
-  [process.execPath, ['--test', 'scripts/verify-uifn-package-graph.test.mjs', 'scripts/verify-uifn-clean.test.mjs']],
+  [process.execPath, ['--test', 'scripts/verify-uifn-package-graph.test.mjs', 'scripts/verify-uifn-clean.test.mjs', 'scripts/uifn-catalog-csp.test.mjs']],
   ['npm', ['--workspace', '@uifn/components', 'run', 'test']],
   ['npm', ['--workspace', '@uifn/registry', 'run', 'test:stable']],
   [process.execPath, ['scripts/verify-uifn-consumers.mjs']],

@@ -76,4 +76,11 @@ describe('TV-GEN-001-P/N canonical delivery catalog', () => {
       signatureBase64: sign(null, Buffer.from(payload), privateKey).toString('base64'),
     })).toMatchObject({ ok: false, code: 'UIFN_REGISTRY_SIGNATURE_INVALID' });
   });
+
+  it('fails closed for malformed signature envelopes', () => {
+    expect(verifyRegistryCatalogSignature(REGISTRY_CATALOG_PAYLOAD_JSON, null as never)).toMatchObject({
+      ok: false,
+      code: 'UIFN_REGISTRY_SIGNATURE_INVALID',
+    });
+  });
 });
