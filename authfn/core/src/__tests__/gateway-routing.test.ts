@@ -28,6 +28,7 @@ describe('AuthFn canonical gateway routing', () => {
   it('claims placement only for explicitly approved first-use routes', async () => {
     const directory = createInMemoryAuthFnPlacementDirectory();
     const effects: string[] = [];
+    const events: Array<{ type: string; outcome?: string; metadata?: Record<string, unknown> }> = [];
     const cell = createCell('us-east-1', directory, effects);
     let allowInitialPlacement = false;
     let dispatches = 0;
@@ -42,7 +43,8 @@ describe('AuthFn canonical gateway routing', () => {
       async dispatch(target, request) {
         dispatches += 1;
         return target.handle(request);
-      }
+      },
+      onEvent: (event) => { events.push(event); }
     });
 
     const rejected = await gateway.handle(identityRequest());
@@ -58,6 +60,11 @@ describe('AuthFn canonical gateway routing', () => {
       epoch: 1,
       state: 'active'
     });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'authfn.routing.placement_claimed', outcome: 'success' }),
+      expect.objectContaining({ type: 'authfn.routing.forwarded', outcome: 'success' })
+    ]));
+    expect(events.every((event) => event.metadata?.outcome === undefined)).toBe(true);
   });
 
   it('routes by canonical placement, strips spoofed headers, and retries once before execution', async () => {
@@ -499,7 +506,11 @@ describe('AuthFn canonical runtime', () => {
     });
 
     expect((await router.handle(new Request('https://account.example.com/auth/environment'))).status).toBe(200);
-    expect((await router.handle(identityRequest())).status).toBe(503);
+    const unavailable = await router.handle(identityRequest());
+    expect(unavailable.status).toBe(503);
+    await expect(unavailable.json()).resolves.toMatchObject({
+      error: { code: 'AUTHFN_ROUTING_CELL_UNAVAILABLE', retryable: false }
+    });
     expect(executions).toBe(1);
   });
 

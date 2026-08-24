@@ -186,7 +186,6 @@ export class AuthFnRoutingCellUnavailableError extends AuthFnError {
   constructor(message: string = 'Regional AuthFn cell is unavailable', details?: Record<string, unknown>) {
     super('AUTHFN_ROUTING_CELL_UNAVAILABLE', message, {
       status: 503,
-      retryable: true,
       details
     });
     this.name = 'AuthFnRoutingCellUnavailableError';

@@ -88,7 +88,7 @@ export function authFnMultiRegionEnvironment(
               issuer: authority,
               baseUrl: authority
             });
-        if (cellRegionId && !selectedRegion) {
+        if (cellRegionId && resolvedConfig.regions?.length && !selectedRegion) {
           throw new AuthFnConfigError('Gateway cell region must be present in configured regions');
         }
         return {

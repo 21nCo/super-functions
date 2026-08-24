@@ -294,9 +294,6 @@ export function createAuthFnCanonicalGateway<TTarget>(
 
   function cachePlacement(identityKey: string, placement: AuthFnIdentityPlacement): void {
     const currentTime = now().getTime();
-    for (const [key, entry] of cache) {
-      if (entry.expiresAt <= currentTime) cache.delete(key);
-    }
     cache.delete(identityKey);
     while (cache.size >= placementCacheMaxEntries) {
       const oldest = cache.keys().next().value as string | undefined;
@@ -357,6 +354,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
     if (!placement) throw new AuthFnPlacementDirectoryUnavailableError('Placement claim returned no record');
     cachePlacement(identity.identityKey, placement);
     await emit(options, request, result.inserted ? 'authfn.routing.placement_claimed' : 'authfn.routing.placement_lookup', {
+      outcome: result.inserted ? 'success' : 'validated',
       regionId: placement.regionId,
       epoch: placement.epoch
     });
@@ -377,6 +375,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
     }
     if (!cell || cell.regionId !== placement.regionId) {
       await emit(options, request, 'authfn.routing.cell_unavailable', {
+        outcome: 'rejected',
         regionId: placement.regionId,
         epoch: placement.epoch
       });
@@ -410,12 +409,14 @@ export function createAuthFnCanonicalGateway<TTarget>(
       response = await options.dispatch(cell.target, routedRequest);
     } catch {
       await emit(options, request, 'authfn.routing.cell_unavailable', {
+        outcome: 'rejected',
         regionId: placement.regionId,
         epoch: placement.epoch
       });
       return jsonError(request, new AuthFnRoutingCellUnavailableError());
     }
     await emit(options, request, 'authfn.routing.forwarded', {
+      outcome: 'success',
       regionId: placement.regionId,
       epoch: placement.epoch,
       family: classifyAuthFnRoute(request, basePath).family,
@@ -440,6 +441,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
         && mismatch.receivedEpoch === placement.epoch
       ) {
         await emit(options, request, 'authfn.routing.mismatch', {
+          outcome: 'pre-execution',
           receivedRegionId: mismatch.receivedRegionId,
           receivedEpoch: mismatch.receivedEpoch,
           expectedRegionId: mismatch.expectedRegionId,
@@ -449,6 +451,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
         cache.delete(identity.identityKey);
         const refreshed = await resolveOrClaimPlacement(identity, request, true);
         await emit(options, request, 'authfn.routing.retry', {
+          outcome: 'started',
           regionId: refreshed.regionId,
           epoch: refreshed.epoch,
           attempt: 1
@@ -496,7 +499,7 @@ export function createAuthFnCanonicalGateway<TTarget>(
               : null;
         if (eventType) {
           await emit(options, request, eventType, {
-            errorCode: code,
+            errorType: code,
             outcome: 'rejected'
           });
         }
@@ -601,7 +604,7 @@ export function createAuthFnCellPlacementMiddleware(
         requestId: eventRequestId(request),
         regionId: cell.regionId,
         outcome: 'rejected',
-        metadata: { errorCode: code }
+        metadata: { errorType: code }
       });
       return jsonError(request, error);
     }
@@ -987,11 +990,12 @@ async function emit<TTarget>(
   metadata: Record<string, unknown>
 ): Promise<void> {
   try {
+    const { outcome, ...eventMetadata } = metadata;
     await options.onEvent?.({
       type,
       requestId: resolveRequestId(request),
-      outcome: typeof metadata.outcome === 'string' ? metadata.outcome : undefined,
-      metadata
+      outcome: typeof outcome === 'string' ? outcome : undefined,
+      metadata: eventMetadata
     });
   } catch {
     // Routing correctness must not depend on telemetry availability.

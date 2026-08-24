@@ -588,7 +588,6 @@ class RoutingCellUnavailableError(AuthFnError):
 
     code = "AUTHFN_ROUTING_CELL_UNAVAILABLE"
     status = 503
-    retryable = True
 
     def __init__(
         self,

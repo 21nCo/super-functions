@@ -17,6 +17,7 @@ from superfunctions.http import (
     Response,
     Route,
     RouteContext,
+    execute_route,
 )
 
 SUPERFUNCTIONS_ROUTE_ATTR = "__superfunctions_route__"
@@ -131,31 +132,6 @@ def _internal_error_response() -> FastAPIResponse:
     )
 
 
-async def _execute_route(
-    route: Route,
-    handler: Callable,
-    request: Any,
-    context: RouteContext,
-) -> Response:
-    next_handler: Any = handler
-    for middleware in reversed(route.middleware or []):
-        downstream = next_handler
-
-        async def invoke(
-            current_request: Any,
-            current_context: RouteContext,
-            middleware: Any = middleware,
-            downstream: Any = downstream,
-        ) -> Response:
-            return cast(
-                Response,
-                await middleware(current_request, current_context, downstream),
-            )
-
-        next_handler = invoke
-    return cast(Response, await next_handler(request, context))
-
-
 def create_handler(handler: Callable, route: Route):
     """
     Create a FastAPI handler from a superfunctions handler.
@@ -183,7 +159,7 @@ def create_handler(handler: Callable, route: Route):
             )
 
             # Call handler
-            response = await _execute_route(route, handler, adapted_request, context)
+            response = await execute_route(route, handler, adapted_request, context)
 
             # Convert response
             return to_fastapi_response(response)

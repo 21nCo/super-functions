@@ -303,6 +303,7 @@ def authfn_multi_region_plugin(config: Optional[MultiRegionPluginConfig] = None)
         ],
         routes_factory=lambda _ctx: [
             {"method": "POST", "path": "/regions/lookup"},
+            {"method": "GET", "path": "/environment"},
             {"method": "GET", "path": "/runtime"},
         ],
     )

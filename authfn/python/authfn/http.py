@@ -658,11 +658,21 @@ def _create_multi_region_routes(config: AuthFnConfig) -> List[Route]:
         ),
         Route(
             method=HttpMethod.GET,
+            path="/environment",
+            handler=_wrap_route(config, _handle_runtime),
+            meta=create_authfn_route_meta(
+                "getEnvironment",
+                "Get resolved runtime and cookie/provider overrides",
+                {"mode": "none"},
+            ),
+        ),
+        Route(
+            method=HttpMethod.GET,
             path="/runtime",
             handler=_wrap_route(config, _handle_runtime),
             meta=create_authfn_route_meta(
                 "getRuntime",
-                "Get resolved runtime and cookie/provider overrides",
+                "Get resolved runtime and cookie/provider overrides (compatibility alias)",
                 {"mode": "none"},
             ),
         ),

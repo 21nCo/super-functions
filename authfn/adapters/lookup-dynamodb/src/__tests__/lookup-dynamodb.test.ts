@@ -13,9 +13,9 @@ describe('@authfn/lookup-dynamodb', () => {
       tableName: 'authfn-placement',
       consistencyModel: 'single-writer-strong',
       writerRegion: 'us-east-1',
-      documentClientRegion: 'us-east-1',
       ttlAttributeName: false,
       documentClient: {
+        config: { region: async () => 'us-east-1' },
         async send(command: any) {
           const input = command.input as Record<string, any>;
           sent.push(input);
@@ -65,14 +65,29 @@ describe('@authfn/lookup-dynamodb', () => {
     } as any)).toThrow('single strongly consistent writer region');
   });
 
-  it('requires a verifiable single writer region', () => {
+  it('verifies the supplied document client actual region', async () => {
+    const directory = createDynamoDbIdentityPlacementDirectory({
+      tableName: 'authfn-placement',
+      consistencyModel: 'single-writer-strong',
+      writerRegion: 'us-east-1',
+      documentClient: {
+        config: { region: async () => 'eu-west-1' },
+        send: async () => ({})
+      } as any
+    });
+
+    await expect(directory.get('person:ada')).rejects.toThrow(
+      'documentClient region must match'
+    );
+  });
+
+  it('rejects a supplied document client whose region is not inspectable', () => {
     expect(() => createDynamoDbIdentityPlacementDirectory({
       tableName: 'authfn-placement',
       consistencyModel: 'single-writer-strong',
       writerRegion: 'us-east-1',
-      documentClientRegion: 'eu-west-1',
       documentClient: { send: async () => ({}) } as any
-    })).toThrow('documentClientRegion must match');
+    })).toThrow('must expose its configured region');
   });
 
   it('gets raw conditional KV values by composite lookup key', async () => {

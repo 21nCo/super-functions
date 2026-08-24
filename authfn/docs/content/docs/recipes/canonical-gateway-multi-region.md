@@ -32,6 +32,7 @@ import {
 } from '@authfn/multi-region';
 import { authFnPlugins, authfn } from 'authfn';
 import { createDynamoDbIdentityPlacementDirectory } from '@authfn/lookup-dynamodb';
+import type { Adapter } from '@superfunctions/db';
 
 const placementWriterRegion = process.env.AUTHFN_PLACEMENT_WRITER_REGION!;
 const placementDirectory = createDynamoDbIdentityPlacementDirectory({
@@ -68,10 +69,11 @@ const environment = authFnMultiRegionEnvironment({
   },
 });
 
-const app = authfn({
-  plugins: authFnPlugins(authFnMultiRegionPlugin()),
-});
-const cellServer = app.createServer({ database, environment });
+export function createRegionalCell(database: Adapter) {
+  return authfn({
+    plugins: authFnPlugins(authFnMultiRegionPlugin()),
+  }).createServer({ database, environment });
+}
 
 const gateway = createAuthFnCanonicalGateway({
   publicAuthority: 'https://account.example.com',
@@ -104,7 +106,7 @@ Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InM
 | API-key create/list/revoke/authenticate | Route. | Verified session handle or API-key routing prefix/MAC. | Validate before key lookup or mutation. |
 | Social OAuth start, GET/POST callback, disconnect, and native Apple start/complete | Route. | Verified session, OAuth state, or native handshake routing handle. | Keep issuer and callback canonical; validate before state consumption or identity mutation. |
 | Native/web handoff | Route. | Signed handoff routing handle. | Validate before code creation or exchange. |
-| Account deletion and email change | Route. | Verified session handle. | Validate before mutation. Account deletion tombstones placement before the delete and aborts if tombstoning fails; email-change flows must update placement with an application-level transaction/outbox protocol. |
+| Account deletion and email change | Route. | Verified session handle. | Validate routing before mutation. Account deletion tombstones placement only after the cascading delete succeeds, so a failed delete remains retryable; email-change flows must update placement with an application-level transaction/outbox protocol. |
 
 Do not fall back to a default cell for an established identity whose placement is absent. Initial placement is only for explicitly classified first-use flows. Public lookup responses must be identical for present and absent identities.
 

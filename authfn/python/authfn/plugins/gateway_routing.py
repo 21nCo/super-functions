@@ -210,9 +210,6 @@ class CanonicalGateway:
 
     def _cache_placement(self, identity_key: str, placement: IdentityPlacement) -> None:
         current = self.options.clock()
-        self._cache = {
-            key: value for key, value in self._cache.items() if value[1] > current
-        }
         self.invalidate(identity_key)
         while len(self._cache) >= self.options.placement_cache_max_entries:
             self._cache.pop(next(iter(self._cache)))
@@ -222,7 +219,9 @@ class CanonicalGateway:
         )
 
     async def handle(self, request: Any) -> Response:
-        buffered = await _buffer_request(request)
+        buffered = await _buffer_request(
+            request, fallback_authority=self.public_authority
+        )
         if _request_origin(buffered) != self.public_authority:
             return _error_response(buffered, ValidationError("AuthFn gateway accepts only its public authority"))
         classification = classify_route(buffered, self.base_path)
@@ -377,7 +376,9 @@ def create_cell_routing_middleware(
             context: Any,
             next_handler: Callable[..., Any],
         ) -> Response:
-            buffered = await _buffer_request(request, context)
+            buffered = await _buffer_request(
+                request, context, fallback_authority=routing.public_authority
+            )
             if classify_route(buffered, base_path).scope == "global":
                 return cast(Response, await next_handler(buffered, context))
             return _error_response(buffered, RoutingCellUnavailableError())
@@ -394,7 +395,9 @@ def create_cell_routing_middleware(
         raise ConfigError("AuthFn cell clock skew must be between 0 and 60 seconds")
 
     async def middleware(request: Any, context: Any, next_handler: Callable[..., Any]) -> Response:
-        buffered = await _buffer_request(request, context)
+        buffered = await _buffer_request(
+            request, context, fallback_authority=routing.public_authority
+        )
         if classify_route(buffered, base_path).scope == "global":
             return cast(Response, await next_handler(buffered, context))
         try:
@@ -593,7 +596,12 @@ class _BufferedRequest:
         return json.loads(await self.text()) if self._body else {}
 
 
-async def _buffer_request(request: Any, context: Any = None) -> _BufferedRequest:
+async def _buffer_request(
+    request: Any,
+    context: Any = None,
+    *,
+    fallback_authority: Optional[str] = None,
+) -> _BufferedRequest:
     if isinstance(request, _BufferedRequest):
         return _BufferedRequest(request.method, request.url, dict(request.headers), request._body)
     body_method = getattr(request, "body", None)
@@ -609,11 +617,20 @@ async def _buffer_request(request: Any, context: Any = None) -> _BufferedRequest
     request_url = getattr(request, "url", None) or getattr(context, "url", None)
     if not request_url:
         path = str(getattr(request, "path", "/"))
-        query = getattr(request, "query_params", {}) or {}
-        host = _header(headers, "x-forwarded-host") or _header(headers, "host") or "account.example.com"
-        scheme = _header(headers, "x-forwarded-proto") or "https"
-        request_url = f"{scheme}://{host}{path}"
-        encoded_query = urlencode(query, doseq=True)
+        if fallback_authority:
+            request_url = f"{_normalize_authority(fallback_authority)}{path}"
+        else:
+            host = _header(headers, "x-forwarded-host") or _header(headers, "host")
+            if not host:
+                raise ConfigError(
+                    "URL-less AuthFn requests require a public authority or trusted host header"
+                )
+            scheme = _header(headers, "x-forwarded-proto") or "https"
+            request_url = f"{scheme}://{host}{path}"
+        encoded_query = _raw_query_string(request, context)
+        if encoded_query is None:
+            query = getattr(request, "query_params", {}) or {}
+            encoded_query = urlencode(query, doseq=True)
         if encoded_query:
             request_url = f"{request_url}?{encoded_query}"
     return _BufferedRequest(
@@ -622,6 +639,26 @@ async def _buffer_request(request: Any, context: Any = None) -> _BufferedRequest
         headers=headers,
         _body=bytes(body or b""),
     )
+
+
+def _raw_query_string(request: Any, context: Any = None) -> Optional[str]:
+    for source in (request, context):
+        if source is None:
+            continue
+        for attribute in ("raw_query_string", "query_string"):
+            value = getattr(source, attribute, None)
+            if isinstance(value, bytes):
+                return value.decode("ascii")
+            if isinstance(value, str):
+                return value.lstrip("?")
+        scope = getattr(source, "scope", None)
+        if isinstance(scope, dict):
+            value = scope.get("query_string")
+            if isinstance(value, bytes):
+                return value.decode("ascii")
+            if isinstance(value, str):
+                return value.lstrip("?")
+    return None
 
 
 def _strip_routing_headers(request: _BufferedRequest) -> _BufferedRequest:

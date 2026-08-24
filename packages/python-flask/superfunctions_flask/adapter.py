@@ -16,6 +16,7 @@ from superfunctions.http import (
     Response,
     Route,
     RouteContext,
+    execute_route,
 )
 
 SUPERFUNCTIONS_ROUTE_ATTR = "__superfunctions_route__"
@@ -169,31 +170,6 @@ def _create_request_context(path_params: Dict[str, Any]) -> tuple[FlaskRequestAd
     return adapted_request, context
 
 
-async def _execute_route(
-    route: Optional[Route],
-    handler: Callable,
-    request: Any,
-    context: RouteContext,
-) -> Response:
-    next_handler: Any = handler
-    for middleware in reversed((route.middleware or []) if route else []):
-        downstream = next_handler
-
-        async def invoke(
-            current_request: Any,
-            current_context: RouteContext,
-            middleware: Any = middleware,
-            downstream: Any = downstream,
-        ) -> Response:
-            return cast(
-                Response,
-                await middleware(current_request, current_context, downstream),
-            )
-
-        next_handler = invoke
-    return cast(Response, await next_handler(request, context))
-
-
 def _invoke_flask_handler(
     handler: Callable,
     path_params: Dict[str, Any],
@@ -204,7 +180,7 @@ def _invoke_flask_handler(
     try:
         adapted_request, context = _create_request_context(path_params)
         response = _run_async_handler(
-            lambda: _execute_route(route, handler, adapted_request, context)
+            lambda: execute_route(route, handler, adapted_request, context)
         )
         return to_flask_response(response)
     except HttpError as error:

@@ -35,8 +35,6 @@ export interface DynamoDbIdentityPlacementDirectoryOptions extends DynamoDbRegio
   consistencyModel: 'single-writer-strong';
   /** Region that owns every authoritative placement write. */
   writerRegion: string;
-  /** Required with a supplied documentClient so its fixed region can be verified. */
-  documentClientRegion?: string;
 }
 
 export class AuthFnDynamoDbLookupStoreError extends Error {
@@ -68,7 +66,7 @@ export function createDynamoDbRegionLookupStore(
       }));
       return readValue(result.Item, ttlAttributeName, now);
     } catch (error) {
-      throw new AuthFnDynamoDbLookupStoreError('get', error);
+      throwLookupStoreError('get', error);
     }
   };
 
@@ -102,7 +100,7 @@ export function createDynamoDbRegionLookupStore(
           existing: existing ?? undefined
         };
       }
-      throw new AuthFnDynamoDbLookupStoreError('setIfAbsent', error);
+      throwLookupStoreError('setIfAbsent', error);
     }
   };
 
@@ -116,7 +114,7 @@ export function createDynamoDbRegionLookupStore(
           Item: toItem(input, ttlAttributeName, now)
         }));
       } catch (error) {
-        throw new AuthFnDynamoDbLookupStoreError('set', error);
+        throwLookupStoreError('set', error);
       }
     },
 
@@ -155,7 +153,7 @@ export function createDynamoDbRegionLookupStore(
             existing: existing ?? undefined
           };
         }
-        throw new AuthFnDynamoDbLookupStoreError('compareAndSet', error);
+        throwLookupStoreError('compareAndSet', error);
       }
     },
 
@@ -166,7 +164,7 @@ export function createDynamoDbRegionLookupStore(
           Key: itemKey(key)
         }));
       } catch (error) {
-        throw new AuthFnDynamoDbLookupStoreError('delete', error);
+        throwLookupStoreError('delete', error);
       }
     }
   };
@@ -184,13 +182,7 @@ export function createDynamoDbIdentityPlacementDirectory(
   if (!options.writerRegion?.trim()) {
     throw new AuthFnConfigError('DynamoDB identity placement requires an explicit writerRegion');
   }
-  if (options.documentClient) {
-    if (options.documentClientRegion !== options.writerRegion) {
-      throw new AuthFnConfigError(
-        'DynamoDB placement documentClientRegion must match the single writerRegion'
-      );
-    }
-  } else if (options.region !== options.writerRegion) {
+  if (!options.documentClient && options.region !== options.writerRegion) {
     throw new AuthFnConfigError(
       'DynamoDB placement client region must match the single writerRegion'
     );
@@ -198,13 +190,53 @@ export function createDynamoDbIdentityPlacementDirectory(
   const {
     consistencyModel: _consistencyModel,
     writerRegion: _writerRegion,
-    documentClientRegion: _documentClientRegion,
     ...lookupOptions
   } = options;
+  const documentClient = options.documentClient
+    ? createRegionVerifiedDocumentClient(options.documentClient, options.writerRegion)
+    : undefined;
   return createStoreBackedAuthFnPlacementDirectory(createDynamoDbRegionLookupStore({
     ...lookupOptions,
+    documentClient,
     consistentRead: true
   }));
+}
+
+function createRegionVerifiedDocumentClient(
+  client: DynamoDBDocumentClient,
+  writerRegion: string
+): DynamoDBDocumentClient {
+  const configuredRegion = (
+    client as DynamoDBDocumentClient & {
+      config?: { region?: string | (() => string | Promise<string>) }
+    }
+  ).config?.region;
+  if (!configuredRegion) {
+    throw new AuthFnConfigError(
+      'DynamoDB placement documentClient must expose its configured region'
+    );
+  }
+  let validation: Promise<void> | undefined;
+  return {
+    async send(command: Parameters<DynamoDBDocumentClient['send']>[0]) {
+      validation ??= Promise.resolve(
+        typeof configuredRegion === 'function' ? configuredRegion() : configuredRegion
+      ).then((actualRegion) => {
+        if (actualRegion !== writerRegion) {
+          throw new AuthFnConfigError(
+            'DynamoDB placement documentClient region must match the single writerRegion'
+          );
+        }
+      });
+      await validation;
+      return client.send(command as never);
+    }
+  } as unknown as DynamoDBDocumentClient;
+}
+
+function throwLookupStoreError(operation: string, error: unknown): never {
+  if (error instanceof AuthFnConfigError) throw error;
+  throw new AuthFnDynamoDbLookupStoreError(operation, error);
 }
 
 function itemKey(key: string): Record<string, string> {

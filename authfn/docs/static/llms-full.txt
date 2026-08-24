@@ -2350,7 +2350,7 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_REGION_MISMATCH` | 409 | no | This request must continue against a different region authority. The response `details.redirectTo` says where. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | The region lookup yielded no record for the given identifier. |
 | `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
-| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | yes | The selected private cell target was absent or dispatch failed. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. A generic retry is unsafe because execution may already have started. |
 | `AUTHFN_SESSION_EXPIRED` | 401 | no | Session past `expiresAt`. |
 | `AUTHFN_SESSION_REVOKED` | 401 | no | Session has `revokedAt` set. |
 | `AUTHFN_UNAUTHENTICATED` | 401 | no | No session at all. |
@@ -2392,7 +2392,8 @@ The first-party SDKs throw a typed `AuthFnError` so you can `try`/`catch` and br
 - `AUTHFN_INTERNAL_ERROR` — kernel-side glitch; safe to retry once with backoff.
 - `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` — retry after the canonical placement coordinator recovers.
 - `AUTHFN_PLACEMENT_MOVING` — retry after the fenced identity move completes or rolls back.
-- `AUTHFN_ROUTING_CELL_UNAVAILABLE` — retry after the owning regional cell or internal transport recovers.
+
+`AUTHFN_ROUTING_CELL_UNAVAILABLE` is deliberately not retryable: an internal transport failure can happen after the cell starts executing. Retry only when a signed mismatch proves `executionStarted: false`, or when the operation has its own idempotency guarantee.
 
 Everything else is `retryable: false` — retrying without changing the input will produce the same error.
 
@@ -2793,7 +2794,7 @@ interface AuthFnEvent {
 | `authfn.routing.placement_claimed` | A first-use placement claim won and established the canonical owner. |
 | `authfn.routing.forwarded` | The gateway dispatched to a private cell. |
 | `authfn.routing.mismatch` | A cell proved a stale routing assertion before side effects. |
-| `authfn.routing.retry` | The gateway refreshed placement and used its single retry. |
+| `authfn.routing.retry` | The gateway refreshed placement and started its single retry. |
 | `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. |
 | `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
@@ -6005,7 +6006,7 @@ interface ConditionalKVStoreAdapter {
   }>;
   compareAndSet?(input: {
     key: string;
-    expectedValue: string;
+    expected: string | null;
     value: string;
     ttlSeconds?: number;
   }): Promise<{ updated: boolean; existing?: string }>;
@@ -8134,6 +8135,7 @@ import {
 } from '@authfn/multi-region';
 import { authFnPlugins, authfn } from 'authfn';
 import { createDynamoDbIdentityPlacementDirectory } from '@authfn/lookup-dynamodb';
+import type { Adapter } from '@superfunctions/db';
 
 const placementWriterRegion = process.env.AUTHFN_PLACEMENT_WRITER_REGION!;
 const placementDirectory = createDynamoDbIdentityPlacementDirectory({
@@ -8170,10 +8172,11 @@ const environment = authFnMultiRegionEnvironment({
   },
 });
 
-const app = authfn({
-  plugins: authFnPlugins(authFnMultiRegionPlugin()),
-});
-const cellServer = app.createServer({ database, environment });
+export function createRegionalCell(database: Adapter) {
+  return authfn({
+    plugins: authFnPlugins(authFnMultiRegionPlugin()),
+  }).createServer({ database, environment });
+}
 
 const gateway = createAuthFnCanonicalGateway({
   publicAuthority: 'https://account.example.com',
@@ -8206,7 +8209,7 @@ Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InM
 | API-key create/list/revoke/authenticate | Route. | Verified session handle or API-key routing prefix/MAC. | Validate before key lookup or mutation. |
 | Social OAuth start, GET/POST callback, disconnect, and native Apple start/complete | Route. | Verified session, OAuth state, or native handshake routing handle. | Keep issuer and callback canonical; validate before state consumption or identity mutation. |
 | Native/web handoff | Route. | Signed handoff routing handle. | Validate before code creation or exchange. |
-| Account deletion and email change | Route. | Verified session handle. | Validate before mutation. Account deletion tombstones placement before the delete and aborts if tombstoning fails; email-change flows must update placement with an application-level transaction/outbox protocol. |
+| Account deletion and email change | Route. | Verified session handle. | Validate routing before mutation. Account deletion tombstones placement only after the cascading delete succeeds, so a failed delete remains retryable; email-change flows must update placement with an application-level transaction/outbox protocol. |
 
 Do not fall back to a default cell for an established identity whose placement is absent. Initial placement is only for explicitly classified first-use flows. Public lookup responses must be identical for present and absent identities.
 
@@ -9580,7 +9583,7 @@ The table below covers every code the kernel emits across all plugins.
 | `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
 | `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect started. |
 | `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
-| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | yes | The selected private cell target was absent or dispatch failed. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. Dispatch failure may occur after side effects, so generic retries are unsafe. |
 | `AUTHFN_DELIVERY_FAILED` | 502 | yes | OTP/email delivery provider returned an error. |
 | `AUTHFN_PLUGIN_ABORTED` | 400 | no | A `before*` hook threw `AuthFnPluginAbortedError` to reject the operation. `details.reason`. |
 | `AUTHFN_CONFLICT` | 409 | no | Duplicate primary email, duplicate OAuth identity, etc. |
@@ -9674,14 +9677,14 @@ type AuthFnEvent = {
 | `authfn.2fa.challenged` | A 2FA challenge was completed (or failed). | success / failure | `errorCode` |
 | `authfn.region.lookup` | A region lookup was performed. | success | `regionId`, `cacheHit` |
 | `authfn.region.lookup.conflict` | Two regions raced to claim the same identifier. | failure | `loserRegionId` |
-| `authfn.routing.placement_lookup` | Gateway/cell placement was read or an identity-scoped request was rejected before execution. | validated / rejected | `regionId`, `epoch`, `errorCode` |
+| `authfn.routing.placement_lookup` | Gateway/cell placement was read or an identity-scoped request was rejected before execution. | validated / rejected | `regionId`, `epoch`, `errorType` |
 | `authfn.routing.placement_claimed` | A first-use identity placement was atomically claimed. | success | `regionId`, `epoch` |
 | `authfn.routing.forwarded` | The gateway dispatched to the selected private cell. | success | `regionId`, `epoch`, `family`, `attempt` |
 | `authfn.routing.mismatch` | A cell proved a stale region/epoch before execution. | pre-execution | `receivedRegionId`, `receivedEpoch`, `expectedRegionId`, `expectedEpoch`, `executionStarted` |
-| `authfn.routing.retry` | The gateway refreshed placement and began its one allowed retry. | success | `regionId`, `epoch`, `attempt` |
-| `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorCode` |
-| `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorCode` |
-| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected | `regionId`, `epoch`, `errorCode` |
+| `authfn.routing.retry` | The gateway refreshed placement and began its one allowed retry. | started | `regionId`, `epoch`, `attempt` |
+| `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorType` |
+| `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorType` |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected | `regionId`, `epoch`, `errorType` |
 | `authfn.handoff.started` | A handoff code was issued. | success | `kind` (`native` / `web`) |
 | `authfn.handoff.exchanged` | A handoff code was exchanged for a session. | success | `kind` |
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |

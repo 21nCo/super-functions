@@ -71,7 +71,7 @@ interface ConditionalKVStoreAdapter {
   }>;
   compareAndSet?(input: {
     key: string;
-    expectedValue: string;
+    expected: string | null;
     value: string;
     ttlSeconds?: number;
   }): Promise<{ updated: boolean; existing?: string }>;

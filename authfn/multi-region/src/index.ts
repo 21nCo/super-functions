@@ -146,20 +146,6 @@ export function authFnMultiRegionPlugin(
           regionId: alignment.regionId ?? readOptionalString(input.regionId)
         };
       },
-      beforeAccountDelete: async (ctx, input) => {
-        const authConfig = ctx.config;
-        const primaryEmail = readOptionalString(input.primaryEmail);
-        if (!authConfig || !primaryEmail) return input;
-        const routing = getMultiRegionPluginConfig(authConfig)?.routing;
-        if (routing?.mode !== 'gateway') return input;
-        const placementDirectory = routing.placementDirectory;
-        const identityKeyForIdentifier = routing.identityKeyForIdentifier;
-        await tombstoneAuthFnIdentityPlacement(
-          placementDirectory,
-          identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
-        );
-        return input;
-      },
       afterAccountDelete: async (ctx, result) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(result.primaryEmail);
@@ -167,6 +153,14 @@ export function authFnMultiRegionPlugin(
           return;
         }
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+
+        if (pluginConfig.routing?.mode === 'gateway') {
+          const routing = pluginConfig.routing;
+          await tombstoneAuthFnIdentityPlacement(
+            routing.placementDirectory,
+            routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+          );
+        }
 
         await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
       }
@@ -225,9 +219,9 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
           await emitAuthEvent(ctx.config, {
             type: 'authfn.region.lookup',
             requestId: eventRequestId(request),
+            regionId: runtime.regionId,
             outcome: 'local',
             metadata: {
-              identifier,
               authority,
               continueLocally: true
             }
@@ -251,7 +245,6 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
           regionId: lookup.regionId,
           outcome: lookup.continueLocally ? 'local' : 'redirect',
           metadata: {
-            identifier: lookup.identifier,
             authority: lookup.authority,
             continueLocally: lookup.continueLocally
           }

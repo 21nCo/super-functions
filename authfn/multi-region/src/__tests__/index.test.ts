@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { AuthFnRuntimeConfig } from 'authfn';
 import {
   authFnMultiRegionEnvironment,
@@ -27,7 +27,7 @@ function gatewayRuntime(directory = createInMemoryAuthFnPlacementDirectory()) {
 }
 
 describe('authFnMultiRegionPlugin gateway mode', () => {
-  it('rejects a cell region that is absent from the configured regions', () => {
+  it('rejects a cell region that is absent from an explicit configured-region catalog', () => {
     const directory = createInMemoryAuthFnPlacementDirectory();
     const environment = authFnMultiRegionEnvironment({
       regions: [{ regionId: 'us-east-1', authority: 'https://us.internal.example.com' }],
@@ -52,7 +52,31 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     ))).toThrow('Gateway cell region must be present in configured regions');
   });
 
-  it('tombstones placement before account deletion and fails closed on directory errors', async () => {
+  it('uses the explicit gateway cell region when no configured-region catalog is supplied', () => {
+    const directory = createInMemoryAuthFnPlacementDirectory();
+    const environment = authFnMultiRegionEnvironment({
+      routing: {
+        mode: 'gateway',
+        publicAuthority: 'https://account.example.com',
+        placementDirectory: directory,
+        identityKeyForIdentifier: (identifier) => `email:${identifier}`,
+        cell: {
+          regionId: 'eu-west-1',
+          audience: 'cell:eu-west-1',
+          keyring: {
+            active: { keyId: 'routing-2026-08', secret: 'routing-test-secret-with-enough-entropy' }
+          },
+          replayStore: { claim: async () => true }
+        }
+      }
+    });
+
+    expect(environment.resolve(new Request(
+      'https://eu.internal.example.com/auth/environment'
+    )).regionId).toBe('eu-west-1');
+  });
+
+  it('tombstones placement only after account deletion succeeds', async () => {
     const { config, directory, plugin } = gatewayRuntime();
     await directory.putIfAbsent({
       identityKey: 'email:ada@example.com',
@@ -62,9 +86,9 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
       updatedAt: '2026-08-24T00:00:00.000Z'
     });
 
-    await plugin.hooks?.beforeAccountDelete?.(
+    await plugin.hooks?.afterAccountDelete?.(
       { config },
-      { userId: 'user_1', primaryEmail: ' ADA@example.com ' }
+      { deleted: true, userId: 'user_1', primaryEmail: ' ADA@example.com ', counts: {} }
     );
 
     await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
@@ -72,21 +96,7 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
       epoch: 4
     });
 
-    const failing = gatewayRuntime({
-      get: vi.fn(async () => ({
-        identityKey: 'email:bea@example.com',
-        regionId: 'us-east-1',
-        epoch: 1,
-        state: 'active' as const,
-        updatedAt: '2026-08-24T00:00:00.000Z'
-      })),
-      putIfAbsent: vi.fn(),
-      compareAndSet: vi.fn(async () => { throw new Error('directory unavailable'); })
-    });
-    await expect(failing.plugin.hooks?.beforeAccountDelete?.(
-      { config: failing.config },
-      { userId: 'user_2', primaryEmail: 'bea@example.com' }
-    )).rejects.toThrow('directory unavailable');
+    expect(plugin.hooks?.beforeAccountDelete).toBeUndefined();
   });
 
   it('returns the canonical authority without exposing placement or accepting malformed identifiers', async () => {
@@ -108,13 +118,14 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
         headers: { 'content-type': 'application/json' }
       }
     ), {} as never);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       ok: true,
       data: {
         identifier: 'ada@example.com',
         authority: 'https://account.example.com',
         continueLocally: true
-      }
+      },
+      requestId: expect.any(String)
     });
 
     await expect(lookup!.handler(new Request(

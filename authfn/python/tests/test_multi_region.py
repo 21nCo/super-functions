@@ -25,6 +25,7 @@ from authfn import (
     AuthFnConfig,
     RegionMismatchError,
     RegionNotFoundError,
+    ValidationError,
 )
 from authfn.plugins import gateway_routing
 from authfn.plugins.gateway_routing import (
@@ -191,6 +192,7 @@ async def test_multi_region_plugin_schema_routes_and_service_behaviour() -> None
     assert {table["modelName"] for table in schema} == {"region_profiles"}
     assert {(route["method"], route["path"]) for route in routes} == {
         ("POST", "/regions/lookup"),
+        ("GET", "/environment"),
         ("GET", "/runtime"),
     }
 
@@ -423,6 +425,7 @@ async def test_canonical_gateway_retries_stale_placement_before_side_effects() -
     )
     assert unavailable.status == 503
     assert unavailable.body["error"]["code"] == "AUTHFN_ROUTING_CELL_UNAVAILABLE"
+    assert unavailable.body["error"]["retryable"] is False
     assert "private binding secret" not in unavailable.body["error"]["message"]
 
 
@@ -490,7 +493,7 @@ def test_gateway_runtime_rejects_unknown_cell_and_preserves_empty_canonical_oaut
         AuthFnConfig(database=db, namespace="authfn", runtime=RuntimeResolver()),
         config,
     )
-    with pytest.raises(Exception, match="Gateway cell region"):
+    with pytest.raises(ValidationError, match="Gateway cell region"):
         service.resolve_runtime(Request("https://internal.example/auth/runtime"))
 
     config.routing.cell_region_id = "eu-west-1"
@@ -553,6 +556,36 @@ async def test_cell_buffering_preserves_context_url_and_query() -> None:
         return Response(status=200, body={"ok": True})
 
     response = await middleware(AdapterRequest(), context, execute)
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_url_less_cell_request_uses_public_authority_and_preserves_raw_query() -> None:
+    middleware = create_cell_routing_middleware(
+        CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://login.example.com",
+            placement_directory=InMemoryIdentityPlacementDirectory(),
+        )
+    )
+
+    class AdapterRequest:
+        method = "GET"
+        path = "/auth/environment"
+        headers: Dict[str, str] = {}
+        query_params = {"token": ["a/b", "a b"], "x": ""}
+        scope = {"query_string": b"token=a%2Fb&token=a+b&x="}
+
+        async def body(self) -> bytes:
+            return b""
+
+    async def execute(request: Any, _context: Any) -> Response:
+        assert request.url == (
+            "https://login.example.com/auth/environment?token=a%2Fb&token=a+b&x="
+        )
+        return Response(status=200, body={"ok": True})
+
+    response = await middleware(AdapterRequest(), None, execute)
     assert response.status == 200
 
 

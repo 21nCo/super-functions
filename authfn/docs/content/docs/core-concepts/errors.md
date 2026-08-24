@@ -56,7 +56,7 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_REGION_MISMATCH` | 409 | no | This request must continue against a different region authority. The response `details.redirectTo` says where. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | The region lookup yielded no record for the given identifier. |
 | `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
-| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | yes | The selected private cell target was absent or dispatch failed. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. A generic retry is unsafe because execution may already have started. |
 | `AUTHFN_SESSION_EXPIRED` | 401 | no | Session past `expiresAt`. |
 | `AUTHFN_SESSION_REVOKED` | 401 | no | Session has `revokedAt` set. |
 | `AUTHFN_UNAUTHENTICATED` | 401 | no | No session at all. |
@@ -98,7 +98,8 @@ The first-party SDKs throw a typed `AuthFnError` so you can `try`/`catch` and br
 - `AUTHFN_INTERNAL_ERROR` — kernel-side glitch; safe to retry once with backoff.
 - `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` — retry after the canonical placement coordinator recovers.
 - `AUTHFN_PLACEMENT_MOVING` — retry after the fenced identity move completes or rolls back.
-- `AUTHFN_ROUTING_CELL_UNAVAILABLE` — retry after the owning regional cell or internal transport recovers.
+
+`AUTHFN_ROUTING_CELL_UNAVAILABLE` is deliberately not retryable: an internal transport failure can happen after the cell starts executing. Retry only when a signed mismatch proves `executionStarted: false`, or when the operation has its own idempotency guarantee.
 
 Everything else is `retryable: false` — retrying without changing the input will produce the same error.
 

@@ -75,7 +75,7 @@ interface AuthFnEvent {
 | `authfn.routing.placement_claimed` | A first-use placement claim won and established the canonical owner. |
 | `authfn.routing.forwarded` | The gateway dispatched to a private cell. |
 | `authfn.routing.mismatch` | A cell proved a stale routing assertion before side effects. |
-| `authfn.routing.retry` | The gateway refreshed placement and used its single retry. |
+| `authfn.routing.retry` | The gateway refreshed placement and started its single retry. |
 | `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
 | `authfn.routing.directory_unavailable` | Placement storage failed closed. |
 | `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
