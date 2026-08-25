@@ -315,6 +315,62 @@ describe("DataFn server placement integration", () => {
     }
   });
 
+  it("checks placement before custom route middleware", async () => {
+    const placement = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: placement,
+      namespace: "tenant:plugin",
+      regionId: "us",
+    });
+    const middleware = vi.fn(async (
+      _request: Request,
+      _context: unknown,
+      next: () => Promise<Response>,
+    ) => next());
+    const handler = vi.fn(async () => new Response("unexpected"));
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      database: memoryAdapter(),
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "eu",
+          directory: permissionDirectory(),
+          placement: { directory: placement },
+        }),
+        {
+          name: "middleware-route",
+          runsOn: ["server"],
+          routes: () => [{
+            method: "POST",
+            path: "/plugin/middleware",
+            meta: {
+              datafnPlacement: {
+                resolveNamespace: async () => "tenant:plugin",
+              },
+            },
+            middleware: [middleware],
+            handler,
+          }],
+        },
+      ] as any,
+    });
+
+    try {
+      const response = await server.router.handle(new Request(
+        "https://cell.internal/plugin/middleware",
+        { method: "POST" },
+      ));
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "DATAFN_REGION_MISMATCH" },
+      });
+      expect(middleware).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("bounds a custom-route body before namespace resolution", async () => {
     const resolveNamespace = vi.fn(async () => "tenant:plugin");
     const handler = vi.fn(async () => new Response("unexpected"));

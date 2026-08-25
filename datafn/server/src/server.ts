@@ -12,7 +12,14 @@ import type {
 } from "@datafn/core/types";
 import type { SearchProvider } from "./search-provider.js";
 import { validateSchema, ensureBuiltinKv, ensureBuiltinTemporal, isNamespaced } from "@datafn/core";
-import { createObservabilityMiddleware, createRouter, type Router, type Route, type RouteHandler } from "@superfunctions/http";
+import {
+  createObservabilityMiddleware,
+  createRouter,
+  executeMiddlewareChain,
+  type Router,
+  type Route,
+  type RouteHandler,
+} from "@superfunctions/http";
 import type { Adapter, RowLevelNamespaceConfig, RuntimeStores } from "@superfunctions/db";
 import { instrumentAdapter, instrumentKVStore, wrapWithRowLevelNamespace } from "@superfunctions/db";
 import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
@@ -1441,9 +1448,13 @@ export async function createDatafnServer<TContext = any>(
     route: DatafnComposableRoute<TContext>,
     placement: DatafnPluginRoutePlacement<TContext>,
   ): DatafnComposableRoute<TContext> => {
-    const originalHandler = route.handler;
+    const {
+      handler: originalHandler,
+      middleware: originalMiddleware,
+      ...routeDefinition
+    } = route;
     return {
-      ...route,
+      ...routeDefinition,
       handler: async (request, context) => {
         let prepared: PreparedDatafnRoutingRequest;
         try {
@@ -1472,7 +1483,12 @@ export async function createDatafnServer<TContext = any>(
           throw error;
         }
         await placement.bindHandlerRequest?.(placementRequest, handlerRequest, context);
-        return originalHandler(handlerRequest, context);
+        return executeMiddlewareChain(
+          originalMiddleware ?? [],
+          handlerRequest,
+          context,
+          async () => originalHandler(handlerRequest, context),
+        );
       },
     };
   };
