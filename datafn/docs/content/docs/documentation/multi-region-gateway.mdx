@@ -17,6 +17,8 @@ The indexed permission directory is a separate projection. Permission-directory 
 
 The built-in `createConditionalKvDatafnPlacementDirectory` composes the focused placement contract with any `ConditionalKVStoreAdapter` that implements `compareAndSet`. Its required `consistencyModel: "linearizable"` acknowledgement makes the deployment contract explicit: DynamoDB adapters must enable `consistentRead: true`, and other providers must route reads and CAS writes through one linearizable authority. Memory, Redis, and Cloudflare Durable Object stores can use the same contract without placing provider APIs in DataFn core.
 
+`createMemoryDatafnPlacementDirectory` is for tests and one-process deployments only. Migrations that must recover after a process crash require a durable placement directory so recovery ownership, fencing tokens, and lease state survive the restart.
+
 ## Regional cell
 
 ```ts
@@ -129,7 +131,7 @@ When a move starts, call `fenceNamespace(namespace)` (or provide the new minimum
 6. CAS the moving record to a target `active` placement with explicit `resume-target` recovery state at another epoch.
 7. Resume target writes, then clear the recovery state through one final epoch CAS.
 
-Failure before activation rolls the placement back through a new epoch. The source rollback hook runs only if that rollback CAS succeeds. A durable recovery owner and expiry lease prevents concurrent invocations from replaying hooks for the same moving epoch; after a crash, one retry claims the expired lease through CAS before continuing. Hook implementations receive that owner and expiry as a fencing token and must remain idempotent. `resume-target` placements remain fenced from gateway and cell traffic until `resumeTarget` succeeds and the final CAS clears recovery state. Set `recoveryLeaseMs` longer than the maximum expected hook interval, and use the supplied owner token in external copy/rebuild jobs. A same-region destination-only change is rejected instead of silently ignored. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
+Failure before activation rolls the placement back through a new epoch. The source rollback hook runs only if that rollback CAS succeeds. A durable placement directory is required to persist the recovery owner, monotonic `recoveryFence`, and expiry lease across crashes; do not use the in-memory directory for migrations that must survive process restarts. After a crash, one retry claims the expired lease through CAS before continuing. Every external hook boundary must atomically compare and persist `recoveryFence` in the affected system, rejecting lower tokens before applying an effect; timer renewal alone cannot fence an already-running hook after takeover. `recoveryLeaseExpiresAt` is a live getter that reflects successful renewals, but it is scheduling guidance rather than a substitute for the fencing token. Hooks must remain idempotent. `resume-target` placements remain fenced from gateway and cell traffic until `resumeTarget` succeeds and the final CAS clears recovery state. Set `recoveryLeaseMs` longer than the maximum expected hook interval. A same-region destination-only change is rejected instead of silently ignored. Rollback after activation is another explicit migration; never edit a cache, region map, or DNS record out of band.
 
 ## Observability and operations
 

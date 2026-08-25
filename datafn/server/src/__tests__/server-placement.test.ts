@@ -176,7 +176,10 @@ describe("DataFn server placement integration", () => {
         placement: { directory },
       })],
     });
-    const client = { send: vi.fn(), close: vi.fn() };
+    const client = {
+      send: vi.fn(),
+      close: vi.fn(() => { throw new Error("transport close failed"); }),
+    };
 
     try {
       const admission = server.websocketHandler.addRoutedClient(

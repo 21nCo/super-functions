@@ -20,6 +20,7 @@ import {
   migrateDatafnNamespace,
   validateDatafnPlacement,
   withDatafnRoutingAssertion,
+  type DatafnNamespaceMigrationContext,
   type DatafnNamespacePlacement,
 } from "./multi-region-routing.js";
 
@@ -347,6 +348,8 @@ describe("DataFn tenant placement", () => {
     vi.setSystemTime(fixedNow);
     let releaseFirst: (() => void) | undefined;
     let first: Promise<DatafnNamespacePlacement> | undefined;
+    let hookContext: DatafnNamespaceMigrationContext | undefined;
+    let initialLeaseExpiry = 0;
     try {
       const directory = createMemoryDatafnPlacementDirectory();
       await claimDatafnNamespacePlacement({
@@ -366,7 +369,9 @@ describe("DataFn tenant placement", () => {
         recoveryLeaseMs: 30,
         hooks: {
           ...emptyMigrationHooks(),
-          async quiesceSource() {
+          async quiesceSource(context) {
+            hookContext = context;
+            initialLeaseExpiry = context.recoveryLeaseExpiresAt;
             markEntered();
             await blocked;
           },
@@ -374,6 +379,8 @@ describe("DataFn tenant placement", () => {
       });
       await entered;
       await vi.advanceTimersByTimeAsync(90);
+
+      expect(hookContext?.recoveryLeaseExpiresAt).toBeGreaterThan(initialLeaseExpiry);
 
       const retryHook = vi.fn();
       await expect(migrateDatafnNamespace({
@@ -388,6 +395,76 @@ describe("DataFn tenant placement", () => {
 
       releaseFirst!();
       await first;
+    } finally {
+      releaseFirst?.();
+      await first?.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  it("provides a monotonic fence that rejects delayed owner effects after takeover", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    let releaseFirst: (() => void) | undefined;
+    let first: Promise<DatafnNamespacePlacement> | undefined;
+    try {
+      const directory = createMemoryDatafnPlacementDirectory();
+      await claimDatafnNamespacePlacement({
+        directory,
+        namespace: "tenant:fenced-effect",
+        regionId: "eu",
+        now: Date.now,
+      });
+      const blocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+      let markEntered!: () => void;
+      const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+      let externalFence = 0;
+      const appliedFences: number[] = [];
+      const applyExternalEffect = (context: DatafnNamespaceMigrationContext): void => {
+        if (context.recoveryFence <= externalFence) {
+          throw new Error("STALE_EXTERNAL_MIGRATION_FENCE");
+        }
+        externalFence = context.recoveryFence;
+        appliedFences.push(context.recoveryFence);
+      };
+
+      first = migrateDatafnNamespace({
+        directory,
+        namespace: "tenant:fenced-effect",
+        targetRegionId: "us",
+        now: Date.now,
+        recoveryLeaseMs: 30,
+        hooks: {
+          ...emptyMigrationHooks(),
+          async quiesceSource(context) {
+            markEntered();
+            await blocked;
+            applyExternalEffect(context);
+          },
+        },
+      });
+      await entered;
+
+      // Advance the authoritative clock without running the delayed heartbeat.
+      vi.setSystemTime(fixedNow + 31);
+      const recovered = await migrateDatafnNamespace({
+        directory,
+        namespace: "tenant:fenced-effect",
+        targetRegionId: "us",
+        now: Date.now,
+        recoveryLeaseMs: 30,
+        hooks: {
+          ...emptyMigrationHooks(),
+          async quiesceSource(context) {
+            applyExternalEffect(context);
+          },
+        },
+      });
+      expect(recovered).toMatchObject({ regionId: "us", state: "active" });
+
+      releaseFirst!();
+      await expect(first).rejects.toThrow("DATAFN_MIGRATION_RECOVERY_EPOCH_CONFLICT");
+      expect(appliedFences).toEqual([3]);
     } finally {
       releaseFirst?.();
       await first?.catch(() => undefined);
@@ -720,6 +797,63 @@ describe("DataFn canonical gateway", () => {
     expect(response.status).toBe(200);
     expect(dispatches).toEqual(["eu", "us"]);
     expect(effects).toEqual({ eu: 0, us: 1 });
+  });
+
+  it("refreshes stale placement once when the cached destination is unavailable", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    const claimed = await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:destination-refresh",
+      regionId: "eu",
+    });
+    const cells = new Map<string, object>([["eu", {}], ["us", {}]]);
+    const resolvedRegions: string[] = [];
+    const dispatchedRegions: string[] = [];
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      cacheTtlMs: 60_000,
+      deriveNamespace: () => "tenant:destination-refresh",
+      cellRegistry: {
+        resolve: ({ regionId }) => {
+          resolvedRegions.push(regionId);
+          const target = cells.get(regionId);
+          if (!target) throw new Error("missing target");
+          return target;
+        },
+      },
+      dispatcher: {
+        dispatch: async ({ placement }) => {
+          dispatchedRegions.push(placement.regionId);
+          return Response.json({ ok: true });
+        },
+      },
+      assertionSigner: { sign: () => "assertion" },
+    });
+
+    expect((await gateway.handle(new Request("https://data.example/datafn/query"))).status)
+      .toBe(200);
+    resolvedRegions.length = 0;
+    dispatchedRegions.length = 0;
+
+    const moved: DatafnNamespacePlacement = {
+      ...claimed.placement,
+      regionId: "us",
+      epoch: 2,
+      previousRegionId: "eu",
+      updatedAt: new Date().toISOString(),
+    };
+    expect((await directory.compareAndSet({
+      namespace: moved.namespace,
+      expectedEpoch: 1,
+      expectedState: "active",
+      next: moved,
+    })).updated).toBe(true);
+    cells.delete("eu");
+
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(200);
+    expect(resolvedRegions).toEqual(["eu", "us"]);
+    expect(dispatchedRegions).toEqual(["us"]);
   });
 
   it("fails closed when a directory is unavailable", async () => {

@@ -91,7 +91,7 @@ class CustomStorageAdapter implements DatafnStorageAdapter {
 
 ### Atomic mergeRecord
 
-The `mergeRecord` method must be atomic: read the existing record, merge fields, and write back in a single transaction. If your storage backend supports transactions, use them. If not, use a mutex or optimistic concurrency control. A row lock cannot lock an absent row, so adapters must retry the complete transaction after a retryable serialization or duplicate-key conflict. The retry re-reads the winner and applies the losing caller's `partial` update.
+The `mergeRecord` method must be atomic across every adapter instance: read the existing record, merge fields, and write back in a single backend transaction. If transactions are unavailable, use a distributed lock with fencing, versioned compare-and-set, or a mutex shared by every instance; a process-local per-instance mutex is insufficient. A row lock cannot lock an absent row, so adapters must retry the complete transaction after a retryable serialization or duplicate-key conflict. The retry re-reads the winner and applies the losing caller's `partial` update.
 
 The merge behavior is one-level deep:
 - Scalar fields: overwrite.
@@ -142,8 +142,9 @@ async mergeRecord(
 `isRetryableCreateConflict` must recognize only the backend's serialization and duplicate-key errors. Never retry validation, authorization, or arbitrary application failures.
 
 Only declare `readonly capabilities = { atomicMergeIfMissing: true }` when the
-existence check and write above are protected by a real transaction, mutex, or
-optimistic-concurrency primitive. Without that capability, DataFn uses a
+existence check and write above are protected across every adapter instance by
+a backend transaction, distributed lock with fencing, versioned compare-and-set,
+or a mutex shared by every instance. Without that capability, DataFn uses a
 merge-safe legacy fallback that does not apply create-only defaults.
 
 ### Monotonic Changelog Sequence

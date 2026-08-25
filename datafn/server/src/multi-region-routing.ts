@@ -23,6 +23,7 @@ export interface DatafnNamespaceMigrationState {
   targetRegionId: string;
   sourceEpoch: number;
   movingEpoch: number;
+  recoveryFence?: number;
   recoveryOwnerId?: string;
   recoveryLeaseExpiresAt?: number;
   sourceDestinationRef?: string;
@@ -641,6 +642,19 @@ export function createDatafnGatewayRouter<TTarget>(
             retryable: true,
             outcome: String(cause),
           });
+          if (attempt === 0) {
+            cache.delete(namespace);
+            await emitRoutingEvent(runtime, {
+              type: "retry",
+              requestId,
+              targetRegion: placement.regionId,
+              epoch: placement.epoch,
+              attempt: 1,
+              retryable: true,
+              outcome: "destination-unavailable",
+            });
+            continue;
+          }
           throw new DatafnRoutingError({
             code: "DATAFN_CELL_UNAVAILABLE",
             message: "The owning regional cell is unavailable",
@@ -756,8 +770,14 @@ export interface DatafnNamespaceMigrationContext {
   targetRegionId: string;
   sourceEpoch: number;
   movingEpoch: number;
-  /** Durable lease owner that hook implementations may use as a fencing token. */
+  /**
+   * Monotonic token that every external side-effect boundary must atomically
+   * compare and persist, rejecting lower tokens before applying the effect.
+   */
+  recoveryFence: number;
+  /** Durable lease owner paired with the monotonic recovery fence. */
   recoveryOwnerId: string;
+  /** Live lease deadline; renewal updates this value while the hook is running. */
   recoveryLeaseExpiresAt: number;
   /** True when replaying idempotent hooks for a persisted recovery state. */
   recovery?: boolean;
@@ -859,7 +879,6 @@ export async function migrateDatafnNamespace(input: {
       recoveryLeaseMs,
       now,
     });
-    migration = moving.migration!;
     recovery = true;
   } else if (observed.state === "active") {
     migration = {
@@ -868,6 +887,7 @@ export async function migrateDatafnNamespace(input: {
       targetRegionId: requiredString(input.targetRegionId, "targetRegionId"),
       sourceEpoch: observed.epoch,
       movingEpoch: observed.epoch + 1,
+      recoveryFence: observed.epoch + 1,
       recoveryOwnerId,
       recoveryLeaseExpiresAt: now() + recoveryLeaseMs,
       ...(observed.destinationRef
@@ -1045,6 +1065,7 @@ async function claimDatafnMigrationRecovery(input: {
     updatedAt: new Date(currentTime).toISOString(),
     migration: {
       ...migration,
+      recoveryFence: migrationRecoveryFence(migration) + 1,
       recoveryOwnerId: input.recoveryOwnerId,
       recoveryLeaseExpiresAt: currentTime + input.recoveryLeaseMs,
     },
@@ -1187,7 +1208,7 @@ function createDatafnMigrationLeaseGuard(input: {
       try {
         await hook(migrationContext(
           current.namespace,
-          current.migration!,
+          () => current.migration!,
           input.recovery,
         ));
       } catch (cause) {
@@ -1258,29 +1279,50 @@ function legacyMovingMigration(
 
 function migrationContext(
   namespace: string,
-  migration: DatafnNamespaceMigrationState,
+  migrationInput: DatafnNamespaceMigrationState | (() => DatafnNamespaceMigrationState),
   recovery: boolean,
 ): DatafnNamespaceMigrationContext {
+  const readMigration = typeof migrationInput === "function"
+    ? migrationInput
+    : () => migrationInput;
+  const migration = readMigration();
   const recoveryOwnerId = requiredString(
     migration.recoveryOwnerId,
     "migration_recovery_owner",
   );
-  if (
-    !Number.isSafeInteger(migration.recoveryLeaseExpiresAt) ||
-    migration.recoveryLeaseExpiresAt! < 1
-  ) {
-    throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
-  }
+  const recoveryFence = migrationRecoveryFence(migration);
+  migrationRecoveryLeaseExpiresAt(migration);
   return {
     namespace,
     sourceRegionId: migration.sourceRegionId,
     targetRegionId: migration.targetRegionId,
     sourceEpoch: migration.sourceEpoch,
     movingEpoch: migration.movingEpoch,
+    recoveryFence,
     recoveryOwnerId,
-    recoveryLeaseExpiresAt: migration.recoveryLeaseExpiresAt!,
+    get recoveryLeaseExpiresAt() {
+      return migrationRecoveryLeaseExpiresAt(readMigration());
+    },
     ...(recovery ? { recovery: true } : {}),
   };
+}
+
+function migrationRecoveryFence(migration: DatafnNamespaceMigrationState): number {
+  const recoveryFence = migration.recoveryFence ?? migration.movingEpoch;
+  if (!Number.isSafeInteger(recoveryFence) || recoveryFence < 1) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_FENCE_INVALID");
+  }
+  return recoveryFence;
+}
+
+function migrationRecoveryLeaseExpiresAt(migration: DatafnNamespaceMigrationState): number {
+  if (
+    !Number.isSafeInteger(migration.recoveryLeaseExpiresAt) ||
+    migration.recoveryLeaseExpiresAt! < 1
+  ) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
+  }
+  return migration.recoveryLeaseExpiresAt!;
 }
 
 export function createDatafnHmacRoutingAssertions(input: {
@@ -1680,6 +1722,12 @@ function assertMigrationState(
     migration.recoveryLeaseExpiresAt! > 0;
   if (hasRecoveryOwner !== hasRecoveryExpiry) {
     throw new Error("DATAFN_MIGRATION_RECOVERY_LEASE_INVALID");
+  }
+  if (
+    migration.recoveryFence !== undefined &&
+    (!Number.isSafeInteger(migration.recoveryFence) || migration.recoveryFence < 1)
+  ) {
+    throw new Error("DATAFN_MIGRATION_RECOVERY_FENCE_INVALID");
   }
 }
 

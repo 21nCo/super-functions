@@ -1821,10 +1821,13 @@ export async function createDatafnServer<TContext = any>(
               fenceGeneration
           ) {
             wsManager.removeClient(client);
-            client.close(
-              4510,
-              "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
-            );
+            try {
+              client.close(
+                4510,
+                "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
+              );
+            } catch {
+            }
             return false;
           }
           return true;
