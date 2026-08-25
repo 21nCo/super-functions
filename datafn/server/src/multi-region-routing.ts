@@ -761,7 +761,7 @@ export interface DatafnNamespaceMigrationHooks {
   rebuildPermissionDirectory(input: DatafnNamespaceMigrationContext): Promise<void>;
   warmTarget(input: DatafnNamespaceMigrationContext): Promise<void>;
   resumeTarget(input: DatafnNamespaceMigrationContext): Promise<void>;
-  rollbackSource?(input: DatafnNamespaceMigrationContext & { cause: unknown }): Promise<void>;
+  rollbackSource(input: DatafnNamespaceMigrationContext & { cause: unknown }): Promise<void>;
 }
 
 export interface DatafnNamespaceMigrationContext {
@@ -800,6 +800,9 @@ export async function migrateDatafnNamespace(input: {
   recoveryLeaseMs?: number;
   onEvent?: (event: DatafnRoutingEvent) => void | Promise<void>;
 }): Promise<DatafnNamespacePlacement> {
+  if (typeof input.hooks.rollbackSource !== "function") {
+    throw new Error("DATAFN_MIGRATION_ROLLBACK_SOURCE_REQUIRED");
+  }
   const now = input.now ?? Date.now;
   const recoveryLeaseMs = migrationRecoveryLeaseMs(input.recoveryLeaseMs);
   const recoveryOwnerId = crypto.randomUUID();
@@ -837,7 +840,7 @@ export async function migrateDatafnNamespace(input: {
     let rollbackFailure: { cause: unknown } | undefined;
     try {
       await rollbackLease.runHook(async (context) => {
-        await input.hooks.rollbackSource?.({ ...context, cause: rollbackCause });
+        await input.hooks.rollbackSource({ ...context, cause: rollbackCause });
       });
     } catch (cause) {
       rollbackFailure = { cause };
@@ -1053,7 +1056,7 @@ export async function migrateDatafnNamespace(input: {
     let rollbackFailure: { cause: unknown } | undefined;
     try {
       await rollbackLease.runHook(async (context) => {
-        await input.hooks.rollbackSource?.({ ...context, cause });
+        await input.hooks.rollbackSource({ ...context, cause });
       });
     } catch (rollbackCause) {
       rollbackFailure = { cause: rollbackCause };
@@ -1335,7 +1338,13 @@ async function finalizeDatafnMigrationRecovery(input: {
     expectedState: "active",
     next: finalized,
   });
-  if (!result.updated) throw new Error("DATAFN_MIGRATION_RESUME_EPOCH_CONFLICT");
+  if (!result.updated) {
+    throw new Error(
+      input.placement.migration?.phase === "resume-source"
+        ? "DATAFN_MIGRATION_ROLLBACK_EPOCH_CONFLICT"
+        : "DATAFN_MIGRATION_RESUME_EPOCH_CONFLICT",
+    );
+  }
   return finalized;
 }
 

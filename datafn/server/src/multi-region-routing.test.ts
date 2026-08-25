@@ -116,6 +116,7 @@ describe("DataFn tenant placement", () => {
         async rebuildPermissionDirectory() { order.push("reindex"); },
         async warmTarget() { order.push("warm"); },
         async resumeTarget() { order.push("resume"); },
+        async rollbackSource() { order.push("rollback"); },
       },
     });
 
@@ -133,6 +134,35 @@ describe("DataFn tenant placement", () => {
       epoch: 4,
       state: "active",
       previousRegionId: "eu",
+    });
+  });
+
+  it("requires source rollback support before fencing a migration", async () => {
+    const directory = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory,
+      namespace: "tenant:no-rollback",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const quiesceSource = vi.fn();
+
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:no-rollback",
+      targetRegionId: "us",
+      hooks: {
+        ...emptyMigrationHooks(),
+        quiesceSource,
+        rollbackSource: undefined,
+      } as never,
+    })).rejects.toThrow("DATAFN_MIGRATION_ROLLBACK_SOURCE_REQUIRED");
+
+    expect(quiesceSource).not.toHaveBeenCalled();
+    await expect(directory.get("tenant:no-rollback")).resolves.toMatchObject({
+      regionId: "eu",
+      epoch: 1,
+      state: "active",
     });
   });
 
@@ -197,6 +227,7 @@ describe("DataFn tenant placement", () => {
       async rebuildPermissionDirectory() {},
       async warmTarget() {},
       async resumeTarget() { throw new Error("target still paused"); },
+      async rollbackSource() {},
     };
 
     await expect(migrateDatafnNamespace({
@@ -204,7 +235,7 @@ describe("DataFn tenant placement", () => {
       namespace: "tenant:resume",
       targetRegionId: "us",
       now: () => currentTime,
-      recoveryLeaseMs: 10,
+      recoveryLeaseMs: 60_000,
       hooks,
     })).rejects.toThrow("target still paused");
 
@@ -233,13 +264,13 @@ describe("DataFn tenant placement", () => {
     expect(dispatch).not.toHaveBeenCalled();
 
     const resumed: Array<{ recovery?: boolean; sourceRegionId: string }> = [];
-    currentTime += 11;
+    currentTime += 60_001;
     const placement = await migrateDatafnNamespace({
       directory,
       namespace: "tenant:resume",
       targetRegionId: "us",
       now: () => currentTime,
-      recoveryLeaseMs: 10,
+      recoveryLeaseMs: 60_000,
       hooks: {
         ...hooks,
         async resumeTarget(context) {
@@ -294,6 +325,7 @@ describe("DataFn tenant placement", () => {
         async rebuildPermissionDirectory() {},
         async warmTarget() {},
         async resumeTarget() {},
+        async rollbackSource() {},
       },
     });
 
@@ -534,7 +566,7 @@ describe("DataFn tenant placement", () => {
       namespace: "tenant:rollback-recovery",
       targetRegionId: "us",
       now: () => currentTime,
-      recoveryLeaseMs: 10,
+      recoveryLeaseMs: 60_000,
       hooks,
     })).rejects.toMatchObject({
       message: "source still quiesced",
@@ -554,13 +586,13 @@ describe("DataFn tenant placement", () => {
       trustedInternal: true,
     })).rejects.toMatchObject({ code: "DATAFN_NAMESPACE_MOVING" });
 
-    currentTime += 11;
+    currentTime += 60_001;
     await expect(migrateDatafnNamespace({
       directory,
       namespace: "tenant:rollback-recovery",
       targetRegionId: "us",
       now: () => currentTime,
-      recoveryLeaseMs: 10,
+      recoveryLeaseMs: 60_000,
       hooks,
     })).rejects.toMatchObject({
       message: "DATAFN_MIGRATION_ROLLED_BACK",
@@ -576,6 +608,44 @@ describe("DataFn tenant placement", () => {
       state: "active",
     });
     expect((await directory.get("tenant:rollback-recovery"))?.migration).toBeUndefined();
+  });
+
+  it("reports a rollback conflict when source recovery finalization loses its CAS", async () => {
+    const base = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: base,
+      namespace: "tenant:rollback-finalize-race",
+      regionId: "eu",
+      now: () => fixedNow,
+    });
+    const directory = {
+      ...base,
+      async compareAndSet(input: Parameters<typeof base.compareAndSet>[0]) {
+        if (input.expectedState === "active" && input.next.migration === undefined) {
+          return {
+            updated: false,
+            placement: (await base.get(input.namespace))!,
+          };
+        }
+        return base.compareAndSet(input);
+      },
+    };
+
+    await expect(migrateDatafnNamespace({
+      directory,
+      namespace: "tenant:rollback-finalize-race",
+      targetRegionId: "us",
+      hooks: {
+        ...emptyMigrationHooks(),
+        async copyTenantData() { throw new Error("copy failed"); },
+      },
+    })).rejects.toThrow("DATAFN_MIGRATION_ROLLBACK_EPOCH_CONFLICT");
+
+    await expect(base.get("tenant:rollback-finalize-race")).resolves.toMatchObject({
+      regionId: "eu",
+      state: "active",
+      migration: { phase: "resume-source" },
+    });
   });
 
   it("rejects a same-region destination-only update instead of ignoring it", async () => {
@@ -605,6 +675,7 @@ function emptyMigrationHooks() {
     async rebuildPermissionDirectory() {},
     async warmTarget() {},
     async resumeTarget() {},
+    async rollbackSource() {},
   };
 }
 
