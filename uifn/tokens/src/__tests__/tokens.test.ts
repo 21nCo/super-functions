@@ -176,6 +176,16 @@ describe('semantic token validation', () => {
     expect(parseOklch('oklch(50% 0.1 240)')).toMatchObject({ l: 0.5, c: 0.1, h: 240 });
   });
 
+  it('TV-STYLE-003 rejects malformed and non-finite OKLCH components', () => {
+    for (const value of [
+      'oklch(. . .)',
+      'oklch(50% 0.1 .)',
+      'oklch(1e999 0.1 240)',
+    ]) {
+      expect(() => parseOklch(value), value).toThrowError(UIFnTokenError);
+    }
+  });
+
   it('TV-STYLE-003 negative rejects low contrast pairs', () => {
     expect(() => validateContrastPair('oklch(50% 0.01 250)', 'oklch(52% 0.01 250)')).toThrowError(
       UIFnTokenError

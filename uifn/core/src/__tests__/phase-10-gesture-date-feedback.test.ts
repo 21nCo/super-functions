@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  addUIFnDateDays,
   assertUIFnRangeDirection,
   colorUIFnDistance,
   createUIFnCalendarDate,
+  createUIFnMonthGrid,
   firstUIFnDayOfWeek,
   hslaToUIFnRgba,
   parseUIFnColor,
@@ -10,6 +12,7 @@ import {
   resolveUIFnAxisPercent,
   resolveUIFnZonedDateTime,
   rgbaToUIFnHsla,
+  serializeUIFnDate,
 } from '../index';
 import { createManualRuntimeScheduler } from '../internal/runtime/scheduler';
 import {
@@ -348,6 +351,32 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     splitter.destroy();
   });
 
+  it('reconciles splitter state and pending controlled requests when bounds tighten', () => {
+    const uncontrolled = createSplitterController({
+      defaultSizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    uncontrolled.update({ minSizes: [50, 0] });
+    expect(uncontrolled.state.sizes).toEqual([50, 50]);
+
+    const controlled = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    controlled.actions.resize(0, -10);
+    expect(controlled.state.requestedSizes).toEqual([30, 70]);
+    controlled.update({ minSizes: [35, 0] });
+    expect(controlled.state.sizes).toEqual([40, 60]);
+    expect(controlled.state.requestedSizes).toEqual([35, 65]);
+    controlled.update({ sizes: [20, 80] });
+    expect(controlled.state.sizes).toEqual([35, 65]);
+    expect(controlled.state.requestedSizes).toBeUndefined();
+    uncontrolled.destroy();
+    controlled.destroy();
+  });
+
   it('recomputes Steps state and navigation when count changes', () => {
     const initialChange = vi.fn();
     const updatedChange = vi.fn();
@@ -386,6 +415,16 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     steps.destroy();
   });
 
+  it('preserves Steps completion for equivalent updates and clears it for a changed owner step', () => {
+    const steps = createStepsController({ count: 3, defaultStep: 2, errors: [0, 1] }, deterministicEnv());
+    steps.actions.complete();
+    steps.update({ count: 3, errors: [1, 0] });
+    expect(steps.state).toMatchObject({ completed: true, status: 'complete', step: 2 });
+    steps.update({ step: 1 });
+    expect(steps.state).toMatchObject({ completed: false, status: 'in-progress', step: 1 });
+    steps.destroy();
+  });
+
   it('negative classifier names wrong RTL behavior precisely', () => {
     expect(() => assertUIFnRangeDirection(60, 40, { vector: 'TV-PRIM-006-N' })).toThrowError(expect.objectContaining({ code: 'UIFN_RANGE_DIRECTION_INVALID' }));
   });
@@ -401,6 +440,12 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(parseUIFnIsoDate('2024-02-29')).toEqual({ calendar: 'gregory', year: 2024, month: 2, day: 29 });
     expect(() => parseUIFnIsoDate('02/29/2024')).toThrowError(expect.objectContaining({ code: 'UIFN_AMBIENT_DATE_PARSE' }));
     expect(firstUIFnDayOfWeek('de-DE')).toBe(1);
+    const early = createUIFnCalendarDate(5, 2, 28);
+    expect(serializeUIFnDate(early)).toBe('0005-02-28');
+    expect(addUIFnDateDays(createUIFnCalendarDate(99, 12, 31), 1))
+      .toEqual(createUIFnCalendarDate(100, 1, 1));
+    expect(createUIFnMonthGrid(createUIFnCalendarDate(5, 1, 1), 'en-US'))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ year: 1905 })]));
 
     const input = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 2, 29), locale: 'ja-JP', calendar: 'japanese', min: createUIFnCalendarDate(2024, 1, 1), max: createUIFnCalendarDate(2024, 12, 31) }, deterministicEnv('ja-JP'));
     input.actions.editSegment('year', 2023);
@@ -409,6 +454,10 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(input.state.message).toBe('');
 
     const picker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), locale: 'de-DE', unavailable: (date) => date.day === 9 }, deterministicEnv('de-DE'));
+    expect(picker.parts.trigger.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.next.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.cellTrigger.getProps('2024-03-08').attributes?.type).toBe('button');
     picker.actions.navigateGrid('ArrowRight');
     expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
     expect(picker.state.grid).toHaveLength(42);

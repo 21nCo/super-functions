@@ -1,4 +1,4 @@
-import { createEffect } from 'solid-js';
+import { createEffect, sharedConfig } from 'solid-js';
 import { render } from 'solid-js/web';
 import { describe, expect, it, vi } from 'vitest';
 import type { HookEnvironment, MediaQueryChangeLike } from '@uifn/dom';
@@ -56,7 +56,7 @@ describe('Solid hook bindings', () => {
     expect(media.listenerCount()).toBe(0);
   });
 
-  it('uses the hydration fallback until the owner mounts', async () => {
+  it('reads the live snapshot during an ordinary client render', async () => {
     const media = createMediaEnvironment(true);
     const host = document.createElement('div');
     const output = document.createElement('output');
@@ -70,10 +70,34 @@ describe('Solid hook bindings', () => {
       createEffect(() => { output.textContent = String(matches()); });
       return output;
     }, host);
-    expect(initialValue).toBe(false);
+    expect(initialValue).toBe(true);
     await Promise.resolve();
     expect(output.textContent).toBe('true');
     dispose();
+  });
+
+  it('uses the hydration fallback until the owner mounts', async () => {
+    const media = createMediaEnvironment(true);
+    const host = document.createElement('div');
+    let initialValue: boolean | undefined;
+    const previousContext = sharedConfig.context;
+    sharedConfig.context = { id: 'media-query-hydration', count: 0 };
+    try {
+      const dispose = render(() => {
+        const matches = createMediaQuery('(min-width: 768px)', {
+          defaultValue: false,
+          environment: media.environment,
+        });
+        initialValue = matches();
+        return null;
+      }, host);
+      expect(initialValue).toBe(false);
+      await Promise.resolve();
+      expect(media.listenerCount()).toBe(1);
+      dispose();
+    } finally {
+      sharedConfig.context = previousContext;
+    }
   });
 
   it('reports unavailable, rejected, successful, and reset clipboard states', async () => {

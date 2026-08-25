@@ -397,8 +397,10 @@ describe('PHASE_09 selection and input vectors', () => {
     const files = createFileUploadController({
       accept: 'image/*',
       maxSize: 100,
+      required: true,
       onReject: (code) => rejected.push(code),
     });
+    expect(files.parts.input.getProps().attributes?.required).toBe(true);
     files.actions.selectFiles([{ name: 'notes.txt', size: 10, type: 'text/plain' }]);
     expect(files.state.status).toBe('rejected');
     expect(files.state.fileCount).toBe(0);

@@ -5,6 +5,7 @@ import type { UIFnPartProps } from '../parts';
 import {
   alignRangeValue,
   assertUIFnGestureInactive,
+  clampRangeValue,
   closestUIFnThumb,
   constrainUIFnThumbValue,
   formatUIFnValueText,
@@ -388,6 +389,26 @@ export interface SplitterState { readonly sizes: readonly number[]; readonly req
 export interface SplitterActions { resize(index: number, delta: number, modality?: 'keyboard' | 'pointer' | 'touch'): void; keyResize(index: number, key: string): void; resizeStart(id: number, index: number, coordinate: number, kind?: UIFnPointerKind): void; resizeMove(id: number, coordinate: number): void; resizeEnd(id: number): void; resizeCancel(id: number): void; lostPointerCapture(id: number): void; collapse(index: number): void; expand(index: number): void; syncSizes(sizes: readonly number[]): void }
 export interface SplitterControllerParts { readonly root: UIFnPhase10Part; readonly panel: UIFnPhase10ValuePart<number>; readonly resizeTrigger: UIFnPhase10ValuePart<number>; readonly resizeHandle: UIFnPhase10ValuePart<number> }
 export type SplitterController = UIFnController<SplitterState, SplitterActions, SplitterControllerParts, SplitterProps>;
+function reconcileSplitterSizes(
+  values: readonly number[],
+  minSizes: readonly number[],
+  maxSizes: readonly number[],
+): readonly number[] {
+  const minimums = values.map((_, index) => minSizes[index] ?? 0);
+  const maximums = values.map((_, index) => Math.max(minimums[index]!, maxSizes[index] ?? 100));
+  const targetTotal = values.reduce((sum, value) => sum + value, 0);
+  const next = values.map((value, index) => clampRangeValue(value, minimums[index]!, maximums[index]!));
+  let difference = targetTotal - next.reduce((sum, value) => sum + value, 0);
+  for (let index = 0; index < next.length && difference !== 0; index += 1) {
+    const capacity = difference > 0
+      ? maximums[index]! - next[index]!
+      : next[index]! - minimums[index]!;
+    const adjustment = Math.sign(difference) * Math.min(Math.abs(difference), capacity);
+    next[index] = next[index]! + adjustment;
+    difference -= adjustment;
+  }
+  return Object.freeze(next);
+}
 export function createSplitterController(props: SplitterProps = {}, env: UIFnEnvironment = {}): SplitterController {
   const { resolved, id } = createUIFnPhase10Ids('Splitter', 'splitter', env); let currentProps = props; const initial = Object.freeze([...(props.sizes ?? props.defaultSizes ?? [50, 50])]); let minSizes = Object.freeze([...(props.minSizes ?? initial.map(() => 0))]); let maxSizes = Object.freeze([...(props.maxSizes ?? initial.map(() => 100))]); let controlled = props.sizes !== undefined; let locale = props.locale ?? resolved.getLocale(); const texts = (sizes: readonly number[]) => Object.freeze(sizes.map((size) => formatUIFnLocalizedNumber(size / 100, locale, { style: 'percent', maximumFractionDigits: 2 })));
   const store = createStateChannel<SplitterState>({ sizes: initial, minSizes, maxSizes, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), resizing: null, pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), disabled: props.disabled ?? false, valueText: texts(initial) });
@@ -413,15 +434,17 @@ export function createSplitterController(props: SplitterProps = {}, env: UIFnEnv
     locale = currentProps.locale ?? resolved.getLocale();
     const state = store.getState();
     const ownerSizesChanged = 'sizes' in inputs && inputs.sizes !== undefined;
-    const sizes = Object.freeze([...(ownerSizesChanged ? inputs.sizes! : state.sizes)]);
-    minSizes = Object.freeze([...(currentProps.minSizes ?? sizes.map(() => 0))]);
-    maxSizes = Object.freeze([...(currentProps.maxSizes ?? sizes.map(() => 100))]);
+    const sourceSizes = ownerSizesChanged ? inputs.sizes! : state.sizes;
+    minSizes = Object.freeze([...(currentProps.minSizes ?? sourceSizes.map(() => 0))]);
+    maxSizes = Object.freeze([...(currentProps.maxSizes ?? sourceSizes.map(() => 100))]);
+    const sizes = reconcileSplitterSizes(sourceSizes, minSizes, maxSizes);
+    const requestedSizes = controlled && !ownerSizesChanged && state.requestedSizes
+      ? reconcileSplitterSizes(state.requestedSizes, minSizes, maxSizes)
+      : undefined;
     const disabled = currentProps.disabled ?? false;
     store.patchState({
       sizes,
-      requestedSizes: controlled && !ownerSizesChanged && state.requestedSizes
-        ? Object.freeze([...state.requestedSizes])
-        : undefined,
+      requestedSizes,
       minSizes,
       maxSizes,
       orientation: currentProps.orientation ?? 'horizontal',

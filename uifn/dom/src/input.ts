@@ -81,7 +81,6 @@ export function createUIFnSelectionFormBinding(
   const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
     fieldsetDisabled = disabled;
-    controller.actions.setFieldsetDisabled(disabled);
     update();
   });
   const releaseResource = scope.track('formBridge', () => undefined, `${state.ids.root ?? owner.id}-selection-binding`);
@@ -154,7 +153,6 @@ export function createUIFnTextInputFormBinding(
   const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
     fieldsetDisabled = disabled;
-    controller.actions.setFieldsetDisabled(disabled);
     update();
   });
   const form = input.form ?? owner.closest('form');
@@ -238,12 +236,18 @@ export function createUIFnFileInputBinding(
 ): UIFnInputDomBinding {
   const scope = platform.scope;
   let destroyed = false;
+  let fieldsetDisabled = disabledByFieldset(owner);
   const onChange = () => controller.actions.selectFiles(Array.from(input.files ?? []).map((file) => Object.freeze({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified, native: file })));
   input.addEventListener('change', onChange);
   const releaseListener = scope.track('listener', () => input.removeEventListener('change', onChange));
+  const update = () => {
+    input.disabled = controller.state.disabled || fieldsetDisabled;
+    input.required = controller.state.required;
+  };
+  const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
-    controller.actions.setFieldsetDisabled(disabled);
-    input.disabled = controller.state.disabled || disabled;
+    fieldsetDisabled = disabled;
+    update();
   });
   const form = input.form ?? owner.closest('form');
   const releaseReset = form ? scope.on('reset', (event) => { if (event.target === form) controller.actions.reset(); }) : () => undefined;
@@ -256,6 +260,7 @@ export function createUIFnFileInputBinding(
       releaseReset();
       releaseFieldset();
       releaseListener();
+      unsubscribe();
       releaseResource();
     },
   };

@@ -12,7 +12,12 @@ export interface OklchRampOptions {
   lightness?: number[];
 }
 
-const OKLCH_PATTERN = /^oklch\(\s*([0-9.]+)(%)?\s+([0-9.]+)\s+([0-9.]+)(?:deg)?\s*\)$/i;
+const UNSIGNED_NUMBER = String.raw`(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?`;
+const SIGNED_NUMBER = String.raw`[+-]?${UNSIGNED_NUMBER}`;
+const OKLCH_PATTERN = new RegExp(
+  String.raw`^oklch\(\s*(${UNSIGNED_NUMBER})(%)?\s+(${UNSIGNED_NUMBER})\s+(${SIGNED_NUMBER})(?:deg)?\s*\)$`,
+  'i',
+);
 const HEX_COLOR_PATTERN = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 function clamp(value: number, min: number, max: number): number {
@@ -32,11 +37,16 @@ export function parseOklch(input: string): OklchColor {
     });
   }
 
-  return {
-    l: Number(match[1]) / (match[2] ? 100 : 1),
-    c: Number(match[3]),
-    h: normalizeHue(Number(match[4])),
-  };
+  const l = Number(match[1]) / (match[2] ? 100 : 1);
+  const c = Number(match[3]);
+  const h = Number(match[4]);
+  if (![l, c, h].every(Number.isFinite)) {
+    throw new UIFnTokenError('UIFN_TOKEN_CONTRAST_FAILED', 'Expected finite OKLCH components.', {
+      input,
+    });
+  }
+
+  return { l, c, h: normalizeHue(h) };
 }
 
 function parseHexColor(input: string): [number, number, number] {

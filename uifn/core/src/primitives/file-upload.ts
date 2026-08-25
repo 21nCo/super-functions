@@ -119,7 +119,7 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     if (part === 'root') return common;
     if (part === 'dropzone') return { ...common, role: 'button', tabIndex: state.disabled ? -1 : 0, aria: { label: 'Drop files', disabled: state.disabled }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
     if (part === 'trigger') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
-    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: props.name, accept: props.accept, multiple: state.multiple }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
+    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: props.name, accept: props.accept, multiple: state.multiple, required: state.required }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
     if (part === 'itemGroup') return { ...common, role: 'list', aria: { label: 'Selected files' } };
     if (part === 'item') return { ...common, role: 'listitem' };
     if (part === 'itemDelete') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, aria: { label: 'Remove file' }, on: { click: () => index !== null && actions.remove(index) } };

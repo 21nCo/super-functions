@@ -91,6 +91,14 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
   fieldset.disabled = false;
   await wait();
   invariant(new FormData(form).get('city') === 'city:13', 'fieldset re-enable did not restore selection value');
+  city.update({ disabled: true });
+  fieldset.disabled = true;
+  await wait();
+  fieldset.disabled = false;
+  await wait();
+  invariant(city.state.disabled, 'fieldset re-enable overwrote intrinsic disabled state');
+  invariant(new FormData(form).getAll('city').length === 0, 'intrinsically disabled selection submitted after fieldset re-enable');
+  city.update({ disabled: false });
 
   const number = createNumberInputController({ defaultValue: '1,5', locale: 'de-DE', step: 0.5, required: true });
   const numberBinding = createUIFnTextInputFormBinding(platform, number, amountInput, amountInput, { nativeFormControl: true });

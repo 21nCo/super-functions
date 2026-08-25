@@ -39,6 +39,11 @@ export interface StepsActions { next(): void; previous(): void; goTo(step: numbe
 export interface StepsControllerParts { readonly root: UIFnPhase10Part; readonly list: UIFnPhase10Part; readonly item: UIFnPhase10ValuePart<number>; readonly trigger: UIFnPhase10ValuePart<number>; readonly indicator: UIFnPhase10ValuePart<number>; readonly separator: UIFnPhase10ValuePart<number>; readonly content: UIFnPhase10ValuePart<number>; readonly completed: UIFnPhase10ValuePart<number> }
 export type StepsController = UIFnController<StepsState, StepsActions, StepsControllerParts, StepsProps>;
 function stepStatuses(step: number, count: number, errors: readonly number[]): readonly StepStatus[] { return Object.freeze(Array.from({ length: count }, (_, index) => errors.includes(index) ? 'error' : index < step ? 'complete' : index === step ? 'current' : 'upcoming')); }
+function equalStepErrors(left: readonly number[], right: readonly number[]): boolean {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
+}
 export function createStepsController(props: StepsProps, env: UIFnEnvironment = {}): StepsController {
   const { resolved, id } = createUIFnPhase10Ids('Steps', 'steps', env);
   let currentProps = props;
@@ -90,22 +95,25 @@ export function createStepsController(props: StepsProps, env: UIFnEnvironment = 
     completed: createUIFnPhase10ValuePart('Steps', 'completed', (index) => ({ id: id('completed', index), aria: { hidden: status(index) !== 'complete' }, hidden: status(index) !== 'complete' }), { id: true }),
   };
   return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    const previousCount = count;
+    const previousErrors = errors;
+    const state = store.getState();
     currentProps = { ...currentProps, ...inputs };
     count = Math.max(1, Math.trunc(currentProps.count));
     controlled = currentProps.step !== undefined;
     errors = Object.freeze([...(currentProps.errors ?? [])]);
     locale = currentProps.locale ?? resolved.getLocale();
-    const state = store.getState();
-    const ownerStepChanged = 'step' in inputs && inputs.step !== undefined;
+    const ownerStepProvided = 'step' in inputs && inputs.step !== undefined;
+    const ownerStepChanged = ownerStepProvided && Math.trunc(inputs.step!) !== state.step;
     const step = clampRangeValue(
-      Math.trunc(ownerStepChanged ? inputs.step! : state.step),
+      Math.trunc(ownerStepProvided ? inputs.step! : state.step),
       0,
       count - 1,
     );
-    const completed = state.completed && !('count' in inputs) && !('errors' in inputs);
+    const completed = state.completed && previousCount === count && equalStepErrors(previousErrors, errors) && !ownerStepChanged;
     store.patchState({
       step,
-      requestedStep: controlled && !ownerStepChanged && state.requestedStep !== undefined
+      requestedStep: controlled && !ownerStepProvided && state.requestedStep !== undefined
         ? clampRangeValue(Math.trunc(state.requestedStep), 0, count - 1)
         : undefined,
       count,
