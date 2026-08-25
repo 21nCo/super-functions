@@ -109,6 +109,9 @@ function fieldSchema(field: DatafnFieldSchema): McpFnJsonSchema {
   if (field.nullable) {
     const currentTypes = Array.isArray(base.type) ? base.type : [base.type];
     base.type = [...new Set([...currentTypes, "null"])];
+    if (Array.isArray(base.enum) && !base.enum.includes(null)) {
+      base.enum = [...base.enum, null];
+    }
   }
   return base;
 }

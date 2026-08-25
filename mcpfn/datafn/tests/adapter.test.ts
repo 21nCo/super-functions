@@ -258,7 +258,13 @@ describe("DataFn McpFn adapter", () => {
           { name: "status", type: "string" as const, required: true, default: "draft" },
           { name: "payload", type: "json" as const, required: true },
           { name: "occurredAt", type: "date" as const, required: true },
-          { name: "note", type: "string" as const, required: false, nullable: true },
+          {
+            name: "note",
+            type: "string" as const,
+            required: false,
+            nullable: true,
+            enum: ["internal", "public"],
+          },
         ],
         permissions: {
           read: { fields: ["title", "status", "payload", "occurredAt", "note"] },
@@ -285,7 +291,7 @@ describe("DataFn McpFn adapter", () => {
     const createTool = registry.listTools().find((tool) => tool.name === "datafn_events_create");
     const recordSchema = createTool?.inputSchema.properties?.record as {
       required?: string[];
-      properties?: Record<string, { type?: string | string[] }>;
+      properties?: Record<string, { type?: string | string[]; enum?: unknown[] }>;
     };
     expect(recordSchema.required).toEqual(["occurredAt", "payload", "title"]);
     expect(recordSchema.properties?.status).toBeDefined();
@@ -294,6 +300,7 @@ describe("DataFn McpFn adapter", () => {
     ]);
     expect(recordSchema.properties?.occurredAt.type).toEqual(["string", "number"]);
     expect(recordSchema.properties?.note.type).toEqual(["string", "null"]);
+    expect(recordSchema.properties?.note.enum).toEqual(["internal", "public", null]);
 
     const server = createMcpFnServer({
       info: { name: "datafn-semantics", version: "1.0.0" },

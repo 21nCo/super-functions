@@ -399,6 +399,79 @@ describe("McpFn manifests", () => {
     }
   });
 
+  it("treats optional input declarations that narrow open inputs as breaking", () => {
+    const create = (property?: Record<string, unknown>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { value: property } : {},
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(), create({ type: "string" }))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("applies matching pattern schemas when an input property is removed", () => {
+    const create = (
+      property: Record<string, unknown> | undefined,
+      patternProperty: Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { pref_value: property } : {},
+          patternProperties: { "^pref_": patternProperty },
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ type: "string" }, { type: "string" }),
+      create(undefined, { type: "number" }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("compares boolean property schemas by presence instead of truthiness", () => {
+    const create = (property: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: { value: property },
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(true), create(false))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "boolean-schema-changed", severity: "breaking" }),
+      ]),
+    });
+  });
+
   it("reports per-resource subscription removal while aggregate support remains", () => {
     const create = (subscribeFirst: boolean) => createManifest(
       { name: "example", version: "1.0.0" },

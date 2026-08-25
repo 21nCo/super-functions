@@ -11,6 +11,7 @@ import type {
 import { canonicalJson, compareCodeUnits } from "./canonical.js";
 
 type Direction = "input" | "output";
+type SchemaNode = McpFnJsonSchema | boolean;
 
 function push(
   changes: McpFnContractChange[],
@@ -36,14 +37,35 @@ function schemaTypes(schema: McpFnJsonSchema): Set<string> | undefined {
   return typeof schema.type === "string" ? new Set([schema.type]) : undefined;
 }
 
+function matchingPatternSchemas(
+  schema: McpFnJsonSchema,
+  propertyName: string,
+): SchemaNode[] {
+  const patterns = schema.patternProperties;
+  if (!patterns || typeof patterns !== "object" || Array.isArray(patterns)) {
+    return [];
+  }
+  return Object.entries(patterns)
+    .filter(([pattern]) => {
+      try {
+        return new RegExp(pattern).test(propertyName);
+      } catch {
+        return false;
+      }
+    })
+    .map(([, patternSchema]) => patternSchema as SchemaNode);
+}
+
 function diffSchema(
-  before: McpFnJsonSchema | undefined,
-  after: McpFnJsonSchema | undefined,
+  before: SchemaNode | undefined,
+  after: SchemaNode | undefined,
   path: string,
   direction: Direction,
   changes: McpFnContractChange[],
 ): void {
-  if (!before && after) {
+  if (before && typeof before === "object" && !Object.keys(before).length) before = true;
+  if (after && typeof after === "object" && !Object.keys(after).length) after = true;
+  if (before === undefined && after !== undefined) {
     push(changes, {
       severity: direction === "input" ? "breaking" : "additive",
       code: "schema-added",
@@ -53,7 +75,7 @@ function diffSchema(
     });
     return;
   }
-  if (before && !after) {
+  if (before !== undefined && after === undefined) {
     push(changes, {
       severity: direction === "input" ? "additive" : "breaking",
       code: "schema-removed",
@@ -63,7 +85,21 @@ function diffSchema(
     });
     return;
   }
-  if (!before || !after) return;
+  if (before === undefined || after === undefined || equal(before, after)) return;
+  if (typeof before === "boolean" || typeof after === "boolean") {
+    const tightened = before === true || after === false;
+    const relaxed = before === false || after === true;
+    const breaking = direction === "input" ? tightened : relaxed;
+    push(changes, {
+      severity: breaking ? "breaking" : "additive",
+      code: "boolean-schema-changed",
+      path,
+      message: `Boolean schema changed at ${path}`,
+      before,
+      after,
+    });
+    return;
+  }
 
   const beforeTypes = schemaTypes(before);
   const afterTypes = schemaTypes(after);
@@ -232,8 +268,8 @@ function diffSchema(
     });
   }
 
-  const beforeProperties = (before.properties ?? {}) as Record<string, McpFnJsonSchema>;
-  const afterProperties = (after.properties ?? {}) as Record<string, McpFnJsonSchema>;
+  const beforeProperties = (before.properties ?? {}) as Record<string, SchemaNode>;
+  const afterProperties = (after.properties ?? {}) as Record<string, SchemaNode>;
   const propertyNames = [...new Set([
     ...Object.keys(beforeProperties),
     ...Object.keys(afterProperties),
@@ -251,7 +287,9 @@ function diffSchema(
     const propertyPath = `${path}.properties.${name}`;
     const oldProperty = beforeProperties[name];
     const newProperty = afterProperties[name];
-    if (!oldProperty && newProperty) {
+    const hadOldProperty = Object.prototype.hasOwnProperty.call(beforeProperties, name);
+    const hasNewProperty = Object.prototype.hasOwnProperty.call(afterProperties, name);
+    if (!hadOldProperty && hasNewProperty) {
       const newlyRequired = afterRequired.has(name);
       const additionalPropertyChanges: McpFnContractChange[] = [];
       if (
@@ -266,15 +304,32 @@ function diffSchema(
           additionalPropertyChanges,
         );
       }
+      const inputFallbackChanges: McpFnContractChange[] = [];
+      if (direction === "input") {
+        const patternSchemas = matchingPatternSchemas(before, name);
+        const fallbackSchemas = patternSchemas.length
+          ? patternSchemas
+          : [beforeAdditional as SchemaNode];
+        fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
+          fallbackSchema,
+          newProperty,
+          `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
+          "input",
+          inputFallbackChanges,
+        ));
+      }
       const breaksDeclaredOutput =
         direction === "output" &&
         (
           beforeAdditional === false ||
           additionalPropertyChanges.some((change) => change.severity === "breaking")
         );
+      const narrowsAcceptedInput =
+        direction === "input" &&
+        inputFallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
         severity:
-          direction === "input" && newlyRequired || breaksDeclaredOutput
+          direction === "input" && (newlyRequired || narrowsAcceptedInput) || breaksDeclaredOutput
             ? "breaking"
             : "additive",
         code:
@@ -289,20 +344,23 @@ function diffSchema(
       });
       continue;
     }
-    if (oldProperty && !newProperty) {
+    if (hadOldProperty && !hasNewProperty) {
       const fallbackChanges: McpFnContractChange[] = [];
-      if (direction === "input" && typeof afterAdditional === "object") {
-        diffSchema(
+      const patternSchemas = matchingPatternSchemas(after, name);
+      if (direction === "input") {
+        const fallbackSchemas = patternSchemas.length
+          ? patternSchemas
+          : [afterAdditional as SchemaNode];
+        fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
           oldProperty,
-          afterAdditional as McpFnJsonSchema,
-          `${propertyPath}.additionalProperties`,
+          fallbackSchema,
+          `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
           "input",
           fallbackChanges,
-        );
+        ));
       }
       const breaking =
         direction === "output" ||
-        afterAdditional === false ||
         fallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
         severity: breaking ? "breaking" : "additive",
@@ -328,10 +386,10 @@ function diffSchema(
     });
   }
 
-  if (before.items || after.items) {
+  if (before.items !== undefined || after.items !== undefined) {
     diffSchema(
-      before.items as McpFnJsonSchema | undefined,
-      after.items as McpFnJsonSchema | undefined,
+      before.items as SchemaNode | undefined,
+      after.items as SchemaNode | undefined,
       `${path}.items`,
       direction,
       changes,
@@ -340,7 +398,7 @@ function diffSchema(
 
   const handledKeywords = new Set([
     "type", "enum", "properties", "required", "items", "additionalProperties",
-    "pattern", "format", "const", "uniqueItems",
+    "patternProperties", "pattern", "format", "const", "uniqueItems",
     ...tightening.map(([keyword]) => keyword),
   ]);
   const behavioralKeywords = new Set([

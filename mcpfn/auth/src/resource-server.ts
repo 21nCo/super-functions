@@ -165,7 +165,7 @@ export function createOAuthResourceServerHandler(
     }
 
     const requiredScopes = typeof options.requiredScopes === "function"
-      ? await options.requiredScopes(request)
+      ? await options.requiredScopes(request.clone())
       : options.requiredScopes ?? [];
     const grantedScopes = new Set(authInfo.scopes);
     const missingScopes = requiredScopes.filter((scope) => !grantedScopes.has(scope));
