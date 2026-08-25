@@ -189,11 +189,15 @@ export interface McpFnManifestTool {
 
 export interface McpFnManifestResource
   extends Omit<Resource, "_meta"> {
+  /** Whether this concrete resource accepts resources/subscribe requests. */
+  subscribable?: boolean;
   metadata?: Record<string, unknown>;
 }
 
 export interface McpFnManifestResourceTemplate
   extends Omit<ResourceTemplate, "_meta"> {
+  /** Whether resources matched by this template accept resources/subscribe requests. */
+  subscribable?: boolean;
   metadata?: Record<string, unknown>;
 }
 

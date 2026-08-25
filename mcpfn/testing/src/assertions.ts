@@ -108,9 +108,12 @@ export async function assertManifestContract(
       staticResourceUris.has(resource.uri) ||
       !resourceTemplates.some((template) => template.match(resource.uri)),
   );
-  if (stableJson(manifest.resources ?? []) !== stableJson(comparableStaticResources)) {
+  const expectedResources = (manifest.resources ?? []).map(
+    ({ subscribable: _subscribable, ...resource }) => resource,
+  );
+  if (stableJson(expectedResources) !== stableJson(comparableStaticResources)) {
     throw new McpFnAssertionError(
-      `Resource inventory mismatch\nexpected: ${stableJson(manifest.resources ?? [])}\nactual:   ${stableJson(comparableStaticResources)}`,
+      `Resource inventory mismatch\nexpected: ${stableJson(expectedResources)}\nactual:   ${stableJson(comparableStaticResources)}`,
     );
   }
 
@@ -121,9 +124,12 @@ export async function assertManifestContract(
     ...template,
     metadata: _meta,
   }));
-  if (stableJson(manifest.resourceTemplates ?? []) !== stableJson(comparableTemplates)) {
+  const expectedTemplates = (manifest.resourceTemplates ?? []).map(
+    ({ subscribable: _subscribable, ...template }) => template,
+  );
+  if (stableJson(expectedTemplates) !== stableJson(comparableTemplates)) {
     throw new McpFnAssertionError(
-      `Resource template inventory mismatch\nexpected: ${stableJson(manifest.resourceTemplates ?? [])}\nactual:   ${stableJson(comparableTemplates)}`,
+      `Resource template inventory mismatch\nexpected: ${stableJson(expectedTemplates)}\nactual:   ${stableJson(comparableTemplates)}`,
     );
   }
 

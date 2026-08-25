@@ -214,6 +214,14 @@ describe("McpFn manifests", () => {
       ...manifest,
       prompts: [{ name: "invalid", argumentsSchema: false }],
     })).toThrow(/argumentsSchema must be an object/);
+    expect(() => validateManifest({
+      ...manifest,
+      prompts: [{ name: "invalid", argumentsSchema: { type: "string" } }],
+    })).toThrow(/argumentsSchema must be an object schema/);
+    expect(() => validateManifest({
+      ...manifest,
+      resources: [{ uri: "docs://invalid", name: "invalid", subscribable: "yes" }],
+    })).toThrow(/subscribable must be a boolean/);
 
     const promptManifest = createManifest(
       { name: "prompts", version: "1.0.0" },
@@ -325,6 +333,61 @@ describe("McpFn manifests", () => {
       compatible: false,
       changes: expect.arrayContaining([
         expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("treats true and an empty schema as equivalent additionalProperties", () => {
+    const create = (additionalProperties: true | Record<string, never>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "equivalent",
+        description: "Accept arbitrary input.",
+        inputSchema: { type: "object", additionalProperties },
+        outputSchema: { type: "object", additionalProperties },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(true), create({})).changes).toEqual([]);
+    expect(diffManifests(create({}), create(true)).changes).toEqual([]);
+  });
+
+  it("reports per-resource subscription removal while aggregate support remains", () => {
+    const create = (subscribeFirst: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry()
+        .registerResource({
+          uri: "docs://first",
+          name: "first",
+          read: async () => ({ contents: [{ uri: "docs://first", text: "First" }] }),
+          ...(subscribeFirst ? { subscribe: async () => undefined } : {}),
+        })
+        .registerResource({
+          uri: "docs://second",
+          name: "second",
+          read: async () => ({ contents: [{ uri: "docs://second", text: "Second" }] }),
+          subscribe: async () => undefined,
+        })
+        .registerResourceTemplate({
+          uriTemplate: "docs://template-first/{id}",
+          name: "template-first",
+          read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "First" }] }),
+          ...(subscribeFirst ? { subscribe: async () => undefined } : {}),
+        })
+        .registerResourceTemplate({
+          uriTemplate: "docs://template-second/{id}",
+          name: "template-second",
+          read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Second" }] }),
+          subscribe: async () => undefined,
+        }),
+    );
+
+    expect(diffManifests(create(true), create(false))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "resource-subscription-removed", severity: "breaking" }),
+        expect.objectContaining({ code: "resource-template-subscription-removed", severity: "breaking" }),
       ]),
     });
   });

@@ -166,6 +166,33 @@ describe("McpFnServer", () => {
     } as never)).toThrow(/arguments must be an array/);
   });
 
+  it("rejects malformed prompt argument fields and non-object schemas", () => {
+    const register = (argumentsValue: unknown) => new McpFnRegistry().registerPrompt({
+      name: "malformed_prompt",
+      arguments: argumentsValue,
+      get: async () => ({ messages: [] }),
+    } as never);
+
+    expect(() => register([{ name: "contains whitespace" }])).toThrow(/Invalid MCP prompt argument name/);
+    expect(() => register([{ name: "topic", description: 42 }])).toThrow(/description must be a string/);
+    expect(() => register([{ name: "topic", required: "yes" }])).toThrow(/required must be a boolean/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "non_object_schema",
+      argumentsSchema: { type: "string" },
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/argumentsSchema must be an object schema/);
+  });
+
+  it("rejects unknown task support values at registration", () => {
+    expect(() => new McpFnRegistry().register({
+      name: "unknown_task_support",
+      description: "Reject invalid task support.",
+      inputSchema: { type: "object" },
+      execution: { taskSupport: "sometimes" },
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/invalid taskSupport=sometimes/);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()

@@ -82,6 +82,7 @@ export function createManifest<TContext>(
     ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
     ...(resource.annotations ? { annotations: resource.annotations } : {}),
     ...(resource.icons ? { icons: resource.icons } : {}),
+    ...(resource.subscribe ? { subscribable: true } : {}),
     ...(resource.metadata ? { metadata: resource.metadata } : {}),
   }));
   const resourceTemplates: McpFnManifestResourceTemplate[] =
@@ -93,6 +94,7 @@ export function createManifest<TContext>(
       ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
       ...(resource.annotations ? { annotations: resource.annotations } : {}),
       ...(resource.icons ? { icons: resource.icons } : {}),
+      ...(resource.subscribe ? { subscribable: true } : {}),
       ...(resource.metadata ? { metadata: resource.metadata } : {}),
     }));
   const prompts: McpFnManifestPrompt[] = registry.promptDefinitions().map((prompt) => ({
@@ -243,6 +245,11 @@ export function validateManifest(value: unknown): McpFnManifest {
     try { new URL(resource.uri); } catch {
       throw new McpFnValidationError(`Manifest resource ${resource.name} has an invalid URI`);
     }
+    if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
+      throw new McpFnValidationError(
+        `Manifest resource ${resource.name} subscribable must be a boolean`,
+      );
+    }
     assertMetadata(`Manifest resource ${resource.name} metadata`, resource.metadata);
   }
   assertSortedBy("Manifest resource URIs", manifest.resources ?? [], (resource) => resource.uri);
@@ -259,6 +266,11 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (!template.variableNames.length) {
       throw new McpFnValidationError(
         `Manifest resource template ${resource.name} must contain at least one variable`,
+      );
+    }
+    if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} subscribable must be a boolean`,
       );
     }
     assertMetadata(`Manifest resource template ${resource.name} metadata`, resource.metadata);
@@ -297,6 +309,11 @@ export function validateManifest(value: unknown): McpFnManifest {
     }
     if (prompt.argumentsSchema !== undefined) {
       assertObject(`Manifest prompt ${prompt.name} argumentsSchema`, prompt.argumentsSchema);
+      if (prompt.argumentsSchema.type !== "object") {
+        throw new McpFnValidationError(
+          `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
+        );
+      }
       try { ajv.compile(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,

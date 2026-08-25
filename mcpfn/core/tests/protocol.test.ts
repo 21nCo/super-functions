@@ -139,6 +139,28 @@ describe("McpFn protocol primitives", () => {
       name: "exploded-reserved",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Reserved" }] }),
     })).toThrow(/Ambiguous MCP resource URI template/);
+
+    const slash = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://slash/{id}",
+      name: "literal-slash",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Slash" }] }),
+    });
+    expect(() => slash.registerResourceTemplate({
+      uriTemplate: "docs://slash{/name}",
+      name: "slash-operator",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Slash" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
+
+    const dot = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://dot.{id}",
+      name: "literal-dot",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Dot" }] }),
+    });
+    expect(() => dot.registerResourceTemplate({
+      uriTemplate: "docs://dot{.name}",
+      name: "dot-operator",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Dot" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
   });
 
   it("runs task-augmented tools through the SDK task store", async () => {

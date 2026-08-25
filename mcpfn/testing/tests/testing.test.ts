@@ -149,6 +149,7 @@ describe("McpFn testing", () => {
       .registerResource({
         uri: "docs://guide",
         name: "guide",
+        subscribe: async () => undefined,
         read: async () => ({
           contents: [{ uri: "docs://guide", text: "Guide" }],
         }),
@@ -162,6 +163,7 @@ describe("McpFn testing", () => {
         read: async (uri) => ({
           contents: [{ uri: uri.toString(), text: "Ada" }],
         }),
+        subscribe: async () => undefined,
       });
     const server = createMcpFnServer({
       info: { name: "dynamic-resources", version: "1.0.0" },

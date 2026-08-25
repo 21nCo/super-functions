@@ -84,16 +84,17 @@ function uriTemplateMatchShape(uriTemplate: string): string {
       // Query variable names are literal parameter names and affect the matched URI set.
       const names = expression.slice(1)
         .split(",")
-        .map((name) => name.replace("*", "").trim())
+        .map((name) => name.replace(/\*/g, "").trim())
         .join(",");
       return `{query:${operator}:${names}}`;
     }
     const exploded = expression.includes("*");
     // These tokens mirror the SDK's partToRegExp implementation. In particular,
-    // + and # share `(.+)`, while explode changes only simple and slash matches.
+    // + and # share `(.+)`, while slash and dot operators include the same
+    // literal prefix as an equivalent literal-plus-simple expression.
     if (operator === "+" || operator === "#") return "{reserved}";
-    if (operator === ".") return "{dot}";
-    if (operator === "/") return exploded ? "{slash-exploded}" : "{slash}";
+    if (operator === ".") return ".{simple}";
+    if (operator === "/") return exploded ? "/{simple-exploded}" : "/{simple}";
     return exploded ? "{simple-exploded}" : "{simple}";
   });
 }
@@ -190,6 +191,11 @@ export class McpFnRegistry<TContext = undefined> {
       );
     }
     const taskSupport = definition.execution?.taskSupport ?? "forbidden";
+    if (!["forbidden", "optional", "required"].includes(taskSupport)) {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} has invalid taskSupport=${String(taskSupport)}`,
+      );
+    }
     if ((taskSupport === "required" || taskSupport === "optional") && !definition.taskHandler) {
       throw new McpFnValidationError(
         `Tool ${definition.name} declares taskSupport=${taskSupport} but has no taskHandler`,
@@ -296,6 +302,27 @@ export class McpFnRegistry<TContext = undefined> {
       )
     ) {
       throw new McpFnValidationError(`Prompt ${definition.name} arguments must be an array`);
+    }
+    for (const argument of definition.arguments ?? []) {
+      assertName("prompt argument", argument.name);
+      if (argument.description !== undefined && typeof argument.description !== "string") {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} argument ${argument.name} description must be a string`,
+        );
+      }
+      if (argument.required !== undefined && typeof argument.required !== "boolean") {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} argument ${argument.name} required must be a boolean`,
+        );
+      }
+    }
+    if (
+      definition.argumentsSchema !== undefined &&
+      definition.argumentsSchema.type !== "object"
+    ) {
+      throw new McpFnValidationError(
+        `Prompt ${definition.name} argumentsSchema must be an object schema`,
+      );
     }
     const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
     if (new Set(argumentNames).size !== argumentNames.length) {

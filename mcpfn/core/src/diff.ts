@@ -201,8 +201,12 @@ function diffSchema(
     });
   }
 
-  const beforeAdditional = before.additionalProperties ?? true;
-  const afterAdditional = after.additionalProperties ?? true;
+  const normalizeAdditionalProperties = (value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length
+      ? true
+      : value;
+  const beforeAdditional = normalizeAdditionalProperties(before.additionalProperties ?? true);
+  const afterAdditional = normalizeAdditionalProperties(after.additionalProperties ?? true);
   if (beforeAdditional !== false && afterAdditional === false) {
     push(changes, {
       severity: direction === "input" ? "breaking" : "additive",
@@ -425,6 +429,17 @@ function diffResource(
   changes: McpFnContractChange[],
 ): void {
   const root = `resources.${before.uri}`;
+  if ((before.subscribable ?? false) !== (after.subscribable ?? false)) {
+    const enabled = after.subscribable === true;
+    push(changes, {
+      severity: enabled ? "additive" : "breaking",
+      code: enabled ? "resource-subscription-enabled" : "resource-subscription-removed",
+      path: `${root}.subscribable`,
+      message: `Resource subscription support was ${enabled ? "enabled" : "removed"} for ${before.uri}`,
+      before: before.subscribable,
+      after: after.subscribable,
+    });
+  }
   if (before.mimeType !== after.mimeType) {
     push(changes, {
       severity: "breaking",
@@ -455,6 +470,19 @@ function diffResourceTemplate(
   changes: McpFnContractChange[],
 ): void {
   const root = `resourceTemplates.${before.name}`;
+  if ((before.subscribable ?? false) !== (after.subscribable ?? false)) {
+    const enabled = after.subscribable === true;
+    push(changes, {
+      severity: enabled ? "additive" : "breaking",
+      code: enabled
+        ? "resource-template-subscription-enabled"
+        : "resource-template-subscription-removed",
+      path: `${root}.subscribable`,
+      message: `Resource template subscription support was ${enabled ? "enabled" : "removed"} for ${before.name}`,
+      before: before.subscribable,
+      after: after.subscribable,
+    });
+  }
   if (before.uriTemplate !== after.uriTemplate) {
     push(changes, {
       severity: "breaking",
