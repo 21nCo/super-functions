@@ -14,6 +14,7 @@ import type {
 
 import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
 import { compareCodeUnits } from "./canonical.js";
+import { uriTemplateMatchShape } from "./uri-template.js";
 import type {
   McpFnListedTool,
   McpFnObjectSchema,
@@ -92,28 +93,6 @@ function assertUri(kind: string, uri: string): void {
   } catch {
     throw new McpFnValidationError(`Invalid MCP ${kind} URI ${JSON.stringify(uri)}`);
   }
-}
-
-function uriTemplateMatchShape(uriTemplate: string): string {
-  return uriTemplate.replace(/\{([^{}]+)\}/g, (_match, expression: string) => {
-    const operator = /^[+#./?&]/.exec(expression)?.[0] ?? "";
-    if (operator === "?" || operator === "&") {
-      // Query variable names are literal parameter names and affect the matched URI set.
-      const names = expression.slice(1)
-        .split(",")
-        .map((name) => name.replace(/\*/g, "").trim())
-        .join(",");
-      return `{query:${operator}:${names}}`;
-    }
-    const exploded = expression.includes("*");
-    // These tokens mirror the SDK's partToRegExp implementation. In particular,
-    // + and # share `(.+)`, while slash and dot operators include the same
-    // literal prefix as an equivalent literal-plus-simple expression.
-    if (operator === "+" || operator === "#") return "{reserved}";
-    if (operator === ".") return ".{simple}";
-    if (operator === "/") return exploded ? "/{simple-exploded}" : "/{simple}";
-    return exploded ? "{simple-exploded}" : "{simple}";
-  });
 }
 
 export function schemaPromptArguments(

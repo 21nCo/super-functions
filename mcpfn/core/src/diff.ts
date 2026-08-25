@@ -41,6 +41,24 @@ function equalSets(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
 }
 
+function hasUnescapedAlternation(pattern: string): boolean {
+  let escaped = false;
+  for (const character of pattern) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    // Treat alternation inside character classes conservatively too. It is not
+    // an alternation there, but declining the optimization cannot hide overlap.
+    if (character === "|") return true;
+  }
+  return false;
+}
+
 function anchoredLiteralPrefix(pattern: string): string | undefined {
   if (!pattern.startsWith("^")) return undefined;
   let prefix = "";
@@ -77,6 +95,9 @@ function anchoredLiteralSuffix(pattern: string): string | undefined {
 }
 
 function patternsMayOverlap(left: string, right: string): boolean {
+  // A leading/trailing anchor only scopes its own alternative. Prefix/suffix
+  // literals are therefore proof of disjointness only without alternation.
+  if (hasUnescapedAlternation(left) || hasUnescapedAlternation(right)) return true;
   const leftPrefix = anchoredLiteralPrefix(left);
   const rightPrefix = anchoredLiteralPrefix(right);
   if (
@@ -92,16 +113,52 @@ function patternsMayOverlap(left: string, right: string): boolean {
   return true;
 }
 
-function nestedRemovedPaths(before: unknown, after: unknown, path: string): string[] {
-  if (!before || typeof before !== "object" || Array.isArray(before)) return [];
-  if (!after || typeof after !== "object" || Array.isArray(after)) return [path];
-  const beforeRecord = before as Record<string, unknown>;
-  const afterRecord = after as Record<string, unknown>;
-  return Object.keys(beforeRecord).flatMap((name) => {
-    const childPath = `${path}.${name}`;
-    if (!Object.prototype.hasOwnProperty.call(afterRecord, name)) return [childPath];
-    return nestedRemovedPaths(beforeRecord[name], afterRecord[name], childPath);
-  });
+interface NestedCapabilityChange {
+  severity: "breaking" | "additive" | "behavioral";
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
+function capabilityRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function nestedCapabilityChanges(
+  before: unknown,
+  after: unknown,
+  path: string,
+): NestedCapabilityChange[] {
+  if (equal(before, after)) return [];
+  if (before === true && after === false) {
+    return [{ severity: "breaking", path, before, after }];
+  }
+  if (before === false && after === true) {
+    return [{ severity: "additive", path, before, after }];
+  }
+  if (capabilityRecord(before) && capabilityRecord(after)) {
+    return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      .sort(compareCodeUnits)
+      .flatMap((name) => {
+        const childPath = `${path}.${name}`;
+        const hadBefore = Object.prototype.hasOwnProperty.call(before, name);
+        const hasAfter = Object.prototype.hasOwnProperty.call(after, name);
+        if (!hasAfter) {
+          return [{ severity: "breaking" as const, path: childPath, before: before[name], after: undefined }];
+        }
+        if (!hadBefore) {
+          return [{ severity: "additive" as const, path: childPath, before: undefined, after: after[name] }];
+        }
+        return nestedCapabilityChanges(before[name], after[name], childPath);
+      });
+  }
+  if (capabilityRecord(before) && after === false) {
+    return [{ severity: "breaking", path, before, after }];
+  }
+  if (before === false && capabilityRecord(after)) {
+    return [{ severity: "additive", path, before, after }];
+  }
+  return [{ severity: "behavioral", path, before, after }];
 }
 
 function matchingPatternSchemas(
@@ -927,18 +984,23 @@ export function diffManifests(
       if (requirementChanged && !requirementAdded && !requirementRemoved) continue;
       const extensionWasRequired = key === "extensions" && extensionRequired(oldRecord[name]);
       const extensionIsRequired = key === "extensions" && extensionRequired(newRecord[name]);
-      const removedCapabilityPaths = key === "capabilities" && !removed && !added
-        ? nestedRemovedPaths(oldRecord[name], newRecord[name], `${key}.${name}`)
+      const capabilityChanges = key === "capabilities" && !removed && !added
+        ? nestedCapabilityChanges(oldRecord[name], newRecord[name], `${key}.${name}`)
         : [];
-      if (removedCapabilityPaths.length) {
-        for (const removedPath of removedCapabilityPaths) {
+      if (capabilityChanges.length) {
+        for (const capabilityChange of capabilityChanges) {
+          const action = capabilityChange.severity === "breaking"
+            ? "removed"
+            : capabilityChange.severity === "additive"
+              ? "added"
+              : "changed";
           push(changes, {
-            severity: "breaking",
-            code: "capability-support-removed",
-            path: removedPath,
-            message: `Capability support was removed at ${removedPath}`,
-            before: oldRecord[name],
-            after: newRecord[name],
+            severity: capabilityChange.severity,
+            code: `capability-support-${action}`,
+            path: capabilityChange.path,
+            message: `Capability support was ${action} at ${capabilityChange.path}`,
+            before: capabilityChange.before,
+            after: capabilityChange.after,
           });
         }
         continue;

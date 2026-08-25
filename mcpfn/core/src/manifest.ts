@@ -6,6 +6,7 @@ import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
+import { uriTemplateMatchShape } from "./uri-template.js";
 import {
   promptArguments,
   schemaPromptArguments,
@@ -265,6 +266,7 @@ export function validateManifest(value: unknown): McpFnManifest {
   }
   assertSortedBy("Manifest resource URIs", manifest.resources ?? [], (resource) => resource.uri);
 
+  const resourceTemplateShapes = new Set<string>();
   for (const resource of manifest.resourceTemplates ?? []) {
     assertObject("Every manifest resource template", resource);
     assertName("Every manifest resource template", resource.name);
@@ -279,6 +281,13 @@ export function validateManifest(value: unknown): McpFnManifest {
         `Manifest resource template ${resource.name} must contain at least one variable`,
       );
     }
+    const matchShape = uriTemplateMatchShape(resource.uriTemplate);
+    if (resourceTemplateShapes.has(matchShape)) {
+      throw new McpFnValidationError(
+        `Manifest contains an ambiguous resource URI template: ${resource.uriTemplate}`,
+      );
+    }
+    resourceTemplateShapes.add(matchShape);
     if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
       throw new McpFnValidationError(
         `Manifest resource template ${resource.name} subscribable must be a boolean`,

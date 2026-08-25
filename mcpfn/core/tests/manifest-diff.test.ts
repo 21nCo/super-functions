@@ -580,6 +580,20 @@ describe("McpFn manifests", () => {
       create({ "^x": { type: "string" } }),
       create({ "^x": { type: "string" }, "x$": { type: "string" } }),
     )).toMatchObject({ compatible: true });
+    for (const [existing, added] of [
+      ["^foo|bar", "^bar$"],
+      ["^baz$", "ba|qux$"],
+    ]) {
+      expect(diffManifests(
+        create({ [existing]: { type: "string" } }),
+        create({ [existing]: { type: "string" }, [added]: { type: "number" } }),
+      )).toMatchObject({
+        compatible: false,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "overlapping-pattern-constraint-changed" }),
+        ]),
+      });
+    }
   });
 
   it("compares removed output properties with their effective fallback", () => {
@@ -866,6 +880,40 @@ describe("McpFn manifests", () => {
         expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.cancel" }),
       ]),
     });
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } }, list: {}, cancel: {} }),
+      create({ requests: { tools: { call: {} } }, list: {}, poll: {} }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.cancel" }),
+        expect.objectContaining({ code: "capability-support-added", path: "capabilities.tasks.poll" }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } } }),
+      create({ requests: { tools: { call: {} } }, list: {} }),
+    )).toMatchObject({
+      compatible: true,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-added", path: "capabilities.tasks.list" }),
+      ]),
+    });
+
+    const withResources = (subscribe: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      registry(),
+      { capabilities: { resources: { subscribe } } as never },
+    );
+    expect(diffManifests(withResources(true), withResources(false))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({
+          code: "capability-support-removed",
+          path: "capabilities.resources.subscribe",
+        }),
+      ]),
+    });
   });
 
   it("tracks prompt argument metadata and canonicalizes object enum values", () => {
@@ -911,5 +959,12 @@ describe("McpFn manifests", () => {
       ...normalized,
       resourceTemplates: [{ name: "static", uriTemplate: "docs://static" }],
     })).toThrow(/at least one variable/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "person", uriTemplate: "docs://users/{id}" },
+        { name: "user", uriTemplate: "docs://users/{name}" },
+      ],
+    })).toThrow(/ambiguous resource URI template/);
   });
 });
