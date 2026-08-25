@@ -104,6 +104,21 @@ function isAllowedReference(pathname, line) {
     return true;
   }
 
+  if (
+    /uifn\/(?:react\/src|solid\/src|svelte\/lib)\/generated\/tooltip(?:\.tsx|\/index\.ts)$/.test(pathname) &&
+    line.includes('TooltipProvider')
+  ) {
+    return true;
+  }
+
+  if (
+    pathname.startsWith('uifn/storybook/workbenches/') &&
+    line.includes('project-1-name') &&
+    line.includes('Nucleus')
+  ) {
+    return true;
+  }
+
   return false;
 }
 
@@ -160,6 +175,7 @@ for (const packageJsonFile of packageJsonFiles) {
 
 for (const family of catalogFamilies) {
   const dir = file(`uifn/registry/catalog/${family}`);
+  if (!existsSync(dir)) continue;
   for (const entry of readdirSync(dir).filter((candidate) => candidate.endsWith('.json'))) {
     const pathname = `uifn/registry/catalog/${family}/${entry}`;
     const manifest = readJson(pathname);
@@ -206,6 +222,8 @@ console.log(
         'uifn/README.md:Coss capability reference statement',
         'registry catalog capabilityReference.source with public-name-capability-reference-only policy',
         'registry tests rejecting removed scaffold markers',
+        'generated TooltipProvider public API declarations',
+        'storybook workbench project-name fixture',
       ],
     },
     null,

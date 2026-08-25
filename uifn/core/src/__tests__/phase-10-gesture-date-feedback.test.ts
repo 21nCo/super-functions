@@ -171,6 +171,7 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     const callbackCount = updatedChange.mock.calls.length;
     carousel.update({ itemCount: 0 });
     expect(scheduler.pending().timeout).toBe(0);
+    expect(carousel.state.interaction).toBe('idle');
     scheduler.advanceBy(100);
     expect(updatedChange).toHaveBeenCalledTimes(callbackCount);
     carousel.update({ itemCount: 2 });
@@ -247,6 +248,51 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     expect(initialChange).toHaveBeenCalledOnce();
     expect(updatedChange).toHaveBeenCalledWith([]);
     signature.destroy();
+  });
+
+  it('synchronizes mutable angle slider inputs after creation', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const angle = createAngleSliderController({
+      value: 90,
+      min: 0,
+      max: 360,
+      step: 10,
+      name: 'old-angle',
+      onValueChange: initialChange,
+    }, deterministicEnv('en-US'));
+
+    angle.update({
+      min: -180,
+      max: 180,
+      step: 5,
+      locale: 'de-DE',
+      name: 'new-angle',
+      disabled: true,
+      readOnly: true,
+      onValueChange: updatedChange,
+    });
+    expect(angle.state).toMatchObject({
+      value: 90,
+      min: -180,
+      max: 180,
+      step: 5,
+      disabled: true,
+      readOnly: true,
+    });
+    expect(angle.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-angle',
+      disabled: true,
+    });
+    angle.actions.setValue(100);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    angle.update({ disabled: false, readOnly: false, value: undefined });
+    angle.actions.setValue(102);
+    expect(angle.state.value).toBe(100);
+    expect(updatedChange).toHaveBeenCalledWith(100);
+    angle.destroy();
   });
 
   it('negative classifier names wrong RTL behavior precisely', () => {

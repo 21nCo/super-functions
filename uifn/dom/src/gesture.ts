@@ -14,6 +14,7 @@ export interface UIFnGestureBindingOptions {
 export interface UIFnGestureBinding {
   readonly activePointerIds: readonly number[];
   cancel(pointerId: number, reason?: 'pointercancel' | 'lostpointercapture' | 'destroy'): void;
+  updateOrientation(orientation: 'horizontal' | 'vertical' | 'both'): void;
   destroy(): void;
 }
 
@@ -35,6 +36,7 @@ export interface UIFnRangeGestureDomBindingOptions {
   readonly controller: {
     readonly actions: Record<string, (...args: any[]) => unknown>;
     getState(): Record<string, any>;
+    subscribe?(subscriber: () => void, options?: { readonly emitInitial?: boolean }): () => void;
   };
 }
 
@@ -104,17 +106,31 @@ export function createUIFnRangeGestureDomBinding(options: UIFnRangeGestureDomBin
       else actions.endInteraction?.();
     }
   };
-  return createUIFnGestureBinding(options.scope, {
+  const orientation = (): 'horizontal' | 'vertical' | 'both' => primitive === 'ColorPicker'
+    ? options.value === undefined ? 'both' : 'horizontal'
+    : state().orientation ?? (options.value === 'horizontal' ? 'horizontal' : options.value === 'vertical' ? 'vertical' : 'both');
+  const binding = createUIFnGestureBinding(options.scope, {
     element,
-    orientation: primitive === 'ColorPicker'
-      ? options.value === undefined ? 'both' : 'horizontal'
-      : state().orientation ?? (options.value === 'horizontal' ? 'horizontal' : options.value === 'vertical' ? 'vertical' : 'both'),
+    orientation: orientation(),
     disabled: () => Boolean(state().disabled || state().readOnly),
     onStart: (event) => invoke(event, 'start'),
     onMove: (event) => invoke(event, 'move'),
     onEnd: (event) => invoke(event, 'end'),
     onCancel: (event, reason) => invoke(event, 'cancel', reason),
   });
+  const unsubscribe = controller.subscribe?.(
+    () => binding.updateOrientation(orientation()),
+    { emitInitial: false },
+  );
+  return {
+    get activePointerIds() { return binding.activePointerIds; },
+    cancel: (pointerId, reason) => binding.cancel(pointerId, reason),
+    updateOrientation: (next) => binding.updateOrientation(next),
+    destroy() {
+      unsubscribe?.();
+      binding.destroy();
+    },
+  };
 }
 
 export function createUIFnGestureBinding(scope: UIFnDomScope, options: UIFnGestureBindingOptions): UIFnGestureBinding {
@@ -122,8 +138,12 @@ export function createUIFnGestureBinding(scope: UIFnDomScope, options: UIFnGestu
   const trackers = new Map<number, UIFnPointerTracking>();
   const events = new Map<number, PointerEvent>();
   const previousTouchAction = options.element.style.touchAction;
-  options.element.style.touchAction = options.orientation === 'horizontal' ? 'pan-y' : options.orientation === 'vertical' ? 'pan-x' : 'none';
   let destroyed = false;
+  const updateOrientation = (orientation: 'horizontal' | 'vertical' | 'both') => {
+    if (destroyed) return;
+    options.element.style.touchAction = orientation === 'horizontal' ? 'pan-y' : orientation === 'vertical' ? 'pan-x' : 'none';
+  };
+  updateOrientation(options.orientation ?? 'both');
   const cancel = (pointerId: number, reason: 'pointercancel' | 'lostpointercapture' | 'destroy' = 'pointercancel') => {
     const tracker = trackers.get(pointerId);
     const event = events.get(pointerId);
@@ -155,6 +175,7 @@ export function createUIFnGestureBinding(scope: UIFnDomScope, options: UIFnGestu
   return {
     get activePointerIds() { return Object.freeze([...trackers.keys()]); },
     cancel,
+    updateOrientation,
     destroy() {
       if (destroyed) return;
       destroyed = true;

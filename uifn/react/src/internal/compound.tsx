@@ -346,18 +346,18 @@ export class ReactPrimitiveBridge<TInputs extends object = AnyRecord> {
     const previous = this.latestInputs.current as AnyRecord;
     const next = inputs as AnyRecord;
     const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
-    const changed = [...keys].some((key) => {
+    const changedKeys = [...keys].filter((key) => {
       if (typeof previous[key] === 'function' || typeof next[key] === 'function') return false;
       return !equalInput(previous[key], next[key]);
     });
     this.latestInputs.current = inputs;
-    if (!changed) return;
+    if (changedKeys.length === 0) return;
     if (this.definition.kind === 'typed-static-contract') {
       this.projectStatic();
       this.emit();
       return;
     }
-    this.current?.update(inputs as Partial<AnyRecord>);
+    this.current?.update(Object.fromEntries(changedKeys.map((key) => [key, next[key]])) as Partial<AnyRecord>);
   }
 
   getPartProps(part: string, value: unknown, userProps: AnyRecord): UIFnPartProps {

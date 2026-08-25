@@ -180,27 +180,51 @@ export interface AngleSliderActions { setValue(value: number, modality?: 'keyboa
 export interface AngleSliderControllerParts { readonly root: UIFnPhase10Part; readonly track: UIFnPhase10Part; readonly thumb: UIFnPhase10Part; readonly valueText: UIFnPhase10Part; readonly hiddenInput: UIFnPhase10Part }
 export type AngleSliderController = UIFnController<AngleSliderState, AngleSliderActions, AngleSliderControllerParts, AngleSliderProps>;
 export function createAngleSliderController(props: AngleSliderProps = {}, env: UIFnEnvironment = {}): AngleSliderController {
-  const { resolved, id } = createUIFnPhase10Ids('AngleSlider', 'angle-slider', env); const min = props.min ?? 0; const max = props.max ?? 360; const step = props.step ?? 1; const locale = props.locale ?? resolved.getLocale(); const controlled = props.value !== undefined;
+  const { resolved, id } = createUIFnPhase10Ids('AngleSlider', 'angle-slider', env); let currentProps = props; let min = props.min ?? 0; let max = props.max ?? 360; let step = props.step ?? 1; let locale = props.locale ?? resolved.getLocale(); let controlled = props.value !== undefined; let callbackOverride: AngleSliderProps['onValueChange']; let hasCallbackOverride = false;
   const normalize = (value: number) => alignRangeValue(value, { min, max, step }); const format = (value: number) => formatUIFnLocalizedNumber(value, locale, { maximumFractionDigits: 8, style: 'unit', unit: 'degree' }); const initial = normalize(props.value ?? props.defaultValue ?? min);
   const store = createStateChannel<AngleSliderState>({ value: initial, min, max, step, valueText: format(initial), interaction: 'idle', pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), disabled: props.disabled ?? false, readOnly: props.readOnly ?? false, announcementAt: -1_000_000_000_000, announcementCount: 0 });
   const actions: AngleSliderActions = {
-    setValue(value, modality = 'pointer') { const state = store.getState(); if (state.disabled || state.readOnly) return; const next = normalize(value); const result = announce(state.announcementAt, resolved.now(), format(next), modality === 'keyboard'); store.patchState(controlled ? { requestedValue: next, announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) } : { value: next, valueText: format(next), announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) }); props.onValueChange?.(next); },
+    setValue(value, modality = 'pointer') { const state = store.getState(); if (state.disabled || state.readOnly) return; const next = normalize(value); const result = announce(state.announcementAt, resolved.now(), format(next), modality === 'keyboard'); store.patchState(controlled ? { requestedValue: next, announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) } : { value: next, valueText: format(next), announcement: result.message ?? state.announcement, announcementAt: result.at, announcementCount: state.announcementCount + (result.message ? 1 : 0) }); (hasCallbackOverride ? callbackOverride : props.onValueChange)?.(next); },
     syncValue(value) { const next = normalize(value); store.patchState({ value: next, valueText: format(next), requestedValue: undefined }); },
     keyStep(key) { actions.setValue(stepUIFnRangeValue(store.getState().value, key, { min, max, step }), 'keyboard'); },
     pointerStart(pointerId, value, kind = 'mouse') { const state = store.getState(); const start = point(value); store.patchState({ pointers: setPointer(state.pointers, pointerId, { start, current: start, kind, target: 0 }), interaction: 'dragging' }); actions.setValue(value, kind === 'touch' ? 'touch' : 'pointer'); },
     pointerMove(pointerId, value) { const state = store.getState(); const pointer = state.pointers[pointerId]; if (!pointer) return; store.patchState({ pointers: setPointer(state.pointers, pointerId, { ...pointer, current: point(value) }) }); actions.setValue(value, pointer.kind === 'touch' ? 'touch' : 'pointer'); },
     pointerEnd(pointerId) { const state = store.getState(); const pointers = removePointer(state.pointers, pointerId); store.patchState({ pointers, interaction: phase(pointers) }); },
     pointerCancel(pointerId) { const state = store.getState(); if (!state.pointers[pointerId]) return; const pointers = removePointer(state.pointers, pointerId); store.patchState({ pointers, interaction: phase(pointers), cancelledPointers: Object.freeze([...state.cancelledPointers, pointerId]) }); },
-    lostPointerCapture: (pointerId) => actions.pointerCancel(pointerId), reset: () => actions.syncValue(props.defaultValue ?? min),
+    lostPointerCapture: (pointerId) => actions.pointerCancel(pointerId), reset: () => actions.syncValue(currentProps.defaultValue ?? min),
   };
   const parts: AngleSliderControllerParts = {
     root: createUIFnPhase10Part('AngleSlider', 'root', () => ({ id: id('root'), data: { state: store.getState().interaction } }), { id: true }),
     track: createUIFnPhase10Part('AngleSlider', 'track', () => ({ id: id('track'), data: { state: store.getState().interaction } }), { id: true }),
     thumb: createUIFnPhase10Part('AngleSlider', 'thumb', () => { const state = store.getState(); return { role: 'slider', id: id('thumb'), tabIndex: state.disabled ? -1 : 0, aria: { label: 'Angle', valuemin: min, valuemax: max, valuenow: state.value, valuetext: state.valueText, orientation: 'horizontal', disabled: state.disabled, readonly: state.readOnly }, style: { transform: `rotate(${state.value}deg)` }, on: { keydown: (event) => actions.keyStep(event?.key ?? '') } }; }, { role: true, id: true, tabIndex: true, aria: ['label', 'valuemin', 'valuemax', 'valuenow', 'valuetext'] }),
     valueText: createUIFnPhase10Part('AngleSlider', 'valueText', () => ({ id: id('value-text'), data: { value: store.getState().valueText } }), { id: true }),
-    hiddenInput: createUIFnPhase10Part('AngleSlider', 'hiddenInput', () => ({ id: id('input'), attributes: { type: 'hidden', name: props.name, value: store.getState().value, disabled: store.getState().disabled } }), { id: true }),
+    hiddenInput: createUIFnPhase10Part('AngleSlider', 'hiddenInput', () => ({ id: id('input'), attributes: { type: 'hidden', name: currentProps.name, value: store.getState().value, disabled: store.getState().disabled } }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.value !== undefined) actions.syncValue(inputs.value); } });
+  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    if ('onValueChange' in inputs) { hasCallbackOverride = true; callbackOverride = inputs.onValueChange; }
+    currentProps = { ...currentProps, ...inputs };
+    controlled = currentProps.value !== undefined;
+    min = currentProps.min ?? 0;
+    max = currentProps.max ?? 360;
+    step = currentProps.step ?? 1;
+    locale = currentProps.locale ?? resolved.getLocale();
+    const state = store.getState();
+    const ownerValueChanged = 'value' in inputs && inputs.value !== undefined && inputs.value !== state.value;
+    const value = normalize(ownerValueChanged ? inputs.value as number : state.value);
+    const requestedValue = controlled && !ownerValueChanged && state.requestedValue !== undefined
+      ? normalize(state.requestedValue)
+      : undefined;
+    store.patchState({
+      value,
+      requestedValue,
+      min,
+      max,
+      step,
+      valueText: format(value),
+      disabled: currentProps.disabled ?? false,
+      readOnly: currentProps.readOnly ?? false,
+    });
+  } });
 }
 
 export interface CarouselProps { readonly index?: number; readonly defaultIndex?: number; readonly itemCount: number; readonly loop?: boolean; readonly orientation?: UIFnAxis; readonly dir?: UIFnGestureDirection; readonly autoplayDelay?: number; readonly reducedMotion?: boolean; readonly locale?: string; readonly messages?: { readonly carousel?: string; readonly slide?: string; readonly item?: (index: number, count: number, locale: string) => string }; readonly onIndexChange?: (index: number) => void }
@@ -210,7 +234,7 @@ export interface CarouselControllerParts { readonly root: UIFnPhase10Part; reado
 export type CarouselController = UIFnController<CarouselState, CarouselActions, CarouselControllerParts, CarouselProps>;
 export function createCarouselController(props: CarouselProps, env: UIFnEnvironment = {}): CarouselController {
   const { resolved, id } = createUIFnPhase10Ids('Carousel', 'carousel', env); let currentProps = props; let controlled = props.index !== undefined; let count = Math.max(0, Math.trunc(props.itemCount)); let loop = props.loop ?? false; let locale = props.locale ?? resolved.getLocale(); let autoplayDelay = Math.max(0, props.autoplayDelay ?? 0); let reducedMotion = props.reducedMotion ?? resolved.prefersReducedMotion(); const initial = resolveUIFnCarouselIndex(props.index ?? props.defaultIndex ?? 0, count, loop);
-  const idleInteraction = () => autoplayDelay && !reducedMotion ? 'autoplaying' as const : 'idle' as const;
+  const idleInteraction = () => count > 0 && autoplayDelay && !reducedMotion ? 'autoplaying' as const : 'idle' as const;
   const store = createStateChannel<CarouselState>({ index: initial, itemCount: count, loop, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), interaction: idleInteraction(), pauseReasons: Object.freeze([]), pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), reducedMotion });
   let timer: unknown; const clear = () => { if (timer !== undefined) resolved.scheduler.clearTimeout(timer); timer = undefined; };
   const schedule = () => { clear(); const state = store.getState(); if (!count || !autoplayDelay || state.pauseReasons.length || state.pointers && Object.keys(state.pointers).length || state.reducedMotion) return; timer = resolved.scheduler.setTimeout(() => { timer = undefined; actions.next(); schedule(); }, autoplayDelay); };
@@ -227,7 +251,7 @@ export function createCarouselController(props: CarouselProps, env: UIFnEnvironm
     resume(reason = 'manual') { const state = store.getState(); const pauseReasons = Object.freeze(state.pauseReasons.filter((entry) => entry !== reason)); store.patchState({ pauseReasons, interaction: pauseReasons.length ? 'paused' : idleInteraction() }); schedule(); },
   };
   const parts: CarouselControllerParts = {
-    root: createUIFnPhase10Part('Carousel', 'root', () => ({ role: 'region', id: id('root'), aria: { roledescription: currentProps.messages?.carousel }, data: { orientation: store.getState().orientation, state: store.getState().interaction }, on: { pointerenter: () => actions.pause('hover'), pointerleave: () => actions.resume('hover'), focus: () => actions.pause('focus'), blur: () => actions.resume('focus') } }), { role: true, id: true }),
+    root: createUIFnPhase10Part('Carousel', 'root', () => ({ role: 'region', id: id('root'), attributes: { dir: store.getState().dir }, aria: { roledescription: currentProps.messages?.carousel }, data: { orientation: store.getState().orientation, state: store.getState().interaction }, on: { pointerenter: () => actions.pause('hover'), pointerleave: () => actions.resume('hover'), focus: () => actions.pause('focus'), blur: () => actions.resume('focus') } }), { role: true, id: true }),
     viewport: createUIFnPhase10Part('Carousel', 'viewport', () => ({ id: id('viewport'), data: { orientation: store.getState().orientation } }), { id: true }),
     item: createUIFnPhase10ValuePart('Carousel', 'item', (index) => ({ role: 'group', id: id('item', index), aria: { roledescription: currentProps.messages?.slide, label: currentProps.messages?.item?.(index, count, locale) ?? `${new Intl.NumberFormat(locale).format(index + 1)} / ${new Intl.NumberFormat(locale).format(count)}` }, data: { state: store.getState().index === index ? 'active' : 'inactive' }, hidden: store.getState().index !== index }), { role: true, id: true }),
     previous: createUIFnPhase10Part('Carousel', 'previous', () => ({ role: 'button', id: id('previous'), disabled: !count || !loop && store.getState().index === 0, on: { click: actions.previous } }), { role: true, id: true }),
@@ -307,10 +331,19 @@ export interface SignaturePadState { readonly strokes: readonly UIFnSignatureStr
 export interface SignaturePadActions { pointerStart(id: number, point: UIFnSignaturePoint): void; pointerMove(id: number, point: UIFnSignaturePoint): void; pointerEnd(id: number): void; pointerCancel(id: number): void; lostPointerCapture(id: number): void; undo(): void; clear(): void; syncValue(value: readonly UIFnSignatureStroke[]): void; reset(): void }
 export interface SignaturePadControllerParts { readonly root: UIFnPhase10Part; readonly label: UIFnPhase10Part; readonly canvas: UIFnPhase10Part; readonly clear: UIFnPhase10Part; readonly undo: UIFnPhase10Part; readonly status: UIFnPhase10Part; readonly hiddenInput: UIFnPhase10Part }
 export type SignaturePadController = UIFnController<SignaturePadState, SignaturePadActions, SignaturePadControllerParts, SignaturePadProps>;
+function equalSignatureValue(left: readonly UIFnSignatureStroke[], right: readonly UIFnSignatureStroke[]): boolean {
+  return left.length === right.length && left.every((stroke, strokeIndex) => {
+    const other = right[strokeIndex];
+    return other !== undefined && stroke.length === other.length && stroke.every((point, pointIndex) => {
+      const otherPoint = other[pointIndex];
+      return otherPoint !== undefined && point.x === otherPoint.x && point.y === otherPoint.y && point.pressure === otherPoint.pressure && point.time === otherPoint.time;
+    });
+  });
+}
 export function createSignaturePadController(props: SignaturePadProps = {}, env: UIFnEnvironment = {}): SignaturePadController {
-  const { id } = createUIFnPhase10Ids('SignaturePad', 'signature-pad', env); let currentProps = props; let controlled = props.value !== undefined; let emptyMessage = props.messages?.empty ?? ''; let completeMessage = props.messages?.complete ?? ''; const initial = Object.freeze([...(props.value ?? props.defaultValue ?? [])]);
+  const { id } = createUIFnPhase10Ids('SignaturePad', 'signature-pad', env); let currentProps = props; let controlled = props.value !== undefined; let emptyMessage = props.messages?.empty ?? ''; let completeMessage = props.messages?.complete ?? ''; let callbackOverride: SignaturePadProps['onValueChange']; let hasCallbackOverride = false; const initial = Object.freeze([...(props.value ?? props.defaultValue ?? [])]);
   const store = createStateChannel<SignaturePadState>({ strokes: initial, active: Object.freeze({}), status: initial.length ? 'complete' : 'empty', cancelledPointers: Object.freeze([]), disabled: props.disabled ?? false, readOnly: props.readOnly ?? false, required: props.required ?? false, statusMessage: initial.length ? completeMessage : emptyMessage });
-  const commit = (value: readonly UIFnSignatureStroke[]) => { const frozen = Object.freeze([...value]); if (controlled) { const strokes = store.getState().strokes; store.patchState({ requestedValue: frozen, status: strokes.length ? 'complete' : 'empty', statusMessage: strokes.length ? completeMessage : emptyMessage }); } else store.patchState({ strokes: frozen, requestedValue: undefined, status: frozen.length ? 'complete' : 'empty', statusMessage: frozen.length ? completeMessage : emptyMessage }); currentProps.onValueChange?.(frozen); };
+  const commit = (value: readonly UIFnSignatureStroke[]) => { const frozen = Object.freeze([...value]); if (controlled) { const strokes = store.getState().strokes; store.patchState({ requestedValue: frozen, status: strokes.length ? 'complete' : 'empty', statusMessage: strokes.length ? completeMessage : emptyMessage }); } else store.patchState({ strokes: frozen, requestedValue: undefined, status: frozen.length ? 'complete' : 'empty', statusMessage: frozen.length ? completeMessage : emptyMessage }); (hasCallbackOverride ? callbackOverride : props.onValueChange)?.(frozen); };
   const actions: SignaturePadActions = {
     pointerStart(pointerId, signaturePoint) { const state = store.getState(); if (state.disabled || state.readOnly) return; store.patchState({ active: Object.freeze({ ...state.active, [pointerId]: Object.freeze([signaturePoint]) }), status: 'drawing' }); },
     pointerMove(pointerId, signaturePoint) { const state = store.getState(); const stroke = state.active[pointerId]; if (!stroke) return; store.patchState({ active: Object.freeze({ ...state.active, [pointerId]: Object.freeze([...stroke, signaturePoint]) }) }); },
@@ -325,24 +358,27 @@ export function createSignaturePadController(props: SignaturePadProps = {}, env:
     status: createUIFnPhase10Part('SignaturePad', 'status', () => ({ role: 'status', id: id('status'), aria: { live: 'polite' }, data: { message: store.getState().statusMessage } }), { role: true, id: true, aria: ['live'] }), hiddenInput: createUIFnPhase10Part('SignaturePad', 'hiddenInput', () => ({ id: id('input'), attributes: { type: 'hidden', name: currentProps.name, value: JSON.stringify(store.getState().strokes), required: store.getState().required, disabled: store.getState().disabled } }), { id: true }),
   };
   return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    if ('onValueChange' in inputs) { hasCallbackOverride = true; callbackOverride = inputs.onValueChange; }
     currentProps = { ...currentProps, ...inputs };
     controlled = currentProps.value !== undefined;
     emptyMessage = currentProps.messages?.empty ?? '';
     completeMessage = currentProps.messages?.complete ?? '';
-    if ('value' in inputs && inputs.value !== undefined) actions.syncValue(inputs.value);
     const state = store.getState();
+    const ownerValueChanged = 'value' in inputs && inputs.value !== undefined && !equalSignatureValue(inputs.value, state.strokes);
+    if (ownerValueChanged) actions.syncValue(inputs.value as readonly UIFnSignatureStroke[]);
+    const synchronizedState = store.getState();
     const disabled = currentProps.disabled ?? false;
     const readOnly = currentProps.readOnly ?? false;
-    const active = disabled || readOnly ? Object.freeze({}) : state.active;
+    const active = disabled || readOnly ? Object.freeze({}) : synchronizedState.active;
     const drawing = Object.keys(active).length > 0;
     store.patchState({
       active,
-      requestedValue: controlled ? state.requestedValue : undefined,
-      status: drawing ? 'drawing' : state.strokes.length ? 'complete' : 'empty',
+      requestedValue: controlled ? synchronizedState.requestedValue : undefined,
+      status: drawing ? 'drawing' : synchronizedState.strokes.length ? 'complete' : 'empty',
       disabled,
       readOnly,
       required: currentProps.required ?? false,
-      statusMessage: state.strokes.length ? completeMessage : emptyMessage,
+      statusMessage: synchronizedState.strokes.length ? completeMessage : emptyMessage,
     });
   } });
 }

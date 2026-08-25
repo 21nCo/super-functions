@@ -2,6 +2,18 @@
 
 import { spawnSync } from 'node:child_process';
 
+const repoRoot = process.cwd();
+const secretPattern = new RegExp(`${['sk', 'live'].join('_')}_[a-z0-9_]+`, 'gi');
+
+function sanitize(value) {
+  return String(value ?? '')
+    .replace(secretPattern, '[REDACTED]')
+    .replaceAll(repoRoot, '[REDACTED_LOCAL_PATH]')
+    .replace(/\/(?:tmp|private|home|workspace|var|opt|Volumes)\/[^\s"',)]+/g, '[REDACTED_LOCAL_PATH]')
+    .replace(/[A-Z]:\\[^\s"',)]+/gi, '[REDACTED_LOCAL_PATH]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED_PII]');
+}
+
 const stable = spawnSync(process.execPath, ['scripts/verify-uifn-stable.mjs'], {
   cwd: process.cwd(),
   env: process.env,
@@ -9,8 +21,8 @@ const stable = spawnSync(process.execPath, ['scripts/verify-uifn-stable.mjs'], {
 });
 
 if (stable.status !== 0) {
-  process.stdout.write(stable.stdout);
-  process.stderr.write(stable.stderr);
+  process.stdout.write(sanitize(stable.stdout));
+  process.stderr.write(sanitize(stable.stderr));
   process.exit(stable.status ?? 1);
 }
 
