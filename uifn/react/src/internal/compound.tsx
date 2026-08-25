@@ -108,7 +108,7 @@ interface StaticProjection {
   readonly parts: AnyRecord;
 }
 
-const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autoComplete|autofocus|autoFocus|inputmode|inputMode|maxlength|maxLength|minlength|minLength|pattern|min|max|step|accept|rows|cols|for|htmlFor|href|target|rel|src|alt|width|height|viewBox)$/;
+const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autoComplete|autofocus|autoFocus|inputmode|inputMode|maxlength|maxLength|minlength|minLength|pattern|min|max|step|accept|rows|cols|for|htmlFor|href|target|rel|src|alt|width|height|viewBox|action|method|encType)$/;
 const ROOT_EVENT_PROP = /^on(?:Click|DoubleClick|AuxClick|ContextMenu|KeyDown|KeyUp|KeyPress|Focus|Blur|Input|Change|BeforeInput|CompositionStart|CompositionUpdate|CompositionEnd|Copy|Cut|Paste|PointerDown|PointerMove|PointerUp|PointerCancel|PointerEnter|PointerLeave|PointerOver|PointerOut|MouseDown|MouseMove|MouseUp|MouseEnter|MouseLeave|MouseOver|MouseOut|TouchStart|TouchMove|TouchEnd|TouchCancel|Drag|DragStart|DragEnd|DragEnter|DragLeave|DragOver|Drop|Scroll|Wheel|Select|Submit|Reset|Invalid|Load|Error|AnimationStart|AnimationEnd|AnimationIteration|TransitionEnd|Toggle|BeforeToggle|GotPointerCapture|LostPointerCapture)(?:Capture)?$/;
 
 const EMPTY_DOM_RESOURCES: UIFnDomResourceSnapshot = Object.freeze({
@@ -669,7 +669,10 @@ export function ReactPrimitiveRoot<TInputs extends object>({
   props,
 }: ReactPrimitiveRootRuntimeProps<TInputs>): React.ReactElement {
   const { asChild, render, children, environment, ...rest } = props as ReactPrimitiveRootProps<TInputs, ElementName> & AnyRecord;
-  const split = splitRootProps(rest, definition.inputNames);
+  const inputNames = definition.name === 'AngleSlider'
+    ? [...definition.inputNames, 'name']
+    : definition.inputNames;
+  const split = splitRootProps(rest, inputNames);
   const bridge = useBridge(definition, split.inputs as TInputs, environment);
   useDomOwnership(bridge);
   const coreProps = bridge.getPartProps(definition.rootPart, undefined, split.dom);
@@ -759,6 +762,6 @@ export function useReactPrimitive<TInputs extends object>(
     actions: bridge.getActions(),
     status: bridge.getStatus(),
     getPartProps: (part: string, value?: unknown, userProps: AnyRecord = {}) =>
-      toReactPartProps(bridge.getPartProps(part, value, userProps)),
+      toReactPartProps(bridge.getPartProps(part, value, userProps), userProps),
   }), [bridge, bridge.getSnapshot()]);
 }

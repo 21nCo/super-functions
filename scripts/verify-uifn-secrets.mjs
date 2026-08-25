@@ -99,6 +99,12 @@ for (const token of ['[REDACTED]', '[REDACTED_LOCAL_PATH]', '[REDACTED_PII]', 'f
     failures.push({ code: 'UIFN_SECRET_RELEASE_REDACTION_MISSING', token });
   }
 }
+if (!releaseSource.includes('[a-z0-9_-]+')) {
+  failures.push({ code: 'UIFN_SECRET_RELEASE_BASE64URL_REDACTION_MISSING' });
+}
+if (!releaseSource.includes('Users|root|tmp|private|home|workspace|var|opt|Volumes')) {
+  failures.push({ code: 'UIFN_SECRET_RELEASE_LOCAL_ROOT_REDACTION_MISSING' });
+}
 
 const storybookDecoratorSource = readFileSync(file('uifn/storybook/src/decorators/sf-mocks.ts'), 'utf8');
 if (!storybookDecoratorSource.includes("type: 'fake'") || !storybookDecoratorSource.includes('tenant_demo')) {

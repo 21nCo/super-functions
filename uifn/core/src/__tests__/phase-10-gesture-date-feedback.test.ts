@@ -321,7 +321,19 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     picker.actions.navigateGrid('ArrowRight');
     expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
     expect(picker.state.grid).toHaveLength(42);
-    input.destroy(); picker.destroy();
+    const bounded = createDatePickerController({
+      defaultValue: createUIFnCalendarDate(2024, 3, 10),
+      min: createUIFnCalendarDate(2024, 3, 8),
+      max: createUIFnCalendarDate(2024, 3, 10),
+      unavailable: (date) => date.day === 9,
+    }, deterministicEnv());
+    bounded.actions.navigateGrid('ArrowRight');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    input.destroy(); picker.destroy(); bounded.destroy();
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {

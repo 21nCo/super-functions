@@ -5,7 +5,9 @@
 <div id="tour-target"></div>
 <Accordion.Root data-testid="accordion-root" />
 <AlertDialog.Root data-testid="alert-dialog-root" />
-<AngleSlider.Root data-testid="angle-slider-root" />
+<AngleSlider.Root name="angle" data-testid="angle-slider-root">
+  <AngleSlider.HiddenInput data-testid="angle-slider-input" />
+</AngleSlider.Root>
 <Autocomplete.Root items={[]} data-testid="autocomplete-root" />
 <Avatar.Root alt="Avatar" data-testid="avatar-root" />
 <Button.Root data-testid="button-root" />

@@ -832,7 +832,10 @@ export interface SolidPrimitiveRootRuntimeProps<TInputs extends object> {
 export function SolidPrimitiveRoot<TInputs extends object>(runtime: SolidPrimitiveRootRuntimeProps<TInputs>): JSX.Element {
   const uniqueId = runtime.hydrationId;
   const source = () => runtime.props as AnyRecord;
-  const initial = splitSolidRootProps(untrack(source), runtime.definition.inputNames);
+  const inputNames = runtime.definition.name === 'AngleSlider'
+    ? [...runtime.definition.inputNames, 'name']
+    : runtime.definition.inputNames;
+  const initial = splitSolidRootProps(untrack(source), inputNames);
   const environment: UIFnEnvironment = {
     ...initial.environment,
     scopeId: initial.environment?.scopeId ?? `${runtime.definition.name}-${stableToken(uniqueId)}`,
@@ -840,7 +843,7 @@ export function SolidPrimitiveRoot<TInputs extends object>(runtime: SolidPrimiti
   };
   const bridge = new SolidPrimitiveBridge(runtime.definition, initial.inputs as TInputs, environment);
   const [version, setVersion] = createSignal(0, { equals: false });
-  const split = createMemo(() => splitSolidRootProps(source(), runtime.definition.inputNames));
+  const split = createMemo(() => splitSolidRootProps(source(), inputNames));
   const elementSource = (): AnyRecord => {
     const current = source();
     const elementProps: AnyRecord = {

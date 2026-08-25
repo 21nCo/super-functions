@@ -4,18 +4,20 @@ import { renderToString } from 'react-dom/server';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AngleSlider,
   Checkbox,
   Dialog,
+  Form,
   useDialog,
 } from '../index';
 
-function HookDialogProbe() {
+function HookDialogProbe({ onClick }: { onClick?: React.MouseEventHandler<HTMLButtonElement> }) {
   const dialog = useDialog({ defaultOpen: false });
 
   return (
     <div>
       <span data-testid="hook-open">{dialog.state.open ? 'open' : 'closed'}</span>
-      <button {...dialog.getPartProps('trigger', undefined, { type: 'button' })}>Open from hook</button>
+      <button {...dialog.getPartProps('trigger', undefined, { type: 'button', onClick })}>Open from hook</button>
       <section {...dialog.getPartProps('content')}>Hook content</section>
     </div>
   );
@@ -23,9 +25,10 @@ function HookDialogProbe() {
 
 describe('React core adapter contract', () => {
   it('keeps useDialog and Dialog.Root behavior equivalent for trigger clicks', async () => {
+    const onClick = vi.fn();
     render(
       <>
-        <HookDialogProbe />
+        <HookDialogProbe onClick={onClick} />
         <Dialog.Root>
           <Dialog.Trigger>Open from component</Dialog.Trigger>
           <Dialog.Content>
@@ -35,8 +38,11 @@ describe('React core adapter contract', () => {
       </>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open from hook' }));
+    const hookTrigger = screen.getByRole('button', { name: 'Open from hook' });
+    expect(hookTrigger).toHaveAttribute('type', 'button');
+    fireEvent.click(hookTrigger);
     fireEvent.click(screen.getByRole('button', { name: 'Open from component' }));
+    expect(onClick).toHaveBeenCalledOnce();
 
     await waitFor(() => {
       expect(screen.getByTestId('hook-open')).toHaveTextContent('open');
@@ -45,6 +51,23 @@ describe('React core adapter contract', () => {
         'open',
       ]);
     });
+  });
+
+  it('forwards native form attributes and routes AngleSlider names to its hidden input', () => {
+    render(
+      <>
+        <Form.Root data-testid="native-form" action="/save" method="post" encType="multipart/form-data" />
+        <AngleSlider.Root data-testid="angle-root" name="angle">
+          <AngleSlider.HiddenInput data-testid="angle-input" />
+        </AngleSlider.Root>
+      </>,
+    );
+
+    expect(screen.getByTestId('native-form')).toHaveAttribute('action', '/save');
+    expect(screen.getByTestId('native-form')).toHaveAttribute('method', 'post');
+    expect(screen.getByTestId('native-form')).toHaveAttribute('enctype', 'multipart/form-data');
+    expect(screen.getByTestId('angle-root')).not.toHaveAttribute('name');
+    expect(screen.getByTestId('angle-input')).toHaveAttribute('name', 'angle');
   });
 
   it('exposes disabled checkbox behavior through core state and part props', () => {

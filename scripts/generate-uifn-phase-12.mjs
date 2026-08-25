@@ -251,6 +251,9 @@ const requiredSamples = {
 const allRootsHarness = `<script lang="ts">\n  import { ${catalog.primitives.map((primitive) => primitive.name).join(', ')} } from '../../lib/index.js';\n</script>\n\n<div id="tour-target"></div>\n${catalog.primitives.map((primitive) => {
   const host = primitive.name === 'Toast' ? `${primitive.name}.Provider` : `${primitive.name}.Root`;
   const required = requiredSamples[primitive.name] ? ` ${requiredSamples[primitive.name]}` : '';
+  if (primitive.name === 'AngleSlider') {
+    return `<${host} name="angle" data-testid="${primitive.id}-root">\n  <AngleSlider.HiddenInput data-testid="angle-slider-input" />\n</${host}>`;
+  }
   return `<${host}${required} data-testid="${primitive.id}-root" />`;
 }).join('\n')}\n`;
 const outputHash = sha256(
