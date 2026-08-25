@@ -1757,13 +1757,18 @@ function parsePlacement(
   value: string | null | undefined,
   expectedNamespace: string,
 ): DatafnNamespacePlacement | null {
-  if (!value) return null;
+  if (value === null || value === undefined) return null;
   try {
     const placement = JSON.parse(value) as DatafnNamespacePlacement;
     assertPlacement(placement);
-    return placement.namespace === expectedNamespace ? placement : null;
-  } catch {
-    return null;
+    if (placement.namespace !== expectedNamespace) {
+      throw new Error("DATAFN_PLACEMENT_NAMESPACE_MISMATCH");
+    }
+    return placement;
+  } catch (cause) {
+    const error = new Error("DATAFN_PLACEMENT_CORRUPT") as Error & { cause?: unknown };
+    error.cause = cause;
+    throw error;
   }
 }
 

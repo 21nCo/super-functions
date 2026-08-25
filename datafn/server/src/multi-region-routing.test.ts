@@ -94,6 +94,48 @@ describe("DataFn tenant placement", () => {
     })).rejects.toThrow("DATAFN_PLACEMENT_EPOCH_NON_MONOTONIC");
   });
 
+  it("surfaces corrupt authoritative placements as retryable directory failures", async () => {
+    const store = {
+      get: vi.fn(async () => "{not-json"),
+      setIfAbsent: vi.fn(),
+      compareAndSet: vi.fn(),
+    } as unknown as ConditionalKVStoreAdapter;
+    const directory = createConditionalKvDatafnPlacementDirectory(store, {
+      consistencyModel: "linearizable",
+    });
+
+    await expect(directory.get("tenant:corrupt"))
+      .rejects.toThrow("DATAFN_PLACEMENT_CORRUPT");
+
+    const gateway = createDatafnGatewayRouter({
+      directory,
+      deriveNamespace: () => "tenant:corrupt",
+      cellRegistry: { resolve: () => ({}) },
+      dispatcher: { dispatch: async () => Response.json({ ok: true }) },
+      assertionSigner: { sign: () => "unused" },
+    });
+    const response = await gateway.handle(new Request("https://data.example/datafn/query"));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "DATAFN_PLACEMENT_UNAVAILABLE",
+        details: { retryable: true, executionStarted: false },
+      },
+    });
+
+    await expect(validateDatafnPlacement({
+      namespace: "tenant:corrupt",
+      regionId: "eu",
+      runtime: { directory },
+      trustedInternal: true,
+    })).rejects.toMatchObject({
+      code: "DATAFN_PLACEMENT_UNAVAILABLE",
+      status: 503,
+      retryable: true,
+      executionStarted: false,
+    });
+  });
+
   it("runs the fenced migration protocol in order and preserves rollback evidence", async () => {
     const directory = createMemoryDatafnPlacementDirectory();
     await claimDatafnNamespacePlacement({
