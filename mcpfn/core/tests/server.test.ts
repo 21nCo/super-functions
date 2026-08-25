@@ -206,6 +206,26 @@ describe("McpFnServer", () => {
       outputSchema: { type: "string" },
       handler: async () => structuredResult({ ok: true }),
     } as never)).toThrow(/outputSchema must be an object schema/);
+
+    expect(() => new McpFnRegistry().register({
+      name: "null_output",
+      description: "Reject a null structured output contract.",
+      inputSchema: { type: "object" },
+      outputSchema: null,
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/outputSchema must be an object schema/);
+  });
+
+  it("rejects missing and non-function tool handlers at registration", () => {
+    const definition = {
+      name: "invalid_handler",
+      description: "Reject an invalid handler.",
+      inputSchema: { type: "object" },
+    };
+    expect(() => new McpFnRegistry().register(definition as never))
+      .toThrow(/requires a handler function/);
+    expect(() => new McpFnRegistry().register({ ...definition, handler: "invalid" } as never))
+      .toThrow(/requires a handler function/);
   });
 
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {

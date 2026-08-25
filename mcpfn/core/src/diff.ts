@@ -225,7 +225,7 @@ function diffSchema(
     });
   }
 
-  for (const keyword of ["pattern", "format", "const", "uniqueItems"] as const) {
+  for (const keyword of ["pattern", "format", "const"] as const) {
     const oldValue = before[keyword];
     const newValue = after[keyword];
     if (equal(oldValue, newValue)) continue;
@@ -242,6 +242,32 @@ function diffSchema(
       before: oldValue,
       after: newValue,
     });
+  }
+
+  const beforeUniqueItems = before.uniqueItems ?? false;
+  const afterUniqueItems = after.uniqueItems ?? false;
+  if (!equal(beforeUniqueItems, afterUniqueItems)) {
+    if (typeof beforeUniqueItems !== "boolean" || typeof afterUniqueItems !== "boolean") {
+      push(changes, {
+        severity: "breaking",
+        code: "schema-keyword-changed",
+        path: `${path}.uniqueItems`,
+        message: `uniqueItems changed at ${path}`,
+        before: before.uniqueItems,
+        after: after.uniqueItems,
+      });
+    } else {
+      const tightened = !beforeUniqueItems && afterUniqueItems;
+      const breaking = direction === "input" ? tightened : !tightened;
+      push(changes, {
+        severity: breaking ? "breaking" : "additive",
+        code: tightened ? "constraint-tightened" : "constraint-relaxed",
+        path: `${path}.uniqueItems`,
+        message: `uniqueItems changed from ${beforeUniqueItems} to ${afterUniqueItems}`,
+        before: before.uniqueItems,
+        after: after.uniqueItems,
+      });
+    }
   }
 
   const normalizeAdditionalProperties = (value: unknown) =>
@@ -366,7 +392,7 @@ function diffSchema(
         ));
       }
       const breaking =
-        direction === "output" ||
+        direction === "output" && beforeRequired.has(name) ||
         fallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
         severity: breaking ? "breaking" : "additive",
@@ -418,6 +444,22 @@ function diffSchema(
       direction,
       changes,
     );
+    const overlapsExistingInputPattern =
+      direction === "input" && !hadBeforePattern && hasAfterPattern &&
+      Object.keys(beforePatterns).length > 0;
+    const weakensExistingOutputPattern =
+      direction === "output" && hadBeforePattern && !hasAfterPattern &&
+      Object.keys(afterPatterns).length > 0;
+    if (overlapsExistingInputPattern || weakensExistingOutputPattern) {
+      push(changes, {
+        severity: "breaking",
+        code: "overlapping-pattern-constraint-changed",
+        path: `${path}.patternProperties.${pattern}`,
+        message: `${hadBeforePattern ? "Removing" : "Adding"} pattern ${pattern} can change constraints for properties matched by another pattern`,
+        before: hadBeforePattern ? beforePatterns[pattern] : undefined,
+        after: hasAfterPattern ? afterPatterns[pattern] : undefined,
+      });
+    }
   }
 
   const handledKeywords = new Set([

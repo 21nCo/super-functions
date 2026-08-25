@@ -545,6 +545,62 @@ describe("McpFn manifests", () => {
     }
   });
 
+  it("treats potentially overlapping pattern constraints conservatively", () => {
+    const create = (patternProperties: Record<string, Record<string, unknown>>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "overlapping-patterns",
+        description: "Exercise overlapping input patterns.",
+        inputSchema: {
+          type: "object",
+          patternProperties,
+          additionalProperties: false,
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "x$": { type: "number" } }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({
+          code: "overlapping-pattern-constraint-changed",
+          severity: "breaking",
+        }),
+      ]),
+    });
+  });
+
+  it("keeps optional output-property removal compatible", () => {
+    const create = (properties: Record<string, Record<string, unknown>>, required: string[] = []) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "optional-output",
+        description: "Exercise optional output properties.",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "object", properties, required },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}),
+    )).toMatchObject({
+      compatible: true,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "additive" }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ value: { type: "string" } }, ["value"]),
+      create({}),
+    )).toMatchObject({ compatible: false });
+  });
+
   it("diffs pattern additions and removals against closed and schema fallbacks", () => {
     const pattern = { "^pref_": { type: "string" } };
     const create = (
@@ -726,6 +782,30 @@ describe("McpFn manifests", () => {
         code: "constraint-relaxed",
         severity: "breaking",
       }),
+    ]));
+  });
+
+  it("applies directional variance to uniqueItems boolean transitions", () => {
+    const schema = (uniqueItems: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "unique-items",
+        description: "Exercise unique array items.",
+        inputSchema: { type: "object", properties: { value: { type: "array", uniqueItems } } },
+        outputSchema: { type: "object", properties: { value: { type: "array", uniqueItems } } },
+        handler: async () => structuredResult({ value: [] }),
+      }),
+    );
+
+    const relaxed = diffManifests(schema(true), schema(false)).changes;
+    expect(relaxed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining("inputSchema"), severity: "additive" }),
+      expect.objectContaining({ path: expect.stringContaining("outputSchema"), severity: "breaking" }),
+    ]));
+    const tightened = diffManifests(schema(false), schema(true)).changes;
+    expect(tightened).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining("inputSchema"), severity: "breaking" }),
+      expect.objectContaining({ path: expect.stringContaining("outputSchema"), severity: "additive" }),
     ]));
   });
 

@@ -202,12 +202,25 @@ export class McpFnRegistry<TContext = undefined> {
         `Tool ${definition.name} requires a non-empty description`,
       );
     }
+    if (typeof definition.handler !== "function") {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} requires a handler function`,
+      );
+    }
     if (definition.inputSchema.type !== "object") {
       throw new McpFnValidationError(
         `Tool ${definition.name} inputSchema must be an object schema`,
       );
     }
-    if (definition.outputSchema && definition.outputSchema.type !== "object") {
+    if (
+      definition.outputSchema !== undefined &&
+      (
+        definition.outputSchema === null ||
+        typeof definition.outputSchema !== "object" ||
+        Array.isArray(definition.outputSchema) ||
+        definition.outputSchema.type !== "object"
+      )
+    ) {
       throw new McpFnValidationError(
         `Tool ${definition.name} outputSchema must be an object schema`,
       );
@@ -233,7 +246,7 @@ export class McpFnRegistry<TContext = undefined> {
     let validateOutput: ValidateFunction | undefined;
     try {
       validateInput = this.ajv.compile(definition.inputSchema);
-      validateOutput = definition.outputSchema
+      validateOutput = definition.outputSchema !== undefined
         ? this.ajv.compile(definition.outputSchema)
         : undefined;
     } catch (error) {
