@@ -195,6 +195,8 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
   let rawValue = initialRaw;
   let compositionRaw = initialRaw;
   let editOriginal = initialRaw;
+  let intrinsicDisabled = inputs.disabled ?? false;
+  let fieldsetDisabled = false;
   const ids = createIds(config, env);
 
   const safeValue = (value: string) => secret ? '•'.repeat(Array.from(value).length) : value;
@@ -229,7 +231,7 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
     pendingSequence: 0,
     settledSequence: inputs.syncSequence ?? 0,
     staleSyncCount: 0,
-    disabled: inputs.disabled ?? false,
+    disabled: intrinsicDisabled,
     readOnly: inputs.readOnly ?? false,
     required: inputs.required ?? false,
     name: inputs.name,
@@ -394,7 +396,8 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
       }
     },
     setFieldsetDisabled(disabled) {
-      patch({ disabled });
+      fieldsetDisabled = disabled;
+      patch({ disabled: intrinsicDisabled || fieldsetDisabled });
     },
     getInputValue() {
       return rawValue;
@@ -549,11 +552,12 @@ export function createUIFnTextInputController<TParts extends object = Readonly<R
     subscribe: store.subscribe,
     update(next) {
       if (next.value !== undefined) actions.syncValue(next.value, next.syncSequence);
+      if (next.disabled !== undefined) intrinsicDisabled = next.disabled;
       const patchable: Partial<UIFnTextInputState> = {
         ...(config.kind === 'editable' && editingControlled && next.editing !== undefined
           ? { editing: next.editing }
           : {}),
-        ...(next.disabled !== undefined ? { disabled: next.disabled } : {}),
+        ...(next.disabled !== undefined ? { disabled: intrinsicDisabled || fieldsetDisabled } : {}),
         ...(next.readOnly !== undefined ? { readOnly: next.readOnly } : {}),
         ...(next.required !== undefined ? { required: next.required } : {}),
         ...(next.name !== undefined ? { name: next.name } : {}),

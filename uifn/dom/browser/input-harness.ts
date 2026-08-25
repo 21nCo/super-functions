@@ -9,6 +9,7 @@ import {
 import {
   assertUIFnInputResourcesReleased,
   createUIFnDomPlatform,
+  createUIFnFileInputBinding,
   createUIFnSelectionFormBinding,
   createUIFnTextInputFormBinding,
 } from '@uifn/dom';
@@ -49,6 +50,7 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
         <legend>Account inputs</legend>
         <label id="city-label">City <button type="button" id="city-owner"></button></label>
         <label>Amount <input id="amount-input" name="amount" value="1,5"></label>
+        <input id="upload-input" name="evidence" type="file">
       </fieldset>
     </form>
     <input id="ime-input" aria-label="Japanese city">
@@ -58,6 +60,7 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
   const fieldset = fixture.querySelector<HTMLFieldSetElement>('#phase-09-fieldset')!;
   const owner = fixture.querySelector<HTMLElement>('#city-owner')!;
   const amountInput = fixture.querySelector<HTMLInputElement>('#amount-input')!;
+  const uploadInput = fixture.querySelector<HTMLInputElement>('#upload-input')!;
   const imeInput = fixture.querySelector<HTMLInputElement>('#ime-input')!;
   const platform = createUIFnDomPlatform({ root: document });
 
@@ -99,6 +102,20 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
   invariant(city.state.disabled, 'fieldset re-enable overwrote intrinsic disabled state');
   invariant(new FormData(form).getAll('city').length === 0, 'intrinsically disabled selection submitted after fieldset re-enable');
   city.update({ disabled: false });
+
+  const requiredUpload = createFileUploadController({ required: true });
+  const uploadBinding = createUIFnFileInputBinding(platform, requiredUpload, uploadInput, uploadInput);
+  invariant(!uploadInput.checkValidity(), 'empty required upload passed native validity');
+  requiredUpload.actions.selectFiles([{ name: 'evidence.png', size: 8, type: 'image/png' }]);
+  invariant(requiredUpload.state.valid && uploadInput.checkValidity(), 'capability upload did not satisfy native validity');
+  fieldset.disabled = true;
+  await wait();
+  invariant(requiredUpload.state.disabled, 'disabled fieldset did not disable the upload controller');
+  requiredUpload.actions.clear();
+  invariant(requiredUpload.state.fileCount === 1, 'disabled fieldset allowed an upload mutation');
+  fieldset.disabled = false;
+  await wait();
+  invariant(!requiredUpload.state.disabled, 'fieldset re-enable did not restore the upload controller');
 
   const number = createNumberInputController({ defaultValue: '1,5', locale: 'de-DE', step: 0.5, required: true });
   const numberBinding = createUIFnTextInputFormBinding(platform, number, amountInput, amountInput, { nativeFormControl: true });
@@ -151,6 +168,7 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
 
   const resultData = Object.freeze([...new FormData(form).getAll('city').map(String), String(new FormData(form).get('amount'))]);
   numberBinding.destroy();
+  uploadBinding.destroy();
   cityBinding.destroy();
   platform.liveRegion.destroy();
   assertUIFnInputResourcesReleased(platform);
@@ -159,6 +177,7 @@ export async function runInputVectors(): Promise<InputBrowserResult> {
   autocomplete.destroy();
   clipboard.destroy();
   upload.destroy();
+  requiredUpload.destroy();
   password.destroy();
   platform.destroy();
   fixture.remove();

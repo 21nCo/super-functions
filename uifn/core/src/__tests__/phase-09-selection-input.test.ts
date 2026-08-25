@@ -406,6 +406,9 @@ describe('PHASE_09 selection and input vectors', () => {
     expect(files.state.fileCount).toBe(0);
     expect(files.state.lastErrorCode).toBe('UIFN_FILE_REJECTED');
     expect(rejected).toEqual(['type']);
+    files.actions.selectFiles([{ name: 'photo.png', size: 10, type: 'image/png' }]);
+    expect(files.state.valid).toBe(true);
+    expect(files.parts.input.getProps().attributes?.required).toBe(false);
     clipboard.destroy();
     files.destroy();
   });

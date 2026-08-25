@@ -62,11 +62,13 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
   const ids = Object.freeze(Object.fromEntries(anatomy.map((part) => [part, allocator.fromToken(`file-upload-${part}`, token, part)])));
   let files: readonly UIFnFileDescriptor[] = Object.freeze([]);
   let active = true;
+  let intrinsicDisabled = props.disabled ?? false;
+  let fieldsetDisabled = false;
   const stateFor = (base: Omit<FileUploadState, 'fileCount' | 'totalBytes' | 'valid' | 'invalid'>): FileUploadState => {
     const valid = !base.required || files.length > 0;
     return Object.freeze({ ...base, fileCount: files.length, totalBytes: files.reduce((sum, file) => sum + file.size, 0), valid, invalid: !valid });
   };
-  const store = createStateChannel<FileUploadState>(stateFor({ status: 'idle', rejectedCount: 0, required: props.required ?? false, disabled: props.disabled ?? false, multiple: props.multiple ?? false, accept: props.accept, lastErrorCode: null, ids }));
+  const store = createStateChannel<FileUploadState>(stateFor({ status: 'idle', rejectedCount: 0, required: props.required ?? false, disabled: intrinsicDisabled, multiple: props.multiple ?? false, accept: props.accept, lastErrorCode: null, ids }));
   const patch = (partial: Partial<FileUploadState>) => store.setState(stateFor({ ...store.getState(), ...partial }));
   const rejection = (code: 'type' | 'size' | 'count') => {
     patch({ status: 'rejected', rejectedCount: store.getState().rejectedCount + 1, lastErrorCode: 'UIFN_FILE_REJECTED' });
@@ -110,7 +112,7 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     },
     reset() { this.clear(); },
     getFiles() { return files; },
-    setFieldsetDisabled(disabled) { patch({ disabled }); },
+    setFieldsetDisabled(disabled) { fieldsetDisabled = disabled; patch({ disabled: intrinsicDisabled || fieldsetDisabled }); },
   };
   const generated = (part: string, index: number | null): UIFnPartProps => {
     const state = store.getState();
@@ -119,7 +121,7 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     if (part === 'root') return common;
     if (part === 'dropzone') return { ...common, role: 'button', tabIndex: state.disabled ? -1 : 0, aria: { label: 'Drop files', disabled: state.disabled }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
     if (part === 'trigger') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
-    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: props.name, accept: props.accept, multiple: state.multiple, required: state.required }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
+    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: props.name, accept: props.accept, multiple: state.multiple, required: state.required && state.invalid }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
     if (part === 'itemGroup') return { ...common, role: 'list', aria: { label: 'Selected files' } };
     if (part === 'item') return { ...common, role: 'listitem' };
     if (part === 'itemDelete') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, aria: { label: 'Remove file' }, on: { click: () => index !== null && actions.remove(index) } };
@@ -134,8 +136,9 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     getState: store.getState,
     subscribe: store.subscribe,
     update(next) {
+      if (next.disabled !== undefined) intrinsicDisabled = next.disabled;
       const patchable: Partial<FileUploadState> = {
-        ...(next.disabled !== undefined ? { disabled: next.disabled } : {}),
+        ...(next.disabled !== undefined ? { disabled: intrinsicDisabled || fieldsetDisabled } : {}),
         ...(next.required !== undefined ? { required: next.required } : {}),
         ...(next.accept !== undefined ? { accept: next.accept } : {}),
       };

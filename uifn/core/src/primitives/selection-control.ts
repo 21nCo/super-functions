@@ -340,6 +340,8 @@ export function createUIFnSelectionPrimitiveController<TItem = UIFnSelectionItem
   const ids = createIds(config, env);
   let adapter = inputs.itemAdapter;
   let items = normalizeUIFnSelectionItems(inputs.items ?? [], adapter);
+  let intrinsicDisabled = inputs.disabled ?? false;
+  let fieldsetDisabled = false;
   const registrationCounts = new Map<string, number>();
   const dynamicallyRegistered = new Set<string>();
   const aliasValue = config.booleanAlias === 'checked'
@@ -406,7 +408,7 @@ export function createUIFnSelectionPrimitiveController<TItem = UIFnSelectionItem
     placeholder: inputs.placeholder,
     draftValue: initialInputValue,
     composing: false,
-    disabled: inputs.disabled ?? false,
+    disabled: intrinsicDisabled,
     readOnly: inputs.readOnly ?? false,
     required: inputs.required ?? false,
     nullable: inputs.nullable ?? true,
@@ -763,7 +765,8 @@ export function createUIFnSelectionPrimitiveController<TItem = UIFnSelectionItem
       setOpen(false, !openControlled);
     },
     setFieldsetDisabled(disabled) {
-      patch({ disabled });
+      fieldsetDisabled = disabled;
+      patch({ disabled: intrinsicDisabled || fieldsetDisabled });
     },
     getFormValues() {
       return store.getState().formValues;
@@ -1032,8 +1035,9 @@ export function createUIFnSelectionPrimitiveController<TItem = UIFnSelectionItem
       if (next.pressed !== undefined) actions.syncPressed(next.pressed);
       if (next.open !== undefined) actions.syncOpen(next.open);
       if (next.inputValue !== undefined) actions.syncInputValue(next.inputValue, next.syncSequence);
+      if (next.disabled !== undefined) intrinsicDisabled = next.disabled;
       const patchable: Partial<UIFnSelectionState> = {
-        ...(next.disabled !== undefined ? { disabled: next.disabled } : {}),
+        ...(next.disabled !== undefined ? { disabled: intrinsicDisabled || fieldsetDisabled } : {}),
         ...(next.readOnly !== undefined ? { readOnly: next.readOnly } : {}),
         ...(next.required !== undefined ? { required: next.required } : {}),
         ...(next.nullable !== undefined ? { nullable: next.nullable } : {}),

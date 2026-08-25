@@ -461,6 +461,13 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     picker.actions.navigateGrid('ArrowRight');
     expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
     expect(picker.state.grid).toHaveLength(42);
+    const mutablePicker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), defaultOpen: true }, deterministicEnv());
+    mutablePicker.update({ disabled: true, readOnly: true });
+    expect(mutablePicker.state).toMatchObject({ disabled: true, readOnly: true });
+    expect(mutablePicker.parts.trigger.getProps().disabled).toBe(true);
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
     const bounded = createDatePickerController({
       defaultValue: createUIFnCalendarDate(2024, 3, 10),
       min: createUIFnCalendarDate(2024, 3, 8),
@@ -473,7 +480,7 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
     bounded.actions.navigateGrid('ArrowLeft');
     expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
-    input.destroy(); picker.destroy(); bounded.destroy();
+    input.destroy(); picker.destroy(); mutablePicker.destroy(); bounded.destroy();
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
@@ -515,6 +522,9 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
   it('derives elapsed time from injected now across pause, visibility, drift, completion, and destroy', () => {
     const scheduler = createManualRuntimeScheduler(1000); const complete = vi.fn();
     const timer = createTimerController({ duration: 10_000, announceInterval: 1000, onComplete: complete }, { scheduler, now: scheduler.now, locale: 'de-DE' });
+    expect(timer.parts.start.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.pause.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.reset.getProps().attributes?.type).toBe('button');
     timer.actions.start(); scheduler.advanceBy(3333); timer.actions.tick();
     expect(timer.state.remaining).toBe(6667);
     timer.actions.visibilityChange(true); scheduler.advanceBy(5000); expect(timer.state.remaining).toBe(6667);

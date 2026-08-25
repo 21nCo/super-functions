@@ -81,6 +81,7 @@ export function createUIFnSelectionFormBinding(
   const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
     fieldsetDisabled = disabled;
+    controller.actions.setFieldsetDisabled(disabled);
     update();
   });
   const releaseResource = scope.track('formBridge', () => undefined, `${state.ids.root ?? owner.id}-selection-binding`);
@@ -89,6 +90,7 @@ export function createUIFnSelectionFormBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       unsubscribe();
       releaseFieldset();
       bridge?.destroy();
@@ -153,6 +155,7 @@ export function createUIFnTextInputFormBinding(
   const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
     fieldsetDisabled = disabled;
+    controller.actions.setFieldsetDisabled(disabled);
     update();
   });
   const form = input.form ?? owner.closest('form');
@@ -165,6 +168,7 @@ export function createUIFnTextInputFormBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       unsubscribe();
       releaseCaret();
       releaseNativeReset();
@@ -242,11 +246,12 @@ export function createUIFnFileInputBinding(
   const releaseListener = scope.track('listener', () => input.removeEventListener('change', onChange));
   const update = () => {
     input.disabled = controller.state.disabled || fieldsetDisabled;
-    input.required = controller.state.required;
+    input.required = controller.state.required && controller.state.invalid;
   };
   const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
     fieldsetDisabled = disabled;
+    controller.actions.setFieldsetDisabled(disabled);
     update();
   });
   const form = input.form ?? owner.closest('form');
@@ -257,6 +262,7 @@ export function createUIFnFileInputBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       releaseReset();
       releaseFieldset();
       releaseListener();
