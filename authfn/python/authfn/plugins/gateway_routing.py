@@ -459,9 +459,9 @@ def create_cell_routing_middleware(
                 )
                 response.headers[MISMATCH_HEADER] = _sign(mismatch, keyring)
                 return response
-            return cast(Response, await next_handler(buffered, context))
         except Exception as error:  # noqa: BLE001
             return _error_response(buffered, error)
+        return cast(Response, await next_handler(buffered, context))
 
     return middleware
 

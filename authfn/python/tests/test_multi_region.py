@@ -20,7 +20,7 @@ for path in (AUTHFN_PYTHON_ROOT, PYTHON_CORE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from superfunctions.http import Response
+from superfunctions.http import HttpError, Response
 
 from authfn import (
     AuthFnConfig,
@@ -689,6 +689,58 @@ async def test_cell_rejects_signed_non_object_payload() -> None:
     )
     assert response.status == 401
     assert response.body["error"]["code"] == "AUTHFN_ROUTING_ASSERTION_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_cell_routing_preserves_downstream_http_errors() -> None:
+    directory = InMemoryIdentityPlacementDirectory(
+        [IdentityPlacement("person:ada", "eu-west-1", 1, updated_at="2026-08-23T00:00:00Z")]
+    )
+    keyring = RoutingKeyring(
+        active=RoutingSigningKey("routing-2026-08", "python-routing-test-secret-with-entropy")
+    )
+    middleware = create_cell_routing_middleware(
+        CanonicalRoutingConfig(
+            mode="gateway",
+            public_authority="https://account.example.com",
+            placement_directory=directory,
+            cell_region_id="eu-west-1",
+            cell_audience="cell:eu-west-1",
+            keyring=keyring,
+            replay_store=InMemoryRoutingReplayStore(),
+        )
+    )
+    request = GatewayRequest(
+        "https://account.example.com/auth/sign-in/password",
+        headers={"x-request-id": "req_downstream"},
+    )
+    now = int(time.time())
+    request.headers["x-authfn-routing-assertion"] = gateway_routing._sign(
+        {
+            "kind": "request",
+            "keyId": keyring.active.key_id,
+            "identityKey": "person:ada",
+            "regionId": "eu-west-1",
+            "epoch": 1,
+            "requestId": "req_downstream",
+            "method": request.method,
+            "path": "/auth/sign-in/password",
+            "audience": "cell:eu-west-1",
+            "issuedAt": now,
+            "expiresAt": now + 20,
+            "nonce": "nonce-downstream-1234",
+            "bodySha256": gateway_routing._body_digest(await request.body()),
+        },
+        keyring,
+    )
+
+    async def reject(_request: Any, _context: Any) -> Response:
+        raise HttpError("rate limited", status=429, code="RATE_LIMITED")
+
+    with pytest.raises(HttpError) as error:
+        await middleware(request, None, reject)
+    assert error.value.status == 429
+    assert error.value.code == "RATE_LIMITED"
 
 
 @pytest.mark.asyncio
