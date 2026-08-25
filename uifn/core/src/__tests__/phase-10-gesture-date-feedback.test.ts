@@ -120,6 +120,69 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     angle.destroy(); carousel.destroy(); rating.destroy(); signature.destroy(); splitter.destroy();
   });
 
+  it('synchronizes carousel props, callbacks, requests, and autoplay after creation', () => {
+    const scheduler = createManualRuntimeScheduler();
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const carousel = createCarouselController({
+      index: 1,
+      itemCount: 4,
+      autoplayDelay: 100,
+      reducedMotion: true,
+      onIndexChange: initialChange,
+    }, { ...deterministicEnv(), scheduler });
+    expect(scheduler.pending().timeout).toBe(0);
+
+    carousel.update({
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      autoplayDelay: 25,
+      reducedMotion: false,
+      locale: 'de-DE',
+      messages: {
+        carousel: 'Galerie',
+        slide: 'Folie',
+        item: (index, count) => `${index + 1} von ${count}`,
+      },
+      onIndexChange: updatedChange,
+    });
+    expect(carousel.state).toMatchObject({
+      index: 1,
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      interaction: 'autoplaying',
+      reducedMotion: false,
+    });
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Galerie');
+    expect(carousel.parts.item.getProps(1).aria).toMatchObject({
+      roledescription: 'Folie',
+      label: '2 von 2',
+    });
+    expect(scheduler.pending().timeout).toBe(1);
+
+    carousel.actions.next();
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(0);
+    carousel.update({ messages: { carousel: 'Aktualisierte Galerie' } });
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Aktualisierte Galerie');
+
+    carousel.update({ autoplayDelay: 0 });
+    expect(carousel.state.interaction).toBe('idle');
+    expect(scheduler.pending().timeout).toBe(0);
+    carousel.update({ index: 0, itemCount: 0 });
+    expect(carousel.state).toMatchObject({ index: 0, itemCount: 0 });
+    expect(carousel.state.requestedIndex).toBeUndefined();
+    expect(carousel.parts.previous.getProps().disabled).toBe(true);
+    expect(carousel.parts.next.getProps().disabled).toBe(true);
+    carousel.destroy();
+  });
+
   it('negative classifier names wrong RTL behavior precisely', () => {
     expect(() => assertUIFnRangeDirection(60, 40, { vector: 'TV-PRIM-006-N' })).toThrowError(expect.objectContaining({ code: 'UIFN_RANGE_DIRECTION_INVALID' }));
   });

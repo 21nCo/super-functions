@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { HookEnvironment, MediaQueryChangeLike } from '@uifn/dom';
 import { useCopyToClipboard } from './use-copy-to-clipboard';
@@ -37,7 +39,7 @@ function MediaProbe({
   environment,
   defaultValue,
 }: {
-  environment: HookEnvironment;
+  environment?: HookEnvironment;
   defaultValue?: boolean;
 }) {
   const matches = useMediaQuery('(min-width: 768px)', { defaultValue, environment });
@@ -89,6 +91,25 @@ describe('React hook equivalents', () => {
     unmount();
     expect(media.queryList.removeEventListener).toHaveBeenCalledTimes(1);
     expect(media.listenerCount()).toBe(0);
+  });
+
+  it('uses the server fallback during hydration before reading the client query', async () => {
+    const media = createMediaEnvironment(true);
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(<MediaProbe environment={{}} />);
+    expect(container.textContent).toBe('false');
+    const recoverableErrors: unknown[] = [];
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+
+    await React.act(async () => {
+      root = hydrateRoot(container, <MediaProbe environment={media.environment} />, {
+        onRecoverableError: (error) => recoverableErrors.push(error),
+      });
+    });
+    await waitFor(() => expect(container.textContent).toBe('true'));
+    expect(recoverableErrors).toEqual([]);
+
+    await React.act(async () => root?.unmount());
   });
 
   it('reports unavailable, rejected, successful, and reset clipboard states', async () => {

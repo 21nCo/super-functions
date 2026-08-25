@@ -80,7 +80,7 @@
   "author": "21n",
   "license": "MIT",
   "engines": {
-    "node": ">=20.19 <25"
+    "node": ">=20.19 <23"
   },
   "repository": {
     "type": "git",

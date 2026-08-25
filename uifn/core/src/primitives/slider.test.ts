@@ -81,4 +81,22 @@ describe('slider primitive', () => {
     expect(slider.state.value).toEqual([35, 50]);
     slider.destroy();
   });
+
+  it('preserves a controlled request across unrelated prop updates', () => {
+    const slider = createSliderController({ value: [20] });
+    slider.actions.setValue([30]);
+    expect(slider.state).toMatchObject({ value: [20], requestedValue: [30] });
+
+    slider.update({ disabled: true });
+    expect(slider.state).toMatchObject({
+      value: [20],
+      requestedValue: [30],
+      disabled: true,
+    });
+
+    slider.update({ value: [30] });
+    expect(slider.state.value).toEqual([30]);
+    expect(slider.state.requestedValue).toBeUndefined();
+    slider.destroy();
+  });
 });

@@ -152,9 +152,12 @@ export function createSliderController(props: SliderProps = {}, env: UIFnEnviron
       }
       const state = store.getState();
       const value = normalizeSliderValues(inputs.value ?? state.value, min, max, step, minSteps);
+      const requestedValue = controlled && !('value' in inputs) && state.requestedValue
+        ? normalizeSliderValues(state.requestedValue, min, max, step, minSteps)
+        : undefined;
       store.patchState({
         value,
-        requestedValue: undefined,
+        requestedValue,
         min,
         max,
         step,
@@ -206,14 +209,14 @@ export interface CarouselActions { previous(): void; next(): void; goTo(index: n
 export interface CarouselControllerParts { readonly root: UIFnPhase10Part; readonly viewport: UIFnPhase10Part; readonly item: UIFnPhase10ValuePart<number>; readonly previous: UIFnPhase10Part; readonly next: UIFnPhase10Part; readonly indicatorGroup: UIFnPhase10Part; readonly indicator: UIFnPhase10ValuePart<number>; readonly liveRegion: UIFnPhase10Part }
 export type CarouselController = UIFnController<CarouselState, CarouselActions, CarouselControllerParts, CarouselProps>;
 export function createCarouselController(props: CarouselProps, env: UIFnEnvironment = {}): CarouselController {
-  const { resolved, id } = createUIFnPhase10Ids('Carousel', 'carousel', env); const controlled = props.index !== undefined; const count = Math.max(0, Math.trunc(props.itemCount)); const loop = props.loop ?? false; const locale = props.locale ?? resolved.getLocale(); const autoplayDelay = Math.max(0, props.autoplayDelay ?? 0); const reducedMotion = props.reducedMotion ?? resolved.prefersReducedMotion(); const initial = resolveUIFnCarouselIndex(props.index ?? props.defaultIndex ?? 0, count, loop);
+  const { resolved, id } = createUIFnPhase10Ids('Carousel', 'carousel', env); let currentProps = props; let controlled = props.index !== undefined; let count = Math.max(0, Math.trunc(props.itemCount)); let loop = props.loop ?? false; let locale = props.locale ?? resolved.getLocale(); let autoplayDelay = Math.max(0, props.autoplayDelay ?? 0); let reducedMotion = props.reducedMotion ?? resolved.prefersReducedMotion(); const initial = resolveUIFnCarouselIndex(props.index ?? props.defaultIndex ?? 0, count, loop);
   const idleInteraction = () => autoplayDelay && !reducedMotion ? 'autoplaying' as const : 'idle' as const;
   const store = createStateChannel<CarouselState>({ index: initial, itemCount: count, loop, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), interaction: idleInteraction(), pauseReasons: Object.freeze([]), pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), reducedMotion });
   let timer: unknown; const clear = () => { if (timer !== undefined) resolved.scheduler.clearTimeout(timer); timer = undefined; };
   const schedule = () => { clear(); const state = store.getState(); if (!autoplayDelay || state.pauseReasons.length || state.pointers && Object.keys(state.pointers).length || state.reducedMotion) return; timer = resolved.scheduler.setTimeout(() => { timer = undefined; actions.next(); schedule(); }, autoplayDelay); };
   const actions: CarouselActions = {
     previous: () => actions.goTo(store.getState().index - 1), next: () => actions.goTo(store.getState().index + 1),
-    goTo(index, shouldAnnounce = true) { const state = store.getState(); const nextIndex = resolveUIFnCarouselIndex(index, count, loop); const message = shouldAnnounce ? new Intl.NumberFormat(locale).format(nextIndex + 1) : state.announcement; if (controlled) store.patchState({ requestedIndex: nextIndex, announcement: message }); else store.patchState({ index: nextIndex, requestedIndex: undefined, announcement: message }); props.onIndexChange?.(nextIndex); },
+    goTo(index, shouldAnnounce = true) { const state = store.getState(); const nextIndex = resolveUIFnCarouselIndex(index, count, loop); const message = shouldAnnounce ? new Intl.NumberFormat(locale).format(nextIndex + 1) : state.announcement; if (controlled) store.patchState({ requestedIndex: nextIndex, announcement: message }); else store.patchState({ index: nextIndex, requestedIndex: undefined, announcement: message }); currentProps.onIndexChange?.(nextIndex); },
     syncIndex(index) { store.patchState({ index: resolveUIFnCarouselIndex(index, count, loop), requestedIndex: undefined }); },
     dragStart(pointerId, start, kind = 'mouse') { clear(); const state = store.getState(); store.patchState({ pointers: setPointer(state.pointers, pointerId, { start, current: start, kind, target: state.index }), interaction: 'dragging' }); },
     dragMove(pointerId, current) { const state = store.getState(); const pointer = state.pointers[pointerId]; if (!pointer) return; if (pointer.kind === 'touch') { const arbitration = resolveUIFnTouchArbitration(pointer.start, current, state.orientation); if (arbitration === 'pending') return; if (arbitration === 'scroll') { actions.dragCancel(pointerId); return; } } store.patchState({ pointers: setPointer(state.pointers, pointerId, { ...pointer, current }) }); },
@@ -224,16 +227,57 @@ export function createCarouselController(props: CarouselProps, env: UIFnEnvironm
     resume(reason = 'manual') { const state = store.getState(); const pauseReasons = Object.freeze(state.pauseReasons.filter((entry) => entry !== reason)); store.patchState({ pauseReasons, interaction: pauseReasons.length ? 'paused' : idleInteraction() }); schedule(); },
   };
   const parts: CarouselControllerParts = {
-    root: createUIFnPhase10Part('Carousel', 'root', () => ({ role: 'region', id: id('root'), aria: { roledescription: props.messages?.carousel }, data: { orientation: store.getState().orientation, state: store.getState().interaction }, on: { pointerenter: () => actions.pause('hover'), pointerleave: () => actions.resume('hover'), focus: () => actions.pause('focus'), blur: () => actions.resume('focus') } }), { role: true, id: true }),
+    root: createUIFnPhase10Part('Carousel', 'root', () => ({ role: 'region', id: id('root'), aria: { roledescription: currentProps.messages?.carousel }, data: { orientation: store.getState().orientation, state: store.getState().interaction }, on: { pointerenter: () => actions.pause('hover'), pointerleave: () => actions.resume('hover'), focus: () => actions.pause('focus'), blur: () => actions.resume('focus') } }), { role: true, id: true }),
     viewport: createUIFnPhase10Part('Carousel', 'viewport', () => ({ id: id('viewport'), data: { orientation: store.getState().orientation } }), { id: true }),
-    item: createUIFnPhase10ValuePart('Carousel', 'item', (index) => ({ role: 'group', id: id('item', index), aria: { roledescription: props.messages?.slide, label: props.messages?.item?.(index, count, locale) ?? `${new Intl.NumberFormat(locale).format(index + 1)} / ${new Intl.NumberFormat(locale).format(count)}` }, data: { state: store.getState().index === index ? 'active' : 'inactive' }, hidden: store.getState().index !== index }), { role: true, id: true }),
-    previous: createUIFnPhase10Part('Carousel', 'previous', () => ({ role: 'button', id: id('previous'), disabled: !loop && store.getState().index === 0, on: { click: actions.previous } }), { role: true, id: true }),
-    next: createUIFnPhase10Part('Carousel', 'next', () => ({ role: 'button', id: id('next'), disabled: !loop && store.getState().index === count - 1, on: { click: actions.next } }), { role: true, id: true }),
+    item: createUIFnPhase10ValuePart('Carousel', 'item', (index) => ({ role: 'group', id: id('item', index), aria: { roledescription: currentProps.messages?.slide, label: currentProps.messages?.item?.(index, count, locale) ?? `${new Intl.NumberFormat(locale).format(index + 1)} / ${new Intl.NumberFormat(locale).format(count)}` }, data: { state: store.getState().index === index ? 'active' : 'inactive' }, hidden: store.getState().index !== index }), { role: true, id: true }),
+    previous: createUIFnPhase10Part('Carousel', 'previous', () => ({ role: 'button', id: id('previous'), disabled: !count || !loop && store.getState().index === 0, on: { click: actions.previous } }), { role: true, id: true }),
+    next: createUIFnPhase10Part('Carousel', 'next', () => ({ role: 'button', id: id('next'), disabled: !count || !loop && store.getState().index === count - 1, on: { click: actions.next } }), { role: true, id: true }),
     indicatorGroup: createUIFnPhase10Part('Carousel', 'indicatorGroup', () => ({ role: 'group', id: id('indicators') }), { role: true, id: true }),
     indicator: createUIFnPhase10ValuePart('Carousel', 'indicator', (index) => ({ role: 'button', id: id('indicator', index), aria: { current: store.getState().index === index ? 'true' : undefined, label: new Intl.NumberFormat(locale).format(index + 1) }, data: { state: store.getState().index === index ? 'active' : 'inactive' }, on: { click: () => actions.goTo(index) } }), { role: true, id: true }),
     liveRegion: createUIFnPhase10Part('Carousel', 'liveRegion', () => ({ role: 'status', id: id('live'), aria: { live: 'polite', atomic: true }, data: { message: store.getState().announcement } }), { role: true, id: true, aria: ['live'] }),
   };
-  schedule(); return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.index !== undefined) actions.syncIndex(inputs.index); }, destroy: clear });
+  schedule(); return createUIFnPhase10Controller({
+    store,
+    actions,
+    parts,
+    env,
+    update(inputs) {
+      currentProps = { ...currentProps, ...inputs };
+      controlled = currentProps.index !== undefined;
+      count = Math.max(0, Math.trunc(currentProps.itemCount));
+      loop = currentProps.loop ?? false;
+      locale = currentProps.locale ?? resolved.getLocale();
+      autoplayDelay = Math.max(0, currentProps.autoplayDelay ?? 0);
+      reducedMotion = currentProps.reducedMotion ?? resolved.prefersReducedMotion();
+      const state = store.getState();
+      const index = resolveUIFnCarouselIndex(
+        'index' in inputs && inputs.index !== undefined ? inputs.index : state.index,
+        count,
+        loop,
+      );
+      const requestedIndex = controlled && !('index' in inputs) && state.requestedIndex !== undefined
+        ? resolveUIFnCarouselIndex(state.requestedIndex, count, loop)
+        : undefined;
+      const pointers = count ? state.pointers : Object.freeze({});
+      store.patchState({
+        index,
+        requestedIndex,
+        itemCount: count,
+        loop,
+        orientation: currentProps.orientation ?? 'horizontal',
+        dir: currentProps.dir ?? resolved.getDirection(),
+        interaction: Object.keys(pointers).length
+          ? 'dragging'
+          : state.pauseReasons.length
+            ? 'paused'
+            : idleInteraction(),
+        pointers,
+        reducedMotion,
+      });
+      schedule();
+    },
+    destroy: clear,
+  });
 }
 
 export interface RatingGroupProps { readonly value?: number; readonly defaultValue?: number; readonly count?: number; readonly allowHalf?: boolean; readonly locale?: string; readonly name?: string; readonly disabled?: boolean; readonly readOnly?: boolean; readonly required?: boolean; readonly onValueChange?: (value: number) => void }

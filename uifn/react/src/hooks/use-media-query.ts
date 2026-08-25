@@ -8,14 +8,18 @@ import {
 export type UseMediaQueryOptions = MediaQueryOptions;
 
 export function useMediaQuery(query: string, options: UseMediaQueryOptions = {}): boolean {
-  const [matches, setMatches] = React.useState(() => getMediaQuerySnapshot(query, options));
-
-  React.useEffect(() => {
-    const subscription = subscribeMediaQuery(query, setMatches, options);
-    setMatches(subscription.value);
-
-    return () => subscription.unsubscribe();
+  const subscribe = React.useCallback((onStoreChange: () => void) => {
+    const subscription = subscribeMediaQuery(query, onStoreChange, options);
+    return subscription.unsubscribe;
   }, [query, options.defaultValue, options.environment]);
+  const getSnapshot = React.useCallback(
+    () => getMediaQuerySnapshot(query, options),
+    [query, options.defaultValue, options.environment],
+  );
+  const getServerSnapshot = React.useCallback(
+    () => options.defaultValue ?? false,
+    [options.defaultValue],
+  );
 
-  return matches;
+  return React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
