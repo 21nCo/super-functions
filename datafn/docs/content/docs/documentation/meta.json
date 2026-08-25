@@ -5,6 +5,7 @@
     "index",
     "capabilities",
     "namespaces",
+    "multi-region-gateway",
     "sharing",
     "client",
     "server",
