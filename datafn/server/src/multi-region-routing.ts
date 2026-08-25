@@ -18,7 +18,7 @@ export interface DatafnNamespacePlacement {
 }
 
 export interface DatafnNamespaceMigrationState {
-  phase: "moving" | "resume-target";
+  phase: "moving" | "resume-source" | "resume-target";
   sourceRegionId: string;
   targetRegionId: string;
   sourceEpoch: number;
@@ -808,6 +808,54 @@ export async function migrateDatafnNamespace(input: {
     throw new Error("DATAFN_MIGRATION_REQUIRES_ACTIVE_PLACEMENT");
   }
 
+  if (observed.state === "active" && observed.migration?.phase === "resume-source") {
+    if (
+      observed.regionId !== observed.migration.sourceRegionId ||
+      observed.migration.targetRegionId !== input.targetRegionId ||
+      (input.targetDestinationRef !== undefined &&
+        input.targetDestinationRef !== observed.migration.targetDestinationRef)
+    ) {
+      throw new Error("DATAFN_MIGRATION_RECOVERY_REQUIRED");
+    }
+    let pendingRollback = await claimDatafnMigrationRecovery({
+      directory: input.directory,
+      placement: observed,
+      expectedState: "active",
+      recoveryOwnerId,
+      recoveryLeaseMs,
+      now,
+    });
+    const rollbackLease = createDatafnMigrationLeaseGuard({
+      directory: input.directory,
+      placement: pendingRollback,
+      expectedState: "active",
+      recoveryLeaseMs,
+      now,
+      recovery: true,
+    });
+    const rollbackCause = new Error("DATAFN_MIGRATION_ROLLBACK_RECOVERY");
+    let rollbackFailure: { cause: unknown } | undefined;
+    try {
+      await rollbackLease.runHook(async (context) => {
+        await input.hooks.rollbackSource?.({ ...context, cause: rollbackCause });
+      });
+    } catch (cause) {
+      rollbackFailure = { cause };
+    }
+    pendingRollback = await rollbackLease.stop();
+    if (rollbackFailure) throw rollbackFailure.cause;
+    await finalizeDatafnMigrationRecovery({
+      directory: input.directory,
+      placement: pendingRollback,
+      now,
+    });
+    const rolledBack = new Error("DATAFN_MIGRATION_ROLLED_BACK") as Error & {
+      cause?: unknown;
+    };
+    rolledBack.cause = rollbackCause;
+    throw rolledBack;
+  }
+
   if (observed.state === "active" && observed.migration?.phase === "resume-target") {
     if (
       observed.regionId !== input.targetRegionId ||
@@ -841,7 +889,7 @@ export async function migrateDatafnNamespace(input: {
     }
     pendingResume = await resumeLease.stop();
     if (resumeFailure) throw resumeFailure.cause;
-    return finalizeDatafnMigrationResume({
+    return finalizeDatafnMigrationRecovery({
       directory: input.directory,
       placement: pendingResume,
       now,
@@ -953,8 +1001,7 @@ export async function migrateDatafnNamespace(input: {
   migration = moving.migration!;
   if (hookFailure) {
     const cause = hookFailure.cause;
-    const context = migrationContext(observed.namespace, migration, recovery);
-    const rollback: DatafnNamespacePlacement = {
+    const activePendingRollback: DatafnNamespacePlacement = {
       namespace: moving.namespace,
       regionId: migration.sourceRegionId,
       epoch: moving.epoch + 1,
@@ -966,12 +1013,18 @@ export async function migrateDatafnNamespace(input: {
       ...(migration.sourcePreviousRegionId
         ? { previousRegionId: migration.sourcePreviousRegionId }
         : {}),
+      migration: {
+        ...migration,
+        phase: "resume-source",
+        recoveryOwnerId,
+        recoveryLeaseExpiresAt: now() + recoveryLeaseMs,
+      },
     };
     const restored = await input.directory.compareAndSet({
       namespace: moving.namespace,
       expectedEpoch: moving.epoch,
       expectedState: "moving",
-      next: rollback,
+      next: activePendingRollback,
     });
     if (!restored.updated) {
       await input.onEvent?.({
@@ -989,7 +1042,34 @@ export async function migrateDatafnNamespace(input: {
       conflict.cause = cause;
       throw conflict;
     }
-    await input.hooks.rollbackSource?.({ ...context, cause });
+    const rollbackLease = createDatafnMigrationLeaseGuard({
+      directory: input.directory,
+      placement: activePendingRollback,
+      expectedState: "active",
+      recoveryLeaseMs,
+      now,
+      recovery,
+    });
+    let rollbackFailure: { cause: unknown } | undefined;
+    try {
+      await rollbackLease.runHook(async (context) => {
+        await input.hooks.rollbackSource?.({ ...context, cause });
+      });
+    } catch (rollbackCause) {
+      rollbackFailure = { cause: rollbackCause };
+    }
+    const rolledBackPlacement = await rollbackLease.stop();
+    if (rollbackFailure) {
+      if (rollbackFailure.cause instanceof Error) {
+        (rollbackFailure.cause as Error & { cause?: unknown }).cause = cause;
+      }
+      throw rollbackFailure.cause;
+    }
+    await finalizeDatafnMigrationRecovery({
+      directory: input.directory,
+      placement: rolledBackPlacement,
+      now,
+    });
     throw cause;
   }
   const activePendingResume: DatafnNamespacePlacement = {
@@ -1034,7 +1114,7 @@ export async function migrateDatafnNamespace(input: {
   }
   const resumedPlacement = await resumeLease.stop();
   if (resumeFailure) throw resumeFailure.cause;
-  return finalizeDatafnMigrationResume({
+  return finalizeDatafnMigrationRecovery({
     directory: input.directory,
     placement: resumedPlacement,
     now,
@@ -1238,7 +1318,7 @@ function createDatafnMigrationLeaseGuard(input: {
   };
 }
 
-async function finalizeDatafnMigrationResume(input: {
+async function finalizeDatafnMigrationRecovery(input: {
   directory: DatafnPlacementDirectoryAdapter;
   placement: DatafnNamespacePlacement;
   now: () => number;
@@ -1639,7 +1719,9 @@ function setBoundedPlacementCache(
 }
 
 function isPlacementTrafficFenced(placement: DatafnNamespacePlacement): boolean {
-  return placement.state === "moving" || placement.migration?.phase === "resume-target";
+  return placement.state === "moving" ||
+    placement.migration?.phase === "resume-source" ||
+    placement.migration?.phase === "resume-target";
 }
 
 function requestTarget(url: string): string {
@@ -1695,7 +1777,11 @@ function assertMigrationState(
   migration: DatafnNamespaceMigrationState,
   placement: DatafnNamespacePlacement,
 ): void {
-  if (migration.phase !== "moving" && migration.phase !== "resume-target") {
+  if (
+    migration.phase !== "moving" &&
+    migration.phase !== "resume-source" &&
+    migration.phase !== "resume-target"
+  ) {
     throw new Error("DATAFN_MIGRATION_STATE_INVALID");
   }
   requiredString(migration.sourceRegionId, "migration_source_region");
@@ -1711,6 +1797,8 @@ function assertMigrationState(
   }
   if (
     (migration.phase === "moving" && placement.state !== "moving") ||
+    (migration.phase === "resume-source" &&
+      (placement.state !== "active" || placement.regionId !== migration.sourceRegionId)) ||
     (migration.phase === "resume-target" &&
       (placement.state !== "active" || placement.regionId !== migration.targetRegionId))
   ) {
