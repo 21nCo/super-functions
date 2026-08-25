@@ -272,6 +272,11 @@ export class McpFnRegistry<TContext = undefined> {
   registerResource(definition: McpFnResourceDefinition<TContext>): this {
     assertUri("resource", definition.uri);
     assertName("resource", definition.name);
+    if (typeof definition.read !== "function") {
+      throw new McpFnValidationError(
+        `Resource ${definition.name} requires a read handler function`,
+      );
+    }
     if (this.resources.has(definition.uri)) {
       throw new McpFnValidationError(`Duplicate MCP resource: ${definition.uri}`);
     }
@@ -289,6 +294,11 @@ export class McpFnRegistry<TContext = undefined> {
     definition: McpFnResourceTemplateDefinition<TContext>,
   ): this {
     assertName("resource template", definition.name);
+    if (typeof definition.read !== "function") {
+      throw new McpFnValidationError(
+        `Resource template ${definition.name} requires a read handler function`,
+      );
+    }
     if (this.resourceTemplates.has(definition.name)) {
       throw new McpFnValidationError(
         `Duplicate MCP resource template: ${definition.name}`,

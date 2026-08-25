@@ -41,6 +41,69 @@ function equalSets(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
 }
 
+function anchoredLiteralPrefix(pattern: string): string | undefined {
+  if (!pattern.startsWith("^")) return undefined;
+  let prefix = "";
+  for (let index = 1; index < pattern.length; index += 1) {
+    const character = pattern[index]!;
+    if (character === "\\") {
+      const escaped = pattern[index + 1];
+      if (!escaped || /[A-Za-z0-9]/.test(escaped)) break;
+      prefix += escaped;
+      index += 1;
+      continue;
+    }
+    if (".^$*+?()[]{}|".includes(character)) break;
+    prefix += character;
+  }
+  return prefix || undefined;
+}
+
+function anchoredLiteralSuffix(pattern: string): string | undefined {
+  if (!pattern.endsWith("$") || pattern.endsWith("\\$")) return undefined;
+  let suffix = "";
+  for (let index = 0; index < pattern.length - 1; index += 1) {
+    const character = pattern[index]!;
+    if (character === "\\") {
+      const escaped = pattern[index + 1];
+      if (!escaped) break;
+      suffix = /[A-Za-z0-9]/.test(escaped) ? "" : suffix + escaped;
+      index += 1;
+      continue;
+    }
+    suffix = ".^$*+?()[]{}|".includes(character) ? "" : suffix + character;
+  }
+  return suffix || undefined;
+}
+
+function patternsMayOverlap(left: string, right: string): boolean {
+  const leftPrefix = anchoredLiteralPrefix(left);
+  const rightPrefix = anchoredLiteralPrefix(right);
+  if (
+    leftPrefix && rightPrefix &&
+    !leftPrefix.startsWith(rightPrefix) && !rightPrefix.startsWith(leftPrefix)
+  ) return false;
+  const leftSuffix = anchoredLiteralSuffix(left);
+  const rightSuffix = anchoredLiteralSuffix(right);
+  if (
+    leftSuffix && rightSuffix &&
+    !leftSuffix.endsWith(rightSuffix) && !rightSuffix.endsWith(leftSuffix)
+  ) return false;
+  return true;
+}
+
+function nestedRemovedPaths(before: unknown, after: unknown, path: string): string[] {
+  if (!before || typeof before !== "object" || Array.isArray(before)) return [];
+  if (!after || typeof after !== "object" || Array.isArray(after)) return [path];
+  const beforeRecord = before as Record<string, unknown>;
+  const afterRecord = after as Record<string, unknown>;
+  return Object.keys(beforeRecord).flatMap((name) => {
+    const childPath = `${path}.${name}`;
+    if (!Object.prototype.hasOwnProperty.call(afterRecord, name)) return [childPath];
+    return nestedRemovedPaths(beforeRecord[name], afterRecord[name], childPath);
+  });
+}
+
 function matchingPatternSchemas(
   schema: McpFnJsonSchema,
   propertyName: string,
@@ -379,18 +442,16 @@ function diffSchema(
     if (hadOldProperty && !hasNewProperty) {
       const fallbackChanges: McpFnContractChange[] = [];
       const patternSchemas = matchingPatternSchemas(after, name);
-      if (direction === "input") {
-        const fallbackSchemas = patternSchemas.length
-          ? patternSchemas
-          : [afterAdditional as SchemaNode];
-        fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
-          oldProperty,
-          fallbackSchema,
-          `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
-          "input",
-          fallbackChanges,
-        ));
-      }
+      const fallbackSchemas = patternSchemas.length
+        ? patternSchemas
+        : [afterAdditional as SchemaNode];
+      fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
+        oldProperty,
+        fallbackSchema,
+        `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
+        direction,
+        fallbackChanges,
+      ));
       const breaking =
         direction === "output" && beforeRequired.has(name) ||
         fallbackChanges.some((change) => change.severity === "breaking");
@@ -444,13 +505,32 @@ function diffSchema(
       direction,
       changes,
     );
-    const overlapsExistingInputPattern =
-      direction === "input" && !hadBeforePattern && hasAfterPattern &&
-      Object.keys(beforePatterns).length > 0;
-    const weakensExistingOutputPattern =
-      direction === "output" && hadBeforePattern && !hasAfterPattern &&
-      Object.keys(afterPatterns).length > 0;
-    if (overlapsExistingInputPattern || weakensExistingOutputPattern) {
+    const overlapChanges: McpFnContractChange[] = [];
+    if (direction === "input" && !hadBeforePattern && hasAfterPattern) {
+      for (const [existingPattern, existingSchema] of Object.entries(beforePatterns)) {
+        if (!patternsMayOverlap(existingPattern, pattern)) continue;
+        diffSchema(
+          existingSchema,
+          afterPatterns[pattern],
+          `${path}.patternProperties.${pattern}.overlap.${existingPattern}`,
+          "input",
+          overlapChanges,
+        );
+      }
+    }
+    if (direction === "output" && hadBeforePattern && !hasAfterPattern) {
+      for (const [remainingPattern, remainingSchema] of Object.entries(afterPatterns)) {
+        if (!patternsMayOverlap(pattern, remainingPattern)) continue;
+        diffSchema(
+          beforePatterns[pattern],
+          remainingSchema,
+          `${path}.patternProperties.${pattern}.overlap.${remainingPattern}`,
+          "output",
+          overlapChanges,
+        );
+      }
+    }
+    if (overlapChanges.some((change) => change.severity === "breaking")) {
       push(changes, {
         severity: "breaking",
         code: "overlapping-pattern-constraint-changed",
@@ -847,6 +927,22 @@ export function diffManifests(
       if (requirementChanged && !requirementAdded && !requirementRemoved) continue;
       const extensionWasRequired = key === "extensions" && extensionRequired(oldRecord[name]);
       const extensionIsRequired = key === "extensions" && extensionRequired(newRecord[name]);
+      const removedCapabilityPaths = key === "capabilities" && !removed && !added
+        ? nestedRemovedPaths(oldRecord[name], newRecord[name], `${key}.${name}`)
+        : [];
+      if (removedCapabilityPaths.length) {
+        for (const removedPath of removedCapabilityPaths) {
+          push(changes, {
+            severity: "breaking",
+            code: "capability-support-removed",
+            path: removedPath,
+            message: `Capability support was removed at ${removedPath}`,
+            before: oldRecord[name],
+            after: newRecord[name],
+          });
+        }
+        continue;
+      }
       push(changes, {
         severity: requirementChanged && requirementAdded
           ? "breaking"

@@ -572,16 +572,28 @@ describe("McpFn manifests", () => {
         }),
       ]),
     });
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "^y": { type: "number" } }),
+    )).toMatchObject({ compatible: true });
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "x$": { type: "string" } }),
+    )).toMatchObject({ compatible: true });
   });
 
-  it("keeps optional output-property removal compatible", () => {
-    const create = (properties: Record<string, Record<string, unknown>>, required: string[] = []) => createManifest(
+  it("compares removed output properties with their effective fallback", () => {
+    const create = (
+      properties: Record<string, Record<string, unknown>>,
+      required: string[] = [],
+      additionalProperties: boolean | Record<string, unknown> = true,
+    ) => createManifest(
       { name: "example", version: "1.0.0" },
       new McpFnRegistry().register({
         name: "optional-output",
         description: "Exercise optional output properties.",
         inputSchema: { type: "object" },
-        outputSchema: { type: "object", properties, required },
+        outputSchema: { type: "object", properties, required, additionalProperties },
         handler: async () => structuredResult({}),
       }),
     );
@@ -590,11 +602,19 @@ describe("McpFn manifests", () => {
       create({ value: { type: "string" } }),
       create({}),
     )).toMatchObject({
-      compatible: true,
+      compatible: false,
       changes: expect.arrayContaining([
-        expect.objectContaining({ code: "property-removed", severity: "additive" }),
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
       ]),
     });
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}, [], { type: "string" }),
+    )).toMatchObject({ compatible: true });
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}, [], false),
+    )).toMatchObject({ compatible: true });
     expect(diffManifests(
       create({ value: { type: "string" } }, ["value"]),
       create({}),
@@ -828,6 +848,24 @@ describe("McpFn manifests", () => {
     expect(diffManifests(optional, required).changes).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: "extensions.optional", severity: "breaking" }),
     ]));
+  });
+
+  it("classifies nested capability operation removals as breaking", () => {
+    const create = (tasks: Record<string, unknown>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      registry(),
+      { capabilities: { tasks } as never },
+    );
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } }, list: {}, cancel: {} }),
+      create({ requests: { tools: { call: {} } } }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.list" }),
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.cancel" }),
+      ]),
+    });
   });
 
   it("tracks prompt argument metadata and canonicalizes object enum values", () => {

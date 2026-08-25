@@ -228,6 +228,18 @@ describe("McpFnServer", () => {
       .toThrow(/requires a handler function/);
   });
 
+  it("rejects resources and templates without callable read handlers", () => {
+    expect(() => new McpFnRegistry().registerResource({
+      uri: "docs://missing-read",
+      name: "missing-read",
+    } as never)).toThrow(/requires a read handler function/);
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://missing-read/{id}",
+      name: "missing-read-template",
+      read: "invalid",
+    } as never)).toThrow(/requires a read handler function/);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()
