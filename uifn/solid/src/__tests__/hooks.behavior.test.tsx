@@ -56,6 +56,26 @@ describe('Solid hook bindings', () => {
     expect(media.listenerCount()).toBe(0);
   });
 
+  it('uses the hydration fallback until the owner mounts', async () => {
+    const media = createMediaEnvironment(true);
+    const host = document.createElement('div');
+    const output = document.createElement('output');
+    let initialValue: boolean | undefined;
+    const dispose = render(() => {
+      const matches = createMediaQuery('(min-width: 768px)', {
+        defaultValue: false,
+        environment: media.environment,
+      });
+      initialValue = matches();
+      createEffect(() => { output.textContent = String(matches()); });
+      return output;
+    }, host);
+    expect(initialValue).toBe(false);
+    await Promise.resolve();
+    expect(output.textContent).toBe('true');
+    dispose();
+  });
+
   it('reports unavailable, rejected, successful, and reset clipboard states', async () => {
     const host = document.createElement('div');
     let run!: () => Promise<void>;

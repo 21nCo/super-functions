@@ -295,6 +295,97 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     angle.destroy();
   });
 
+  it('synchronizes splitter interaction inputs, bounds, controlled mode, and callbacks', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const splitter = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [20, 20],
+      maxSizes: [80, 80],
+      onSizesChange: initialChange,
+    }, deterministicEnv());
+
+    splitter.actions.resizeStart(1, 0, 40);
+    splitter.update({
+      orientation: 'vertical',
+      dir: 'rtl',
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      locale: 'de-DE',
+      disabled: true,
+      onSizesChange: updatedChange,
+    });
+    expect(splitter.state).toMatchObject({
+      sizes: [40, 60],
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      orientation: 'vertical',
+      dir: 'rtl',
+      disabled: true,
+      resizing: null,
+      pointers: {},
+    });
+    splitter.actions.resize(0, 10);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    splitter.update({
+      sizes: undefined,
+      orientation: 'horizontal',
+      dir: 'ltr',
+      minSizes: [45, 0],
+      maxSizes: [60, 100],
+      disabled: false,
+    });
+    splitter.actions.resize(0, 20);
+    expect(splitter.state.sizes).toEqual([60, 40]);
+    expect(splitter.parts.resizeTrigger.getProps(0).aria).toMatchObject({
+      valuemin: 45,
+      valuemax: 60,
+      valuenow: 60,
+    });
+    expect(updatedChange).toHaveBeenCalledWith([60, 40]);
+    splitter.destroy();
+  });
+
+  it('recomputes Steps state and navigation when count changes', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const steps = createStepsController({
+      step: 1,
+      count: 3,
+      onStepChange: initialChange,
+    }, deterministicEnv());
+
+    steps.update({
+      step: undefined,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      errors: [4],
+      locale: 'de-DE',
+      label: 'Fortschritt',
+      onStepChange: updatedChange,
+    });
+    expect(steps.state).toMatchObject({
+      step: 1,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      statuses: ['complete', 'current', 'upcoming', 'upcoming', 'error'],
+    });
+    expect(steps.parts.root.getProps().aria?.label).toBe('Fortschritt');
+    steps.actions.goTo(4);
+    expect(steps.state.step).toBe(4);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(4);
+
+    steps.update({ count: 2 });
+    expect(steps.state).toMatchObject({ step: 1, count: 2 });
+    expect(steps.state.statuses).toHaveLength(2);
+    steps.destroy();
+  });
+
   it('negative classifier names wrong RTL behavior precisely', () => {
     expect(() => assertUIFnRangeDirection(60, 40, { vector: 'TV-PRIM-006-N' })).toThrowError(expect.objectContaining({ code: 'UIFN_RANGE_DIRECTION_INVALID' }));
   });

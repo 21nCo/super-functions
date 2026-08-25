@@ -13,7 +13,7 @@ afterEach(() => cleanup());
 
 describe('TV-SVELTE-001-P: catalog-complete Svelte 5 compounds', () => {
   it('renders all 69 public compound roots from the generated catalog', async () => {
-    const view = renderClient(AllRootsHarness);
+    const view = renderClient(AllRootsHarness, { props: { angleName: 'angle' } });
     await tick();
     expect(manifest.primitiveCount).toBe(69);
     expect(manifest.anatomyCount).toBe(465);
@@ -25,6 +25,12 @@ describe('TV-SVELTE-001-P: catalog-complete Svelte 5 compounds', () => {
     }
     expect(view.getByTestId('angle-slider-root').hasAttribute('name')).toBe(false);
     expect(view.getByTestId('angle-slider-input').getAttribute('name')).toBe('angle');
+    expect(view.getByTestId('form-root').getAttribute('action')).toBe('/save');
+    expect(view.getByTestId('form-root').getAttribute('method')).toBe('post');
+    expect(view.getByTestId('form-root').getAttribute('enctype')).toBe('multipart/form-data');
+    await view.rerender({ angleName: 'bearing' });
+    await tick();
+    expect(view.getByTestId('angle-slider-input').getAttribute('name')).toBe('bearing');
   });
 
   it('runs core behavior through concrete compound parts and bind:value', async () => {

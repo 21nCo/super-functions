@@ -1,6 +1,5 @@
 import { createSignal, onCleanup, onMount, type Accessor } from 'solid-js';
 import {
-  getMediaQuerySnapshot,
   subscribeMediaQuery,
   type MediaQueryOptions,
 } from '@uifn/dom';
@@ -8,7 +7,7 @@ import {
 export type UseMediaQueryOptions = MediaQueryOptions;
 
 export function createMediaQuery(query: string, options: UseMediaQueryOptions = {}): Accessor<boolean> {
-  const [matches, setMatches] = createSignal(getMediaQuerySnapshot(query, options));
+  const [matches, setMatches] = createSignal(options.defaultValue ?? false);
   let unsubscribe: (() => void) | null = null;
 
   onMount(() => {

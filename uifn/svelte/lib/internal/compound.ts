@@ -99,7 +99,7 @@ interface SvelteDomBinding {
   destroy(): void;
 }
 
-const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox)$/;
+const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox|action|method|enctype|encType)$/;
 const ROOT_EVENT_PROP = /^on(?::)?[a-z]/;
 
 const EMPTY_DOM_RESOURCES: UIFnDomResourceSnapshot = Object.freeze({
@@ -451,7 +451,9 @@ export class SveltePrimitiveBridge<TInputs extends object = AnyRecord> {
       this.emit();
       return;
     }
+    const previousVersion = this.current?.getSnapshot().version;
     this.current?.update(Object.fromEntries(changedKeys.map((key) => [key, next[key]])) as Partial<AnyRecord>);
+    if (this.current?.getSnapshot().version === previousVersion) this.emit();
   }
 
   getPartProps(part: string, value: unknown, userProps: UIFnPartProps): UIFnPartProps {

@@ -389,9 +389,9 @@ export interface SplitterActions { resize(index: number, delta: number, modality
 export interface SplitterControllerParts { readonly root: UIFnPhase10Part; readonly panel: UIFnPhase10ValuePart<number>; readonly resizeTrigger: UIFnPhase10ValuePart<number>; readonly resizeHandle: UIFnPhase10ValuePart<number> }
 export type SplitterController = UIFnController<SplitterState, SplitterActions, SplitterControllerParts, SplitterProps>;
 export function createSplitterController(props: SplitterProps = {}, env: UIFnEnvironment = {}): SplitterController {
-  const { resolved, id } = createUIFnPhase10Ids('Splitter', 'splitter', env); const initial = Object.freeze([...(props.sizes ?? props.defaultSizes ?? [50, 50])]); const minSizes = Object.freeze([...(props.minSizes ?? initial.map(() => 0))]); const maxSizes = Object.freeze([...(props.maxSizes ?? initial.map(() => 100))]); const controlled = props.sizes !== undefined; const locale = props.locale ?? resolved.getLocale(); const texts = (sizes: readonly number[]) => Object.freeze(sizes.map((size) => formatUIFnLocalizedNumber(size / 100, locale, { style: 'percent', maximumFractionDigits: 2 })));
+  const { resolved, id } = createUIFnPhase10Ids('Splitter', 'splitter', env); let currentProps = props; const initial = Object.freeze([...(props.sizes ?? props.defaultSizes ?? [50, 50])]); let minSizes = Object.freeze([...(props.minSizes ?? initial.map(() => 0))]); let maxSizes = Object.freeze([...(props.maxSizes ?? initial.map(() => 100))]); let controlled = props.sizes !== undefined; let locale = props.locale ?? resolved.getLocale(); const texts = (sizes: readonly number[]) => Object.freeze(sizes.map((size) => formatUIFnLocalizedNumber(size / 100, locale, { style: 'percent', maximumFractionDigits: 2 })));
   const store = createStateChannel<SplitterState>({ sizes: initial, minSizes, maxSizes, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), resizing: null, pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), disabled: props.disabled ?? false, valueText: texts(initial) });
-  const commit = (sizes: readonly number[]) => { if (controlled) store.patchState({ requestedSizes: sizes }); else store.patchState({ sizes, valueText: texts(sizes), requestedSizes: undefined }); props.onSizesChange?.(sizes); };
+  const commit = (sizes: readonly number[]) => { if (controlled) store.patchState({ requestedSizes: sizes }); else store.patchState({ sizes, valueText: texts(sizes), requestedSizes: undefined }); currentProps.onSizesChange?.(sizes); };
   const actions: SplitterActions = {
     resize(index, delta) { if (store.getState().disabled) return; const state = store.getState(); const logical = state.orientation === 'horizontal' && state.dir === 'rtl' ? -delta : delta; commit(resizeUIFnSplitterPair(state.sizes, index, logical, minSizes, maxSizes)); },
     keyResize(index, key) { if (key === 'Home') return actions.collapse(index); if (key === 'End') return actions.expand(index); const amount = key === 'PageUp' ? 10 : key === 'PageDown' ? -10 : key === 'ArrowUp' || key === 'ArrowRight' ? 1 : key === 'ArrowDown' || key === 'ArrowLeft' ? -1 : 0; actions.resize(index, amount); },
@@ -407,7 +407,31 @@ export function createSplitterController(props: SplitterProps = {}, env: UIFnEnv
     resizeTrigger: createUIFnPhase10ValuePart('Splitter', 'resizeTrigger', (index) => ({ role: 'separator', id: id('trigger', index), tabIndex: store.getState().disabled ? -1 : 0, aria: { orientation: store.getState().orientation === 'horizontal' ? 'vertical' : 'horizontal', valuemin: minSizes[index], valuemax: maxSizes[index], valuenow: store.getState().sizes[index], valuetext: store.getState().valueText[index], controls: `${id('panel', index)} ${id('panel', index + 1)}`, disabled: store.getState().disabled }, data: { state: store.getState().resizing === index ? 'resizing' : 'idle' }, on: { keydown: (event) => actions.keyResize(index, event?.key ?? '') } }), { role: true, id: true, tabIndex: true, aria: ['orientation', 'valuemin', 'valuemax', 'valuenow', 'valuetext', 'controls'] }),
     resizeHandle: createUIFnPhase10ValuePart('Splitter', 'resizeHandle', (index) => ({ id: id('handle', index), data: { state: store.getState().resizing === index ? 'resizing' : 'idle' } }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.sizes !== undefined) actions.syncSizes(inputs.sizes); } });
+  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    currentProps = { ...currentProps, ...inputs };
+    controlled = currentProps.sizes !== undefined;
+    locale = currentProps.locale ?? resolved.getLocale();
+    const state = store.getState();
+    const ownerSizesChanged = 'sizes' in inputs && inputs.sizes !== undefined;
+    const sizes = Object.freeze([...(ownerSizesChanged ? inputs.sizes! : state.sizes)]);
+    minSizes = Object.freeze([...(currentProps.minSizes ?? sizes.map(() => 0))]);
+    maxSizes = Object.freeze([...(currentProps.maxSizes ?? sizes.map(() => 100))]);
+    const disabled = currentProps.disabled ?? false;
+    store.patchState({
+      sizes,
+      requestedSizes: controlled && !ownerSizesChanged && state.requestedSizes
+        ? Object.freeze([...state.requestedSizes])
+        : undefined,
+      minSizes,
+      maxSizes,
+      orientation: currentProps.orientation ?? 'horizontal',
+      dir: currentProps.dir ?? resolved.getDirection(),
+      resizing: disabled ? null : state.resizing,
+      pointers: disabled ? Object.freeze({}) : state.pointers,
+      disabled,
+      valueText: texts(sizes),
+    });
+  } });
 }
 
 export function assertUIFnCancelledGesture(controller: { readonly state: { readonly pointers: PointerMap } }, pointerId: number): void {

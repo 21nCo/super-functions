@@ -248,11 +248,14 @@ const requiredSamples = {
   Tour: 'steps={[{ id: "one", title: "One", description: "One", target: "#tour-target" }]}',
   TreeView: 'items={[{ id: "one", textValue: "One" }]}',
 };
-const allRootsHarness = `<script lang="ts">\n  import { ${catalog.primitives.map((primitive) => primitive.name).join(', ')} } from '../../lib/index.js';\n</script>\n\n<div id="tour-target"></div>\n${catalog.primitives.map((primitive) => {
+const allRootsHarness = `<script lang="ts">\n  import { ${catalog.primitives.map((primitive) => primitive.name).join(', ')} } from '../../lib/index.js';\n\n  let { angleName = 'angle' }: { angleName?: string } = $props();\n</script>\n\n<div id="tour-target"></div>\n${catalog.primitives.map((primitive) => {
   const host = primitive.name === 'Toast' ? `${primitive.name}.Provider` : `${primitive.name}.Root`;
   const required = requiredSamples[primitive.name] ? ` ${requiredSamples[primitive.name]}` : '';
   if (primitive.name === 'AngleSlider') {
-    return `<${host} name="angle" data-testid="${primitive.id}-root">\n  <AngleSlider.HiddenInput data-testid="angle-slider-input" />\n</${host}>`;
+    return `<${host} name={angleName} data-testid="${primitive.id}-root">\n  <AngleSlider.HiddenInput data-testid="angle-slider-input" />\n</${host}>`;
+  }
+  if (primitive.name === 'Form') {
+    return `<${host} action="/save" method="post" enctype="multipart/form-data" data-testid="${primitive.id}-root" />`;
   }
   return `<${host}${required} data-testid="${primitive.id}-root" />`;
 }).join('\n')}\n`;
