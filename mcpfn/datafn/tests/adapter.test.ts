@@ -248,7 +248,7 @@ describe("DataFn McpFn adapter", () => {
     ]);
   });
 
-  it("mirrors DataFn JSON, date, nullable, and default semantics in create schemas", async () => {
+  it("mirrors DataFn JSON, date, nullable, and default semantics for write-only resources", async () => {
     const schema = {
       resources: [{
         name: "events",
@@ -267,7 +267,6 @@ describe("DataFn McpFn adapter", () => {
           },
         ],
         permissions: {
-          read: { fields: ["title", "status", "payload", "occurredAt", "note"] },
           write: { fields: ["title", "status", "payload", "occurredAt", "note"] },
         },
       }],

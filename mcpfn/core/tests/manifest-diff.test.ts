@@ -357,6 +357,63 @@ describe("McpFn manifests", () => {
     expect(diffManifests(create({}), create(true)).changes).toEqual([]);
   });
 
+  it("diffs schema-valued additionalProperties with directional variance", () => {
+    const create = (
+      direction: "input" | "output",
+      additionalProperties: true | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "additional",
+        description: "Use additional properties.",
+        inputSchema: direction === "input"
+          ? { type: "object", additionalProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", additionalProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+    const stringSchema = { type: "string" };
+    const cases = [
+      ["input", stringSchema, true, true],
+      ["input", true, stringSchema, false],
+      ["output", true, stringSchema, true],
+      ["output", stringSchema, true, false],
+    ] as const;
+
+    for (const [direction, before, after, compatible] of cases) {
+      expect(diffManifests(create(direction, before), create(direction, after)).compatible)
+        .toBe(compatible);
+    }
+  });
+
+  it("treats equivalent JSON Schema type sets as unchanged", () => {
+    const create = (type: string | string[]) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "types",
+        description: "Use equivalent type declarations.",
+        inputSchema: {
+          type: "object",
+          properties: { value: { type } },
+        },
+        outputSchema: {
+          type: "object",
+          properties: { value: { type } },
+        },
+        handler: async () => structuredResult({ value: "ok" }),
+      }),
+    );
+
+    expect(diffManifests(
+      create(["string", "null"]),
+      create(["null", "string"]),
+    ).changes).toEqual([]);
+    expect(diffManifests(create("string"), create(["string"])).changes).toEqual([]);
+  });
+
   it("uses the fallback input schema when a declared property is removed", () => {
     const create = (
       property: Record<string, unknown> | undefined,
@@ -486,6 +543,45 @@ describe("McpFn manifests", () => {
         expect.objectContaining({ path: expect.stringContaining(".patternProperties.^pref_") }),
       ]));
     }
+  });
+
+  it("diffs pattern additions and removals against closed and schema fallbacks", () => {
+    const pattern = { "^pref_": { type: "string" } };
+    const create = (
+      direction: "input" | "output",
+      patternProperties: Record<string, Record<string, unknown>>,
+      additionalProperties: boolean | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "pattern-fallback",
+        description: "Use pattern fallbacks.",
+        inputSchema: direction === "input"
+          ? { type: "object", patternProperties, additionalProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", patternProperties, additionalProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create("input", pattern, false),
+      create("input", {}, false),
+    ).compatible).toBe(false);
+    expect(diffManifests(
+      create("input", pattern, { type: "string" }),
+      create("input", {}, { type: "string" }),
+    ).compatible).toBe(true);
+    expect(diffManifests(
+      create("output", {}, false),
+      create("output", pattern, false),
+    ).compatible).toBe(false);
+    expect(diffManifests(
+      create("output", pattern, { type: "string" }),
+      create("output", {}, { type: "string" }),
+    ).compatible).toBe(true);
   });
 
   it("compares boolean property schemas by presence instead of truthiness", () => {

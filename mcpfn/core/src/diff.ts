@@ -37,6 +37,10 @@ function schemaTypes(schema: McpFnJsonSchema): Set<string> | undefined {
   return typeof schema.type === "string" ? new Set([schema.type]) : undefined;
 }
 
+function equalSets(left: Set<string>, right: Set<string>): boolean {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
 function matchingPatternSchemas(
   schema: McpFnJsonSchema,
   propertyName: string,
@@ -103,7 +107,10 @@ function diffSchema(
 
   const beforeTypes = schemaTypes(before);
   const afterTypes = schemaTypes(after);
-  if (!equal(before.type, after.type)) {
+  if (
+    !equal(before.type, after.type) &&
+    !(beforeTypes && afterTypes && equalSets(beforeTypes, afterTypes))
+  ) {
     const removed = beforeTypes && afterTypes
       ? [...beforeTypes].filter((value) => !afterTypes?.has(value))
       : [];
@@ -258,14 +265,13 @@ function diffSchema(
       message: `Additional properties are now accepted at ${path}`,
     });
   } else if (!equal(beforeAdditional, afterAdditional)) {
-    push(changes, {
-      severity: "breaking",
-      code: "additional-properties-schema-changed",
-      path,
-      message: `The additional-properties schema changed at ${path}`,
-      before: beforeAdditional,
-      after: afterAdditional,
-    });
+    diffSchema(
+      beforeAdditional as SchemaNode,
+      afterAdditional as SchemaNode,
+      `${path}.additionalProperties`,
+      direction,
+      changes,
+    );
   }
 
   const beforeProperties = (before.properties ?? {}) as Record<string, SchemaNode>;
@@ -403,9 +409,11 @@ function diffSchema(
     ...Object.keys(afterPatterns),
   ])].sort();
   for (const pattern of patternNames) {
+    const hadBeforePattern = Object.prototype.hasOwnProperty.call(beforePatterns, pattern);
+    const hasAfterPattern = Object.prototype.hasOwnProperty.call(afterPatterns, pattern);
     diffSchema(
-      beforePatterns[pattern],
-      afterPatterns[pattern],
+      hadBeforePattern ? beforePatterns[pattern] : beforeAdditional as SchemaNode,
+      hasAfterPattern ? afterPatterns[pattern] : afterAdditional as SchemaNode,
       `${path}.patternProperties.${pattern}`,
       direction,
       changes,

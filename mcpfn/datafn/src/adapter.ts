@@ -274,11 +274,12 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
     if (!resource) {
       throw new McpFnValidationError(`Unknown DataFn resource: ${resourceName}`);
     }
+    const list = operationOptions<DatafnListToolOptions>(exposure.list, true);
+    const get = operationOptions<DatafnReadToolOptions>(exposure.get, true);
     validateFieldList(`DataFn resource ${resourceName} projection`, exposure.fields);
-    validateReadFields(schema, resource, exposure.fields);
+    if (list || get) validateReadFields(schema, resource, exposure.fields);
     const maps = fieldMaps(schema, resource);
 
-    const list = operationOptions<DatafnListToolOptions>(exposure.list, true);
     if (list) {
       const filterFields = list.filterFields ?? exposure.fields;
       const sortFields = list.sortFields ?? ["id"];
@@ -359,7 +360,6 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
       registry.register(definition);
     }
 
-    const get = operationOptions<DatafnReadToolOptions>(exposure.get, true);
     if (get) {
       registry.register({
         name: get.name ?? defaultName(prefix, resourceName, "get"),

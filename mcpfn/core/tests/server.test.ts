@@ -198,6 +198,16 @@ describe("McpFnServer", () => {
     } as never)).toThrow(/invalid taskSupport=sometimes/);
   });
 
+  it("rejects non-object tool output schemas at registration", () => {
+    expect(() => new McpFnRegistry().register({
+      name: "non_object_output",
+      description: "Reject a non-object structured output contract.",
+      inputSchema: { type: "object" },
+      outputSchema: { type: "string" },
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/outputSchema must be an object schema/);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()

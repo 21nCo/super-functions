@@ -207,6 +207,11 @@ export class McpFnRegistry<TContext = undefined> {
         `Tool ${definition.name} inputSchema must be an object schema`,
       );
     }
+    if (definition.outputSchema && definition.outputSchema.type !== "object") {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} outputSchema must be an object schema`,
+      );
+    }
     const taskSupport = definition.execution?.taskSupport ?? "forbidden";
     if (!["forbidden", "optional", "required"].includes(taskSupport)) {
       throw new McpFnValidationError(
