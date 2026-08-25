@@ -410,6 +410,8 @@ export interface AuthFnHookContext {
   pluginName?: string;
   session?: AuthFnSession;
   actorId?: string;
+  /** Mutable state scoped to one hook-driven operation. */
+  operationState?: Map<symbol, unknown>;
 }
 
 export interface AuthFnHooks {

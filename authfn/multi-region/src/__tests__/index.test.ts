@@ -8,12 +8,16 @@ import {
   createAuthFnCanonicalGateway,
   createAuthFnCellPlacementMiddleware,
   createInMemoryAuthFnPlacementDirectory,
-  finalizeAuthFnIdentityDeletion
+  fenceAuthFnIdentityDeletion,
+  finalizeAuthFnIdentityDeletion,
+  restoreAuthFnIdentityDeletion
 } from '../index.js';
 
 function gatewayRuntime(
   directory = createInMemoryAuthFnPlacementDirectory(),
-  database: AuthFnRuntimeConfig['database'] = { deleteMany: async () => 1 } as never
+  database: AuthFnRuntimeConfig['database'] = { deleteMany: async () => 1 } as never,
+  identityKeyForIdentifier: (identifier: string) => string | Promise<string> =
+    (identifier) => `email:${identifier}`
 ) {
   const plugin = authFnMultiRegionPlugin();
   const environment = authFnMultiRegionEnvironment({
@@ -21,7 +25,7 @@ function gatewayRuntime(
       mode: 'gateway',
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
-      identityKeyForIdentifier: (identifier) => `email:${identifier}`,
+      identityKeyForIdentifier,
       identityKeyForUserId: (userId) => `user:${userId}`
     }
   });
@@ -190,6 +194,64 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
       state: 'deleting',
       epoch: 4
+    });
+  });
+
+  it('does not retry key resolution or restore an unowned concurrent fence', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 4,
+      state: 'deleting',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    let resolverCalls = 0;
+    const { config } = gatewayRuntime(
+      directory,
+      { deleteMany: async () => 1 } as never,
+      (identifier) => {
+        resolverCalls += 1;
+        if (resolverCalls === 1) throw new Error('placement resolver unavailable');
+        return `email:${identifier}`;
+      }
+    );
+
+    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow('multiRegion.beforeAccountDelete aborted');
+    expect(resolverCalls).toBe(1);
+    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'deleting',
+      epoch: 4
+    });
+  });
+
+  it('does not restore a newer deletion fence after losing its owned generation', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 3,
+      state: 'active',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    let replacedFence = false;
+    const { config } = gatewayRuntime(directory, {
+      deleteMany: async () => {
+        if (!replacedFence) {
+          replacedFence = true;
+          await restoreAuthFnIdentityDeletion(directory, 'email:ada@example.com');
+          await fenceAuthFnIdentityDeletion(directory, 'email:ada@example.com');
+        }
+        throw new Error('database unavailable');
+      }
+    } as never);
+
+    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow('Owned deletion fence changed before rollback');
+    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'deleting',
+      epoch: 6
     });
   });
 

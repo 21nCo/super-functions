@@ -499,12 +499,16 @@ async def test_gateway_only_runtime_rejects_identity_route_execution() -> None:
     global_response = await middleware(
         GatewayRequest("https://account.example.com/auth/environment", method="GET"), None, execute
     )
+    runtime_response = await middleware(
+        GatewayRequest("https://account.example.com/auth/runtime", method="GET"), None, execute
+    )
     identity_response = await middleware(
         GatewayRequest("https://account.example.com/auth/sign-in/password"), None, execute
     )
     assert global_response.status == 200
+    assert runtime_response.status == 200
     assert identity_response.status == 503
-    assert executions == 1
+    assert executions == 2
 
 
 def test_gateway_mode_uses_stable_public_runtime_and_canonical_cookie_policy() -> None:

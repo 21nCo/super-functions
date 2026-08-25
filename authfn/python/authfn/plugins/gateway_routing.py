@@ -473,7 +473,7 @@ def classify_route(request: Any, base_path: str = "/auth") -> RouteClassificatio
         path = path[len(normalized_base) :] or "/"
     method = str(request.method).upper()
     if method == "GET" and (
-        path in {"/environment", "/discovery", "/.well-known"}
+        path in {"/environment", "/runtime", "/discovery", "/.well-known"}
         or path.startswith("/.well-known/")
     ):
         return RouteClassification("global", "discovery")

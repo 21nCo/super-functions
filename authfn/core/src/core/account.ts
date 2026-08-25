@@ -98,14 +98,16 @@ export async function deleteAccountForUser(
   const user = input.user;
   const actorId = input.actorId ?? user.id;
   const counts: Record<string, number> = {};
+  const hookContext = {
+    config,
+    request: input.request,
+    session: input.session,
+    actorId,
+    operationState: new Map<symbol, unknown>()
+  };
 
   try {
-    await hooks.beforeAccountDelete?.({
-      config,
-      request: input.request,
-      session: input.session,
-      actorId
-    }, {
+    await hooks.beforeAccountDelete?.(hookContext, {
       userId: user.id,
       primaryEmail: user.primaryEmail,
       sessionId: input.session?.id,
@@ -154,12 +156,7 @@ export async function deleteAccountForUser(
     counts.users = await deleteMany(config, 'users', 'id', user.id);
   } catch (error) {
     try {
-      await hooks.afterAccountDeleteFailure?.({
-        config,
-        request: input.request,
-        session: input.session,
-        actorId
-      }, {
+      await hooks.afterAccountDeleteFailure?.(hookContext, {
         userId: user.id,
         primaryEmail: user.primaryEmail,
         sessionId: input.session?.id,
@@ -183,12 +180,7 @@ export async function deleteAccountForUser(
     counts
   };
 
-  await hooks.afterAccountDelete?.({
-    config,
-    request: input.request,
-    session: input.session,
-    actorId
-  }, result);
+  await hooks.afterAccountDelete?.(hookContext, result);
 
   try {
     await emitAuthEvent(config, {

@@ -779,9 +779,16 @@ export async function fenceAuthFnIdentityDeletion(
 export async function finalizeAuthFnIdentityDeletion(
   directory: AuthFnIdentityPlacementDirectoryAdapter,
   identityKey: string,
-  now: () => Date = () => new Date()
+  now: () => Date = () => new Date(),
+  expectedFenceEpoch?: number
 ): Promise<AuthFnIdentityPlacement> {
   const current = await directory.get(identityKey);
+  if (
+    expectedFenceEpoch !== undefined
+    && (current?.state !== 'deleting' || current.epoch !== expectedFenceEpoch)
+  ) {
+    throw new AuthFnRegionMismatchError('Owned deletion fence changed before finalization');
+  }
   if (current?.state === 'tombstoned') return current;
   if (!current || current.state !== 'deleting') {
     throw new AuthFnRegionMismatchError('Identity placement is not fenced for account deletion');
@@ -809,9 +816,16 @@ export async function finalizeAuthFnIdentityDeletion(
 export async function restoreAuthFnIdentityDeletion(
   directory: AuthFnIdentityPlacementDirectoryAdapter,
   identityKey: string,
-  now: () => Date = () => new Date()
+  now: () => Date = () => new Date(),
+  expectedFenceEpoch?: number
 ): Promise<AuthFnIdentityPlacement> {
   const current = await directory.get(identityKey);
+  if (
+    expectedFenceEpoch !== undefined
+    && (current?.state !== 'deleting' || current.epoch !== expectedFenceEpoch)
+  ) {
+    throw new AuthFnRegionMismatchError('Owned deletion fence changed before rollback');
+  }
   if (current?.state === 'active') return current;
   if (!current || current.state !== 'deleting') {
     throw new AuthFnRegionMismatchError('Identity placement is not fenced for account deletion');

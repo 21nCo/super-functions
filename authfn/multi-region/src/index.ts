@@ -4,6 +4,7 @@ import type {
   AuthFnPlugin,
   AuthFnPluginRuntimeContext,
   AuthFnEnvironment,
+  AuthFnHookContext,
   AuthFnSchemaDefinition
 } from 'authfn';
 import { AuthFnConfigError, AuthFnValidationError } from 'authfn';
@@ -55,6 +56,13 @@ export {
   restoreAuthFnIdentityDeletion,
   tombstoneAuthFnIdentityPlacement
 } from 'authfn/core/gateway-routing';
+
+const DELETION_FENCE_OPERATION = Symbol('authfn.multiRegion.deletionFence');
+
+interface AuthFnOwnedDeletionFence {
+  identityKey: string;
+  epoch: number;
+}
 export type {
   AuthFnCanonicalGateway,
   AuthFnCanonicalGatewayOptions,
@@ -165,6 +173,9 @@ export function authFnMultiRegionPlugin(
         if (!authConfig) return input;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return input;
+        if (!ctx.operationState) {
+          throw new AuthFnValidationError('Account deletion operation state is required');
+        }
         const routing = pluginConfig.routing;
         const identityKey = await deletionIdentityKey(
           ctx.request,
@@ -178,10 +189,14 @@ export function authFnMultiRegionPlugin(
             'Gateway-mode account deletion requires a verified identity routing key'
           );
         }
-        await fenceAuthFnIdentityDeletion(
+        const fence = await fenceAuthFnIdentityDeletion(
           routing.placementDirectory,
           identityKey
         );
+        ctx.operationState.set(DELETION_FENCE_OPERATION, {
+          identityKey,
+          epoch: fence.epoch
+        } satisfies AuthFnOwnedDeletionFence);
         return input;
       },
       afterAccountDelete: async (ctx, result) => {
@@ -192,21 +207,17 @@ export function authFnMultiRegionPlugin(
 
         if (pluginConfig.routing?.mode === 'gateway') {
           const routing = pluginConfig.routing;
-          const identityKey = await deletionIdentityKey(
-            ctx.request,
-            result.delegated,
-            result.userId,
-            primaryEmail,
-            routing
-          );
-          if (!identityKey) {
+          const ownedFence = readOwnedDeletionFence(ctx);
+          if (!ownedFence) {
             throw new AuthFnValidationError(
-              'Gateway-mode account deletion requires a verified identity routing key'
+              'Gateway-mode account deletion requires owned fence state'
             );
           }
           await finalizeAuthFnIdentityDeletion(
             routing.placementDirectory,
-            identityKey
+            ownedFence.identityKey,
+            undefined,
+            ownedFence.epoch
           );
         }
 
@@ -214,25 +225,19 @@ export function authFnMultiRegionPlugin(
           await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
         }
       },
-      afterAccountDeleteFailure: async (ctx, failure) => {
+      afterAccountDeleteFailure: async (ctx) => {
         const authConfig = ctx.config;
-        const primaryEmail = readOptionalString(failure.primaryEmail);
         if (!authConfig) return;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return;
-        if (deletionFenceWasNotAcquired(failure.error)) return;
+        const ownedFence = readOwnedDeletionFence(ctx);
+        if (!ownedFence) return;
         const routing = pluginConfig.routing;
-        const identityKey = await deletionIdentityKey(
-          ctx.request,
-          failure.delegated,
-          failure.userId,
-          primaryEmail,
-          routing
-        );
-        if (!identityKey) return;
         await restoreAuthFnIdentityDeletion(
           routing.placementDirectory,
-          identityKey
+          ownedFence.identityKey,
+          undefined,
+          ownedFence.epoch
         );
       }
     }
@@ -398,15 +403,14 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function deletionFenceWasNotAcquired(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || !('details' in error)) return false;
-  const details = error.details;
-  return Boolean(
-    details
-    && typeof details === 'object'
-    && 'deletionFenceAcquired' in details
-    && details.deletionFenceAcquired === false
-  );
+function readOwnedDeletionFence(ctx: AuthFnHookContext): AuthFnOwnedDeletionFence | null {
+  const value = ctx.operationState?.get(DELETION_FENCE_OPERATION);
+  if (!value || typeof value !== 'object') return null;
+  const identityKey = 'identityKey' in value ? readOptionalString(value.identityKey) : undefined;
+  const epoch = 'epoch' in value ? value.epoch : undefined;
+  return identityKey && typeof epoch === 'number' && Number.isSafeInteger(epoch)
+    ? { identityKey, epoch }
+    : null;
 }
 
 async function deletionIdentityKey(
