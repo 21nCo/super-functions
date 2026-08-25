@@ -666,6 +666,16 @@ def _create_multi_region_routes(config: AuthFnConfig) -> List[Route]:
                 {"mode": "none"},
             ),
         ),
+        Route(
+            method=HttpMethod.GET,
+            path="/runtime",
+            handler=_wrap_route(config, _handle_runtime),
+            meta=create_authfn_route_meta(
+                "getRuntime",
+                "Compatibility alias for the resolved runtime environment",
+                {"mode": "none"},
+            ),
+        ),
     ]
 
 

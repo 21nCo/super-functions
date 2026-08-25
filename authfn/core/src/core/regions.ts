@@ -358,7 +358,13 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
-  const currentRegion = deriveCurrentRegion(pluginConfig, input.request, input.environment);
+  const gatewayCellRegionId = pluginConfig.routing?.mode === 'gateway'
+    ? pluginConfig.routing.cell?.regionId
+    : undefined;
+  const currentRegion = gatewayCellRegionId
+    ? findConfiguredRegion(pluginConfig, gatewayCellRegionId)
+      ?? deriveCurrentRegion(pluginConfig, input.request, input.environment)
+    : deriveCurrentRegion(pluginConfig, input.request, input.environment);
   if (!currentRegion) {
     return null;
   }

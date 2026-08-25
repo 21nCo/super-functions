@@ -126,6 +126,7 @@ def test_authfn_openapi_and_route_inventory_match_expected_surface() -> None:
         ("POST", "/auth/2fa/disable"),
         ("POST", "/auth/regions/lookup"),
         ("GET", "/auth/environment"),
+        ("GET", "/auth/runtime"),
     }
 
     document = create_authfn_openapi(auth.config)

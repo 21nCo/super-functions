@@ -630,17 +630,14 @@ describe('AuthFn route classification', () => {
 });
 
 describe('AuthFn canonical runtime', () => {
-  it('reuses an existing deletion fence when account deletion is retried', async () => {
+  it('rejects a second deletion attempt while the first fence is active', async () => {
     const directory = createInMemoryAuthFnPlacementDirectory([{
       ...placement('person:ada', 'us-east-1', 4),
       state: 'deleting'
     }]);
 
-    await expect(fenceAuthFnIdentityDeletion(directory, 'person:ada')).resolves.toMatchObject({
-      identityKey: 'person:ada',
-      epoch: 4,
-      state: 'deleting'
-    });
+    await expect(fenceAuthFnIdentityDeletion(directory, 'person:ada'))
+      .rejects.toThrow('already fenced for account deletion');
     await expect(directory.get('person:ada')).resolves.toMatchObject({
       epoch: 4,
       state: 'deleting'

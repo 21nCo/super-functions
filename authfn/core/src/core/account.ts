@@ -91,6 +91,8 @@ export async function deleteAccountForUser(
     session?: AuthFnSession;
     request?: Request;
     actorId?: string;
+    /** True for administrator/delegated deletion, independent of actor identity. */
+    delegated?: boolean;
   }
 ): Promise<AuthFnAccountDeletionResult> {
   const user = input.user;
@@ -106,7 +108,8 @@ export async function deleteAccountForUser(
     }, {
       userId: user.id,
       primaryEmail: user.primaryEmail,
-      sessionId: input.session?.id
+      sessionId: input.session?.id,
+      delegated: input.delegated === true
     });
 
     if (hasPlugin(config, 'twoFactor')) {
@@ -160,6 +163,7 @@ export async function deleteAccountForUser(
         userId: user.id,
         primaryEmail: user.primaryEmail,
         sessionId: input.session?.id,
+        delegated: input.delegated === true,
         error
       });
     } catch (hookError) {
@@ -175,6 +179,7 @@ export async function deleteAccountForUser(
     deleted: true,
     userId: user.id,
     primaryEmail: user.primaryEmail,
+    delegated: input.delegated === true,
     counts
   };
 

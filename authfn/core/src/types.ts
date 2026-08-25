@@ -195,6 +195,7 @@ export interface AuthFnAccountDeletionResult {
   deleted: true;
   userId: string;
   primaryEmail?: string;
+  delegated: boolean;
   counts: Record<string, number>;
 }
 
@@ -202,6 +203,7 @@ export interface AuthFnAccountDeletionFailure {
   userId: string;
   primaryEmail?: string;
   sessionId?: string;
+  delegated: boolean;
   error: unknown;
 }
 

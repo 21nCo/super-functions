@@ -168,7 +168,7 @@ export function authFnMultiRegionPlugin(
         const routing = pluginConfig.routing;
         const identityKey = await deletionIdentityKey(
           ctx.request,
-          ctx.actorId,
+          input.delegated === true,
           readOptionalString(input.userId),
           primaryEmail,
           routing
@@ -194,7 +194,7 @@ export function authFnMultiRegionPlugin(
           const routing = pluginConfig.routing;
           const identityKey = await deletionIdentityKey(
             ctx.request,
-            ctx.actorId,
+            result.delegated,
             result.userId,
             primaryEmail,
             routing
@@ -220,10 +220,11 @@ export function authFnMultiRegionPlugin(
         if (!authConfig) return;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return;
+        if (deletionFenceWasNotAcquired(failure.error)) return;
         const routing = pluginConfig.routing;
         const identityKey = await deletionIdentityKey(
           ctx.request,
-          ctx.actorId,
+          failure.delegated,
           failure.userId,
           primaryEmail,
           routing
@@ -397,18 +398,28 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function deletionFenceWasNotAcquired(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('details' in error)) return false;
+  const details = error.details;
+  return Boolean(
+    details
+    && typeof details === 'object'
+    && 'deletionFenceAcquired' in details
+    && details.deletionFenceAcquired === false
+  );
+}
+
 async function deletionIdentityKey(
   request: Request | undefined,
-  actorId: string | undefined,
+  delegated: boolean,
   targetUserId: string | undefined,
   primaryEmail: string | undefined,
   routing: Extract<MultiRegionPluginRuntimeConfig['routing'], { mode: 'gateway' }>
 ): Promise<string | null> {
-  const delegatedDelete = Boolean(actorId && targetUserId && actorId !== targetUserId);
-  if (delegatedDelete && targetUserId) {
+  if (delegated && targetUserId) {
     return readOptionalString(await routing.identityKeyForUserId(targetUserId)) ?? null;
   }
-  if (!delegatedDelete) {
+  if (!delegated) {
     const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
     if (verifiedIdentityKey) return verifiedIdentityKey;
   }

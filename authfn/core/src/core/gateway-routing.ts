@@ -741,9 +741,17 @@ export async function fenceAuthFnIdentityDeletion(
   now: () => Date = () => new Date()
 ): Promise<AuthFnIdentityPlacement> {
   const current = await directory.get(identityKey);
-  if (current?.state === 'deleting') return current;
+  if (current?.state === 'deleting') {
+    throw new AuthFnRegionMismatchError(
+      'Identity placement is already fenced for account deletion',
+      { deletionFenceAcquired: false }
+    );
+  }
   if (!current || current.state !== 'active') {
-    throw new AuthFnRegionMismatchError('Identity placement is not active before account deletion');
+    throw new AuthFnRegionMismatchError(
+      'Identity placement is not active before account deletion',
+      { deletionFenceAcquired: false }
+    );
   }
   const deleting: AuthFnIdentityPlacement = {
     ...current,
@@ -759,7 +767,10 @@ export async function fenceAuthFnIdentityDeletion(
     placement: deleting
   });
   if (!result.updated) {
-    throw new AuthFnRegionMismatchError('Identity placement changed while fencing account deletion');
+    throw new AuthFnRegionMismatchError(
+      'Identity placement changed while fencing account deletion',
+      { deletionFenceAcquired: false }
+    );
   }
   return deleting;
 }
