@@ -61,6 +61,7 @@ export const ${name}Definition: SveltePrimitiveDefinition<${input}> = {
   inputNames: ${JSON.stringify([
     ...primitive.inputs.map((entry) => entry.name),
     ...(primitive.name === 'Accordion' ? ['type'] : []),
+    ...(primitive.name === 'Carousel' ? ['dir'] : []),
   ])},
   contextKey: Symbol('uifn.${name}'),
   ${runtimeField}

@@ -168,6 +168,13 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     expect(carousel.state.requestedIndex).toBe(0);
     expect(initialChange).not.toHaveBeenCalled();
     expect(updatedChange).toHaveBeenCalledWith(0);
+    const callbackCount = updatedChange.mock.calls.length;
+    carousel.update({ itemCount: 0 });
+    expect(scheduler.pending().timeout).toBe(0);
+    scheduler.advanceBy(100);
+    expect(updatedChange).toHaveBeenCalledTimes(callbackCount);
+    carousel.update({ itemCount: 2 });
+    expect(scheduler.pending().timeout).toBe(1);
     carousel.update({ messages: { carousel: 'Aktualisierte Galerie' } });
     expect(carousel.state.requestedIndex).toBe(0);
     expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Aktualisierte Galerie');
@@ -181,6 +188,65 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     expect(carousel.parts.previous.getProps().disabled).toBe(true);
     expect(carousel.parts.next.getProps().disabled).toBe(true);
     carousel.destroy();
+  });
+
+  it('synchronizes signature pad props, controlled mode, callbacks, and messages', () => {
+    const point = { x: 1, y: 2, pressure: 0.5, time: 10 };
+    const initialStroke = Object.freeze([point]);
+    const nextStroke = Object.freeze([{ ...point, x: 3 }]);
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const signature = createSignaturePadController({
+      value: [initialStroke],
+      name: 'old-signature',
+      messages: { empty: 'Empty', complete: 'Complete' },
+      onValueChange: initialChange,
+    }, deterministicEnv());
+
+    signature.actions.pointerStart(1, point);
+    signature.actions.pointerEnd(1);
+    expect(signature.state.strokes).toEqual([initialStroke]);
+    expect(signature.state.requestedValue).toHaveLength(2);
+    expect(initialChange).toHaveBeenCalledOnce();
+
+    signature.actions.pointerStart(2, point);
+    signature.update({
+      value: [nextStroke],
+      name: 'new-signature',
+      disabled: true,
+      readOnly: true,
+      required: true,
+      messages: { empty: 'Nothing drawn', complete: 'Signed' },
+      onValueChange: updatedChange,
+    });
+    expect(signature.state).toMatchObject({
+      strokes: [nextStroke],
+      active: {},
+      status: 'complete',
+      statusMessage: 'Signed',
+      disabled: true,
+      readOnly: true,
+      required: true,
+    });
+    expect(signature.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-signature',
+      required: true,
+      disabled: true,
+    });
+    signature.actions.pointerEnd(2);
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    signature.update({ value: undefined, disabled: false, readOnly: false });
+    signature.actions.clear();
+    expect(signature.state).toMatchObject({
+      strokes: [],
+      status: 'empty',
+      statusMessage: 'Nothing drawn',
+    });
+    expect(signature.state.requestedValue).toBeUndefined();
+    expect(initialChange).toHaveBeenCalledOnce();
+    expect(updatedChange).toHaveBeenCalledWith([]);
+    signature.destroy();
   });
 
   it('negative classifier names wrong RTL behavior precisely', () => {

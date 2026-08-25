@@ -3,11 +3,11 @@ import http from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { createHash } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import axe from "axe-core";
 import { chromium, firefox, webkit } from "playwright";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stageRoot = path.join(repoRoot, "uifn", "catalogs", "dist");
 const canonicalCatalog = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "uifn", "catalog", "generated", "catalog.json"), "utf8")

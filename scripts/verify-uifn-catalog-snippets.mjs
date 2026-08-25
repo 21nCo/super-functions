@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { compile as compileSvelte } from "svelte/compiler";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const shared = await import(pathToFileURL(
   path.join(repoRoot, "uifn", "examples", "shared", "dist", "index.js")
 ).href);

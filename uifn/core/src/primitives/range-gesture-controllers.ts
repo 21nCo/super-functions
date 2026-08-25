@@ -213,7 +213,7 @@ export function createCarouselController(props: CarouselProps, env: UIFnEnvironm
   const idleInteraction = () => autoplayDelay && !reducedMotion ? 'autoplaying' as const : 'idle' as const;
   const store = createStateChannel<CarouselState>({ index: initial, itemCount: count, loop, orientation: props.orientation ?? 'horizontal', dir: props.dir ?? resolved.getDirection(), interaction: idleInteraction(), pauseReasons: Object.freeze([]), pointers: Object.freeze({}), cancelledPointers: Object.freeze([]), reducedMotion });
   let timer: unknown; const clear = () => { if (timer !== undefined) resolved.scheduler.clearTimeout(timer); timer = undefined; };
-  const schedule = () => { clear(); const state = store.getState(); if (!autoplayDelay || state.pauseReasons.length || state.pointers && Object.keys(state.pointers).length || state.reducedMotion) return; timer = resolved.scheduler.setTimeout(() => { timer = undefined; actions.next(); schedule(); }, autoplayDelay); };
+  const schedule = () => { clear(); const state = store.getState(); if (!count || !autoplayDelay || state.pauseReasons.length || state.pointers && Object.keys(state.pointers).length || state.reducedMotion) return; timer = resolved.scheduler.setTimeout(() => { timer = undefined; actions.next(); schedule(); }, autoplayDelay); };
   const actions: CarouselActions = {
     previous: () => actions.goTo(store.getState().index - 1), next: () => actions.goTo(store.getState().index + 1),
     goTo(index, shouldAnnounce = true) { const state = store.getState(); const nextIndex = resolveUIFnCarouselIndex(index, count, loop); const message = shouldAnnounce ? new Intl.NumberFormat(locale).format(nextIndex + 1) : state.announcement; if (controlled) store.patchState({ requestedIndex: nextIndex, announcement: message }); else store.patchState({ index: nextIndex, requestedIndex: undefined, announcement: message }); currentProps.onIndexChange?.(nextIndex); },
@@ -308,23 +308,43 @@ export interface SignaturePadActions { pointerStart(id: number, point: UIFnSigna
 export interface SignaturePadControllerParts { readonly root: UIFnPhase10Part; readonly label: UIFnPhase10Part; readonly canvas: UIFnPhase10Part; readonly clear: UIFnPhase10Part; readonly undo: UIFnPhase10Part; readonly status: UIFnPhase10Part; readonly hiddenInput: UIFnPhase10Part }
 export type SignaturePadController = UIFnController<SignaturePadState, SignaturePadActions, SignaturePadControllerParts, SignaturePadProps>;
 export function createSignaturePadController(props: SignaturePadProps = {}, env: UIFnEnvironment = {}): SignaturePadController {
-  const { id } = createUIFnPhase10Ids('SignaturePad', 'signature-pad', env); const controlled = props.value !== undefined; const emptyMessage = props.messages?.empty ?? ''; const completeMessage = props.messages?.complete ?? ''; const initial = Object.freeze([...(props.value ?? props.defaultValue ?? [])]);
+  const { id } = createUIFnPhase10Ids('SignaturePad', 'signature-pad', env); let currentProps = props; let controlled = props.value !== undefined; let emptyMessage = props.messages?.empty ?? ''; let completeMessage = props.messages?.complete ?? ''; const initial = Object.freeze([...(props.value ?? props.defaultValue ?? [])]);
   const store = createStateChannel<SignaturePadState>({ strokes: initial, active: Object.freeze({}), status: initial.length ? 'complete' : 'empty', cancelledPointers: Object.freeze([]), disabled: props.disabled ?? false, readOnly: props.readOnly ?? false, required: props.required ?? false, statusMessage: initial.length ? completeMessage : emptyMessage });
-  const commit = (value: readonly UIFnSignatureStroke[]) => { const frozen = Object.freeze([...value]); if (controlled) store.patchState({ requestedValue: frozen }); else store.patchState({ strokes: frozen, requestedValue: undefined, status: frozen.length ? 'complete' : 'empty', statusMessage: frozen.length ? completeMessage : emptyMessage }); props.onValueChange?.(frozen); };
+  const commit = (value: readonly UIFnSignatureStroke[]) => { const frozen = Object.freeze([...value]); if (controlled) { const strokes = store.getState().strokes; store.patchState({ requestedValue: frozen, status: strokes.length ? 'complete' : 'empty', statusMessage: strokes.length ? completeMessage : emptyMessage }); } else store.patchState({ strokes: frozen, requestedValue: undefined, status: frozen.length ? 'complete' : 'empty', statusMessage: frozen.length ? completeMessage : emptyMessage }); currentProps.onValueChange?.(frozen); };
   const actions: SignaturePadActions = {
     pointerStart(pointerId, signaturePoint) { const state = store.getState(); if (state.disabled || state.readOnly) return; store.patchState({ active: Object.freeze({ ...state.active, [pointerId]: Object.freeze([signaturePoint]) }), status: 'drawing' }); },
     pointerMove(pointerId, signaturePoint) { const state = store.getState(); const stroke = state.active[pointerId]; if (!stroke) return; store.patchState({ active: Object.freeze({ ...state.active, [pointerId]: Object.freeze([...stroke, signaturePoint]) }) }); },
     pointerEnd(pointerId) { const state = store.getState(); const stroke = state.active[pointerId]; if (!stroke) return; const active = { ...state.active }; delete active[pointerId]; store.patchState({ active: Object.freeze(active) }); commit([...state.strokes, stroke]); },
     pointerCancel(pointerId) { const state = store.getState(); if (!state.active[pointerId]) return; const active = { ...state.active }; delete active[pointerId]; store.patchState({ active: Object.freeze(active), cancelledPointers: Object.freeze([...state.cancelledPointers, pointerId]), status: state.strokes.length ? 'complete' : 'empty' }); },
-    lostPointerCapture: (pointerId) => actions.pointerCancel(pointerId), undo() { commit(store.getState().strokes.slice(0, -1)); }, clear() { commit([]); }, syncValue(value) { const strokes = Object.freeze([...value]); store.patchState({ strokes, requestedValue: undefined, active: Object.freeze({}), status: strokes.length ? 'complete' : 'empty', statusMessage: strokes.length ? completeMessage : emptyMessage }); }, reset: () => actions.syncValue(props.defaultValue ?? []),
+    lostPointerCapture: (pointerId) => actions.pointerCancel(pointerId), undo() { commit(store.getState().strokes.slice(0, -1)); }, clear() { commit([]); }, syncValue(value) { const strokes = Object.freeze([...value]); store.patchState({ strokes, requestedValue: undefined, active: Object.freeze({}), status: strokes.length ? 'complete' : 'empty', statusMessage: strokes.length ? completeMessage : emptyMessage }); }, reset: () => actions.syncValue(currentProps.defaultValue ?? []),
   };
   const parts: SignaturePadControllerParts = {
     root: createUIFnPhase10Part('SignaturePad', 'root', () => ({ id: id('root'), data: { state: store.getState().status } }), { id: true }), label: createUIFnPhase10Part('SignaturePad', 'label', () => ({ id: id('label') }), { id: true }),
     canvas: createUIFnPhase10Part('SignaturePad', 'canvas', () => ({ role: 'img', id: id('canvas'), tabIndex: store.getState().disabled ? -1 : 0, aria: { labelledby: id('label'), describedby: id('status'), disabled: store.getState().disabled }, data: { state: store.getState().status, readonly: store.getState().readOnly } }), { role: true, id: true, tabIndex: true }),
     clear: createUIFnPhase10Part('SignaturePad', 'clear', () => ({ role: 'button', id: id('clear'), disabled: store.getState().disabled || store.getState().readOnly, on: { click: actions.clear } }), { role: true, id: true }), undo: createUIFnPhase10Part('SignaturePad', 'undo', () => ({ role: 'button', id: id('undo'), disabled: !store.getState().strokes.length || store.getState().disabled || store.getState().readOnly, on: { click: actions.undo } }), { role: true, id: true }),
-    status: createUIFnPhase10Part('SignaturePad', 'status', () => ({ role: 'status', id: id('status'), aria: { live: 'polite' }, data: { message: store.getState().statusMessage } }), { role: true, id: true, aria: ['live'] }), hiddenInput: createUIFnPhase10Part('SignaturePad', 'hiddenInput', () => ({ id: id('input'), attributes: { type: 'hidden', name: props.name, value: JSON.stringify(store.getState().strokes), required: store.getState().required, disabled: store.getState().disabled } }), { id: true }),
+    status: createUIFnPhase10Part('SignaturePad', 'status', () => ({ role: 'status', id: id('status'), aria: { live: 'polite' }, data: { message: store.getState().statusMessage } }), { role: true, id: true, aria: ['live'] }), hiddenInput: createUIFnPhase10Part('SignaturePad', 'hiddenInput', () => ({ id: id('input'), attributes: { type: 'hidden', name: currentProps.name, value: JSON.stringify(store.getState().strokes), required: store.getState().required, disabled: store.getState().disabled } }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.value !== undefined) actions.syncValue(inputs.value); } });
+  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    currentProps = { ...currentProps, ...inputs };
+    controlled = currentProps.value !== undefined;
+    emptyMessage = currentProps.messages?.empty ?? '';
+    completeMessage = currentProps.messages?.complete ?? '';
+    if ('value' in inputs && inputs.value !== undefined) actions.syncValue(inputs.value);
+    const state = store.getState();
+    const disabled = currentProps.disabled ?? false;
+    const readOnly = currentProps.readOnly ?? false;
+    const active = disabled || readOnly ? Object.freeze({}) : state.active;
+    const drawing = Object.keys(active).length > 0;
+    store.patchState({
+      active,
+      requestedValue: controlled ? state.requestedValue : undefined,
+      status: drawing ? 'drawing' : state.strokes.length ? 'complete' : 'empty',
+      disabled,
+      readOnly,
+      required: currentProps.required ?? false,
+      statusMessage: state.strokes.length ? completeMessage : emptyMessage,
+    });
+  } });
 }
 
 export interface SplitterProps { readonly sizes?: readonly number[]; readonly defaultSizes?: readonly number[]; readonly minSizes?: readonly number[]; readonly maxSizes?: readonly number[]; readonly orientation?: UIFnAxis; readonly dir?: UIFnGestureDirection; readonly disabled?: boolean; readonly locale?: string; readonly onSizesChange?: (sizes: readonly number[]) => void }

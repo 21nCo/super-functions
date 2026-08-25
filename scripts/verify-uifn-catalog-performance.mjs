@@ -2,10 +2,11 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import { chromium } from "playwright";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stageRoot = path.join(repoRoot, "uifn", "catalogs", "dist");
 const evidenceRoot = path.join(
   repoRoot,

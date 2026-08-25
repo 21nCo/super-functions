@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { parseContentSecurityPolicySources } from "./uifn-catalog-csp.mjs";
 
 const environment = process.argv[2];
@@ -11,7 +12,7 @@ if (!["preview", "production"].includes(environment)) {
   process.exit(1);
 }
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const catalogsRoot = path.join(repoRoot, "uifn", "catalogs");
 const nodeBin = process.execPath;
 const wranglerBin = path.join(repoRoot, "node_modules", ".bin", "wrangler");

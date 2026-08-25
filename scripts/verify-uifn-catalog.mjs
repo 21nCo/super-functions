@@ -3,12 +3,13 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { CATALOG_SOURCE } from '../uifn/catalog/src/catalog-source.mjs';
 import { CatalogError, compareGeneratedOutputs, createGeneratedOutputs, verifyGeneratedDirectory, writeGeneratedOutputs } from '../uifn/catalog/src/compiler.mjs';
 import { migrateCatalogDocument } from '../uifn/catalog/src/migrations.mjs';
 
-const repoRoot = path.resolve(import.meta.dirname, '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const generatedDirectory = path.join(repoRoot, 'uifn/catalog/generated');
 const schemaFiles = ['primitive.schema.json', 'catalog.schema.json', 'generation-manifest.schema.json', 'migration.schema.json'];
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'uifn-catalog-verify-'));

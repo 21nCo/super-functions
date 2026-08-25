@@ -60,6 +60,7 @@ ${component}.displayName = '${component}';`;
   const inputNames = [
     ...primitive.inputs.map((entry) => entry.name),
     ...(primitive.name === 'Accordion' ? ['type'] : []),
+    ...(primitive.name === 'Carousel' ? ['dir'] : []),
   ];
   return `'use client';
 

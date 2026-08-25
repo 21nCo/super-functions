@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { CarouselProps } from '@uifn/core/primitives/carousel';
 import catalog from '../../../catalog/generated/catalog.json';
 import manifest from '../../../evidence/generated/phase-11/phase-11-react-compounds.json';
 import * as UIFnReact from '../index';
+import type { ReactPrimitiveBridge } from '../internal/compound';
 
 const fixture: Record<string, Record<string, unknown>> = {
   Carousel: { itemCount: 3, reducedMotion: true },
@@ -165,6 +167,33 @@ describe('PHASE_11 public React contract', () => {
     );
     expect(screen.getByRole('textbox', { name: 'Work email' })).toHaveAttribute('placeholder', 'you@company.com');
     expect(screen.getByRole('combobox', { name: 'Commands' })).toHaveAttribute('placeholder', 'Type a command or search…');
+  });
+
+  it('routes Carousel dir to the controller for RTL gestures', () => {
+    let bridge: ReactPrimitiveBridge<CarouselProps> | undefined;
+    render(
+      <UIFnReact.Carousel
+        defaultIndex={1}
+        itemCount={3}
+        dir="rtl"
+        reducedMotion
+        render={(payload) => {
+          bridge = payload.bridge as ReactPrimitiveBridge<CarouselProps>;
+          return <section {...payload.props} />;
+        }}
+      />,
+    );
+    const actions = bridge?.getActions() as {
+      dragStart(id: number, point: { x: number; y: number }): void;
+      dragMove(id: number, point: { x: number; y: number }): void;
+      dragEnd(id: number): void;
+    };
+    act(() => {
+      actions.dragStart(1, { x: 100, y: 0 });
+      actions.dragMove(1, { x: 50, y: 0 });
+      actions.dragEnd(1);
+    });
+    expect(bridge?.getSnapshot().state).toMatchObject({ index: 0, dir: 'rtl' });
   });
 
   it('preserves intrinsic semantics, refs, accessible names, and disabled behavior for asChild and render', () => {

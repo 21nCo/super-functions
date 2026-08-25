@@ -16,7 +16,7 @@ export const CarouselDefinition: SolidPrimitiveDefinition<CarouselProps> = {
   family: 'range-gesture',
   kind: 'interactive-controller',
   rootPart: 'root',
-  inputNames: ["index","defaultIndex","itemCount","loop","orientation","autoplayDelay"],
+  inputNames: ["index","defaultIndex","itemCount","loop","orientation","autoplayDelay","dir"],
   context: CarouselContext,
   createController: createCarouselController as never,
 };

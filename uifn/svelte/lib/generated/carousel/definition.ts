@@ -6,7 +6,7 @@ export const CarouselDefinition: SveltePrimitiveDefinition<CarouselProps> = {
   family: 'range-gesture',
   kind: 'interactive-controller',
   rootPart: 'root',
-  inputNames: ["index","defaultIndex","itemCount","loop","orientation","autoplayDelay"],
+  inputNames: ["index","defaultIndex","itemCount","loop","orientation","autoplayDelay","dir"],
   contextKey: Symbol('uifn.Carousel'),
   createController: createCarouselController as never,
 };

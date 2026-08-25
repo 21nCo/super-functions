@@ -83,6 +83,7 @@ export function ${component}(props: ${component}Props): JSX.Element {
   const inputNames = [
     ...primitive.inputs.map((entry) => entry.name),
     ...(primitive.name === 'Accordion' ? ['type'] : []),
+    ...(primitive.name === 'Carousel' ? ['dir'] : []),
   ];
   return `import { createContext, type JSX } from 'solid-js';
 import { ${coreTypeImports} } from '@uifn/core/primitives/${primitive.id}';
