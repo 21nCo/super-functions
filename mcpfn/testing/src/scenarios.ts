@@ -32,6 +32,11 @@ export async function runScenarios(
     const startedAt = performance.now();
     try {
       const result = await client.callTool(scenario.tool, scenario.arguments);
+      if (result.isError && scenario.expect?.isError === undefined) {
+        throw new McpFnAssertionError(
+          "Tool returned isError=true without an explicit expect.isError=true assertion",
+        );
+      }
       if (
         scenario.expect?.isError !== undefined &&
         Boolean(result.isError) !== scenario.expect.isError

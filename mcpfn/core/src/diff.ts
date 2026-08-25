@@ -396,6 +396,22 @@ function diffSchema(
     );
   }
 
+  const beforePatterns = (before.patternProperties ?? {}) as Record<string, SchemaNode>;
+  const afterPatterns = (after.patternProperties ?? {}) as Record<string, SchemaNode>;
+  const patternNames = [...new Set([
+    ...Object.keys(beforePatterns),
+    ...Object.keys(afterPatterns),
+  ])].sort();
+  for (const pattern of patternNames) {
+    diffSchema(
+      beforePatterns[pattern],
+      afterPatterns[pattern],
+      `${path}.patternProperties.${pattern}`,
+      direction,
+      changes,
+    );
+  }
+
   const handledKeywords = new Set([
     "type", "enum", "properties", "required", "items", "additionalProperties",
     "patternProperties", "pattern", "format", "const", "uniqueItems",

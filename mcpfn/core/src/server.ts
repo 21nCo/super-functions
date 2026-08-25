@@ -293,14 +293,16 @@ export class McpFnServer<TContext = undefined> {
     }
 
     if (this.capabilities.completions) {
-      this.protocol.setRequestHandler(CompleteRequestSchema, async (request, extra) =>
-        this.registry.complete(
+      this.protocol.setRequestHandler(CompleteRequestSchema, async (request, extra) => {
+        const context = await this.contextFactory(extra);
+        return this.registry.complete(
           request.params.ref,
           request.params.argument,
           request.params.context?.arguments,
+          context,
           extra,
-        ),
-      );
+        );
+      });
     }
   }
 

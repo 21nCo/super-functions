@@ -123,6 +123,43 @@ describe("McpFn OAuth resource server", () => {
     expect(downstream).toHaveBeenCalledOnce();
   });
 
+  it("cancels an unread dynamic-scope clone before forwarding a streaming body", async () => {
+    let cancel: ReturnType<typeof vi.spyOn> | undefined;
+    const downstream = vi.fn(async (request: Request) => new Response(await request.text()));
+    const handler = createOAuthResourceServerHandler(downstream, {
+      resource,
+      authorizationServers: ["https://login.example.com"],
+      requiredScopes: async (request) => {
+        cancel = vi.spyOn(request.body!, "cancel");
+        return [];
+      },
+      verifier: {
+        verifyAccessToken: async () => ({
+          token: "scoped",
+          clientId: "client-1",
+          scopes: [],
+          resource: new URL(resource),
+        }),
+      },
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("bounded"));
+        controller.close();
+      },
+    });
+    const response = await handler(new Request(resource, {
+      method: "POST",
+      headers: { authorization: "Bearer scoped" },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" }));
+
+    await expect(response.text()).resolves.toBe("bounded");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(downstream).toHaveBeenCalledOnce();
+  });
+
   it("adds stable enterprise-managed authorization discovery and client metadata", () => {
     expect(withEnterpriseManagedAuthorization({ issuer: "https://login.example.com" }))
       .toMatchObject({

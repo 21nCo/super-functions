@@ -450,6 +450,44 @@ describe("McpFn manifests", () => {
     });
   });
 
+  it("diffs added, removed, and changed pattern schemas with directional variance", () => {
+    const pattern = (type: string) => ({ "^pref_": { type } });
+    const create = (
+      direction: "input" | "output",
+      patternProperties: Record<string, Record<string, unknown>>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "patterned",
+        description: "Use patterned properties.",
+        inputSchema: direction === "input"
+          ? { type: "object", patternProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", patternProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+    const cases = [
+      ["input", {}, pattern("string"), false],
+      ["input", pattern("string"), {}, true],
+      ["input", pattern("string"), pattern("number"), false],
+      ["output", {}, pattern("string"), true],
+      ["output", pattern("string"), {}, false],
+      ["output", pattern("string"), pattern("number"), false],
+    ] as const;
+
+    for (const [direction, before, after, compatible] of cases) {
+      const result = diffManifests(create(direction, before), create(direction, after));
+      expect(result.compatible, `${direction}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`)
+        .toBe(compatible);
+      expect(result.changes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: expect.stringContaining(".patternProperties.^pref_") }),
+      ]));
+    }
+  });
+
   it("compares boolean property schemas by presence instead of truthiness", () => {
     const create = (property: boolean) => createManifest(
       { name: "example", version: "1.0.0" },

@@ -164,9 +164,17 @@ export function createOAuthResourceServerHandler(
       });
     }
 
-    const requiredScopes = typeof options.requiredScopes === "function"
-      ? await options.requiredScopes(request.clone())
-      : options.requiredScopes ?? [];
+    let requiredScopes: string[];
+    if (typeof options.requiredScopes === "function") {
+      const scopeRequest = request.clone();
+      try {
+        requiredScopes = await options.requiredScopes(scopeRequest);
+      } finally {
+        void scopeRequest.body?.cancel().catch(() => undefined);
+      }
+    } else {
+      requiredScopes = options.requiredScopes ?? [];
+    }
     const grantedScopes = new Set(authInfo.scopes);
     const missingScopes = requiredScopes.filter((scope) => !grantedScopes.has(scope));
     if (missingScopes.length) {

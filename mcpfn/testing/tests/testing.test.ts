@@ -57,6 +57,34 @@ describe("McpFn testing", () => {
     }
   });
 
+  it("fails unexpected tool errors unless the scenario explicitly expects one", async () => {
+    const registry = new McpFnRegistry().register({
+      name: "fails",
+      description: "Return a tool-level failure.",
+      inputSchema: { type: "object" },
+      handler: async () => ({
+        isError: true,
+        content: [{ type: "text", text: "broken" }],
+      }),
+    });
+    const server = createMcpFnServer({
+      info: { name: "scenario-errors", version: "1.0.0" },
+      registry,
+    });
+    const client = await McpFnTestClient.connect(server);
+    try {
+      await expect(runScenarios(client, [{ name: "unexpected", tool: "fails" }]))
+        .resolves.toMatchObject([{ status: "failed", error: expect.stringContaining("isError=true") }]);
+      await expect(runScenarios(client, [{
+        name: "expected",
+        tool: "fails",
+        expect: { isError: true },
+      }])).resolves.toMatchObject([{ status: "passed" }]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("checks an explicit request-visible tool inventory against the full manifest", async () => {
     const registry = new McpFnRegistry()
       .register({

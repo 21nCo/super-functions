@@ -129,7 +129,8 @@ export interface McpFnResourceTemplateDefinition<TContext = undefined> {
     string,
     (
       value: string,
-      context: Record<string, string> | undefined,
+      completionContext: Record<string, string> | undefined,
+      context: TContext,
       extra: McpFnRequestExtra,
     ) => CompleteResult | Promise<CompleteResult>
   >;
@@ -165,7 +166,8 @@ export interface McpFnPromptDefinition<TContext = undefined> {
     string,
     (
       value: string,
-      context: Record<string, string> | undefined,
+      completionContext: Record<string, string> | undefined,
+      context: TContext,
       extra: McpFnRequestExtra,
     ) => CompleteResult | Promise<CompleteResult>
   >;

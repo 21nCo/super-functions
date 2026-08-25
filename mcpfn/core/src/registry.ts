@@ -69,6 +69,23 @@ function assertName(kind: string, name: string): void {
   }
 }
 
+function assertSubscriptionCallbacks(
+  kind: "Resource" | "Resource template",
+  name: string,
+  subscribe: unknown,
+  unsubscribe: unknown,
+): void {
+  if (
+    (subscribe === undefined) !== (unsubscribe === undefined) ||
+    (subscribe !== undefined && typeof subscribe !== "function") ||
+    (unsubscribe !== undefined && typeof unsubscribe !== "function")
+  ) {
+    throw new McpFnValidationError(
+      `${kind} ${name} must define subscribe and unsubscribe together as functions`,
+    );
+  }
+}
+
 function assertUri(kind: string, uri: string): void {
   try {
     new URL(uri);
@@ -240,11 +257,12 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.resources.has(definition.uri)) {
       throw new McpFnValidationError(`Duplicate MCP resource: ${definition.uri}`);
     }
-    if (Boolean(definition.subscribe) !== Boolean(definition.unsubscribe)) {
-      throw new McpFnValidationError(
-        `Resource ${definition.name} must define subscribe and unsubscribe together`,
-      );
-    }
+    assertSubscriptionCallbacks(
+      "Resource",
+      definition.name,
+      definition.subscribe,
+      definition.unsubscribe,
+    );
     this.resources.set(definition.uri, definition);
     return this;
   }
@@ -272,11 +290,12 @@ export class McpFnRegistry<TContext = undefined> {
         `Resource template ${definition.name} must contain at least one variable`,
       );
     }
-    if (Boolean(definition.subscribe) !== Boolean(definition.unsubscribe)) {
-      throw new McpFnValidationError(
-        `Resource template ${definition.name} must define subscribe and unsubscribe together`,
-      );
-    }
+    assertSubscriptionCallbacks(
+      "Resource template",
+      definition.name,
+      definition.subscribe,
+      definition.unsubscribe,
+    );
     const matchShape = uriTemplateMatchShape(definition.uriTemplate);
     if ([...this.resourceTemplates.values()].some(
       ({ definition: registered }) =>
@@ -648,14 +667,20 @@ export class McpFnRegistry<TContext = undefined> {
   async complete(
     ref: { type: "ref/prompt"; name: string } | { type: "ref/resource"; uri: string },
     argument: { name: string; value: string },
-    context: Record<string, string> | undefined,
+    completionContext: Record<string, string> | undefined,
+    context: TContext,
     extra: McpFnRequestExtra,
   ): Promise<CompleteResult> {
     const empty = { completion: { values: [], total: 0, hasMore: false } };
     if (ref.type === "ref/prompt") {
       const prompt = this.prompts.get(ref.name);
       if (!prompt) throw new McpFnValidationError(`Unknown MCP prompt: ${ref.name}`);
-      return prompt.definition.complete?.[argument.name]?.(argument.value, context, extra) ?? empty;
+      return prompt.definition.complete?.[argument.name]?.(
+        argument.value,
+        completionContext,
+        context,
+        extra,
+      ) ?? empty;
     }
     const template = [...this.resourceTemplates.values()]
       .find(({ definition }) => definition.uriTemplate === ref.uri);
@@ -663,7 +688,12 @@ export class McpFnRegistry<TContext = undefined> {
       if (this.resources.has(ref.uri)) return empty;
       throw new McpFnValidationError(`Unknown MCP resource template: ${ref.uri}`);
     }
-    return template.definition.complete?.[argument.name]?.(argument.value, context, extra) ?? empty;
+    return template.definition.complete?.[argument.name]?.(
+      argument.value,
+      completionContext,
+      context,
+      extra,
+    ) ?? empty;
   }
 
   private finalizeResult(

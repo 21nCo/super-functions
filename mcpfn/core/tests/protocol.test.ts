@@ -8,7 +8,7 @@ import {
   ElicitRequestSchema,
   ListRootsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   MCP_APP_EXTENSION_ID,
@@ -28,7 +28,10 @@ describe("McpFn protocol primitives", () => {
     await Promise.all(closeables.splice(0).map((value) => value.close().catch(() => undefined)));
   });
 
-  async function connect(registry: McpFnRegistry, options: Record<string, unknown> = {}) {
+  async function connect<TContext = undefined>(
+    registry: McpFnRegistry<TContext>,
+    options: Record<string, unknown> = {},
+  ) {
     const server = createMcpFnServer({
       info: { name: "protocol-test", version: "1.0.0" },
       registry,
@@ -112,6 +115,37 @@ describe("McpFn protocol primitives", () => {
     });
   });
 
+  it("passes trusted request context and client completion arguments to completers", async () => {
+    const complete = vi.fn(async (
+      value: string,
+      completionContext: Record<string, string> | undefined,
+      context: { tenant: string },
+    ) => ({
+      completion: { values: [`${context.tenant}:${completionContext?.scope}:${value}`] },
+    }));
+    const registry = new McpFnRegistry<{ tenant: string }>().registerPrompt({
+      name: "tenant-welcome",
+      arguments: [{ name: "name" }],
+      get: async () => ({ messages: [] }),
+      complete: { name: complete },
+    });
+    const context = vi.fn(async () => ({ tenant: "acme" }));
+    const { client } = await connect(registry, { context });
+
+    await expect(client.complete({
+      ref: { type: "ref/prompt", name: "tenant-welcome" },
+      argument: { name: "name", value: "ada" },
+      context: { arguments: { scope: "admins" } },
+    })).resolves.toMatchObject({ completion: { values: ["acme:admins:ada"] } });
+    expect(context).toHaveBeenCalledOnce();
+    expect(complete).toHaveBeenCalledWith(
+      "ada",
+      { scope: "admins" },
+      { tenant: "acme" },
+      expect.any(Object),
+    );
+  });
+
   it("rejects duplicate or ambiguous resource template URIs under different names", () => {
     const registry = new McpFnRegistry().registerResourceTemplate({
       uriTemplate: "docs://users/{id}",
@@ -177,6 +211,20 @@ describe("McpFn protocol primitives", () => {
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Paired" }] }),
       unsubscribe: async () => undefined,
     })).toThrow(/must define subscribe and unsubscribe together/);
+    expect(() => new McpFnRegistry().registerResource({
+      uri: "docs://invalid-pair",
+      name: "invalid-pair",
+      read,
+      subscribe: true,
+      unsubscribe: true,
+    } as never)).toThrow(/together as functions/);
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://invalid-pair/{id}",
+      name: "invalid-pair-template",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Invalid" }] }),
+      subscribe: true,
+      unsubscribe: true,
+    } as never)).toThrow(/together as functions/);
   });
 
   it("runs task-augmented tools through the SDK task store", async () => {
