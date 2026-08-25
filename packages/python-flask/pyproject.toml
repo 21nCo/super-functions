@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "superfunctions-flask"
-version = "0.1.0"
+version = "0.1.1"
 description = "Flask adapter for superfunctions.http"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Internet :: WWW/HTTP",
 ]
-dependencies = ["superfunctions>=0.1.0", "flask>=3.0.0"]
+dependencies = ["superfunctions>=0.1.1", "flask>=3.0.0"]
 
 [project.optional-dependencies]
 dev = [

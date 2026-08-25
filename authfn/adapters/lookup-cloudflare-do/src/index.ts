@@ -1,4 +1,6 @@
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
+import { createStoreBackedAuthFnPlacementDirectory } from 'authfn/core/gateway-routing';
+import type { AuthFnIdentityPlacementDirectoryAdapter } from 'authfn/plugin-types';
 
 export interface CloudflareDurableObjectNamespace {
   idFromName(name: string): unknown;
@@ -134,6 +136,16 @@ export function createCloudflareRegionLookupStore(
       await call<null>({ operation: 'delete', key });
     },
   };
+}
+
+/** Uses one key-named Durable Object as the atomic owner of each placement record. */
+export function createCloudflareIdentityPlacementDirectory(
+  namespace: CloudflareDurableObjectNamespace,
+  options: CloudflareRegionLookupStoreOptions = {}
+): AuthFnIdentityPlacementDirectoryAdapter {
+  return createStoreBackedAuthFnPlacementDirectory(
+    createCloudflareRegionLookupStore(namespace, options)
+  );
 }
 
 export class AuthFnRegionLookupDurableObject {

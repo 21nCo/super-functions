@@ -1,5 +1,24 @@
 """Bundled authfn plugin implementations."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .gateway_routing import (
+        CanonicalGateway,
+        CanonicalGatewayOptions,
+        CanonicalRoutingConfig,
+        GatewayCell,
+        GatewayIdentity,
+        IdentityPlacement,
+        InMemoryIdentityPlacementDirectory,
+        InMemoryRoutingReplayStore,
+        RoutingKeyring,
+        RoutingSigningKey,
+        classify_route,
+        create_cell_routing_middleware,
+        move_identity_placement,
+    )
+
 __all__ = [
     "ApiKeyPluginConfig",
     "ApiKeyService",
@@ -18,6 +37,19 @@ __all__ = [
     "MultiRegionRegionConfig",
     "MultiRegionService",
     "authfn_multi_region_plugin",
+    "CanonicalGateway",
+    "CanonicalGatewayOptions",
+    "CanonicalRoutingConfig",
+    "GatewayCell",
+    "GatewayIdentity",
+    "IdentityPlacement",
+    "InMemoryIdentityPlacementDirectory",
+    "InMemoryRoutingReplayStore",
+    "RoutingKeyring",
+    "RoutingSigningKey",
+    "classify_route",
+    "create_cell_routing_middleware",
+    "move_identity_placement",
 ]
 
 
@@ -54,6 +86,25 @@ def __getattr__(name: str) -> object:
             "MultiRegionService": MultiRegionService,
             "authfn_multi_region_plugin": authfn_multi_region_plugin,
         }[name]
+
+    if name in {
+        "CanonicalGateway",
+        "CanonicalGatewayOptions",
+        "CanonicalRoutingConfig",
+        "GatewayCell",
+        "GatewayIdentity",
+        "IdentityPlacement",
+        "InMemoryIdentityPlacementDirectory",
+        "InMemoryRoutingReplayStore",
+        "RoutingKeyring",
+        "RoutingSigningKey",
+        "classify_route",
+        "create_cell_routing_middleware",
+        "move_identity_placement",
+    }:
+        from . import gateway_routing
+
+        return getattr(gateway_routing, name)
 
     if name in {"SocialOAuthPluginConfig", "SocialOAuthService", "SocialProviderConfig", "authfn_social_oauth_plugin"}:
         from .social_oauth import (

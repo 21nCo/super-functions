@@ -15,6 +15,8 @@ import {
 import { deleteAccountForUser, getAccountDetailsForUser } from '../core/account.js';
 import { emitAuthEvent, eventRequestId } from '../core/observability.js';
 import { createAuthFnRateLimitMiddleware } from '../core/rate-limit.js';
+import { createAuthFnCellPlacementMiddleware } from '../core/gateway-routing.js';
+import { getMultiRegionPluginConfig } from '../core/regions.js';
 import { findUserById } from '../core/users.js';
 import { jsonError, jsonSuccess } from './envelopes.js';
 
@@ -24,6 +26,10 @@ export function createAuthFnRouter(
   pluginRoutes: Route[]
 ): Router {
   const rateLimitMiddleware = createAuthFnRateLimitMiddleware(config);
+  const multiRegionConfig = getMultiRegionPluginConfig(config);
+  const placementMiddleware = multiRegionConfig
+    ? createAuthFnCellPlacementMiddleware(config, multiRegionConfig)
+    : null;
   const middleware = [
     ...(config.observability
       ? [
@@ -34,6 +40,7 @@ export function createAuthFnRouter(
           })
         ]
       : []),
+    ...(placementMiddleware ? [placementMiddleware] : []),
     ...(rateLimitMiddleware ? [rateLimitMiddleware] : [])
   ];
 

@@ -1,13 +1,24 @@
 ---
 title: Multi-region routing
-description: How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
+description: Direct regional authorities and canonical-gateway routing for region-pinned AuthFn identity data.
 ---
 
 # Multi-region routing
 
-Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. The same browser may end up on either authority."*
+Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. How do I keep authentication correct when traffic enters through one public authority?"*
 
-Enable the **`authFnMultiRegionPlugin`** and the kernel will:
+AuthFn supports two explicit modes:
+
+| Mode | Public authority | Routing behavior | Compatibility |
+| --- | --- | --- | --- |
+| `direct` (default) | One authority per region | The client looks up a region, receives `AUTHFN_REGION_MISMATCH`, and continues on the regional authority. | Existing regional clients and deployments are unchanged. |
+| `gateway` | One canonical authority | A trusted gateway derives an identity key, reads canonical placement, and forwards internally to the owning cell. Regional topology is never returned to the client. | New deployments opt in; there is no silent fallback from gateway to direct mode. |
+
+In gateway mode the configured `publicAuthority` is always the issuer and base URL. OAuth redirect URIs, discovery metadata, cookie scope, browser origins, and native handoff return paths therefore remain stable while execution moves between cells. The selected cell still receives a private `regionId` for database and residency policy.
+
+The placement directory is deliberately separate from the existing identifier lookup projection. Its atomic record is `{ identityKey, regionId, epoch, state }`; only `active` records execute. `moving` records fence writes and `tombstoned` records fail closed. Cell destinations are opaque values returned by the cell registry and are never stored in placement or sent publicly.
+
+In direct mode, enable the **`authFnMultiRegionPlugin`** and the kernel will:
 
 1. Look up which region a user belongs to (by email or other identifier) before any sensitive operation.
 2. Apply a region-specific runtime overlay (issuer, base URL, cookie domain, OAuth credentials).
@@ -45,14 +56,22 @@ A row in `authfn_region_profiles`. One per user. It records the user's pinned `r
 
 ### Region lookup
 
-Either a row in your **lookup store** (e.g. a globally-replicated table that maps `email → region`), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
+Either a row in your **lookup store** (for example, a shared table that maps `email → region` and provides an atomic conditional insert through one writer/coordinator), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
 
 ## Configuring the plugin
 
 ```ts
-import { authFnMultiRegionPlugin } from '@authfn/core';
+import { authFnPlugins, authfn } from 'authfn';
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+} from '@authfn/multi-region';
 
-authFnMultiRegionPlugin({
+const app = authfn({
+  plugins: authFnPlugins(authFnMultiRegionPlugin()),
+});
+
+const environment = authFnMultiRegionEnvironment({
   defaultRegionId: 'us-east-1',
   regions: [
     {
@@ -71,11 +90,14 @@ authFnMultiRegionPlugin({
     },
   ],
   lookupStore,        // optional, externally-replicated lookup
-  directory,          // optional, alternative to lookupStore for managed directories
 });
+
+const server = app.createServer({ database, environment });
 ```
 
 ## How a request flows
+
+The diagram below describes `direct` mode. In `gateway` mode the browser talks only to the canonical authority; see [Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region).
 
 ```mermaid
 sequenceDiagram
@@ -109,7 +131,7 @@ The plugin enforces region alignment at every privileged entry point that has a 
 
 ## Pinning new users
 
-When a user signs up, authfn writes a `region_profiles` row with the region the request landed on. If you need to migrate a user between regions, do it through your own admin tooling — `authFnMultiRegionPlugin` does not currently expose a "move user" route by default. (You can write one as a custom plugin or a direct DB migration.)
+When a user signs up in direct mode, authfn writes a `region_profiles` row with the region the request landed on. Gateway mode atomically claims an initial placement before the regional handler starts, so concurrent first-use requests cannot create identity state in two cells. Use `moveAuthFnIdentityPlacement` for a fenced gateway-mode move; no public move route is registered.
 
 ## Conflicts and races
 
@@ -126,7 +148,7 @@ Use a Redis-backed store for production; the in-memory KV store is fine for loca
 
 ## What if no lookup store is configured?
 
-Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile (e.g. a globally-replicated table). This is the simplest pattern for small multi-region deployments. For larger setups, configure a dedicated lookup store backed by a global index (DynamoDB Global Tables, Cloudflare D1 + replication, etc.).
+Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile. For larger setups, configure a dedicated lookup store whose `setIfAbsent` operation is atomic across every writer. Replication alone, including local reads and writes against DynamoDB Global Table replicas, does not establish a globally atomic owner.
 
 ## Observability
 
@@ -134,6 +156,8 @@ The plugin emits:
 
 - `authfn.region.lookup` — every successful region lookup. Carries `identifier`, `regionId`, `authority`.
 - `authfn.region.lookup.conflict` — when a registration attempt loses a race.
+
+Gateway deployments can additionally emit `authfn.routing.placement_lookup`, `authfn.routing.placement_claimed`, `authfn.routing.forwarded`, `authfn.routing.mismatch`, `authfn.routing.retry`, `authfn.routing.assertion_rejected`, `authfn.routing.directory_unavailable`, and `authfn.routing.cell_unavailable`. Alert on directory/cell availability, mismatch-retry exhaustion, and assertion rejection rather than logging identity keys or assertion contents.
 
 Use these to track lookup latency, miss ratios, and conflict frequency.
 

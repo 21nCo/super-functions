@@ -1,17 +1,20 @@
 import type { Route } from '@superfunctions/http';
-import type { MultiRegionPluginConfig } from 'authfn/plugin-types';
+import type { MultiRegionPluginConfig, MultiRegionPluginRuntimeConfig } from 'authfn/plugin-types';
 import type {
   AuthFnPlugin,
   AuthFnPluginRuntimeContext,
   AuthFnEnvironment,
+  AuthFnHookContext,
   AuthFnSchemaDefinition
 } from 'authfn';
+import { AuthFnConfigError, AuthFnValidationError } from 'authfn';
 import { resolveCookiePolicy } from 'authfn/core/cookies';
 import {
   buildLookupResult,
   ensureRegionAlignmentForIdentifier,
   ensureRegionAlignmentForUser,
   getMultiRegionPluginConfig,
+  normalizeIdentifier,
   registerUserRegion,
   unregisterRegionLookupForIdentifier
 } from 'authfn/core/regions';
@@ -19,8 +22,18 @@ import { resolveEnvironment } from 'authfn/core/environment';
 import { createAuthFnRouteMeta } from 'authfn/http/router';
 import { jsonSuccess } from 'authfn/http/envelopes';
 import { emitAuthEvent, eventRequestId } from 'authfn/core/observability';
+import {
+  authFnVerifiedRoutingIdentityKey,
+  fenceAuthFnIdentityDeletion,
+  finalizeAuthFnIdentityDeletion,
+  restoreAuthFnIdentityDeletion
+} from 'authfn/core/gateway-routing';
 
 export type {
+  AuthFnCanonicalRoutingConfig,
+  AuthFnIdentityPlacement,
+  AuthFnIdentityPlacementDirectoryAdapter,
+  AuthFnIdentityPlacementState,
   AuthFnMultiRegionLookupInput,
   AuthFnMultiRegionLookupResult,
   AuthFnMultiRegionRegionConfig,
@@ -30,14 +43,65 @@ export type {
   MultiRegionPluginRuntimeConfig
 } from 'authfn/plugin-types';
 export { authFnMultiRegionEnvironment } from 'authfn/core/regions';
+export {
+  classifyAuthFnRoute,
+  createAuthFnCanonicalGateway,
+  createAuthFnCellPlacementMiddleware,
+  createInMemoryAuthFnPlacementDirectory,
+  createInMemoryAuthFnRoutingReplayStore,
+  createStoreBackedAuthFnPlacementDirectory,
+  fenceAuthFnIdentityDeletion,
+  finalizeAuthFnIdentityDeletion,
+  moveAuthFnIdentityPlacement,
+  restoreAuthFnIdentityDeletion,
+  tombstoneAuthFnIdentityPlacement
+} from 'authfn/core/gateway-routing';
 
-export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): AuthFnPlugin<'multiRegion'> {
-  const plugin: AuthFnPlugin<'multiRegion'> = {
+const DELETION_FENCE_OPERATION = Symbol('authfn.multiRegion.deletionFence');
+
+interface AuthFnOwnedDeletionFence {
+  identityKey: string;
+  epoch: number;
+}
+export type {
+  AuthFnCanonicalGateway,
+  AuthFnCanonicalGatewayOptions,
+  AuthFnGatewayCell,
+  AuthFnGatewayIdentity,
+  AuthFnIdentityMoveCallbacks,
+  AuthFnRouteClassification,
+  AuthFnRouteScope
+} from 'authfn/core/gateway-routing';
+
+export function authFnMultiRegionPlugin(
+  config: MultiRegionPluginConfig = {}
+): AuthFnPlugin<'multiRegion', MultiRegionPluginRuntimeConfig> {
+  const plugin: AuthFnPlugin<'multiRegion', MultiRegionPluginRuntimeConfig> = {
     name: 'multiRegion',
     schema: () => config.schema ?? createMultiRegionSchema(),
     routes: (ctx) => createMultiRegionRoutes(ctx),
     hookFailurePolicy: {
-      afterUserCreate: 'fail'
+      afterUserCreate: 'fail',
+      afterAccountDelete: 'fail',
+      afterAccountDeleteFailure: 'fail'
+    },
+    validateConfig: (runtimeConfig) => {
+      const pluginConfig = getMultiRegionPluginConfig(runtimeConfig);
+      if (pluginConfig?.routing?.mode !== 'gateway') return;
+      if (!pluginConfig.routing.publicAuthority || !pluginConfig.routing.placementDirectory) {
+        throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority and placementDirectory');
+      }
+      if (
+        !pluginConfig.routing.identityKeyForIdentifier
+        || !pluginConfig.routing.identityKeyForUserId
+      ) {
+        throw new AuthFnConfigError(
+          'Gateway-mode multi-region AuthFn requires identityKeyForIdentifier and identityKeyForUserId for placement tombstones'
+        );
+      }
+      if (pluginConfig.routing.cell && !pluginConfig.routing.cell.replayStore) {
+        throw new AuthFnConfigError('Gateway-mode AuthFn cells require a replayStore');
+      }
     },
     hooks: {
       beforeUserCreate: async (ctx, input) => {
@@ -48,6 +112,10 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
           return input;
         }
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+
+        if (pluginConfig.routing?.mode === 'gateway') {
+          return input;
+        }
 
         await ensureRegionAlignmentForIdentifier(authConfig, pluginConfig, {
           identifier: primaryEmail,
@@ -81,6 +149,13 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
         }
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
+        if (pluginConfig.routing?.mode === 'gateway') {
+          return {
+            ...input,
+            regionId: ctx.environment.regionId ?? readOptionalString(input.regionId)
+          };
+        }
+
         const alignment = await ensureRegionAlignmentForUser(authConfig, pluginConfig, {
           userId: ctx.actorId,
           environment: ctx.environment,
@@ -92,15 +167,78 @@ export function authFnMultiRegionPlugin(config: MultiRegionPluginConfig = {}): A
           regionId: alignment.regionId ?? readOptionalString(input.regionId)
         };
       },
+      beforeAccountDelete: async (ctx, input) => {
+        const authConfig = ctx.config;
+        const primaryEmail = readOptionalString(input.primaryEmail);
+        if (!authConfig) return input;
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+        if (pluginConfig.routing?.mode !== 'gateway') return input;
+        if (!ctx.operationState) {
+          throw new AuthFnValidationError('Account deletion operation state is required');
+        }
+        const routing = pluginConfig.routing;
+        const identityKey = await deletionIdentityKey(
+          ctx.request,
+          input.delegated === true,
+          readOptionalString(input.userId),
+          primaryEmail,
+          routing
+        );
+        if (!identityKey) {
+          throw new AuthFnValidationError(
+            'Gateway-mode account deletion requires a verified identity routing key'
+          );
+        }
+        const fence = await fenceAuthFnIdentityDeletion(
+          routing.placementDirectory,
+          identityKey
+        );
+        ctx.operationState.set(DELETION_FENCE_OPERATION, {
+          identityKey,
+          epoch: fence.epoch
+        } satisfies AuthFnOwnedDeletionFence);
+        return input;
+      },
       afterAccountDelete: async (ctx, result) => {
         const authConfig = ctx.config;
         const primaryEmail = readOptionalString(result.primaryEmail);
-        if (!authConfig || !primaryEmail) {
-          return;
-        }
+        if (!authConfig) return;
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
 
-        await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
+        if (pluginConfig.routing?.mode === 'gateway') {
+          const routing = pluginConfig.routing;
+          const ownedFence = readOwnedDeletionFence(ctx);
+          if (!ownedFence) {
+            throw new AuthFnValidationError(
+              'Gateway-mode account deletion requires owned fence state'
+            );
+          }
+          await finalizeAuthFnIdentityDeletion(
+            routing.placementDirectory,
+            ownedFence.identityKey,
+            undefined,
+            ownedFence.epoch
+          );
+        }
+
+        if (primaryEmail) {
+          await unregisterRegionLookupForIdentifier(authConfig, pluginConfig, primaryEmail);
+        }
+      },
+      afterAccountDeleteFailure: async (ctx) => {
+        const authConfig = ctx.config;
+        if (!authConfig) return;
+        const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
+        if (pluginConfig.routing?.mode !== 'gateway') return;
+        const ownedFence = readOwnedDeletionFence(ctx);
+        if (!ownedFence) return;
+        const routing = pluginConfig.routing;
+        await restoreAuthFnIdentityDeletion(
+          routing.placementDirectory,
+          ownedFence.identityKey,
+          undefined,
+          ownedFence.epoch
+        );
       }
     }
   };
@@ -145,12 +283,33 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
       }),
       handler: async (request) => {
         const runtime = await resolveEnvironment(ctx.config, request);
-        const body = await request.json() as {
-          identifier?: string;
-        };
+        const body = await request.json() as Record<string, unknown>;
         const pluginConfig = getMultiRegionPluginConfig(ctx.config) ?? {};
+        if (pluginConfig.routing?.mode === 'gateway') {
+          const routing = pluginConfig.routing;
+          if (typeof body.identifier !== 'string') {
+            throw new AuthFnValidationError('A valid identifier is required', { field: 'identifier' });
+          }
+          const identifier = normalizeIdentifier(body.identifier);
+          const authority = new URL(routing.publicAuthority).origin;
+          await emitAuthEvent(ctx.config, {
+            type: 'authfn.region.lookup',
+            requestId: eventRequestId(request),
+            regionId: runtime.regionId,
+            outcome: 'local',
+            metadata: {
+              authority,
+              continueLocally: true
+            }
+          });
+          return jsonSuccess(request, {
+            identifier,
+            authority,
+            continueLocally: true
+          });
+        }
         const lookup = await buildLookupResult(ctx.config, pluginConfig, {
-          identifier: body.identifier ?? '',
+          identifier: typeof body.identifier === 'string' ? body.identifier : '',
           request,
           environment: runtime
         });
@@ -162,7 +321,6 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
           regionId: lookup.regionId,
           outcome: lookup.continueLocally ? 'local' : 'redirect',
           metadata: {
-            identifier: lookup.identifier,
             authority: lookup.authority,
             continueLocally: lookup.continueLocally
           }
@@ -184,7 +342,9 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
         return jsonSuccess(request, {
           issuer: runtime.issuer,
           baseUrl: runtime.baseUrl,
-          regionId: runtime.regionId ?? null,
+          regionId: pluginConfigForEnvironment(ctx)?.routing?.mode === 'gateway'
+            ? null
+            : runtime.regionId ?? null,
           cookie: {
             prefix: cookiePolicy.prefix,
             domain: cookiePolicy.domain ?? null,
@@ -199,6 +359,10 @@ function createMultiRegionRoutes(ctx: AuthFnPluginRuntimeContext): Route[] {
       }
     }
   ];
+}
+
+function pluginConfigForEnvironment(ctx: AuthFnPluginRuntimeContext): MultiRegionPluginRuntimeConfig | null {
+  return getMultiRegionPluginConfig(ctx.config);
 }
 
 function sanitizeRuntimeOAuth(runtime: AuthFnEnvironment): Record<string, unknown> {
@@ -237,4 +401,36 @@ function readRequiredString(value: unknown): string {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readOwnedDeletionFence(ctx: AuthFnHookContext): AuthFnOwnedDeletionFence | null {
+  const value = ctx.operationState?.get(DELETION_FENCE_OPERATION);
+  if (!value || typeof value !== 'object') return null;
+  const identityKey = 'identityKey' in value ? readOptionalString(value.identityKey) : undefined;
+  const epoch = 'epoch' in value ? value.epoch : undefined;
+  return identityKey && typeof epoch === 'number' && Number.isSafeInteger(epoch)
+    ? { identityKey, epoch }
+    : null;
+}
+
+async function deletionIdentityKey(
+  request: Request | undefined,
+  delegated: boolean,
+  targetUserId: string | undefined,
+  primaryEmail: string | undefined,
+  routing: Extract<MultiRegionPluginRuntimeConfig['routing'], { mode: 'gateway' }>
+): Promise<string | null> {
+  if (delegated && targetUserId) {
+    return readOptionalString(await routing.identityKeyForUserId(targetUserId)) ?? null;
+  }
+  if (!delegated) {
+    const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
+    if (verifiedIdentityKey) return verifiedIdentityKey;
+  }
+  if (primaryEmail) {
+    return routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail));
+  }
+  return targetUserId
+    ? readOptionalString(await routing.identityKeyForUserId(targetUserId)) ?? null
+    : null;
 }

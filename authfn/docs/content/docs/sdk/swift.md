@@ -74,7 +74,7 @@ try await client.confirmTwoFactor(code: "123456")
 try await client.completeTwoFactorChallenge(challengeId: id, code: "654321")
 
 let region = try await client.lookupRegion(identifier: "ada@eu.com")
-let runtime = try await client.getRuntime()
+let runtime = try await client.runtime()
 ```
 
 Error handling: throwing methods raise `AuthFnError` which carries `code`, `message`, `retryable`, `details`. The `code` is one of the `AuthFnErrorCode` enum cases (matching the wire codes).
