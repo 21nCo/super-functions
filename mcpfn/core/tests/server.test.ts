@@ -143,8 +143,8 @@ describe("McpFnServer", () => {
     })).toThrow(/arguments and argumentsSchema disagree/);
   });
 
-  it("allows explicit prompt arguments with a composed schema", () => {
-    expect(() => new McpFnRegistry().registerPrompt({
+  it("derives and compares prompt inventories from composed schemas", () => {
+    const registry = new McpFnRegistry().registerPrompt({
       name: "composed_prompt",
       arguments: [{ name: "topic", required: true }],
       argumentsSchema: {
@@ -155,7 +155,65 @@ describe("McpFnServer", () => {
         }],
       },
       get: async () => ({ messages: [] }),
-    })).not.toThrow();
+    }).registerPrompt({
+      name: "referenced_prompt",
+      argumentsSchema: {
+        type: "object",
+        $defs: {
+          arguments: {
+            properties: { token: { type: "string", description: "Access token." } },
+            required: ["token"],
+          },
+        },
+        $ref: "#/$defs/arguments",
+      },
+      get: async () => ({ messages: [] }),
+    });
+    expect(registry.listPrompts()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "composed_prompt",
+        arguments: [{ name: "topic", required: true }],
+      }),
+      expect.objectContaining({
+        name: "referenced_prompt",
+        arguments: [{ name: "token", description: "Access token.", required: true }],
+      }),
+    ]));
+
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conflicting_composed_prompt",
+      arguments: [{ name: "topic", required: true }],
+      argumentsSchema: {
+        type: "object",
+        allOf: [{
+          properties: { other: { type: "string" } },
+          required: ["other"],
+        }],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/arguments and argumentsSchema disagree/);
+  });
+
+  it("rejects prompt schemas that cannot expose string-valued inventories", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "numeric_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: { age: { type: "number" } },
+        required: ["age"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/argument age must accept string values/);
+
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conditional_prompt",
+      arguments: [{ name: "topic" }],
+      argumentsSchema: {
+        type: "object",
+        anyOf: [{ properties: { topic: { type: "string" } } }],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/must use derivable properties/);
   });
 
   it("rejects malformed prompt argument inventories with a validation error", () => {

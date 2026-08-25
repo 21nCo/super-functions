@@ -173,6 +173,11 @@ describe("McpFn protocol primitives", () => {
       name: "exploded-reserved",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Reserved" }] }),
     })).toThrow(/Ambiguous MCP resource URI template/);
+    expect(() => reserved.registerResourceTemplate({
+      uriTemplate: "docs://reserved/{name}",
+      name: "simple-reserved",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Reserved" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
 
     const slash = new McpFnRegistry().registerResourceTemplate({
       uriTemplate: "docs://slash/{id}",
@@ -195,6 +200,45 @@ describe("McpFn protocol primitives", () => {
       name: "dot-operator",
       read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Dot" }] }),
     })).toThrow(/Ambiguous MCP resource URI template/);
+
+    const query = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://query{?value}",
+      name: "query",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Query" }] }),
+    });
+    expect(() => query.registerResourceTemplate({
+      uriTemplate: "docs://query{?value*}",
+      name: "exploded-query",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Query" }] }),
+    })).toThrow(/Ambiguous MCP resource URI template/);
+
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://unsupported{;value}",
+      name: "unsupported-path-parameter",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Unsupported" }] }),
+    })).toThrow(/unsupported URI template operator ;/);
+
+    const distinct = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://distinct/{id}/a",
+      name: "distinct-a",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "A" }] }),
+    });
+    expect(() => distinct.registerResourceTemplate({
+      uriTemplate: "docs://distinct/{id}/b",
+      name: "distinct-b",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "B" }] }),
+    })).not.toThrow();
+
+    const distinctQuery = new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://distinct-query{?first}",
+      name: "distinct-first-query",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "First" }] }),
+    });
+    expect(() => distinctQuery.registerResourceTemplate({
+      uriTemplate: "docs://distinct-query{?second}",
+      name: "distinct-second-query",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Second" }] }),
+    })).not.toThrow();
   });
 
   it("requires resource subscription callbacks to be registered as a pair", () => {

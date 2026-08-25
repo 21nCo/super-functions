@@ -966,5 +966,30 @@ describe("McpFn manifests", () => {
         { name: "user", uriTemplate: "docs://users/{name}" },
       ],
     })).toThrow(/ambiguous resource URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "person", uriTemplate: "docs://users/{id}" },
+        { name: "path", uriTemplate: "docs://users/{+path}" },
+      ],
+    })).toThrow(/ambiguous resource URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "unsupported", uriTemplate: "docs://users{;id}" },
+      ],
+    })).toThrow(/unsupported URI template operator ;/);
+    expect(() => validateManifest({
+      ...normalized,
+      prompts: [{
+        name: "numeric",
+        arguments: [{ name: "age", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { age: { type: "number" } },
+          required: ["age"],
+        },
+      }],
+    })).toThrow(/argument age must accept string values/);
   });
 });

@@ -6,8 +6,12 @@ import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
-import { uriTemplateMatchShape } from "./uri-template.js";
 import {
+  unsupportedUriTemplateOperator,
+  uriTemplatesOverlap,
+} from "./uri-template.js";
+import {
+  assertPromptSchemaSupportsStringValues,
   promptArguments,
   schemaPromptArguments,
   type McpFnRegistry,
@@ -266,10 +270,16 @@ export function validateManifest(value: unknown): McpFnManifest {
   }
   assertSortedBy("Manifest resource URIs", manifest.resources ?? [], (resource) => resource.uri);
 
-  const resourceTemplateShapes = new Set<string>();
+  const resourceTemplateUris: string[] = [];
   for (const resource of manifest.resourceTemplates ?? []) {
     assertObject("Every manifest resource template", resource);
     assertName("Every manifest resource template", resource.name);
+    const unsupportedOperator = unsupportedUriTemplateOperator(resource.uriTemplate);
+    if (unsupportedOperator) {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} uses unsupported URI template operator ${unsupportedOperator}`,
+      );
+    }
     let template: UriTemplate;
     try { template = new UriTemplate(resource.uriTemplate); } catch {
       throw new McpFnValidationError(
@@ -281,13 +291,14 @@ export function validateManifest(value: unknown): McpFnManifest {
         `Manifest resource template ${resource.name} must contain at least one variable`,
       );
     }
-    const matchShape = uriTemplateMatchShape(resource.uriTemplate);
-    if (resourceTemplateShapes.has(matchShape)) {
+    if (resourceTemplateUris.some((uriTemplate) =>
+      uriTemplatesOverlap(uriTemplate, resource.uriTemplate)
+    )) {
       throw new McpFnValidationError(
         `Manifest contains an ambiguous resource URI template: ${resource.uriTemplate}`,
       );
     }
-    resourceTemplateShapes.add(matchShape);
+    resourceTemplateUris.push(resource.uriTemplate);
     if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
       throw new McpFnValidationError(
         `Manifest resource template ${resource.name} subscribable must be a boolean`,
@@ -339,14 +350,18 @@ export function validateManifest(value: unknown): McpFnManifest {
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );
       }
+      assertPromptSchemaSupportsStringValues(
+        prompt.argumentsSchema,
+        `Manifest prompt ${prompt.name} argumentsSchema`,
+      );
       if (prompt.arguments) {
         const declared = prompt.arguments
           .map(({ name, required }) => ({ name, required: required === true }))
           .sort((left, right) => compareCodeUnits(left.name, right.name));
-        const schemaDeclared = schemaPromptArguments(prompt)?.map(
+        const schemaDeclared = schemaPromptArguments(prompt)!.map(
           ({ name, required }) => ({ name, required: required === true }),
         );
-        if (schemaDeclared && JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+        if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
           throw new McpFnValidationError(
             `Manifest prompt ${prompt.name} arguments and argumentsSchema disagree`,
           );

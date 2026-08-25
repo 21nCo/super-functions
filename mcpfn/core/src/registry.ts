@@ -14,7 +14,10 @@ import type {
 
 import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
 import { compareCodeUnits } from "./canonical.js";
-import { uriTemplateMatchShape } from "./uri-template.js";
+import {
+  unsupportedUriTemplateOperator,
+  uriTemplatesOverlap,
+} from "./uri-template.js";
 import type {
   McpFnListedTool,
   McpFnObjectSchema,
@@ -95,38 +98,166 @@ function assertUri(kind: string, uri: string): void {
   }
 }
 
+interface PromptSchemaInventory {
+  descriptions: Map<string, string>;
+  propertySchemas: Map<string, unknown[]>;
+  required: Set<string>;
+}
+
+function mergePromptSchemaInventory(
+  target: PromptSchemaInventory,
+  source: PromptSchemaInventory,
+): void {
+  for (const [name, description] of source.descriptions) {
+    if (!target.descriptions.has(name)) target.descriptions.set(name, description);
+  }
+  for (const [name, schemas] of source.propertySchemas) {
+    target.propertySchemas.set(name, [...(target.propertySchemas.get(name) ?? []), ...schemas]);
+  }
+  for (const name of source.required) target.required.add(name);
+}
+
+function resolveLocalSchemaReference(
+  root: McpFnObjectSchema,
+  reference: string,
+): unknown {
+  if (reference === "#") return root;
+  if (!reference.startsWith("#/")) return undefined;
+  return reference.slice(2).split("/").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+    return (current as Record<string, unknown>)[key];
+  }, root);
+}
+
+function derivePromptSchemaInventory(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): PromptSchemaInventory | undefined {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined;
+  const value = schema as Record<string, unknown>;
+  const nonFlatKeywords = [
+    "anyOf", "oneOf", "not", "if", "then", "else",
+    "patternProperties", "dependentSchemas", "propertyNames",
+  ];
+  if (nonFlatKeywords.some((keyword) => Object.hasOwn(value, keyword))) return undefined;
+  const inventory: PromptSchemaInventory = {
+    descriptions: new Map(),
+    propertySchemas: new Map(),
+    required: new Set(),
+  };
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return undefined;
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return undefined;
+    const nextReferences = new Set(references).add(value.$ref);
+    const referencedInventory = derivePromptSchemaInventory(referenced, root, nextReferences);
+    if (!referencedInventory) return undefined;
+    mergePromptSchemaInventory(inventory, referencedInventory);
+  }
+  if (value.allOf !== undefined) {
+    if (!Array.isArray(value.allOf)) return undefined;
+    for (const member of value.allOf) {
+      const memberInventory = derivePromptSchemaInventory(member, root, references);
+      if (!memberInventory) return undefined;
+      mergePromptSchemaInventory(inventory, memberInventory);
+    }
+  }
+  const properties = value.properties;
+  if (properties !== undefined && (
+    typeof properties !== "object" || properties === null || Array.isArray(properties)
+  )) return undefined;
+  if (value.required !== undefined && !Array.isArray(value.required)) return undefined;
+  const required = Array.isArray(value.required)
+    ? value.required.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  for (const name of required) inventory.required.add(name);
+  const propertySchemas = (properties ?? {}) as Record<string, unknown>;
+  for (const [name, propertySchema] of Object.entries(propertySchemas)) {
+    inventory.propertySchemas.set(name, [
+      ...(inventory.propertySchemas.get(name) ?? []),
+      propertySchema,
+    ]);
+    if (propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema) &&
+      typeof (propertySchema as { description?: unknown }).description === "string") {
+      inventory.descriptions.set(
+        name,
+        (propertySchema as { description: string }).description,
+      );
+    }
+  }
+  return inventory;
+}
+
+function schemaMayAcceptString(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): boolean {
+  if (typeof schema === "boolean") return schema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+  const value = schema as Record<string, unknown>;
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return false;
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return false;
+    const nextReferences = new Set(references).add(value.$ref);
+    if (!schemaMayAcceptString(referenced, root, nextReferences)) return false;
+  }
+  if (typeof value.type === "string" && value.type !== "string") return false;
+  if (Array.isArray(value.type) && !value.type.includes("string")) return false;
+  if (Object.hasOwn(value, "const") && typeof value.const !== "string") return false;
+  if (Array.isArray(value.enum) && !value.enum.some((entry) => typeof entry === "string")) {
+    return false;
+  }
+  if (Array.isArray(value.allOf) &&
+    !value.allOf.every((member) => schemaMayAcceptString(member, root, references))) return false;
+  if (Array.isArray(value.anyOf) &&
+    !value.anyOf.some((member) => schemaMayAcceptString(member, root, references))) return false;
+  if (Array.isArray(value.oneOf) &&
+    !value.oneOf.some((member) => schemaMayAcceptString(member, root, references))) return false;
+  return true;
+}
+
+export function assertPromptSchemaSupportsStringValues(
+  schema: McpFnObjectSchema,
+  label: string,
+): void {
+  const inventory = derivePromptSchemaInventory(schema, schema);
+  if (!inventory) {
+    throw new McpFnValidationError(
+      `${label} must use derivable properties, allOf, or local $ref declarations`,
+    );
+  }
+  for (const [name, schemas] of inventory.propertySchemas) {
+    if (schemas.some((propertySchema) => !schemaMayAcceptString(propertySchema, schema))) {
+      throw new McpFnValidationError(
+        `${label} argument ${name} must accept string values`,
+      );
+    }
+  }
+}
+
 export function schemaPromptArguments(
   definition: { argumentsSchema?: McpFnObjectSchema },
 ) {
   const schema = definition.argumentsSchema;
   if (!schema) return undefined;
-  const nonFlatKeywords = [
-    "$ref", "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
-    "patternProperties", "dependentSchemas", "propertyNames",
-  ];
-  if (nonFlatKeywords.some((keyword) => Object.hasOwn(schema, keyword))) return undefined;
-  const properties = schema.properties;
-  if (properties !== undefined && (
-    typeof properties !== "object" || properties === null || Array.isArray(properties)
-  )) return undefined;
-  if (schema.required !== undefined && !Array.isArray(schema.required)) return undefined;
-  const required = new Set(
-    Array.isArray(schema.required)
-      ? schema.required.filter((name): name is string => typeof name === "string")
-      : [],
-  );
-  const propertySchemas = (properties ?? {}) as Record<string, unknown>;
-  const names = [...new Set([...Object.keys(propertySchemas), ...required])]
+  const inventory = derivePromptSchemaInventory(schema, schema);
+  if (!inventory) return undefined;
+  const names = [...new Set([
+    ...inventory.propertySchemas.keys(),
+    ...inventory.required,
+  ])]
     .sort(compareCodeUnits);
   return names.map((name) => {
-    const propertySchema = propertySchemas[name];
     return {
       name,
-      ...(propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema) &&
-        typeof (propertySchema as { description?: unknown }).description === "string"
-        ? { description: (propertySchema as { description: string }).description }
+      ...(inventory.descriptions.has(name)
+        ? { description: inventory.descriptions.get(name)! }
         : {}),
-      ...(required.has(name) ? { required: true } : {}),
+      ...(inventory.required.has(name) ? { required: true } : {}),
     };
   });
 }
@@ -283,6 +414,12 @@ export class McpFnRegistry<TContext = undefined> {
         `Duplicate MCP resource template: ${definition.name}`,
       );
     }
+    const unsupportedOperator = unsupportedUriTemplateOperator(definition.uriTemplate);
+    if (unsupportedOperator) {
+      throw new McpFnValidationError(
+        `Resource template ${definition.name} uses unsupported URI template operator ${unsupportedOperator}`,
+      );
+    }
     let template: UriTemplate;
     try {
       template = new UriTemplate(definition.uriTemplate);
@@ -303,10 +440,9 @@ export class McpFnRegistry<TContext = undefined> {
       definition.subscribe,
       definition.unsubscribe,
     );
-    const matchShape = uriTemplateMatchShape(definition.uriTemplate);
     if ([...this.resourceTemplates.values()].some(
       ({ definition: registered }) =>
-        uriTemplateMatchShape(registered.uriTemplate) === matchShape,
+        uriTemplatesOverlap(registered.uriTemplate, definition.uriTemplate),
     )) {
       throw new McpFnValidationError(
         `Ambiguous MCP resource URI template: ${definition.uriTemplate}`,
@@ -365,6 +501,21 @@ export class McpFnRegistry<TContext = undefined> {
         `Prompt ${definition.name} argumentsSchema must be an object schema`,
       );
     }
+    let validateArguments: ValidateFunction;
+    try {
+      validateArguments = this.ajv.compile(promptSchema(definition));
+    } catch (error) {
+      throw new McpFnValidationError(
+        `Prompt ${definition.name} contains an invalid arguments JSON Schema`,
+        { cause: error instanceof Error ? error.message : String(error) },
+      );
+    }
+    if (definition.argumentsSchema) {
+      assertPromptSchemaSupportsStringValues(
+        definition.argumentsSchema,
+        `Prompt ${definition.name} argumentsSchema`,
+      );
+    }
     const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
@@ -373,11 +524,10 @@ export class McpFnRegistry<TContext = undefined> {
       const declared = definition.arguments
         .map(({ name, required }) => ({ name, required: required === true }))
         .sort((left, right) => compareCodeUnits(left.name, right.name));
-      const derivedArguments = schemaPromptArguments(definition);
-      const schemaDeclared = derivedArguments?.map(
+      const schemaDeclared = schemaPromptArguments(definition)!.map(
         ({ name, required }) => ({ name, required: required === true }),
       );
-      if (schemaDeclared && JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+      if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
         throw new McpFnValidationError(
           `Prompt ${definition.name} arguments and argumentsSchema disagree`,
         );
@@ -389,15 +539,6 @@ export class McpFnRegistry<TContext = undefined> {
           `Prompt ${definition.name} has a completer for unknown argument ${name}`,
         );
       }
-    }
-    let validateArguments: ValidateFunction;
-    try {
-      validateArguments = this.ajv.compile(promptSchema(definition));
-    } catch (error) {
-      throw new McpFnValidationError(
-        `Prompt ${definition.name} contains an invalid arguments JSON Schema`,
-        { cause: error instanceof Error ? error.message : String(error) },
-      );
     }
     this.prompts.set(definition.name, { definition, validateArguments });
     return this;
