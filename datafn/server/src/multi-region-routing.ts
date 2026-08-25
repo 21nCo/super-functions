@@ -586,19 +586,20 @@ export function createDatafnGatewayRouter<TTarget>(
 
   const handle = async (request: Request): Promise<Response> => {
     const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
-    let prepared: PreparedDatafnGatewayRequest;
+    let prepared: PreparedDatafnRoutingRequest;
     try {
-      prepared = await prepareDatafnGatewayRequest(request, requestId, maxBodyBytes);
+      prepared = await prepareDatafnRoutingRequest(request, maxBodyBytes);
     } catch (error) {
-      if (error instanceof DatafnRequestBodyTooLargeError) {
-        return payloadTooLargeError(error.limit).toResponse();
-      }
+      if (error instanceof DatafnRoutingError) return error.toResponse();
       throw error;
     }
+    const routedHeaders = new Headers(request.headers);
+    for (const header of DATAFN_ROUTING_INTERNAL_HEADERS) routedHeaders.delete(header);
+    routedHeaders.set("x-request-id", requestId);
     let namespace: string;
     let resolvedNamespace: string;
     try {
-      resolvedNamespace = await config.deriveNamespace(prepared.createRequest());
+      resolvedNamespace = await config.deriveNamespace(prepared.createRequest(routedHeaders));
     } catch {
       return new DatafnRoutingError({
         code: "DATAFN_CELL_UNAVAILABLE",
@@ -617,7 +618,7 @@ export function createDatafnGatewayRouter<TTarget>(
         retryable: false,
       }).toResponse();
     }
-    const cleanRequest = prepared.createRequest();
+    const cleanRequest = prepared.createRequest(routedHeaders);
     const bodyDigest = prepared.bodyDigest;
 
     for (const attempt of [0, 1] as const) {
@@ -796,7 +797,7 @@ export async function migrateDatafnNamespace(input: {
     ) {
       throw new Error("DATAFN_MIGRATION_RECOVERY_REQUIRED");
     }
-    const pendingResume = await claimDatafnMigrationRecovery({
+    let pendingResume = await claimDatafnMigrationRecovery({
       directory: input.directory,
       placement: observed,
       expectedState: "active",
@@ -804,12 +805,22 @@ export async function migrateDatafnNamespace(input: {
       recoveryLeaseMs,
       now,
     });
-    const recoveryContext = migrationContext(
-      pendingResume.namespace,
-      pendingResume.migration!,
-      true,
-    );
-    await input.hooks.resumeTarget(recoveryContext);
+    const resumeLease = createDatafnMigrationLeaseGuard({
+      directory: input.directory,
+      placement: pendingResume,
+      expectedState: "active",
+      recoveryLeaseMs,
+      now,
+      recovery: true,
+    });
+    let resumeFailure: { cause: unknown } | undefined;
+    try {
+      await resumeLease.runHook(input.hooks.resumeTarget);
+    } catch (cause) {
+      resumeFailure = { cause };
+    }
+    pendingResume = await resumeLease.stop();
+    if (resumeFailure) throw resumeFailure.cause;
     return finalizeDatafnMigrationResume({
       directory: input.directory,
       placement: pendingResume,
@@ -899,15 +910,30 @@ export async function migrateDatafnNamespace(input: {
     throw new Error("DATAFN_MIGRATION_REQUIRES_ACTIVE_PLACEMENT");
   }
 
-  const context = migrationContext(observed.namespace, migration, recovery);
+  const movingLease = createDatafnMigrationLeaseGuard({
+    directory: input.directory,
+    placement: moving,
+    expectedState: "moving",
+    recoveryLeaseMs,
+    now,
+    recovery,
+  });
+  let hookFailure: { cause: unknown } | undefined;
   try {
-    await input.hooks.quiesceSource(context);
-    await input.hooks.drainPermissionDirectory(context);
-    await input.hooks.copyTenantData(context);
-    await input.hooks.validateTenantData(context);
-    await input.hooks.rebuildPermissionDirectory(context);
-    await input.hooks.warmTarget(context);
+    await movingLease.runHook(input.hooks.quiesceSource);
+    await movingLease.runHook(input.hooks.drainPermissionDirectory);
+    await movingLease.runHook(input.hooks.copyTenantData);
+    await movingLease.runHook(input.hooks.validateTenantData);
+    await movingLease.runHook(input.hooks.rebuildPermissionDirectory);
+    await movingLease.runHook(input.hooks.warmTarget);
   } catch (cause) {
+    hookFailure = { cause };
+  }
+  moving = await movingLease.stop();
+  migration = moving.migration!;
+  if (hookFailure) {
+    const cause = hookFailure.cause;
+    const context = migrationContext(observed.namespace, migration, recovery);
     const rollback: DatafnNamespacePlacement = {
       namespace: moving.namespace,
       regionId: migration.sourceRegionId,
@@ -972,14 +998,25 @@ export async function migrateDatafnNamespace(input: {
   if (!activated.updated) {
     throw new Error("DATAFN_PLACEMENT_EPOCH_CONFLICT");
   }
-  await input.hooks.resumeTarget(migrationContext(
-    activePendingResume.namespace,
-    activePendingResume.migration!,
-    recovery,
-  ));
-  return finalizeDatafnMigrationResume({
+  const resumeLease = createDatafnMigrationLeaseGuard({
     directory: input.directory,
     placement: activePendingResume,
+    expectedState: "active",
+    recoveryLeaseMs,
+    now,
+    recovery,
+  });
+  let resumeFailure: { cause: unknown } | undefined;
+  try {
+    await resumeLease.runHook(input.hooks.resumeTarget);
+  } catch (cause) {
+    resumeFailure = { cause };
+  }
+  const resumedPlacement = await resumeLease.stop();
+  if (resumeFailure) throw resumeFailure.cause;
+  return finalizeDatafnMigrationResume({
+    directory: input.directory,
+    placement: resumedPlacement,
     now,
   });
 }
@@ -1022,6 +1059,162 @@ async function claimDatafnMigrationRecovery(input: {
     throw new Error("DATAFN_MIGRATION_RECOVERY_EPOCH_CONFLICT");
   }
   return claimed;
+}
+
+interface DatafnMigrationLeaseGuard {
+  runHook(hook: (context: DatafnNamespaceMigrationContext) => Promise<void>): Promise<void>;
+  stop(): Promise<DatafnNamespacePlacement>;
+}
+
+/**
+ * Keeps a migration owner live while an external hook is running. Renewals
+ * advance the placement epoch, making renewal and expiry-based takeover race
+ * through the same CAS fence. Ownership is also rechecked after every hook so
+ * an owner that loses the fence cannot continue to the next side effect.
+ */
+function createDatafnMigrationLeaseGuard(input: {
+  directory: DatafnPlacementDirectoryAdapter;
+  placement: DatafnNamespacePlacement;
+  expectedState: "active" | "moving";
+  recoveryLeaseMs: number;
+  now: () => number;
+  recovery: boolean;
+}): DatafnMigrationLeaseGuard {
+  const ownerId = requiredString(
+    input.placement.migration?.recoveryOwnerId,
+    "migration_recovery_owner",
+  );
+  const renewalDelayMs = Math.max(1, Math.floor(input.recoveryLeaseMs / 3));
+  let current = input.placement;
+  let stopped = false;
+  let renewalTimer: ReturnType<typeof setTimeout> | null = null;
+  let renewalTask: Promise<void> = Promise.resolve();
+  let lost: Error | undefined;
+
+  const lose = (cause?: unknown): Error => {
+    if (!lost) {
+      lost = new Error("DATAFN_MIGRATION_RECOVERY_EPOCH_CONFLICT");
+      if (cause !== undefined) {
+        (lost as Error & { cause?: unknown }).cause = cause;
+      }
+    }
+    return lost;
+  };
+
+  const owns = (placement: DatafnNamespacePlacement | null): boolean =>
+    placement !== null &&
+    placement.state === input.expectedState &&
+    placement.epoch === current.epoch &&
+    placement.migration?.recoveryOwnerId === ownerId;
+
+  const renew = async (): Promise<void> => {
+    if (stopped || lost) return;
+    const migration = current.migration;
+    if (!migration || migration.recoveryOwnerId !== ownerId) {
+      lose();
+      return;
+    }
+    const currentTime = input.now();
+    const renewed: DatafnNamespacePlacement = {
+      ...current,
+      epoch: current.epoch + 1,
+      updatedAt: new Date(currentTime).toISOString(),
+      migration: {
+        ...migration,
+        recoveryLeaseExpiresAt: currentTime + input.recoveryLeaseMs,
+      },
+    };
+    try {
+      const result = await input.directory.compareAndSet({
+        namespace: current.namespace,
+        expectedEpoch: current.epoch,
+        expectedState: input.expectedState,
+        next: renewed,
+      });
+      if (!result.updated) {
+        lose();
+        return;
+      }
+      current = renewed;
+    } catch (cause) {
+      lose(cause);
+    }
+  };
+
+  const scheduleRenewal = (): void => {
+    if (stopped || lost) return;
+    renewalTimer = setTimeout(() => {
+      renewalTimer = null;
+      renewalTask = renewalTask.then(renew).then(scheduleRenewal);
+    }, renewalDelayMs);
+    (renewalTimer as NodeJS.Timeout).unref?.();
+  };
+
+  const observeOwnership = async (): Promise<void> => {
+    if (lost) return;
+    let observed: DatafnNamespacePlacement | null;
+    try {
+      observed = await input.directory.get(current.namespace);
+    } catch (cause) {
+      lose(cause);
+      return;
+    }
+    if (!owns(observed)) lose();
+  };
+
+  const ensureOwned = async (): Promise<void> => {
+    renewalTask = renewalTask.then(async () => {
+      if (lost) return;
+      const expiresAt = current.migration?.recoveryLeaseExpiresAt;
+      if (
+        expiresAt === undefined ||
+        expiresAt <= input.now() + renewalDelayMs
+      ) {
+        await renew();
+      }
+      await observeOwnership();
+    });
+    await renewalTask;
+    if (lost) throw lost;
+  };
+
+  scheduleRenewal();
+
+  return {
+    async runHook(hook) {
+      await ensureOwned();
+      let hookFailure: { cause: unknown } | undefined;
+      try {
+        await hook(migrationContext(
+          current.namespace,
+          current.migration!,
+          input.recovery,
+        ));
+      } catch (cause) {
+        hookFailure = { cause };
+      }
+      try {
+        await ensureOwned();
+      } catch (leaseFailure) {
+        if (hookFailure && leaseFailure instanceof Error) {
+          (leaseFailure as Error & { cause?: unknown }).cause = hookFailure.cause;
+        }
+        throw leaseFailure;
+      }
+      if (hookFailure) throw hookFailure.cause;
+    },
+    async stop() {
+      stopped = true;
+      if (renewalTimer !== null) {
+        clearTimeout(renewalTimer);
+        renewalTimer = null;
+      }
+      renewalTask = renewalTask.then(observeOwnership);
+      await renewalTask;
+      if (lost) throw lost;
+      return current;
+    },
+  };
 }
 
 async function finalizeDatafnMigrationResume(input: {
@@ -1257,22 +1450,24 @@ async function readPreExecutionMismatch(response: Response): Promise<boolean> {
   }
 }
 
-interface PreparedDatafnGatewayRequest {
+export interface PreparedDatafnRoutingRequest {
   bodyDigest?: string;
-  createRequest(): Request;
+  createRequest(headers?: Headers): Request;
 }
 
-async function prepareDatafnGatewayRequest(
+/**
+ * Buffers a routed request once under the configured limit so trusted
+ * namespace resolution, assertion validation, and execution can each receive
+ * an independent body without an unbounded Request.clone() tee.
+ */
+export async function prepareDatafnRoutingRequest(
   request: Request,
-  requestId: string,
-  maxBodyBytes: number,
-): Promise<PreparedDatafnGatewayRequest> {
-  const headers = new Headers(request.headers);
-  for (const header of DATAFN_ROUTING_INTERNAL_HEADERS) headers.delete(header);
-  headers.set("x-request-id", requestId);
+  maxBodyBytes?: number,
+): Promise<PreparedDatafnRoutingRequest> {
+  const limit = validateDatafnRoutingBodyLimit(maxBodyBytes);
   if (request.method === "GET" || request.method === "HEAD" || request.body === null) {
     return {
-      createRequest: () => new Request(request.url, {
+      createRequest: (headers = request.headers) => new Request(request.url, {
         method: request.method,
         headers,
         signal: request.signal,
@@ -1280,8 +1475,8 @@ async function prepareDatafnGatewayRequest(
     };
   }
   const declaredLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
-    throw new DatafnRequestBodyTooLargeError(maxBodyBytes);
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    throw payloadTooLargeError(limit);
   }
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -1291,9 +1486,9 @@ async function prepareDatafnGatewayRequest(
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > maxBodyBytes) {
+    if (total > limit) {
       await reader.cancel("request body limit exceeded").catch(() => undefined);
-      throw new DatafnRequestBodyTooLargeError(maxBodyBytes);
+      throw payloadTooLargeError(limit);
     }
     chunks.push(value);
     hash.update(value);
@@ -1306,7 +1501,7 @@ async function prepareDatafnGatewayRequest(
   }
   return {
     bodyDigest: hash.digest("base64url"),
-    createRequest: () => new Request(request.url, {
+    createRequest: (headers = request.headers) => new Request(request.url, {
       method: request.method,
       headers,
       body: body.slice(),

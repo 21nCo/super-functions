@@ -197,6 +197,51 @@ describe("DataFn server placement integration", () => {
     }
   });
 
+  it("rejects a routed WebSocket when shutdown lands during validation", async () => {
+    const placement = createMemoryDatafnPlacementDirectory();
+    await claimDatafnNamespacePlacement({
+      directory: placement,
+      namespace: "tenant:one",
+      regionId: "eu",
+    });
+    let releaseRead!: () => void;
+    const blockedRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let markReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+    const directory = {
+      ...placement,
+      async get(namespace: string) {
+        markReadStarted();
+        await blockedRead;
+        return placement.get(namespace);
+      },
+    };
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "eu",
+        directory: permissionDirectory(),
+        placement: { directory },
+      })],
+    });
+    const client = { send: vi.fn(), close: vi.fn() };
+
+    try {
+      const admission = server.websocketHandler.addRoutedClient(
+        client,
+        { namespace: "tenant:one" },
+      );
+      await readStarted;
+      await server.close();
+      releaseRead();
+      await expect(admission).resolves.toBe(false);
+      expect(client.close).toHaveBeenCalledWith(1001, "Going Away");
+    } finally {
+      releaseRead();
+      await server.close();
+    }
+  });
+
   it("keeps health status available without a tenant placement", async () => {
     const server = await createDatafnServer({
       schema: { resources: [] },
@@ -262,6 +307,50 @@ describe("DataFn server placement integration", () => {
         { method: "POST", body },
       ));
       expect(await response.text()).toBe(body);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("bounds a custom-route body before namespace resolution", async () => {
+    const resolveNamespace = vi.fn(async () => "tenant:plugin");
+    const handler = vi.fn(async () => new Response("unexpected"));
+    const server = await createDatafnServer({
+      schema: { resources: [] },
+      database: memoryAdapter(),
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "eu",
+          directory: permissionDirectory(),
+          placement: {
+            directory: createMemoryDatafnPlacementDirectory(),
+            maxBodyBytes: 4,
+          },
+        }),
+        {
+          name: "bounded-body-route",
+          runsOn: ["server"],
+          routes: () => [{
+            method: "POST",
+            path: "/plugin/bounded-body",
+            meta: { datafnPlacement: { resolveNamespace } },
+            handler,
+          }],
+        },
+      ] as any,
+    });
+
+    try {
+      const response = await server.router.handle(new Request(
+        "https://cell.internal/plugin/bounded-body",
+        { method: "POST", body: "12345" },
+      ));
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "DATAFN_PAYLOAD_TOO_LARGE" },
+      });
+      expect(resolveNamespace).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }

@@ -342,6 +342,59 @@ describe("DataFn tenant placement", () => {
     await first;
   });
 
+  it("renews recovery ownership while a migration hook runs past lease expiry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    let releaseFirst: (() => void) | undefined;
+    let first: Promise<DatafnNamespacePlacement> | undefined;
+    try {
+      const directory = createMemoryDatafnPlacementDirectory();
+      await claimDatafnNamespacePlacement({
+        directory,
+        namespace: "tenant:renewed",
+        regionId: "eu",
+        now: Date.now,
+      });
+      const blocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+      let markEntered!: () => void;
+      const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+      first = migrateDatafnNamespace({
+        directory,
+        namespace: "tenant:renewed",
+        targetRegionId: "us",
+        now: Date.now,
+        recoveryLeaseMs: 30,
+        hooks: {
+          ...emptyMigrationHooks(),
+          async quiesceSource() {
+            markEntered();
+            await blocked;
+          },
+        },
+      });
+      await entered;
+      await vi.advanceTimersByTimeAsync(90);
+
+      const retryHook = vi.fn();
+      await expect(migrateDatafnNamespace({
+        directory,
+        namespace: "tenant:renewed",
+        targetRegionId: "us",
+        now: Date.now,
+        recoveryLeaseMs: 30,
+        hooks: { ...emptyMigrationHooks(), quiesceSource: retryHook },
+      })).rejects.toThrow("DATAFN_MIGRATION_ALREADY_IN_PROGRESS");
+      expect(retryHook).not.toHaveBeenCalled();
+
+      releaseFirst!();
+      await first;
+    } finally {
+      releaseFirst?.();
+      await first?.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
   it("rolls a failed move back without leaving false target-resume evidence", async () => {
     const directory = createMemoryDatafnPlacementDirectory();
     await claimDatafnNamespacePlacement({

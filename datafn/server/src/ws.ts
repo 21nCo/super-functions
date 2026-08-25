@@ -102,6 +102,8 @@ export class WebSocketManager {
   private pendingPong = new Set<WebSocketClient>();
   /** Heartbeat interval handle. */
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  /** Permanent shutdown fence; a closed manager cannot admit new handshakes. */
+  private closed = false;
 
   private readonly maxConnections: number;
   private readonly maxConnectionsPerNamespace: number;
@@ -283,6 +285,11 @@ export class WebSocketManager {
    */
   addClient(client: WebSocketClient, authContext: WsAuthContext): boolean {
     const { namespace } = authContext;
+
+    if (this.closed) {
+      this.closeClientSafely(client, 1001, "Going Away", "ws-closed-admission");
+      return false;
+    }
 
     // SCA-005: Global connection limit
     if (this.totalCount >= this.maxConnections) {
@@ -487,6 +494,7 @@ export class WebSocketManager {
    * Called by DatafnServer.close().
    */
   close() {
+    this.closed = true;
     this.destroy();
     for (const [client] of this.clientNamespace) {
       this.closeClientSafely(client, 1001, "Going Away", "ws-close");
@@ -497,7 +505,6 @@ export class WebSocketManager {
     this.clientNamespace.clear();
     this.clientPrincipals.clear();
     this.clientPlacement.clear();
-    this.namespaceFenceGeneration.clear();
     this.pendingPong.clear();
   }
 

@@ -61,6 +61,8 @@ import type { DatafnPublicLinksPlugin } from "./plugins/public-links.js";
 import { getDatafnMultiRegionRuntimeConfig } from "./plugins/multi-region.js";
 import {
   DatafnRoutingError,
+  prepareDatafnRoutingRequest,
+  type PreparedDatafnRoutingRequest,
   validateDatafnPlacement,
 } from "./multi-region-routing.js";
 import type {
@@ -1443,8 +1445,19 @@ export async function createDatafnServer<TContext = any>(
     return {
       ...route,
       handler: async (request, context) => {
-        const assertionRequest = request.clone();
-        const placementRequest = request.clone();
+        let prepared: PreparedDatafnRoutingRequest;
+        try {
+          prepared = await prepareDatafnRoutingRequest(
+            request,
+            multiRegionRuntime!.placement!.maxBodyBytes,
+          );
+        } catch (error) {
+          if (error instanceof DatafnRoutingError) return error.toResponse();
+          throw error;
+        }
+        const assertionRequest = prepared.createRequest();
+        const placementRequest = prepared.createRequest();
+        const handlerRequest = prepared.createRequest();
         const resolution = await placement.resolveNamespace(placementRequest, context);
         if (resolution instanceof Response) return resolution;
         try {
@@ -1458,8 +1471,8 @@ export async function createDatafnServer<TContext = any>(
           if (error instanceof DatafnRoutingError) return error.toResponse();
           throw error;
         }
-        await placement.bindHandlerRequest?.(placementRequest, request, context);
-        return originalHandler(request, context);
+        await placement.bindHandlerRequest?.(placementRequest, handlerRequest, context);
+        return originalHandler(handlerRequest, context);
       },
     };
   };
