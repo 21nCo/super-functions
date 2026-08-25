@@ -74,7 +74,8 @@ export function authFnMultiRegionPlugin(
     routes: (ctx) => createMultiRegionRoutes(ctx),
     hookFailurePolicy: {
       afterUserCreate: 'fail',
-      afterAccountDelete: 'fail'
+      afterAccountDelete: 'fail',
+      afterAccountDeleteFailure: 'fail'
     },
     validateConfig: (runtimeConfig) => {
       const pluginConfig = getMultiRegionPluginConfig(runtimeConfig);
@@ -162,7 +163,13 @@ export function authFnMultiRegionPlugin(
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return input;
         const routing = pluginConfig.routing;
-        const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+        const identityKey = deletionIdentityKey(
+          ctx.request,
+          ctx.actorId,
+          readOptionalString(input.userId),
+          primaryEmail,
+          routing
+        );
         if (!identityKey) {
           throw new AuthFnValidationError(
             'Gateway-mode account deletion requires a verified identity routing key'
@@ -182,7 +189,13 @@ export function authFnMultiRegionPlugin(
 
         if (pluginConfig.routing?.mode === 'gateway') {
           const routing = pluginConfig.routing;
-          const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+          const identityKey = deletionIdentityKey(
+            ctx.request,
+            ctx.actorId,
+            result.userId,
+            primaryEmail,
+            routing
+          );
           if (!identityKey) {
             throw new AuthFnValidationError(
               'Gateway-mode account deletion requires a verified identity routing key'
@@ -205,7 +218,13 @@ export function authFnMultiRegionPlugin(
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return;
         const routing = pluginConfig.routing;
-        const identityKey = deletionIdentityKey(ctx.request, primaryEmail, routing);
+        const identityKey = deletionIdentityKey(
+          ctx.request,
+          ctx.actorId,
+          failure.userId,
+          primaryEmail,
+          routing
+        );
         if (!identityKey) return;
         await restoreAuthFnIdentityDeletion(
           routing.placementDirectory,
@@ -377,11 +396,16 @@ function readOptionalString(value: unknown): string | undefined {
 
 function deletionIdentityKey(
   request: Request | undefined,
+  actorId: string | undefined,
+  targetUserId: string | undefined,
   primaryEmail: string | undefined,
   routing: Extract<MultiRegionPluginRuntimeConfig['routing'], { mode: 'gateway' }>
 ): string | null {
-  const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
-  if (verifiedIdentityKey) return verifiedIdentityKey;
+  const delegatedDelete = Boolean(actorId && targetUserId && actorId !== targetUserId);
+  if (!delegatedDelete) {
+    const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
+    if (verifiedIdentityKey) return verifiedIdentityKey;
+  }
   return primaryEmail
     ? routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
     : null;

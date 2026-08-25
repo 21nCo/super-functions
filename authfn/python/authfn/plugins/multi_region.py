@@ -138,7 +138,11 @@ class MultiRegionService:
                 },
                 namespace=self.config.namespace,
             )
-        register = getattr(self.plugin_config.directory, "register_user", None)
+        register = (
+            None
+            if self.plugin_config.routing and self.plugin_config.routing.mode == "gateway"
+            else getattr(self.plugin_config.directory, "register_user", None)
+        )
         if register:
             await _maybe_await(
                 register(

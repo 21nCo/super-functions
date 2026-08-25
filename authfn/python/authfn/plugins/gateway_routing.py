@@ -528,9 +528,11 @@ async def move_identity_placement(
     )
     if not fenced.get("updated"):
         raise RegionMismatchError("Identity placement changed during migration")
+    target_resume_started = False
     try:
         for callback in [quiesce_source, drain_source, copy_to_target, validate_target, warm_target]:
             await _maybe_await(callback())
+        target_resume_started = True
         await _maybe_await(resume_target())
         active = IdentityPlacement(
             identity_key=identity_key,
@@ -549,6 +551,8 @@ async def move_identity_placement(
             raise RegionMismatchError("Identity placement changed before activation")
         return active
     except Exception as error:
+        if target_resume_started:
+            raise
         if resume_source is None:
             raise
         await _maybe_await(resume_source())

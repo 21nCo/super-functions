@@ -290,6 +290,33 @@ async def test_multi_region_registration_updates_local_profile_and_directory() -
 
 
 @pytest.mark.asyncio
+async def test_gateway_registration_bypasses_legacy_directory() -> None:
+    db = MockDatabaseAdapter()
+    directory = Directory()
+    plugin_config = create_plugin_config(directory)
+    plugin_config.routing = CanonicalRoutingConfig(
+        mode="gateway",
+        public_authority="https://account.example.com",
+        cell_region_id="us-east-1",
+    )
+    service = MultiRegionService(
+        AuthFnConfig(database=db, namespace="authfn", runtime=RuntimeResolver()),
+        plugin_config,
+    )
+
+    registered = await service.register_user(
+        user_id="user_gateway",
+        primary_email="gateway@example.com",
+        request=Request("https://us.account.example.com/auth/sign-up/password"),
+    )
+
+    assert registered is not None
+    assert registered["regionId"] == "us-east-1"
+    assert directory.register_calls == []
+    assert db.storage["region_profiles"][0]["userId"] == "user_gateway"
+
+
+@pytest.mark.asyncio
 async def test_canonical_gateway_retries_stale_placement_before_side_effects() -> None:
     fixed_now = time.time()
     directory = InMemoryIdentityPlacementDirectory(
@@ -721,3 +748,56 @@ async def test_move_does_not_publish_source_when_source_resume_fails() -> None:
     placement = await directory.get("person:ada")
     assert placement is not None
     assert (placement.state, placement.epoch) == ("moving", 8)
+
+
+@pytest.mark.asyncio
+async def test_move_keeps_placement_fenced_when_activation_cas_fails() -> None:
+    class ActivationRaceDirectory(InMemoryIdentityPlacementDirectory):
+        async def compare_and_set(
+            self,
+            *,
+            identity_key: str,
+            expected_epoch: int,
+            expected_state: str,
+            placement: IdentityPlacement,
+        ) -> Dict[str, Any]:
+            if expected_state == "moving":
+                return {"updated": False, "existing": await self.get(identity_key)}
+            return await super().compare_and_set(
+                identity_key=identity_key,
+                expected_epoch=expected_epoch,
+                expected_state=expected_state,
+                placement=placement,
+            )
+
+    directory = ActivationRaceDirectory(
+        [IdentityPlacement("person:ada", "us-east-1", 11, updated_at="2026-08-23T00:00:00Z")]
+    )
+    source_resumes = 0
+
+    async def ok() -> None:
+        return None
+
+    async def resume_source() -> None:
+        nonlocal source_resumes
+        source_resumes += 1
+
+    with pytest.raises(RegionMismatchError, match="changed before activation"):
+        await move_identity_placement(
+            directory,
+            identity_key="person:ada",
+            source_region_id="us-east-1",
+            target_region_id="eu-west-1",
+            quiesce_source=ok,
+            drain_source=ok,
+            copy_to_target=ok,
+            validate_target=ok,
+            warm_target=ok,
+            resume_target=ok,
+            resume_source=resume_source,
+        )
+
+    placement = await directory.get("person:ada")
+    assert placement is not None
+    assert (placement.state, placement.epoch) == ("moving", 12)
+    assert source_resumes == 0

@@ -169,6 +169,38 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     });
   });
 
+  it('surfaces deletion-fence restoration failures for durable repair', async () => {
+    const backing = createInMemoryAuthFnPlacementDirectory([{
+      identityKey: 'email:ada@example.com',
+      regionId: 'eu-west-1',
+      epoch: 3,
+      state: 'active',
+      updatedAt: '2026-08-24T00:00:00.000Z'
+    }]);
+    const directory = {
+      get: (identityKey: string) => backing.get(identityKey),
+      putIfAbsent: (placement: Parameters<typeof backing.putIfAbsent>[0]) =>
+        backing.putIfAbsent(placement),
+      compareAndSet: (input: Parameters<typeof backing.compareAndSet>[0]) => {
+        if (input.expectedState === 'deleting') {
+          throw new Error('placement directory unavailable');
+        }
+        return backing.compareAndSet(input);
+      }
+    };
+    const { config } = gatewayRuntime(directory, {
+      deleteMany: async () => { throw new Error('database unavailable'); }
+    } as never);
+
+    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+      user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
+    })).rejects.toThrow('multiRegion.afterAccountDeleteFailure aborted');
+    await expect(backing.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'deleting',
+      epoch: 4
+    });
+  });
+
   it('fences a gateway-verified account identity even without a primary email', async () => {
     const { directory, response } = await deleteThroughGateway();
 
@@ -190,6 +222,20 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
       state: 'active',
       epoch: 7
+    });
+  });
+
+  it('uses the target identity rather than the administrator assertion for delegated deletion', async () => {
+    const { directory, response } = await deleteThroughGateway('ada@example.com', 'admin_1');
+
+    expect(response.status).toBe(200);
+    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+      state: 'tombstoned',
+      epoch: 9
+    });
+    await expect(directory.get('person:session-handle')).resolves.toMatchObject({
+      state: 'active',
+      epoch: 1
     });
   });
 
@@ -271,7 +317,7 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
   });
 });
 
-async function deleteThroughGateway(primaryEmail?: string) {
+async function deleteThroughGateway(primaryEmail?: string, actorId?: string) {
   const directory = createInMemoryAuthFnPlacementDirectory([{
     identityKey: 'person:session-handle',
     regionId: 'us-east-1',
@@ -330,7 +376,8 @@ async function deleteThroughGateway(primaryEmail?: string) {
     dispatch: (_target, request) => middleware(request, {} as never, async () => {
       await deleteAccountForUser(config, composePluginHooks(config), {
         user: { id: 'user_1', primaryEmail } as never,
-        request
+        request,
+        actorId
       });
       return Response.json({ deleted: true });
     })
