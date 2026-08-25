@@ -100,7 +100,19 @@ class MultiRegionService:
         runtime: Optional[AuthFnRuntimeResolution] = None,
     ) -> Optional[Dict[str, Any]]:
         resolved_runtime = runtime or self.resolve_runtime(request or _default_request())
-        region = self._resolve_region(request or _default_request(), resolved_runtime)
+        routing = self.plugin_config.routing
+        region = None
+        if routing and routing.mode == "gateway" and routing.cell_region_id:
+            region = next(
+                (
+                    candidate
+                    for candidate in self.plugin_config.regions
+                    if candidate.region_id == routing.cell_region_id
+                ),
+                None,
+            )
+        else:
+            region = self._resolve_region(request or _default_request(), resolved_runtime)
         region_id = (region.region_id if region else resolved_runtime.region_id) or self.plugin_config.default_region_id
         authority = (region.authority if region else resolved_runtime.base_url) if resolved_runtime.base_url else None
         if not region_id or not authority:

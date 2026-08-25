@@ -150,17 +150,24 @@ export async function deleteAccountForUser(
     counts.sessions = await deleteMany(config, 'sessions', 'userId', user.id);
     counts.users = await deleteMany(config, 'users', 'id', user.id);
   } catch (error) {
-    await hooks.afterAccountDeleteFailure?.({
-      config,
-      request: input.request,
-      session: input.session,
-      actorId
-    }, {
-      userId: user.id,
-      primaryEmail: user.primaryEmail,
-      sessionId: input.session?.id,
-      error
-    });
+    try {
+      await hooks.afterAccountDeleteFailure?.({
+        config,
+        request: input.request,
+        session: input.session,
+        actorId
+      }, {
+        userId: user.id,
+        primaryEmail: user.primaryEmail,
+        sessionId: input.session?.id,
+        error
+      });
+    } catch (hookError) {
+      if (hookError instanceof Error && hookError.cause === undefined) {
+        hookError.cause = error;
+      }
+      throw hookError;
+    }
     throw error;
   }
 

@@ -83,9 +83,12 @@ export function authFnMultiRegionPlugin(
       if (!pluginConfig.routing.publicAuthority || !pluginConfig.routing.placementDirectory) {
         throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority and placementDirectory');
       }
-      if (!pluginConfig.routing.identityKeyForIdentifier) {
+      if (
+        !pluginConfig.routing.identityKeyForIdentifier
+        || !pluginConfig.routing.identityKeyForUserId
+      ) {
         throw new AuthFnConfigError(
-          'Gateway-mode multi-region AuthFn requires identityKeyForIdentifier for placement tombstones'
+          'Gateway-mode multi-region AuthFn requires identityKeyForIdentifier and identityKeyForUserId for placement tombstones'
         );
       }
       if (pluginConfig.routing.cell && !pluginConfig.routing.cell.replayStore) {
@@ -163,7 +166,7 @@ export function authFnMultiRegionPlugin(
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return input;
         const routing = pluginConfig.routing;
-        const identityKey = deletionIdentityKey(
+        const identityKey = await deletionIdentityKey(
           ctx.request,
           ctx.actorId,
           readOptionalString(input.userId),
@@ -189,7 +192,7 @@ export function authFnMultiRegionPlugin(
 
         if (pluginConfig.routing?.mode === 'gateway') {
           const routing = pluginConfig.routing;
-          const identityKey = deletionIdentityKey(
+          const identityKey = await deletionIdentityKey(
             ctx.request,
             ctx.actorId,
             result.userId,
@@ -218,7 +221,7 @@ export function authFnMultiRegionPlugin(
         const pluginConfig = getMultiRegionPluginConfig(authConfig) ?? {};
         if (pluginConfig.routing?.mode !== 'gateway') return;
         const routing = pluginConfig.routing;
-        const identityKey = deletionIdentityKey(
+        const identityKey = await deletionIdentityKey(
           ctx.request,
           ctx.actorId,
           failure.userId,
@@ -394,19 +397,25 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function deletionIdentityKey(
+async function deletionIdentityKey(
   request: Request | undefined,
   actorId: string | undefined,
   targetUserId: string | undefined,
   primaryEmail: string | undefined,
   routing: Extract<MultiRegionPluginRuntimeConfig['routing'], { mode: 'gateway' }>
-): string | null {
+): Promise<string | null> {
   const delegatedDelete = Boolean(actorId && targetUserId && actorId !== targetUserId);
+  if (delegatedDelete && targetUserId) {
+    return readOptionalString(await routing.identityKeyForUserId(targetUserId)) ?? null;
+  }
   if (!delegatedDelete) {
     const verifiedIdentityKey = authFnVerifiedRoutingIdentityKey(request);
     if (verifiedIdentityKey) return verifiedIdentityKey;
   }
-  return primaryEmail
-    ? routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail))
+  if (primaryEmail) {
+    return routing.identityKeyForIdentifier(normalizeIdentifier(primaryEmail));
+  }
+  return targetUserId
+    ? readOptionalString(await routing.identityKeyForUserId(targetUserId)) ?? null
     : null;
 }

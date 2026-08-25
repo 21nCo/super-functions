@@ -21,7 +21,8 @@ function gatewayRuntime(
       mode: 'gateway',
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
-      identityKeyForIdentifier: (identifier) => `email:${identifier}`
+      identityKeyForIdentifier: (identifier) => `email:${identifier}`,
+      identityKeyForUserId: (userId) => `user:${userId}`
     }
   });
   const config = {
@@ -44,6 +45,7 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
         publicAuthority: 'https://account.example.com',
         placementDirectory: directory,
         identityKeyForIdentifier: (identifier) => `email:${identifier}`,
+        identityKeyForUserId: (userId) => `user:${userId}`,
         cell: {
           regionId: 'eu-west-1',
           audience: 'cell:eu-west-1',
@@ -68,6 +70,7 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
         publicAuthority: 'https://account.example.com',
         placementDirectory: directory,
         identityKeyForIdentifier: (identifier) => `email:${identifier}`,
+        identityKeyForUserId: (userId) => `user:${userId}`,
         cell: {
           regionId: 'eu-west-1',
           audience: 'cell:eu-west-1',
@@ -192,9 +195,12 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
       deleteMany: async () => { throw new Error('database unavailable'); }
     } as never);
 
-    await expect(deleteAccountForUser(config, composePluginHooks(config), {
+    const failure = await deleteAccountForUser(config, composePluginHooks(config), {
       user: { id: 'user_1', primaryEmail: 'ada@example.com' } as never
-    })).rejects.toThrow('multiRegion.afterAccountDeleteFailure aborted');
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('multiRegion.afterAccountDeleteFailure aborted');
+    expect((failure as Error).cause).toMatchObject({ message: 'database unavailable' });
     await expect(backing.get('email:ada@example.com')).resolves.toMatchObject({
       state: 'deleting',
       epoch: 4
@@ -225,11 +231,11 @@ describe('authFnMultiRegionPlugin gateway mode', () => {
     });
   });
 
-  it('uses the target identity rather than the administrator assertion for delegated deletion', async () => {
-    const { directory, response } = await deleteThroughGateway('ada@example.com', 'admin_1');
+  it('uses the target user placement key for delegated deletion without an email', async () => {
+    const { directory, response } = await deleteThroughGateway(undefined, 'admin_1');
 
     expect(response.status).toBe(200);
-    await expect(directory.get('email:ada@example.com')).resolves.toMatchObject({
+    await expect(directory.get('person:target-handle')).resolves.toMatchObject({
       state: 'tombstoned',
       epoch: 9
     });
@@ -325,6 +331,12 @@ async function deleteThroughGateway(primaryEmail?: string, actorId?: string) {
     state: 'active',
     updatedAt: '2026-08-24T00:00:00.000Z'
   }, {
+    identityKey: 'person:target-handle',
+    regionId: 'us-east-1',
+    epoch: 7,
+    state: 'active',
+    updatedAt: '2026-08-24T00:00:00.000Z'
+  }, {
     identityKey: 'email:ada@example.com',
     regionId: 'us-east-1',
     epoch: 7,
@@ -342,6 +354,9 @@ async function deleteThroughGateway(primaryEmail?: string, actorId?: string) {
     publicAuthority: 'https://account.example.com',
     placementDirectory: directory,
     identityKeyForIdentifier: (identifier: string) => `email:${identifier}`,
+    identityKeyForUserId: async (userId: string) => userId === 'user_1'
+      ? 'person:target-handle'
+      : `user:${userId}`,
     cell: {
       regionId: 'us-east-1',
       audience: 'cell:us-east-1',

@@ -187,6 +187,7 @@ export interface AuthFnDirectRoutingConfig extends AuthFnCanonicalRoutingBase {
   mode: 'direct';
   placementDirectory?: never;
   identityKeyForIdentifier?: never;
+  identityKeyForUserId?: never;
   cell?: never;
 }
 
@@ -197,6 +198,8 @@ export interface AuthFnGatewayRoutingConfig extends AuthFnCanonicalRoutingBase {
   placementDirectory: AuthFnIdentityPlacementDirectoryAdapter;
   /** Maps normalized public identifiers to the same stable key used by the gateway. */
   identityKeyForIdentifier: (identifier: string) => string;
+  /** Resolves persisted user IDs to the exact stable placement key used by the gateway. */
+  identityKeyForUserId: (userId: string) => string | Promise<string>;
   /** Required by a regional cell to validate gateway assertions. */
   cell?: {
     regionId: string;

@@ -307,11 +307,12 @@ async def test_gateway_registration_bypasses_legacy_directory() -> None:
     registered = await service.register_user(
         user_id="user_gateway",
         primary_email="gateway@example.com",
-        request=Request("https://us.account.example.com/auth/sign-up/password"),
+        request=Request("https://account.example.com/auth/sign-up/password"),
     )
 
     assert registered is not None
     assert registered["regionId"] == "us-east-1"
+    assert registered["authority"] == "https://us.account.example.com"
     assert directory.register_calls == []
     assert db.storage["region_profiles"][0]["userId"] == "user_gateway"
 

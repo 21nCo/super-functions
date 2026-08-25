@@ -86,6 +86,7 @@ Mount the emitted routes through the shared adapters:
 - `POST /auth/2fa/disable`
 - `POST /auth/regions/lookup`
 - `GET /auth/environment`
+- `GET /auth/runtime` (compatibility alias for `/auth/environment`)
 
 ## OpenAPI
 

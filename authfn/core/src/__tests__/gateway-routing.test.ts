@@ -9,6 +9,7 @@ import {
   createInMemoryAuthFnPlacementDirectory,
   createInMemoryAuthFnRoutingReplayStore,
   createStoreBackedAuthFnPlacementDirectory,
+  fenceAuthFnIdentityDeletion,
   moveAuthFnIdentityPlacement
 } from '../core/gateway-routing.js';
 import type {
@@ -629,6 +630,23 @@ describe('AuthFn route classification', () => {
 });
 
 describe('AuthFn canonical runtime', () => {
+  it('reuses an existing deletion fence when account deletion is retried', async () => {
+    const directory = createInMemoryAuthFnPlacementDirectory([{
+      ...placement('person:ada', 'us-east-1', 4),
+      state: 'deleting'
+    }]);
+
+    await expect(fenceAuthFnIdentityDeletion(directory, 'person:ada')).resolves.toMatchObject({
+      identityKey: 'person:ada',
+      epoch: 4,
+      state: 'deleting'
+    });
+    await expect(directory.get('person:ada')).resolves.toMatchObject({
+      epoch: 4,
+      state: 'deleting'
+    });
+  });
+
   it('allows only global routes in a gateway-only AuthFn runtime', async () => {
     const middleware = createAuthFnCellPlacementMiddleware(
       { basePath: '/auth' },
@@ -637,7 +655,8 @@ describe('AuthFn canonical runtime', () => {
           mode: 'gateway',
           publicAuthority: 'https://account.example.com',
           placementDirectory: createInMemoryAuthFnPlacementDirectory(),
-          identityKeyForIdentifier: (identifier) => identifier
+          identityKeyForIdentifier: (identifier) => identifier,
+          identityKeyForUserId: (userId) => userId
         }
       }
     );
@@ -692,6 +711,7 @@ describe('AuthFn canonical runtime', () => {
         canonicalOAuth: { google: { clientId: 'canonical-google' } },
         placementDirectory: directory,
         identityKeyForIdentifier: (identifier) => identifier,
+        identityKeyForUserId: (userId) => userId,
         cell: {
           regionId: 'eu-west-1',
           audience: 'cell:eu-west-1',
@@ -759,6 +779,7 @@ function cellPluginConfig(
       publicAuthority: 'https://account.example.com',
       placementDirectory: directory,
       identityKeyForIdentifier: (identifier) => identifier,
+      identityKeyForUserId: (userId) => userId,
       cell: {
         regionId,
         audience: `cell:${regionId}`,

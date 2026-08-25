@@ -741,6 +741,7 @@ export async function fenceAuthFnIdentityDeletion(
   now: () => Date = () => new Date()
 ): Promise<AuthFnIdentityPlacement> {
   const current = await directory.get(identityKey);
+  if (current?.state === 'deleting') return current;
   if (!current || current.state !== 'active') {
     throw new AuthFnRegionMismatchError('Identity placement is not active before account deletion');
   }
