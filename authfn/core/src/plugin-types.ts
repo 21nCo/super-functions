@@ -122,6 +122,98 @@ export interface AuthFnRegionLookupRecord {
   updatedAt: Date | string;
 }
 
+export type AuthFnIdentityPlacementState = 'active' | 'moving' | 'deleting' | 'tombstoned';
+
+/**
+ * Canonical ownership record for an AuthFn identity. The directory owns only
+ * placement metadata; cell destinations remain private to the cell registry.
+ */
+export interface AuthFnIdentityPlacement {
+  identityKey: string;
+  regionId: string;
+  epoch: number;
+  state: AuthFnIdentityPlacementState;
+  movingToRegionId?: string;
+  previousRegionId?: string;
+  updatedAt: Date | string;
+}
+
+export interface AuthFnIdentityPlacementDirectoryAdapter {
+  /** Strongly consistent with every successful claim and epoch transition. */
+  get(identityKey: string): Promise<AuthFnIdentityPlacement | null>;
+  /** Globally atomic across every gateway writer for the same identity key. */
+  putIfAbsent(placement: AuthFnIdentityPlacement): Promise<{
+    inserted: boolean;
+    existing?: AuthFnIdentityPlacement;
+  }>;
+  /** Globally atomic across every writer and fenced by both epoch and state. */
+  compareAndSet(input: {
+    identityKey: string;
+    expectedEpoch: number;
+    expectedState: AuthFnIdentityPlacementState;
+    placement: AuthFnIdentityPlacement;
+  }): Promise<{
+    updated: boolean;
+    existing?: AuthFnIdentityPlacement;
+  }>;
+}
+
+export interface AuthFnRoutingSigningKey {
+  keyId: string;
+  secret: string | Uint8Array;
+}
+
+export interface AuthFnRoutingKeyring {
+  active: AuthFnRoutingSigningKey;
+  /** Verification-only keys retained during rotation. */
+  previous?: AuthFnRoutingSigningKey[];
+}
+
+export interface AuthFnRoutingReplayStore {
+  /** Atomically claims a nonce until its expiry. False means replay. */
+  claim(nonce: string, expiresAt: number): Promise<boolean>;
+}
+
+interface AuthFnCanonicalRoutingBase {
+  /** Stable public issuer/base URL used for discovery, OAuth, and cookies. */
+  publicAuthority?: string;
+  /** Canonical cookie policy. In gateway mode this must not vary by cell. */
+  canonicalCookie?: Partial<AuthFnCookieConfig>;
+  /** Canonical OAuth policy merged independently of the execution cell. */
+  canonicalOAuth?: AuthFnEnvironment['oauth'];
+}
+
+export interface AuthFnDirectRoutingConfig extends AuthFnCanonicalRoutingBase {
+  mode: 'direct';
+  placementDirectory?: never;
+  identityKeyForIdentifier?: never;
+  identityKeyForUserId?: never;
+  cell?: never;
+}
+
+export interface AuthFnGatewayRoutingConfig extends AuthFnCanonicalRoutingBase {
+  mode: 'gateway';
+  publicAuthority: string;
+  /** Required in gateway mode on both the gateway and regional cells. */
+  placementDirectory: AuthFnIdentityPlacementDirectoryAdapter;
+  /** Maps normalized public identifiers to the same stable key used by the gateway. */
+  identityKeyForIdentifier: (identifier: string) => string;
+  /** Resolves persisted user IDs to the exact stable placement key used by the gateway. */
+  identityKeyForUserId: (userId: string) => string | Promise<string>;
+  /** Required by a regional cell to validate gateway assertions. */
+  cell?: {
+    regionId: string;
+    audience: string;
+    keyring: AuthFnRoutingKeyring;
+    replayStore: AuthFnRoutingReplayStore;
+    clockSkewSeconds?: number;
+  };
+}
+
+export type AuthFnCanonicalRoutingConfig =
+  | AuthFnDirectRoutingConfig
+  | AuthFnGatewayRoutingConfig;
+
 export interface MultiRegionPluginConfig extends AuthFnBundledPluginConfig {
 }
 
@@ -134,6 +226,8 @@ export interface MultiRegionPluginRuntimeConfig {
   lookupStore?: ConditionalKVStoreAdapter;
   /** Observability sink for multi-region lookup, registration, and conflict events. */
   observability?: ObservabilityInput<AuthFnEvent>;
+  /** Canonical-gateway routing. Omit (or use direct) for legacy regional clients. */
+  routing?: AuthFnCanonicalRoutingConfig;
 }
 
 export type AuthFnPluginFactory<TConfig extends AuthFnBundledPluginConfig> = (

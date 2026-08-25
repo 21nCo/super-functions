@@ -105,7 +105,7 @@ interface AuthFnClient {
 
   // Multi-region
   lookupRegion(input: { identifier }): Promise<…>;
-  getRuntime(): Promise<…>;
+  getEnvironment(): Promise<…>;
 }
 ```
 

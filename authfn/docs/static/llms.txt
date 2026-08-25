@@ -39,7 +39,7 @@
 - [OpenAPI](https://authfn.superfunctions.dev/docs/core-concepts/openapi) — How authfn generates and serves an OpenAPI 3.1 document of your enabled plugin set.
 - [Plugins](https://authfn.superfunctions.dev/docs/core-concepts/plugins) — How authfn plugins compose into a single auth runtime — lifecycle, ordering, configuration, schema, and authoring custom plugins.
 - [Rate limiting](https://authfn.superfunctions.dev/docs/core-concepts/rate-limiting) — What authfn does and doesn't enforce, and how to add the limits you need.
-- [Multi-region routing](https://authfn.superfunctions.dev/docs/core-concepts/regions) — How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
+- [Multi-region routing](https://authfn.superfunctions.dev/docs/core-concepts/regions) — Direct regional authorities and canonical-gateway routing for region-pinned AuthFn identity data.
 - [Runtime resolver](https://authfn.superfunctions.dev/docs/core-concepts/runtime) — How authfn decides per-request issuer, base URL, OAuth credentials, and cookie domain — and how to take control of that decision.
 - [Security](https://authfn.superfunctions.dev/docs/core-concepts/security) — authfn's threat model, what it defends against, what it expects you to handle, and how to harden a deployment.
 - [Sessions](https://authfn.superfunctions.dev/docs/core-concepts/sessions) — How authfn issues, verifies, rotates, and revokes sessions — for cookie-based browsers and bearer-token clients alike.
@@ -85,6 +85,7 @@
 - [Adding 2FA](https://authfn.superfunctions.dev/docs/recipes/adding-2fa) — Enroll, confirm, and challenge with TOTP — the full UX.
 - [Adding a password to an OAuth or OTP account](https://authfn.superfunctions.dev/docs/recipes/adding-password) — Let an authenticated user opt in to passwords without creating a new account.
 - [Building an admin tool](https://authfn.superfunctions.dev/docs/recipes/admin-tool) — Mount @authfn/admin behind your corporate IAM and ship a UI for support.
+- [Canonical-gateway multi-region](https://authfn.superfunctions.dev/docs/recipes/canonical-gateway-multi-region) — One stable AuthFn authority, canonical identity placement, signed cell forwarding, migrations, and an operator runbook.
 - [CLI authentication](https://authfn.superfunctions.dev/docs/recipes/cli-auth) — Issue an API key from your web UI and use it from a command-line tool.
 - [Adding a custom OAuth provider (Microsoft Entra)](https://authfn.superfunctions.dev/docs/recipes/custom-oauth-provider) — Wire authfn to a provider that's not in the bundled set — Microsoft Entra here, but the pattern works for anything.
 - [Custom validation hooks](https://authfn.superfunctions.dev/docs/recipes/custom-validation) — Use beforeUserCreate / beforeSessionIssue to enforce organization-specific rules.

@@ -2229,7 +2229,7 @@ interface AuthFnErrorEnvelope {
 }
 ```
 
-Every error code is one of the values listed in [Errors](./errors). The `retryable` flag is set on errors where retry is sane (`AUTHFN_DELIVERY_FAILED`, `AUTHFN_RATE_LIMITED`, `AUTHFN_INTERNAL_ERROR`). All other codes are `retryable: false`.
+Every error code is one of the values listed in [Errors](./errors). The `retryable` flag is set on errors where retry is sane (`AUTHFN_DELIVERY_FAILED`, `AUTHFN_RATE_LIMITED`, `AUTHFN_INTERNAL_ERROR`, `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE`, `AUTHFN_PLACEMENT_MOVING`). All other codes are `retryable: false`.
 
 ## Status codes
 
@@ -2342,11 +2342,15 @@ interface AuthFnErrorEnvelope {
 | `AUTHFN_OTP_EXPIRED` | 400 | no | The OTP code is past its expiry. |
 | `AUTHFN_OTP_INVALID` | 400 | no | The OTP code is wrong. |
 | `AUTHFN_OTP_REPLAYED` | 409 | no | The OTP code was already used. |
+| `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
+| `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect may start. |
 | `AUTHFN_PLUGIN_ABORTED` | 500 | no | A plugin's `before*` hook threw / aborted. |
 | `AUTHFN_RATE_LIMITED` | 429 | yes | The request was rate-limited (by an external limiter or by an authfn-internal counter). |
 | `AUTHFN_REDIRECT_URI_DISALLOWED` | 400 | no | `returnTo` (or OAuth `redirect_uri`) is not in `allowlistedReturnTo` / `allowlistedRedirectUris`. |
 | `AUTHFN_REGION_MISMATCH` | 409 | no | This request must continue against a different region authority. The response `details.redirectTo` says where. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | The region lookup yielded no record for the given identifier. |
+| `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. A generic retry is unsafe because execution may already have started. |
 | `AUTHFN_SESSION_EXPIRED` | 401 | no | Session past `expiresAt`. |
 | `AUTHFN_SESSION_REVOKED` | 401 | no | Session has `revokedAt` set. |
 | `AUTHFN_UNAUTHENTICATED` | 401 | no | No session at all. |
@@ -2386,6 +2390,10 @@ The first-party SDKs throw a typed `AuthFnError` so you can `try`/`catch` and br
 - `AUTHFN_DELIVERY_FAILED` — the mail provider returned a transient error.
 - `AUTHFN_RATE_LIMITED` — wait and retry; the response should carry `details.retryAfterMs` if known.
 - `AUTHFN_INTERNAL_ERROR` — kernel-side glitch; safe to retry once with backoff.
+- `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` — retry after the canonical placement coordinator recovers.
+- `AUTHFN_PLACEMENT_MOVING` — retry after the fenced identity move completes or rolls back.
+
+`AUTHFN_ROUTING_CELL_UNAVAILABLE` is deliberately not retryable: an internal transport failure can happen after the cell starts executing. Retry only when a signed mismatch proves `executionStarted: false`, or when the operation has its own idempotency guarantee.
 
 Everything else is `retryable: false` — retrying without changing the input will produce the same error.
 
@@ -2399,6 +2407,8 @@ Everything else is `retryable: false` — retrying without changing the input wi
 - `AUTHFN_OAUTH_*` → sanitized provider details with secrets redacted
 - `AUTHFN_RATE_LIMITED` → `{ retryAfterMs? }`
 - `AUTHFN_CONFLICT` → `{ field?, reason? }`
+- `AUTHFN_PLACEMENT_MOVING` → `{ executionStarted: false }` when a cell rejected the request before side effects.
+- `AUTHFN_ROUTING_*` → sanitized epoch, region, or rejection context; never cell targets, identity keys, assertions, or secrets.
 
 The shapes for each `code`/`details` pair are documented per-route in the [API reference](../api).
 
@@ -2780,6 +2790,14 @@ interface AuthFnEvent {
 | `authfn.2fa.challenged` | A 2FA challenge was issued (`primaryMethod` carried). |
 | `authfn.region.lookup` | Multi-region lookup succeeded. |
 | `authfn.region.lookup.conflict` | Multi-region registration lost a race. |
+| `authfn.routing.placement_lookup` | Canonical placement was read/validated, or placement state rejected execution. |
+| `authfn.routing.placement_claimed` | A first-use placement claim won and established the canonical owner. |
+| `authfn.routing.forwarded` | The gateway dispatched to a private cell. |
+| `authfn.routing.mismatch` | A cell proved a stale routing assertion before side effects. |
+| `authfn.routing.retry` | The gateway refreshed placement and started its single retry. |
+| `authfn.routing.assertion_rejected` | A cell rejected a routing assertion before execution. |
+| `authfn.routing.directory_unavailable` | Placement storage failed closed. |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. |
 | `authfn.handoff.started` | Native handoff code created. |
 | `authfn.handoff.exchanged` | Native handoff code exchanged for a session. |
 | `authfn.handoff.failed` | Native handoff exchange failed. |
@@ -3348,14 +3366,25 @@ Every `429` response emits `authfn.rate_limited`. The event carries `metadata` w
 <!-- page:docs:core-concepts/regions.md path:/docs/core-concepts/regions -->
 # Multi-region routing
 
-> How authfn keeps a user's data pinned to a region, redirects requests to the correct authority, and handles wrong-region traffic.
+> Direct regional authorities and canonical-gateway routing for region-pinned AuthFn identity data.
 
 
 # Multi-region routing
 
-Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. The same browser may end up on either authority."*
+Multi-region authfn is the answer to: *"My EU users' data must stay in the EU. My US users' data lives in the US. How do I keep authentication correct when traffic enters through one public authority?"*
 
-Enable the **`authFnMultiRegionPlugin`** and the kernel will:
+AuthFn supports two explicit modes:
+
+| Mode | Public authority | Routing behavior | Compatibility |
+| --- | --- | --- | --- |
+| `direct` (default) | One authority per region | The client looks up a region, receives `AUTHFN_REGION_MISMATCH`, and continues on the regional authority. | Existing regional clients and deployments are unchanged. |
+| `gateway` | One canonical authority | A trusted gateway derives an identity key, reads canonical placement, and forwards internally to the owning cell. Regional topology is never returned to the client. | New deployments opt in; there is no silent fallback from gateway to direct mode. |
+
+In gateway mode the configured `publicAuthority` is always the issuer and base URL. OAuth redirect URIs, discovery metadata, cookie scope, browser origins, and native handoff return paths therefore remain stable while execution moves between cells. The selected cell still receives a private `regionId` for database and residency policy.
+
+The placement directory is deliberately separate from the existing identifier lookup projection. Its atomic record is `{ identityKey, regionId, epoch, state }`; only `active` records execute. `moving` records fence writes and `tombstoned` records fail closed. Cell destinations are opaque values returned by the cell registry and are never stored in placement or sent publicly.
+
+In direct mode, enable the **`authFnMultiRegionPlugin`** and the kernel will:
 
 1. Look up which region a user belongs to (by email or other identifier) before any sensitive operation.
 2. Apply a region-specific runtime overlay (issuer, base URL, cookie domain, OAuth credentials).
@@ -3393,14 +3422,22 @@ A row in `authfn_region_profiles`. One per user. It records the user's pinned `r
 
 ### Region lookup
 
-Either a row in your **lookup store** (e.g. a globally-replicated table that maps `email → region`), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
+Either a row in your **lookup store** (for example, a shared table that maps `email → region` and provides an atomic conditional insert through one writer/coordinator), or — when no lookup store is configured — derived by reading `authfn_users` + `authfn_region_profiles` from the local database.
 
 ## Configuring the plugin
 
 ```ts
-import { authFnMultiRegionPlugin } from '@authfn/core';
+import { authFnPlugins, authfn } from 'authfn';
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+} from '@authfn/multi-region';
 
-authFnMultiRegionPlugin({
+const app = authfn({
+  plugins: authFnPlugins(authFnMultiRegionPlugin()),
+});
+
+const environment = authFnMultiRegionEnvironment({
   defaultRegionId: 'us-east-1',
   regions: [
     {
@@ -3419,11 +3456,14 @@ authFnMultiRegionPlugin({
     },
   ],
   lookupStore,        // optional, externally-replicated lookup
-  directory,          // optional, alternative to lookupStore for managed directories
 });
+
+const server = app.createServer({ database, environment });
 ```
 
 ## How a request flows
+
+The diagram below describes `direct` mode. In `gateway` mode the browser talks only to the canonical authority; see [Canonical-gateway multi-region](../recipes/canonical-gateway-multi-region).
 
 ```mermaid
 sequenceDiagram
@@ -3457,7 +3497,7 @@ The plugin enforces region alignment at every privileged entry point that has a 
 
 ## Pinning new users
 
-When a user signs up, authfn writes a `region_profiles` row with the region the request landed on. If you need to migrate a user between regions, do it through your own admin tooling — `authFnMultiRegionPlugin` does not currently expose a "move user" route by default. (You can write one as a custom plugin or a direct DB migration.)
+When a user signs up in direct mode, authfn writes a `region_profiles` row with the region the request landed on. Gateway mode atomically claims an initial placement before the regional handler starts, so concurrent first-use requests cannot create identity state in two cells. Use `moveAuthFnIdentityPlacement` for a fenced gateway-mode move; no public move route is registered.
 
 ## Conflicts and races
 
@@ -3474,7 +3514,7 @@ Use a Redis-backed store for production; the in-memory KV store is fine for loca
 
 ## What if no lookup store is configured?
 
-Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile (e.g. a globally-replicated table). This is the simplest pattern for small multi-region deployments. For larger setups, configure a dedicated lookup store backed by a global index (DynamoDB Global Tables, Cloudflare D1 + replication, etc.).
+Without a lookup store, the kernel falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — which is fine if every region's database carries every user's region profile. For larger setups, configure a dedicated lookup store whose `setIfAbsent` operation is atomic across every writer. Replication alone, including local reads and writes against DynamoDB Global Table replicas, does not establish a globally atomic owner.
 
 ## Observability
 
@@ -3482,6 +3522,8 @@ The plugin emits:
 
 - `authfn.region.lookup` — every successful region lookup. Carries `identifier`, `regionId`, `authority`.
 - `authfn.region.lookup.conflict` — when a registration attempt loses a race.
+
+Gateway deployments can additionally emit `authfn.routing.placement_lookup`, `authfn.routing.placement_claimed`, `authfn.routing.forwarded`, `authfn.routing.mismatch`, `authfn.routing.retry`, `authfn.routing.assertion_rejected`, `authfn.routing.directory_unavailable`, and `authfn.routing.cell_unavailable`. Alert on directory/cell availability, mismatch-retry exhaustion, and assertion rejection rather than logging identity keys or assertion contents.
 
 Use these to track lookup latency, miss ratios, and conflict frequency.
 
@@ -4108,7 +4150,7 @@ A focused example that demonstrates **wrong-authority correction** across two lo
 
 ## Routes exercised
 
-- `GET /auth/runtime` (per-region runtime info — region id, authority, cookie domain).
+- `GET /auth/environment` (per-region environment — region id, issuer, base URL, cookie policy).
 - `POST /auth/regions/lookup` (the cross-region lookup).
 - `POST /auth/sign-in/password` (mismatch path on the wrong authority; success path on the right authority).
 
@@ -5901,9 +5943,13 @@ Add `authFnMultiRegionPlugin` if you need data residency, and `authFnNativeHando
 `authFnMultiRegionPlugin` is the operational backbone of authfn's data-residency story. Read [Concepts → Regions](../core-concepts/regions) first for the mental model — this page is the reference.
 
 ```ts
-import { authFnMultiRegionPlugin } from '@authfn/core';
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+} from '@authfn/multi-region';
 
-authFnMultiRegionPlugin({
+const plugin = authFnMultiRegionPlugin();
+const environment = authFnMultiRegionEnvironment({
   defaultRegionId: 'us-east-1',
   regions: [
     { regionId: 'us-east-1', authority: 'https://api.us.example.com', cookie: { domain: '.us.example.com' } },
@@ -5913,14 +5959,19 @@ authFnMultiRegionPlugin({
 });
 ```
 
+Add `plugin` to the AuthFn plugin list and pass `environment` to
+`createServer`. Routing and store settings are request-runtime configuration;
+they are intentionally separate from the plugin's schema contribution.
+
 ## Configuration
 
 ```ts
-interface MultiRegionPluginConfig {
+interface MultiRegionPluginRuntimeConfig {
   regions?: AuthFnMultiRegionRegionConfig[];
   defaultRegionId?: string;
-  lookupStore?: AuthFnRegionLookupStore;
-  directory?: AuthFnMultiRegionDirectory;          // deprecated, use lookupStore
+  lookupStore?: ConditionalKVStoreAdapter;
+  routing?: AuthFnCanonicalRoutingConfig;
+  observability?: ObservabilityInput<AuthFnEvent>;
 }
 
 interface AuthFnMultiRegionRegionConfig {
@@ -5939,20 +5990,27 @@ interface AuthFnMultiRegionRegionConfig {
 | --- | --- |
 | `defaultRegionId` | Fallback region for requests that don't match by host. |
 | `regions` | Array of region configs. Order is irrelevant. |
-| `lookupStore` | Required for production — see below. |
-| `directory` | Deprecated; behave-equivalent to `lookupStore`. |
+| `lookupStore` | Recommended when regional databases do not replicate region profiles globally. |
+| `routing` | Selects explicit `direct` or canonical `gateway` routing. Gateway mode requires a public authority, placement directory, and identity-key derivation function; cells also require a shared atomic replay store. |
+| `observability` | Optional sink for lookup-store instrumentation. |
 
 ## Lookup store
 
 ```ts
-interface AuthFnRegionLookupStore {
-  getByIdentifier(identifier: string): Promise<AuthFnRegionLookupRecord | null>;
-  putIfAbsent(record: AuthFnRegionLookupRecord): Promise<{
+interface ConditionalKVStoreAdapter {
+  get(key: string): Promise<string | null>;
+  set(input: { key: string; value: string; ttlSeconds?: number }): Promise<void>;
+  setIfAbsent(input: { key: string; value: string; ttlSeconds?: number }): Promise<{
     inserted: boolean;
-    existing?: AuthFnRegionLookupRecord;
+    existing?: string;
   }>;
-  update(record: AuthFnRegionLookupRecord): Promise<AuthFnRegionLookupRecord>;
-  deleteByIdentifier(identifier: string): Promise<void>;
+  compareAndSet?(input: {
+    key: string;
+    expected: string | null;
+    value: string;
+    ttlSeconds?: number;
+  }): Promise<{ updated: boolean; existing?: string }>;
+  delete(key: string): Promise<void>;
 }
 
 interface AuthFnRegionLookupRecord {
@@ -5966,13 +6024,23 @@ interface AuthFnRegionLookupRecord {
 }
 ```
 
-The lookup store needs to be **globally consistent** across regions. Common implementations:
+AuthFn normalizes the identifier, uses the key
+`authfn:region:<normalized-identifier>`, and serializes the lookup record as the
+string value. `setIfAbsent` must be atomic across every writer that may claim
+an identifier. Gateway placement additionally requires atomic `compareAndSet`
+for fenced epoch/state transitions. Bundled implementations are available as
+`@authfn/lookup-dynamodb` and `@authfn/lookup-cloudflare-do`; a custom
+conditional KV implementation can target another backend.
 
-- **DynamoDB Global Tables** (AWS): one global table, `identifier` as partition key.
-- **Cloudflare D1 + Replicas** or **Hyperdrive + Postgres** with a leader-followers topology.
-- **Redis with cross-region streams** (eventual consistency; pair with retries).
+Common implementations:
 
-`putIfAbsent` is what enforces region pinning under contention. Implement it as a conditional insert (`INSERT ... ON CONFLICT DO NOTHING ... RETURNING`).
+- **DynamoDB** (AWS): use the bundled composite `PK`/`SK` layout and route canonical placement through one declared writer region. Global Table replicas may be recovery/shadow-read replicas, not independent placement writers.
+- **Cloudflare Durable Objects**: use a key-named object to serialize claims and placement CAS operations.
+- **Postgres or Redis-backed services**: expose one coordinator/leader for the atomic conditional operations; replication or streams alone are not an atomic ownership primitive.
+
+`setIfAbsent` is what enforces region pinning under contention. Implement it as
+an atomic conditional insert (`attribute_not_exists`, `INSERT ... ON CONFLICT
+DO NOTHING ... RETURNING`, or the platform equivalent).
 
 If you don't supply a lookup store, the plugin falls back to reading `authfn_users` + `authfn_region_profiles` from the *local* database — fine for setups where every region's database carries every user's region profile (globally-replicated table). Less suitable for setups where each region's DB only holds that region's users.
 
@@ -5981,7 +6049,7 @@ If you don't supply a lookup store, the plugin falls back to reading `authfn_use
 | Method | Path | Operation ID | Notes |
 | --- | --- | --- | --- |
 | `POST` | `/auth/regions/lookup` | `lookupRegion` | Look up the right region for an identifier. Used by the client SDK for pre-routing. |
-| `GET` | `/auth/runtime` | `getRuntime` | Returns the runtime resolution for the current request: `{ regionId, authority, baseUrl, … }`. |
+| `GET` | `/auth/environment` | `getEnvironment` | Returns the resolved request environment: `{ regionId, issuer, baseUrl, … }`. |
 
 ## Schema
 
@@ -6003,22 +6071,24 @@ The matched region's overlays (`cookie`, `oauth`, `issuer`, `baseUrl`) are appli
 
 ## Caching
 
-When a `cacheStore` is configured on the kernel (`config.cacheStore`), region lookups are cached:
+When `stores.kv` is configured on the server, region lookups are cached:
 
-- Hits: 5 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
+- Hits: 15 minutes (`AUTHFN_CACHE_TTL_SECONDS.regionHit`).
 - Misses: 1 minute (`AUTHFN_CACHE_TTL_SECONDS.regionMiss`).
 
-Use a Redis-backed `cacheStore` in production to share caches across replicas.
+Use a shared KV store in production to share caches across replicas.
 
 ## Conflicts and races
 
 If two regions both attempt to register the same email at the same time:
 
-1. Both call `lookupStore.putIfAbsent(record)`.
+1. Both call `lookupStore.setIfAbsent(...)` for the normalized identifier key.
 2. The first wins (`inserted: true`).
 3. The second loses (`inserted: false`, `existing: <winner>`). The plugin throws `AUTHFN_REGION_MISMATCH` with `redirectTo` pointing at the winner's authority and emits `authfn.region.lookup.conflict`.
 
-The losing region also rolls back any local writes it had begun. Implement `lookupStore.putIfAbsent` *before* you do any irreversible write in your custom flows.
+The losing region also rolls back any local writes it had begun. Implement
+`lookupStore.setIfAbsent` *before* you do any irreversible write in custom
+flows.
 
 ## Errors
 
@@ -8030,6 +8100,176 @@ Every admin action emits an `authfn.account.deleted` event with the `actorId` yo
 
 ---
 
+<!-- page:docs:recipes/canonical-gateway-multi-region.md path:/docs/recipes/canonical-gateway-multi-region -->
+# Canonical-gateway multi-region
+
+> One stable AuthFn authority, canonical identity placement, signed cell forwarding, migrations, and an operator runbook.
+
+
+# Canonical-gateway multi-region
+
+Use this mode when every browser, OAuth provider, native app, and API client must see one authority such as `https://account.example.com`, while identity state remains pinned to a regional cell.
+
+## Trust boundaries
+
+The gateway, placement directory, cell registry, dispatcher, and signing-key resolver are server-side infrastructure. Never accept an identity key, region, epoch, cell URL, or internal routing header as a trusted client hint.
+
+The gateway:
+
+1. Classifies the route and derives a stable identity key from trusted request material. Email/password and OTP flows may use a normalized, keyed email digest; session, refresh, revoke, API-key, OAuth-callback, handoff, deletion, and email-change flows should use a verified opaque routing handle.
+2. Reads or atomically claims `{ identityKey, regionId, epoch, state }` in the placement directory.
+3. Resolves the region through a private cell registry. The registry owns the destination handle; placement never contains a URL or service binding.
+4. Removes every incoming `x-authfn-routing-*` header and creates a short-lived HMAC assertion bound to identity, region, epoch, request id, method, path and query, audience, nonce, and request-body digest.
+5. Dispatches internally. A cell verifies the assertion, atomically claims its nonce, and rereads placement before rate limiting, authentication hooks, database reads/writes, OTP delivery, token issuance, or any other auth side effect.
+
+The cell returns a signed mismatch only when it can prove `executionStarted: false`. The gateway refreshes placement and retries exactly once. Other failures, an unsigned mismatch, a second mismatch, or any response after execution began are returned without retry.
+
+## TypeScript setup
+
+```ts
+import {
+  authFnMultiRegionEnvironment,
+  authFnMultiRegionPlugin,
+  createAuthFnCanonicalGateway,
+  createInMemoryAuthFnRoutingReplayStore,
+} from '@authfn/multi-region';
+import { authFnPlugins, authfn } from 'authfn';
+import { createDynamoDbIdentityPlacementDirectory } from '@authfn/lookup-dynamodb';
+import type { Adapter } from '@superfunctions/db';
+
+const placementWriterRegion = process.env.AUTHFN_PLACEMENT_WRITER_REGION!;
+const placementDirectory = createDynamoDbIdentityPlacementDirectory({
+  tableName: process.env.AUTHFN_PLACEMENT_TABLE!,
+  consistencyModel: 'single-writer-strong',
+  writerRegion: placementWriterRegion,
+  region: placementWriterRegion,
+});
+
+const keyring = {
+  active: {
+    keyId: process.env.AUTHFN_ROUTING_KEY_ID!,
+    secret: await secrets.resolve(process.env.AUTHFN_ROUTING_KEY_ID!),
+  },
+  previous: await secrets.resolveVerificationKeys(),
+};
+
+// Configure this independently in each regional cell.
+const environment = authFnMultiRegionEnvironment({
+  regions,
+  routing: {
+    mode: 'gateway',
+    publicAuthority: 'https://account.example.com',
+    canonicalCookie: { prefix: 'authfn', domain: '.example.com', sameSite: 'lax' },
+    canonicalOAuth: oauthConfig,
+    placementDirectory,
+    identityKeyForIdentifier: identityKeys.fromEmail,
+    identityKeyForUserId: identityKeys.fromUserId,
+    cell: {
+      regionId: process.env.REGION_ID!,
+      audience: `authfn-cell:${process.env.REGION_ID}`,
+      keyring,
+      replayStore: createInMemoryAuthFnRoutingReplayStore(), // use an atomic shared store per cell in production
+    },
+  },
+});
+
+export function createRegionalCell(database: Adapter) {
+  return authfn({
+    plugins: authFnPlugins(authFnMultiRegionPlugin()),
+  }).createServer({ database, environment });
+}
+
+const gateway = createAuthFnCanonicalGateway({
+  publicAuthority: 'https://account.example.com',
+  basePath: '/auth',
+  placementDirectory,
+  keyring,
+  resolveIdentity: resolveTrustedIdentity, // set allowInitialPlacement only for approved first-use routes
+  selectInitialRegion: placementPolicy.select,
+  resolveCell: cellRegistry.resolve, // { regionId, audience, target: opaqueBinding }
+  dispatch: (target, request) => internalTransport.fetch(target, request),
+  handleGlobal: globalAuthMetadata.handle,
+});
+```
+
+The internal dispatcher must preserve cookies, CSRF headers, and the signed `x-request-id`. Normalize `Forwarded`, `X-Forwarded-For`, and equivalent client-IP headers at the canonical ingress according to one documented trusted-proxy policy; do not accept an arbitrary client-provided forwarding chain.
+
+An AuthFn runtime configured for gateway mode without `routing.cell` is gateway-only: discovery and the non-enumerating lookup route may execute there, while every identity-scoped route fails closed. Regional runtimes add `routing.cell` and are reachable only through a valid signed assertion.
+
+`createCloudflareIdentityPlacementDirectory` provides the same placement contract over a key-named Durable Object. The DynamoDB convenience adapter deliberately requires `consistencyModel: 'single-writer-strong'` and forces consistent reads: every cell and gateway must address the same writer region. Local DynamoDB Global Table replicas are eventually consistent with one another and do not, by themselves, provide globally atomic first claims or epoch moves. Global Tables may replicate the directory for recovery or shadow reads, but routing decisions must not use a local replica until a stronger coordinator establishes ownership. `createStoreBackedAuthFnPlacementDirectory` composes placement over another `ConditionalKVStoreAdapter` only when that adapter implements atomic `compareAndSet` across every writer.
+
+Python exposes the equivalent `CanonicalGateway`, `CanonicalRoutingConfig`, `InMemoryIdentityPlacementDirectory`, `InMemoryRoutingReplayStore`, `RoutingKeyring`, `create_cell_routing_middleware`, and `move_identity_placement` contracts from `authfn.plugins.gateway_routing`.
+
+## Route ownership matrix
+
+| Route family | Gateway action | Identity source | Cell behavior |
+| --- | --- | --- | --- |
+| Discovery and `/regions/lookup` | Terminate globally with the canonical authority and no existence/region signal. | None | Not consulted. |
+| Password and OTP start/verify/reset | Route. Atomically claim on first use if policy allows. | Normalized keyed identifier derived from the body. | Validate before lookup, challenge creation, delivery, verification, or session issue. |
+| Session read/list/revoke/sign-out | Route. | Verified opaque session routing handle. | Validate before session reads, last-seen updates, or revocation. |
+| API-key create/list/revoke/authenticate | Route. | Verified session handle or API-key routing prefix/MAC. | Validate before key lookup or mutation. |
+| Social OAuth start, GET/POST callback, disconnect, and native Apple start/complete | Route. | Verified session, OAuth state, or native handshake routing handle. | Keep issuer and callback canonical; validate before state consumption or identity mutation. |
+| Native/web handoff | Route. | Signed handoff routing handle. | Validate before code creation or exchange. |
+| Account deletion and email change | Route. | Verified session handle for self-service; `identityKeyForUserId` for an administrator's target, independent of whether the admin authorizer supplies an `actorId`. | Validate routing before mutation. Account deletion CAS-fences `active` to durable `deleting` before the cascade, restores `active` if the cascade fails, and publishes `tombstoned` only after success. A second deletion attempt is rejected while that fence exists, preventing concurrent cascades from restoring or finalizing each other's state. After inspecting the cascade outcome, an operator may repair a stranded fence with `restoreAuthFnIdentityDeletion` or `finalizeAuthFnIdentityDeletion`; email-change flows must update placement with an application-level transaction/outbox protocol. |
+
+Do not fall back to a default cell for an established identity whose placement is absent. Initial placement is only for explicitly classified first-use flows. Public lookup responses must be identical for present and absent identities.
+
+## Migration and backfill
+
+Backfill existing users by deriving the same stable identity key used at the gateway and calling `putIfAbsent` with the authoritative current region at epoch 1. Treat a conflicting existing record as an incident; never overwrite it with an unconditional write.
+
+`moveAuthFnIdentityPlacement` performs the minimum fenced sequence:
+
+1. CAS `active(source, epoch N)` to `moving(source → target, N+1)`.
+2. Quiesce source writes and drain in-flight auth/delivery work.
+3. Copy identity state and dependent credentials/tokens, validate it, and warm the target.
+4. Resume target capacity and complete readiness checks while public identity traffic remains fenced by `moving`, then CAS to `active(target, N+2)`. Publishing `active` before the target is fully ready would expose an unroutable owner.
+5. Before activation, failures leave placement fenced as `moving` unless a source recovery callback is supplied. With source recovery, resume the source first and only then CAS to `active(source, N+2)`; a failed source resume must never publish an active source. After target activation, ownership remains at the target.
+
+Invalidate gateway placement caches after every claim, move, tombstone, and operator repair. Old assertions are rejected by epoch even when their TTL has not elapsed.
+
+## Availability and fallback
+
+- Placement directory unavailable: fail closed with `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE`; do not guess a region.
+- Placement `moving`: return `AUTHFN_PLACEMENT_MOVING`; do not start auth side effects.
+- Placement `deleting`: return `AUTHFN_PLACEMENT_MOVING`; the durable deletion fence must be finalized or restored before identity traffic resumes.
+- Missing/tombstoned established placement: fail closed. Do not enumerate the identity through the public lookup route.
+- Cell missing or internal dispatch failure: `AUTHFN_ROUTING_CELL_UNAVAILABLE`.
+- Gateway outage: restore the canonical gateway. Do not expose regional authorities as an automatic fallback because that changes issuer, callback, cookie, and topology contracts.
+- Direct mode remains a separately configured compatibility mode for existing regional clients.
+
+## Key rotation and secret handling
+
+Keep routing keys in a KMS/HSM-backed secret resolver. Never place raw keys, assertions, identity keys, OTPs, cookies, authorization codes, or token bodies in logs. Rotation is add → sign → retire:
+
+1. Add the new key to every cell's verification keyring.
+2. Switch the gateway's `active.keyId` and signer.
+3. Wait longer than assertion TTL plus clock skew and deployment propagation.
+4. Remove the retired verification key.
+
+Every cell uses an atomic replay store. The in-memory implementation is for tests or a single process; multi-instance cells need shared nonce claims with TTL.
+
+## SLOs, dashboards, and drills
+
+Track placement lookup latency/availability, claim/CAS conflicts, cache hit rate, dispatch latency by cell, signed mismatch rate, retry success/exhaustion, assertion rejection reason, replay rejection, moving duration, and cell-unavailable errors. Suggested starting objectives are 99.99% directory availability, p99 placement lookup under 50 ms, and fewer than 0.1% routed requests requiring the stale-placement retry; tune these to your infrastructure.
+
+Run these drills before rollout and quarterly afterward:
+
+- deny directory reads and confirm no regional handler or delivery provider runs;
+- remove a cell binding and confirm the error contains no internal target;
+- replay and body-modify a captured assertion and confirm rejection;
+- move an identity during OTP, session refresh, OAuth callback, and handoff flows;
+- fail each migration callback before activation and verify placement stays fenced unless source recovery succeeds;
+- fail target resume and source resume independently, and verify neither region is published active before it is ready;
+- rotate the signing key with mixed-version gateway/cell deployments;
+- verify discovery issuer, OAuth redirect URI, cookie names/domain, browser origins, and native return paths remain canonical before and after a move.
+
+## Rollout
+
+Start with shadow placement reads and mismatch metrics, backfill deterministically, enable signed validation in cells, then send a small canonical-gateway cohort. Increase traffic only after retry exhaustion, assertion rejection, public topology leakage, and issuer/cookie/callback invariants are clean. Roll back gateway traffic routing without deleting placement or disabling cell validation; a later retry can resume from the same epochs.
+
+---
+
 <!-- page:docs:recipes/cli-auth.md path:/docs/recipes/cli-auth -->
 # CLI authentication
 
@@ -8634,28 +8874,35 @@ Run authfn in multiple regions with data residency: EU users' data in EU, US use
 
 ## Lookup store
 
-Implement `AuthFnRegionLookupStore` against a globally-consistent table. AWS DynamoDB Global Tables, Cloudflare D1 with replicas, or Postgres logical replication all work. The contract:
+Use a globally consistent `ConditionalKVStoreAdapter`. AuthFn stores a JSON
+lookup record under `authfn:region:<normalized-identifier>` and relies on the
+conditional write to settle cross-region registration races. The contract:
 
 ```ts
 {
-  getByIdentifier(id) { ... },
-  putIfAbsent(record) { ... },        // INSERT ... ON CONFLICT DO NOTHING ... RETURNING
-  update(record) { ... },
-  deleteByIdentifier(id) { ... },
+  get(key) { ... },
+  set({ key, value, ttlSeconds }) { ... },
+  setIfAbsent({ key, value, ttlSeconds }) { ... }, // atomic conditional insert
+  delete(key) { ... },
 }
 ```
+
+For managed adapters, use `createDynamoDbRegionLookupStore` from
+`@authfn/lookup-dynamodb` or `createCloudflareRegionLookupStore` from
+`@authfn/lookup-cloudflare-do`.
 
 ## Server config (per region)
 
 ```ts
-authFnMultiRegionPlugin({
+plugins: authFnPlugins(authFnMultiRegionPlugin()),
+environment: authFnMultiRegionEnvironment({
   defaultRegionId: process.env.REGION_ID,           // 'us-east-1' or 'eu-west-1'
   regions: [
     { regionId: 'us-east-1', authority: 'https://api.us.example.com', cookie: { domain: '.us.example.com' } },
     { regionId: 'eu-west-1', authority: 'https://api.eu.example.com', cookie: { domain: '.eu.example.com' } },
   ],
   lookupStore: createGlobalLookupStore(),
-});
+}),
 ```
 
 ## Client config
@@ -9335,6 +9582,10 @@ The table below covers every code the kernel emits across all plugins.
 | `AUTHFN_RATE_LIMITED` | 429 | yes | Per-route rate limiter rejected the request. `details.retryAfter`. |
 | `AUTHFN_REGION_MISMATCH` | 409 | yes | Request landed on the wrong region. `details.redirectTo`. |
 | `AUTHFN_REGION_NOT_FOUND` | 404 | no | Identifier isn't registered to any region (anti-enumeration friendly: usually 200 with a fake answer is preferred — see plugin config). |
+| `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE` | 503 | yes | Canonical identity placement could not be read or atomically updated. Gateway mode fails closed. |
+| `AUTHFN_PLACEMENT_MOVING` | 503 | yes | The identity is fenced during a cell move. No auth side effect started. |
+| `AUTHFN_ROUTING_ASSERTION_INVALID` | 401 | no | A cell rejected a missing, expired, replayed, or request-mismatched gateway assertion. |
+| `AUTHFN_ROUTING_CELL_UNAVAILABLE` | 503 | no | The selected private cell target was absent or dispatch failed. Dispatch failure may occur after side effects, so generic retries are unsafe. |
 | `AUTHFN_DELIVERY_FAILED` | 502 | yes | OTP/email delivery provider returned an error. |
 | `AUTHFN_PLUGIN_ABORTED` | 400 | no | A `before*` hook threw `AuthFnPluginAbortedError` to reject the operation. `details.reason`. |
 | `AUTHFN_CONFLICT` | 409 | no | Duplicate primary email, duplicate OAuth identity, etc. |
@@ -9428,6 +9679,14 @@ type AuthFnEvent = {
 | `authfn.2fa.challenged` | A 2FA challenge was completed (or failed). | success / failure | `errorCode` |
 | `authfn.region.lookup` | A region lookup was performed. | success | `regionId`, `cacheHit` |
 | `authfn.region.lookup.conflict` | Two regions raced to claim the same identifier. | failure | `loserRegionId` |
+| `authfn.routing.placement_lookup` | Gateway/cell placement was read or an identity-scoped request was rejected before execution. | validated / rejected | `regionId`, `epoch`, `errorType` |
+| `authfn.routing.placement_claimed` | A first-use identity placement was atomically claimed. | success | `regionId`, `epoch` |
+| `authfn.routing.forwarded` | The gateway dispatched to the selected private cell. | success | `regionId`, `epoch`, `family`, `attempt` |
+| `authfn.routing.mismatch` | A cell proved a stale region/epoch before execution. | pre-execution | `receivedRegionId`, `receivedEpoch`, `expectedRegionId`, `expectedEpoch`, `executionStarted` |
+| `authfn.routing.retry` | The gateway refreshed placement and began its one allowed retry. | started | `regionId`, `epoch`, `attempt` |
+| `authfn.routing.assertion_rejected` | A cell rejected a missing, expired, replayed, or request-mismatched assertion. | rejected | `errorType` |
+| `authfn.routing.directory_unavailable` | Placement storage failed closed. | rejected | `errorType` |
+| `authfn.routing.cell_unavailable` | Cell resolution or internal dispatch failed. | rejected / unknown | `regionId`, `epoch`, `errorType` |
 | `authfn.handoff.started` | A handoff code was issued. | success | `kind` (`native` / `web`) |
 | `authfn.handoff.exchanged` | A handoff code was exchanged for a session. | success | `kind` |
 | `authfn.handoff.failed` | Handoff exchange failed. | failure | `kind`, `errorCode` |
@@ -9504,7 +9763,7 @@ The interactive [API reference](../api) renders the same data with request / res
 | `POST` | `/auth/sign-out` | `signOut` | Revokes the current session. |
 | `GET` | `/auth/account` | `getAccountDetails` | Reads the current user's account details. |
 | `DELETE` | `/auth/account` | `deleteAccount` | Cascade-deletes the current user. |
-| `GET` | `/auth/runtime` | `getRuntime` | Resolved runtime info — region id, authority, cookie domain. |
+| `GET` | `/auth/environment` | `getEnvironment` | Resolved request environment — region id, issuer, base URL, and cookie policy. |
 
 ## Password plugin
 
@@ -9910,7 +10169,7 @@ interface AuthFnClient {
 
   // Multi-region
   lookupRegion(input: { identifier }): Promise<…>;
-  getRuntime(): Promise<…>;
+  getEnvironment(): Promise<…>;
 }
 ```
 
@@ -10621,7 +10880,7 @@ try await client.confirmTwoFactor(code: "123456")
 try await client.completeTwoFactorChallenge(challengeId: id, code: "654321")
 
 let region = try await client.lookupRegion(identifier: "ada@eu.com")
-let runtime = try await client.getRuntime()
+let runtime = try await client.runtime()
 ```
 
 Error handling: throwing methods raise `AuthFnError` which carries `code`, `message`, `retryable`, `details`. The `code` is one of the `AuthFnErrorCode` enum cases (matching the wire codes).
