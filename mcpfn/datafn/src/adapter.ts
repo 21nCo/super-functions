@@ -331,13 +331,20 @@ export function createDatafnMcpRegistry<TMcpContext, TDatafnContext>(
         },
         metadata: { "mcpfn/datafn": { resource: resourceName, operation: "list" } },
         handler: async (args, context) => {
+          const requestedSort = args.sort as string[] | undefined;
+          const querySort = requestedSort?.length
+            ? [
+                ...requestedSort.filter((term) => !term.startsWith("id:")),
+                requestedSort.find((term) => term.startsWith("id:")) ?? "id:asc",
+              ]
+            : undefined;
           const result = await options.executor.query(
             {
               resource: resourceName,
               version: String(resource.version),
               select: exposure.fields,
               ...(args.filters ? { filters: args.filters } : {}),
-              ...(args.sort ? { sort: args.sort } : {}),
+              ...(querySort ? { sort: querySort } : {}),
               ...(args.cursor ? { cursor: args.cursor } : {}),
               limit: Math.min(Number(args.limit ?? defaultLimit), maxLimit),
             },

@@ -181,6 +181,11 @@ describe("McpFnServer", () => {
       argumentsSchema: { type: "string" },
       get: async () => ({ messages: [] }),
     } as never)).toThrow(/argumentsSchema must be an object schema/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "null_schema",
+      argumentsSchema: null,
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/argumentsSchema must be an object schema/);
   });
 
   it("rejects unknown task support values at registration", () => {

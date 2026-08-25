@@ -163,6 +163,22 @@ describe("McpFn protocol primitives", () => {
     })).toThrow(/Ambiguous MCP resource URI template/);
   });
 
+  it("requires resource subscription callbacks to be registered as a pair", () => {
+    const read = async () => ({ contents: [{ uri: "docs://paired", text: "Paired" }] });
+    expect(() => new McpFnRegistry().registerResource({
+      uri: "docs://paired",
+      name: "paired",
+      read,
+      subscribe: async () => undefined,
+    })).toThrow(/must define subscribe and unsubscribe together/);
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://paired/{id}",
+      name: "paired-template",
+      read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Paired" }] }),
+      unsubscribe: async () => undefined,
+    })).toThrow(/must define subscribe and unsubscribe together/);
+  });
+
   it("runs task-augmented tools through the SDK task store", async () => {
     const taskStore = new InMemoryTaskStore();
     const registry = new McpFnRegistry().register({

@@ -290,8 +290,22 @@ function diffSchema(
       continue;
     }
     if (oldProperty && !newProperty) {
+      const fallbackChanges: McpFnContractChange[] = [];
+      if (direction === "input" && typeof afterAdditional === "object") {
+        diffSchema(
+          oldProperty,
+          afterAdditional as McpFnJsonSchema,
+          `${propertyPath}.additionalProperties`,
+          "input",
+          fallbackChanges,
+        );
+      }
+      const breaking =
+        direction === "output" ||
+        afterAdditional === false ||
+        fallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
-        severity: "breaking",
+        severity: breaking ? "breaking" : "additive",
         code: "property-removed",
         path: propertyPath,
         message: `Property ${name} was removed`,

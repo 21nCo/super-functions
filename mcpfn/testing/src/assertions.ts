@@ -133,6 +133,39 @@ export async function assertManifestContract(
     );
   }
 
+  for (const resource of comparableResources) {
+    const expected = (manifest.resources ?? []).find(
+      (candidate) => candidate.uri === resource.uri,
+    ) ?? (manifest.resourceTemplates ?? []).find(
+      (candidate) => new UriTemplate(candidate.uriTemplate).match(resource.uri),
+    );
+    const subscribable = expected?.subscribable === true;
+    if (subscribable) {
+      try {
+        await client.subscribeResource(resource.uri);
+        await client.unsubscribeResource(resource.uri);
+      } catch (error) {
+        throw new McpFnAssertionError(
+          `Resource subscription mismatch for ${resource.uri}: expected subscribe and unsubscribe to succeed (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      continue;
+    }
+    let accepted = false;
+    try {
+      await client.subscribeResource(resource.uri);
+      accepted = true;
+      await client.unsubscribeResource(resource.uri).catch(() => undefined);
+    } catch {
+      // Rejection is the expected behavior for a non-subscribable resource.
+    }
+    if (accepted) {
+      throw new McpFnAssertionError(
+        `Resource subscription mismatch for ${resource.uri}: expected subscribe to be rejected`,
+      );
+    }
+  }
+
   const actualPrompts = actualCapabilities.prompts
     ? await client.listPrompts()
     : [];

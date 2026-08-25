@@ -240,6 +240,11 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.resources.has(definition.uri)) {
       throw new McpFnValidationError(`Duplicate MCP resource: ${definition.uri}`);
     }
+    if (Boolean(definition.subscribe) !== Boolean(definition.unsubscribe)) {
+      throw new McpFnValidationError(
+        `Resource ${definition.name} must define subscribe and unsubscribe together`,
+      );
+    }
     this.resources.set(definition.uri, definition);
     return this;
   }
@@ -265,6 +270,11 @@ export class McpFnRegistry<TContext = undefined> {
     if (!template.variableNames.length) {
       throw new McpFnValidationError(
         `Resource template ${definition.name} must contain at least one variable`,
+      );
+    }
+    if (Boolean(definition.subscribe) !== Boolean(definition.unsubscribe)) {
+      throw new McpFnValidationError(
+        `Resource template ${definition.name} must define subscribe and unsubscribe together`,
       );
     }
     const matchShape = uriTemplateMatchShape(definition.uriTemplate);
@@ -318,7 +328,12 @@ export class McpFnRegistry<TContext = undefined> {
     }
     if (
       definition.argumentsSchema !== undefined &&
-      definition.argumentsSchema.type !== "object"
+      (
+        !definition.argumentsSchema ||
+        typeof definition.argumentsSchema !== "object" ||
+        Array.isArray(definition.argumentsSchema) ||
+        definition.argumentsSchema.type !== "object"
+      )
     ) {
       throw new McpFnValidationError(
         `Prompt ${definition.name} argumentsSchema must be an object schema`,

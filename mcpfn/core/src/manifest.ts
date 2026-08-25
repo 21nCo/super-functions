@@ -236,6 +236,17 @@ export function validateManifest(value: unknown): McpFnManifest {
       ["execution", tool.execution],
       ["metadata", tool.metadata],
     ] as const) assertMetadata(`Manifest tool ${tool.name} ${label}`, metadata);
+    const taskSupport = tool.execution?.taskSupport;
+    if (
+      taskSupport !== undefined &&
+      taskSupport !== "forbidden" &&
+      taskSupport !== "optional" &&
+      taskSupport !== "required"
+    ) {
+      throw new McpFnValidationError(
+        `Manifest tool ${tool.name} has invalid taskSupport=${String(taskSupport)}`,
+      );
+    }
   }
   assertSortedBy("Manifest tool names", manifest.tools, (tool) => tool.name);
 

@@ -150,8 +150,16 @@ describe("McpFn testing", () => {
         uri: "docs://guide",
         name: "guide",
         subscribe: async () => undefined,
+        unsubscribe: async () => undefined,
         read: async () => ({
           contents: [{ uri: "docs://guide", text: "Guide" }],
+        }),
+      })
+      .registerResource({
+        uri: "docs://plain",
+        name: "plain",
+        read: async () => ({
+          contents: [{ uri: "docs://plain", text: "Plain" }],
         }),
       })
       .registerResourceTemplate({
@@ -164,6 +172,7 @@ describe("McpFn testing", () => {
           contents: [{ uri: uri.toString(), text: "Ada" }],
         }),
         subscribe: async () => undefined,
+        unsubscribe: async () => undefined,
       });
     const server = createMcpFnServer({
       info: { name: "dynamic-resources", version: "1.0.0" },
@@ -173,6 +182,14 @@ describe("McpFn testing", () => {
     try {
       const manifest = server.manifest();
       await expect(assertManifestContract(client, manifest)).resolves.toHaveLength(1);
+      await expect(assertManifestContract(client, {
+        ...manifest,
+        resources: manifest.resources?.map((resource) =>
+          resource.uri === "docs://plain"
+            ? { ...resource, subscribable: true }
+            : resource
+        ),
+      })).rejects.toThrow(/Resource subscription mismatch for docs:\/\/plain/);
       await expect(assertManifestContract(client, {
         ...manifest,
         resources: [],

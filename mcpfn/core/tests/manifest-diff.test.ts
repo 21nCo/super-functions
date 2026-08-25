@@ -212,6 +212,10 @@ describe("McpFn manifests", () => {
     })).toThrow(/outputSchema must be an object/);
     expect(() => validateManifest({
       ...manifest,
+      tools: [{ ...manifest.tools[0], execution: { taskSupport: "sometimes" } }],
+    })).toThrow(/invalid taskSupport=sometimes/);
+    expect(() => validateManifest({
+      ...manifest,
       prompts: [{ name: "invalid", argumentsSchema: false }],
     })).toThrow(/argumentsSchema must be an object/);
     expect(() => validateManifest({
@@ -353,6 +357,48 @@ describe("McpFn manifests", () => {
     expect(diffManifests(create({}), create(true)).changes).toEqual([]);
   });
 
+  it("uses the fallback input schema when a declared property is removed", () => {
+    const create = (
+      property: Record<string, unknown> | undefined,
+      additionalProperties: boolean | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { value: property } : {},
+          additionalProperties,
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    for (const fallback of [true, {}, { type: "string" }]) {
+      expect(diffManifests(
+        create({ type: "string" }, false),
+        create(undefined, fallback),
+      )).toMatchObject({
+        compatible: true,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "property-removed", severity: "additive" }),
+        ]),
+      });
+    }
+    for (const fallback of [false, { type: "number" }]) {
+      expect(diffManifests(
+        create({ type: "string" }, false),
+        create(undefined, fallback),
+      )).toMatchObject({
+        compatible: false,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+        ]),
+      });
+    }
+  });
+
   it("reports per-resource subscription removal while aggregate support remains", () => {
     const create = (subscribeFirst: boolean) => createManifest(
       { name: "example", version: "1.0.0" },
@@ -361,29 +407,40 @@ describe("McpFn manifests", () => {
           uri: "docs://first",
           name: "first",
           read: async () => ({ contents: [{ uri: "docs://first", text: "First" }] }),
-          ...(subscribeFirst ? { subscribe: async () => undefined } : {}),
+          ...(subscribeFirst ? {
+            subscribe: async () => undefined,
+            unsubscribe: async () => undefined,
+          } : {}),
         })
         .registerResource({
           uri: "docs://second",
           name: "second",
           read: async () => ({ contents: [{ uri: "docs://second", text: "Second" }] }),
           subscribe: async () => undefined,
+          unsubscribe: async () => undefined,
         })
         .registerResourceTemplate({
           uriTemplate: "docs://template-first/{id}",
           name: "template-first",
           read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "First" }] }),
-          ...(subscribeFirst ? { subscribe: async () => undefined } : {}),
+          ...(subscribeFirst ? {
+            subscribe: async () => undefined,
+            unsubscribe: async () => undefined,
+          } : {}),
         })
         .registerResourceTemplate({
           uriTemplate: "docs://template-second/{id}",
           name: "template-second",
           read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Second" }] }),
           subscribe: async () => undefined,
+          unsubscribe: async () => undefined,
         }),
     );
 
-    expect(diffManifests(create(true), create(false))).toMatchObject({
+    const before = create(true);
+    const after = create(false);
+    expect(before.capabilities?.resources).toEqual(after.capabilities?.resources);
+    expect(diffManifests(before, after)).toMatchObject({
       compatible: false,
       changes: expect.arrayContaining([
         expect.objectContaining({ code: "resource-subscription-removed", severity: "breaking" }),

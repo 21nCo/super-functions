@@ -37,7 +37,7 @@ describe("DataFn McpFn adapter", () => {
       expose: {
         tasks: {
           fields: ["id", "title"],
-          list: { filterFields: ["title"], sortFields: ["id"], maxLimit: 10 },
+          list: { filterFields: ["title"], sortFields: ["title"], maxLimit: 10 },
           get: true,
           create: { fields: ["title"] },
         },
@@ -61,11 +61,44 @@ describe("DataFn McpFn adapter", () => {
       record: { title: "First" },
     });
     expect(created.isError).not.toBe(true);
+    const second = await client.callTool("datafn_tasks_create", {
+      id: "task-2",
+      mutationId: "create-2",
+      record: { title: "Earlier" },
+    });
+    expect(second.isError).not.toBe(true);
+    const firstPage = await client.callTool("datafn_tasks_list", {
+      sort: ["title:asc"],
+      limit: 1,
+    });
+    expect(firstPage.structuredContent).toMatchObject({
+      result: {
+        data: [expect.objectContaining({ id: "task-2", title: "Earlier" })],
+        nextCursor: expect.objectContaining({ id: "task-2", title: "Earlier" }),
+      },
+    });
+    const cursor = (firstPage.structuredContent as {
+      result: { nextCursor: Record<string, unknown> };
+    }).result.nextCursor;
+    const nextPage = await client.callTool("datafn_tasks_list", {
+      sort: ["title:asc"],
+      cursor: { after: cursor },
+      limit: 1,
+    });
+    expect(nextPage.isError).not.toBe(true);
+    expect(nextPage.structuredContent).toMatchObject({
+      result: { data: [expect.objectContaining({ id: "task-1", title: "First" })] },
+    });
     const listed = await client.callTool("datafn_tasks_list", { limit: 10 });
     expect(listed.structuredContent).toMatchObject({
       resource: "tasks",
       operation: "list",
-      result: { data: [expect.objectContaining({ id: "task-1", title: "First" })] },
+      result: {
+        data: expect.arrayContaining([
+          expect.objectContaining({ id: "task-1", title: "First" }),
+          expect.objectContaining({ id: "task-2", title: "Earlier" }),
+        ]),
+      },
     });
     expect(JSON.stringify(listed.structuredContent)).not.toContain("secret");
   });
