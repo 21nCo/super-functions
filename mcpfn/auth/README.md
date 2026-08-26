@@ -51,9 +51,14 @@ authorization-code + PKCE request validation, token, and revocation endpoints.
 The host application's callbacks remain authoritative for login, consent,
 durable clients, code issuance, signing, refresh rotation, and revocation.
 External Client ID Metadata Documents require an explicit URL allow-policy.
+McpFn disables automatic redirects, reapplies that policy at every redirect,
+streams responses through a byte cap, and applies a ten-second deadline by
+default. `maxBytes`, `timeoutMs`, and `maxRedirects` can tighten those bounds.
 
 `createMcpFnAuthProviderAdapter()` maps a generic `@superfunctions/auth`
 session into official MCP `authInfo`, keeping identity, tenant, scopes, and
-resources out of model-controlled tool arguments. `auth-diagnose` and
+resources out of model-controlled tool arguments. Bearer credentials are
+required, and an AuthProvider's `authorize()` hook receives the normalized MCP
+resource URL before trusted context is created. `auth-diagnose` and
 `diagnoseMcpAuthorization()` perform read-only discovery without browser or
 credential actions.

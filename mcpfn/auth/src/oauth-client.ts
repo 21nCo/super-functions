@@ -291,13 +291,17 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
     code?: string,
     details?: Record<string, unknown>,
   ): Promise<void> {
-    await this.options.diagnostics?.(redactOAuthValue({
-      phase,
-      outcome,
-      ...(code ? { code } : {}),
-      at: (this.options.clock?.() ?? new Date()).toISOString(),
-      ...(details ? { details } : {}),
-    }));
+    try {
+      await this.options.diagnostics?.(redactOAuthValue({
+        phase,
+        outcome,
+        ...(code ? { code } : {}),
+        at: (this.options.clock?.() ?? new Date()).toISOString(),
+        ...(details ? { details } : {}),
+      }));
+    } catch {
+      // Diagnostics are observational and must never change OAuth semantics.
+    }
   }
 }
 

@@ -19,7 +19,10 @@ describe("McpFn target suite", () => {
     const report = await runMcpFnTargetSuite({
       target: customTarget({
         kind: "fixture",
-        descriptor: { mode: "external-shaped" },
+        descriptor: {
+          mode: "external-shaped",
+          url: "https://target.example/mcp?api_key=secret#access_token=token",
+        },
         open: async () => {
           const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
           await server.connect(serverTransport);
@@ -41,5 +44,8 @@ describe("McpFn target suite", () => {
       total: 1,
       passed: 1,
     });
+    expect(JSON.stringify(report.target)).not.toContain("secret");
+    expect(JSON.stringify(report.target)).not.toContain("access_token=token");
+    expect(JSON.stringify(report.target)).toContain("REDACTED");
   });
 });

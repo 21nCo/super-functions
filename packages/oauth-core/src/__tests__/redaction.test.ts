@@ -32,4 +32,47 @@ describe("OAuth diagnostics redaction", () => {
     });
     expect(redacted).toEqual({ values: [1, 2], text: "abc…" });
   });
+
+  it("preserves public authorization discovery metadata", () => {
+    expect(redactOAuthValue({
+      authorizationServerMetadata: {
+        authorization_endpoint: "https://login.example.com/authorize",
+        token_endpoint: "https://login.example.com/token",
+        token_endpoint_auth_methods_supported: ["none"],
+      },
+    })).toEqual({
+      authorizationServerMetadata: {
+        authorization_endpoint: "https://login.example.com/authorize",
+        token_endpoint: "https://login.example.com/token",
+        token_endpoint_auth_methods_supported: ["none"],
+      },
+    });
+  });
+
+  it("redacts credential-shaped query and fragment values", () => {
+    const redacted = redactOAuthValue(
+      "https://client.example/callback?api_key=key&password=pass&view=ok#access_token=token&tab=details",
+    );
+    expect(redacted).toContain("api_key=%5BREDACTED%5D");
+    expect(redacted).toContain("password=%5BREDACTED%5D");
+    expect(redacted).toContain("view=ok");
+    expect(redacted).toContain("access_token=%5BREDACTED%5D");
+    expect(redacted).toContain("tab=details");
+    expect(redacted).not.toContain("api_key=key");
+    expect(redacted).not.toContain("password=pass");
+    expect(redacted).not.toContain("access_token=token");
+    expect(redactOAuthValue("com.example.app:/callback?code=secret&view=ok")).toBe(
+      "com.example.app:/callback?code=%5BREDACTED%5D&view=ok",
+    );
+  });
+
+  it("redacts credentials inside diagnostic error text", () => {
+    const redacted = redactOAuthValue(
+      "request failed at https://client.example/callback?api_key=secret#access_token=token; password=hunter2",
+    );
+    expect(redacted).not.toContain("secret");
+    expect(redacted).not.toContain("access_token=token");
+    expect(redacted).not.toContain("hunter2");
+    expect(redacted.match(/REDACTED/g)).toHaveLength(3);
+  });
 });

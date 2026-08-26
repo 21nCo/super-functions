@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { McpFnAssertionError, assertStructuredTextParity, stableJson } from "./assertions.js";
 import type { McpFnTestClient } from "./client.js";
@@ -83,7 +84,7 @@ export async function runScenarios(
         ...(isToolScenario(scenario) ? { tool: scenario.tool } : {}),
         status: "failed",
         durationMs: performance.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
+        error: redactOAuthValue(error instanceof Error ? error.message : String(error)),
       });
     }
   }

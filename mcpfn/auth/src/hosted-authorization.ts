@@ -201,6 +201,8 @@ export interface McpFnAuthorizationCompatibilityOptions {
     allow?(url: URL): boolean | Promise<boolean>;
     fetch?: typeof globalThis.fetch;
     maxBytes?: number;
+    timeoutMs?: number;
+    maxRedirects?: number;
   };
   extraMetadata?: Record<string, unknown>;
   diagnostics?(event: {
@@ -218,6 +220,7 @@ export interface McpFnAuthorizationCompatibilityOptions {
 export function createMcpAuthorizationCompatibilityHandler(
   options: McpFnAuthorizationCompatibilityOptions,
 ): (request: Request) => Promise<Response> {
+  validateClientMetadataDocumentOptions(options.clientMetadataDocuments);
   const issuer = new URL(options.issuer.toString());
   issuer.hash = "";
   const endpoint = (path: string) => new URL(path, issuer).toString();
@@ -330,26 +333,7 @@ async function resolveClient(
     return null;
   }
   if (clientUrl.protocol !== "https:" || clientUrl.pathname === "/") return null;
-  if (!options.clientMetadataDocuments.allow ||
-      !(await options.clientMetadataDocuments.allow(clientUrl))) {
-    throw new McpFnHostedAuthorizationError(
-      "invalid_client",
-      "Client ID Metadata Document URL is not permitted",
-    );
-  }
-  const fetchImplementation = options.clientMetadataDocuments.fetch ?? globalThis.fetch;
-  if (!fetchImplementation) throw new Error("A fetch implementation is required");
-  const response = await fetchImplementation(clientUrl, {
-    headers: { accept: "application/json" },
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new McpFnHostedAuthorizationError(
-      "invalid_client",
-      "Client ID Metadata Document could not be loaded",
-    );
-  }
-  const raw = await readBoundedJson(response, options.clientMetadataDocuments.maxBytes ?? 256_000);
+  const raw = await fetchClientMetadataDocument(clientUrl, options.clientMetadataDocuments);
   const record = raw as Record<string, unknown>;
   if (record.client_id !== undefined && record.client_id !== clientId) {
     throw new McpFnHostedAuthorizationError(
@@ -377,23 +361,194 @@ function normalizeClientMetadata(value: OAuthClientMetadata): OAuthClientMetadat
 async function readBoundedJson(
   source: Request | Response,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<unknown> {
-  const length = Number(source.headers.get("content-length") ?? "0");
-  if (Number.isFinite(length) && length > maxBytes) {
-    throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is too large", {
-      status: 413,
-    });
+  const contentLength = source.headers.get("content-length");
+  if (contentLength !== null) {
+    const length = Number(contentLength);
+    if (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(length) || length > maxBytes) {
+      throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is too large", {
+        status: 413,
+      });
+    }
   }
-  const text = await source.text();
-  if (new TextEncoder().encode(text).byteLength > maxBytes) {
-    throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is too large", {
-      status: 413,
-    });
-  }
+  const text = await readBoundedText(source, maxBytes, signal);
   try {
     return JSON.parse(text);
   } catch {
     throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is not valid JSON");
+  }
+}
+
+async function fetchClientMetadataDocument(
+  initialUrl: URL,
+  options: NonNullable<McpFnAuthorizationCompatibilityOptions["clientMetadataDocuments"]>,
+): Promise<unknown> {
+  const fetchImplementation = options.fetch ?? globalThis.fetch;
+  if (!fetchImplementation) throw new Error("A fetch implementation is required");
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? 10_000,
+  );
+  (timeout as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+  const maxRedirects = options.maxRedirects ?? 3;
+  let currentUrl = new URL(initialUrl);
+  try {
+    for (let redirectCount = 0; ; redirectCount += 1) {
+      await assertClientMetadataDocumentUrlAllowed(currentUrl, options, controller.signal);
+      if (controller.signal.aborted) throw clientMetadataTimeoutError();
+      let response: Response;
+      try {
+        response = await withAbort(fetchImplementation(currentUrl, {
+            headers: { accept: "application/json" },
+            redirect: "manual",
+            signal: controller.signal,
+          }), controller.signal);
+      } catch (error) {
+        if (controller.signal.aborted) throw clientMetadataTimeoutError();
+        throw error;
+      }
+      if (isRedirectStatus(response.status)) {
+        const location = response.headers.get("location");
+        await response.body?.cancel().catch(() => undefined);
+        if (!location || redirectCount >= maxRedirects) {
+          throw new McpFnHostedAuthorizationError(
+            "invalid_client",
+            "Client ID Metadata Document redirect could not be followed safely",
+          );
+        }
+        currentUrl = new URL(location, currentUrl);
+        continue;
+      }
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new McpFnHostedAuthorizationError(
+          "invalid_client",
+          "Client ID Metadata Document could not be loaded",
+        );
+      }
+      return await readBoundedJson(
+        response,
+        options.maxBytes ?? 256_000,
+        controller.signal,
+      );
+    }
+  } catch (error) {
+    if (controller.signal.aborted) throw clientMetadataTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function clientMetadataTimeoutError(): McpFnHostedAuthorizationError {
+  return new McpFnHostedAuthorizationError(
+    "invalid_client",
+    "Client ID Metadata Document request timed out",
+  );
+}
+
+async function assertClientMetadataDocumentUrlAllowed(
+  url: URL,
+  options: NonNullable<McpFnAuthorizationCompatibilityOptions["clientMetadataDocuments"]>,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hash !== "" ||
+    !options.allow ||
+    !(await withAbort(Promise.resolve(options.allow(new URL(url))), signal))
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client ID Metadata Document URL is not permitted",
+    );
+  }
+}
+
+async function readBoundedText(
+  source: Request | Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!source.body) return "";
+  const reader = source.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const onAbort = () => {
+    void reader.cancel(new DOMException("aborted", "AbortError")).catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    while (true) {
+      const { done, value } = await reader.read();
+      if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is too large", {
+          status: 413,
+        });
+      }
+      chunks.push(value);
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new DOMException("aborted", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function validateClientMetadataDocumentOptions(
+  options: McpFnAuthorizationCompatibilityOptions["clientMetadataDocuments"],
+): void {
+  if (!options) return;
+  for (const [name, value, minimum] of [
+    ["maxBytes", options.maxBytes, 1],
+    ["timeoutMs", options.timeoutMs, 1],
+    ["maxRedirects", options.maxRedirects, 0],
+  ] as const) {
+    if (value !== undefined && (!Number.isInteger(value) || value < minimum)) {
+      throw new TypeError(`clientMetadataDocuments.${name} must be an integer >= ${minimum}`);
+    }
   }
 }
 
@@ -422,12 +577,16 @@ async function emit(
   code?: string,
   details?: Record<string, unknown>,
 ): Promise<void> {
-  await options.diagnostics?.(redactOAuthValue({
-    phase,
-    outcome,
-    ...(code ? { code } : {}),
-    ...(details ? { details } : {}),
-  }));
+  try {
+    await options.diagnostics?.(redactOAuthValue({
+      phase,
+      outcome,
+      ...(code ? { code } : {}),
+      ...(details ? { details } : {}),
+    }));
+  } catch {
+    // Diagnostics are observational and must never change authorization behavior.
+  }
 }
 
 function inferPhase(pathname: string): string {

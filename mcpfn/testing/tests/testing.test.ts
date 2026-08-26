@@ -52,6 +52,19 @@ describe("McpFn testing", () => {
         },
       ]);
       expect(results).toMatchObject([{ status: "passed" }]);
+      const redactedFailure = await runScenarios(client, [{
+        name: "redacts verifier errors",
+        tool: "echo",
+        arguments: { value: "hello" },
+        verify: () => {
+          throw new Error(
+            "failed at https://client.example/callback?api_key=secret#access_token=token",
+          );
+        },
+      }]);
+      expect(JSON.stringify(redactedFailure)).not.toContain("secret");
+      expect(JSON.stringify(redactedFailure)).not.toContain("access_token=token");
+      expect(JSON.stringify(redactedFailure)).toContain("REDACTED");
     } finally {
       await client.close();
     }

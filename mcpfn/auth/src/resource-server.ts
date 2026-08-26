@@ -2,6 +2,8 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/sdk/server/auth/provider.js";
 import type { HandleRequestOptions } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
+import { bearerChallengeResponse, readBearerToken } from "./auth-response.js";
+
 export interface McpFnProtectedResourceMetadata extends Record<string, unknown> {
   resource: string;
   authorization_servers: string[];
@@ -81,38 +83,6 @@ function json(status: number, body: unknown, headers: HeadersInit = {}): Respons
   });
 }
 
-function bearerChallenge(
-  metadataUrl: URL,
-  details: { error?: string; description?: string; scope?: string } = {},
-): string {
-  const fields = [`resource_metadata="${metadataUrl.toString()}"`];
-  if (details.error) fields.push(`error="${details.error}"`);
-  if (details.description) {
-    fields.push(`error_description="${details.description.replace(/["\\]/g, "")}"`);
-  }
-  if (details.scope) fields.push(`scope="${details.scope.replace(/["\\]/g, "")}"`);
-  return `Bearer ${fields.join(", ")}`;
-}
-
-function authError(
-  status: 401 | 403,
-  metadataUrl: URL,
-  details: { error: string; description: string; scope?: string },
-): Response {
-  return json(
-    status,
-    { error: details.error, error_description: details.description },
-    { "www-authenticate": bearerChallenge(metadataUrl, details) },
-  );
-}
-
-function bearerToken(request: Request): string | undefined {
-  const authorization = request.headers.get("authorization");
-  if (!authorization) return undefined;
-  const match = /^Bearer\s+([^\s]+)$/i.exec(authorization.trim());
-  return match?.[1];
-}
-
 export function createOAuthResourceServerHandler(
   mcpHandler: McpFnWebStandardHandler,
   options: McpFnOAuthResourceServerOptions,
@@ -130,9 +100,9 @@ export function createOAuthResourceServerHandler(
       return json(200, metadata, { "cache-control": "public, max-age=300" });
     }
 
-    const token = bearerToken(request);
+    const token = readBearerToken(request);
     if (!token) {
-      return authError(401, metadataUrl, {
+      return bearerChallengeResponse(401, metadataUrl, {
         error: "invalid_token",
         description: "A Bearer access token is required",
       });
@@ -142,14 +112,14 @@ export function createOAuthResourceServerHandler(
     try {
       authInfo = await options.verifier.verifyAccessToken(token);
     } catch {
-      return authError(401, metadataUrl, {
+      return bearerChallengeResponse(401, metadataUrl, {
         error: "invalid_token",
         description: "The access token is invalid",
       });
     }
     const now = Math.floor((options.clock?.() ?? Date.now()) / 1_000);
     if (authInfo.expiresAt !== undefined && authInfo.expiresAt <= now) {
-      return authError(401, metadataUrl, {
+      return bearerChallengeResponse(401, metadataUrl, {
         error: "invalid_token",
         description: "The access token has expired",
       });
@@ -158,7 +128,7 @@ export function createOAuthResourceServerHandler(
       !authInfo.resource ||
       normalizeResource(authInfo.resource).toString() !== resource.toString()
     ) {
-      return authError(401, metadataUrl, {
+      return bearerChallengeResponse(401, metadataUrl, {
         error: "invalid_token",
         description: "The access token is not bound to this resource",
       });
@@ -178,7 +148,7 @@ export function createOAuthResourceServerHandler(
     const grantedScopes = new Set(authInfo.scopes);
     const missingScopes = requiredScopes.filter((scope) => !grantedScopes.has(scope));
     if (missingScopes.length) {
-      return authError(403, metadataUrl, {
+      return bearerChallengeResponse(403, metadataUrl, {
         error: "insufficient_scope",
         description: "The access token lacks required scopes",
         scope: [...new Set(requiredScopes)].sort().join(" "),

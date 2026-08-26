@@ -1,7 +1,31 @@
 const REDACTED = "[REDACTED]";
 
-const SECRET_KEY = /(?:^|_)(?:access|refresh|id)?_?token$|authorization(?:_?code)?|bearer|password|secret|client_secret|code_verifier|pkce|state$|session(?:_?id)?|cookie|api_?key|credential/i;
-const SENSITIVE_QUERY_KEY = /^(?:code|state|token|access_token|refresh_token|id_token|client_secret|code_verifier)$/i;
+const SECRET_KEYS = new Set([
+  "api_key",
+  "authorization",
+  "authorization_code",
+  "bearer",
+  "client_secret",
+  "code_verifier",
+  "cookie",
+  "credential",
+  "credentials",
+  "nonce",
+  "oauth_state",
+  "password",
+  "pkce",
+  "pkce_verifier",
+  "secret",
+  "session",
+  "session_id",
+  "state",
+  "token",
+]);
+const EMBEDDED_URL = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s<>"']+/gi;
+const SECRET_ASSIGNMENT = new RegExp(
+  String.raw`(\b(?:(?:[a-z0-9]+[_-])*token|api[_-]?key|authorization(?:[_-]?code)?|bearer|password|(?:client[_-]?)?secret|code[_-]?verifier|pkce(?:[_-]?verifier)?|(?:oauth[_-]?)?state|session(?:[_-]?id)?|cookie|credentials?)\b["']?\s*(?:=|:)\s*)(["']?)([^"'\s,;&#]+)\2`,
+  "gi",
+);
 
 export interface OAuthRedactionOptions {
   maxDepth?: number;
@@ -40,22 +64,18 @@ function redact(
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
-        SECRET_KEY.test(key) ? REDACTED : redact(entry, options, depth + 1),
+        isSecretKey(key) ? REDACTED : redact(entry, options, depth + 1),
       ]),
     );
   }
   if (typeof value === "string") {
-    const redactedUrl = maybeRedactUrl(value, options.maxStringLength);
-    if (redactedUrl !== undefined) return redactedUrl;
-    return value.length > options.maxStringLength
-      ? `${value.slice(0, options.maxStringLength)}…`
-      : value;
+    return redactString(value, options.maxStringLength);
   }
   return value;
 }
 
 function maybeRedactUrl(value: string, maxLength: number): string | undefined {
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return undefined;
+  if (!/^[a-z][a-z0-9+.-]*:\//i.test(value)) return undefined;
   try {
     return redactUrl(new URL(value), maxLength);
   } catch {
@@ -66,7 +86,18 @@ function maybeRedactUrl(value: string, maxLength: number): string | undefined {
 function redactUrl(url: URL, maxLength: number): string {
   const copy = new URL(url.toString());
   for (const key of [...copy.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_KEY.test(key)) copy.searchParams.set(key, REDACTED);
+    if (isSensitiveUrlKey(key)) copy.searchParams.set(key, REDACTED);
+  }
+  if (copy.hash.length > 1) {
+    const fragment = copy.hash.slice(1);
+    const parameters = new URLSearchParams(fragment);
+    let changed = false;
+    for (const key of [...parameters.keys()]) {
+      if (!isSensitiveUrlKey(key)) continue;
+      parameters.set(key, REDACTED);
+      changed = true;
+    }
+    if (changed) copy.hash = parameters.toString();
   }
   copy.username = "";
   copy.password = "";
@@ -74,4 +105,40 @@ function redactUrl(url: URL, maxLength: number): string {
   return serialized.length > maxLength
     ? `${serialized.slice(0, maxLength)}…`
     : serialized;
+}
+
+function redactString(value: string, maxLength: number): string {
+  const redactedUrl = maybeRedactUrl(value, maxLength);
+  if (redactedUrl !== undefined) return redactedUrl;
+  const redacted = value
+    .replace(EMBEDDED_URL, (candidate) => maybeRedactUrl(candidate, maxLength) ?? candidate)
+    .replace(SECRET_ASSIGNMENT, (_match, prefix: string, quote: string) =>
+      `${prefix}${quote}${REDACTED}${quote}`);
+  return redacted.length > maxLength
+    ? `${redacted.slice(0, maxLength)}…`
+    : redacted;
+}
+
+function isSensitiveUrlKey(key: string): boolean {
+  return normalizeKey(key) === "code" || isSecretKey(key);
+}
+
+function isSecretKey(key: string): boolean {
+  const normalized = normalizeKey(key);
+  return SECRET_KEYS.has(normalized) ||
+    normalized.endsWith("_token") ||
+    normalized.endsWith("_password") ||
+    normalized.endsWith("_secret") ||
+    normalized.endsWith("_authorization") ||
+    normalized.endsWith("_cookie") ||
+    normalized.endsWith("_credential") ||
+    normalized.endsWith("_credentials");
+}
+
+function normalizeKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
 }

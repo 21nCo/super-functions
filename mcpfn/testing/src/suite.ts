@@ -1,6 +1,7 @@
 import type { Implementation, ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
 import type { McpFnTarget, McpFnTargetDescriptor } from "@mcpfn/client";
 import type { McpFnManifest } from "@mcpfn/core";
+import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import { assertManifestContract } from "./assertions.js";
 import { McpFnTestClient, type McpFnTestClientOptions } from "./client.js";
@@ -50,7 +51,7 @@ export async function runMcpFnTargetSuite(
     const failed = results.filter((result) => result.status === "failed").length;
     return {
       ok: failed === 0,
-      target: options.target.describe(),
+      target: redactOAuthValue(options.target.describe()),
       server: client.session.getServerVersion(),
       capabilities: client.session.getServerCapabilities(),
       manifestChecked: Boolean(options.manifest),
