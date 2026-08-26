@@ -624,6 +624,19 @@ export type AuthFnPluginRuntimeConfigMap = Record<string, unknown>;
 export interface AuthFnServer {
   router: Router;
   provider: AuthProvider<AuthFnSession>;
+  /**
+   * Authenticates an unsafe request and enforces AuthFn's CSRF contract when
+   * cookie credentials are present. Bearer/API-key requests do not require
+   * CSRF, and an invalid cookie can never downgrade to another credential.
+   */
+  authorizeMutation(request: Request): Promise<AuthFnSession>;
+  /** Revoke one AuthFn session through the instance's resolved schema/config. */
+  revokeSession(sessionId: string, options?: { userId?: string }): Promise<void>;
+  /** Resolve the active runtime/cookie policy through the instance schema. */
+  cookieNamesForRequest(request: Request): Promise<{
+    sessionCookieName: string;
+    csrfCookieName: string;
+  }>;
   getSchema(): AuthFnSchemaDefinition;
   openApi?(): Record<string, unknown>;
 }

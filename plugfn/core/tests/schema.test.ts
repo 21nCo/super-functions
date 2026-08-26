@@ -8,8 +8,8 @@ describe('PlugFn schema metadata', () => {
       (table) => table.modelName === 'plugfn_webhook_receipts'
     );
 
-    expect(PLUGFN_SCHEMA_VERSION).toBe(6);
-    expect(schema.version).toBe(6);
+    expect(PLUGFN_SCHEMA_VERSION).toBe(7);
+    expect(schema.version).toBe(7);
     expect(receipts?.indexes).toContainEqual({
       name: 'idx_plugfn_webhook_receipts_idempotency',
       fields: ['provider', 'idempotencyKey'],
@@ -33,6 +33,17 @@ describe('PlugFn schema metadata', () => {
       name: 'idx_plugfn_sync_jobs_claim_token',
       fields: ['claimToken'],
       unique: true,
+    });
+    const workflows = schema.schemas.find(
+      (table) => table.modelName === 'plugfn_workflows'
+    );
+    expect(workflows?.fields.tenantId).toMatchObject({
+      fieldName: 'tenant_id',
+      required: false,
+    });
+    expect(workflows?.indexes).toContainEqual({
+      name: 'idx_plugfn_workflows_tenant_user',
+      fields: ['tenantId', 'userId'],
     });
   });
 });

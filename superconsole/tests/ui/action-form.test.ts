@@ -1,0 +1,305 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createActionDraft,
+  editableActionFields,
+  validateActionInput,
+} from '../../src/lib/components/action-form';
+import type { AdminActionViewModel } from '../../src/lib/components/view-models';
+
+function action(): AdminActionViewModel {
+  return {
+    id: 'sendfn.messages.send',
+    label: 'Send message',
+    targetIdInput: 'messageId',
+    input: { messageId: 'message-1', retries: 2, metadata: { source: 'console' } },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: { type: 'string' },
+        recipient: { type: 'string', title: 'Recipient' },
+        retries: { type: 'integer', minimum: 0 },
+        urgent: { type: 'boolean' },
+        metadata: { type: 'object' },
+        tags: { type: 'array' },
+      },
+      required: ['messageId', 'recipient', 'metadata'],
+      additionalProperties: false,
+    },
+  };
+}
+
+describe('schema-driven action input', () => {
+  it('hides the prebound resource identity and initializes editable values', () => {
+    const candidate = action();
+    expect(editableActionFields(candidate).map((field) => field.name)).toEqual([
+      'recipient', 'retries', 'urgent', 'metadata', 'tags',
+    ]);
+    expect(createActionDraft(candidate)).toMatchObject({
+      recipient: '',
+      retries: '2',
+      metadata: '{\n  "source": "console"\n}',
+      tags: '',
+    });
+  });
+
+  it('collects editable properties and required fields from allOf object branches', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.update',
+      label: 'Update record',
+      targetIdInput: 'id',
+      inputSchema: {
+        type: 'object',
+        allOf: [
+          { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } }, required: ['id', 'name'] },
+          { type: 'object', properties: { retries: { type: 'integer' } }, required: ['retries'] },
+        ],
+      },
+    };
+
+    expect(editableActionFields(candidate).map(({ name, required }) => ({ name, required }))).toEqual([
+      { name: 'name', required: true },
+      { name: 'retries', required: true },
+    ]);
+  });
+
+  it('retains every nested constraint when allOf branches repeat a property', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.update',
+      label: 'Update record',
+      inputSchema: {
+        type: 'object',
+        allOf: [
+          {
+            type: 'object',
+            properties: { payload: { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] } },
+          },
+          {
+            type: 'object',
+            properties: { payload: { type: 'object', properties: { b: { type: 'string' } }, required: ['b'] } },
+          },
+        ],
+      },
+    };
+
+    expect(validateActionInput(candidate, { payload: '{"a":"one"}' })).toMatchObject({
+      ok: false,
+      errors: { payload: 'Payload.b is required.' },
+    });
+    expect(validateActionInput(candidate, { payload: '{"a":"one","b":"two"}' })).toMatchObject({ ok: true });
+  });
+
+  it('compares object and array enum and const values structurally', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'object', enum: [{ strategy: 'safe', limits: [1, 2] }] },
+          fallback: { type: 'array', const: ['retry', { enabled: true }] },
+        },
+        required: ['mode', 'fallback'],
+      },
+    };
+
+    expect(validateActionInput(candidate, {
+      mode: '{"limits":[1,2],"strategy":"safe"}',
+      fallback: '["retry",{"enabled":true}]',
+    })).toMatchObject({ ok: true });
+  });
+
+  it('uses a JSON editor for union fields and validates the selected branch', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'apifn.specs.register',
+      label: 'Register API specification',
+      input: { document: { openapi: '3.1.0' } },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          document: {
+            oneOf: [
+              { type: 'string', minLength: 1 },
+              {
+                type: 'object',
+                properties: { openapi: { type: 'string' } },
+                required: ['openapi'],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+        required: ['document'],
+      },
+    };
+
+    expect(editableActionFields(candidate)).toEqual([
+      expect.objectContaining({ name: 'document', type: 'json' }),
+    ]);
+    expect(createActionDraft(candidate).document).toBe('{\n  "openapi": "3.1.0"\n}');
+    expect(validateActionInput(candidate, { document: '{"openapi":"3.1.0"}' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { document: '"https://example.test/openapi.json"' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { document: '{"title":"missing version"}' })).toMatchObject({
+      ok: false,
+      errors: { document: 'Document must match exactly one allowed schema.' },
+    });
+  });
+
+  it('preserves nullable union branches as their original JSON values', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      input: { label: null, settings: null },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          label: { type: ['string', 'null'] },
+          settings: {
+            oneOf: [
+              { type: 'object', properties: { mode: { type: 'string' } }, required: ['mode'] },
+              { type: 'null' },
+            ],
+          },
+        },
+        required: ['label', 'settings'],
+      },
+    };
+
+    expect(editableActionFields(candidate).map(({ name, type }) => ({ name, type }))).toEqual([
+      { name: 'label', type: 'json' },
+      { name: 'settings', type: 'json' },
+    ]);
+    expect(createActionDraft(candidate)).toMatchObject({ label: 'null', settings: 'null' });
+    expect(validateActionInput(candidate, { label: 'null', settings: 'null' })).toEqual({
+      ok: true,
+      errors: {},
+      input: { label: null, settings: null },
+    });
+    expect(validateActionInput(candidate, { label: '"ready"', settings: '{"mode":"safe"}' })).toMatchObject({ ok: true });
+  });
+
+  it('rejects schemas with empty union combinators', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'examplefn.records.configure',
+      label: 'Configure record',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          anyValue: { anyOf: [] },
+          oneValue: { oneOf: [] },
+        },
+        required: ['anyValue', 'oneValue'],
+      },
+    };
+
+    expect(validateActionInput(candidate, { anyValue: 'value', oneValue: 'value' })).toMatchObject({
+      ok: false,
+      errors: {
+        anyValue: 'Any Value must match at least one allowed schema.',
+        oneValue: 'One Value must match exactly one allowed schema.',
+      },
+    });
+  });
+
+  it('counts Unicode code points for string length constraints', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'billfn.adjustments.create',
+      label: 'Create adjustment',
+      inputSchema: {
+        type: 'object',
+        properties: { reason: { type: 'string', minLength: 2, maxLength: 2 } },
+        required: ['reason'],
+      },
+    };
+
+    expect(validateActionInput(candidate, { reason: '😀😀' })).toMatchObject({ ok: true });
+    expect(validateActionInput(candidate, { reason: '😀' })).toMatchObject({
+      ok: false,
+      errors: { reason: 'Reason is too short.' },
+    });
+    expect(validateActionInput(candidate, { reason: '😀😀😀' })).toMatchObject({
+      ok: false,
+      errors: { reason: 'Reason is too long.' },
+    });
+  });
+
+  it('parses primitive and JSON fields into the exact dispatch input', () => {
+    const candidate = action();
+    const result = validateActionInput(candidate, {
+      recipient: 'ops@example.test',
+      retries: '3',
+      urgent: true,
+      metadata: '{"source":"operator"}',
+      tags: '["production","urgent"]',
+    });
+    expect(result).toEqual({
+      ok: true,
+      errors: {},
+      input: {
+        messageId: 'message-1',
+        recipient: 'ops@example.test',
+        retries: 3,
+        urgent: true,
+        metadata: { source: 'operator' },
+        tags: ['production', 'urgent'],
+      },
+    });
+  });
+
+  it('rejects missing required values and malformed JSON before dispatch', () => {
+    const result = validateActionInput(action(), {
+      recipient: '',
+      retries: 'not-a-number',
+      urgent: false,
+      metadata: '{broken',
+      tags: '{}',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toMatchObject({
+      recipient: 'Recipient is required.',
+      retries: 'Retries must be a valid integer.',
+      metadata: 'Metadata must contain valid JSON.',
+      tags: 'Tags must be a JSON array.',
+    });
+    expect(result.input.messageId).toBe('message-1');
+  });
+
+  it('recursively validates nested object properties and array items', () => {
+    const candidate: AdminActionViewModel = {
+      id: 'flowfn.workflows.start',
+      label: 'Start workflow',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          payload: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', minLength: 3 },
+              steps: {
+                type: 'array',
+                minItems: 1,
+                items: {
+                  type: 'object',
+                  properties: { retries: { type: 'integer', minimum: 0 } },
+                  required: ['retries'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['owner', 'steps'],
+            additionalProperties: false,
+          },
+        },
+        required: ['payload'],
+        additionalProperties: false,
+      },
+    };
+
+    const invalid = validateActionInput(candidate, {
+      payload: JSON.stringify({ owner: 'ok', steps: [{ retries: -1 }] }),
+    });
+    expect(invalid).toMatchObject({ ok: false, errors: { payload: 'Payload.owner is too short.' } });
+    expect(validateActionInput(candidate, {
+      payload: JSON.stringify({ owner: 'ops', steps: [{ retries: 0 }] }),
+    })).toMatchObject({ ok: true });
+  });
+});

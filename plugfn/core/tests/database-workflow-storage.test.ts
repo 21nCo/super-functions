@@ -4,6 +4,24 @@ import { createPlugFnDatabaseAdapter } from '../src/storage/adapters/database.js
 import { WorkflowStatus, type Workflow } from '../src/types/workflow.js';
 
 describe('database workflow storage', () => {
+  it('uses a deterministic total order when paging sync jobs', async () => {
+    const findMany = vi.fn(async () => []);
+    const adapter = createPlugFnDatabaseAdapter({
+      database: { id: 'postgres', findMany } as any,
+    });
+
+    await adapter.listSyncJobs({ ownerId: 'user_1' }, 25, 10);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [
+        { field: 'createdAt', direction: 'desc' },
+        { field: 'id', direction: 'desc' },
+      ],
+      limit: 25,
+      offset: 10,
+    }));
+  });
+
   it('preserves executable workflow callbacks while copying records', async () => {
     const create = vi.fn(async ({ data }: { data: Workflow }) => data);
     const adapter = createPlugFnDatabaseAdapter({

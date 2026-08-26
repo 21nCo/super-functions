@@ -2,8 +2,14 @@ import type { AuthProvider } from '@superfunctions/auth';
 import { instrumentAdapter, instrumentKVStore, wrapWithSchema } from '@superfunctions/db';
 import { normalizeObservability } from '@superfunctions/observability';
 import { createPluginRunner } from './plugin-runner.js';
-import { createAuthFnRouter } from './http/router.js';
-import { authenticateRequest } from './core/sessions.js';
+import { cookieNamesForRequest, createAuthFnRouter } from './http/router.js';
+import {
+  assertValidCsrf,
+  authenticateRequest,
+  getCookieSessionState,
+  requireCookieSession,
+  revokeSessionById
+} from './core/sessions.js';
 import { getSchema } from './schema.js';
 import { createAuthFnOpenApiDocument } from './openapi.js';
 import type {
@@ -15,7 +21,7 @@ import type {
   AuthFnPluginList,
   AuthFnSession
 } from './types.js';
-import { AuthFnConfigError } from './types.js';
+import { AuthFnConfigError, AuthFnUnauthenticatedError } from './types.js';
 
 const superfunctionsAppMetadata = Symbol.for('superfunctions.app');
 
@@ -161,6 +167,25 @@ function createServer(
   const instance: AuthFnServer = {
     router,
     provider,
+    authorizeMutation: async (request) => {
+      const cookieState = await getCookieSessionState(resolvedConfig, request);
+      // Cookie credential presence wins even when Authorization is also sent:
+      // an expired/revoked/invalid cookie must not become a CSRF bypass.
+      if (cookieState.sessionToken) {
+        const authenticated = cookieState.session && cookieState.sessionRecord
+          ? cookieState
+          : await requireCookieSession(resolvedConfig, request);
+        assertValidCsrf(request, authenticated);
+        return authenticated.session!;
+      }
+      const session = await authenticateRequest(resolvedConfig, request);
+      if (!session) throw new AuthFnUnauthenticatedError();
+      return session;
+    },
+    revokeSession: async (sessionId, options) => {
+      await revokeSessionById(resolvedConfig, sessionId, options);
+    },
+    cookieNamesForRequest: async (request) => cookieNamesForRequest(resolvedConfig, request),
     getSchema: () => schema
   };
 

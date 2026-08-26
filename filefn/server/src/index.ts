@@ -1,6 +1,6 @@
 import { instrumentAdapter, wrapWithSchema, type Adapter, type RuntimeStores } from '@superfunctions/db';
 import { instrumentStorageAdapter, type StorageAdapter } from '@superfunctions/storage';
-import type { FileProvider } from '@superfunctions/files';
+import type { FileProvider, FileProviderContext } from '@superfunctions/files';
 import { type RateLimiter, createRateLimiter } from '@superfunctions/middleware';
 import { applyObservationHeaders } from '@superfunctions/http';
 import {
@@ -9,18 +9,18 @@ import {
   type ObservationLogger
 } from '@superfunctions/observability';
 import { getSchema } from './schema.js';
-import { createNucleusPolicies, createPolicyRegistry, type Policy } from './policies.js';
+import { createPolicyRegistry, type Policy, type PolicyRegistryWithDefine } from './policies.js';
 import { createEventEmitter, type FileFnEventEmitter, type FileFnObservationEvent } from './events.js';
-import { createUploadSessionService, type QuotaProvider } from './upload-sessions/service.js';
+import { createUploadSessionService, type QuotaProvider, type UploadSessionService } from './upload-sessions/service.js';
 import { createUploadSessionRoutes } from './upload-sessions/routes.js';
-import { createFileService, type Authorizer } from './files/service.js';
+import { createFileService, type Authorizer, type FileService } from './files/service.js';
 import { createFileRoutes } from './files/routes.js';
 import { createDeduplicationService } from './dedup/service.js';
-import { createGrantsService } from './authz/grants.service.js';
+import { createGrantsService, type GrantsService } from './authz/grants.service.js';
 import { createGrantsRoutes } from './authz/grants.routes.js';
-import { createSharesService } from './shares/service.js';
+import { createSharesService, type SharesService } from './shares/service.js';
 import { createSharesRoutes } from './shares/routes.js';
-import { createProcessingService, type Processor, type FlowFnProvider } from './processing/service.js';
+import { createProcessingService, type Processor, type FlowFnProvider, type ProcessingService } from './processing/service.js';
 import { createProcessingRoutes } from './processing/routes.js';
 import { createPolicyRoutes } from './policies.routes.js';
 import { createQuotaRoutes } from './quota.routes.js';
@@ -75,9 +75,33 @@ export interface FileFnConfig {
   };
 }
 
+/** Public domain services bound to the same schema, adapters, policies, and event emitter as FileFn's router. */
+export interface FileFnServices {
+  files: FileService;
+  uploads: UploadSessionService;
+  grants: GrantsService;
+  shares: SharesService;
+  processing: Pick<
+    ProcessingService,
+    | 'isEnabled'
+    | 'listArtifactsForFile'
+    | 'getArtifactDownloadUrlForFile'
+    | 'getArtifactDownloadStreamForFile'
+    | 'getReadableVersionForFile'
+  > & {
+    triggerProcessingForFile(
+      fileId: string,
+      ctx: FileProviderContext,
+      versionId?: string,
+    ): ReturnType<ProcessingService['triggerProcessing']>;
+  };
+  policies: PolicyRegistryWithDefine;
+}
+
 export interface FileFn extends FileProvider {
   router: FileFnRouter;
   events: FileFnEventEmitter;
+  readonly services: FileFnServices;
   definePolicy(name: string, policy: Omit<Policy, 'name'>): void;
   getSchema(): ReturnType<typeof getSchema>;
 }
@@ -315,6 +339,33 @@ export function createFileFn(config: FileFnConfig): FileFn {
   return {
     router,
     events,
+    services: {
+      files: fileService,
+      uploads: uploadService,
+      grants: grantsService,
+      shares: sharesService,
+      processing: {
+        isEnabled: processingService.isEnabled.bind(processingService),
+        listArtifactsForFile: processingService.listArtifactsForFile.bind(processingService),
+        getArtifactDownloadUrlForFile: processingService.getArtifactDownloadUrlForFile.bind(processingService),
+        getArtifactDownloadStreamForFile: processingService.getArtifactDownloadStreamForFile.bind(processingService),
+        getReadableVersionForFile: processingService.getReadableVersionForFile.bind(processingService),
+        async triggerProcessingForFile(fileId, ctx, versionId) {
+          const file = await fileService.getFile(fileId, ctx);
+          const version = await fileService.getVersion(fileId, versionId ?? file.currentVersionId, ctx);
+          return processingService.triggerProcessing({
+            fileId: file.fileId,
+            versionId: version.versionId,
+            storageKey: version.storageKey,
+            mimeType: version.mimeType,
+            size: version.size,
+            fileName: file.name,
+            tenantId: file.tenantId ?? ctx.tenantId,
+          }, ctx);
+        },
+      },
+      policies: policyRegistry,
+    },
 
     definePolicy(name: string, policy: Omit<Policy, 'name'>): void {
       policyRegistry.define(name, policy);
@@ -402,7 +453,8 @@ export type {
 } from './events.js';
 export { resolvePrincipal } from './auth.js';
 export type { AuthConfig, AuthProvider, FileFnPrincipal } from './auth.js';
-export type { QuotaProvider } from './upload-sessions/service.js';
+export { createUploadSessionService } from './upload-sessions/service.js';
+export type { QuotaProvider, UploadSessionService, CreateSessionInput, UploadSession } from './upload-sessions/service.js';
 export { createFileService } from './files/service.js';
 export type { FileService, FileRecord, FileVersionRecord, Authorizer } from './files/service.js';
 export * from './errors.js';

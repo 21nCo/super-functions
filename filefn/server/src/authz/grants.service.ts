@@ -76,7 +76,11 @@ export function createGrantsService(config: GrantsServiceConfig) {
       return permission;
     },
 
-    async listGrants(fileId: string, ctx: FileProviderContext): Promise<FilePermissionRecord[]> {
+    async listGrants(
+      fileId: string,
+      ctx: FileProviderContext,
+      page?: { limit?: number; offset?: number },
+    ): Promise<FilePermissionRecord[]> {
       const file = await getFile(fileId);
       if (!file) {
         throw errors.notFound('File');
@@ -90,6 +94,12 @@ export function createGrantsService(config: GrantsServiceConfig) {
       return db.findMany<FilePermissionRecord>({
         model: 'filePermissions',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
+        orderBy: [
+          { field: 'createdAt', direction: 'desc' },
+          { field: 'permissionId', direction: 'asc' },
+        ],
+        limit: page?.limit,
+        offset: page?.offset,
         namespace,
       });
     },

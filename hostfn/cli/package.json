@@ -7,6 +7,12 @@
   "bin": {
     "hostfn": "./dist/index.js"
   },
+  "exports": {
+    "./operator": {
+      "types": "./dist/operator.d.ts",
+      "default": "./dist/operator.js"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

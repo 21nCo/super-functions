@@ -838,13 +838,22 @@ export function createFileService(config: FileServiceConfig) {
       });
     },
 
-    async listVersions(fileId: string, ctx: FileProviderContext): Promise<{ versions: FileVersionRecord[] }> {
+    async listVersions(
+      fileId: string,
+      ctx: FileProviderContext,
+      page?: { limit?: number; offset?: number },
+    ): Promise<{ versions: FileVersionRecord[] }> {
       await this.getFile(fileId, ctx);
 
       const versions = await db.findMany<FileVersionRecord>({
         model: 'fileVersions',
         where: [{ field: 'fileId', operator: 'eq', value: fileId }],
-        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        orderBy: [
+          { field: 'createdAt', direction: 'desc' },
+          { field: 'versionId', direction: 'desc' },
+        ],
+        limit: page?.limit,
+        offset: page?.offset,
         namespace,
       });
 

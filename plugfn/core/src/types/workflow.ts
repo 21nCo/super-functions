@@ -24,6 +24,8 @@ export enum WorkflowExecutionStatus {
 export interface Workflow {
   id: string;
   userId: string;
+  /** Authoritative tenant boundary for persisted workflow ownership. */
+  tenantId?: string;
   name: string;
   description?: string;
   definition: WorkflowDefinition;

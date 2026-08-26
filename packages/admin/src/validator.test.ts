@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { validateAdminValue } from "./validator.js";
+
+describe("validateAdminValue", () => {
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite JSON numbers (%s)",
+    (value) => {
+      expect(validateAdminValue({ type: "number" }, value)).toEqual([
+        { path: "$", message: "must be a finite JSON number", keyword: "type" },
+      ]);
+    },
+  );
+
+  it.each([
+    [{ type: "object", additionalProperties: true } as const, { nested: Number.NaN }, "$.nested"],
+    [{ type: "object", properties: { nested: {} } } as const, { nested: Number.POSITIVE_INFINITY }, "$.nested"],
+    [{ type: "array" } as const, [Number.NEGATIVE_INFINITY], "$[0]"],
+  ])("rejects non-finite values through open schemas", (schema, value, path) => {
+    expect(validateAdminValue(schema, value)).toContainEqual({
+      path,
+      message: "must be a finite JSON number",
+      keyword: "type",
+    });
+  });
+
+  it("rejects objects that could satisfy properties from a custom prototype", () => {
+    const value = Object.create({ id: "inherited" }) as Record<string, unknown>;
+    expect(validateAdminValue({
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: false,
+    }, value)).toEqual([
+      { path: "$", message: "must be a plain JSON object", keyword: "type" },
+    ]);
+  });
+
+  it("compares object and array enum members structurally", () => {
+    const schema = {
+      enum: [{ mode: "safe", limits: [1, 2] }, ["fallback", { enabled: true }]],
+    } as const;
+
+    expect(validateAdminValue(schema, { limits: [1, 2], mode: "safe" })).toEqual([]);
+    expect(validateAdminValue(schema, ["fallback", { enabled: true }])).toEqual([]);
+    expect(validateAdminValue(schema, { mode: "safe", limits: [2, 1] })).toContainEqual({
+      path: "$",
+      message: "must be one of the declared values",
+      keyword: "enum",
+    });
+  });
+
+  it("compares object-valued constants structurally", () => {
+    expect(validateAdminValue(
+      { const: { mode: "safe", nested: { enabled: true } } },
+      { nested: { enabled: true }, mode: "safe" },
+    )).toEqual([]);
+  });
+
+  it("orders object keys by code unit rather than locale collation", () => {
+    const composed = "é";
+    const decomposed = "e\u0301";
+    expect(validateAdminValue(
+      { const: { [composed]: 1, [decomposed]: 2 } },
+      { [decomposed]: 2, [composed]: 1 },
+    )).toEqual([]);
+  });
+
+  it("treats positive and negative zero as the same JSON number", () => {
+    expect(validateAdminValue({ const: 0 }, -0)).toEqual([]);
+    expect(validateAdminValue({ enum: [0] }, -0)).toEqual([]);
+  });
+
+  it.each([new Date(0), new Map(), (() => { const value: Record<string, unknown> = {}; value.self = value; return value; })()])(
+    "rejects non-JSON enum and constant comparisons without throwing",
+    (value) => {
+      expect(validateAdminValue({ const: {} }, value).length).toBeGreaterThan(0);
+      expect(validateAdminValue({ enum: [{}] }, value).length).toBeGreaterThan(0);
+    },
+  );
+
+  it("rejects unsupported values instead of skipping uniqueItems validation", () => {
+    expect(validateAdminValue({ type: "array", uniqueItems: true }, [new Date(0), new Date(0)])).toContainEqual({
+      path: "$",
+      message: "must contain only JSON values",
+      keyword: "type",
+    });
+  });
+
+  it.each([new Date(0), new Map(), new (class Example { value = 1; })()])(
+    "rejects non-plain objects through open schemas",
+    (value) => {
+      expect(validateAdminValue({ type: "object" }, value)).toEqual([
+        { path: "$", message: "must be a plain JSON object", keyword: "type" },
+      ]);
+      expect(validateAdminValue({}, { nested: value })).toContainEqual({
+        path: "$.nested",
+        message: "must be a plain JSON object",
+        keyword: "type",
+      });
+    },
+  );
+
+  it.each([undefined, 1n, Symbol("value"), () => undefined])(
+    "rejects non-JSON primitive leaves through open schemas",
+    (value) => {
+      expect(validateAdminValue({}, value)).toEqual([
+        { path: "$", message: "must be a JSON value", keyword: "type" },
+      ]);
+      expect(validateAdminValue({ type: "object", additionalProperties: true }, { nested: value })).toContainEqual({
+        path: "$.nested",
+        message: "must be a JSON value",
+        keyword: "type",
+      });
+    },
+  );
+
+  it("counts supplementary Unicode characters as one code point", () => {
+    expect(validateAdminValue({ type: "string", minLength: 1, maxLength: 1 }, "😀"))
+      .toEqual([]);
+    expect(validateAdminValue({ type: "string", minLength: 2 }, "😀"))
+      .toContainEqual(expect.objectContaining({ keyword: "minLength" }));
+  });
+});

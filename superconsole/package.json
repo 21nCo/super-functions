@@ -1,0 +1,68 @@
+{
+  "name": "superconsole",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted modular operator console for Superfunctions",
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "npm run build:server && vite dev --host 127.0.0.1 --port 4178",
+    "build": "npm run build:server && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "preview": "vite preview --host 127.0.0.1 --port 4178",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "npm run verify:function-agnostic && vitest run",
+    "test:ui": "vitest run tests/ui",
+    "probe:smoke": "node tests/probes/super-console.smoke.mjs",
+    "verify:function-agnostic": "node scripts/verify-function-agnostic.mjs"
+  },
+  "dependencies": {
+    "@mcpfn/core": "0.0.1",
+    "@superfunctions/admin": "0.1.0",
+    "@sveltejs/kit": "2.69.3",
+    "@uifn/components": "0.0.1",
+    "@uifn/components-svelte": "0.0.1",
+    "@uifn/theme": "0.0.1",
+    "@uifn/theme-tailwind": "0.0.1",
+    "svelte": "5.46.4"
+  },
+  "devDependencies": {
+    "@authfn/admin": "0.1.1",
+    "@authfn/password": "0.1.1",
+    "@authfn/two-factor": "0.1.1",
+    "@clifn/admin": "0.1.0",
+    "@extfn/admin": "0.1.0",
+    "@sveltejs/adapter-node": "^5.3.2",
+    "@sveltejs/vite-plugin-svelte": "4.0.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.2.8",
+    "@superfunctions/db": "0.1.4",
+    "@types/node": "^20.19.27",
+    "autoprefixer": "^10.4.21",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.6",
+    "svelte-check": "4.3.4",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.9.3",
+    "vite": "5.4.21",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "license": "Apache-2.0",
+  "superfunctions": {
+    "uses": [
+      "mcpfn",
+      "uifn"
+    ],
+    "schemaVersion": 1
+  }
+}
