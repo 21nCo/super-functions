@@ -10,6 +10,59 @@ Package exports and copied-source modules are generated together from the canoni
 
 The bundled catalog is verified with a detached Ed25519 signature before it is used. It does not require a registry network request, and the signing private key is never shipped in the package or repository.
 
+## Maintainer signing
+
+The repository contains only the pinned public key, catalog digest, and detached signature. Never place the private key in the checkout, an `.env` file, shell history, command arguments, CI logs, or a persistent temporary file.
+
+### Interim macOS Keychain custody
+
+Until release signing moves to shared infrastructure, the development key is held as a device-only generic-password item in the login Keychain:
+
+- Service: `uifn-registry-signing-key`
+- Account: `local-release-signer`
+- Expected key ID: `af26384964522699ef39dd80`
+
+On the authorized Mac, sign from `zsh` without materializing a PEM file:
+
+```bash
+PATH=/opt/homebrew/opt/node@22/bin:$PATH node scripts/sign-uifn-registry.mjs \
+  --private-key <(security find-generic-password \
+    -a local-release-signer \
+    -s uifn-registry-signing-key \
+    -w 2>/dev/null | xxd -r -p)
+```
+
+The `xxd` step decodes the hexadecimal representation emitted by `security` for the multiline PEM value. Confirm that the command reports key ID `af26384964522699ef39dd80`, review both generated signature files, and run the repository-wide stable gate before committing them. A missing item, a different key ID, or a Keychain access denial is a hard failure; do not generate a replacement key merely to make verification pass.
+
+### AWS KMS migration
+
+Before signing becomes a team operation, replace the local key with an AWS KMS asymmetric signing key configured as:
+
+- Key spec: `ECC_NIST_EDWARDS25519`
+- Key usage: `SIGN_VERIFY`
+- Origin: `AWS_KMS` (preferred over importing the temporary development key)
+- Signing algorithm: `ED25519_SHA_512`
+- `Sign` message type: `RAW`
+
+AWS KMS accepts at most 4,096 bytes per `Sign` request, while the generated registry catalog is substantially larger. The KMS cutover therefore requires signature-envelope schema v2. Sign this domain-separated digest rather than the complete catalog bytes:
+
+```text
+UTF8("uifn-registry-v2\0") || SHA-256(catalog-bytes)
+```
+
+Pure Ed25519 signs that small byte sequence in KMS and remains independently verifiable offline with the public key returned by `GetPublicKey`. The verifier must recompute the catalog digest and domain-separated payload itself; it must never trust a digest supplied only by the signature envelope.
+
+The migration is complete only when all of the following are true:
+
+1. Schema-v2 signing and offline-verification tests cover payload tampering, digest tampering, wrong domains, wrong keys, malformed envelopes, and legacy-schema handling.
+2. A dedicated release role is the only principal allowed to call `kms:Sign`, restricted to the exact key and `ED25519_SHA_512` algorithm.
+3. The signing job runs only in a protected release environment after review. Pull-request code, forked workflows, and ordinary build jobs cannot invoke it.
+4. The new public key, key ID, schema-v2 verifier, catalog signature, and generated TypeScript signature are reviewed and landed atomically.
+5. `PATH=/opt/homebrew/opt/node@22/bin:$PATH node scripts/verify-uifn-stable.mjs` passes against the final signed catalog, and the KMS signing event is present in CloudTrail.
+6. The old Keychain item is retained only for a bounded rollback window, then deleted after all supported releases trust the KMS key.
+
+AWS KMS supports importing asymmetric key material, so preserving the existing key through BYOK is possible. Prefer a newly generated KMS key for the team trust root because the current key originated as a temporary development credential. See the AWS documentation for [Ed25519 asymmetric keys](https://docs.aws.amazon.com/kms/latest/developerguide/asymmetric-key-specs.html), [the `Sign` API and message-size limit](https://docs.aws.amazon.com/kms/latest/APIReference/API_Sign.html), and [imported key material](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys.html).
+
 ## CLI
 
 ```bash
