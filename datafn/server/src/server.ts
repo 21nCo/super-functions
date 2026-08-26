@@ -3,7 +3,7 @@
  * Creates a Router with datafn endpoints
  */
 
-import type { RetentionConfig, RateLimitConfig, ObservabilityConfig } from "./core-types.js";
+import type { DatafnError, RetentionConfig, RateLimitConfig, ObservabilityConfig } from "./core-types.js";
 import type {
   DatafnPlugin,
   DatafnRelationSchema,
@@ -12,7 +12,14 @@ import type {
 } from "@datafn/core/types";
 import type { SearchProvider } from "./search-provider.js";
 import { validateSchema, ensureBuiltinKv, ensureBuiltinTemporal, isNamespaced } from "@datafn/core";
-import { createObservabilityMiddleware, createRouter, type Router, type Route, type RouteHandler } from "@superfunctions/http";
+import {
+  createObservabilityMiddleware,
+  createRouter,
+  executeMiddlewareChain,
+  type Router,
+  type Route,
+  type RouteHandler,
+} from "@superfunctions/http";
 import type { Adapter, RowLevelNamespaceConfig, RuntimeStores } from "@superfunctions/db";
 import { instrumentAdapter, instrumentKVStore, wrapWithRowLevelNamespace } from "@superfunctions/db";
 import { normalizeObservability, type ObservabilityInput, type ObservationLogger } from "@superfunctions/observability";
@@ -53,12 +60,19 @@ import {
 import { createTimingEmitter, type TimingEmitter } from "./middleware/timing.js";
 import { createDefaultLogger, type DatafnLogger } from "./logger.js";
 import { DatafnExecutionError } from "./execution/errors.js";
+import { DatafnExecutorError, type DatafnExecutor } from "./executor.js";
 import {
   setSpv2MigrationRuntimeConfig,
   type Spv2MigrationRuntimeConfig,
 } from "./execution/migration/spv2.js";
 import type { DatafnPublicLinksPlugin } from "./plugins/public-links.js";
 import { getDatafnMultiRegionRuntimeConfig } from "./plugins/multi-region.js";
+import {
+  DatafnRoutingError,
+  prepareDatafnRoutingRequest,
+  type PreparedDatafnRoutingRequest,
+  validateDatafnPlacement,
+} from "./multi-region-routing.js";
 import type {
   DataFnAction,
   DataFnAuthorizationDeniedMetadata,
@@ -108,6 +122,32 @@ export interface DatafnRouteHooks<TContext = any> {
   headers?: DatafnRouteHeaders<TContext>;
 }
 
+export type DatafnPluginRoutePlacementResult = string | Response;
+
+/**
+ * Placement declaration required for custom plugin routes in regional-cell
+ * mode. Returning a Response lets authentication/not-found handling stop
+ * before any regional database access.
+ */
+export interface DatafnPluginRoutePlacement<TContext = any> {
+  resolveNamespace(
+    request: Request,
+    context: TContext,
+  ): DatafnPluginRoutePlacementResult | Promise<DatafnPluginRoutePlacementResult>;
+  /** Transfers validated resolver state from the body-safe clone to the handler request. */
+  bindHandlerRequest?(
+    placementRequest: Request,
+    handlerRequest: Request,
+    context: TContext,
+  ): void | Promise<void>;
+}
+
+export type DatafnComposableRoute<TContext = any> = Route<TContext> & {
+  meta?: Route<TContext>["meta"] & {
+    datafnPlacement?: "none" | DatafnPluginRoutePlacement<TContext>;
+  };
+};
+
 /** Data provided to server plugins before a DataFn action is authorized and executed. */
 export interface DatafnPluginAuthorizationInput<TContext = any> {
   action: DataFnAction;
@@ -128,7 +168,7 @@ type DatafnServerComposablePlugin = DatafnPlugin & {
     database: Adapter;
     crossNamespaceDatabase?: Adapter;
     schema: DatafnSchema;
-  }) => Route[];
+  }) => DatafnComposableRoute[];
   authorize?: (
     input: DatafnPluginAuthorizationInput,
   ) => Promise<DatafnPluginAuthorizationResult> | DatafnPluginAuthorizationResult;
@@ -244,6 +284,9 @@ export interface DatafnServerConfig<TContext = any> {
 
   /** Database adapter used for resource persistence, query execution, mutations, sync change logs, and internal tables. */
   database?: Adapter;
+
+  /** @deprecated Use `database`. Retained for compatibility with the original DataFn server API. */
+  db?: Adapter;
 
   /** Runtime plugins that extend schema, add internal resources, register routes, or provide DataFn capabilities. */
   plugins?: DatafnPlugin[];
@@ -389,6 +432,10 @@ export interface DatafnServerConfig<TContext = any> {
  */
 export interface DatafnServer<TContext = any> {
   router: Router<TContext>;
+  /** Validated schema used by both HTTP and in-process execution. */
+  readonly schema: DatafnSchema;
+  /** Transport-neutral execution surface for trusted adapters such as McpFn. */
+  readonly executor: DatafnExecutor<TContext>;
   search(
     params: import("./execution/search/cross-resource.js").CrossResourceSearchParams & {
       namespace?: string;
@@ -399,6 +446,14 @@ export interface DatafnServer<TContext = any> {
     /** SEC-001: addClient requires auth context. Reject unauthenticated connections with close code 4401 before calling. */
     /** SCA-005: Returns false (and closes with code 4503) when connection limits are exceeded. */
     addClient(client: WebSocketClient, authContext: WsAuthContext): boolean;
+    /** Validates and pins namespace placement during a canonical-gateway handshake. */
+    addRoutedClient(
+      client: WebSocketClient,
+      authContext: WsAuthContext,
+      handshakeRequest?: Request,
+    ): Promise<boolean>;
+    /** Closes stale sessions so clients reconnect through the canonical gateway. */
+    fenceNamespace(namespace: string, minimumEpoch?: number): number;
     removeClient(client: WebSocketClient): void;
     handleMessage(client: WebSocketClient, data: string): void;
     /** REL-007: Called by WS transport on native pong frame receipt. */
@@ -494,14 +549,16 @@ export async function createDatafnServer<TContext = any>(
   // COMP-001/COMP-002: configure migration compatibility mode for this server instance.
   setSpv2MigrationRuntimeConfig(config.spv2Migration);
 
+  const configuredDatabase = config.database ?? config.db;
+
   // Initialize database adapter if provided and implements Adapter interface
   if (
-    config.database &&
-    typeof config.database === "object" &&
-    "initialize" in config.database &&
-    typeof config.database.initialize === "function"
+    configuredDatabase &&
+    typeof configuredDatabase === "object" &&
+    "initialize" in configuredDatabase &&
+    typeof configuredDatabase.initialize === "function"
   ) {
-    await config.database.initialize();
+    await configuredDatabase.initialize();
   }
 
   // Row-level namespace auto-wrapping (DFN-001)
@@ -511,8 +568,8 @@ export async function createDatafnServer<TContext = any>(
   // regardless of whether a namespace provider is present — without one, the default "datafn"
   // namespace is used. For in-memory adapters (no schema constraints), wrapping is only
   // applied when a namespace/auth provider is present (explicit namespace isolation).
-  let db = config.database;
-  const crossNamespaceDb = config.database;
+  let db = configuredDatabase;
+  const crossNamespaceDb = configuredDatabase;
   const schemaIsNamespaced = isNamespaced(validatedSchema);
   const adapterHasSchemaConstraints = db?.capabilities?.schema?.constraints === true;
   const hasNamespaceProvider = !!config.namespaceProvider;
@@ -1127,6 +1184,9 @@ export async function createDatafnServer<TContext = any>(
   ): ((req: Request, ctx: TContext) => Promise<Response>) => {
     return async (req: Request, ctx: TContext): Promise<Response> => {
       const enrichedCtx = createEnrichedContext(ctx);
+      // Body parsing consumes the original Request. Preserve one clone so a
+      // signed routing assertion can bind the exact forwarded body.
+      const placementRequest = multiRegionRuntime?.placement ? req.clone() : undefined;
       let payload: unknown = null;
       // REL-009: Reject new requests immediately when shutting down
       if (shuttingDown) {
@@ -1290,6 +1350,28 @@ export async function createDatafnServer<TContext = any>(
           });
         }
 
+        if (multiRegionRuntime?.placement && action !== "status") {
+          try {
+            await validateDatafnPlacement({
+              namespace: await extractNamespace(enrichedCtx),
+              regionId: multiRegionRuntime.regionId,
+              runtime: multiRegionRuntime.placement,
+              request: placementRequest,
+            });
+          } catch (error) {
+            if (error instanceof DatafnRoutingError) {
+              return completeDatafnResponse({
+                action,
+                request: req,
+                context: enrichedCtx,
+                payload,
+                response: error.toResponse(),
+              });
+            }
+            throw error;
+          }
+        }
+
         const pluginAuthorization = await authorizePlugins({
           action,
           request: req,
@@ -1372,6 +1454,136 @@ export async function createDatafnServer<TContext = any>(
     };
   };
 
+  const executeInProcess = async <TResult>(
+    action: "query" | "mutation" | "transact" | "search",
+    handler: (
+      req: Request,
+      ctx: TContext & { parsedBody?: unknown },
+    ) => Promise<Response> | Response,
+    payload: unknown,
+    context?: TContext,
+  ): Promise<TResult> => {
+    let body: string;
+    try {
+      body = JSON.stringify(payload) ?? "null";
+    } catch {
+      throw new DatafnExecutorError({
+        code: "DFQL_INVALID",
+        message: "Payload must be JSON serializable",
+        details: { path: "$" },
+      });
+    }
+
+    const signal = action === "search" && payload && typeof payload === "object" &&
+      (payload as { signal?: unknown }).signal instanceof AbortSignal
+      ? (payload as { signal: AbortSignal }).signal
+      : undefined;
+    const request = new Request(`http://datafn.internal/datafn/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal,
+    });
+    let response: Response;
+    try {
+      const configuredContext = config.context;
+      const executorContext = context ?? (
+        typeof configuredContext === "function"
+          ? await (configuredContext as (request: Request) => Promise<TContext> | TContext)(request)
+          : configuredContext ?? ({} as TContext)
+      );
+      response = await withAuth(action, handler)(request, executorContext);
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "Internal Server Error" },
+        500,
+      );
+    }
+    let envelope: {
+      ok: boolean;
+      result?: TResult;
+      error?: DatafnError;
+    };
+    try {
+      envelope = await response.json() as typeof envelope;
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
+    if (!envelope.ok || !Object.prototype.hasOwnProperty.call(envelope, "result")) {
+      throw new DatafnExecutorError(
+        envelope.error ?? { code: "INTERNAL", message: "DataFn execution failed" },
+        response.status,
+      );
+    }
+    return envelope.result as TResult;
+  };
+
+  const executor: DatafnExecutor<TContext> = {
+    schema: validatedSchema,
+    query: (payload, context) => executeInProcess("query", queryHandler, payload, context),
+    mutate: (payload, context) => executeInProcess("mutation", mutationHandler, payload, context),
+    transact: (payload, context) => executeInProcess("transact", transactHandler, payload, context),
+    search: (payload, context) => executeInProcess("search", searchHandler, payload, context),
+  };
+
+  const withPluginRoutePlacement = (
+    route: DatafnComposableRoute<TContext>,
+    placement: DatafnPluginRoutePlacement<TContext>,
+  ): DatafnComposableRoute<TContext> => {
+    const {
+      handler: originalHandler,
+      middleware: originalMiddleware,
+      ...routeDefinition
+    } = route;
+    return {
+      ...routeDefinition,
+      handler: async (request, context) => {
+        let prepared: PreparedDatafnRoutingRequest;
+        try {
+          prepared = await prepareDatafnRoutingRequest(
+            request,
+            multiRegionRuntime!.placement!.maxBodyBytes,
+          );
+        } catch (error) {
+          if (error instanceof DatafnRoutingError) return error.toResponse();
+          throw error;
+        }
+        const assertionRequest = prepared.createRequest();
+        const placementRequest = prepared.createRequest();
+        const handlerRequest = prepared.createRequest();
+        const resolution = await placement.resolveNamespace(placementRequest, context);
+        if (resolution instanceof Response) return resolution;
+        try {
+          await validateDatafnPlacement({
+            namespace: resolution,
+            regionId: multiRegionRuntime!.regionId,
+            runtime: multiRegionRuntime!.placement!,
+            request: assertionRequest,
+          });
+        } catch (error) {
+          if (error instanceof DatafnRoutingError) return error.toResponse();
+          throw error;
+        }
+        await placement.bindHandlerRequest?.(placementRequest, handlerRequest, context);
+        return executeMiddlewareChain(
+          originalMiddleware ?? [],
+          handlerRequest,
+          context,
+          async () => originalHandler(handlerRequest, context),
+        );
+      },
+    };
+  };
+
   // Define routes
   const routes: Route<TContext>[] = [
     {
@@ -1426,16 +1638,29 @@ export async function createDatafnServer<TContext = any>(
     },
   ];
 
-  if (config.database) {
+  if (configuredDatabase) {
     for (const plugin of plugins) {
       if (!plugin.routes) {
         continue;
       }
-      routes.push(...plugin.routes({
-        database: db ?? config.database,
+      const pluginRoutes = plugin.routes({
+        database: db ?? configuredDatabase,
         crossNamespaceDatabase: crossNamespaceDb,
         schema: validatedSchema,
-      }) as Route<TContext>[]);
+      }) as DatafnComposableRoute<TContext>[];
+      for (const route of pluginRoutes) {
+        if (!multiRegionRuntime?.placement || route.meta?.datafnPlacement === "none") {
+          routes.push(route);
+          continue;
+        }
+        const declaration = route.meta?.datafnPlacement;
+        if (!declaration) {
+          throw new Error(
+            `DATAFN_PLUGIN_ROUTE_PLACEMENT_REQUIRED: ${plugin.name} ${route.method} ${route.path}`,
+          );
+        }
+        routes.push(withPluginRoutePlacement(route, declaration));
+      }
     }
   }
 
@@ -1594,6 +1819,14 @@ export async function createDatafnServer<TContext = any>(
       params.namespace && params.namespace.trim() !== ""
         ? params.namespace
         : await extractNamespace(_ctx as TContext);
+    if (multiRegionRuntime?.placement) {
+      await validateDatafnPlacement({
+        namespace,
+        regionId: multiRegionRuntime.regionId,
+        runtime: multiRegionRuntime.placement,
+        trustedInternal: true,
+      });
+    }
     const actorId = await extractActorId(_ctx as TContext);
 
     const searchParams = {
@@ -1649,9 +1882,78 @@ export async function createDatafnServer<TContext = any>(
 
   return {
     router,
+    schema: validatedSchema,
+    executor,
     search: serverSearch,
     websocketHandler: {
-      addClient: (client, authContext) => wsManager.addClient(client, authContext),
+      addClient: (client, authContext) => {
+        if (multiRegionRuntime?.placement) {
+          try {
+            client.close?.(
+              4409,
+              "Placement validation required; use addRoutedClient",
+            );
+          } catch {
+          }
+          return false;
+        }
+        return wsManager.addClient(client, authContext);
+      },
+      addRoutedClient: async (client, authContext, handshakeRequest) => {
+        if (!multiRegionRuntime?.placement) {
+          return wsManager.addClient(client, authContext);
+        }
+        if (typeof client.close !== "function") {
+          return false;
+        }
+        const fenceGeneration = wsManager.getNamespaceFenceGeneration(
+          authContext.namespace,
+        );
+        let added = false;
+        try {
+          const validated = await validateDatafnPlacement({
+            namespace: authContext.namespace,
+            regionId: multiRegionRuntime.regionId,
+            runtime: multiRegionRuntime.placement,
+            request: handshakeRequest,
+            trustedInternal:
+              !handshakeRequest && !multiRegionRuntime.placement.requireRoutingAssertion,
+          });
+          added = wsManager.addClient(client, {
+            ...authContext,
+            regionId: validated.placement.regionId,
+            routingEpoch: validated.placement.epoch,
+          });
+          if (!added) return false;
+          if (
+            wsManager.getNamespaceFenceGeneration(authContext.namespace) !==
+              fenceGeneration
+          ) {
+            wsManager.removeClient(client);
+            try {
+              client.close(
+                4510,
+                "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
+              );
+            } catch {
+            }
+            return false;
+          }
+          return true;
+        } catch (error) {
+          if (added) wsManager.removeClient(client);
+          try {
+            client.close(
+              error instanceof DatafnRoutingError ? 4510 : 1011,
+              error instanceof Error ? error.message : "Placement validation failed",
+            );
+          } catch {
+          }
+          return false;
+        }
+      },
+      fenceNamespace: (namespace, minimumEpoch) =>
+        wsManager.fenceNamespace(namespace, minimumEpoch),
       removeClient: (client) => wsManager.removeClient(client),
       handleMessage: (client, data) => wsManager.handleMessage(client, data),
       handlePong: (client) => wsManager.handlePong(client),

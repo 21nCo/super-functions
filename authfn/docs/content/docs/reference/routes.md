@@ -19,7 +19,7 @@ The interactive [API reference](../api) renders the same data with request / res
 | `POST` | `/auth/sign-out` | `signOut` | Revokes the current session. |
 | `GET` | `/auth/account` | `getAccountDetails` | Reads the current user's account details. |
 | `DELETE` | `/auth/account` | `deleteAccount` | Cascade-deletes the current user. |
-| `GET` | `/auth/runtime` | `getRuntime` | Resolved runtime info — region id, authority, cookie domain. |
+| `GET` | `/auth/environment` | `getEnvironment` | Resolved request environment — region id, issuer, base URL, and cookie policy. |
 
 ## Password plugin
 

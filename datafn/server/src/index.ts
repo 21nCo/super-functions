@@ -2,6 +2,8 @@
 export { datafn } from "./app.js";
 export type { DatafnApp, DatafnAppConfig, DatafnAppServerConfig } from "./app.js";
 export { createDatafnServer } from "./server.js";
+export { DatafnExecutorError } from "./executor.js";
+export type { DatafnExecutor, DatafnExecutorAction } from "./executor.js";
 export type {
   DatafnRouteHeaderEntries,
   DatafnRouteHeaderInput,
@@ -11,6 +13,9 @@ export type {
   DatafnRouteResponseHook,
   DatafnPluginAuthorizationInput,
   DatafnPluginAuthorizationResult,
+  DatafnComposableRoute,
+  DatafnPluginRoutePlacement,
+  DatafnPluginRoutePlacementResult,
   DatafnServerConfig,
   DatafnServer,
 } from "./server.js";
@@ -61,6 +66,39 @@ export type {
   DatafnMultiRegionPluginConfig,
   DatafnMultiRegionRuntimeConfig,
   DatafnPermissionDirectoryGrant,
+  DatafnGatewayCellRegistry,
+  DatafnGatewayDispatcher,
+  DatafnGatewayRouter,
+  DatafnGatewayRouterConfig,
+  DatafnNamespaceMigrationContext,
+  DatafnNamespaceMigrationHooks,
+  DatafnNamespaceMigrationState,
+  DatafnNamespacePlacement,
+  DatafnPlacementDirectoryAdapter,
+  DatafnPlacementRuntimeConfig,
+  DatafnPlacementState,
+  DatafnRoutingAssertionClaims,
+  DatafnRoutingAssertionSigner,
+  DatafnRoutingAssertionVerifier,
+  DatafnRoutingReplayStore,
+  DatafnRoutingEvent,
+  DatafnRoutingEventType,
+} from "./plugins/multi-region.js";
+export {
+  DATAFN_MULTI_REGION_CAPABILITY,
+  DATAFN_ROUTING_ASSERTION_HEADER,
+  DATAFN_ROUTING_INTERNAL_HEADERS,
+  DatafnRoutingError,
+  claimDatafnNamespacePlacement,
+  createConditionalKvDatafnPlacementDirectory,
+  createDatafnGatewayRouter,
+  createDatafnHmacRoutingAssertions,
+  createMemoryDatafnPlacementDirectory,
+  createMemoryDatafnRoutingReplayStore,
+  migrateDatafnNamespace,
+  validateDatafnRoutingBodyLimit,
+  validateDatafnPlacement,
+  withDatafnRoutingAssertion,
 } from "./plugins/multi-region.js";
 
 // Re-export SearchProvider for consumer use

@@ -2,6 +2,7 @@ import type { Route } from '@superfunctions/http';
 import type {
   AuthFnRuntimeConfig,
   AuthFnError,
+  AuthFnAccountDeletionFailure,
   AuthFnAccountDeletionResult,
   AuthFnHookContext,
   AuthFnHookFailurePolicy,
@@ -26,7 +27,8 @@ const AFTER_HOOK_NAMES = [
   'afterSessionIssue',
   'afterChallengeSend',
   'afterOAuthCallback',
-  'afterAccountDelete'
+  'afterAccountDelete',
+  'afterAccountDeleteFailure'
 ] as const;
 
 type BeforeHookName = (typeof BEFORE_HOOK_NAMES)[number];
@@ -85,7 +87,9 @@ export function composePluginHooks(config: AuthFnRuntimeConfig): Partial<AuthFnH
     afterOAuthCallback: async (ctx, result) =>
       runAfterHooks(config.plugins, config, config.hooks, 'afterOAuthCallback', ctx, result),
     afterAccountDelete: async (ctx, result) =>
-      runAfterHooks(config.plugins, config, config.hooks, 'afterAccountDelete', ctx, result)
+      runAfterHooks(config.plugins, config, config.hooks, 'afterAccountDelete', ctx, result),
+    afterAccountDeleteFailure: async (ctx, failure) =>
+      runAfterHooks(config.plugins, config, config.hooks, 'afterAccountDeleteFailure', ctx, failure)
   };
 }
 
@@ -190,7 +194,7 @@ async function runAfterHooks(
   configHooks: Partial<AuthFnHooks> | undefined,
   hookName: AfterHookName,
   ctx: AuthFnHookContext,
-  payload: Record<string, unknown> | AuthFnSession | AuthFnAccountDeletionResult
+  payload: Record<string, unknown> | AuthFnSession | AuthFnAccountDeletionResult | AuthFnAccountDeletionFailure
 ): Promise<void> {
   for (const plugin of plugins) {
     const hook = plugin.hooks?.[hookName];

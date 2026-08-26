@@ -1,0 +1,91 @@
+import type { DevFnConfig } from "@devfn/config";
+import { DevFnError, type LifecyclePlan } from "./types.js";
+
+export function createPlan(config: DevFnConfig, requestedProfile?: string): LifecyclePlan {
+  const processes = config.processes ?? {};
+  const services = config.services ?? {};
+  const hasProcess = (name: string): boolean => Object.prototype.hasOwnProperty.call(processes, name);
+  const hasService = (name: string): boolean => Object.prototype.hasOwnProperty.call(services, name);
+  const collision = Object.keys(processes).find(hasService);
+  if (collision) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Lifecycle node ${collision} cannot be both a process and a service.`);
+  const profileName = requestedProfile ?? config.defaultProfile ?? "default";
+  const profile = Object.prototype.hasOwnProperty.call(config.profiles, profileName) ? config.profiles[profileName] : undefined;
+  if (!profile) throw new DevFnError("DEVFN_PROFILE_NOT_FOUND", `Profile ${profileName} does not exist.`);
+  const selected = new Set([...(profile.processes ?? []), ...(profile.services ?? [])]);
+  const expanded = new Set<string>();
+  const dependencies = (name: string): string[] => hasProcess(name) ? processes[name].dependsOn ?? [] : hasService(name) ? services[name].dependsOn ?? [] : [];
+  const include = (name: string): void => {
+    if (!hasProcess(name) && !hasService(name)) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Unknown lifecycle node ${name}.`);
+    if (expanded.has(name)) return;
+    expanded.add(name);
+    if (!selected.has(name)) selected.add(name);
+    dependencies(name).forEach(include);
+  };
+  [...selected].forEach(include);
+  if (profile.proxy) {
+    const hostnameOwners = Object.values(config.hostnames ?? {}).flatMap((hostname) => {
+      if (hostname.profiles && !hostname.profiles.includes(profileName)) return [];
+      const owners = [
+        ...Object.entries(processes).filter(([, spec]) => spec.ports?.includes(hostname.target)).map(([name]) => name),
+        ...Object.entries(services).filter(([, spec]) => spec.ports?.[hostname.target] !== undefined).map(([name]) => name),
+      ];
+      if (owners.length === 0) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${hostname.target} has no lifecycle owner.`);
+      return [{ target: hostname.target, owners }];
+    });
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const { target, owners } of hostnameOwners) {
+        const activeOwners = owners.filter((name) => selected.has(name));
+        if (activeOwners.length > 1) {
+          throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${target} has ambiguous lifecycle owners for profile ${profileName}.`);
+        }
+        if (activeOwners.length === 0 && owners.length === 1) {
+          const before = selected.size;
+          include(owners[0]);
+          changed ||= selected.size !== before;
+        }
+      }
+    }
+    for (const { target, owners } of hostnameOwners) {
+      const activeOwners = owners.filter((name) => selected.has(name));
+      if (activeOwners.length !== 1) {
+        throw new DevFnError("DEVFN_RUNTIME_INVALID", `Hostname target ${target} has ambiguous lifecycle owners for profile ${profileName}.`);
+      }
+      include(activeOwners[0]);
+    }
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: string[] = [];
+  const visit = (name: string): void => {
+    if (visited.has(name)) return;
+    if (visiting.has(name)) throw new DevFnError("DEVFN_DEPENDENCY_CYCLE", `Dependency cycle contains ${name}.`);
+    visiting.add(name);
+    dependencies(name).forEach(visit);
+    visiting.delete(name);
+    visited.add(name);
+    ordered.push(name);
+  };
+  [...selected].sort().forEach(visit);
+
+  const portNames = new Set<string>();
+  const portOwners = new Map<string, string>();
+  for (const name of ordered) {
+    const ownedPorts = [...(config.processes?.[name]?.ports ?? []), ...Object.keys(config.services?.[name]?.ports ?? {})];
+    for (const port of ownedPorts) {
+      const owner = portOwners.get(port);
+      if (owner !== undefined && owner !== name) throw new DevFnError("DEVFN_RUNTIME_INVALID", `Port ${port} has multiple lifecycle owners (${owner} and ${name}) in profile ${profileName}.`);
+      portOwners.set(port, name);
+      portNames.add(port);
+    }
+  }
+  for (const hostname of Object.values(config.hostnames ?? {})) if (profile.proxy && (!hostname.profiles || hostname.profiles.includes(profileName))) portNames.add(hostname.target);
+  return {
+    profile: profileName,
+    nodes: ordered.map((name) => ({ name, kind: hasProcess(name) ? "process" : "service", dependencies: dependencies(name) })),
+    portNames: [...portNames].sort(),
+    proxy: profile.proxy === true,
+  };
+}

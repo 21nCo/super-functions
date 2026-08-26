@@ -91,7 +91,7 @@ class CustomStorageAdapter implements DatafnStorageAdapter {
 
 ### Atomic mergeRecord
 
-The `mergeRecord` method must be atomic: read the existing record, merge fields, and write back in a single transaction. If your storage backend supports transactions, use them. If not, use a mutex or optimistic concurrency control.
+The `mergeRecord` method must be linearizable across every adapter instance: read the existing record, merge fields, and write back as one atomic operation. Use a backend transaction, distributed lock with fencing, versioned compare-and-set, or a mutex shared by every instance; a process-local per-instance mutex is insufficient. A row lock cannot lock an absent row, so adapters must retry the complete operation after a retryable serialization, duplicate-key, CAS, or version conflict. The retry re-reads the winner and applies the losing caller's `partial` update.
 
 The merge behavior is one-level deep:
 - Scalar fields: overwrite.
@@ -105,39 +105,47 @@ async mergeRecord(
   partial: Record<string, unknown>,
   options?: { ifMissing?: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
-  // Begin a real database transaction or optimistic-concurrency operation.
-  const existing = await this.getRecord(resource, id);
-  if (!existing && options?.ifMissing) {
-    // ifMissing is the complete create payload. Insert it atomically only if
-    // the row is still absent; do not merge partial over it.
-    const created = { ...options.ifMissing, id };
-    await this.upsertRecord(resource, created);
-    // Commit transaction
-    return created;
-  }
-  const merged = existing ? { ...existing } : { ...partial, id };
+  // Adapt the conflict classifier and transaction APIs to your backend.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await this.db.transaction({ isolation: "serializable" }, async (tx) => {
+        const existing = await tx.getRecordForUpdate(resource, id);
+        if (!existing && options?.ifMissing) {
+          const created = { ...options.ifMissing, id };
+          await tx.insertRecord(resource, created);
+          return created;
+        }
+        const merged = existing ? { ...existing } : { ...partial, id };
 
-  for (const [key, value] of Object.entries(partial)) {
-    if (
-      value !== null && typeof value === "object" && !Array.isArray(value) &&
-      merged[key] !== null && typeof merged[key] === "object" && !Array.isArray(merged[key])
-    ) {
-      merged[key] = { ...(merged[key] as object), ...(value as object) };
-    } else {
-      merged[key] = value;
+        for (const [key, value] of Object.entries(partial)) {
+          if (
+            value !== null && typeof value === "object" && !Array.isArray(value) &&
+            merged[key] !== null && typeof merged[key] === "object" && !Array.isArray(merged[key])
+          ) {
+            merged[key] = { ...(merged[key] as object), ...(value as object) };
+          } else {
+            merged[key] = value;
+          }
+        }
+
+        merged.id = id;
+        await tx.upsertRecord(resource, merged);
+        return merged;
+      });
+    } catch (error) {
+      if (attempt >= 2 || !isRetryableMergeConflict(error)) throw error;
     }
   }
-
-  merged.id = id;
-  await this.upsertRecord(resource, merged);
-  // Commit transaction
-  return merged;
 }
 ```
 
+`isRetryableMergeConflict` must recognize only the backend's serialization, duplicate-key, CAS, and version-conflict errors. Never retry validation, authorization, or arbitrary application failures.
+
 Only declare `readonly capabilities = { atomicMergeIfMissing: true }` when the
-existence check and write above are protected by a real transaction, mutex, or
-optimistic-concurrency primitive. Without that capability, DataFn uses a
+existence check and write above are protected across every adapter instance by
+a backend transaction, distributed lock with fencing, versioned compare-and-set
+with complete-operation retries on version conflicts,
+or a mutex shared by every instance. Without that capability, DataFn uses a
 merge-safe legacy fallback that does not apply create-only defaults.
 
 ### Monotonic Changelog Sequence

@@ -59,7 +59,7 @@ interface AuthFnErrorEnvelope {
 }
 ```
 
-Every error code is one of the values listed in [Errors](./errors). The `retryable` flag is set on errors where retry is sane (`AUTHFN_DELIVERY_FAILED`, `AUTHFN_RATE_LIMITED`, `AUTHFN_INTERNAL_ERROR`). All other codes are `retryable: false`.
+Every error code is one of the values listed in [Errors](./errors). The `retryable` flag is set on errors where retry is sane (`AUTHFN_DELIVERY_FAILED`, `AUTHFN_RATE_LIMITED`, `AUTHFN_INTERNAL_ERROR`, `AUTHFN_PLACEMENT_DIRECTORY_UNAVAILABLE`, `AUTHFN_PLACEMENT_MOVING`). All other codes are `retryable: false`.
 
 ## Status codes
 

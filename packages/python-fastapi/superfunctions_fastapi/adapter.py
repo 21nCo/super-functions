@@ -17,6 +17,7 @@ from superfunctions.http import (
     Response,
     Route,
     RouteContext,
+    execute_route,
 )
 
 SUPERFUNCTIONS_ROUTE_ATTR = "__superfunctions_route__"
@@ -158,7 +159,7 @@ def create_handler(handler: Callable, route: Route):
             )
 
             # Call handler
-            response = await handler(adapted_request, context)
+            response = await execute_route(route, handler, adapted_request, context)
 
             # Convert response
             return to_fastapi_response(response)

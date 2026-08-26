@@ -96,6 +96,7 @@ This document is intended for large language models and agentic developer tools.
 - [Scaling](https://datafn.21n.co/docs/documentation/deploy/scaling): Sequence store, WebSocket broadcasting, multi-region, and the bottleneck pattern.
 - [Deploy to Vercel](https://datafn.21n.co/docs/documentation/deploy/vercel): Run DataFn on Vercel with Next.js or SvelteKit and a managed Postgres.
 - [SPV2 Migration](https://datafn.21n.co/docs/documentation/migrations/spv2): Roll out Sharing Permissions V2 safely with backfill, dual-read, dual-write, and rollback controls.
+- [Multi-region gateway routing](https://datafn.21n.co/docs/documentation/multi-region-gateway): Tenant placement, regional cell fencing, canonical ingress, safe retries, and namespace migration.
 - [Namespaces](https://datafn.21n.co/docs/documentation/namespaces): Isolate data between tenants, users, or any grouping with composable namespace strings.
 - [Client Search Plugin](https://datafn.21n.co/docs/documentation/plugins/client-search): Built-in plugin for client-side full-text search with provider-backed or legacy MiniSearch mode.
 - [Custom Plugins](https://datafn.21n.co/docs/documentation/plugins/custom-plugins): Build your own DataFn plugins.

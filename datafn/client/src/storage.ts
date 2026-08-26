@@ -56,8 +56,9 @@ export interface DatafnStorageAdapter {
   ): Promise<void>;
   deleteRecord(resource: string, id: string): Promise<void>;
   
-  /** 
-   * Atomic read-modify-write merge. MUST execute in a single transaction.
+  /**
+   * Atomic read-modify-write merge. MUST be linearizable across every adapter
+   * instance through a backend transaction or equivalent coordination primitive.
    * If the record does not exist, creates from `options.ifMissing` when
    * supplied, otherwise from `partial`.
    * Uses one-level-deep merge for object-type fields.

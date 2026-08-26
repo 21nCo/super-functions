@@ -24,7 +24,7 @@ A focused example that demonstrates **wrong-authority correction** across two lo
 
 ## Routes exercised
 
-- `GET /auth/runtime` (per-region runtime info — region id, authority, cookie domain).
+- `GET /auth/environment` (per-region environment — region id, issuer, base URL, cookie policy).
 - `POST /auth/regions/lookup` (the cross-region lookup).
 - `POST /auth/sign-in/password` (mismatch path on the wrong authority; success path on the right authority).
 

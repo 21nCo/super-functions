@@ -91,81 +91,96 @@ export async function deleteAccountForUser(
     session?: AuthFnSession;
     request?: Request;
     actorId?: string;
+    /** True for administrator/delegated deletion, independent of actor identity. */
+    delegated?: boolean;
   }
 ): Promise<AuthFnAccountDeletionResult> {
   const user = input.user;
   const actorId = input.actorId ?? user.id;
   const counts: Record<string, number> = {};
-
-  await hooks.beforeAccountDelete?.({
+  const hookContext = {
     config,
     request: input.request,
     session: input.session,
-    actorId
-  }, {
-    userId: user.id,
-    primaryEmail: user.primaryEmail,
-    sessionId: input.session?.id
-  });
+    actorId,
+    operationState: new Map<symbol, unknown>()
+  };
 
-  if (hasPlugin(config, 'twoFactor')) {
-    const enrollments = await config.database.findMany<AuthFnTwoFactorEnrollmentRecord>({
-      model: 'two_factor_enrollments',
-      where: [{ field: 'userId', operator: 'eq', value: user.id }],
-      namespace: namespace(config)
+  try {
+    await hooks.beforeAccountDelete?.(hookContext, {
+      userId: user.id,
+      primaryEmail: user.primaryEmail,
+      sessionId: input.session?.id,
+      delegated: input.delegated === true
     });
-    let recoveryCodes = 0;
-    for (const enrollment of enrollments) {
-      recoveryCodes += await deleteMany(config, 'two_factor_recovery_codes', 'enrollmentId', enrollment.id);
+
+    if (hasPlugin(config, 'twoFactor')) {
+      const enrollments = await config.database.findMany<AuthFnTwoFactorEnrollmentRecord>({
+        model: 'two_factor_enrollments',
+        where: [{ field: 'userId', operator: 'eq', value: user.id }],
+        namespace: namespace(config)
+      });
+      let recoveryCodes = 0;
+      for (const enrollment of enrollments) {
+        recoveryCodes += await deleteMany(config, 'two_factor_recovery_codes', 'enrollmentId', enrollment.id);
+      }
+      counts.twoFactorRecoveryCodes = recoveryCodes;
+      counts.twoFactorChallenges = await deleteMany(config, 'two_factor_challenges', 'userId', user.id);
+      counts.twoFactorEnrollments = await deleteMany(config, 'two_factor_enrollments', 'userId', user.id);
     }
-    counts.twoFactorRecoveryCodes = recoveryCodes;
-    counts.twoFactorChallenges = await deleteMany(config, 'two_factor_challenges', 'userId', user.id);
-    counts.twoFactorEnrollments = await deleteMany(config, 'two_factor_enrollments', 'userId', user.id);
-  }
 
-  if (hasPlugin(config, 'nativeHandoff')) {
-    counts.nativeHandoffCodes = await deleteMany(config, 'native_handoff_codes', 'userId', user.id);
-  }
-  if (hasPlugin(config, 'apiKey')) {
-    counts.apiKeys = await deleteMany(config, 'api_keys', 'userId', user.id);
-  }
-  if (hasPlugin(config, 'socialOAuth')) {
-    counts.oauthAccounts = await deleteMany(config, 'oauth_accounts', 'userId', user.id);
-  }
-  if (hasPlugin(config, 'password')) {
-    counts.passwordCredentials = await deleteMany(config, 'password_credentials', 'userId', user.id);
-  }
-  if (hasPlugin(config, 'emailOtp') && user.primaryEmail) {
-    counts.otpChallenges = await deleteMany(config, 'otp_challenges', 'email', user.primaryEmail.trim().toLowerCase());
-  }
-  const multiRegion = getMultiRegionPluginConfig(config);
-  if (multiRegion && user.primaryEmail) {
-    await unregisterRegionLookupForIdentifier(config, multiRegion, user.primaryEmail);
-  }
-  if (multiRegion) {
-    counts.regionProfiles = await deleteMany(config, 'region_profiles', 'userId', user.id);
-  }
+    if (hasPlugin(config, 'nativeHandoff')) {
+      counts.nativeHandoffCodes = await deleteMany(config, 'native_handoff_codes', 'userId', user.id);
+    }
+    if (hasPlugin(config, 'apiKey')) {
+      counts.apiKeys = await deleteMany(config, 'api_keys', 'userId', user.id);
+    }
+    if (hasPlugin(config, 'socialOAuth')) {
+      counts.oauthAccounts = await deleteMany(config, 'oauth_accounts', 'userId', user.id);
+    }
+    if (hasPlugin(config, 'password')) {
+      counts.passwordCredentials = await deleteMany(config, 'password_credentials', 'userId', user.id);
+    }
+    if (hasPlugin(config, 'emailOtp') && user.primaryEmail) {
+      counts.otpChallenges = await deleteMany(config, 'otp_challenges', 'email', user.primaryEmail.trim().toLowerCase());
+    }
+    const multiRegion = getMultiRegionPluginConfig(config);
+    if (multiRegion && user.primaryEmail) {
+      await unregisterRegionLookupForIdentifier(config, multiRegion, user.primaryEmail);
+    }
+    if (multiRegion) {
+      counts.regionProfiles = await deleteMany(config, 'region_profiles', 'userId', user.id);
+    }
 
-  counts.sessions = await deleteMany(config, 'sessions', 'userId', user.id);
-  counts.users = await deleteMany(config, 'users', 'id', user.id);
+    counts.sessions = await deleteMany(config, 'sessions', 'userId', user.id);
+    counts.users = await deleteMany(config, 'users', 'id', user.id);
+  } catch (error) {
+    try {
+      await hooks.afterAccountDeleteFailure?.(hookContext, {
+        userId: user.id,
+        primaryEmail: user.primaryEmail,
+        sessionId: input.session?.id,
+        delegated: input.delegated === true,
+        error
+      });
+    } catch (hookError) {
+      if (hookError instanceof Error && hookError.cause === undefined) {
+        hookError.cause = error;
+      }
+      throw hookError;
+    }
+    throw error;
+  }
 
   const result: AuthFnAccountDeletionResult = {
     deleted: true,
     userId: user.id,
     primaryEmail: user.primaryEmail,
+    delegated: input.delegated === true,
     counts
   };
 
-  try {
-    await hooks.afterAccountDelete?.({
-      config,
-      request: input.request,
-      session: input.session,
-      actorId
-    }, result);
-  } catch {
-    // The account is already deleted; post-delete hooks are observational cleanup.
-  }
+  await hooks.afterAccountDelete?.(hookContext, result);
 
   try {
     await emitAuthEvent(config, {
