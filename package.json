@@ -21,6 +21,7 @@
     "datafn/extfn",
     "datafn/server",
     "datafn/svelte",
+    "mcpfn/*",
     "billfn/*",
     "filefn/*",
     "clifn/*",
@@ -43,6 +44,7 @@
     "test:filefn-swift-bridge-host": "swift test --package-path filefn/swift --filter FileFnWebViewBridgeHostTests",
     "test:filefn-swift-bridge": "npm --workspace filefn/swift-bridge test",
     "test:filefn-swift-integration": "FILEFN_BASE_URL=${FILEFN_BASE_URL:-http://127.0.0.1:3001/filefn} swift test --package-path filefn/swift --filter FileFnIntegrationTests",
+    "gate:mcpfn-release": "node scripts/gate-mcpfn-release.mjs",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test:coverage",
     "clean": "turbo run clean && rm -rf node_modules"

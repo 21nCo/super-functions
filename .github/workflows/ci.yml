@@ -41,6 +41,8 @@ jobs:
       full_python: ${{ steps.plan.outputs.full_python }}
       python_matrix: ${{ steps.plan.outputs.python_matrix }}
       run_docs: ${{ steps.plan.outputs.run_docs }}
+      run_mcpfn: ${{ steps.plan.outputs.run_mcpfn }}
+      mcpfn_only: ${{ steps.plan.outputs.mcpfn_only }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,7 +67,7 @@ jobs:
   javascript:
     name: JavaScript
     needs: plan
-    if: needs.plan.outputs.run_js == 'true'
+    if: needs.plan.outputs.run_js == 'true' && needs.plan.outputs.mcpfn_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -137,7 +139,7 @@ jobs:
   python:
     name: Python
     needs: plan
-    if: needs.plan.outputs.run_python == 'true'
+    if: needs.plan.outputs.run_python == 'true' && needs.plan.outputs.mcpfn_only != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -167,6 +169,35 @@ jobs:
 
       - name: Check package
         run: node scripts/ci-run-python-package.mjs "${{ matrix.package.path }}"
+
+  mcpfn:
+    name: McpFn release gate
+    needs: plan
+    if: needs.plan.outputs.run_mcpfn == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Rollup native package
+        run: node scripts/ci-install-rollup-native.mjs
+
+      - name: Install Chromium for McpFn auth tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run McpFn release gate
+        run: npm run gate:mcpfn-release
 
   docs:
     name: Docs Guardrails

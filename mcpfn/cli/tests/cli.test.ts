@@ -1,0 +1,133 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  McpFnRegistry,
+  createManifest,
+  structuredResult,
+} from "@mcpfn/core";
+
+import { loadManifestSource, runCli } from "../src/index.js";
+
+describe("mcpfn CLI", () => {
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it("returns usage exit code 2 when a command is missing or unknown", async () => {
+    let errors = "";
+    expect(await runCli([], { stderr: (value) => { errors += value; } })).toBe(2);
+    expect(errors).toContain("A command is required");
+
+    errors = "";
+    expect(await runCli(["not-a-command"], {
+      stderr: (value) => { errors += value; },
+    })).toBe(2);
+    expect(errors).toContain("Unknown command: not-a-command");
+  });
+
+  it("validates and diffs manifests with stable exit codes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-"));
+    roots.push(root);
+    const make = (required: string[]) => {
+      const registry = new McpFnRegistry().register({
+        name: "tool",
+        description: "A tool.",
+        inputSchema: {
+          type: "object",
+          properties: { value: { type: "string" }, label: { type: "string" } },
+          required,
+        },
+        handler: async () => structuredResult({ ok: true }),
+      });
+      return createManifest({ name: "test", version: "1.0.0" }, registry);
+    };
+    await writeFile(path.join(root, "before.json"), JSON.stringify(make(["value"])));
+    await writeFile(path.join(root, "after.json"), JSON.stringify(make(["value", "label"])));
+    let output = "";
+    expect(await runCli(["validate", "before.json"], { cwd: root, stdout: (value) => { output += value; } })).toBe(0);
+    expect(output).toContain("Valid McpFn manifest");
+    expect(await runCli(["diff", "before.json", "after.json", "--json"], { cwd: root, stdout: (value) => { output += value; } })).toBe(1);
+    expect(JSON.parse(await readFile(path.join(root, "before.json"), "utf8")).formatVersion).toBe(1);
+  });
+
+  it("loads a server by public shape across package-instance boundaries", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-server-"));
+    roots.push(root);
+    const manifest = createManifest({ name: "foreign", version: "1.0.0" }, new McpFnRegistry());
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `export default {
+        manifest() { return ${JSON.stringify(manifest)}; },
+        async connect() {},
+        async close() {}
+      };`,
+    );
+
+    await expect(loadManifestSource("server.mjs", root)).resolves.toMatchObject({
+      manifest: { server: { name: "foreign" } },
+      server: expect.any(Object),
+    });
+
+    await writeFile(
+      path.join(root, "registry.mjs"),
+      `const tools = ["z", "a"].map((name) => ({
+         name, description: name, inputSchema: { type: "object" }, handler: async () => ({ content: [] })
+       }));
+       export default {
+         definitions() { return tools; },
+         resourceDefinitions() { return []; },
+         resourceTemplateDefinitions() { return []; },
+         promptDefinitions() { return []; },
+         capabilities() { return { tools: {} }; },
+         listTools() { return tools; },
+         async callTool() { return { content: [] }; }
+       };`,
+    );
+    await expect(loadManifestSource("registry.mjs", root, {
+      name: "foreign",
+      version: "1.0.0",
+    })).rejects.toThrow(/sorted and unique/);
+  });
+
+  it("returns test-failure exit code 1 for a manifest contract mismatch", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-mismatch-"));
+    roots.push(root);
+    const coreUrl = pathToFileURL(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../core/src/index.ts"),
+    ).href;
+    const stale = createManifest(
+      { name: "mismatch", version: "1.0.0" },
+      new McpFnRegistry(),
+    );
+    await writeFile(
+      path.join(root, "server.mjs"),
+      `import { McpFnRegistry, createMcpFnServer, structuredResult } from ${JSON.stringify(coreUrl)};
+       const actualRegistry = new McpFnRegistry().register({
+         name: "actual", description: "Actual tool.", inputSchema: { type: "object" },
+         handler: async () => structuredResult({ ok: true })
+       });
+       const actual = createMcpFnServer({
+         info: { name: "mismatch", version: "1.0.0" }, registry: actualRegistry
+       });
+       const stale = ${JSON.stringify(stale)};
+       export default {
+         manifest() { return stale; },
+         connect(transport) { return actual.connect(transport); },
+         close() { return actual.close(); }
+       };`,
+    );
+    await writeFile(path.join(root, "scenarios.mjs"), "export default [];\n");
+    let errors = "";
+    const exitCode = await runCli(["test", "server.mjs", "scenarios.mjs"], {
+      cwd: root,
+      stderr: (value) => { errors += value; },
+    });
+    expect(errors).toContain("Tool inventory mismatch");
+    expect(exitCode).toBe(1);
+  });
+});

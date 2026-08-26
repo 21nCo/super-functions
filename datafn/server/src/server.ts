@@ -3,7 +3,7 @@
  * Creates a Router with datafn endpoints
  */
 
-import type { RetentionConfig, RateLimitConfig, ObservabilityConfig } from "./core-types.js";
+import type { DatafnError, RetentionConfig, RateLimitConfig, ObservabilityConfig } from "./core-types.js";
 import type {
   DatafnPlugin,
   DatafnRelationSchema,
@@ -60,6 +60,7 @@ import {
 import { createTimingEmitter, type TimingEmitter } from "./middleware/timing.js";
 import { createDefaultLogger, type DatafnLogger } from "./logger.js";
 import { DatafnExecutionError } from "./execution/errors.js";
+import { DatafnExecutorError, type DatafnExecutor } from "./executor.js";
 import {
   setSpv2MigrationRuntimeConfig,
   type Spv2MigrationRuntimeConfig,
@@ -284,6 +285,9 @@ export interface DatafnServerConfig<TContext = any> {
   /** Database adapter used for resource persistence, query execution, mutations, sync change logs, and internal tables. */
   database?: Adapter;
 
+  /** @deprecated Use `database`. Retained for compatibility with the original DataFn server API. */
+  db?: Adapter;
+
   /** Runtime plugins that extend schema, add internal resources, register routes, or provide DataFn capabilities. */
   plugins?: DatafnPlugin[];
 
@@ -428,6 +432,10 @@ export interface DatafnServerConfig<TContext = any> {
  */
 export interface DatafnServer<TContext = any> {
   router: Router<TContext>;
+  /** Validated schema used by both HTTP and in-process execution. */
+  readonly schema: DatafnSchema;
+  /** Transport-neutral execution surface for trusted adapters such as McpFn. */
+  readonly executor: DatafnExecutor<TContext>;
   search(
     params: import("./execution/search/cross-resource.js").CrossResourceSearchParams & {
       namespace?: string;
@@ -541,14 +549,16 @@ export async function createDatafnServer<TContext = any>(
   // COMP-001/COMP-002: configure migration compatibility mode for this server instance.
   setSpv2MigrationRuntimeConfig(config.spv2Migration);
 
+  const configuredDatabase = config.database ?? config.db;
+
   // Initialize database adapter if provided and implements Adapter interface
   if (
-    config.database &&
-    typeof config.database === "object" &&
-    "initialize" in config.database &&
-    typeof config.database.initialize === "function"
+    configuredDatabase &&
+    typeof configuredDatabase === "object" &&
+    "initialize" in configuredDatabase &&
+    typeof configuredDatabase.initialize === "function"
   ) {
-    await config.database.initialize();
+    await configuredDatabase.initialize();
   }
 
   // Row-level namespace auto-wrapping (DFN-001)
@@ -558,8 +568,8 @@ export async function createDatafnServer<TContext = any>(
   // regardless of whether a namespace provider is present — without one, the default "datafn"
   // namespace is used. For in-memory adapters (no schema constraints), wrapping is only
   // applied when a namespace/auth provider is present (explicit namespace isolation).
-  let db = config.database;
-  const crossNamespaceDb = config.database;
+  let db = configuredDatabase;
+  const crossNamespaceDb = configuredDatabase;
   const schemaIsNamespaced = isNamespaced(validatedSchema);
   const adapterHasSchemaConstraints = db?.capabilities?.schema?.constraints === true;
   const hasNamespaceProvider = !!config.namespaceProvider;
@@ -1444,6 +1454,87 @@ export async function createDatafnServer<TContext = any>(
     };
   };
 
+  const executeInProcess = async <TResult>(
+    action: "query" | "mutation" | "transact" | "search",
+    handler: (
+      req: Request,
+      ctx: TContext & { parsedBody?: unknown },
+    ) => Promise<Response> | Response,
+    payload: unknown,
+    context?: TContext,
+  ): Promise<TResult> => {
+    let body: string;
+    try {
+      body = JSON.stringify(payload) ?? "null";
+    } catch {
+      throw new DatafnExecutorError({
+        code: "DFQL_INVALID",
+        message: "Payload must be JSON serializable",
+        details: { path: "$" },
+      });
+    }
+
+    const signal = action === "search" && payload && typeof payload === "object" &&
+      (payload as { signal?: unknown }).signal instanceof AbortSignal
+      ? (payload as { signal: AbortSignal }).signal
+      : undefined;
+    const request = new Request(`http://datafn.internal/datafn/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal,
+    });
+    let response: Response;
+    try {
+      const configuredContext = config.context;
+      const executorContext = context ?? (
+        typeof configuredContext === "function"
+          ? await (configuredContext as (request: Request) => Promise<TContext> | TContext)(request)
+          : configuredContext ?? ({} as TContext)
+      );
+      response = await withAuth(action, handler)(request, executorContext);
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "Internal Server Error" },
+        500,
+      );
+    }
+    let envelope: {
+      ok: boolean;
+      result?: TResult;
+      error?: DatafnError;
+    };
+    try {
+      envelope = await response.json() as typeof envelope;
+    } catch {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
+    if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+      throw new DatafnExecutorError(
+        { code: "INTERNAL", message: "DataFn execution returned an invalid response" },
+        response.status,
+      );
+    }
+    if (!envelope.ok || !Object.prototype.hasOwnProperty.call(envelope, "result")) {
+      throw new DatafnExecutorError(
+        envelope.error ?? { code: "INTERNAL", message: "DataFn execution failed" },
+        response.status,
+      );
+    }
+    return envelope.result as TResult;
+  };
+
+  const executor: DatafnExecutor<TContext> = {
+    schema: validatedSchema,
+    query: (payload, context) => executeInProcess("query", queryHandler, payload, context),
+    mutate: (payload, context) => executeInProcess("mutation", mutationHandler, payload, context),
+    transact: (payload, context) => executeInProcess("transact", transactHandler, payload, context),
+    search: (payload, context) => executeInProcess("search", searchHandler, payload, context),
+  };
+
   const withPluginRoutePlacement = (
     route: DatafnComposableRoute<TContext>,
     placement: DatafnPluginRoutePlacement<TContext>,
@@ -1547,13 +1638,13 @@ export async function createDatafnServer<TContext = any>(
     },
   ];
 
-  if (config.database) {
+  if (configuredDatabase) {
     for (const plugin of plugins) {
       if (!plugin.routes) {
         continue;
       }
       const pluginRoutes = plugin.routes({
-        database: db ?? config.database,
+        database: db ?? configuredDatabase,
         crossNamespaceDatabase: crossNamespaceDb,
         schema: validatedSchema,
       }) as DatafnComposableRoute<TContext>[];
@@ -1791,6 +1882,8 @@ export async function createDatafnServer<TContext = any>(
 
   return {
     router,
+    schema: validatedSchema,
+    executor,
     search: serverSearch,
     websocketHandler: {
       addClient: (client, authContext) => {
