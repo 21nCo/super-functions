@@ -3,8 +3,8 @@
   "phase": "PHASE_13",
   "generatedBy": "generate-uifn-phase-13.mjs",
   "implementationEvidence": true,
-  "catalogSha256": "f90d50283106d40b028d205350733200d2d9f6982287db54fe7f52429774d282",
-  "outputSha256": "822c77fe69954f2189ac3b0d8b04230bbed1a0d3350adcccd3fd01e8a58e5b58",
+  "catalogSha256": "f3a58bf3c424b0876860a49d99a0c05a8d3fc7c8de0116ac42c2db0d3c49cdcf",
+  "outputSha256": "69973d842e4025836e8413b852ae570d22213bc3332c0f1b7e0e0eab759e9424",
   "primitiveCount": 69,
   "anatomyCount": 465,
   "primitives": [

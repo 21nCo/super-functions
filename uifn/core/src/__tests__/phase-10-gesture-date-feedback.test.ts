@@ -105,11 +105,23 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
 
     const carousel = createCarouselController({ itemCount: 3, autoplayDelay: 10, reducedMotion: true, loop: true }, deterministicEnv());
     expect(carousel.state.interaction).toBe('idle');
+    expect(carousel.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.next.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.indicator.getProps(0).attributes?.type).toBe('button');
     carousel.actions.dragStart(1, { x: 100, y: 0 }, 'touch'); carousel.actions.dragMove(1, { x: 50, y: 2 }); carousel.actions.dragEnd(1);
     expect(carousel.state.index).toBe(1);
 
     const rating = createRatingGroupController({ allowHalf: true, defaultValue: 2.5, locale: 'hi-IN' }, deterministicEnv('hi-IN'));
     rating.actions.keyStep('ArrowRight'); expect(rating.state.value).toBe(3);
+    const requiredRating = createRatingGroupController({ required: true, name: 'rating' }, deterministicEnv());
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({
+      type: 'radio',
+      checked: false,
+      required: true,
+      value: '',
+    });
+    requiredRating.actions.select(4);
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({ checked: true, value: 4 });
 
     const signature = createSignaturePadController({}, deterministicEnv());
     signature.actions.pointerStart(1, { x: 0, y: 0, pressure: 0.5, time: 0 });
@@ -120,7 +132,7 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     const splitter = createSplitterController({ defaultSizes: [40, 60], minSizes: [20, 20], maxSizes: [80, 80], dir: 'rtl' }, deterministicEnv('ar-EG', 'rtl'));
     splitter.actions.resize(0, 10); expect(splitter.state.sizes).toEqual([30, 70]);
     expect(splitter.state.sizes.reduce((sum, value) => sum + value, 0)).toBe(100);
-    angle.destroy(); carousel.destroy(); rating.destroy(); signature.destroy(); splitter.destroy();
+    angle.destroy(); carousel.destroy(); rating.destroy(); requiredRating.destroy(); signature.destroy(); splitter.destroy();
   });
 
   it('synchronizes carousel props, callbacks, requests, and autoplay after creation', () => {
@@ -452,6 +464,12 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(input.state.value).toEqual(createUIFnCalendarDate(2023, 2, 28));
     expect(input.state.valid).toBe(false);
     expect(input.state.message).toBe('');
+    const mutableInput = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 6, 1), name: 'start' }, deterministicEnv());
+    mutableInput.update({ disabled: true, min: createUIFnCalendarDate(2025, 1, 1), name: 'updated-start' });
+    expect(mutableInput.state).toMatchObject({ disabled: true, valid: false });
+    expect(mutableInput.parts.hiddenInput.getProps().attributes).toMatchObject({ disabled: true, name: 'updated-start' });
+    mutableInput.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutableInput.state.value).toEqual(createUIFnCalendarDate(2024, 6, 1));
 
     const picker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), locale: 'de-DE', unavailable: (date) => date.day === 9 }, deterministicEnv('de-DE'));
     expect(picker.parts.trigger.getProps().attributes?.type).toBe('button');
@@ -468,6 +486,23 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
     mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
     expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    const disabledFocusedDate = mutablePicker.state.focusedDate;
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    mutablePicker.parts.grid.getProps().on?.keydown?.({ key: 'ArrowRight' });
+    expect(mutablePicker.state).toMatchObject({
+      value: createUIFnCalendarDate(2024, 3, 8),
+      focusedDate: disabledFocusedDate,
+      valid: true,
+    });
+    expect(mutablePicker.parts.segment.getProps('day')).toMatchObject({
+      tabIndex: -1,
+      aria: { disabled: true, readonly: true },
+    });
+    mutablePicker.update({ disabled: false, readOnly: true });
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
     const bounded = createDatePickerController({
       defaultValue: createUIFnCalendarDate(2024, 3, 10),
       min: createUIFnCalendarDate(2024, 3, 8),
@@ -480,7 +515,7 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
     bounded.actions.navigateGrid('ArrowLeft');
     expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
-    input.destroy(); picker.destroy(); mutablePicker.destroy(); bounded.destroy();
+    input.destroy(); mutableInput.destroy(); picker.destroy(); mutablePicker.destroy(); bounded.destroy();
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
@@ -516,6 +551,17 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(areaThumb.tabIndex).toBe(0);
     areaThumb.on?.keydown?.({ key: 'ArrowLeft', preventDefault: vi.fn() });
     expect(rgbaToUIFnHsla(keyboardPicker.state.value).s).toBeLessThan(saturationBefore);
+
+    keyboardPicker.update({ disabled: true, colorSpace: 'hsl', alpha: false, name: 'updated-color' });
+    const disabledColor = keyboardPicker.state.value;
+    expect(keyboardPicker.state).toMatchObject({ disabled: true, colorSpace: 'hsl', alpha: false });
+    expect(keyboardPicker.parts.hiddenInput.getProps().attributes?.name).toBe('updated-color');
+    keyboardPicker.actions.setChannel('h', 180);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+    keyboardPicker.update({ disabled: false, readOnly: true });
+    keyboardPicker.actions.setArea(50, 50);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+
     keyboardPicker.destroy();
   });
 
@@ -532,6 +578,16 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(timer.state.remaining).toBe(0); expect(complete).toHaveBeenCalledOnce();
     expect(timer.state.announcementCount).toBeLessThanOrEqual(11);
     timer.destroy(); scheduler.advanceBy(1000); expect(complete).toHaveBeenCalledOnce(); expect(scheduler.pending().timeout).toBe(0);
+
+    const mutableTimer = createTimerController({ duration: 5000 }, { scheduler, now: scheduler.now });
+    mutableTimer.update({ duration: 2000, direction: 'up', autoStart: true, announceInterval: 500 });
+    expect(mutableTimer.state).toMatchObject({ duration: 2000, direction: 'up', status: 'running' });
+    scheduler.advanceBy(250);
+    mutableTimer.actions.tick();
+    expect(mutableTimer.state.remaining).toBe(250);
+    mutableTimer.update({ autoStart: false });
+    expect(mutableTimer.state.status).toBe('paused');
+    mutableTimer.destroy();
   });
 
   it('rejects non-finite timer inputs before they can enter a runtime snapshot', () => {

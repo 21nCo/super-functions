@@ -40,7 +40,7 @@ describe('@uifn/storybook public workbench', () => {
     expect(docs.ok).toBe(true);
     expect(docs.primitiveCount).toBe(69);
     expect(docs.requiredSectionCount).toBe(69 * 13);
-    expect(docs.mappedFieldCount).toBe(12_368);
+    expect(docs.mappedFieldCount).toBe(12_376);
     expect(docs.sampleCount).toBe(69 * 3 * 2);
     expect(docs.pages.find((page) => page.primitive === 'button')).toMatchObject({
       requiredSections: expect.arrayContaining(['accessibility', 'package-install', 'source-install']),

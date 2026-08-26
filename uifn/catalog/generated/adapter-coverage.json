@@ -1,5 +1,5 @@
 {
-  "catalogSha256": "eaf2782a22ad3a0153f29e8de410631438fd280d5c29905f7a37694178cb1f2d",
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
   "catalogVersion": "1.0.0",
   "frameworks": [
     "react",
@@ -1874,5 +1874,5 @@
     }
   ],
   "schemaVersion": 1,
-  "sourceSha256": "b1c584fe1444a6350203be6ff3f226004e5d29b25433ba241c97b6f1edfeefb7"
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250"
 }

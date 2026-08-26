@@ -8,7 +8,7 @@ const meta = {
   title: "Stable/Tabs",
   component: StoryHarness,
   tags: ['autodocs'],
-  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"tabs","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"c74dd80940ac66ec2bd08d3bd2a4c1893deb2d5b3733520dc09912c834817279","registryCatalogSha256":"64bb96710f3397e9f0e811a88f05cf199f528ff145d007e857d10b600977e86d","certification":"semantic-parity-complete-external-compatibility-pending"} },
+  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"tabs","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15","registryCatalogSha256":"3b1e598a930877f503d5ba1592e36fab3710a2068768004179b6c15f42cfd251","certification":"semantic-parity-complete-external-compatibility-pending"} },
 };
 export default meta;
 

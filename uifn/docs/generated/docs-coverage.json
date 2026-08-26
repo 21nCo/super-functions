@@ -5,9 +5,9 @@
   "registryVersion": "0.0.1",
   "primitiveCount": 69,
   "requiredSectionCount": 897,
-  "mappedFieldCount": 12368,
+  "mappedFieldCount": 12376,
   "sampleCount": 414,
-  "definitionSha256": "013b38861fa63efc573e928c20f2a1669d84b5e215e1c27830219397b2fb10de",
+  "definitionSha256": "cb03e9eefd3bd3d455dbc9c069194007d70dbe44be9a64175fabf5dd9f7e361c",
   "generatorSha256": "171ad80290a70a9c54e255219b7c44cce2ce83ab935426342b77ae426a446cf5",
   "pages": [
     {
@@ -12350,6 +12350,38 @@
           "section": "state-actions-parts"
         },
         {
+          "field": "inputs[10].name",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[10].reactive",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[10].required",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[10].type",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[11].name",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[11].reactive",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[11].required",
+          "section": "state-actions-parts"
+        },
+        {
+          "field": "inputs[11].type",
+          "section": "state-actions-parts"
+        },
+        {
           "field": "name",
           "section": "overview"
         },
@@ -12514,7 +12546,7 @@
           "section": "known-constraints"
         }
       ],
-      "fieldCount": 238,
+      "fieldCount": 246,
       "sampleIds": [
         "date-picker-react-package",
         "date-picker-react-source",
@@ -12523,8 +12555,8 @@
         "date-picker-solid-package",
         "date-picker-solid-source"
       ],
-      "markdownSha256": "ca2ba45bb478ae04ad6f5db4b2b2a7d3df989686be139f828042eb44242975f3",
-      "htmlSha256": "301954a1d38afdb2a418891a8d52a17c0f4ac013ee447d783211da940ebc1e28"
+      "markdownSha256": "e6d3be6ce249cedca4865a53abaea8dd300bedb4947bf7e1b49825c1cf0d3f4e",
+      "htmlSha256": "534cf0217b15ecff77e70e060d44898a5e8c5227269b84ad12953e7993cd86dc"
     },
     {
       "primitive": "dialog",

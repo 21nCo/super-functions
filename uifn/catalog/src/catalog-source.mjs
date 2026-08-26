@@ -246,7 +246,7 @@ const primitiveDefinitions = [
   define('DatePicker', {
     family: 'date-color', requirements: ['PRIM-007'],
     anatomy: ['root:div', 'label:label', 'input:div', 'segment:span:many', 'trigger:button', 'positioner:div', 'content:div', 'header:div', 'previous:button', 'next:button', 'grid:table', 'gridLabel:caption', 'cell:td:many', 'cellTrigger:button:many', 'hiddenInput:input'],
-    inputs: ['value:structured-date', 'defaultValue:structured-date', 'open:boolean', 'defaultOpen:boolean', 'locale:string', 'timeZone:string', 'min:structured-date', 'max:structured-date', 'unavailable:date-predicate', 'name:string'],
+    inputs: ['value:structured-date', 'defaultValue:structured-date', 'open:boolean', 'defaultOpen:boolean', 'locale:string', 'timeZone:string', 'min:structured-date', 'max:structured-date', 'unavailable:date-predicate', 'name:string', 'disabled:boolean', 'readOnly:boolean'],
     events: ['OPEN', 'CLOSE', 'EDIT_SEGMENT', 'NAVIGATE_MONTH', 'NAVIGATE_GRID', 'SELECT_DATE', 'FORM_RESET'], states: ['closed', 'open', 'editing', 'invalid'],
     controlledModel: { mode: 'compound', valueInputs: ['value', 'open'], defaultInputs: ['defaultValue', 'defaultOpen'], changeEvents: ['VALUE_CHANGE', 'OPEN_CHANGE'] }, form: 'scalar', domServices: [D.root, D.layer, D.focus, D.position, D.portal, D.formLive],
   }),

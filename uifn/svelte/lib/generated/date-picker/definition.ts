@@ -6,7 +6,7 @@ export const DatePickerDefinition: SveltePrimitiveDefinition<DatePickerProps> = 
   family: 'date-color',
   kind: 'interactive-controller',
   rootPart: 'root',
-  inputNames: ["value","defaultValue","open","defaultOpen","locale","timeZone","min","max","unavailable","name"],
+  inputNames: ["value","defaultValue","open","defaultOpen","locale","timeZone","min","max","unavailable","name","disabled","readOnly"],
   contextKey: Symbol('uifn.DatePicker'),
   createController: createDatePickerController as never,
 };

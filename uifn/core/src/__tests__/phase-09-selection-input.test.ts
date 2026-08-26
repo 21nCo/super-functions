@@ -409,6 +409,24 @@ describe('PHASE_09 selection and input vectors', () => {
     files.actions.selectFiles([{ name: 'photo.png', size: 10, type: 'image/png' }]);
     expect(files.state.valid).toBe(true);
     expect(files.parts.input.getProps().attributes?.required).toBe(false);
+    files.update({ accept: 'application/pdf', multiple: true, maxFiles: 2, maxSize: 20, name: 'documents' });
+    expect(files.parts.input.getProps().attributes).toMatchObject({
+      accept: 'application/pdf',
+      multiple: true,
+      name: 'documents',
+    });
+    files.actions.selectFiles([{ name: 'second.png', size: 10, type: 'image/png' }]);
+    expect(files.state.status).toBe('rejected');
+    files.actions.selectFiles([{ name: 'report.pdf', size: 25, type: 'application/pdf' }]);
+    expect(files.state.status).toBe('rejected');
+    files.actions.selectFiles([
+      { name: 'report.pdf', size: 10, type: 'application/pdf' },
+      { name: 'evidence.pdf', size: 10, type: 'application/pdf' },
+    ]);
+    expect(files.state.fileCount).toBe(2);
+    files.actions.setFieldsetDisabled(true);
+    files.actions.reset();
+    expect(files.state).toMatchObject({ fileCount: 0, invalid: true, disabled: true });
     clipboard.destroy();
     files.destroy();
   });

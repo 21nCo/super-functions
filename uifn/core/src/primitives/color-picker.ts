@@ -39,20 +39,21 @@ function normalizeColorChannel(channel: string, value: number): number {
 }
 
 export function createColorPickerController(props: ColorPickerProps = {}, env: UIFnEnvironment = {}): ColorPickerController {
+  let currentProps = props;
   const { id } = createUIFnPhase10Ids('ColorPicker', 'color-picker', env); const valueControlled = props.value !== undefined; const openControlled = props.open !== undefined; const space = props.colorSpace ?? 'srgb'; const initial = rgba(props.value ?? props.defaultValue ?? '#000000');
-  const snapshot = (value: UIFnRgbaColor) => ({ value, serialized: serializeUIFnColor(value, props.alpha ?? true), channels: colorChannels(value, space), roundTripError: colorUIFnDistance(value, parseUIFnColor(serializeUIFnColor(value, true))) });
+  const snapshot = (value: UIFnRgbaColor) => ({ value, serialized: serializeUIFnColor(value, currentProps.alpha ?? true), channels: colorChannels(value, currentProps.colorSpace ?? 'srgb'), roundTripError: colorUIFnDistance(value, parseUIFnColor(serializeUIFnColor(value, true))) });
   const store = createStateChannel<ColorPickerState>({ ...snapshot(initial), open: props.open ?? props.defaultOpen ?? false, colorSpace: space, alpha: props.alpha ?? true, disabled: props.disabled ?? false, readOnly: props.readOnly ?? false });
   const actions: ColorPickerActions = {
-    setOpen(open) { if (store.getState().disabled) return; if (openControlled) store.patchState({ requestedOpen: open }); else store.patchState({ open, requestedOpen: undefined }); props.onOpenChange?.(open); },
+    setOpen(open) { if (store.getState().disabled) return; if (openControlled) store.patchState({ requestedOpen: open }); else store.patchState({ open, requestedOpen: undefined }); currentProps.onOpenChange?.(open); },
     syncOpen(open) { store.patchState({ open, requestedOpen: undefined }); },
-    setValue(value) { const state = store.getState(); if (state.disabled || state.readOnly) return; const next = rgba(value); if (valueControlled) store.patchState({ requestedValue: next }); else store.patchState({ ...snapshot(next), requestedValue: undefined }); props.onValueChange?.(next); },
+    setValue(value) { const state = store.getState(); if (state.disabled || state.readOnly) return; const next = rgba(value); if (valueControlled) store.patchState({ requestedValue: next }); else store.patchState({ ...snapshot(next), requestedValue: undefined }); currentProps.onValueChange?.(next); },
     syncValue(value) { const next = rgba(value); store.patchState({ ...snapshot(next), requestedValue: undefined }); },
     setChannel(channel, channelValue) { const state = store.getState(); const nextValue = normalizeColorChannel(channel, channelValue); if (state.colorSpace === 'srgb') { const current = state.value; actions.setValue({ space: 'srgb', r: channel === 'r' ? nextValue : current.r, g: channel === 'g' ? nextValue : current.g, b: channel === 'b' ? nextValue : current.b, alpha: channel === 'alpha' ? nextValue : current.alpha }); } else { const current = rgbaToUIFnHsla(state.value); actions.setValue({ space: 'hsl', h: channel === 'h' ? nextValue : current.h, s: channel === 's' ? nextValue : current.s, l: channel === 'l' ? nextValue : current.l, alpha: channel === 'alpha' ? nextValue : current.alpha }); } },
     setArea(x, y) { const current = rgbaToUIFnHsla(store.getState().value); actions.setValue({ ...current, s: Math.max(0, Math.min(100, x)), l: Math.max(0, Math.min(100, 100 - y)) }); },
-    reset() { actions.syncValue(props.defaultValue ?? '#000000'); actions.syncOpen(props.defaultOpen ?? false); },
+    reset() { actions.syncValue(currentProps.defaultValue ?? '#000000'); actions.syncOpen(currentProps.defaultOpen ?? false); },
   };
   const parts: ColorPickerControllerParts = {
-    root: createUIFnPhase10Part('ColorPicker', 'root', () => ({ id: id('root'), data: { state: store.getState().open ? 'open' : 'closed', colorSpace: space } }), { id: true }), label: createUIFnPhase10Part('ColorPicker', 'label', () => ({ id: id('label') }), { id: true }), control: createUIFnPhase10Part('ColorPicker', 'control', () => ({ id: id('control') }), { id: true }),
+    root: createUIFnPhase10Part('ColorPicker', 'root', () => ({ id: id('root'), data: { state: store.getState().open ? 'open' : 'closed', colorSpace: store.getState().colorSpace } }), { id: true }), label: createUIFnPhase10Part('ColorPicker', 'label', () => ({ id: id('label') }), { id: true }), control: createUIFnPhase10Part('ColorPicker', 'control', () => ({ id: id('control') }), { id: true }),
     trigger: createUIFnPhase10Part('ColorPicker', 'trigger', () => ({ role: 'button', id: id('trigger'), aria: { expanded: store.getState().open, controls: id('content'), labelledby: id('label') }, disabled: store.getState().disabled, on: { click: () => actions.setOpen(!store.getState().open) } }), { role: true, id: true, aria: ['expanded', 'controls'] }), positioner: createUIFnPhase10Part('ColorPicker', 'positioner', () => ({ id: id('positioner'), hidden: !store.getState().open }), { id: true }),
     content: createUIFnPhase10Part('ColorPicker', 'content', () => ({
       role: 'dialog',
@@ -116,7 +117,7 @@ export function createColorPickerController(props: ColorPickerProps = {}, env: U
           valuemin: 0,
           valuemax: maximum,
           valuenow: value,
-          label: props.messages?.channels?.[channel] ?? ({ r: 'R', g: 'G', b: 'B', h: 'H', s: 'S', l: 'L', alpha: 'α' } as Record<string, string>)[channel],
+          label: currentProps.messages?.channels?.[channel] ?? ({ r: 'R', g: 'G', b: 'B', h: 'H', s: 'S', l: 'L', alpha: 'α' } as Record<string, string>)[channel],
         },
         data: { channel },
         // State projection only: styled adapters use this value to position
@@ -138,7 +139,7 @@ export function createColorPickerController(props: ColorPickerProps = {}, env: U
         },
       };
     }, { role: true, id: true, tabIndex: true, aria: ['valuemin', 'valuemax', 'valuenow', 'label'] }),
-    channelInput: createUIFnPhase10ValuePart('ColorPicker', 'channelInput', (channel) => ({ role: 'spinbutton', id: id('input', channel), aria: { valuenow: store.getState().channels[channel] ?? 0, label: props.messages?.channels?.[channel] ?? ({ r: 'R', g: 'G', b: 'B', h: 'H', s: 'S', l: 'L', alpha: 'α' } as Record<string, string>)[channel] }, attributes: { value: store.getState().channels[channel] ?? 0 }, data: { channel }, on: { input: (event) => actions.setChannel(channel, Number(event?.value ?? 0)) } }), { role: true, id: true, aria: ['valuenow', 'label'] }), swatch: createUIFnPhase10Part('ColorPicker', 'swatch', () => ({ id: id('swatch'), style: { backgroundColor: store.getState().serialized }, data: { value: store.getState().serialized } }), { id: true }), hiddenInput: createUIFnPhase10Part('ColorPicker', 'hiddenInput', () => ({ id: id('hidden-input'), attributes: { type: 'hidden', name: props.name, value: store.getState().serialized, disabled: store.getState().disabled } }), { id: true }),
+    channelInput: createUIFnPhase10ValuePart('ColorPicker', 'channelInput', (channel) => ({ role: 'spinbutton', id: id('input', channel), aria: { valuenow: store.getState().channels[channel] ?? 0, label: currentProps.messages?.channels?.[channel] ?? ({ r: 'R', g: 'G', b: 'B', h: 'H', s: 'S', l: 'L', alpha: 'α' } as Record<string, string>)[channel] }, attributes: { value: store.getState().channels[channel] ?? 0 }, data: { channel }, on: { input: (event) => actions.setChannel(channel, Number(event?.value ?? 0)) } }), { role: true, id: true, aria: ['valuenow', 'label'] }), swatch: createUIFnPhase10Part('ColorPicker', 'swatch', () => ({ id: id('swatch'), style: { backgroundColor: store.getState().serialized }, data: { value: store.getState().serialized } }), { id: true }), hiddenInput: createUIFnPhase10Part('ColorPicker', 'hiddenInput', () => ({ id: id('hidden-input'), attributes: { type: 'hidden', name: currentProps.name, value: store.getState().serialized, disabled: store.getState().disabled } }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.value !== undefined) actions.syncValue(inputs.value); if (inputs.open !== undefined) actions.syncOpen(inputs.open); } });
+  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { currentProps = { ...currentProps, ...inputs }; const value = inputs.value === undefined ? store.getState().value : rgba(inputs.value); store.patchState({ ...snapshot(value), colorSpace: currentProps.colorSpace ?? 'srgb', alpha: currentProps.alpha ?? true, disabled: currentProps.disabled ?? false, readOnly: currentProps.readOnly ?? false }); if (inputs.value !== undefined) actions.syncValue(inputs.value); if (inputs.open !== undefined) actions.syncOpen(inputs.open); } });
 }

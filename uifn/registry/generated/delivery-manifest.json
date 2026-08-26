@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "generatorVersion": "16.6.0",
-  "definitionSha256": "c74dd80940ac66ec2bd08d3bd2a4c1893deb2d5b3733520dc09912c834817279",
+  "definitionSha256": "3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15",
   "generatorSha256": "d932bfc784cfbfeb401661943b3bcb65da012e1b4862d257075461429d769a14",
-  "catalogSha256": "64bb96710f3397e9f0e811a88f05cf199f528ff145d007e857d10b600977e86d",
+  "catalogSha256": "3b1e598a930877f503d5ba1592e36fab3710a2068768004179b6c15f42cfd251",
   "componentCount": 69,
   "partCount": 465,
   "outputCount": 1349,
@@ -3385,8 +3385,8 @@
     },
     {
       "path": "uifn/components/src/generated/catalog.ts",
-      "sha256": "544ab767483380016474b56a4c42618b71baed9b12ea89ed1eac14b6bf4d1839",
-      "bytes": 397450
+      "sha256": "060ce4eee81fd74b683092f7c91447cc5c4c4000b953c10280904a40935d50a5",
+      "bytes": 398122
     },
     {
       "path": "uifn/components/styles.css",

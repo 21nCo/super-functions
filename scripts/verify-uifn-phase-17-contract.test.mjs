@@ -72,7 +72,7 @@ test('TV-DOCS-001-P: every primitive, required section, field, and sample is map
   const samples = JSON.parse(readFileSync(path.join(root, 'uifn/docs/generated/sample-manifest.json'), 'utf8'));
   assert.equal(coverage.primitiveCount, 69);
   assert.equal(coverage.requiredSectionCount, 897);
-  assert.equal(coverage.mappedFieldCount, 12_368);
+  assert.equal(coverage.mappedFieldCount, 12_376);
   assert.equal(samples.sampleCount, 414);
   assert.ok(coverage.pages.every((page) => page.requiredSections.length === 13 && page.sampleIds.length === 6));
 });

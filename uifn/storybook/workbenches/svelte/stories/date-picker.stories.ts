@@ -9,14 +9,14 @@ const meta = {
   component: StoryHarness,
   tags: ['autodocs'],
   args: { Root: DatePickerRoot, parts, primitive: "date-picker", scenario: 'default', rootId: "root", rootElement: "div", rootProps: {}, rootVoid: false },
-  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"date-picker","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"c74dd80940ac66ec2bd08d3bd2a4c1893deb2d5b3733520dc09912c834817279","registryCatalogSha256":"64bb96710f3397e9f0e811a88f05cf199f528ff145d007e857d10b600977e86d","certification":"semantic-parity-complete-external-compatibility-pending"} },
+  parameters: { controls: { disable: true }, uifnCompatibility: {"primitive":"date-picker","canonicalVersion":"1.0.0","registryVersion":"0.0.1","frameworks":["react","svelte","solid"],"sourcePolicy":"clean-room","definitionSha256":"3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15","registryCatalogSha256":"3b1e598a930877f503d5ba1592e36fab3710a2068768004179b6c15f42cfd251","certification":"semantic-parity-complete-external-compatibility-pending"} },
 };
 export default meta;
 
 export const Default = { args: { scenario: "default", rootProps: {} } };
 export const Controlled = { args: { scenario: "controlled", rootProps: {"value":{"year":2026,"month":7,"day":22},"open":true} } };
 export const Uncontrolled = { args: { scenario: "uncontrolled", rootProps: {"defaultValue":{"year":2026,"month":7,"day":22},"defaultOpen":true} } };
-export const DisabledReadonlyInvalid = { args: { scenario: "disabled-readonly-invalid", rootProps: {} } };
+export const DisabledReadonlyInvalid = { args: { scenario: "disabled-readonly-invalid", rootProps: {"disabled":true,"readOnly":true} } };
 export const KeyboardFocus = { args: { scenario: "keyboard-focus", rootProps: {} } };
 export const Rtl = { args: { scenario: "rtl", rootProps: {} } };
 export const ForcedColors = { args: { scenario: "forced-colors", rootProps: {} } };

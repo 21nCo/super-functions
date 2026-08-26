@@ -81,6 +81,8 @@ Root inputs and defaults:
 | `max` | `structured-date` | no | yes | `undefined (no public prop override)` | Optional reactive max input from the canonical DatePicker contract. |
 | `unavailable` | `date-predicate` | no | yes | `undefined (no public prop override)` | Optional reactive unavailable input from the canonical DatePicker contract. |
 | `name` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive name input from the canonical DatePicker contract. |
+| `disabled` | `boolean` | no | yes | `undefined → false` | Optional reactive disabled input from the canonical DatePicker contract. |
+| `readOnly` | `boolean` | no | yes | `undefined → false` | Optional reactive readOnly input from the canonical DatePicker contract. |
 
 ## Controlled and uncontrolled
 
@@ -131,6 +133,8 @@ Stable data attributes:
 - `data-uifn-component="date-picker"` on all styled parts; stable.
 - `data-uifn-part="root | label | input | segment | trigger | positioner | content | header | previous | next | grid | gridLabel | cell | cellTrigger | hiddenInput"` on all styled parts; stable.
 - `data-state="closed | open | editing | invalid"` on stateful parts; stable semantic state.
+- `data-disabled="true | false"` on parts whose semantics depend on this input; stable semantic state.
+- `data-readonly="true | false"` on parts whose semantics depend on this input; stable semantic state.
 
 CSS variables:
 

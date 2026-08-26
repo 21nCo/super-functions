@@ -2,6 +2,6 @@
   "schemaVersion": 1,
   "algorithm": "Ed25519",
   "keyId": "af26384964522699ef39dd80",
-  "catalogSha256": "f990955109e3fc189be87718e374e8e392f93725fd94257d9eb7b922f74dc3ff",
-  "signatureBase64": "iRMh8z7Q6RIPpV8OJR8QknPhGPhzEQZqoKzjmiiGymWvp6KjlSwm2yGwHd+X7YAgAVBb1wTxoTrrf0NlFhpdCQ=="
+  "catalogSha256": "98170dd835921eaf019d89c68f3d17b4b32a349f5e0b96d1214f3182ab1d58c1",
+  "signatureBase64": "yLtNCFg1Ff9XFIF8PotENak43tRF2gLvKVDwoZN9WYvsaEsTb2qPzyzt1AAc2WUEmY5bgX0xZToj4qXgYMm7Ag=="
 }
