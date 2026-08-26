@@ -481,7 +481,14 @@ function presentationFieldSchema(
     const types = allowedTypes(current);
     if (types.length > 0 && !types.includes("object")) return { compatible: false, schema: current };
     const next = current.properties?.[segment];
-    if (!next) return { compatible: current.additionalProperties !== false, schema: current };
+    if (!next) {
+      switch (current.additionalProperties) {
+        case false:
+          return { compatible: false, schema: current };
+        default:
+          return { compatible: true, schema: current };
+      }
+    }
     current = next;
   }
   return { compatible: true, schema: current };

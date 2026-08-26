@@ -477,7 +477,7 @@ export class AdminDispatcher {
                     auditId: rollbackAuditId,
                     outcome: "failed",
                     errorCode: "dependency_unavailable",
-                    ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
+                    metadata: compensationAuditMetadata,
                     updatedAt: preparedAt,
                   },
                   compensation: {
@@ -567,7 +567,7 @@ export class AdminDispatcher {
                       auditId: rollbackAuditId,
                       outcome: "failed",
                       errorCode: "dependency_unavailable",
-                      ...(compensationAuditMetadata ? { metadata: compensationAuditMetadata } : {}),
+                      metadata: compensationAuditMetadata,
                       updatedAt: failedAt,
                     },
                     compensation: {

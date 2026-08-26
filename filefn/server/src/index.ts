@@ -1,6 +1,6 @@
 import { instrumentAdapter, wrapWithSchema, type Adapter, type RuntimeStores } from '@superfunctions/db';
 import { instrumentStorageAdapter, type StorageAdapter } from '@superfunctions/storage';
-import type { FileProvider } from '@superfunctions/files';
+import type { FileProvider, FileProviderContext } from '@superfunctions/files';
 import { type RateLimiter, createRateLimiter } from '@superfunctions/middleware';
 import { applyObservationHeaders } from '@superfunctions/http';
 import {
@@ -9,7 +9,7 @@ import {
   type ObservationLogger
 } from '@superfunctions/observability';
 import { getSchema } from './schema.js';
-import { createNucleusPolicies, createPolicyRegistry, type Policy, type PolicyRegistryWithDefine } from './policies.js';
+import { createPolicyRegistry, type Policy, type PolicyRegistryWithDefine } from './policies.js';
 import { createEventEmitter, type FileFnEventEmitter, type FileFnObservationEvent } from './events.js';
 import { createUploadSessionService, type QuotaProvider, type UploadSessionService } from './upload-sessions/service.js';
 import { createUploadSessionRoutes } from './upload-sessions/routes.js';
@@ -88,7 +88,13 @@ export interface FileFnServices {
     | 'getArtifactDownloadUrlForFile'
     | 'getArtifactDownloadStreamForFile'
     | 'getReadableVersionForFile'
-  >;
+  > & {
+    triggerProcessingForFile(
+      fileId: string,
+      ctx: FileProviderContext,
+      versionId?: string,
+    ): ReturnType<ProcessingService['triggerProcessing']>;
+  };
   policies: PolicyRegistryWithDefine;
 }
 
@@ -344,6 +350,18 @@ export function createFileFn(config: FileFnConfig): FileFn {
         getArtifactDownloadUrlForFile: processingService.getArtifactDownloadUrlForFile.bind(processingService),
         getArtifactDownloadStreamForFile: processingService.getArtifactDownloadStreamForFile.bind(processingService),
         getReadableVersionForFile: processingService.getReadableVersionForFile.bind(processingService),
+        async triggerProcessingForFile(fileId, ctx, versionId) {
+          const readable = await processingService.getReadableVersionForFile(fileId, ctx, versionId);
+          return processingService.triggerProcessing({
+            fileId: readable.file.fileId,
+            versionId: readable.version.versionId,
+            storageKey: readable.version.storageKey,
+            mimeType: readable.version.mimeType,
+            size: readable.version.size,
+            fileName: readable.file.name,
+            tenantId: readable.file.tenantId ?? undefined,
+          }, ctx);
+        },
       },
       policies: policyRegistry,
     },

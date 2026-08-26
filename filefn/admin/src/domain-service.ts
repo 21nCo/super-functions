@@ -238,16 +238,11 @@ export function createFileFnDomainAdminService(options: FileFnDomainAdminService
         case "filefn.artifacts.download":
           return item(adminDownloadDescriptor(await processing.getArtifactDownloadUrlForFile(request.input.fileId, request.input.id, ctx)));
         case "filefn.artifacts.process-file": {
-          const readable = await processing.getReadableVersionForFile(request.input.fileId, ctx, request.input.versionId);
-          return accepted(await processing.triggerProcessing({
-            fileId: readable.file.fileId,
-            versionId: readable.version.versionId,
-            storageKey: readable.version.storageKey,
-            mimeType: readable.version.mimeType,
-            size: readable.version.size,
-            fileName: readable.file.name,
-            tenantId: readable.file.tenantId ?? undefined,
-          }, ctx));
+          return accepted(await processing.triggerProcessingForFile(
+            request.input.fileId,
+            ctx,
+            request.input.versionId,
+          ));
         }
       }
     };

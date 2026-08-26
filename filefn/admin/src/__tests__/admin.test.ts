@@ -324,6 +324,26 @@ describe("@filefn/admin", () => {
     expect((result.data as { item: object }).item).not.toHaveProperty("storageKey");
   });
 
+  it("uses the authorization-safe FileFn processing facade", async () => {
+    const triggerProcessingForFile = vi.fn(async () => ({ enqueued: true, jobId: "job_1" }));
+    const service = domain({ processing: { triggerProcessingForFile } });
+
+    const result = await service.processFile(
+      { fileId: "file_1", versionId: "version_1" },
+      context,
+    );
+
+    expect(triggerProcessingForFile).toHaveBeenCalledWith(
+      "file_1",
+      { principalId: "operator_1", tenantId: "project_1", requestId: "request_1" },
+      "version_1",
+    );
+    expect(result.data).toMatchObject({
+      accepted: true,
+      item: { enqueued: true, jobId: "job_1" },
+    });
+  });
+
   it("preserves header-free provider download receipts and rejects provider header contracts", async () => {
     const getDownloadUrl = vi.fn(async () => ({
       url: "https://storage.example.test/signed-object?signature=opaque",

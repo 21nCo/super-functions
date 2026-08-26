@@ -283,6 +283,19 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     expect(fileFn.services.processing).not.toHaveProperty('runProcessing');
     expect(fileFn.services.processing).not.toHaveProperty('triggerProcessing');
     expect(fileFn.services.processing).toHaveProperty('listArtifactsForFile');
+    expect(fileFn.services.processing).toHaveProperty('triggerProcessingForFile');
+  });
+
+  it('authorizes the public processing trigger against the stored file and version', async () => {
+    await expect(fileFn.services.processing.triggerProcessingForFile(
+      'file_0001',
+      { principalId: 'other_user', tenantId: 'org_123' },
+    )).rejects.toMatchObject({ status: 403 });
+
+    await expect(fileFn.services.processing.triggerProcessingForFile(
+      'file_0001',
+      { principalId: 'user_123', tenantId: 'org_123' },
+    )).resolves.toEqual({ enqueued: false });
   });
 
   it('TV-PROCESS-002: PDF preview artifact descriptors should stay on HTTP proxy routes', async () => {

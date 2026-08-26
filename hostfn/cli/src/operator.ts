@@ -372,11 +372,12 @@ export class HostFnOperatorService {
       return inFlight.promise;
     }
     const promise = this.attachDomainOnce(scope, { ...input, tls: requestedTls });
-    this.domainAttachments.set(attachmentKey, { tls: requestedTls, promise });
+    const attachment = { tls: requestedTls, promise };
+    this.domainAttachments.set(attachmentKey, attachment);
     try {
       return await promise;
     } finally {
-      if (this.domainAttachments.get(attachmentKey)?.promise === promise) {
+      if (this.domainAttachments.get(attachmentKey) === attachment) {
         this.domainAttachments.delete(attachmentKey);
       }
     }
