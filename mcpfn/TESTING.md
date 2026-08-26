@@ -2,6 +2,13 @@
 
 A regression-free MCP project needs five independent layers.
 
+Scenario arrays remain readable for compatibility, while new portable bundles
+use the version 1 `mcpfn.scenarios` artifact. Every scenario can declare a
+timeout, side-effect class, required variable names, or an explicit incomplete
+state. Reports and inspector timelines apply aggregate bounds and record
+truncation rather than silently dropping evidence. See `TEST_VECTORS.md` for
+the maintained compatibility matrix.
+
 | Layer | What it catches | McpFn surface |
 | --- | --- | --- |
 | Unit/domain | Handler logic, authorization, persistence, policy | Existing package tests |
@@ -52,6 +59,11 @@ and experimental task APIs; its `configure` hook installs client-side roots,
 sampling, elicitation, and notification handlers before initialization.
 
 `structuredTextParity` is appropriate only when the text block is JSON representing the same object as `structuredContent`. Human-readable text such as MemoryFn's search summary should be asserted separately.
+
+`McpFnInspector.exportScenario()` uses this same contract. Its sanitized output
+can be passed directly to `runScenarios()` or saved in a scenario module for
+`mcpfn test`; the CLI validates tool, resource, prompt, inventory, and
+initialization shapes before execution.
 
 For tools with a declared success `outputSchema`, assert error codes by parsing the JSON text block: McpFn intentionally omits structured error content so it cannot be rejected against the success schema.
 

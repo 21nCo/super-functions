@@ -15,7 +15,9 @@ It includes:
 - named ChatGPT- and Claude-shaped OAuth metadata fixtures;
 - one suite for in-memory, custom, stdio, and Streamable HTTP targets;
 - structured/text response parity checks;
-- declarative semantic scenarios;
+- version 1 declarative scenarios for capabilities, tasks, events, and auth phases;
+- per-scenario timeout/cancellation, side-effect and incomplete metadata;
+- bounded, redacted scenario and target-suite reports;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
 Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both.
@@ -52,7 +54,12 @@ try {
 }
 ```
 
-Scenarios run serially so stateful workflows and idempotency checks remain deterministic. `assertStructuredTextParity` requires a JSON text block; do not use it for intentionally human-readable text.
+Scenarios run serially so stateful workflows and idempotency checks remain
+deterministic. Legacy arrays are readable; portable artifacts use
+`{ formatVersion: 1, kind: "mcpfn.scenarios", status, scenarios }`. A runner
+timeout supplies an abort signal and also bounds adapters that do not cooperate
+with cancellation. `assertStructuredTextParity` requires a JSON text block; do
+not use it for intentionally human-readable text.
 
 `checkHostCompatibility(manifest, profile)` returns `compatible`, `degraded`, or `incompatible`. Unsupported optional server surfaces are degraded; missing protocol overlap or required client-mediated features are incompatible. The built-in profiles are stable capability fixtures, not claims about the current behavior of named commercial hosts. Supply a custom profile for a captured host version.
 

@@ -91,6 +91,23 @@ function mergeCapabilities(
   return merged;
 }
 
+/** Resolve the exact protocol/manifest capabilities from one registry contract. */
+export function resolveMcpFnServerCapabilities<TContext>(
+  registry: McpFnRegistry<TContext>,
+  additionalCapabilities: ServerCapabilities | undefined,
+  includeTaskOperations: boolean,
+): ServerCapabilities {
+  const registryCapabilities = registry.capabilities();
+  if (registryCapabilities.tasks && includeTaskOperations) {
+    registryCapabilities.tasks = {
+      ...registryCapabilities.tasks,
+      list: {},
+      cancel: {},
+    };
+  }
+  return mergeCapabilities(registryCapabilities, additionalCapabilities);
+}
+
 function page<T>(
   values: T[],
   cursor: string | undefined,
@@ -136,18 +153,19 @@ export class McpFnServer<TContext = undefined> {
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1) {
       throw new Error("McpFn pageSize must be a positive integer");
     }
-    const registryCapabilities = this.registry.capabilities();
-    if (registryCapabilities.tasks && !options.taskStore) {
+    const hasTaskTools = Boolean(this.registry.capabilities().tasks);
+    if (hasTaskTools && !options.taskStore) {
       throw new Error("Task-capable McpFn tools require a taskStore");
     }
-    if (registryCapabilities.tasks && options.taskStore) {
-      registryCapabilities.tasks = {
-        ...registryCapabilities.tasks,
-        list: {},
-        cancel: {},
-      };
-    }
-    this.capabilities = mergeCapabilities(registryCapabilities, options.additionalCapabilities);
+    const declaredCapabilities = mergeCapabilities(
+      options.capabilities ?? {},
+      options.additionalCapabilities,
+    );
+    this.capabilities = resolveMcpFnServerCapabilities(
+      this.registry,
+      declaredCapabilities,
+      Boolean(options.taskStore),
+    );
     this.manifestOptions = {
       protocolVersions: options.protocolVersions,
       transports: options.transports,

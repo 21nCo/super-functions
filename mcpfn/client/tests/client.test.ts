@@ -181,4 +181,120 @@ describe("McpFn production client", () => {
     expect(closeHandle).toHaveBeenCalledOnce();
     await client.close();
   });
+
+  it("advertises first-class client-mediated handlers and observes server events", async () => {
+    const registry = new McpFnRegistry()
+      .register({
+        name: "progress",
+        description: "Emit one progress event.",
+        inputSchema: { type: "object", additionalProperties: false },
+        handler: async (_input, _context, extra) => {
+          if (extra._meta?.progressToken !== undefined) {
+            await extra.sendNotification({
+              method: "notifications/progress",
+              params: { progressToken: extra._meta.progressToken, progress: 1, total: 1 },
+            });
+          }
+          return structuredResult({ ok: true });
+        },
+      })
+      .registerResource({
+        uri: "memory://status",
+        name: "status",
+        read: async () => ({ contents: [{ uri: "memory://status", text: "ready" }] }),
+        subscribe: async () => undefined,
+        unsubscribe: async () => undefined,
+      })
+      .registerPrompt({ name: "hello", get: async () => ({ messages: [] }) });
+    const server = createMcpFnServer({
+      info: { name: "client-mediated", version: "1.0.0" },
+      registry,
+      additionalCapabilities: { logging: {}, tasks: {} },
+    });
+    const events: Array<{ kind: string }> = [];
+    const diagnostics: Array<{ code?: string }> = [];
+    const client = createMcpFnClient({
+      target: customTarget({
+        kind: "in-memory",
+        open: async () => {
+          const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+          await server.connect(serverTransport);
+          return { transport: clientTransport, close: () => server.close() };
+        },
+      }),
+      handlers: {
+        roots: async () => ({ roots: [{ uri: "file:///workspace", name: "workspace" }] }),
+        sampling: async () => ({
+          role: "assistant",
+          content: { type: "text", text: "sampled" },
+          model: "fixture-model",
+          stopReason: "endTurn",
+        }),
+        elicitation: async () => ({ action: "accept", content: { approved: true } }),
+      },
+      clientOptions: {
+        listChanged: {
+          tools: {
+            onChanged: () => { throw new Error("consumer callback failed"); },
+          },
+        },
+      },
+      diagnostics: (event) => { diagnostics.push(event); },
+      events: (event) => { events.push(event); },
+    });
+
+    await client.connect();
+    await expect(server.listRoots()).resolves.toMatchObject({
+      roots: [{ uri: "file:///workspace" }],
+    });
+    await expect(server.sample({
+      maxTokens: 32,
+      messages: [{ role: "user", content: { type: "text", text: "hello" } }],
+    })).resolves.toMatchObject({ model: "fixture-model" });
+    await expect(server.elicit({
+      mode: "form",
+      message: "Approve?",
+      requestedSchema: {
+        type: "object",
+        properties: { approved: { type: "boolean" } },
+      },
+    })).resolves.toMatchObject({ action: "accept" });
+    await server.sendLoggingMessage({ level: "info", data: { message: "ready" } });
+    await client.tools.call("progress");
+    await client.resources.subscribe("memory://status");
+    await client.resources.unsubscribe("memory://status");
+    await server.sendResourceUpdated({ uri: "memory://status" });
+    await server.sendToolListChanged();
+    await server.sendResourceListChanged();
+    await server.sendPromptListChanged();
+    const now = new Date().toISOString();
+    await server.protocol.notification({
+      method: "notifications/tasks/status",
+      params: {
+        taskId: "task-1",
+        status: "working",
+        ttl: null,
+        createdAt: now,
+        lastUpdatedAt: now,
+      },
+    });
+    await vi.waitFor(() => expect(events.map((event) => event.kind)).toEqual(expect.arrayContaining([
+      "client.roots",
+      "client.sampling",
+      "client.elicitation",
+      "logging.message",
+      "progress",
+      "resources.subscribed",
+      "resources.unsubscribed",
+      "resources.updated",
+      "tools.list_changed",
+      "resources.list_changed",
+      "prompts.list_changed",
+      "tasks.status",
+    ])));
+    await vi.waitFor(() => expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "MCPFN_LIST_CHANGED_CALLBACK_FAILED" }),
+    ])));
+    await client.close();
+  });
 });

@@ -105,11 +105,21 @@ export function createEncryptedMcpFnOAuthSessionStore(options: {
   const get = async <T>(part: string): Promise<T | undefined> => {
     const record = await options.store.get(key(part));
     if (!record) return undefined;
-    return JSON.parse(await options.cipher.decrypt(record.ciphertext, record.keyRef)) as T;
+    const parsed = JSON.parse(await options.cipher.decrypt(record.ciphertext, record.keyRef)) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed as { formatVersion?: unknown }).formatVersion === 1 &&
+      Object.prototype.hasOwnProperty.call(parsed, "value")
+    ) {
+      return (parsed as { value: T }).value;
+    }
+    // Read compatibility for credentials encrypted before the v1 envelope.
+    return parsed as T;
   };
   const put = async (part: string, value: unknown): Promise<void> => {
     await options.store.put(key(part), {
-      ciphertext: await options.cipher.encrypt(JSON.stringify(value), options.keyRef),
+      ciphertext: await options.cipher.encrypt(JSON.stringify({ formatVersion: 1, value }), options.keyRef),
       keyRef: options.keyRef,
     });
   };
@@ -210,6 +220,10 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(value: OAuthTokens): Promise<void> {
     const previous = await this.store.getTokens();
     await this.store.setTokens(value);
+    await Promise.all([
+      this.store.clear("verifier"),
+      this.store.clear("state"),
+    ]);
     await this.emit(previous ? "token-refresh" : "token-exchange", "succeeded", undefined, {
       tokenType: value.token_type,
       hasRefreshToken: Boolean(value.refresh_token),
@@ -231,6 +245,7 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
         ? (client as { redirect_uris: string[] }).redirect_uris
         : this.clientMetadata.redirect_uris;
       const match = matchMcpRedirectUri(requested, registered, this.options.redirectPolicy);
+      await this.options.openAuthorization(authorizationUrl);
       await this.emit("authorization-request", "succeeded", undefined, {
         redirect: match,
         clientId: authorizationUrl.searchParams.get("client_id"),
@@ -242,7 +257,6 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
       });
       throw error;
     }
-    await this.options.openAuthorization(authorizationUrl);
   }
 
   saveCodeVerifier(value: string): Promise<void> {
@@ -269,12 +283,31 @@ export class McpFnOAuthClientProvider implements OAuthClientProvider {
     return this.store.clear(scope);
   }
 
+  async invalidatePendingAuthorization(): Promise<void> {
+    await Promise.all([
+      this.store.clear("verifier"),
+      this.store.clear("state"),
+    ]);
+  }
+
   async revoke(): Promise<void> {
     const tokens = await this.store.getTokens();
-    if (!tokens) return;
+    if (!tokens) {
+      await this.emit("token-revocation", "succeeded", "MCPFN_NO_LOCAL_TOKEN", {
+        remote: false,
+      });
+      return;
+    }
     await this.emit("token-revocation", "started");
     try {
-      await this.options.revoke?.(tokens);
+      if (!this.options.revoke) {
+        const error = Object.assign(
+          new Error("Remote token revocation is not configured; local credentials were retained"),
+          { code: "MCPFN_REVOCATION_UNAVAILABLE" },
+        );
+        throw error;
+      }
+      await this.options.revoke(tokens);
       await this.store.clear("tokens");
       await this.emit("token-revocation", "succeeded");
     } catch (error) {

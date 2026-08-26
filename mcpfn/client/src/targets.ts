@@ -27,6 +27,7 @@ export interface McpFnStreamableHttpTargetOptions
 
 interface StateValidatingOAuthProvider extends OAuthClientProvider {
   validateAuthorizationState?(state: string | undefined): void | Promise<void>;
+  invalidatePendingAuthorization?(): void | Promise<void>;
 }
 
 export function customTarget(options: {
@@ -92,9 +93,14 @@ export function streamableHttpTarget(
       return {
         transport,
         finishAuthorization: async (authorizationCode, state) => {
-          await (options.authProvider as StateValidatingOAuthProvider | undefined)
-            ?.validateAuthorizationState?.(state);
-          await transport.finishAuth(authorizationCode);
+          const provider = options.authProvider as StateValidatingOAuthProvider | undefined;
+          try {
+            await provider?.validateAuthorizationState?.(state);
+            await transport.finishAuth(authorizationCode);
+          } catch (error) {
+            await provider?.invalidatePendingAuthorization?.();
+            throw error;
+          }
         },
         terminateSession: () => transport.terminateSession(),
         close: () => transport.close(),

@@ -88,9 +88,35 @@ describe("McpFn OAuth client compatibility", () => {
     const state = await provider.state();
     await expect(provider.validateAuthorizationState("wrong")).rejects.toThrow(/state/);
     await provider.validateAuthorizationState(state);
+    await expect(provider.validateAuthorizationState(state)).rejects.toThrow(/state/);
     await provider.saveTokens({ access_token: "one", refresh_token: "refresh", token_type: "Bearer" });
     await provider.saveTokens({ access_token: "two", refresh_token: "refresh-2", token_type: "Bearer" });
     expect(diagnostics.map((event) => event.phase)).toContain("token-refresh");
+  });
+
+  it("covers IPv4, IPv6, localhost, native, query, and multiple-redirect policy", () => {
+    expect(matchMcpRedirectUri(
+      "http://[::1]:43123/callback",
+      ["http://[::1]/callback"],
+    ).kind).toBe("loopback-dynamic-port");
+    expect(matchMcpRedirectUri(
+      "http://localhost:43123/callback",
+      ["http://localhost/callback"],
+      { allowLocalhostLoopback: true },
+    ).kind).toBe("loopback-dynamic-port");
+    expect(matchMcpRedirectUri(
+      "com.example.app:/oauth/callback",
+      ["https://app.example.com/callback", "com.example.app:/oauth/callback"],
+      { allowPrivateUseSchemes: true },
+    ).kind).toBe("exact");
+    expect(() => matchMcpRedirectUri(
+      "http://127.0.0.1:43123/callback?environment=prod",
+      ["http://127.0.0.1/callback?environment=dev"],
+    )).toThrow(/not registered/);
+    expect(() => matchMcpRedirectUri(
+      "http://localhost:43123/callback",
+      ["http://localhost/callback"],
+    )).toThrow(/not registered/);
   });
 
   it("isolates OAuth diagnostic observer failures", async () => {
@@ -110,6 +136,48 @@ describe("McpFn OAuth client compatibility", () => {
     await expect(provider.saveClientInformation({ client_id: "client-1" })).resolves.toBeUndefined();
     await expect(provider.saveTokens({ access_token: "opaque", token_type: "Bearer" }))
       .resolves.toBeUndefined();
+  });
+
+  it("cleans pending callback material after exchange and diagnoses opener/revocation failures", async () => {
+    const diagnostics: Array<{ phase: string; outcome: string; code?: string }> = [];
+    const store = new MemoryMcpFnOAuthSessionStore();
+    const provider = createMcpFnOAuthClientProvider({
+      redirectUrl: "https://app.example.com/callback",
+      clientMetadata: {
+        redirect_uris: ["https://app.example.com/callback"],
+        response_types: ["code"],
+        grant_types: ["authorization_code"],
+      },
+      store,
+      openAuthorization: async () => { throw new Error("browser unavailable"); },
+      diagnostics: (event) => { diagnostics.push(event); },
+    });
+    await provider.saveClientInformation({ client_id: "client-1" });
+    await provider.saveCodeVerifier("verifier");
+    await provider.state();
+    await provider.saveTokens({ access_token: "access", token_type: "Bearer" });
+    await expect(provider.codeVerifier()).rejects.toThrow(/No PKCE verifier/);
+    await expect(provider.validateAuthorizationState("stale")).rejects.toThrow(/state/);
+
+    const authorizationUrl = new URL("https://login.example.com/authorize");
+    authorizationUrl.searchParams.set("client_id", "client-1");
+    authorizationUrl.searchParams.set("redirect_uri", "https://app.example.com/callback");
+    await expect(provider.redirectToAuthorization(authorizationUrl)).rejects.toThrow(
+      "browser unavailable",
+    );
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      phase: "authorization-request",
+      outcome: "failed",
+    }));
+    await expect(provider.revoke()).rejects.toMatchObject({
+      code: "MCPFN_REVOCATION_UNAVAILABLE",
+    });
+    await expect(provider.tokens()).resolves.toMatchObject({ access_token: "access" });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      phase: "token-revocation",
+      outcome: "failed",
+      code: "MCPFN_REVOCATION_UNAVAILABLE",
+    }));
   });
 });
 
@@ -153,7 +221,12 @@ describe("McpFn hosted authorization compatibility", () => {
         clientId: input.client.clientId,
         redirectMatch: input.redirectMatch,
       }),
-      token: async () => Response.json({ access_token: "opaque", token_type: "Bearer" }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({
+          access_token: "opaque",
+          token_type: "Bearer",
+        }),
+      },
     });
   }
 
@@ -164,6 +237,7 @@ describe("McpFn hosted authorization compatibility", () => {
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("code_challenge", "challenge");
     url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("state", "state-1");
     url.searchParams.set("resource", resource);
     url.searchParams.set("scope", "mcp:read");
     return url;
@@ -218,7 +292,9 @@ describe("McpFn hosted authorization compatibility", () => {
       issuer,
       clients: { resolve: async () => null },
       authorize: async () => Response.json({ ok: true }),
-      token: async () => Response.json({ access_token: "opaque", token_type: "Bearer" }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
       clientMetadataDocuments: { enabled: true, allow, fetch },
     });
 
@@ -247,7 +323,9 @@ describe("McpFn hosted authorization compatibility", () => {
       issuer,
       clients: { resolve: async () => null },
       authorize: async () => Response.json({ ok: true }),
-      token: async () => Response.json({ access_token: "opaque", token_type: "Bearer" }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
       clientMetadataDocuments: {
         enabled: true,
         allow: async () => true,
@@ -272,7 +350,9 @@ describe("McpFn hosted authorization compatibility", () => {
       issuer,
       clients: { resolve: async () => null },
       authorize: async () => Response.json({ ok: true }),
-      token: async () => Response.json({ access_token: "opaque", token_type: "Bearer" }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
       clientMetadataDocuments: {
         enabled: true,
         allow: async () => true,
@@ -293,12 +373,157 @@ describe("McpFn hosted authorization compatibility", () => {
     });
   });
 
+  it("derives hosted metadata and owns code, auth-method, refresh, and revocation policy", async () => {
+    let activeRefreshes = 0;
+    let maximumRefreshes = 0;
+    let refreshCalls = 0;
+    let releaseFirst!: () => void;
+    const firstRefresh = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const exchangeAuthorizationCode = vi.fn(async () => ({
+      access_token: "access-1",
+      token_type: "Bearer",
+      refresh_token: "refresh-1",
+    }));
+    const refreshToken = vi.fn(async () => {
+      refreshCalls += 1;
+      activeRefreshes += 1;
+      maximumRefreshes = Math.max(maximumRefreshes, activeRefreshes);
+      if (refreshCalls === 1) await firstRefresh;
+      activeRefreshes -= 1;
+      return {
+        access_token: `access-${refreshCalls + 1}`,
+        token_type: "Bearer",
+        refresh_token: `refresh-${refreshCalls + 1}`,
+      };
+    });
+    const revokeToken = vi.fn(async () => undefined);
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async (clientId) => clientId === chatgpt.clientId ? chatgpt : null },
+      authorize: async () => Response.json({ ok: true }),
+      allowedResources: [resource],
+      supportedScopes: ["mcp:read"],
+      tokenAuthority: { exchangeAuthorizationCode, refreshToken, revokeToken },
+    });
+    const post = (path: string, body: Record<string, string>) => compatibility(new Request(
+      new URL(path, issuer),
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(body),
+      },
+    ));
+
+    const discovery = await compatibility(new Request(
+      new URL("/.well-known/oauth-authorization-server", issuer),
+    )).then((response) => response.json());
+    expect(discovery).toMatchObject({
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      token_endpoint_auth_methods_supported: ["none"],
+      revocation_endpoint: `${issuer}/revoke`,
+    });
+    const exchange = await post("/token", {
+      grant_type: "authorization_code",
+      client_id: chatgpt.clientId,
+      code: "code-1",
+      redirect_uri: chatgpt.redirectUris[0],
+      code_verifier: "v".repeat(43),
+      resource,
+    });
+    expect(exchange.status).toBe(200);
+    expect(exchangeAuthorizationCode).toHaveBeenCalledWith(expect.objectContaining({
+      method: "none",
+      code: "code-1",
+      codeVerifier: "v".repeat(43),
+      resource,
+    }), expect.any(Request));
+
+    const refreshBody = {
+      grant_type: "refresh_token",
+      client_id: chatgpt.clientId,
+      refresh_token: "refresh-1",
+      resource,
+    };
+    const refreshOne = post("/token", refreshBody);
+    await vi.waitFor(() => expect(refreshToken).toHaveBeenCalledTimes(1));
+    const refreshTwo = post("/token", refreshBody);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(refreshToken).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    expect((await refreshOne).status).toBe(200);
+    expect((await refreshTwo).status).toBe(200);
+    expect(maximumRefreshes).toBe(1);
+
+    expect((await post("/token", {
+      grant_type: "password",
+      client_id: chatgpt.clientId,
+    })).status).toBe(400);
+    expect((await post("/revoke", {
+      client_id: chatgpt.clientId,
+      token: "access-1",
+      token_type_hint: "access_token",
+    })).status).toBe(200);
+    expect(revokeToken).toHaveBeenCalledWith(expect.objectContaining({
+      token: "access-1",
+      tokenTypeHint: "access_token",
+    }), expect.any(Request));
+  });
+
+  it("negotiates secret client authentication and rejects method drift", async () => {
+    const secretClient = normalizeMcpClientRegistration({
+      clientId: "secret-client",
+      source: "pre-registered",
+      metadata: {
+        redirect_uris: ["https://client.example.com/callback"],
+        grant_types: ["authorization_code"],
+        token_endpoint_auth_method: "client_secret_basic",
+      },
+    });
+    const authenticateClient = vi.fn(async (input: { clientSecret: string }) =>
+      input.clientSecret === "correct");
+    const compatibility = createMcpAuthorizationCompatibilityHandler({
+      issuer,
+      clients: { resolve: async (clientId) => clientId === secretClient.clientId ? secretClient : null },
+      authorize: async () => Response.json({ ok: true }),
+      capabilities: { tokenEndpointAuthMethods: ["client_secret_basic"] },
+      tokenAuthority: {
+        authenticateClient,
+        exchangeAuthorizationCode: async () => ({ access_token: "access", token_type: "Bearer" }),
+      },
+    });
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: "code",
+      redirect_uri: secretClient.redirectUris[0],
+      code_verifier: "v".repeat(43),
+    });
+    const accepted = await compatibility(new Request(`${issuer}/token`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Basic ${btoa("secret-client:correct")}`,
+      },
+      body,
+    }));
+    expect(accepted.status).toBe(200);
+    expect(authenticateClient).toHaveBeenCalledOnce();
+    const drift = await compatibility(new Request(`${issuer}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...Object.fromEntries(body), client_id: "secret-client" }),
+    }));
+    expect(drift.status).toBe(401);
+    await expect(drift.json()).resolves.toMatchObject({ error: "invalid_client" });
+  });
+
   it("isolates hosted authorization diagnostic observer failures", async () => {
     const compatibility = createMcpAuthorizationCompatibilityHandler({
       issuer,
       clients: { resolve: async (clientId) => clientId === chatgpt.clientId ? chatgpt : null },
       authorize: async () => Response.json({ ok: true }),
-      token: async () => Response.json({ access_token: "opaque", token_type: "Bearer" }),
+      tokenAuthority: {
+        exchangeAuthorizationCode: async () => ({ access_token: "opaque", token_type: "Bearer" }),
+      },
       diagnostics: async () => {
         throw new Error("observer failed");
       },

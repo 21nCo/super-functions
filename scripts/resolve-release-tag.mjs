@@ -29,19 +29,9 @@ async function loadReleaseTargets() {
       fail(`Invalid release target entry in ${path.relative(repoRoot, releasePackagesPath)}: ${JSON.stringify(entry)}`);
     }
 
-    const packageJsonFile = path.join(repoRoot, entry.path, 'package.json');
-    const packageJson = JSON.parse(await readFile(packageJsonFile, 'utf8'));
-
-    if (packageJson.name !== entry.name) {
-      fail(
-        `Release target ${entry.slug} expected ${entry.name} at ${entry.path}/package.json, found ${packageJson.name ?? 'undefined'}`,
-      );
-    }
-
     targets.push({
       slug: entry.slug,
       name: entry.name,
-      version: packageJson.version,
       path: entry.path,
     });
   }
@@ -79,14 +69,23 @@ if (!target) {
   fail(`No publishable workspace found for slug "${slug}". Supported slugs: ${supportedSlugs}`);
 }
 
-if (target.version !== version) {
-  fail(`Tag version ${version} does not match ${target.name}@${target.version} in ${target.path}/package.json`);
+const packageJsonFile = path.join(repoRoot, target.path, 'package.json');
+const packageJson = JSON.parse(await readFile(packageJsonFile, 'utf8'));
+
+if (packageJson.name !== target.name) {
+  fail(
+    `Release target ${target.slug} expected ${target.name} at ${target.path}/package.json, found ${packageJson.name ?? 'undefined'}`,
+  );
+}
+
+if (packageJson.version !== version) {
+  fail(`Tag version ${version} does not match ${target.name}@${packageJson.version} in ${target.path}/package.json`);
 }
 
 await writeOutputs({
   pkg_slug: target.slug,
   pkg_name: target.name,
-  pkg_version: target.version,
+  pkg_version: packageJson.version,
   pkg_path: target.path,
 });
 
@@ -96,7 +95,7 @@ console.log(
       tag,
       slug: target.slug,
       name: target.name,
-      version: target.version,
+      version: packageJson.version,
       path: target.path,
     },
     null,

@@ -16,12 +16,16 @@ export function generateNonce(prefix = "nonce"): string {
 
 export function generatePkcePair(verifierEntropyBytes = 64): PkcePair {
   const codeVerifier = base64UrlEncode(randomBytes(verifierEntropyBytes));
-  const codeChallenge = base64UrlEncode(createHash("sha256").update(codeVerifier).digest());
+  const codeChallenge = derivePkceS256Challenge(codeVerifier);
   return {
     codeVerifier,
     codeChallenge,
     codeChallengeMethod: "S256"
   };
+}
+
+export function derivePkceS256Challenge(codeVerifier: string): string {
+  return base64UrlEncode(createHash("sha256").update(codeVerifier).digest());
 }
 
 function base64UrlEncode(input: Buffer): string {

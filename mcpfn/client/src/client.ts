@@ -5,7 +5,13 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
   CallToolResultSchema,
+  CreateMessageRequestSchema,
   CreateTaskResultSchema,
+  ElicitRequestSchema,
+  ListRootsRequestSchema,
+  LoggingMessageNotificationSchema,
+  ResourceUpdatedNotificationSchema,
+  TaskStatusNotificationSchema,
   type CallToolResult,
   type ClientCapabilities,
   type CompleteRequest,
@@ -26,6 +32,10 @@ import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 import type {
   McpFnClientState,
+  McpFnClientEvent,
+  McpFnClientEventKind,
+  McpFnClientEventSink,
+  McpFnClientMediatedHandlers,
   McpFnConfigureClient,
   McpFnDiagnosticEvent,
   McpFnDiagnosticPhase,
@@ -42,6 +52,8 @@ export interface McpFnClientOptions {
   clientOptions?: Omit<ClientOptions, "capabilities">;
   configure?: McpFnConfigureClient;
   diagnostics?: McpFnDiagnosticSink;
+  events?: McpFnClientEventSink;
+  handlers?: McpFnClientMediatedHandlers;
   requestId?: () => string;
   clock?: () => Date;
   connectRetries?: number;
@@ -51,6 +63,7 @@ export interface McpFnClientOptions {
 export class McpFnClient {
   private readonly options: McpFnClientOptions;
   private readonly listeners = new Set<McpFnDiagnosticSink>();
+  private readonly eventListeners = new Set<McpFnClientEventSink>();
   private _state: McpFnClientState = "idle";
   private _protocol?: Client;
   private handle?: McpFnTransportHandle;
@@ -64,7 +77,7 @@ export class McpFnClient {
       this.operation("tools/call", () => this.protocol.callTool(
         { name, arguments: args },
         undefined,
-        options,
+        this.observeProgress(options, "tools/call"),
       ) as Promise<CallToolResult>),
     createTask: (
       name: string,
@@ -74,7 +87,7 @@ export class McpFnClient {
     ) => this.operation("tools/call:task", () => this.protocol.request(
       { method: "tools/call", params: { name, arguments: args, task } },
       CreateTaskResultSchema,
-      options,
+      this.observeProgress(options, "tools/call:task"),
     ) as Promise<CreateTaskResult>),
   };
 
@@ -82,14 +95,25 @@ export class McpFnClient {
     listAll: (options?: RequestOptions) => this.listResources(options),
     listTemplatesAll: (options?: RequestOptions) => this.listResourceTemplates(options),
     read: (uri: string, options?: RequestOptions): Promise<ReadResourceResult> =>
-      this.operation("resources/read", () => this.protocol.readResource({ uri }, options)),
+      this.operation("resources/read", () => this.protocol.readResource(
+        { uri },
+        this.observeProgress(options, "resources/read"),
+      )),
     subscribe: async (uri: string, options?: RequestOptions): Promise<void> => {
       await this.operation("resources/subscribe", () =>
-        this.protocol.subscribeResource({ uri }, options));
+        this.protocol.subscribeResource(
+          { uri },
+          this.observeProgress(options, "resources/subscribe"),
+        ));
+      await this.emitEvent("resources.subscribed", { uri });
     },
     unsubscribe: async (uri: string, options?: RequestOptions): Promise<void> => {
       await this.operation("resources/unsubscribe", () =>
-        this.protocol.unsubscribeResource({ uri }, options));
+        this.protocol.unsubscribeResource(
+          { uri },
+          this.observeProgress(options, "resources/unsubscribe"),
+        ));
+      await this.emitEvent("resources.unsubscribed", { uri });
     },
   };
 
@@ -100,31 +124,43 @@ export class McpFnClient {
       args?: Record<string, string>,
       options?: RequestOptions,
     ): Promise<GetPromptResult> => this.operation("prompts/get", () =>
-      this.protocol.getPrompt({ name, ...(args ? { arguments: args } : {}) }, options)),
+      this.protocol.getPrompt(
+        { name, ...(args ? { arguments: args } : {}) },
+        this.observeProgress(options, "prompts/get"),
+      )),
     complete: (
       params: CompleteRequest["params"],
       options?: RequestOptions,
     ): Promise<CompleteResult> => this.operation("completion/complete", () =>
-      this.protocol.complete(params, options)),
+      this.protocol.complete(params, this.observeProgress(options, "completion/complete"))),
   };
 
   readonly tasks = {
     get: (taskId: string, options?: RequestOptions): Promise<Task> =>
       this.operation("tasks/get", () =>
-        this.protocol.experimental.tasks.getTask(taskId, options)),
+        this.protocol.experimental.tasks.getTask(
+          taskId,
+          this.observeProgress(options, "tasks/get"),
+        )),
     result: (taskId: string, options?: RequestOptions): Promise<CallToolResult> =>
       this.operation("tasks/result", () =>
         this.protocol.experimental.tasks.getTaskResult(
           taskId,
           CallToolResultSchema,
-          options,
+          this.observeProgress(options, "tasks/result"),
         ) as Promise<CallToolResult>),
     list: (cursor?: string, options?: RequestOptions): Promise<ListTasksResult> =>
       this.operation("tasks/list", () =>
-        this.protocol.experimental.tasks.listTasks(cursor, options)),
+        this.protocol.experimental.tasks.listTasks(
+          cursor,
+          this.observeProgress(options, "tasks/list"),
+        )),
     cancel: (taskId: string, options?: RequestOptions): Promise<Task> =>
       this.operation("tasks/cancel", () =>
-        this.protocol.experimental.tasks.cancelTask(taskId, options)),
+        this.protocol.experimental.tasks.cancelTask(
+          taskId,
+          this.observeProgress(options, "tasks/cancel"),
+        )),
   };
 
   constructor(options: McpFnClientOptions) {
@@ -133,6 +169,7 @@ export class McpFnClient {
       throw new Error("McpFn connectRetries must not be negative");
     }
     if (options.diagnostics) this.listeners.add(options.diagnostics);
+    if (options.events) this.eventListeners.add(options.events);
   }
 
   get state(): McpFnClientState {
@@ -165,6 +202,45 @@ export class McpFnClient {
   onDiagnostic(listener: McpFnDiagnosticSink): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  onEvent(listener: McpFnClientEventSink): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  waitForEvent(
+    predicate: (event: McpFnClientEvent) => boolean,
+    options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<McpFnClientEvent> {
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        unsubscribe();
+        if (timer) clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(new DOMException("aborted", "AbortError"));
+      };
+      const unsubscribe = this.onEvent((event) => {
+        if (!predicate(event)) return;
+        cleanup();
+        resolve(event);
+      });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) return onAbort();
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new McpFnClientError(
+          "MCPFN_OPERATION_FAILED",
+          "Timed out waiting for an MCP client event",
+          { phase: "capability-operation" },
+        ));
+      }, options.timeoutMs ?? 30_000);
+      timer.unref?.();
+    });
   }
 
   async connect(): Promise<void> {
@@ -232,8 +308,8 @@ export class McpFnClient {
       const protocol = new Client(
         this.options.info ?? { name: "mcpfn-client", version: "0.0.1" },
         {
-          ...this.options.clientOptions,
-          capabilities: this.options.capabilities ?? {},
+          ...this.instrumentClientOptions(),
+          capabilities: this.effectiveCapabilities(),
         },
       );
       this._protocol = protocol;
@@ -254,6 +330,7 @@ export class McpFnClient {
       };
       await this.emit("mcp-initialize", "started", requestId);
       try {
+        this.installFirstClassHandlers(protocol);
         await this.options.configure?.(protocol);
         await protocol.connect(this.handle.transport);
         if (signal.aborted) {
@@ -384,7 +461,10 @@ export class McpFnClient {
       const values: Tool[] = [];
       let cursor: string | undefined;
       do {
-        const page = await this.protocol.listTools(cursor ? { cursor } : undefined, options);
+        const page = await this.protocol.listTools(
+          cursor ? { cursor } : undefined,
+          this.observeProgress(options, "tools/list"),
+        );
         values.push(...page.tools);
         cursor = page.nextCursor;
       } while (cursor);
@@ -397,7 +477,10 @@ export class McpFnClient {
       const values: Resource[] = [];
       let cursor: string | undefined;
       do {
-        const page = await this.protocol.listResources(cursor ? { cursor } : undefined, options);
+        const page = await this.protocol.listResources(
+          cursor ? { cursor } : undefined,
+          this.observeProgress(options, "resources/list"),
+        );
         values.push(...page.resources);
         cursor = page.nextCursor;
       } while (cursor);
@@ -412,7 +495,7 @@ export class McpFnClient {
       do {
         const page = await this.protocol.listResourceTemplates(
           cursor ? { cursor } : undefined,
-          options,
+          this.observeProgress(options, "resources/templates/list"),
         );
         values.push(...page.resourceTemplates);
         cursor = page.nextCursor;
@@ -426,7 +509,10 @@ export class McpFnClient {
       const values: Prompt[] = [];
       let cursor: string | undefined;
       do {
-        const page = await this.protocol.listPrompts(cursor ? { cursor } : undefined, options);
+        const page = await this.protocol.listPrompts(
+          cursor ? { cursor } : undefined,
+          this.observeProgress(options, "prompts/list"),
+        );
         values.push(...page.prompts);
         cursor = page.nextCursor;
       } while (cursor);
@@ -450,6 +536,113 @@ export class McpFnClient {
       });
       throw error;
     }
+  }
+
+  private effectiveCapabilities(): ClientCapabilities {
+    const capabilities = structuredClone(this.options.capabilities ?? {});
+    if (this.options.handlers?.roots) {
+      capabilities.roots = { ...capabilities.roots };
+    }
+    if (this.options.handlers?.sampling) {
+      capabilities.sampling = { ...capabilities.sampling };
+    }
+    if (this.options.handlers?.elicitation) {
+      capabilities.elicitation = capabilities.elicitation ?? { form: {} };
+    }
+    return capabilities;
+  }
+
+  private installFirstClassHandlers(protocol: Client): void {
+    const handlers = this.options.handlers;
+    if (handlers?.roots) {
+      protocol.setRequestHandler(ListRootsRequestSchema, async (request, extra) => {
+        const result = await handlers.roots!(request, extra);
+        await this.emitEvent("client.roots", { request, result });
+        return result;
+      });
+    }
+    if (handlers?.sampling) {
+      protocol.setRequestHandler(CreateMessageRequestSchema, async (request, extra) => {
+        const result = await handlers.sampling!(request, extra);
+        await this.emitEvent("client.sampling", { request, result });
+        return result;
+      });
+    }
+    if (handlers?.elicitation) {
+      protocol.setRequestHandler(ElicitRequestSchema, async (request, extra) => {
+        const result = await handlers.elicitation!(request, extra);
+        await this.emitEvent("client.elicitation", { request, result });
+        return result;
+      });
+    }
+    protocol.setNotificationHandler(LoggingMessageNotificationSchema, (notification) =>
+      this.emitEvent("logging.message", notification.params));
+    protocol.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) =>
+      this.emitEvent("resources.updated", notification.params));
+    protocol.setNotificationHandler(TaskStatusNotificationSchema, (notification) =>
+      this.emitEvent("tasks.status", notification.params));
+  }
+
+  private instrumentClientOptions(): Omit<ClientOptions, "capabilities"> {
+    const original = this.options.clientOptions;
+    const wrap = <T>(
+      kind: "tools.list_changed" | "resources.list_changed" | "prompts.list_changed",
+      current: { autoRefresh?: boolean; debounceMs?: number; onChanged(error: Error | null, items: T[] | null): void } | undefined,
+    ) => ({
+      ...current,
+      onChanged: (error: Error | null, items: T[] | null) => {
+        void this.emitEvent(kind, {
+          ...(error ? { error: error.message } : {}),
+          ...(items ? { items } : {}),
+        });
+        try {
+          current?.onChanged(error, items);
+        } catch (callbackError) {
+          void this.emit(
+            "capability-operation",
+            "failed",
+            this.requestId(),
+            "MCPFN_LIST_CHANGED_CALLBACK_FAILED",
+            {
+              operation: kind,
+              error: callbackError instanceof Error ? callbackError.message : String(callbackError),
+            },
+          );
+        }
+      },
+    });
+    return {
+      ...original,
+      listChanged: {
+        tools: wrap<Tool>("tools.list_changed", original?.listChanged?.tools),
+        resources: wrap<Resource>("resources.list_changed", original?.listChanged?.resources),
+        prompts: wrap<Prompt>("prompts.list_changed", original?.listChanged?.prompts),
+      },
+    };
+  }
+
+  private observeProgress(options: RequestOptions | undefined, operation: string): RequestOptions {
+    return {
+      ...options,
+      onprogress: (progress) => {
+        void this.emitEvent("progress", { operation, ...progress });
+        options?.onprogress?.(progress);
+      },
+    };
+  }
+
+  private async emitEvent(kind: McpFnClientEventKind, payload?: unknown): Promise<void> {
+    const event = redactOAuthValue({
+      formatVersion: 1,
+      kind,
+      at: (this.options.clock?.() ?? new Date()).toISOString(),
+      requestId: this.requestId(),
+      target: this.options.target.describe(),
+      ...(payload !== undefined ? { payload } : {}),
+    }) as McpFnClientEvent;
+    await Promise.allSettled(
+      [...this.eventListeners].map(async (listener) => listener(event)),
+    );
   }
 
   private requestId(): string {

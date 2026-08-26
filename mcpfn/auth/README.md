@@ -47,13 +47,20 @@ registered URI omits the port. Other redirect URIs require exact equality.
 
 `createMcpAuthorizationCompatibilityHandler()` publishes authorization-server
 metadata and composes DCR, pre-registration, Client ID Metadata Documents,
-authorization-code + PKCE request validation, token, and revocation endpoints.
-The host application's callbacks remain authoritative for login, consent,
-durable clients, code issuance, signing, refresh rotation, and revocation.
+authorization-code + PKCE request validation, typed token exchange, serialized
+refresh rotation, and revocation endpoints. Metadata is derived from the token
+authority callbacks and declared client-auth methods, so unsupported grants or
+methods are never advertised. McpFn parses and validates endpoint requests;
+the host application's callbacks remain authoritative for login, consent,
+durable clients, code issuance, signing, token values, and revocation state.
 External Client ID Metadata Documents require an explicit URL allow-policy.
 McpFn disables automatic redirects, reapplies that policy at every redirect,
 streams responses through a byte cap, and applies a ten-second deadline by
 default. `maxBytes`, `timeoutMs`, and `maxRedirects` can tighten those bounds.
+
+The AuthFn adapter uses a structural provider contract. `@superfunctions/auth`
+is an optional peer: installing or importing AuthFn is not required for other
+client, resource-server, or hosted authorization features.
 
 `createMcpFnAuthProviderAdapter()` maps a generic `@superfunctions/auth`
 session into official MCP `authInfo`, keeping identity, tenant, scopes, and

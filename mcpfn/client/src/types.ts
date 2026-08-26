@@ -1,5 +1,14 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type {
+  CreateMessageRequest,
+  CreateMessageResult,
+  CreateMessageResultWithTools,
+  ElicitRequest,
+  ElicitResult,
+  ListRootsRequest,
+  ListRootsResult,
+} from "@modelcontextprotocol/sdk/types.js";
 
 export type McpFnDiagnosticPhase =
   | "resource-discovery"
@@ -34,6 +43,49 @@ export interface McpFnDiagnosticEvent {
 export type McpFnDiagnosticSink = (
   event: McpFnDiagnosticEvent,
 ) => void | Promise<void>;
+
+export type McpFnClientEventKind =
+  | "logging.message"
+  | "progress"
+  | "tasks.status"
+  | "resources.updated"
+  | "tools.list_changed"
+  | "resources.list_changed"
+  | "prompts.list_changed"
+  | "resources.subscribed"
+  | "resources.unsubscribed"
+  | "client.roots"
+  | "client.sampling"
+  | "client.elicitation";
+
+export interface McpFnClientEvent {
+  formatVersion: 1;
+  kind: McpFnClientEventKind;
+  at: string;
+  requestId: string;
+  target: McpFnTargetDescriptor;
+  payload?: unknown;
+}
+
+export type McpFnClientEventSink = (
+  event: McpFnClientEvent,
+) => void | Promise<void>;
+
+export interface McpFnClientMediatedHandlers {
+  roots?(
+    request: ListRootsRequest,
+    extra: unknown,
+  ): ListRootsResult | Promise<ListRootsResult>;
+  sampling?(
+    request: CreateMessageRequest,
+    extra: unknown,
+  ): CreateMessageResult | CreateMessageResultWithTools |
+    Promise<CreateMessageResult | CreateMessageResultWithTools>;
+  elicitation?(
+    request: ElicitRequest,
+    extra: unknown,
+  ): ElicitResult | Promise<ElicitResult>;
+}
 
 export interface McpFnTargetContext {
   requestId: string;

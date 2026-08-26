@@ -18,6 +18,10 @@ All client-side surfaces share `@mcpfn/client`; tests, the inspector, and CLI do
 not carry private transport or protocol implementations. McpFn's inspector is
 headless so product UIs can compose it without becoming runtime dependencies.
 
+The version-controlled acceptance and compatibility decisions live in
+[`REQUIREMENTS.md`](./REQUIREMENTS.md), [`TEST_VECTORS.md`](./TEST_VECTORS.md),
+and [`ADR-0001-COMPATIBILITY.md`](./ADR-0001-COMPATIBILITY.md).
+
 ## Quick start
 
 ```ts

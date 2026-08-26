@@ -6,7 +6,7 @@ const client = createMcpFnClient({ target: streamableHttpTarget(url) });
 await client.connect();
 try {
   const tools = await client.tools.listAll();
-  const result = await client.tools.call("calculator_add", { left: 2, right: 3 });
+  const result = await client.tools.call("calculator_sum", { left: 2, right: 3 });
   process.stdout.write(`${JSON.stringify({ tools, result }, null, 2)}\n`);
 } finally {
   await client.close();

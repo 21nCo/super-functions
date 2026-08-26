@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
 import {
   McpFnRegistry,
   createMcpFnServer,
@@ -11,7 +12,10 @@ import {
   assertManifestContract,
   buildOfficialConformanceArgs,
   checkHostCompatibility,
+  createMcpFnScenarioArtifact,
+  createMcpFnScenarioReport,
   runScenarios,
+  validateMcpFnScenarios,
 } from "../src/index.js";
 
 describe("McpFn testing", () => {
@@ -65,6 +69,58 @@ describe("McpFn testing", () => {
       expect(JSON.stringify(redactedFailure)).not.toContain("secret");
       expect(JSON.stringify(redactedFailure)).not.toContain("access_token=token");
       expect(JSON.stringify(redactedFailure)).toContain("REDACTED");
+
+      const artifact = createMcpFnScenarioArtifact([{
+        formatVersion: 1,
+        name: "deferred live smoke",
+        kind: "auth.assert",
+        phase: "provider-login",
+        expect: { outcome: "allowed" },
+        status: "incomplete",
+        incompleteReason: "Requires controlled live-provider credentials",
+      }], { status: "incomplete", incompleteReason: "Controlled-live lane" });
+      expect(validateMcpFnScenarios(artifact)).toHaveLength(1);
+      const lifecycle = await runScenarios(client, [
+        ...artifact.scenarios,
+        {
+          formatVersion: 1,
+          name: "deterministic auth assertion",
+          kind: "auth.assert",
+          phase: "token-exchange",
+          expect: { outcome: "allowed", code: "AUTHORIZED" },
+        },
+        {
+          formatVersion: 1,
+          name: "bounded timeout",
+          kind: "auth.assert",
+          phase: "slow-provider",
+          timeoutMs: 5,
+          expect: { outcome: "allowed" },
+        },
+      ], {
+        auth: async (scenario) => {
+          if (scenario.phase === "slow-provider") {
+            await new Promise(() => undefined);
+          }
+          return { outcome: "allowed", code: "AUTHORIZED" };
+        },
+      });
+      expect(lifecycle.map((result) => result.status)).toEqual([
+        "incomplete",
+        "passed",
+        "failed",
+      ]);
+      const boundedReport = createMcpFnScenarioReport(
+        Array.from({ length: 30 }, (_, index) => ({
+          ...lifecycle[2],
+          name: `large-${index}-${"x".repeat(100)}`,
+        })),
+        { maxBytes: 1_024 },
+      );
+      expect(boundedReport.status).toBe("incomplete");
+      expect(boundedReport.droppedResults).toBeGreaterThan(0);
+      expect(new TextEncoder().encode(JSON.stringify(boundedReport)).byteLength)
+        .toBeLessThanOrEqual(1_024);
     } finally {
       await client.close();
     }
@@ -93,6 +149,47 @@ describe("McpFn testing", () => {
         tool: "fails",
         expect: { isError: true },
       }])).resolves.toMatchObject([{ status: "passed" }]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("runs task creation and inventory through the shared scenario contract", async () => {
+    const taskStore = new InMemoryTaskStore();
+    const registry = new McpFnRegistry().register({
+      name: "deferred",
+      description: "Create a completed task.",
+      inputSchema: { type: "object", additionalProperties: false },
+      execution: { taskSupport: "required" },
+      handler: async () => structuredResult({ ok: true }),
+      taskHandler: {
+        createTask: async (_args, _context, extra) => {
+          const task = await extra.taskStore.createTask({
+            ttl: extra.taskRequestedTtl,
+            pollInterval: 1,
+          });
+          await extra.taskStore.storeTaskResult(
+            task.taskId,
+            "completed",
+            structuredResult({ ok: true }),
+          );
+          return { task: await extra.taskStore.getTask(task.taskId) };
+        },
+      },
+    });
+    const client = await McpFnTestClient.connect(createMcpFnServer({
+      info: { name: "task-scenarios", version: "1.0.0" },
+      registry,
+      taskStore,
+    }));
+    try {
+      await expect(runScenarios(client, [
+        { name: "create", kind: "tools.call:task", tool: "deferred", task: { ttl: 5_000 } },
+        { name: "list", kind: "tasks.list" },
+      ])).resolves.toMatchObject([
+        { status: "passed", operation: "tools.call:task" },
+        { status: "passed", operation: "tasks.list" },
+      ]);
     } finally {
       await client.close();
     }
@@ -223,6 +320,25 @@ describe("McpFn testing", () => {
     try {
       const manifest = server.manifest();
       await expect(assertManifestContract(client, manifest)).resolves.toHaveLength(1);
+      await expect(runScenarios(client, [
+        { name: "subscribe", kind: "resources.subscribe", uri: "docs://guide" },
+        {
+          name: "observe subscription",
+          kind: "events.expect",
+          event: "resources.subscribed",
+        },
+        { name: "unsubscribe", kind: "resources.unsubscribe", uri: "docs://guide" },
+        {
+          name: "observe unsubscription",
+          kind: "events.expect",
+          event: "resources.unsubscribed",
+        },
+      ])).resolves.toMatchObject([
+        { status: "passed" },
+        { status: "passed" },
+        { status: "passed" },
+        { status: "passed" },
+      ]);
       await expect(assertManifestContract(client, {
         ...manifest,
         resources: manifest.resources?.map((resource) =>

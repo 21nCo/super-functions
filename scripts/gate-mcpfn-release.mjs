@@ -34,6 +34,7 @@ function run(name, command, args, options = {}) {
     stdio: "pipe",
     encoding: "utf8",
     shell: false,
+    ...(options.timeout ? { timeout: options.timeout } : {}),
   });
   const record = {
     name,
@@ -63,6 +64,9 @@ function verifyDocumentation() {
     "mcpfn/ADOPTION.md",
     "mcpfn/TESTING.md",
     "mcpfn/MIGRATION.md",
+    "mcpfn/REQUIREMENTS.md",
+    "mcpfn/TEST_VECTORS.md",
+    "mcpfn/ADR-0001-COMPATIBILITY.md",
     "mcpfn/core/README.md",
     "mcpfn/client/README.md",
     "mcpfn/auth/README.md",
@@ -105,6 +109,28 @@ function verifyDocumentation() {
     stderr: "",
   });
   if (!ok) throw new Error("McpFn documentation inventory failed");
+}
+
+function verifyNamedConsumerParity() {
+  const source = readFileSync(path.join(repoRoot, "mcpfn/datafn/src/adapter.ts"), "utf8");
+  const queryCalls = (source.match(/options\.executor\.query\(/g) ?? []).length;
+  const mutationCalls = (source.match(/options\.executor\.mutate\(/g) ?? []).length;
+  const alternateNetworkWriter = /\bfetch\s*\(|https?:\/\//.test(source);
+  const ok = queryCalls >= 2 && mutationCalls >= 1 && !alternateNetworkWriter;
+  results.push({
+    name: "named-consumer:datafn-single-writer",
+    command: "internal DataFn adapter ownership check",
+    ok,
+    status: ok ? 0 : 1,
+    stdout: JSON.stringify({
+      consumer: "@mcpfn/datafn",
+      queryCalls,
+      mutationCalls,
+      alternateNetworkWriter,
+    }),
+    stderr: "",
+  });
+  if (!ok) throw new Error("Named DataFn consumer has an unverified writer path");
 }
 
 function verifyPackage(packagePath) {
@@ -151,13 +177,17 @@ function verifyPackedConsumer() {
     "packages/auth",
     "packages/observability",
     "packages/db",
+    "packages/http",
     "packages/oauth-storage",
     "packages/oauth-core",
+    "datafn/core",
+    "datafn/server",
     "mcpfn/core",
     "mcpfn/client",
     "mcpfn/auth",
     "mcpfn/testing",
     "mcpfn/inspector",
+    "mcpfn/datafn",
     "mcpfn/cli",
   ];
   const tarballs = packagePaths.map((packagePath) => {
@@ -187,6 +217,7 @@ function verifyPackedConsumer() {
     "@mcpfn/auth",
     "@mcpfn/testing",
     "@mcpfn/inspector",
+    "@mcpfn/datafn",
     "@mcpfn/cli",
   ];
   run("consumer:esm-import", process.execPath, [
@@ -198,6 +229,89 @@ function verifyPackedConsumer() {
     "-e",
     `for (const name of ${JSON.stringify(packageNames)}) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no exports"); }`,
   ], { cwd: consumerRoot });
+
+  const stdioServer = path.join(consumerRoot, "stdio-server.mjs");
+  const roundtrip = path.join(consumerRoot, "roundtrip.mjs");
+  writeFileSync(stdioServer, `
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+const server = createMcpFnServer({
+  info: { name: "packed-stdio", version: "1.0.0" },
+  registry: new McpFnRegistry().register({
+    name: "packed_sum",
+    description: "Add values from an installed tarball.",
+    inputSchema: { type: "object" },
+    handler: async ({ left, right }) => structuredResult({ result: left + right }),
+  }),
+});
+await server.serveStdio();
+`);
+  writeFileSync(roundtrip, `
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import {
+  createMcpFnClient,
+  stdioTarget,
+  streamableHttpTarget,
+} from "@mcpfn/client";
+import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
+
+async function call(target) {
+  const client = createMcpFnClient({ target });
+  await client.connect();
+  try {
+    const result = await client.tools.call("packed_sum", { left: 2, right: 3 });
+    assert.deepEqual(result.structuredContent, { result: 5 });
+  } finally {
+    await client.close();
+  }
+}
+
+await call(stdioTarget({ command: process.execPath, args: [${JSON.stringify(stdioServer)}] }));
+
+const mcp = createMcpFnServer({
+  info: { name: "packed-http", version: "1.0.0" },
+  registry: new McpFnRegistry().register({
+    name: "packed_sum",
+    description: "Add values from an installed tarball.",
+    inputSchema: { type: "object" },
+    handler: async ({ left, right }) => structuredResult({ result: left + right }),
+  }),
+});
+const handler = await mcp.createWebStandardHandler({ enableJsonResponse: true });
+const httpServer = createServer(async (request, response) => {
+  const url = new URL(request.url || "/", "http://" + request.headers.host);
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  const body = Buffer.concat(chunks);
+  const webResponse = await handler(new Request(url, {
+    method: request.method,
+    headers: new Headers(Object.entries(request.headers).flatMap(([key, value]) =>
+      Array.isArray(value)
+        ? value.map((entry) => [key, entry])
+        : value === undefined ? [] : [[key, value]]
+    )),
+    ...(body.length ? { body } : {}),
+  }));
+  response.writeHead(webResponse.status, Object.fromEntries(webResponse.headers));
+  response.end(Buffer.from(await webResponse.arrayBuffer()));
+});
+await new Promise((resolve, reject) => {
+  httpServer.once("error", reject);
+  httpServer.listen(0, "127.0.0.1", resolve);
+});
+try {
+  const address = httpServer.address();
+  await call(streamableHttpTarget("http://127.0.0.1:" + address.port + "/mcp"));
+} finally {
+  await mcp.close();
+  await new Promise((resolve) => httpServer.close(resolve));
+}
+process.stdout.write(JSON.stringify({ ok: true, transports: ["stdio", "streamable-http"] }) + "\\n");
+`);
+  run("consumer:roundtrip", process.execPath, [roundtrip], {
+    cwd: consumerRoot,
+    timeout: 30_000,
+  });
 }
 
 try {
@@ -247,12 +361,19 @@ try {
   npmStep("datafn-server:build", ["run", "build", "--workspace", "@datafn/server"]);
 
   npmStep("datafn:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/datafn"]);
-  npmStep("datafn:test", ["run", "test", "--workspace", "@mcpfn/datafn"]);
+  npmStep("named-consumer:datafn-test", ["run", "test", "--workspace", "@mcpfn/datafn"]);
   npmStep("datafn:build", ["run", "build", "--workspace", "@mcpfn/datafn"]);
 
   npmStep("cli:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/cli"]);
   npmStep("cli:test", ["run", "test", "--workspace", "@mcpfn/cli"]);
   npmStep("cli:build", ["run", "build", "--workspace", "@mcpfn/cli"]);
+
+  run("release-tag:client", process.execPath, [
+    "scripts/resolve-release-tag.mjs", "mcpfn-client-v0.0.1",
+  ]);
+  run("release-tag:inspector", process.execPath, [
+    "scripts/resolve-release-tag.mjs", "mcpfn-inspector-v0.0.1",
+  ]);
 
   run("example:manifest", process.execPath, [
     "mcpfn/cli/dist/bin.js", "manifest", "mcpfn/examples/calculator-server.ts", "--output", candidateManifest,
@@ -268,6 +389,9 @@ try {
     "mcpfn/cli/dist/bin.js", "test", "mcpfn/examples/calculator-server.ts",
     "mcpfn/examples/calculator-scenarios.ts", "--output", scenarioReport,
   ]);
+  run("example:production-client", process.execPath, [
+    "scripts/test-mcpfn-calculator-example.mjs",
+  ], { timeout: 30_000 });
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
 
   const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
@@ -295,6 +419,7 @@ try {
     verifyPackage(packagePath);
   }
   verifyPackedConsumer();
+  verifyNamedConsumerParity();
   verifyDocumentation();
 
   console.log(JSON.stringify({

@@ -6,6 +6,12 @@ adding target descriptors, idempotent connection lifecycle, complete inventory
 pagination, typed capability facades, explicit reconnect/cancellation, and
 secret-redacted phase diagnostics.
 
+Pass `handlers.roots`, `handlers.sampling`, or `handlers.elicitation` to infer
+and advertise the corresponding client capabilities without raw SDK setup.
+`onEvent()` and the `events` option observe redacted logging, progress, task
+status, resource/list changes, subscriptions, and client-mediated requests.
+The lower-level `configure` hook remains available for extensions.
+
 ```ts
 import { createMcpFnClient, streamableHttpTarget } from "@mcpfn/client";
 

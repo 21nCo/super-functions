@@ -11,6 +11,12 @@ This inventory separates the shared platform release from consumer migrations.
 | Inspection | `@mcpfn/inspector` and `@mcpfn/cli` | Headless snapshot, execution, timeline, scenario export, and discovery diagnostics available | Product UI is a separate consumer of the headless package |
 | DataFn projection | `@mcpfn/datafn` | Existing deny-by-default adapter retained | Explicit domain tools remain preferred for product workflows |
 
+For the first release, `@mcpfn/datafn` is the named in-repository parity
+consumer. Its focused suite and the external installed-tarball round trip are
+mandatory release-gate steps. The adapter calls only its configured DataFn
+executor for reads and writes and has no alternate HTTP/fallback writer. The
+calculator is the named generic client/server smoke.
+
 The `dev` base used for MCP-2 does not contain the LangFn, MemoryFn, or ProbeFn
 consumer packages. Their implementations on other development lines were used
 only to understand required lifecycle behavior; MCP-2 does not copy, modify, or

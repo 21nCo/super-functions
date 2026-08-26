@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@mcpfn/client": "0.0.1",
+    "@mcpfn/testing": "0.0.1",
     "@superfunctions/oauth-core": "0.0.1"
   },
   "devDependencies": {

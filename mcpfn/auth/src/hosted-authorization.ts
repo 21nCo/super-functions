@@ -44,6 +44,75 @@ export interface McpFnValidatedAuthorizationRequest {
   raw: URLSearchParams;
 }
 
+export type McpFnHostedTokenEndpointAuthMethod =
+  | "none"
+  | "client_secret_basic"
+  | "client_secret_post";
+
+export interface McpFnHostedTokenSet {
+  access_token: string;
+  token_type: string;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+  resource?: string;
+  [key: string]: unknown;
+}
+
+export interface McpFnHostedClientAuthentication {
+  client: McpFnNormalizedClientRegistration;
+  method: McpFnHostedTokenEndpointAuthMethod;
+}
+
+export interface McpFnHostedTokenAuthority {
+  /** Exchange and validate a single-use authorization code and its PKCE binding. */
+  exchangeAuthorizationCode(
+    input: McpFnHostedClientAuthentication & {
+      code: string;
+      redirectUri: string;
+      codeVerifier: string;
+      resource?: string;
+    },
+    request: Request,
+  ): Promise<McpFnHostedTokenSet> | McpFnHostedTokenSet;
+  /** Presence advertises and enables refresh_token. Calls are serialized per credential. */
+  refreshToken?(
+    input: McpFnHostedClientAuthentication & {
+      refreshToken: string;
+      scopes: string[];
+      resource?: string;
+    },
+    request: Request,
+  ): Promise<McpFnHostedTokenSet> | McpFnHostedTokenSet;
+  /** Presence advertises and enables RFC 7009 revocation. */
+  revokeToken?(
+    input: McpFnHostedClientAuthentication & {
+      token: string;
+      tokenTypeHint?: "access_token" | "refresh_token";
+    },
+    request: Request,
+  ): Promise<void> | void;
+  /** Required when a secret-based token endpoint authentication method is enabled. */
+  authenticateClient?(
+    input: {
+      client: McpFnNormalizedClientRegistration;
+      method: Exclude<McpFnHostedTokenEndpointAuthMethod, "none">;
+      clientSecret: string;
+    },
+    request: Request,
+  ): Promise<boolean> | boolean;
+}
+
+export interface McpFnHostedAuthorizationCapabilities {
+  tokenEndpointAuthMethods?: McpFnHostedTokenEndpointAuthMethod[];
+  /** Defaults to true. */
+  requireState?: boolean;
+  /** Defaults to true when allowedResources is configured. */
+  requireResource?: boolean;
+  /** Defaults to true when refresh is enabled. */
+  rotateRefreshTokens?: boolean;
+}
+
 export class McpFnHostedAuthorizationError extends Error {
   readonly code: string;
   readonly status: number;
@@ -190,8 +259,8 @@ export interface McpFnAuthorizationCompatibilityOptions {
     input: McpFnValidatedAuthorizationRequest,
     request: Request,
   ): Promise<Response> | Response;
-  token(request: Request): Promise<Response> | Response;
-  revoke?(request: Request): Promise<Response> | Response;
+  tokenAuthority: McpFnHostedTokenAuthority;
+  capabilities?: McpFnHostedAuthorizationCapabilities;
   supportedScopes?: string[];
   allowedResources?: Array<string | URL>;
   redirectPolicy?: McpFnRedirectPolicy;
@@ -224,17 +293,25 @@ export function createMcpAuthorizationCompatibilityHandler(
   const issuer = new URL(options.issuer.toString());
   issuer.hash = "";
   const endpoint = (path: string) => new URL(path, issuer).toString();
+  const tokenEndpointAuthMethods = unique(
+    options.capabilities?.tokenEndpointAuthMethods ?? ["none"],
+  ) as McpFnHostedTokenEndpointAuthMethod[];
+  validateHostedCapabilities(options, tokenEndpointAuthMethods);
+  const grantTypes = [
+    "authorization_code",
+    ...(options.tokenAuthority.refreshToken ? ["refresh_token"] : []),
+  ];
   const metadata = {
     ...options.extraMetadata,
     issuer: issuer.toString(),
     authorization_endpoint: endpoint("/authorize"),
     token_endpoint: endpoint("/token"),
     ...(options.clients.register ? { registration_endpoint: endpoint("/register") } : {}),
-    ...(options.revoke ? { revocation_endpoint: endpoint("/revoke") } : {}),
+    ...(options.tokenAuthority.revokeToken ? { revocation_endpoint: endpoint("/revoke") } : {}),
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: grantTypes,
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none", "client_secret_basic", "client_secret_post"],
+    token_endpoint_auth_methods_supported: tokenEndpointAuthMethods,
     ...(options.supportedScopes ? { scopes_supported: unique(options.supportedScopes) } : {}),
     client_id_metadata_document_supported: options.clientMetadataDocuments?.enabled === true,
   };
@@ -285,6 +362,21 @@ export function createMcpAuthorizationCompatibilityHandler(
           allowedResources: options.allowedResources,
           supportedScopes: options.supportedScopes,
         });
+        if ((options.capabilities?.requireState ?? true) && !validated.state) {
+          throw new McpFnHostedAuthorizationError(
+            "invalid_request",
+            "state is required for this MCP authorization profile",
+          );
+        }
+        if (
+          (options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length)) &&
+          !validated.resource
+        ) {
+          throw new McpFnHostedAuthorizationError(
+            "invalid_target",
+            "resource is required for this MCP authorization profile",
+          );
+        }
         await emit(options, "authorization-request", "succeeded", undefined, {
           clientId,
           registrationSource: client.source,
@@ -293,10 +385,14 @@ export function createMcpAuthorizationCompatibilityHandler(
         return options.authorize(validated, request);
       }
       if (request.method === "POST" && url.pathname === "/token") {
-        return options.token(request);
+        return await handleTokenRequest(options, request, tokenEndpointAuthMethods);
       }
-      if (request.method === "POST" && url.pathname === "/revoke" && options.revoke) {
-        return options.revoke(request);
+      if (
+        request.method === "POST" &&
+        url.pathname === "/revoke" &&
+        options.tokenAuthority.revokeToken
+      ) {
+        return await handleRevocationRequest(options, request, tokenEndpointAuthMethods);
       }
       return json(404, { error: "not_found" });
     } catch (error) {
@@ -317,6 +413,369 @@ export function createMcpAuthorizationCompatibilityHandler(
       });
     }
   };
+}
+
+const refreshLocks = new WeakMap<McpFnHostedTokenAuthority, Map<string, Promise<McpFnHostedTokenSet>>>();
+
+async function handleTokenRequest(
+  options: McpFnAuthorizationCompatibilityOptions,
+  request: Request,
+  supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
+): Promise<Response> {
+  const callbackRequest = request.clone();
+  const form = await readBoundedForm(request, 64_000);
+  const grantType = singleFormValue(form, "grant_type", true)!;
+  const authentication = await authenticateHostedClient(
+    options,
+    form,
+    callbackRequest,
+    supportedMethods,
+  );
+  let tokenSet: McpFnHostedTokenSet;
+  if (grantType === "authorization_code") {
+    if (!authentication.client.grantTypes.includes("authorization_code")) {
+      throw new McpFnHostedAuthorizationError(
+        "unauthorized_client",
+        "The client is not registered for authorization_code",
+      );
+    }
+    const redirectUri = normalizeRequiredUrl(form, "redirect_uri");
+    const resource = normalizeOptionalResource(form, options.allowedResources);
+    assertRequiredTokenResource(options, resource);
+    try {
+      matchMcpRedirectUri(
+        redirectUri,
+        authentication.client.redirectUris,
+        options.redirectPolicy,
+      );
+    } catch (error) {
+      if (error instanceof McpFnRedirectMismatchError) {
+        throw new McpFnHostedAuthorizationError(
+          "invalid_grant",
+          "Authorization code redirect binding does not match the client registration",
+        );
+      }
+      throw error;
+    }
+    const codeVerifier = singleFormValue(form, "code_verifier", true)!;
+    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+      throw new McpFnHostedAuthorizationError("invalid_grant", "PKCE code_verifier is invalid");
+    }
+    tokenSet = await options.tokenAuthority.exchangeAuthorizationCode({
+      ...authentication,
+      code: singleFormValue(form, "code", true)!,
+      redirectUri,
+      codeVerifier,
+      ...(resource ? { resource } : {}),
+    }, callbackRequest);
+  } else if (grantType === "refresh_token") {
+    if (!options.tokenAuthority.refreshToken) {
+      throw new McpFnHostedAuthorizationError(
+        "unsupported_grant_type",
+        "refresh_token is not enabled by the token authority",
+      );
+    }
+    if (!authentication.client.grantTypes.includes("refresh_token")) {
+      throw new McpFnHostedAuthorizationError(
+        "unauthorized_client",
+        "The client is not registered for refresh_token",
+      );
+    }
+    const credential = singleFormValue(form, "refresh_token", true)!;
+    const scopes = unique((singleFormValue(form, "scope") ?? "").split(/\s+/).filter(Boolean));
+    assertSupportedScopes(scopes, options.supportedScopes);
+    const resource = normalizeOptionalResource(form, options.allowedResources);
+    assertRequiredTokenResource(options, resource);
+    tokenSet = await withSerializedRefresh(options.tokenAuthority, credential, async () => {
+      const refreshed = await options.tokenAuthority.refreshToken!({
+        ...authentication,
+        refreshToken: credential,
+        scopes,
+        ...(resource ? { resource } : {}),
+      }, callbackRequest);
+      if (
+        (options.capabilities?.rotateRefreshTokens ?? true) &&
+        (!refreshed.refresh_token || refreshed.refresh_token === credential)
+      ) {
+        throw new McpFnHostedAuthorizationError(
+          "server_error",
+          "The token authority did not rotate the refresh credential",
+          { status: 500 },
+        );
+      }
+      return refreshed;
+    });
+  } else {
+    throw new McpFnHostedAuthorizationError(
+      "unsupported_grant_type",
+      "The requested OAuth grant is not supported",
+    );
+  }
+  validateHostedTokenSet(tokenSet);
+  await emit(options, grantType === "refresh_token" ? "token-refresh" : "token-exchange", "succeeded", undefined, {
+    clientId: authentication.client.clientId,
+    tokenEndpointAuthMethod: authentication.method,
+    hasRefreshToken: Boolean(tokenSet.refresh_token),
+  });
+  return json(200, tokenSet);
+}
+
+async function handleRevocationRequest(
+  options: McpFnAuthorizationCompatibilityOptions,
+  request: Request,
+  supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
+): Promise<Response> {
+  const callbackRequest = request.clone();
+  const form = await readBoundedForm(request, 64_000);
+  const authentication = await authenticateHostedClient(
+    options,
+    form,
+    callbackRequest,
+    supportedMethods,
+  );
+  const rawHint = singleFormValue(form, "token_type_hint");
+  const tokenTypeHint = rawHint === "access_token" || rawHint === "refresh_token"
+    ? rawHint
+    : undefined;
+  await options.tokenAuthority.revokeToken!({
+    ...authentication,
+    token: singleFormValue(form, "token", true)!,
+    ...(tokenTypeHint ? { tokenTypeHint } : {}),
+  }, callbackRequest);
+  await emit(options, "token-revocation", "succeeded", undefined, {
+    clientId: authentication.client.clientId,
+    tokenEndpointAuthMethod: authentication.method,
+  });
+  return new Response(null, { status: 200, headers: { "cache-control": "no-store" } });
+}
+
+async function authenticateHostedClient(
+  options: McpFnAuthorizationCompatibilityOptions,
+  form: URLSearchParams,
+  request: Request,
+  supportedMethods: McpFnHostedTokenEndpointAuthMethod[],
+): Promise<McpFnHostedClientAuthentication> {
+  const basic = readBasicClientCredentials(request.headers.get("authorization"));
+  const bodyClientId = singleFormValue(form, "client_id");
+  const bodySecret = singleFormValue(form, "client_secret");
+  if (basic && (bodyClientId || bodySecret)) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Use exactly one token endpoint client authentication method",
+      { status: 401 },
+    );
+  }
+  let method: McpFnHostedTokenEndpointAuthMethod;
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
+  if (basic) {
+    method = "client_secret_basic";
+    clientId = basic.clientId;
+    clientSecret = basic.clientSecret;
+  } else if (bodySecret) {
+    method = "client_secret_post";
+    clientId = bodyClientId;
+    clientSecret = bodySecret;
+  } else {
+    method = "none";
+    clientId = bodyClientId;
+  }
+  if (!clientId || !supportedMethods.includes(method)) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "The token endpoint client authentication method is not supported",
+      { status: 401 },
+    );
+  }
+  const client = await resolveClient(options, clientId);
+  if (!client || client.tokenEndpointAuthMethod !== method) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Client authentication does not match the registered method",
+      { status: 401 },
+    );
+  }
+  if (method !== "none") {
+    const accepted = await options.tokenAuthority.authenticateClient?.({
+      client,
+      method,
+      clientSecret: clientSecret!,
+    }, request);
+    if (!accepted) {
+      throw new McpFnHostedAuthorizationError(
+        "invalid_client",
+        "Client authentication failed",
+        { status: 401 },
+      );
+    }
+  }
+  return { client, method };
+}
+
+async function readBoundedForm(request: Request, maxBytes: number): Promise<URLSearchParams> {
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/x-www-form-urlencoded") {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_request",
+      "OAuth endpoint requests must use application/x-www-form-urlencoded",
+    );
+  }
+  return new URLSearchParams(await readBoundedText(request, maxBytes));
+}
+
+function singleFormValue(
+  form: URLSearchParams,
+  name: string,
+  required = false,
+): string | undefined {
+  const values = form.getAll(name);
+  if (values.length > 1 || (required && (!values[0] || values[0].trim() === ""))) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_request",
+      `${name} must be supplied exactly once`,
+    );
+  }
+  return values[0] || undefined;
+}
+
+function normalizeRequiredUrl(form: URLSearchParams, name: string): string {
+  const value = singleFormValue(form, name, true)!;
+  try {
+    return new URL(value).toString();
+  } catch {
+    throw new McpFnHostedAuthorizationError("invalid_request", `${name} must be an absolute URL`);
+  }
+}
+
+function normalizeOptionalResource(
+  form: URLSearchParams,
+  allowedResources?: ReadonlyArray<string | URL>,
+): string | undefined {
+  const value = singleFormValue(form, "resource");
+  if (!value) return undefined;
+  let resource: string;
+  try {
+    resource = new URL(value).toString();
+  } catch {
+    throw new McpFnHostedAuthorizationError("invalid_target", "resource must be an absolute URL");
+  }
+  if (allowedResources?.length) {
+    const allowed = new Set(allowedResources.map((entry) => new URL(entry.toString()).toString()));
+    if (!allowed.has(resource)) {
+      throw new McpFnHostedAuthorizationError("invalid_target", "resource is not allowed");
+    }
+  }
+  return resource;
+}
+
+function assertSupportedScopes(scopes: string[], supportedScopes?: ReadonlyArray<string>): void {
+  if (!supportedScopes) return;
+  const supported = new Set(supportedScopes);
+  const unsupported = scopes.filter((scope) => !supported.has(scope));
+  if (unsupported.length) {
+    throw new McpFnHostedAuthorizationError("invalid_scope", "Requested MCP scope is unsupported", {
+      details: { unsupportedScopes: unsupported },
+    });
+  }
+}
+
+function assertRequiredTokenResource(
+  options: McpFnAuthorizationCompatibilityOptions,
+  resource: string | undefined,
+): void {
+  if (
+    (options.capabilities?.requireResource ?? Boolean(options.allowedResources?.length)) &&
+    !resource
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_target",
+      "resource is required for this MCP token request",
+    );
+  }
+}
+
+function readBasicClientCredentials(
+  authorization: string | null,
+): { clientId: string; clientSecret: string } | undefined {
+  if (!authorization) return undefined;
+  if (!authorization.startsWith("Basic ")) {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Unsupported Authorization header at the token endpoint",
+      { status: 401 },
+    );
+  }
+  try {
+    const decoded = atob(authorization.slice(6));
+    const separator = decoded.indexOf(":");
+    if (separator < 1) throw new Error("missing separator");
+    return {
+      clientId: decodeURIComponent(decoded.slice(0, separator)),
+      clientSecret: decodeURIComponent(decoded.slice(separator + 1)),
+    };
+  } catch {
+    throw new McpFnHostedAuthorizationError(
+      "invalid_client",
+      "Malformed Basic client authentication",
+      { status: 401 },
+    );
+  }
+}
+
+async function withSerializedRefresh(
+  authority: McpFnHostedTokenAuthority,
+  credential: string,
+  operation: () => Promise<McpFnHostedTokenSet>,
+): Promise<McpFnHostedTokenSet> {
+  let locks = refreshLocks.get(authority);
+  if (!locks) {
+    locks = new Map();
+    refreshLocks.set(authority, locks);
+  }
+  const previous = locks.get(credential);
+  const current = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(operation);
+  locks.set(credential, current);
+  try {
+    return await current;
+  } finally {
+    if (locks.get(credential) === current) locks.delete(credential);
+  }
+}
+
+function validateHostedTokenSet(value: McpFnHostedTokenSet): void {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    typeof value.access_token !== "string" ||
+    value.access_token.length === 0 ||
+    typeof value.token_type !== "string" ||
+    value.token_type.length === 0 ||
+    (value.expires_in !== undefined &&
+      (!Number.isFinite(value.expires_in) || value.expires_in <= 0)) ||
+    (value.refresh_token !== undefined &&
+      (typeof value.refresh_token !== "string" || value.refresh_token.length === 0)) ||
+    (value.scope !== undefined && typeof value.scope !== "string") ||
+    (value.resource !== undefined && typeof value.resource !== "string")
+  ) {
+    throw new McpFnHostedAuthorizationError(
+      "server_error",
+      "The token authority returned an invalid token set",
+      { status: 500 },
+    );
+  }
+}
+
+function validateHostedCapabilities(
+  options: McpFnAuthorizationCompatibilityOptions,
+  methods: string[],
+): void {
+  const allowed = new Set(["none", "client_secret_basic", "client_secret_post"]);
+  if (!methods.length || methods.some((method) => !allowed.has(method))) {
+    throw new TypeError("At least one supported token endpoint authentication method is required");
+  }
+  if (methods.some((method) => method !== "none") && !options.tokenAuthority.authenticateClient) {
+    throw new TypeError("Secret-based client authentication requires tokenAuthority.authenticateClient");
+  }
 }
 
 async function resolveClient(
@@ -491,7 +950,7 @@ async function readBoundedText(
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => undefined);
-        throw new McpFnHostedAuthorizationError("invalid_request", "Metadata body is too large", {
+        throw new McpFnHostedAuthorizationError("invalid_request", "Request body is too large", {
           status: 413,
         });
       }

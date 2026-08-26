@@ -5,6 +5,7 @@ import { diagnoseMcpAuthorization } from "@mcpfn/auth";
 import {
   stdioTarget,
   streamableHttpTarget,
+  McpFnClientError,
   type McpFnTarget,
 } from "@mcpfn/client";
 import {
@@ -20,6 +21,7 @@ import {
   runOfficialConformance,
   runMcpFnTargetSuite,
   runScenarios,
+  createMcpFnScenarioReport,
 } from "@mcpfn/testing";
 
 import { loadManifestSource, loadScenarios } from "./load.js";
@@ -31,6 +33,10 @@ export interface CliRunOptions {
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
 }
+
+export const MCPFN_CLI_EXIT_SUCCESS = 0;
+export const MCPFN_CLI_EXIT_TEST_FAILURE = 1;
+export const MCPFN_CLI_EXIT_USAGE = 2;
 
 export async function runCli(
   argv = process.argv.slice(2),
@@ -94,6 +100,7 @@ export async function runCli(
 
   cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
     .option("--output <path>", "Write a JSON report")
+    .option("--max-report-bytes <bytes>", "Maximum aggregate JSON report size")
     .option(
       "--visible-tools <names>",
       "Comma-separated tool names expected for a request-filtered server",
@@ -101,7 +108,7 @@ export async function runCli(
     .action(async (
       serverPath: string,
       scenariosPath: string,
-      options: { output?: string; visibleTools?: string },
+      options: { output?: string; visibleTools?: string; maxReportBytes?: string },
     ) => {
       const loaded = await loadManifestSource(serverPath, cwd);
       if (!loaded.server) {
@@ -116,19 +123,16 @@ export async function runCli(
             .filter(Boolean),
         });
         const results = await runScenarios(client, await loadScenarios(scenariosPath, cwd));
-        const report = {
+        const report = createMcpFnScenarioReport(results, {
           manifestHash: loaded.manifest.hash,
-          total: results.length,
-          passed: results.filter((result) => result.status === "passed").length,
-          failed: results.filter((result) => result.status === "failed").length,
-          results,
-        };
+          maxBytes: parsePositiveInteger(options.maxReportBytes, "--max-report-bytes"),
+        });
         const serialized = `${JSON.stringify(report, null, 2)}\n`;
         if (options.output) {
           await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
         }
         stdout(serialized);
-        if (report.failed > 0) exitCode = 1;
+        if (report.failed > 0 || report.status === "incomplete") exitCode = 1;
       } finally {
         await client.close();
       }
@@ -242,10 +246,21 @@ export async function runCli(
     await cli.runMatchedCommand();
   } catch (error) {
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
-    if (error instanceof McpFnAssertionError) return 1;
-    return 2;
+    if (error instanceof McpFnAssertionError || error instanceof McpFnClientError) {
+      return MCPFN_CLI_EXIT_TEST_FAILURE;
+    }
+    return MCPFN_CLI_EXIT_USAGE;
   }
   return exitCode;
+}
+
+function parsePositiveInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function parseTarget(

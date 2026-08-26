@@ -1,6 +1,5 @@
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { HandleRequestOptions } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { AuthProvider, AuthSession } from "@superfunctions/auth";
 
 import { bearerChallengeResponse, readBearerToken } from "./auth-response.js";
 import {
@@ -20,8 +19,32 @@ export interface McpFnPrincipal {
   extra?: Record<string, unknown>;
 }
 
-export interface McpFnAuthProviderAdapterOptions<TSession extends AuthSession> {
-  provider: AuthProvider<TSession>;
+/** Structural subset implemented by AuthFn and other authentication providers. */
+export interface McpFnAuthSessionLike {
+  id: string;
+  type: string;
+  subject: {
+    actorId: string;
+    actorType: string;
+    tenantId?: string;
+    regionId?: string;
+  };
+  resourceIds?: string[];
+  scopes?: string[];
+  methods?: string[];
+  expiresAt?: Date;
+  metadata?: unknown;
+}
+
+/** AuthFn is optional: consumers can pass any provider matching this contract. */
+export interface McpFnAuthProviderLike<TSession extends McpFnAuthSessionLike> {
+  authenticate(request: Request): Promise<TSession | null>;
+  authorize?(session: TSession, resourceId: string): Promise<boolean>;
+  revoke?(sessionId: string): Promise<void>;
+}
+
+export interface McpFnAuthProviderAdapterOptions<TSession extends McpFnAuthSessionLike> {
+  provider: McpFnAuthProviderLike<TSession>;
   resource: string | URL;
   map?(session: TSession, request: Request): McpFnPrincipal | Promise<McpFnPrincipal>;
   authorize?(input: {
@@ -30,7 +53,7 @@ export interface McpFnAuthProviderAdapterOptions<TSession extends AuthSession> {
   }): boolean | Promise<boolean>;
 }
 
-export interface McpFnAuthProviderAdapter<TSession extends AuthSession> {
+export interface McpFnAuthProviderAdapter<TSession extends McpFnAuthSessionLike> {
   authenticate(request: Request): Promise<{
     session: TSession;
     principal: McpFnPrincipal;
@@ -38,7 +61,7 @@ export interface McpFnAuthProviderAdapter<TSession extends AuthSession> {
   } | null>;
 }
 
-export function createMcpFnAuthProviderAdapter<TSession extends AuthSession>(
+export function createMcpFnAuthProviderAdapter<TSession extends McpFnAuthSessionLike>(
   options: McpFnAuthProviderAdapterOptions<TSession>,
 ): McpFnAuthProviderAdapter<TSession> {
   const resource = new URL(options.resource.toString());
@@ -84,7 +107,7 @@ export function createMcpFnAuthProviderAdapter<TSession extends AuthSession>(
   };
 }
 
-export function createAuthProviderMcpHandler<TSession extends AuthSession>(
+export function createAuthProviderMcpHandler<TSession extends McpFnAuthSessionLike>(
   mcpHandler: McpFnWebStandardHandler,
   options: McpFnAuthProviderAdapterOptions<TSession>,
 ): (request: Request) => Promise<Response> {
@@ -108,7 +131,7 @@ export function createAuthProviderMcpHandler<TSession extends AuthSession>(
   };
 }
 
-function defaultPrincipal(session: AuthSession): McpFnPrincipal {
+function defaultPrincipal(session: McpFnAuthSessionLike): McpFnPrincipal {
   return {
     subject: session.subject.actorId,
     clientId: session.id,

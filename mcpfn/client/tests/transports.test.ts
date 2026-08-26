@@ -2,7 +2,8 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { McpFnRegistry, createMcpFnServer, structuredResult } from "@mcpfn/core";
 
 import {
@@ -79,4 +80,35 @@ describe("McpFn first-class transports", () => {
       structuredContent: { transport: "http" },
     });
   }, 15_000);
+
+  it("cleans pending OAuth material when callback validation fails", async () => {
+    const invalidatePendingAuthorization = vi.fn(async () => undefined);
+    const provider: OAuthClientProvider & {
+      validateAuthorizationState(state: string | undefined): Promise<void>;
+      invalidatePendingAuthorization(): Promise<void>;
+    } = {
+      redirectUrl: "https://client.example.com/callback",
+      clientMetadata: { redirect_uris: ["https://client.example.com/callback"] },
+      clientInformation: async () => ({ client_id: "client" }),
+      tokens: async () => undefined,
+      redirectToAuthorization: async () => undefined,
+      saveCodeVerifier: async () => undefined,
+      codeVerifier: async () => "v".repeat(43),
+      validateAuthorizationState: async () => { throw new Error("state mismatch"); },
+      invalidatePendingAuthorization,
+    };
+    const target = streamableHttpTarget("https://mcp.example.com/mcp", {
+      authProvider: provider,
+    });
+    const handle = await target.open({
+      requestId: "test",
+      signal: new AbortController().signal,
+      diagnostic: async () => undefined,
+    });
+    await expect(handle.finishAuthorization!("code", "wrong")).rejects.toThrow(
+      "state mismatch",
+    );
+    expect(invalidatePendingAuthorization).toHaveBeenCalledOnce();
+    await handle.close?.();
+  });
 });

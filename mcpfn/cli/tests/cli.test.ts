@@ -9,7 +9,7 @@ import {
   structuredResult,
 } from "@mcpfn/core";
 
-import { loadManifestSource, runCli } from "../src/index.js";
+import { loadManifestSource, loadScenarios, runCli } from "../src/index.js";
 
 describe("mcpfn CLI", () => {
   const roots: string[] = [];
@@ -129,5 +129,44 @@ describe("mcpfn CLI", () => {
     });
     expect(errors).toContain("Tool inventory mismatch");
     expect(exitCode).toBe(1);
+  });
+
+  it("loads every shared scenario operation shape", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-scenarios-"));
+    roots.push(root);
+    await writeFile(
+      path.join(root, "scenarios.mjs"),
+      `export default { formatVersion: 1, kind: "mcpfn.scenarios", status: "complete", scenarios: [
+        { name: "tool", kind: "tools.call", tool: "echo" },
+        { name: "task-create", kind: "tools.call:task", tool: "echo" },
+        { name: "task", kind: "tasks.get", taskId: "task-1" },
+        { name: "resource", kind: "resources.read", uri: "memory://one" },
+        { name: "prompt", kind: "prompts.get", prompt: "summarize" },
+        { name: "inventory", kind: "tools.list", expectNames: ["echo"] },
+        { name: "initialize", kind: "initialize", expectCapabilities: {} },
+        { name: "event", kind: "events.expect", event: "logging.message" },
+        { name: "auth", kind: "auth.assert", phase: "token", expect: { outcome: "allowed" } }
+      ] };`,
+    );
+
+    await expect(loadScenarios("scenarios.mjs", root)).resolves.toHaveLength(9);
+  });
+
+  it("classifies target connection failures as runtime exit 1", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mcpfn-cli-runtime-"));
+    roots.push(root);
+    await writeFile(path.join(root, "scenarios.json"), "[]\n");
+    let errors = "";
+    const exitCode = await runCli([
+      "test-target",
+      "mcpfn-command-that-does-not-exist",
+      "scenarios.json",
+      "--stdio",
+    ], {
+      cwd: root,
+      stderr: (value) => { errors += value; },
+    });
+    expect(exitCode).toBe(1);
+    expect(errors).toContain("Failed to connect and initialize the MCP session");
   });
 });

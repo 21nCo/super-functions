@@ -1,5 +1,6 @@
 import type {
   CallToolResult,
+  CreateTaskResult,
   GetPromptResult,
   Implementation,
   Prompt,
@@ -8,16 +9,25 @@ import type {
   ResourceTemplate,
   ServerCapabilities,
   Tool,
+  Task,
+  ListTasksResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   McpFnClient,
   type McpFnClientOptions,
+  type McpFnClientEvent,
   type McpFnDiagnosticEvent,
   type McpFnTargetDescriptor,
 } from "@mcpfn/client";
+import {
+  createMcpFnScenario,
+  type McpFnScenario,
+} from "@mcpfn/testing";
 import { redactOAuthValue } from "@superfunctions/oauth-core";
 
 export interface McpFnInspectorSnapshot {
+  formatVersion: 1;
+  kind: "mcpfn.inspector-snapshot";
   target: McpFnTargetDescriptor;
   state: string;
   server?: Implementation;
@@ -26,38 +36,75 @@ export interface McpFnInspectorSnapshot {
   resources: Resource[];
   resourceTemplates: ResourceTemplate[];
   prompts: Prompt[];
-  timeline: McpFnDiagnosticEvent[];
+  timeline: McpFnInspectorTimelineEvent[];
+  droppedEvents: number;
+  timelineComplete: boolean;
+}
+
+export interface McpFnInspectorTimelineEvent {
+  formatVersion: 1;
+  source: "diagnostic" | "client";
+  kind: string;
+  at: string;
+  event: McpFnDiagnosticEvent | McpFnClientEvent | Record<string, unknown>;
+}
+
+export interface McpFnInspectorLimits {
+  /** Defaults to 500 events. */
+  maxEvents?: number;
+  /** Defaults to 512 KiB across the retained timeline. */
+  maxTimelineBytes?: number;
 }
 
 export type McpFnInspectorOperation =
   | { kind: "tools.call"; name: string; arguments?: Record<string, unknown> }
+  | { kind: "tools.call:task"; name: string; arguments?: Record<string, unknown>; task?: { ttl?: number } }
   | { kind: "resources.read"; uri: string }
-  | { kind: "prompts.get"; name: string; arguments?: Record<string, string> };
+  | { kind: "resources.subscribe"; uri: string }
+  | { kind: "resources.unsubscribe"; uri: string }
+  | { kind: "prompts.get"; name: string; arguments?: Record<string, string> }
+  | { kind: "tasks.get"; taskId: string }
+  | { kind: "tasks.result"; taskId: string }
+  | { kind: "tasks.cancel"; taskId: string }
+  | { kind: "tasks.list"; cursor?: string };
 
 export type McpFnInspectorOperationResult =
   | CallToolResult
+  | CreateTaskResult
   | ReadResourceResult
-  | GetPromptResult;
+  | GetPromptResult
+  | Task
+  | ListTasksResult
+  | void;
 
-export interface McpFnExportedScenario {
-  name: string;
-  operation: McpFnInspectorOperation;
-  expect: unknown;
-}
+export type McpFnExportedScenario = McpFnScenario;
 
 /** Headless inspector; graphical shells and the CLI consume this same engine. */
 export class McpFnInspector {
-  private readonly events: McpFnDiagnosticEvent[] = [];
-  private readonly unsubscribe: () => void;
+  private readonly events: McpFnInspectorTimelineEvent[] = [];
+  private readonly unsubscribes: Array<() => void>;
+  private readonly maxEvents: number;
+  private readonly maxTimelineBytes: number;
+  private timelineBytes = 0;
+  private droppedEvents = 0;
 
-  constructor(readonly client: McpFnClient) {
-    this.unsubscribe = client.onDiagnostic((event) => {
-      this.events.push(redactOAuthValue(event) as McpFnDiagnosticEvent);
-    });
+  constructor(readonly client: McpFnClient, limits: McpFnInspectorLimits = {}) {
+    this.maxEvents = validateLimit(limits.maxEvents ?? 500, "maxEvents");
+    this.maxTimelineBytes = validateLimit(
+      limits.maxTimelineBytes ?? 524_288,
+      "maxTimelineBytes",
+    );
+    this.unsubscribes = [
+      client.onDiagnostic((event) => this.record("diagnostic", event.phase, event.at, event)),
+      client.onEvent((event) => this.record("client", event.kind, event.at, event)),
+    ];
   }
 
-  static create(options: McpFnClientOptions): McpFnInspector {
-    return new McpFnInspector(new McpFnClient(options));
+  static create(
+    options: McpFnClientOptions & { inspector?: McpFnInspectorLimits },
+  ): McpFnInspector {
+    const { inspector, ...clientOptions } = options;
+    return new McpFnInspector(new McpFnClient(clientOptions), inspector);
   }
 
   async connect(): Promise<this> {
@@ -74,6 +121,8 @@ export class McpFnInspector {
       capabilities?.prompts ? this.client.prompts.listAll() : Promise.resolve([]),
     ]);
     return redactOAuthValue({
+      formatVersion: 1,
+      kind: "mcpfn.inspector-snapshot",
       target: this.client.getTargetDescriptor(),
       state: this.client.state,
       server: this.client.getServerVersion(),
@@ -83,6 +132,8 @@ export class McpFnInspector {
       resourceTemplates,
       prompts,
       timeline: [...this.events],
+      droppedEvents: this.droppedEvents,
+      timelineComplete: this.droppedEvents === 0,
     }) as McpFnInspectorSnapshot;
   }
 
@@ -90,10 +141,25 @@ export class McpFnInspector {
     if (operation.kind === "tools.call") {
       return this.client.tools.call(operation.name, operation.arguments);
     }
+    if (operation.kind === "tools.call:task") {
+      return this.client.tools.createTask(operation.name, operation.arguments, operation.task);
+    }
     if (operation.kind === "resources.read") {
       return this.client.resources.read(operation.uri);
     }
-    return this.client.prompts.get(operation.name, operation.arguments);
+    if (operation.kind === "resources.subscribe") {
+      return this.client.resources.subscribe(operation.uri);
+    }
+    if (operation.kind === "resources.unsubscribe") {
+      return this.client.resources.unsubscribe(operation.uri);
+    }
+    if (operation.kind === "prompts.get") {
+      return this.client.prompts.get(operation.name, operation.arguments);
+    }
+    if (operation.kind === "tasks.get") return this.client.tasks.get(operation.taskId);
+    if (operation.kind === "tasks.result") return this.client.tasks.result(operation.taskId);
+    if (operation.kind === "tasks.cancel") return this.client.tasks.cancel(operation.taskId);
+    return this.client.tasks.list(operation.cursor);
   }
 
   exportScenario(
@@ -101,18 +167,69 @@ export class McpFnInspector {
     operation: McpFnInspectorOperation,
     result: McpFnInspectorOperationResult,
   ): McpFnExportedScenario {
-    const redacted = redactOAuthValue({ name, operation, expect: result });
-    return replaceSecretMarkers(redacted) as McpFnExportedScenario;
+    const scenario = createMcpFnScenario(name, operation, result);
+    const redacted = redactOAuthValue(scenario);
+    const exported = replaceSecretMarkers(redacted) as McpFnExportedScenario;
+    const variables = collectVariables(exported);
+    return variables.length ? { ...exported, variables } : exported;
   }
 
-  timeline(): McpFnDiagnosticEvent[] {
+  timeline(): McpFnInspectorTimelineEvent[] {
     return [...this.events];
   }
 
+  private record(
+    source: McpFnInspectorTimelineEvent["source"],
+    kind: string,
+    at: string,
+    raw: McpFnDiagnosticEvent | McpFnClientEvent,
+  ): void {
+    let event: McpFnInspectorTimelineEvent = redactOAuthValue({
+      formatVersion: 1,
+      source,
+      kind,
+      at,
+      event: raw,
+    }) as McpFnInspectorTimelineEvent;
+    let bytes = encodedBytes(event);
+    if (bytes > this.maxTimelineBytes) {
+      event = {
+        formatVersion: 1,
+        source,
+        kind,
+        at,
+        event: { truncated: true },
+      };
+      bytes = encodedBytes(event);
+      this.droppedEvents += 1;
+    }
+    this.events.push(event);
+    this.timelineBytes += bytes;
+    while (
+      this.events.length > this.maxEvents ||
+      (this.timelineBytes > this.maxTimelineBytes && this.events.length > 1)
+    ) {
+      const removed = this.events.shift();
+      if (removed) this.timelineBytes -= encodedBytes(removed);
+      this.droppedEvents += 1;
+    }
+  }
+
   async close(): Promise<void> {
-    this.unsubscribe();
+    for (const unsubscribe of this.unsubscribes) unsubscribe();
     await this.client.close();
   }
+}
+
+function validateLimit(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new TypeError(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function encodedBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
 function replaceSecretMarkers(value: unknown): unknown {
@@ -125,4 +242,21 @@ function replaceSecretMarkers(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function collectVariables(value: unknown): string[] {
+  const variables = new Set<string>();
+  const visit = (entry: unknown): void => {
+    if (typeof entry === "string") {
+      for (const match of entry.matchAll(/\$\{([A-Z][A-Z0-9_]*)\}/g)) {
+        variables.add(match[1]);
+      }
+    } else if (Array.isArray(entry)) {
+      entry.forEach(visit);
+    } else if (entry && typeof entry === "object") {
+      Object.values(entry as Record<string, unknown>).forEach(visit);
+    }
+  };
+  visit(value);
+  return [...variables].sort();
 }

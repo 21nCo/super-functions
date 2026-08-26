@@ -9,7 +9,7 @@ import {
   type McpFnServer,
   type McpFnServerInfo,
 } from "@mcpfn/core";
-import type { McpFnScenario } from "@mcpfn/testing";
+import { validateMcpFnScenarios, type McpFnScenario } from "@mcpfn/testing";
 
 async function loadModule(file: string, cwd: string): Promise<unknown> {
   const resolved = path.isAbsolute(file) ? file : path.resolve(cwd, file);
@@ -71,18 +71,5 @@ export async function loadScenarios(
   cwd = process.cwd(),
 ): Promise<McpFnScenario[]> {
   const value = await loadModule(file, cwd);
-  if (!Array.isArray(value)) {
-    throw new Error("Scenario module must default-export an array");
-  }
-  for (const [index, scenario] of value.entries()) {
-    if (
-      !scenario ||
-      typeof scenario !== "object" ||
-      typeof (scenario as { name?: unknown }).name !== "string" ||
-      typeof (scenario as { tool?: unknown }).tool !== "string"
-    ) {
-      throw new Error(`Invalid scenario at index ${index}`);
-    }
-  }
-  return value as McpFnScenario[];
+  return validateMcpFnScenarios(value) as McpFnScenario[];
 }
