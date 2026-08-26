@@ -293,6 +293,18 @@ describe("WebSocketManager", () => {
     expect(c3.send).not.toHaveBeenCalled();
   });
 
+  it("close() permanently rejects later client admission", () => {
+    const manager = new WebSocketManager();
+    manager.fenceNamespace("ns1");
+    manager.close();
+    const lateClient: WebSocketClient = { send: vi.fn(), close: vi.fn() };
+
+    expect(manager.addClient(lateClient, { namespace: "ns1" })).toBe(false);
+    expect(lateClient.close).toHaveBeenCalledWith(1001, "Going Away");
+    manager.broadcastCursor("1", "ns1");
+    expect(lateClient.send).not.toHaveBeenCalled();
+  });
+
   it("destroy() stops heartbeat without closing clients", () => {
     vi.useFakeTimers();
     try {

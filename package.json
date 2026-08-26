@@ -25,6 +25,7 @@
     "billfn/*",
     "filefn/*",
     "clifn/*",
+    "devfn/*",
     "packages/*",
     "filefn/*",
     "filefn/examples/full-demo/*",

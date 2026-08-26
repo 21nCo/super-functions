@@ -11,7 +11,7 @@ import { authFnPasswordPlugin } from '@authfn/password';
 import type { ConditionalKVStoreAdapter } from '@superfunctions/db';
 import type { AuthFnDeliveryRequest, AuthFnPlugin, AuthFnRuntimeConfig } from '../index.js';
 import { findUserByPrimaryEmail } from '../core/users.js';
-import { lookupRegionByIdentifier } from '../core/regions.js';
+import { lookupRegionByIdentifier, registerUserRegion } from '../core/regions.js';
 import { getLatestOtpChallenge } from '../core/verifications.js';
 
 function createLookupStore(
@@ -49,6 +49,76 @@ function identifierFromLookupKey(key: string): string {
 }
 
 describe('authfn multi-region plugin', () => {
+  it('projects new gateway users to the configured cell despite a canonical host match', async () => {
+    let createdProfile: Record<string, unknown> | undefined;
+    const database = {
+      findOne: async () => null,
+      create: async (input: { data: Record<string, unknown> }) => {
+        createdProfile = input.data;
+        return input.data;
+      }
+    } as never;
+    const directory = {
+      get: async () => null,
+      putIfAbsent: async () => ({ inserted: true }),
+      compareAndSet: async () => ({ updated: true })
+    };
+    const pluginConfig = {
+      regions: [
+        {
+          regionId: 'eu-west-1',
+          authority: 'https://eu.internal.example.com',
+          hosts: ['account.example.com']
+        },
+        {
+          regionId: 'us-east-1',
+          authority: 'https://us.internal.example.com'
+        }
+      ],
+      routing: {
+        mode: 'gateway' as const,
+        publicAuthority: 'https://account.example.com',
+        placementDirectory: directory,
+        identityKeyForIdentifier: (identifier: string) => `email:${identifier}`,
+        identityKeyForUserId: (userId: string) => `user:${userId}`,
+        cell: {
+          regionId: 'us-east-1',
+          audience: 'cell:us-east-1',
+          keyring: {
+            active: {
+              keyId: 'routing-2026-08',
+              secret: 'routing-test-secret-with-enough-entropy'
+            }
+          },
+          replayStore: { claim: async () => true }
+        }
+      }
+    };
+
+    const record = await registerUserRegion(
+      { database, namespace: 'authfn' },
+      pluginConfig,
+      {
+        user: { id: 'user_1', primaryEmail: 'ada@example.com' },
+        environment: {
+          issuer: 'https://account.example.com',
+          baseUrl: 'https://account.example.com',
+          regionId: 'us-east-1'
+        },
+        request: new Request('https://account.example.com/auth/sign-up/password')
+      }
+    );
+
+    expect(record).toMatchObject({
+      regionId: 'us-east-1',
+      authority: 'https://us.internal.example.com'
+    });
+    expect(createdProfile).toMatchObject({
+      regionId: 'us-east-1',
+      authority: 'https://us.internal.example.com'
+    });
+  });
+
   it('lazily migrates legacy bare-key lookup records', async () => {
     const legacyRecord: AuthFnRegionLookupRecord = {
       identifier: 'legacy@example.com',

@@ -22,6 +22,7 @@ import {
   setCachedJson
 } from './cache.js';
 import {
+  AuthFnConfigError,
   AuthFnRegionMismatchError,
   AuthFnValidationError
 } from './errors.js';
@@ -43,6 +44,18 @@ export function authFnMultiRegionEnvironment(
   const observability = normalizeObservability(config.observability)?.child({ component: 'authfn.lookup' });
   const resolvedConfig: MultiRegionPluginRuntimeConfig = {
     ...config,
+    routing: config.routing?.placementDirectory
+      ? {
+          ...config.routing,
+          placementDirectory: instrumentMethods({
+            target: config.routing.placementDirectory,
+            observability: observability?.child({ component: 'authfn.placement' }),
+            kind: 'placement',
+            component: 'authfn.placement',
+            extract: ({ property }) => ({ operation: String(property) })
+          })
+        }
+      : config.routing,
     lookupStore: config.lookupStore
       ? instrumentMethods({
           target: config.lookupStore,
@@ -62,6 +75,30 @@ export function authFnMultiRegionEnvironment(
     [multiRegionEnvironmentConfig]: resolvedConfig,
     resolve(request) {
       const url = new URL(request.url);
+      if (resolvedConfig.routing?.mode === 'gateway') {
+        const publicAuthority = resolvedConfig.routing.publicAuthority;
+        if (!publicAuthority) {
+          throw new AuthFnConfigError('Gateway-mode multi-region AuthFn requires publicAuthority');
+        }
+        const authority = normalizeAuthority(publicAuthority);
+        const cellRegionId = resolvedConfig.routing.cell?.regionId;
+        const selectedRegion = cellRegionId
+          ? findConfiguredRegion(resolvedConfig, cellRegionId)
+          : resolveRegionForRequest(resolvedConfig, request, {
+              issuer: authority,
+              baseUrl: authority
+            });
+        if (cellRegionId && resolvedConfig.regions?.length && !selectedRegion) {
+          throw new AuthFnConfigError('Gateway cell region must be present in configured regions');
+        }
+        return {
+          issuer: authority,
+          baseUrl: authority,
+          regionId: cellRegionId ?? selectedRegion?.regionId,
+          cookie: resolvedConfig.routing.canonicalCookie,
+          oauth: resolvedConfig.routing.canonicalOAuth
+        };
+      }
       const baseEnvironment: AuthFnEnvironment = {
         issuer: url.origin,
         baseUrl: url.origin
@@ -321,7 +358,13 @@ export async function registerUserRegion(
     request?: Request;
   }
 ): Promise<AuthFnRegionProfileRecord | null> {
-  const currentRegion = deriveCurrentRegion(pluginConfig, input.request, input.environment);
+  const gatewayCellRegionId = pluginConfig.routing?.mode === 'gateway'
+    ? pluginConfig.routing.cell?.regionId
+    : undefined;
+  const currentRegion = gatewayCellRegionId
+    ? findConfiguredRegion(pluginConfig, gatewayCellRegionId)
+      ?? deriveCurrentRegion(pluginConfig, input.request, input.environment)
+    : deriveCurrentRegion(pluginConfig, input.request, input.environment);
   if (!currentRegion) {
     return null;
   }
@@ -352,7 +395,7 @@ export async function registerUserRegion(
       updatedAt: record.updatedAt
     };
 
-    if (pluginConfig.lookupStore) {
+    if (pluginConfig.lookupStore && pluginConfig.routing?.mode !== 'gateway') {
       const migratedRecord = await readLookupStoreRecord(pluginConfig.lookupStore, identifier);
       const result = migratedRecord
         ? { inserted: false, existing: serializeLookupRecord(migratedRecord) }
@@ -445,6 +488,28 @@ export async function registerUserRegion(
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
     };
+    if (pluginConfig.lookupStore && pluginConfig.routing?.mode === 'gateway') {
+      // Gateway placement already settled ownership before execution. This is
+      // a post-commit lookup projection only and never participates in routing.
+      try {
+        await pluginConfig.lookupStore.set({
+          key: regionLookupStoreKey(identifier),
+          value: serializeLookupRecord(lookupRecord)
+        });
+      } catch (error) {
+        await emitAuthEvent(config, {
+          type: 'authfn.region.lookup',
+          requestId: eventRequestId(input.request),
+          userId: input.user.id,
+          regionId: record.regionId,
+          outcome: 'projection-failed',
+          metadata: {
+            identifier,
+            errorCode: readErrorCode(error)
+          }
+        });
+      }
+    }
     await setCachedJson(getAuthFnCacheStore(config), {
       key: cacheKey,
       value: {
@@ -607,7 +672,7 @@ function safeHostname(authority: string): string | null {
   }
 }
 
-function normalizeIdentifier(identifier: string): string {
+export function normalizeIdentifier(identifier: string): string {
   const normalized = identifier.trim().toLowerCase();
   if (!normalized || !normalized.includes('@')) {
     throw new AuthFnValidationError('A valid identifier is required', {
@@ -625,6 +690,14 @@ function normalizeAuthority(authority: string): string {
       authority
     });
   }
+}
+
+function readErrorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return error instanceof Error ? error.name : 'UNKNOWN';
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {

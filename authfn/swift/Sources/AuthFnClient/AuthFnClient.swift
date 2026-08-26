@@ -22,7 +22,7 @@ public final class AuthFnClient: Sendable {
     }
 
     public func runtime(regionId: String? = nil) async throws -> AuthFnRuntime {
-        try await get(path: "/runtime", regionId: regionId ?? configuration.defaultRegionId)
+        try await get(path: "/environment", regionId: regionId ?? configuration.defaultRegionId)
     }
 
     public func lookupRegion(identifier: String) async throws -> AuthFnRegion {

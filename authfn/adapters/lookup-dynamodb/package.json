@@ -27,7 +27,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.800.0",
     "@aws-sdk/lib-dynamodb": "^3.800.0",
-    "@superfunctions/db": "0.1.4"
+    "@superfunctions/db": "0.1.4",
+    "authfn": "0.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
