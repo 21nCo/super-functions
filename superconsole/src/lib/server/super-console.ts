@@ -332,6 +332,7 @@ interface ConsoleResourceView {
   listApiHref?: string;
   listInputSchema?: AdminJsonSchema;
   detailApiHref?: string;
+  detailApiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   detailIdInput?: string;
   detailInputSchema?: AdminJsonSchema;
   listable: boolean;
@@ -410,6 +411,9 @@ function moduleView(
       listApiHref: list?.routePath,
       listInputSchema: list?.operation.inputSchema,
       detailApiHref: get?.routePath,
+      detailApiMethod: get
+        ? routeDefinition(get.operation).method as ConsoleResourceView['detailApiMethod']
+        : undefined,
       detailIdInput: get?.operation.target?.idInput,
       detailInputSchema: get?.operation.inputSchema,
       listable: Boolean(list),

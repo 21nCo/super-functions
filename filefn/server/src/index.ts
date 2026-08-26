@@ -351,15 +351,16 @@ export function createFileFn(config: FileFnConfig): FileFn {
         getArtifactDownloadStreamForFile: processingService.getArtifactDownloadStreamForFile.bind(processingService),
         getReadableVersionForFile: processingService.getReadableVersionForFile.bind(processingService),
         async triggerProcessingForFile(fileId, ctx, versionId) {
-          const readable = await processingService.getReadableVersionForFile(fileId, ctx, versionId);
+          const file = await fileService.getFile(fileId, ctx);
+          const version = await fileService.getVersion(fileId, versionId ?? file.currentVersionId, ctx);
           return processingService.triggerProcessing({
-            fileId: readable.file.fileId,
-            versionId: readable.version.versionId,
-            storageKey: readable.version.storageKey,
-            mimeType: readable.version.mimeType,
-            size: readable.version.size,
-            fileName: readable.file.name,
-            tenantId: readable.file.tenantId ?? undefined,
+            fileId: file.fileId,
+            versionId: version.versionId,
+            storageKey: version.storageKey,
+            mimeType: version.mimeType,
+            size: version.size,
+            fileName: file.name,
+            tenantId: file.tenantId ?? ctx.tenantId,
           }, ctx);
         },
       },

@@ -275,11 +275,15 @@ export async function loadResourceDetail(
       },
     };
   }
-  const base = materializeAdminActionHref(detailTemplate, operationInput.value, 'GET');
+  const method = resource.detailApiMethod ?? 'GET';
+  const base = materializeAdminActionHref(detailTemplate, operationInput.value, method);
   if (!base) return { view: undefined, loadError: unavailable(input.resourceId, input.moduleId) };
   const result = await fetchAdmin<Partial<ResourceDetailViewModel> & { item?: unknown }>(
     input.fetcher,
-    withAdminScope(base, input.url.searchParams)
+    withAdminScope(base, input.url.searchParams),
+    method === 'GET' || method === 'HEAD'
+      ? undefined
+      : { method, body: JSON.stringify(operationInput.value) },
   );
   const payload = result.ok ? result.data : {};
   const itemRecord = isAdminRecord(payload.item) ? payload.item : undefined;

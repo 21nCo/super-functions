@@ -275,6 +275,10 @@ describe("cursor pagination", () => {
   it("round-trips encoded scope-bound cursors and rejects cross-tenant use", () => {
     const cursor = encodeAdminCursor(scope, { updatedAt: "2026-08-13T00:00:00Z", id: "item_1" });
     expect(decodeAdminCursor(cursor, scope)).toEqual({ updatedAt: "2026-08-13T00:00:00Z", id: "item_1" });
+    expect(decodeAdminCursor(cursor, { ...scope, namespace: undefined, region: undefined })).toEqual({
+      updatedAt: "2026-08-13T00:00:00Z",
+      id: "item_1",
+    });
     expect(() => decodeAdminCursor(cursor, { ...scope, environmentId: "other" })).toThrowError(/invalid for the active scope/);
     expect(normalizeAdminPageLimit(undefined, { defaultLimit: 25 })).toBe(25);
     expect(() => normalizeAdminPageLimit(201, { maxLimit: 200 })).toThrowError(/between 1 and 200/);

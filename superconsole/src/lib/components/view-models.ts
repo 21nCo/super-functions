@@ -82,6 +82,7 @@ export interface AdminResourceViewModel {
   listApiHref?: string;
   listInputSchema?: AdminJsonSchema;
   detailApiHref?: string;
+  detailApiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   detailIdInput?: string;
   detailInputSchema?: AdminJsonSchema;
   listable?: boolean;

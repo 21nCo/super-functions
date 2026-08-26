@@ -21,8 +21,18 @@ function fromBase64Url(value: string): string {
   return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
 }
 
+function normalizeCursorScope(scope: AdminScope): AdminScope {
+  return Object.fromEntries(
+    Object.entries(scope).filter(([, value]) => value !== undefined),
+  ) as AdminScope;
+}
+
 export function encodeAdminCursor<T>(scope: AdminScope, position: T): string {
-  return toBase64Url(JSON.stringify({ version: 1, scope, position } satisfies AdminCursorPayload<T>));
+  return toBase64Url(JSON.stringify({
+    version: 1,
+    scope: normalizeCursorScope(scope),
+    position,
+  } satisfies AdminCursorPayload<T>));
 }
 
 /**
@@ -33,7 +43,10 @@ export function encodeAdminCursor<T>(scope: AdminScope, position: T): string {
 export function decodeAdminCursor<T>(cursor: string, expectedScope: AdminScope): T {
   try {
     const payload = JSON.parse(fromBase64Url(cursor)) as AdminCursorPayload<T>;
-    if (payload.version !== 1 || stableSerialize(payload.scope) !== stableSerialize(expectedScope)) {
+    if (
+      payload.version !== 1
+      || stableSerialize(normalizeCursorScope(payload.scope)) !== stableSerialize(normalizeCursorScope(expectedScope))
+    ) {
       throw new Error("scope mismatch");
     }
     return payload.position;

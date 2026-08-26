@@ -93,6 +93,9 @@ describe("@filefn/admin", () => {
     expect(fileFnAdminCapability.operations.some((operation) => operation.id.includes("storage-targets"))).toBe(false);
     expect(fileFnAdminCapability.operations.some((operation) => operation.id.includes("dedup-retention"))).toBe(false);
     expect(fileFnAdminCapability.operations.some((operation) => operation.id.includes("restore-file"))).toBe(false);
+    expect(fileFnAdminCapability.operations.find(
+      (operation) => operation.id === "filefn.upload-sessions.get",
+    )?.route).toEqual({ method: "POST", path: "/resources/upload-sessions/:id" });
 
     const grant = fileFnAdminCapability.operations.find((operation) => operation.id === "filefn.grants.create-grant");
     expect(grant?.inputSchema).toMatchObject({

@@ -562,6 +562,7 @@ describe('Super Console server composition', () => {
       listable: false,
       detailIdInput: 'id',
       detailApiHref: '/api/admin/v1/modules/examplefn/resources/records/:id',
+      detailApiMethod: 'GET',
       detailInputSchema: expect.objectContaining({ required: ['id'] }),
     });
     expect(view.data.module.resources[0]).not.toHaveProperty('apiHref');

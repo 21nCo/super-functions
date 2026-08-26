@@ -298,6 +298,61 @@ describe('PHASE_03 PROCESS-002/FILE-002 share and artifact authz + proxy descrip
     )).resolves.toEqual({ enqueued: false });
   });
 
+  it('honors the configured authorizer and falls back to the caller tenant when enqueueing', async () => {
+    await db.update({
+      model: 'files',
+      where: [{ field: 'fileId', operator: 'eq', value: 'file_0001' }],
+      data: { tenantId: null },
+    });
+    const enqueue = vi.fn(async () => ({ jobId: 'job_1' }));
+    const canRead = vi.fn(async (_file, ctx) => ctx.principalId === 'custom_user');
+    const customized = createFileFn({
+      database: db,
+      storage: createFakeStorageAdapter({
+        capabilities: {
+          signedUploadUrls: true,
+          signedDownloadUrls: false,
+          multipart: true,
+          proxyStreamingUpload: true,
+          proxyStreamingDownload: true,
+        },
+      }),
+      authorizer: {
+        canRead,
+        canWrite: async () => false,
+        canDelete: async () => false,
+      },
+      processing: {
+        enabled: true,
+        processors: [{
+          name: 'thumbnail',
+          supportedMimeTypes: ['image/png'],
+          process: async () => ({ success: true, artifacts: [] }),
+        }],
+        flowFn: {
+          getQueue: () => ({ name: 'filefn.processing', add: enqueue }),
+        },
+      },
+    });
+
+    await expect(customized.services.processing.triggerProcessingForFile(
+      'file_0001',
+      { principalId: 'denied_user', tenantId: 'caller_tenant' },
+    )).rejects.toMatchObject({ status: 403 });
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(customized.services.processing.triggerProcessingForFile(
+      'file_0001',
+      { principalId: 'custom_user', tenantId: 'caller_tenant' },
+    )).resolves.toEqual({ enqueued: true, jobId: 'job_1' });
+    expect(canRead).toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      fileId: 'file_0001',
+      versionId: 'ver_0001',
+      tenantId: 'caller_tenant',
+    }));
+  });
+
   it('TV-PROCESS-002: PDF preview artifact descriptors should stay on HTTP proxy routes', async () => {
     const res = await fileFn.router.handle(
       new Request('http://localhost/file_0002/artifacts/art_pdf_0001/download', { method: 'GET' }),
