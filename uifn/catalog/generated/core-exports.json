@@ -1,0 +1,850 @@
+{
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
+  "catalogVersion": "1.0.0",
+  "exports": [
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "accordion",
+      "primitiveName": "Accordion",
+      "symbol": "AccordionController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "accordion",
+      "primitiveName": "Accordion",
+      "symbol": "createAccordionController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "alert-dialog",
+      "primitiveName": "AlertDialog",
+      "symbol": "AlertDialogController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "alert-dialog",
+      "primitiveName": "AlertDialog",
+      "symbol": "createAlertDialogController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "angle-slider",
+      "primitiveName": "AngleSlider",
+      "symbol": "AngleSliderController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "angle-slider",
+      "primitiveName": "AngleSlider",
+      "symbol": "createAngleSliderController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "autocomplete",
+      "primitiveName": "Autocomplete",
+      "symbol": "AutocompleteController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "autocomplete",
+      "primitiveName": "Autocomplete",
+      "symbol": "createAutocompleteController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "avatar",
+      "primitiveName": "Avatar",
+      "symbol": "AvatarContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "button",
+      "primitiveName": "Button",
+      "symbol": "ButtonContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "carousel",
+      "primitiveName": "Carousel",
+      "symbol": "CarouselController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "carousel",
+      "primitiveName": "Carousel",
+      "symbol": "createCarouselController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "checkbox",
+      "primitiveName": "Checkbox",
+      "symbol": "CheckboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "checkbox",
+      "primitiveName": "Checkbox",
+      "symbol": "createCheckboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "checkbox-group",
+      "primitiveName": "CheckboxGroup",
+      "symbol": "CheckboxGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "checkbox-group",
+      "primitiveName": "CheckboxGroup",
+      "symbol": "createCheckboxGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "clipboard",
+      "primitiveName": "Clipboard",
+      "symbol": "ClipboardController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "clipboard",
+      "primitiveName": "Clipboard",
+      "symbol": "createClipboardController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "collapsible",
+      "primitiveName": "Collapsible",
+      "symbol": "CollapsibleController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "collapsible",
+      "primitiveName": "Collapsible",
+      "symbol": "createCollapsibleController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "color-picker",
+      "primitiveName": "ColorPicker",
+      "symbol": "ColorPickerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "color-picker",
+      "primitiveName": "ColorPicker",
+      "symbol": "createColorPickerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "combobox",
+      "primitiveName": "Combobox",
+      "symbol": "ComboboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "combobox",
+      "primitiveName": "Combobox",
+      "symbol": "createComboboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "context-menu",
+      "primitiveName": "ContextMenu",
+      "symbol": "ContextMenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "context-menu",
+      "primitiveName": "ContextMenu",
+      "symbol": "createContextMenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "date-input",
+      "primitiveName": "DateInput",
+      "symbol": "DateInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "date-input",
+      "primitiveName": "DateInput",
+      "symbol": "createDateInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "date-picker",
+      "primitiveName": "DatePicker",
+      "symbol": "DatePickerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "date-picker",
+      "primitiveName": "DatePicker",
+      "symbol": "createDatePickerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "dialog",
+      "primitiveName": "Dialog",
+      "symbol": "DialogController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "dialog",
+      "primitiveName": "Dialog",
+      "symbol": "createDialogController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "drawer",
+      "primitiveName": "Drawer",
+      "symbol": "DrawerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "drawer",
+      "primitiveName": "Drawer",
+      "symbol": "createDrawerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "editable",
+      "primitiveName": "Editable",
+      "symbol": "EditableController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "editable",
+      "primitiveName": "Editable",
+      "symbol": "createEditableController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "field",
+      "primitiveName": "Field",
+      "symbol": "FieldContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "fieldset",
+      "primitiveName": "Fieldset",
+      "symbol": "FieldsetContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "file-upload",
+      "primitiveName": "FileUpload",
+      "symbol": "FileUploadController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "file-upload",
+      "primitiveName": "FileUpload",
+      "symbol": "createFileUploadController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "floating-panel",
+      "primitiveName": "FloatingPanel",
+      "symbol": "FloatingPanelController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "floating-panel",
+      "primitiveName": "FloatingPanel",
+      "symbol": "createFloatingPanelController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "form",
+      "primitiveName": "Form",
+      "symbol": "FormContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "hover-card",
+      "primitiveName": "HoverCard",
+      "symbol": "HoverCardController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "hover-card",
+      "primitiveName": "HoverCard",
+      "symbol": "createHoverCardController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "image-cropper",
+      "primitiveName": "ImageCropper",
+      "symbol": "ImageCropperController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "image-cropper",
+      "primitiveName": "ImageCropper",
+      "symbol": "createImageCropperController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "input",
+      "primitiveName": "Input",
+      "symbol": "InputContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "listbox",
+      "primitiveName": "Listbox",
+      "symbol": "ListboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "listbox",
+      "primitiveName": "Listbox",
+      "symbol": "createListboxController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "marquee",
+      "primitiveName": "Marquee",
+      "symbol": "MarqueeContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "menu",
+      "primitiveName": "Menu",
+      "symbol": "MenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "menu",
+      "primitiveName": "Menu",
+      "symbol": "createMenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "menubar",
+      "primitiveName": "Menubar",
+      "symbol": "MenubarController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "menubar",
+      "primitiveName": "Menubar",
+      "symbol": "createMenubarController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "meter",
+      "primitiveName": "Meter",
+      "symbol": "MeterContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "navigation-menu",
+      "primitiveName": "NavigationMenu",
+      "symbol": "NavigationMenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "navigation-menu",
+      "primitiveName": "NavigationMenu",
+      "symbol": "createNavigationMenuController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "number-input",
+      "primitiveName": "NumberInput",
+      "symbol": "NumberInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "number-input",
+      "primitiveName": "NumberInput",
+      "symbol": "createNumberInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "pagination",
+      "primitiveName": "Pagination",
+      "symbol": "PaginationController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "pagination",
+      "primitiveName": "Pagination",
+      "symbol": "createPaginationController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "password-input",
+      "primitiveName": "PasswordInput",
+      "symbol": "PasswordInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "password-input",
+      "primitiveName": "PasswordInput",
+      "symbol": "createPasswordInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "pin-input",
+      "primitiveName": "PinInput",
+      "symbol": "PinInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "pin-input",
+      "primitiveName": "PinInput",
+      "symbol": "createPinInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "popover",
+      "primitiveName": "Popover",
+      "symbol": "PopoverController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "popover",
+      "primitiveName": "Popover",
+      "symbol": "createPopoverController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "progress",
+      "primitiveName": "Progress",
+      "symbol": "ProgressContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "qr-code",
+      "primitiveName": "QRCode",
+      "symbol": "QRCodeContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "radio-group",
+      "primitiveName": "RadioGroup",
+      "symbol": "RadioGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "radio-group",
+      "primitiveName": "RadioGroup",
+      "symbol": "createRadioGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "rating-group",
+      "primitiveName": "RatingGroup",
+      "symbol": "RatingGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "rating-group",
+      "primitiveName": "RatingGroup",
+      "symbol": "createRatingGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "scroll-area",
+      "primitiveName": "ScrollArea",
+      "symbol": "ScrollAreaController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "scroll-area",
+      "primitiveName": "ScrollArea",
+      "symbol": "createScrollAreaController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "segment-group",
+      "primitiveName": "SegmentGroup",
+      "symbol": "SegmentGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "segment-group",
+      "primitiveName": "SegmentGroup",
+      "symbol": "createSegmentGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "select",
+      "primitiveName": "Select",
+      "symbol": "SelectController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "select",
+      "primitiveName": "Select",
+      "symbol": "createSelectController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "separator",
+      "primitiveName": "Separator",
+      "symbol": "SeparatorContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "signature-pad",
+      "primitiveName": "SignaturePad",
+      "symbol": "SignaturePadController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "signature-pad",
+      "primitiveName": "SignaturePad",
+      "symbol": "createSignaturePadController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "slider",
+      "primitiveName": "Slider",
+      "symbol": "SliderController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "slider",
+      "primitiveName": "Slider",
+      "symbol": "createSliderController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "splitter",
+      "primitiveName": "Splitter",
+      "symbol": "SplitterController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "splitter",
+      "primitiveName": "Splitter",
+      "symbol": "createSplitterController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "steps",
+      "primitiveName": "Steps",
+      "symbol": "StepsController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "steps",
+      "primitiveName": "Steps",
+      "symbol": "createStepsController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "switch",
+      "primitiveName": "Switch",
+      "symbol": "SwitchController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "switch",
+      "primitiveName": "Switch",
+      "symbol": "createSwitchController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tabs",
+      "primitiveName": "Tabs",
+      "symbol": "TabsController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tabs",
+      "primitiveName": "Tabs",
+      "symbol": "createTabsController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tags-input",
+      "primitiveName": "TagsInput",
+      "symbol": "TagsInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tags-input",
+      "primitiveName": "TagsInput",
+      "symbol": "createTagsInputController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "timer",
+      "primitiveName": "Timer",
+      "symbol": "TimerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "timer",
+      "primitiveName": "Timer",
+      "symbol": "createTimerController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toast",
+      "primitiveName": "Toast",
+      "symbol": "ToastController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toast",
+      "primitiveName": "Toast",
+      "symbol": "createToastController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toggle",
+      "primitiveName": "Toggle",
+      "symbol": "ToggleController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toggle",
+      "primitiveName": "Toggle",
+      "symbol": "createToggleController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toggle-group",
+      "primitiveName": "ToggleGroup",
+      "symbol": "ToggleGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toggle-group",
+      "primitiveName": "ToggleGroup",
+      "symbol": "createToggleGroupController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toolbar",
+      "primitiveName": "Toolbar",
+      "symbol": "ToolbarController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "toolbar",
+      "primitiveName": "Toolbar",
+      "symbol": "createToolbarController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tooltip",
+      "primitiveName": "Tooltip",
+      "symbol": "TooltipController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tooltip",
+      "primitiveName": "Tooltip",
+      "symbol": "createTooltipController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tour",
+      "primitiveName": "Tour",
+      "symbol": "TourController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tour",
+      "primitiveName": "Tour",
+      "symbol": "createTourController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tree-view",
+      "primitiveName": "TreeView",
+      "symbol": "TreeViewController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "tree-view",
+      "primitiveName": "TreeView",
+      "symbol": "createTreeViewController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "badge",
+      "primitiveName": "Badge",
+      "symbol": "BadgeContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "breadcrumb",
+      "primitiveName": "Breadcrumb",
+      "symbol": "BreadcrumbContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "card",
+      "primitiveName": "Card",
+      "symbol": "CardContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "command",
+      "primitiveName": "Command",
+      "symbol": "CommandController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "interactive-controller",
+      "primitiveId": "command",
+      "primitiveName": "Command",
+      "symbol": "createCommandController"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "input-group",
+      "primitiveName": "InputGroup",
+      "symbol": "InputGroupContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "skeleton",
+      "primitiveName": "Skeleton",
+      "symbol": "SkeletonContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "table",
+      "primitiveName": "Table",
+      "symbol": "TableContract"
+    },
+    {
+      "implementationStatus": "implemented",
+      "kind": "typed-static-contract",
+      "primitiveId": "textarea",
+      "primitiveName": "Textarea",
+      "symbol": "TextareaContract"
+    }
+  ],
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "schemaVersion": 1,
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250"
+}

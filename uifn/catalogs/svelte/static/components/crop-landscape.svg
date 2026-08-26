@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-label="Mountain landscape">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b7cfa"/>
+      <stop offset="1" stop-color="#b7d8ff"/>
+    </linearGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#193b64"/>
+      <stop offset="1" stop-color="#0f6b63"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <circle cx="510" cy="90" r="48" fill="#fff3b0" opacity=".95"/>
+  <path d="M0 300 155 128l112 118 76-76 166 168H0Z" fill="#36537b"/>
+  <path d="m0 328 205-150 106 104 78-62 251 180H0Z" fill="url(#hill)"/>
+  <path d="m156 128 35 37-34 13-24-24Z" fill="#eef6ff" opacity=".9"/>
+  <path d="m343 170 28 29-30 12-20-19Z" fill="#eef6ff" opacity=".85"/>
+  <path d="M0 344c118-36 222-30 320 6 109 40 215 31 320-10v60H0Z" fill="#0b3b42" opacity=".72"/>
+</svg>

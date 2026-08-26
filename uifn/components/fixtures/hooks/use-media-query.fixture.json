@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "hook": "useMediaQuery",
+  "ssr": {
+    "query": "(min-width: 768px)",
+    "safeFallback": false,
+    "accessesWindowDuringSsr": false
+  },
+  "client": {
+    "subscribesOnClient": true,
+    "cleansUp": true,
+    "events": [
+      "change"
+    ]
+  },
+  "frameworks": [
+    "react",
+    "svelte",
+    "solid"
+  ]
+}

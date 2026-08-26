@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "name": "ScrollArea",
+  "slug": "scroll-area",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "viewport",
+    "scrollbar",
+    "thumb",
+    "corner"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "ScrollArea"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "ScrollArea"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "ScrollArea"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/scroll-area.stories.json#default",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#variants",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#states",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#accessibility",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#theming",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#keyboard",
+    "uifn/components/stories/batch-b/scroll-area.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/scroll-area.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "name": "ContextMenu",
+  "slug": "context-menu",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "trigger",
+    "content",
+    "item",
+    "separator",
+    "label"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "ContextMenu"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "ContextMenu"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "ContextMenu"
+    }
+  },
+  "behavior": [
+    "portal",
+    "focus-management",
+    "escape-key",
+    "outside-interaction"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/context-menu.stories.json#default",
+    "uifn/components/stories/batch-b/context-menu.stories.json#variants",
+    "uifn/components/stories/batch-b/context-menu.stories.json#states",
+    "uifn/components/stories/batch-b/context-menu.stories.json#accessibility",
+    "uifn/components/stories/batch-b/context-menu.stories.json#theming",
+    "uifn/components/stories/batch-b/context-menu.stories.json#keyboard",
+    "uifn/components/stories/batch-b/context-menu.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/context-menu.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

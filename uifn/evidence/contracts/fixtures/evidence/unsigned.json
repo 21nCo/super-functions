@@ -1,0 +1,6 @@
+{
+  "fixtureId": "evidence-unsigned",
+  "base": "complete.json",
+  "set": { "signatures": [] },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_UNSIGNED"]
+}

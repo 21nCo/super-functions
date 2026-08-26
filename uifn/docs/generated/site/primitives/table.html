@@ -1,0 +1,142 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Table · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="table"><h1>Table</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>Table is the stable styled static-foundation primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `typed-static-contract`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `TableRoot` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `table` | `TableTable` | `table` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `header` | `TableHeader` | `thead` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `body` | `TableBody` | `tbody` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `footer` | `TableFooter` | `tfoot` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `row` | `TableRow` | `tr` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `head` | `TableHead` | `th` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `cell` | `TableCell` | `td` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `caption` | `TableCaption` | `caption` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/table: TableContract`
+- State: `TableState`
+- Actions: `Record&lt;string, never&gt;`
+- Parts: `TableContractParts`
+- DOM owner: Native elements own DOM behavior; @uifn/core remains DOM-free
+- react context: `TableProvider and useTable(inputs); adapter context remains private`
+- svelte context: `TableProvider; adapter context remains private to compound descendants`
+- solid context: `TableProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+
+Complete transition signatures:
+
+- No controller event is declared; native element event props remain available.
+
+Controlled callbacks:
+
+- No controlled callback is declared; native element event props remain available.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `striped` | `boolean` | no | yes | `undefined → false` | Optional reactive striped input from the canonical Table contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `none`. Controlled inputs: none. Uncontrolled defaults: none. Change events: native events only. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `static-foundation`. Native semantic basis: Use the strongest native element and avoid adding widget roles or subscriptions to static content.
+
+Accessible name required: no; accepted sources: native-text, alt, aria-label, aria-labelledby. WCAG mapping: 1.1.1, 1.3.1, 1.4.1, 2.1.1, 2.4.7, 4.1.2. Normative basis: native-html. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `native-only`; keys: `Tab`, `Shift+Tab`, `Enter`, `Space`. Pointer/touch obligations: native-activation-where-interactive. Focus obligations: native-focus-only, visible-focus-where-focusable.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `none`; value shape: `none`; reset: `none`; validation: `none`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (none) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `Table` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;table&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | table | header | body | footer | row | head | cell | caption&quot;` on all styled parts; stable.
+- `data-state=&quot;idle&quot;` on stateful parts; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/table` | `components/uifn/react/table.ts` |
+| svelte | `@uifn/components-svelte/table` | `components/uifn/svelte/table/index.ts` |
+| solid | `@uifn/components-solid/table` | `components/uifn/solid/table.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { TableRoot } from &quot;@uifn/components-react/table&quot;;
+
+export function TableExample() {
+  return React.createElement(TableRoot, {});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { TableRoot } from &quot;./components/uifn/react/table.js&quot;;
+
+export function TableExample() {
+  return React.createElement(TableRoot, {});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TableRoot } from &quot;@uifn/components-svelte/table&quot;;
+&lt;/script&gt;
+
+&lt;TableRoot  /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TableRoot } from &quot;./components/uifn/svelte/table/index.js&quot;;
+&lt;/script&gt;
+
+&lt;TableRoot  /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TableRoot } from &quot;@uifn/components-solid/table&quot;;
+
+export function TableExample() {
+  return createComponent(TableRoot, {});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TableRoot } from &quot;./components/uifn/solid/table.js&quot;;
+
+export function TableExample() {
+  return createComponent(TableRoot, {});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add table --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Table preserves semantic structure but does not implement sorting, filtering, pagination, selection, or virtualization.
+- Consumers must provide meaningful headers and a caption or external accessible name.
+- This typed static contract exposes semantic state and parts but no controller subscription or action surface.
+- The semantic table, sections, rows, header cells, data cells, and caption are preserved.
+- Consumers must provide meaningful column headers and a caption or external accessible name.</pre></section></main></body></html>

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uifn.dev/schema/catalog/v1/generation-manifest.schema.json",
+  "title": "uifn canonical catalog generation manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatorVersion", "catalogVersion", "sourceSha256", "catalogSha256", "outputCount", "outputs", "deterministic", "implementationEvidence"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatorVersion": { "const": "1.0.0" },
+    "catalogVersion": { "const": "1.0.0" },
+    "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "catalogSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "outputCount": { "type": "integer", "minimum": 1 },
+    "outputs": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "sha256", "bytes"],
+        "properties": { "path": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$" }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "bytes": { "type": "integer", "minimum": 1 } }
+      }
+    },
+    "deterministic": { "const": true },
+    "implementationEvidence": { "const": true }
+  }
+}

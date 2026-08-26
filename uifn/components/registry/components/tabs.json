@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "Tabs",
+  "slug": "tabs",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "list",
+    "trigger",
+    "content"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Tabs"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Tabs"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Tabs"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/tabs.stories.json#default",
+    "uifn/components/stories/batch-b/tabs.stories.json#variants",
+    "uifn/components/stories/batch-b/tabs.stories.json#states",
+    "uifn/components/stories/batch-b/tabs.stories.json#accessibility",
+    "uifn/components/stories/batch-b/tabs.stories.json#theming",
+    "uifn/components/stories/batch-b/tabs.stories.json#keyboard",
+    "uifn/components/stories/batch-b/tabs.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/tabs.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

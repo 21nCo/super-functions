@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "Switch",
+  "slug": "switch",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "thumb",
+    "input"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Switch"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Switch"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Switch"
+    }
+  },
+  "behavior": [
+    "form-integration",
+    "disabled-invalid-state",
+    "keyboard"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/switch.stories.json#default",
+    "uifn/components/stories/batch-b/switch.stories.json#variants",
+    "uifn/components/stories/batch-b/switch.stories.json#states",
+    "uifn/components/stories/batch-b/switch.stories.json#accessibility",
+    "uifn/components/stories/batch-b/switch.stories.json#theming",
+    "uifn/components/stories/batch-b/switch.stories.json#keyboard",
+    "uifn/components/stories/batch-b/switch.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/switch.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "../schema/migration.schema.json",
+  "schemaVersion": 1,
+  "currentSchemaVersion": 1,
+  "migrations": [
+    {
+      "id": "catalog-v0-to-v1",
+      "from": 0,
+      "to": 1,
+      "module": "uifn/catalog/migrations/v0-to-v1.mjs",
+      "lossless": true
+    }
+  ]
+}

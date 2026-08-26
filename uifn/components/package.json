@@ -1,0 +1,56 @@
+{
+  "name": "@uifn/components",
+  "version": "0.0.1",
+  "description": "Framework-neutral styled component contracts, CSS, recipes, and catalog metadata for uifn",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prebuild": "npm run clean",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "predev": "npm run clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --clean --watch",
+    "test": "vitest run --config vitest.config.mts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@uifn/recipes": "0.0.1",
+    "@uifn/theme": "0.0.1",
+    "@uifn/tokens": "0.0.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "sideEffects": ["styles.css"],
+  "files": ["dist", "styles.css", "README.md"],
+  "author": "21n",
+  "license": "MIT",
+  "engines": { "node": ">=18 <23" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/components"
+  },
+  "publishConfig": { "access": "public" },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "components-neutral",
+    "styling": "public-visual-defaults",
+    "behaviorOwner": "@uifn/core",
+    "schemaVersion": 1,
+    "sourcePolicy": "clean-room"
+  }
+}

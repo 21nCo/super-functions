@@ -1,0 +1,33 @@
+{
+  "name": "@uifn/examples-shared",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Shared Workbench inventories, QA contracts, routes, fixtures, and reporting for uifn examples",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node ../../../scripts/generate-uifn-catalog-accessibility.mjs",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@uifn/components": "*",
+    "@uifn/theme": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

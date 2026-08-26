@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "package": "@uifn/components",
+  "mutation": "remove-owner",
+  "expectedErrorCode": "UIFN_PACKAGE_GRAPH_OWNER_MISSING"
+}

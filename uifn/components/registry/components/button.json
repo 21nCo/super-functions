@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "Button",
+  "slug": "button",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "icon",
+    "label",
+    "spinner"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Button"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Button"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Button"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/button.stories.json#default",
+    "uifn/components/stories/batch-a/button.stories.json#variants",
+    "uifn/components/stories/batch-a/button.stories.json#states",
+    "uifn/components/stories/batch-a/button.stories.json#accessibility",
+    "uifn/components/stories/batch-a/button.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/button.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

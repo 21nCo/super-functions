@@ -1,0 +1,6 @@
+{
+  "fixtureId": "ownership-missing-dom-layer",
+  "base": "../../ownership.json",
+  "removeSurface": { "collection": "domServices", "id": "dismissable-layer" },
+  "expectedErrorCodes": ["UIFN_OWNER_MISSING"]
+}

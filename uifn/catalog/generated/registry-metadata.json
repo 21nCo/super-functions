@@ -1,0 +1,1856 @@
+{
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
+  "catalogVersion": "1.0.0",
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "id": "accordion",
+      "implementationStatus": "implemented",
+      "name": "Accordion",
+      "outputs": {
+        "core": [
+          "AccordionController",
+          "createAccordionController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/accordion.tsx",
+          "solid": "generated/solid/accordion.tsx",
+          "svelte": "generated/svelte/accordion.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "alert-dialog",
+      "implementationStatus": "implemented",
+      "name": "AlertDialog",
+      "outputs": {
+        "core": [
+          "AlertDialogController",
+          "createAlertDialogController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/alert-dialog.tsx",
+          "solid": "generated/solid/alert-dialog.tsx",
+          "svelte": "generated/svelte/alert-dialog.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "angle-slider",
+      "implementationStatus": "implemented",
+      "name": "AngleSlider",
+      "outputs": {
+        "core": [
+          "AngleSliderController",
+          "createAngleSliderController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/angle-slider.tsx",
+          "solid": "generated/solid/angle-slider.tsx",
+          "svelte": "generated/svelte/angle-slider.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "autocomplete",
+      "implementationStatus": "implemented",
+      "name": "Autocomplete",
+      "outputs": {
+        "core": [
+          "AutocompleteController",
+          "createAutocompleteController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/autocomplete.tsx",
+          "solid": "generated/solid/autocomplete.tsx",
+          "svelte": "generated/svelte/autocomplete.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "avatar",
+      "implementationStatus": "implemented",
+      "name": "Avatar",
+      "outputs": {
+        "core": [
+          "AvatarContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/avatar.tsx",
+          "solid": "generated/solid/avatar.tsx",
+          "svelte": "generated/svelte/avatar.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "button",
+      "implementationStatus": "implemented",
+      "name": "Button",
+      "outputs": {
+        "core": [
+          "ButtonContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/button.tsx",
+          "solid": "generated/solid/button.tsx",
+          "svelte": "generated/svelte/button.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "carousel",
+      "implementationStatus": "implemented",
+      "name": "Carousel",
+      "outputs": {
+        "core": [
+          "CarouselController",
+          "createCarouselController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/carousel.tsx",
+          "solid": "generated/solid/carousel.tsx",
+          "svelte": "generated/svelte/carousel.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "checkbox",
+      "implementationStatus": "implemented",
+      "name": "Checkbox",
+      "outputs": {
+        "core": [
+          "CheckboxController",
+          "createCheckboxController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/checkbox.tsx",
+          "solid": "generated/solid/checkbox.tsx",
+          "svelte": "generated/svelte/checkbox.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "checkbox-group",
+      "implementationStatus": "implemented",
+      "name": "CheckboxGroup",
+      "outputs": {
+        "core": [
+          "CheckboxGroupController",
+          "createCheckboxGroupController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/checkbox-group.tsx",
+          "solid": "generated/solid/checkbox-group.tsx",
+          "svelte": "generated/svelte/checkbox-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "clipboard",
+      "implementationStatus": "implemented",
+      "name": "Clipboard",
+      "outputs": {
+        "core": [
+          "ClipboardController",
+          "createClipboardController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/clipboard.tsx",
+          "solid": "generated/solid/clipboard.tsx",
+          "svelte": "generated/svelte/clipboard.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "collapsible",
+      "implementationStatus": "implemented",
+      "name": "Collapsible",
+      "outputs": {
+        "core": [
+          "CollapsibleController",
+          "createCollapsibleController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/collapsible.tsx",
+          "solid": "generated/solid/collapsible.tsx",
+          "svelte": "generated/svelte/collapsible.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "color-picker",
+      "implementationStatus": "implemented",
+      "name": "ColorPicker",
+      "outputs": {
+        "core": [
+          "ColorPickerController",
+          "createColorPickerController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/color-picker.tsx",
+          "solid": "generated/solid/color-picker.tsx",
+          "svelte": "generated/svelte/color-picker.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "combobox",
+      "implementationStatus": "implemented",
+      "name": "Combobox",
+      "outputs": {
+        "core": [
+          "ComboboxController",
+          "createComboboxController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/combobox.tsx",
+          "solid": "generated/solid/combobox.tsx",
+          "svelte": "generated/svelte/combobox.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "context-menu",
+      "implementationStatus": "implemented",
+      "name": "ContextMenu",
+      "outputs": {
+        "core": [
+          "ContextMenuController",
+          "createContextMenuController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/context-menu.tsx",
+          "solid": "generated/solid/context-menu.tsx",
+          "svelte": "generated/svelte/context-menu.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "date-input",
+      "implementationStatus": "implemented",
+      "name": "DateInput",
+      "outputs": {
+        "core": [
+          "DateInputController",
+          "createDateInputController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/date-input.tsx",
+          "solid": "generated/solid/date-input.tsx",
+          "svelte": "generated/svelte/date-input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "date-picker",
+      "implementationStatus": "implemented",
+      "name": "DatePicker",
+      "outputs": {
+        "core": [
+          "DatePickerController",
+          "createDatePickerController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/date-picker.tsx",
+          "solid": "generated/solid/date-picker.tsx",
+          "svelte": "generated/svelte/date-picker.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "dialog",
+      "implementationStatus": "implemented",
+      "name": "Dialog",
+      "outputs": {
+        "core": [
+          "DialogController",
+          "createDialogController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/dialog.tsx",
+          "solid": "generated/solid/dialog.tsx",
+          "svelte": "generated/svelte/dialog.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "drawer",
+      "implementationStatus": "implemented",
+      "name": "Drawer",
+      "outputs": {
+        "core": [
+          "DrawerController",
+          "createDrawerController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/drawer.tsx",
+          "solid": "generated/solid/drawer.tsx",
+          "svelte": "generated/svelte/drawer.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "editable",
+      "implementationStatus": "implemented",
+      "name": "Editable",
+      "outputs": {
+        "core": [
+          "EditableController",
+          "createEditableController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/editable.tsx",
+          "solid": "generated/solid/editable.tsx",
+          "svelte": "generated/svelte/editable.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "field",
+      "implementationStatus": "implemented",
+      "name": "Field",
+      "outputs": {
+        "core": [
+          "FieldContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/field.tsx",
+          "solid": "generated/solid/field.tsx",
+          "svelte": "generated/svelte/field.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "fieldset",
+      "implementationStatus": "implemented",
+      "name": "Fieldset",
+      "outputs": {
+        "core": [
+          "FieldsetContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/fieldset.tsx",
+          "solid": "generated/solid/fieldset.tsx",
+          "svelte": "generated/svelte/fieldset.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "file-upload",
+      "implementationStatus": "implemented",
+      "name": "FileUpload",
+      "outputs": {
+        "core": [
+          "FileUploadController",
+          "createFileUploadController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/file-upload.tsx",
+          "solid": "generated/solid/file-upload.tsx",
+          "svelte": "generated/svelte/file-upload.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "floating-panel",
+      "implementationStatus": "implemented",
+      "name": "FloatingPanel",
+      "outputs": {
+        "core": [
+          "FloatingPanelController",
+          "createFloatingPanelController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/floating-panel.tsx",
+          "solid": "generated/solid/floating-panel.tsx",
+          "svelte": "generated/svelte/floating-panel.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "form",
+      "implementationStatus": "implemented",
+      "name": "Form",
+      "outputs": {
+        "core": [
+          "FormContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/form.tsx",
+          "solid": "generated/solid/form.tsx",
+          "svelte": "generated/svelte/form.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "hover-card",
+      "implementationStatus": "implemented",
+      "name": "HoverCard",
+      "outputs": {
+        "core": [
+          "HoverCardController",
+          "createHoverCardController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/hover-card.tsx",
+          "solid": "generated/solid/hover-card.tsx",
+          "svelte": "generated/svelte/hover-card.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "image-cropper",
+      "implementationStatus": "implemented",
+      "name": "ImageCropper",
+      "outputs": {
+        "core": [
+          "ImageCropperController",
+          "createImageCropperController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/image-cropper.tsx",
+          "solid": "generated/solid/image-cropper.tsx",
+          "svelte": "generated/svelte/image-cropper.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "input",
+      "implementationStatus": "implemented",
+      "name": "Input",
+      "outputs": {
+        "core": [
+          "InputContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/input.tsx",
+          "solid": "generated/solid/input.tsx",
+          "svelte": "generated/svelte/input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "listbox",
+      "implementationStatus": "implemented",
+      "name": "Listbox",
+      "outputs": {
+        "core": [
+          "ListboxController",
+          "createListboxController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/listbox.tsx",
+          "solid": "generated/solid/listbox.tsx",
+          "svelte": "generated/svelte/listbox.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "marquee",
+      "implementationStatus": "implemented",
+      "name": "Marquee",
+      "outputs": {
+        "core": [
+          "MarqueeContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/marquee.tsx",
+          "solid": "generated/solid/marquee.tsx",
+          "svelte": "generated/svelte/marquee.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "menu",
+      "implementationStatus": "implemented",
+      "name": "Menu",
+      "outputs": {
+        "core": [
+          "MenuController",
+          "createMenuController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/menu.tsx",
+          "solid": "generated/solid/menu.tsx",
+          "svelte": "generated/svelte/menu.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "menubar",
+      "implementationStatus": "implemented",
+      "name": "Menubar",
+      "outputs": {
+        "core": [
+          "MenubarController",
+          "createMenubarController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/menubar.tsx",
+          "solid": "generated/solid/menubar.tsx",
+          "svelte": "generated/svelte/menubar.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "meter",
+      "implementationStatus": "implemented",
+      "name": "Meter",
+      "outputs": {
+        "core": [
+          "MeterContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/meter.tsx",
+          "solid": "generated/solid/meter.tsx",
+          "svelte": "generated/svelte/meter.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "navigation-menu",
+      "implementationStatus": "implemented",
+      "name": "NavigationMenu",
+      "outputs": {
+        "core": [
+          "NavigationMenuController",
+          "createNavigationMenuController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/navigation-menu.tsx",
+          "solid": "generated/solid/navigation-menu.tsx",
+          "svelte": "generated/svelte/navigation-menu.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "number-input",
+      "implementationStatus": "implemented",
+      "name": "NumberInput",
+      "outputs": {
+        "core": [
+          "NumberInputController",
+          "createNumberInputController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/number-input.tsx",
+          "solid": "generated/solid/number-input.tsx",
+          "svelte": "generated/svelte/number-input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "pagination",
+      "implementationStatus": "implemented",
+      "name": "Pagination",
+      "outputs": {
+        "core": [
+          "PaginationController",
+          "createPaginationController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/pagination.tsx",
+          "solid": "generated/solid/pagination.tsx",
+          "svelte": "generated/svelte/pagination.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "password-input",
+      "implementationStatus": "implemented",
+      "name": "PasswordInput",
+      "outputs": {
+        "core": [
+          "PasswordInputController",
+          "createPasswordInputController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/password-input.tsx",
+          "solid": "generated/solid/password-input.tsx",
+          "svelte": "generated/svelte/password-input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "pin-input",
+      "implementationStatus": "implemented",
+      "name": "PinInput",
+      "outputs": {
+        "core": [
+          "PinInputController",
+          "createPinInputController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/pin-input.tsx",
+          "solid": "generated/solid/pin-input.tsx",
+          "svelte": "generated/svelte/pin-input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "popover",
+      "implementationStatus": "implemented",
+      "name": "Popover",
+      "outputs": {
+        "core": [
+          "PopoverController",
+          "createPopoverController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/popover.tsx",
+          "solid": "generated/solid/popover.tsx",
+          "svelte": "generated/svelte/popover.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "progress",
+      "implementationStatus": "implemented",
+      "name": "Progress",
+      "outputs": {
+        "core": [
+          "ProgressContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/progress.tsx",
+          "solid": "generated/solid/progress.tsx",
+          "svelte": "generated/svelte/progress.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "qr-code",
+      "implementationStatus": "implemented",
+      "name": "QRCode",
+      "outputs": {
+        "core": [
+          "QRCodeContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/qr-code.tsx",
+          "solid": "generated/solid/qr-code.tsx",
+          "svelte": "generated/svelte/qr-code.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "radio-group",
+      "implementationStatus": "implemented",
+      "name": "RadioGroup",
+      "outputs": {
+        "core": [
+          "RadioGroupController",
+          "createRadioGroupController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/radio-group.tsx",
+          "solid": "generated/solid/radio-group.tsx",
+          "svelte": "generated/svelte/radio-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "rating-group",
+      "implementationStatus": "implemented",
+      "name": "RatingGroup",
+      "outputs": {
+        "core": [
+          "RatingGroupController",
+          "createRatingGroupController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/rating-group.tsx",
+          "solid": "generated/solid/rating-group.tsx",
+          "svelte": "generated/svelte/rating-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "scroll-area",
+      "implementationStatus": "implemented",
+      "name": "ScrollArea",
+      "outputs": {
+        "core": [
+          "ScrollAreaController",
+          "createScrollAreaController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/scroll-area.tsx",
+          "solid": "generated/solid/scroll-area.tsx",
+          "svelte": "generated/svelte/scroll-area.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "segment-group",
+      "implementationStatus": "implemented",
+      "name": "SegmentGroup",
+      "outputs": {
+        "core": [
+          "SegmentGroupController",
+          "createSegmentGroupController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/segment-group.tsx",
+          "solid": "generated/solid/segment-group.tsx",
+          "svelte": "generated/svelte/segment-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "select",
+      "implementationStatus": "implemented",
+      "name": "Select",
+      "outputs": {
+        "core": [
+          "SelectController",
+          "createSelectController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/select.tsx",
+          "solid": "generated/solid/select.tsx",
+          "svelte": "generated/svelte/select.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "separator",
+      "implementationStatus": "implemented",
+      "name": "Separator",
+      "outputs": {
+        "core": [
+          "SeparatorContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/separator.tsx",
+          "solid": "generated/solid/separator.tsx",
+          "svelte": "generated/svelte/separator.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "signature-pad",
+      "implementationStatus": "implemented",
+      "name": "SignaturePad",
+      "outputs": {
+        "core": [
+          "SignaturePadController",
+          "createSignaturePadController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/signature-pad.tsx",
+          "solid": "generated/solid/signature-pad.tsx",
+          "svelte": "generated/svelte/signature-pad.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "slider",
+      "implementationStatus": "implemented",
+      "name": "Slider",
+      "outputs": {
+        "core": [
+          "SliderController",
+          "createSliderController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/slider.tsx",
+          "solid": "generated/solid/slider.tsx",
+          "svelte": "generated/svelte/slider.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "splitter",
+      "implementationStatus": "implemented",
+      "name": "Splitter",
+      "outputs": {
+        "core": [
+          "SplitterController",
+          "createSplitterController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/splitter.tsx",
+          "solid": "generated/solid/splitter.tsx",
+          "svelte": "generated/svelte/splitter.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "steps",
+      "implementationStatus": "implemented",
+      "name": "Steps",
+      "outputs": {
+        "core": [
+          "StepsController",
+          "createStepsController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/steps.tsx",
+          "solid": "generated/solid/steps.tsx",
+          "svelte": "generated/svelte/steps.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "switch",
+      "implementationStatus": "implemented",
+      "name": "Switch",
+      "outputs": {
+        "core": [
+          "SwitchController",
+          "createSwitchController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/switch.tsx",
+          "solid": "generated/solid/switch.tsx",
+          "svelte": "generated/svelte/switch.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "tabs",
+      "implementationStatus": "implemented",
+      "name": "Tabs",
+      "outputs": {
+        "core": [
+          "TabsController",
+          "createTabsController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/tabs.tsx",
+          "solid": "generated/solid/tabs.tsx",
+          "svelte": "generated/svelte/tabs.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "tags-input",
+      "implementationStatus": "implemented",
+      "name": "TagsInput",
+      "outputs": {
+        "core": [
+          "TagsInputController",
+          "createTagsInputController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/tags-input.tsx",
+          "solid": "generated/solid/tags-input.tsx",
+          "svelte": "generated/svelte/tags-input.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "timer",
+      "implementationStatus": "implemented",
+      "name": "Timer",
+      "outputs": {
+        "core": [
+          "TimerController",
+          "createTimerController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/timer.tsx",
+          "solid": "generated/solid/timer.tsx",
+          "svelte": "generated/svelte/timer.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "toast",
+      "implementationStatus": "implemented",
+      "name": "Toast",
+      "outputs": {
+        "core": [
+          "ToastController",
+          "createToastController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/toast.tsx",
+          "solid": "generated/solid/toast.tsx",
+          "svelte": "generated/svelte/toast.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "toggle",
+      "implementationStatus": "implemented",
+      "name": "Toggle",
+      "outputs": {
+        "core": [
+          "ToggleController",
+          "createToggleController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/toggle.tsx",
+          "solid": "generated/solid/toggle.tsx",
+          "svelte": "generated/svelte/toggle.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "toggle-group",
+      "implementationStatus": "implemented",
+      "name": "ToggleGroup",
+      "outputs": {
+        "core": [
+          "ToggleGroupController",
+          "createToggleGroupController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/toggle-group.tsx",
+          "solid": "generated/solid/toggle-group.tsx",
+          "svelte": "generated/svelte/toggle-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "toolbar",
+      "implementationStatus": "implemented",
+      "name": "Toolbar",
+      "outputs": {
+        "core": [
+          "ToolbarController",
+          "createToolbarController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/toolbar.tsx",
+          "solid": "generated/solid/toolbar.tsx",
+          "svelte": "generated/svelte/toolbar.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "tooltip",
+      "implementationStatus": "implemented",
+      "name": "Tooltip",
+      "outputs": {
+        "core": [
+          "TooltipController",
+          "createTooltipController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/tooltip.tsx",
+          "solid": "generated/solid/tooltip.tsx",
+          "svelte": "generated/svelte/tooltip.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "tour",
+      "implementationStatus": "implemented",
+      "name": "Tour",
+      "outputs": {
+        "core": [
+          "TourController",
+          "createTourController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/tour.tsx",
+          "solid": "generated/solid/tour.tsx",
+          "svelte": "generated/svelte/tour.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "tree-view",
+      "implementationStatus": "implemented",
+      "name": "TreeView",
+      "outputs": {
+        "core": [
+          "TreeViewController",
+          "createTreeViewController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/tree-view.tsx",
+          "solid": "generated/solid/tree-view.tsx",
+          "svelte": "generated/svelte/tree-view.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "badge",
+      "implementationStatus": "implemented",
+      "name": "Badge",
+      "outputs": {
+        "core": [
+          "BadgeContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/badge.tsx",
+          "solid": "generated/solid/badge.tsx",
+          "svelte": "generated/svelte/badge.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "breadcrumb",
+      "implementationStatus": "implemented",
+      "name": "Breadcrumb",
+      "outputs": {
+        "core": [
+          "BreadcrumbContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/breadcrumb.tsx",
+          "solid": "generated/solid/breadcrumb.tsx",
+          "svelte": "generated/svelte/breadcrumb.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "card",
+      "implementationStatus": "implemented",
+      "name": "Card",
+      "outputs": {
+        "core": [
+          "CardContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/card.tsx",
+          "solid": "generated/solid/card.tsx",
+          "svelte": "generated/svelte/card.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "command",
+      "implementationStatus": "implemented",
+      "name": "Command",
+      "outputs": {
+        "core": [
+          "CommandController",
+          "createCommandController"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/command.tsx",
+          "solid": "generated/solid/command.tsx",
+          "svelte": "generated/svelte/command.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "input-group",
+      "implementationStatus": "implemented",
+      "name": "InputGroup",
+      "outputs": {
+        "core": [
+          "InputGroupContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/input-group.tsx",
+          "solid": "generated/solid/input-group.tsx",
+          "svelte": "generated/svelte/input-group.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "skeleton",
+      "implementationStatus": "implemented",
+      "name": "Skeleton",
+      "outputs": {
+        "core": [
+          "SkeletonContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/skeleton.tsx",
+          "solid": "generated/solid/skeleton.tsx",
+          "svelte": "generated/svelte/skeleton.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "table",
+      "implementationStatus": "implemented",
+      "name": "Table",
+      "outputs": {
+        "core": [
+          "TableContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/table.tsx",
+          "solid": "generated/solid/table.tsx",
+          "svelte": "generated/svelte/table.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    },
+    {
+      "id": "textarea",
+      "implementationStatus": "implemented",
+      "name": "Textarea",
+      "outputs": {
+        "core": [
+          "TextareaContract"
+        ],
+        "headlessPackages": [
+          "@uifn/react",
+          "@uifn/svelte",
+          "@uifn/solid"
+        ],
+        "policy": "canonical-package-and-source-targets",
+        "sourceInstallTargets": {
+          "react": "generated/react/textarea.tsx",
+          "solid": "generated/solid/textarea.tsx",
+          "svelte": "generated/svelte/textarea.svelte"
+        },
+        "styledPackages": [
+          "@uifn/components-react",
+          "@uifn/components-svelte",
+          "@uifn/components-solid"
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250",
+  "writePolicy": "metadata-targets-only-no-registry-write"
+}

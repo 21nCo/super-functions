@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "policyId": "uifn-phase-19-human-trust-policy",
+  "status": "unprovisioned",
+  "authorityId": "uifn-accessibility-program-authority",
+  "rootPublicKeySha256": null,
+  "allowedSignatureScheme": "ed25519",
+  "activationRequirements": [
+    "A program authority independent of uifn implementation generates and safeguards the root private key outside the repository.",
+    "The corresponding public-key file SHA-256 is pinned here on a clean reviewed commit.",
+    "The policy activation change receives repository protection and independent accessibility-program approval.",
+    "The root private key, tester private keys, and reviewer private keys are never stored in the repository or Phase 19 evidence bundle."
+  ],
+  "rotation": {
+    "requiresIndependentApproval": true,
+    "invalidatesExistingParticipantRegistries": true,
+    "mustRecordSupersededRootHash": true
+  }
+}

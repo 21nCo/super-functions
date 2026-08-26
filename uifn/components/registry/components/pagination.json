@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "name": "Pagination",
+  "slug": "pagination",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "list",
+    "item",
+    "link",
+    "previous",
+    "next",
+    "ellipsis"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Pagination"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Pagination"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Pagination"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/pagination.stories.json#default",
+    "uifn/components/stories/batch-b/pagination.stories.json#variants",
+    "uifn/components/stories/batch-b/pagination.stories.json#states",
+    "uifn/components/stories/batch-b/pagination.stories.json#accessibility",
+    "uifn/components/stories/batch-b/pagination.stories.json#theming",
+    "uifn/components/stories/batch-b/pagination.stories.json#keyboard",
+    "uifn/components/stories/batch-b/pagination.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/pagination.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

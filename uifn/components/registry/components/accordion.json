@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "Accordion",
+  "slug": "accordion",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "item",
+    "trigger",
+    "content"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Accordion"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Accordion"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Accordion"
+    }
+  },
+  "behavior": [
+    "keyboard",
+    "controlled-state"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/accordion.stories.json#default",
+    "uifn/components/stories/batch-b/accordion.stories.json#variants",
+    "uifn/components/stories/batch-b/accordion.stories.json#states",
+    "uifn/components/stories/batch-b/accordion.stories.json#accessibility",
+    "uifn/components/stories/batch-b/accordion.stories.json#theming",
+    "uifn/components/stories/batch-b/accordion.stories.json#keyboard",
+    "uifn/components/stories/batch-b/accordion.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/accordion.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

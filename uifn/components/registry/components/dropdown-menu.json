@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "DropdownMenu",
+  "slug": "dropdown-menu",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "trigger",
+    "content",
+    "item",
+    "separator",
+    "label"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "behavior": [
+    "portal",
+    "focus-management",
+    "escape-key",
+    "outside-interaction"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#default",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#variants",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#states",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#accessibility",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#theming",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#keyboard",
+    "uifn/components/stories/batch-b/dropdown-menu.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/dropdown-menu.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

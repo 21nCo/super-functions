@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "Sheet",
+  "slug": "sheet",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "trigger",
+    "content",
+    "title",
+    "description",
+    "close"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "behavior": [
+    "portal",
+    "focus-management",
+    "escape-key",
+    "outside-interaction"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/sheet.stories.json#default",
+    "uifn/components/stories/batch-b/sheet.stories.json#variants",
+    "uifn/components/stories/batch-b/sheet.stories.json#states",
+    "uifn/components/stories/batch-b/sheet.stories.json#accessibility",
+    "uifn/components/stories/batch-b/sheet.stories.json#theming",
+    "uifn/components/stories/batch-b/sheet.stories.json#keyboard",
+    "uifn/components/stories/batch-b/sheet.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/sheet.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

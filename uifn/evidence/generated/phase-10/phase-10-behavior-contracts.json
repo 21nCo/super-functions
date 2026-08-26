@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-10.mjs",
+  "phase": "PHASE_10",
+  "implementationEvidence": true,
+  "contracts": {
+    "gesture": [
+      "pointer-capture",
+      "pointer-cancel",
+      "lost-pointer-capture",
+      "touch-axis-arbitration",
+      "multi-pointer",
+      "multi-thumb",
+      "keyboard-precision",
+      "orientation",
+      "rtl",
+      "zoom",
+      "reduced-motion"
+    ],
+    "structuredValues": [
+      "calendar-date",
+      "explicit-time-zone",
+      "dst-gap",
+      "dst-fold",
+      "locale-calendar",
+      "availability",
+      "srgb",
+      "hsl",
+      "alpha-round-trip",
+      "injected-clock",
+      "visibility-pause",
+      "clock-derived-elapsed-time"
+    ],
+    "feedback": [
+      "native-meter-progress",
+      "workflow-status",
+      "toast-limit-queue",
+      "deadline-pause",
+      "swipe-cancel-dismiss",
+      "duplicate-policy",
+      "ordered-callbacks",
+      "announcement-dedupe",
+      "announcement-rate-limit",
+      "route-destroy-cleanup"
+    ],
+    "locales": [
+      "ar-EG-rtl",
+      "hi-IN",
+      "ja-JP",
+      "de-DE",
+      "fr-FR"
+    ],
+    "browsers": [
+      "chromium",
+      "firefox",
+      "webkit",
+      "mobile-chromium",
+      "mobile-webkit"
+    ],
+    "negativeCodes": [
+      "UIFN_GESTURE_AFTER_CANCEL",
+      "UIFN_RANGE_DIRECTION_INVALID",
+      "UIFN_AMBIENT_DATE_PARSE",
+      "UIFN_DATE_VALUE_INVALID",
+      "UIFN_COLOR_VALUE_INVALID",
+      "UIFN_TIMER_DRIFT_BUDGET",
+      "UIFN_ANNOUNCEMENT_FLOOD",
+      "UIFN_TIMER_AFTER_DESTROY",
+      "UIFN_UNLOCALIZED_DEFAULT",
+      "UIFN_RTL_KEYBOARD_DIVERGED"
+    ]
+  }
+}

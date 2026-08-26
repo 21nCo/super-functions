@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pattern": "SubscriptionStatusPanel",
+  "slug": "subscription-status-panel",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "data": [
+        {
+          "id": "subscription-status-panel-loading",
+          "label": "SubscriptionStatusPanel loading"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "empty": {
+      "status": "empty",
+      "data": [],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "error": {
+      "status": "error",
+      "data": [
+        {
+          "id": "subscription-status-panel-error",
+          "label": "SubscriptionStatusPanel error"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_ERROR",
+        "message": "SubscriptionStatusPanel failed"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "partial": {
+      "status": "partial",
+      "data": [
+        {
+          "id": "subscription-status-panel-partial",
+          "label": "SubscriptionStatusPanel partial"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "data": [
+        {
+          "id": "subscription-status-panel-permission-denied",
+          "label": "SubscriptionStatusPanel permission-denied"
+        }
+      ],
+      "error": null,
+      "permission": "denied",
+      "optimistic": false
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "data": [
+        {
+          "id": "subscription-status-panel-optimistic",
+          "label": "SubscriptionStatusPanel optimistic"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": true
+    },
+    "success": {
+      "status": "success",
+      "data": [
+        {
+          "id": "subscription-status-panel-success",
+          "label": "SubscriptionStatusPanel success"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "data": [
+        {
+          "id": "subscription-status-panel-degraded-network",
+          "label": "SubscriptionStatusPanel degraded-network"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_DEGRADED_NETWORK",
+        "message": "SubscriptionStatusPanel is using stale or partial data"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "data": [
+        {
+          "id": "subscription-status-panel-unsupported-capability",
+          "label": "SubscriptionStatusPanel unsupported-capability"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_UNSUPPORTED_CAPABILITY",
+        "message": "SubscriptionStatusPanel is not available for this capability"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    }
+  },
+  "callbacks": [
+    "onManage",
+    "onCancel"
+  ],
+  "backendImports": []
+}

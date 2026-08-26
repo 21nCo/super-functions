@@ -1,0 +1,72 @@
+{
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
+  "catalogVersion": "1.0.0",
+  "deterministic": true,
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "outputCount": 12,
+  "outputs": [
+    {
+      "bytes": 57938,
+      "path": "adapter-coverage.json",
+      "sha256": "dc59f08a43f504014f6b058a8ec918a491b1a19810260801330ed117113201b3"
+    },
+    {
+      "bytes": 192256,
+      "path": "anatomy-types.json",
+      "sha256": "3185a671483e813f1eb1c3302fa51503a9dc8e966f68d7470a5855f845838e15"
+    },
+    {
+      "bytes": 554807,
+      "path": "catalog.json",
+      "sha256": "f3a58bf3c424b0876860a49d99a0c05a8d3fc7c8de0116ac42c2db0d3c49cdcf"
+    },
+    {
+      "bytes": 25118,
+      "path": "core-exports.json",
+      "sha256": "c49009fce71494327661e8db4996c7f6cfc914a9a50d2a244f1899ceb9ac0f44"
+    },
+    {
+      "bytes": 36798,
+      "path": "docs-manifest.json",
+      "sha256": "d9124a148d5f4398c2422e49daea88d757b0f5d19589d976a5cc3d7dc52e49c9"
+    },
+    {
+      "bytes": 17946,
+      "path": "implementation-ownership.json",
+      "sha256": "6fafcf1f3e7cde534237b0bdea403e9d2ebecb237694d9d78adbd924b7a7e8fa"
+    },
+    {
+      "bytes": 78747,
+      "path": "package-exports.json",
+      "sha256": "9b10434f2316ed1fa35e100a8979ad4505b33ad3a9ff9297b2d5b20e09db5252"
+    },
+    {
+      "bytes": 2355,
+      "path": "primitive-contracts.d.ts",
+      "sha256": "396970339baf52468e4e9e750bde8be1ebe9239a9a6be0235f46cee612d20a3f"
+    },
+    {
+      "bytes": 51958,
+      "path": "registry-metadata.json",
+      "sha256": "db49350184d9ed7086aab78d173f702af1277659590fdcfe09cd47ebd50482b9"
+    },
+    {
+      "bytes": 24105,
+      "path": "release-matrix.json",
+      "sha256": "97b01f5d2093651530cc1b300f672add9d87d0b314003742d60e6d9f7c0fbde9"
+    },
+    {
+      "bytes": 25316,
+      "path": "story-manifest.json",
+      "sha256": "be13fa03bc5e09ad9a71be72853fb6ab2b072e681d09fd3604ab8cdf71d5a5ce"
+    },
+    {
+      "bytes": 18456,
+      "path": "test-manifest.json",
+      "sha256": "6311a254dc31623181c8e7e72e13e3223829b713a129dcba1ec9de7c02aef6cc"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250"
+}

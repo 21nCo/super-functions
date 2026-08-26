@@ -1,0 +1,11 @@
+{
+  "fixtureId": "evidence-skipped",
+  "base": "complete.json",
+  "set": {
+    "status": "skipped",
+    "counts.executed": 0,
+    "counts.passed": 0,
+    "counts.skipped": 1
+  },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_SKIPPED"]
+}

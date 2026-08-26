@@ -1,0 +1,46 @@
+{
+  "$schema": "./package-graph.schema.json",
+  "schemaVersion": 1,
+  "graphId": "uifn-1.0-stable-dag",
+  "stableFrameworks": ["react", "svelte", "solid"],
+  "removedFrameworks": ["vue", "angular"],
+  "stable": [
+    { "name": "@uifn/core", "path": "uifn/core", "layer": "core", "owner": "uifn-maintainer", "allowedDependencies": [], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/dom", "path": "uifn/dom", "layer": "dom", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/core"], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/adapter-kit", "path": "uifn/adapter-kit", "layer": "adapter-kit", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/core"], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/react", "path": "uifn/react", "layer": "adapter", "owner": "uifn-maintainer", "framework": "react", "allowedDependencies": ["@uifn/core", "@uifn/dom", "@uifn/adapter-kit"], "allowedPeerDependencies": ["react", "react-dom"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/svelte", "path": "uifn/svelte", "layer": "adapter", "owner": "uifn-maintainer", "framework": "svelte", "allowedDependencies": ["@uifn/core", "@uifn/dom", "@uifn/adapter-kit"], "allowedPeerDependencies": ["svelte"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/solid", "path": "uifn/solid", "layer": "adapter", "owner": "uifn-maintainer", "framework": "solid", "allowedDependencies": ["@uifn/core", "@uifn/dom", "@uifn/adapter-kit"], "allowedPeerDependencies": ["solid-js"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/tokens", "path": "uifn/tokens", "layer": "styling", "owner": "uifn-maintainer", "allowedDependencies": [], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/theme", "path": "uifn/theme", "layer": "styling", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/tokens"], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/recipes", "path": "uifn/recipes", "layer": "styling", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/tokens", "@uifn/theme"], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/theme-tailwind", "path": "uifn/theme-tailwind", "layer": "styling", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/tokens", "@uifn/theme", "@uifn/recipes"], "allowedPeerDependencies": ["tailwindcss"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/components", "path": "uifn/components", "layer": "components-neutral", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/tokens", "@uifn/theme", "@uifn/recipes"], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/components-react", "path": "uifn/components-react", "layer": "components-framework", "owner": "uifn-maintainer", "framework": "react", "allowedDependencies": ["@uifn/components", "@uifn/react", "@uifn/recipes"], "allowedPeerDependencies": ["react", "react-dom"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/components-svelte", "path": "uifn/components-svelte", "layer": "components-framework", "owner": "uifn-maintainer", "framework": "svelte", "allowedDependencies": ["@uifn/components", "@uifn/svelte", "@uifn/recipes"], "allowedPeerDependencies": ["svelte"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/components-solid", "path": "uifn/components-solid", "layer": "components-framework", "owner": "uifn-maintainer", "framework": "solid", "allowedDependencies": ["@uifn/components", "@uifn/solid", "@uifn/recipes"], "allowedPeerDependencies": ["solid-js"], "publicEntrypoints": ["."] },
+    { "name": "@uifn/registry", "path": "uifn/registry", "layer": "registry", "owner": "uifn-maintainer", "allowedDependencies": [], "allowedPeerDependencies": [], "publicEntrypoints": ["."] },
+    { "name": "@uifn/storybook", "path": "uifn/storybook", "layer": "storybook", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/registry", "@uifn/theme"], "allowedPeerDependencies": ["react", "storybook"], "publicEntrypoints": ["."] }
+  ],
+  "experimental": [
+    { "name": "@uifn/patterns", "path": "uifn/patterns", "layer": "patterns", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/components"], "allowedPeerDependencies": [], "publicEntrypoints": ["."], "distTag": "experimental", "stableBlocking": false },
+    { "name": "@uifn/sf", "path": "uifn/sf", "layer": "sf", "owner": "uifn-maintainer", "allowedDependencies": ["@uifn/patterns"], "allowedPeerDependencies": [], "publicEntrypoints": ["."], "distTag": "experimental", "stableBlocking": false }
+  ],
+  "private": [
+    { "name": "@uifn/catalog", "path": "uifn/catalog", "releaseLane": "tooling" },
+    { "name": "@uifn/catalog-react", "path": "uifn/catalogs/react", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/catalog-svelte", "path": "uifn/catalogs/svelte", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/catalog-solid", "path": "uifn/catalogs/solid", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/examples", "path": "uifn/examples", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/examples-shared", "path": "uifn/examples/shared", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/example-react-playground", "path": "uifn/examples/react-playground", "releaseLane": "stable-qa" },
+    { "name": "@uifn/example-svelte-playground", "path": "uifn/examples/svelte-playground", "releaseLane": "stable-qa" },
+    { "name": "@uifn/example-react-workbench", "path": "uifn/examples/react-workbench", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/example-svelte-workbench", "path": "uifn/examples/svelte-workbench", "releaseLane": "experimental-demo" },
+    { "name": "@uifn/example-solid-workbench", "path": "uifn/examples/solid-workbench", "releaseLane": "experimental-demo" }
+  ],
+  "removed": [
+    { "name": "@uifn/vue", "formerPath": "uifn/vue", "lastCompatibleVersion": "0.0.1" },
+    { "name": "@uifn/angular", "formerPath": "uifn/angular", "lastCompatibleVersion": "0.0.1" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-07-17T00:00:00Z",
+  "cases": [
+    { "severity": "P0", "releaseBlocking": true, "exceptionAllowed": false, "acknowledgeWithinHours": 4, "triageWithinHours": 8, "remediateWithinHours": 72 },
+    { "severity": "P1", "releaseBlocking": true, "exceptionAllowed": false, "acknowledgeWithinHours": 24, "triageWithinHours": 48, "remediateWithinHours": 168 },
+    { "severity": "P2", "releaseBlocking": true, "exceptionAllowed": true, "acknowledgeWithinHours": 72, "triageWithinHours": 168, "remediateWithinHours": 720 },
+    { "severity": "P3", "releaseBlocking": false, "exceptionAllowed": false, "acknowledgeWithinHours": 168, "triageWithinHours": 336, "remediateWithinHours": 2160 }
+  ]
+}

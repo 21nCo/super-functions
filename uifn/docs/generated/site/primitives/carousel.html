@@ -1,0 +1,153 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Carousel · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="carousel"><h1>Carousel</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>Carousel is the stable styled range-gesture primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `CarouselRoot` | `section` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `viewport` | `CarouselViewport` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `item` | `CarouselItem` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `previous` | `CarouselPrevious` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `next` | `CarouselNext` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `indicatorGroup` | `CarouselIndicatorGroup` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `indicator` | `CarouselIndicator` | `button` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `liveRegion` | `CarouselLiveRegion` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/carousel: createCarouselController(props, environment?)`
+- State: `CarouselState`
+- Actions: `CarouselActions`
+- Parts: `CarouselController[&quot;parts&quot;]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, form-bridges-live-regions, portal-presence-transitions
+- react context: `CarouselProvider and useCarousel(inputs); adapter context remains private`
+- svelte context: `CarouselProvider; adapter context remains private to compound descendants`
+- solid context: `CarouselProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+- `dragging` (semantic)
+- `autoplaying` (semantic)
+- `paused` (semantic)
+
+Complete transition signatures:
+
+- `{ type: &quot;PREVIOUS&quot; }` — Carousel semantic transition event PREVIOUS. Source: controller-or-native-contract.
+- `{ type: &quot;NEXT&quot; }` — Carousel semantic transition event NEXT. Source: controller-or-native-contract.
+- `{ type: &quot;GO_TO&quot;; index: number }` — Carousel semantic transition event GO_TO. Source: controller-or-native-contract.
+- `{ type: &quot;DRAG_START&quot; }` — Carousel semantic transition event DRAG_START. Source: controller-or-native-contract.
+- `{ type: &quot;DRAG_END&quot; }` — Carousel semantic transition event DRAG_END. Source: controller-or-native-contract.
+- `{ type: &quot;PAUSE&quot; }` — Carousel semantic transition event PAUSE. Source: controller-or-native-contract.
+- `{ type: &quot;RESUME&quot; }` — Carousel semantic transition event RESUME. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- `onIndexChange(value: number) =&gt; void` — Called after Carousel requests a index change. Controlled consumers must commit the value back through index.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `index` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive index input from the canonical Carousel contract. |
+| `defaultIndex` | `number` | no | yes | `undefined (component initial value)` | Optional reactive defaultIndex input from the canonical Carousel contract. |
+| `itemCount` | `number` | yes | yes | `required` | Required reactive itemCount input from the canonical Carousel contract. |
+| `loop` | `boolean` | no | yes | `undefined → false` | Optional reactive loop input from the canonical Carousel contract. |
+| `orientation` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive orientation input from the canonical Carousel contract. |
+| `autoplayDelay` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive autoplayDelay input from the canonical Carousel contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `single`. Controlled inputs: `index`. Uncontrolled defaults: `defaultIndex`. Change events: `INDEX_CHANGE`. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `range-gesture`. Native semantic basis: Expose declared range or group semantics with keyboard alternatives for every pointer/touch gesture.
+
+Accessible name required: yes; accepted sources: visible-label, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 2.1.1, 2.1.2, 2.4.7, 2.5.1, 2.5.7, 2.5.8, 4.1.2. Normative basis: native-html, wai-aria-apg-slider, wai-aria-apg-carousel. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `range-or-gesture-specific`; keys: `Tab`, `Shift+Tab`, `ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`. Pointer/touch obligations: pointer-capture, cancel-and-lost-capture, touch-scroll-arbitration, keyboard-alternative. Focus obligations: focusable-operable-handle, multi-handle-order, visible-focus.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `none`; value shape: `none`; reset: `none`; validation: `none`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, form-bridges-live-regions, portal-presence-transitions) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `Carousel` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;carousel&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | viewport | item | previous | next | indicatorGroup | indicator | liveRegion&quot;` on all styled parts; stable.
+- `data-state=&quot;idle | dragging | autoplaying | paused&quot;` on stateful parts; stable semantic state.
+- `data-orientation=&quot;string&quot;` on parts whose semantics depend on this input; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/carousel` | `components/uifn/react/carousel.ts` |
+| svelte | `@uifn/components-svelte/carousel` | `components/uifn/svelte/carousel/CarouselIndicator.svelte` |
+| solid | `@uifn/components-solid/carousel` | `components/uifn/solid/carousel.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { CarouselRoot } from &quot;@uifn/components-react/carousel&quot;;
+
+export function CarouselExample() {
+  return React.createElement(CarouselRoot, {&quot;itemCount&quot;:1,&quot;aria-label&quot;:&quot;Carousel example&quot;});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { CarouselRoot } from &quot;./components/uifn/react/carousel.js&quot;;
+
+export function CarouselExample() {
+  return React.createElement(CarouselRoot, {&quot;itemCount&quot;:1,&quot;aria-label&quot;:&quot;Carousel example&quot;});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { CarouselRoot } from &quot;@uifn/components-svelte/carousel&quot;;
+&lt;/script&gt;
+
+&lt;CarouselRoot itemCount={1} aria-label=&quot;Carousel example&quot; /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { CarouselRoot } from &quot;./components/uifn/svelte/carousel/index.js&quot;;
+&lt;/script&gt;
+
+&lt;CarouselRoot itemCount={1} aria-label=&quot;Carousel example&quot; /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { CarouselRoot } from &quot;@uifn/components-solid/carousel&quot;;
+
+export function CarouselExample() {
+  return createComponent(CarouselRoot, {&quot;itemCount&quot;:1,&quot;aria-label&quot;:&quot;Carousel example&quot;});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { CarouselRoot } from &quot;./components/uifn/solid/carousel.js&quot;;
+
+export function CarouselExample() {
+  return createComponent(CarouselRoot, {&quot;itemCount&quot;:1,&quot;aria-label&quot;:&quot;Carousel example&quot;});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add carousel --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the range-gesture profile specifically to Carousel; implementation vectors own exact behavior.</pre></section></main></body></html>

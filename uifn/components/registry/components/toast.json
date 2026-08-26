@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "Toast",
+  "slug": "toast",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "title",
+    "description",
+    "action",
+    "close"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Toast"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Toast"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Toast"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/toast.stories.json#default",
+    "uifn/components/stories/batch-a/toast.stories.json#variants",
+    "uifn/components/stories/batch-a/toast.stories.json#states",
+    "uifn/components/stories/batch-a/toast.stories.json#accessibility",
+    "uifn/components/stories/batch-a/toast.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/toast.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

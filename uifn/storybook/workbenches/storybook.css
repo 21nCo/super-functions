@@ -1,0 +1,32 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+[data-uifn-story-id] {
+  box-sizing: border-box;
+  min-height: 14rem;
+  padding: 2rem;
+  color: var(--uifn-color-text-primary, CanvasText);
+  background: var(--uifn-color-surface-canvas, Canvas);
+}
+
+[data-uifn-story-scenario='responsive'] {
+  width: min(100%, 24rem);
+}
+
+[data-uifn-forced-colors='true'] {
+  border: 2px solid CanvasText;
+}
+
+[data-uifn-reduced-motion='true'] *,
+[data-uifn-reduced-motion='true'] *::before,
+[data-uifn-reduced-motion='true'] *::after {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}

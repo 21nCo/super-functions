@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "UserProfileCard",
+  "slug": "user-profile-card",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "UserProfileCard(props)",
+      "packageImport": "import { UserProfileCard } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/user-profile-card.ts",
+        "storyFile": "components/patterns/react/user-profile-card.stories.ts",
+        "fixtureFile": "components/patterns/react/user-profile-card.fixtures.ts",
+        "testFile": "components/patterns/react/user-profile-card.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "UserProfileCard(props)",
+      "packageImport": "import { UserProfileCard } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/user-profile-card.ts",
+        "storyFile": "components/patterns/svelte/user-profile-card.stories.ts",
+        "fixtureFile": "components/patterns/svelte/user-profile-card.fixtures.ts",
+        "testFile": "components/patterns/svelte/user-profile-card.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "UserProfileCard(props)",
+      "packageImport": "import { UserProfileCard } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/user-profile-card.ts",
+        "storyFile": "components/patterns/solid/user-profile-card.stories.ts",
+        "fixtureFile": "components/patterns/solid/user-profile-card.fixtures.ts",
+        "testFile": "components/patterns/solid/user-profile-card.test.ts"
+      }
+    }
+  },
+  "props": [
+    "data",
+    "status",
+    "onUpdate"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Avatar",
+    "Button"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/user-profile-card.json",
+    "lockKey": "pattern:user-profile-card",
+    "files": [
+      "components/patterns/react/user-profile-card.ts",
+      "components/patterns/react/user-profile-card.stories.ts",
+      "components/patterns/react/user-profile-card.fixtures.ts",
+      "components/patterns/react/user-profile-card.test.ts",
+      "components/patterns/svelte/user-profile-card.ts",
+      "components/patterns/svelte/user-profile-card.stories.ts",
+      "components/patterns/svelte/user-profile-card.fixtures.ts",
+      "components/patterns/svelte/user-profile-card.test.ts",
+      "components/patterns/solid/user-profile-card.ts",
+      "components/patterns/solid/user-profile-card.stories.ts",
+      "components/patterns/solid/user-profile-card.fixtures.ts",
+      "components/patterns/solid/user-profile-card.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/user-profile-card.stories.json",
+      "sha256": "959c3f04ef46fc6770d1309520b93e4bdf116d6dabb5c7b71ef49010881aa1ec",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/user-profile-card.stories.json",
+      "sha256": "959c3f04ef46fc6770d1309520b93e4bdf116d6dabb5c7b71ef49010881aa1ec",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/user-profile-card.stories.json",
+      "sha256": "959c3f04ef46fc6770d1309520b93e4bdf116d6dabb5c7b71ef49010881aa1ec",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/user-profile-card.fixture.json",
+      "sha256": "284e50fd2e43f4d962b87bf70b4e3ca59133a251d0ad336309db7f3339546bd7",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

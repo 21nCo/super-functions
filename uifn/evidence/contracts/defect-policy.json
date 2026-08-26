@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "policyId": "uifn-defect-and-evidence-policy",
+  "timezone": "UTC",
+  "severityLevels": [
+    {
+      "id": "P0",
+      "definition": "Active security compromise, destructive data or supply-chain risk, inaccessible critical workflow with no workaround, or release evidence integrity failure.",
+      "acknowledgeWithinHours": 4,
+      "triageWithinHours": 8,
+      "mitigateWithinHours": 24,
+      "remediateWithinHours": 72,
+      "releaseBlocking": true,
+      "exceptionAllowed": false
+    },
+    {
+      "id": "P1",
+      "definition": "Required behavior, accessibility, compatibility, packaging, or release gate is incorrect or missing for a supported surface.",
+      "acknowledgeWithinHours": 24,
+      "triageWithinHours": 48,
+      "mitigateWithinHours": 72,
+      "remediateWithinHours": 168,
+      "releaseBlocking": true,
+      "exceptionAllowed": false
+    },
+    {
+      "id": "P2",
+      "definition": "Material defect with bounded impact that does not invalidate a P0 or P1 invariant.",
+      "acknowledgeWithinHours": 72,
+      "triageWithinHours": 168,
+      "mitigateWithinHours": 336,
+      "remediateWithinHours": 720,
+      "releaseBlocking": true,
+      "exceptionAllowed": true,
+      "exceptionMaxHours": 720,
+      "accessibilityReviewerApprovalRequired": true
+    },
+    {
+      "id": "P3",
+      "definition": "Low-risk improvement or cosmetic/documentation defect without supported semantic impact.",
+      "acknowledgeWithinHours": 168,
+      "triageWithinHours": 336,
+      "mitigateWithinHours": 720,
+      "remediateWithinHours": 2160,
+      "releaseBlocking": false,
+      "exceptionAllowed": false,
+      "targetReleaseRequired": true
+    }
+  ],
+  "vulnerabilityMapping": {
+    "critical": "P0",
+    "high": "P1",
+    "medium": "P2",
+    "low": "P3",
+    "unknownProductionDependency": "P1"
+  },
+  "triageStates": ["new", "triaged", "mitigated", "resolved", "verified", "closed"],
+  "requiredDefectFields": ["id", "title", "severity", "status", "owner", "createdAt", "lastTriagedAt", "affectedRequirements", "affectedEvidence", "targetRelease"],
+  "releaseRules": {
+    "openP0": "block",
+    "openP1": "block",
+    "untriagedAccessibilityFinding": "block",
+    "expiredSla": "block",
+    "p2WithoutValidSignedException": "block",
+    "p3WithoutOwnerAndTargetRelease": "block"
+  },
+  "evidenceExpiryHours": {
+    "governance": 2160,
+    "automatedUnitAndContract": 720,
+    "browserCompatibility": 336,
+    "securityDependencyLicense": 168,
+    "performanceAndLeak": 336,
+    "manualAssistiveTechnology": 2160,
+    "independentAccessibilityReview": 2160,
+    "releaseManifest": 168
+  },
+  "changeInvalidation": "Any relevant source, dependency, generated output, test, configuration, canonical definition, or artifact hash change invalidates affected evidence regardless of its time expiry.",
+  "exceptionRequiredFields": ["id", "defectId", "reason", "mitigation", "owner", "approvedBy", "approvedAt", "expiresAt", "affectedRequirements", "accessibilityReviewerApproval"]
+}

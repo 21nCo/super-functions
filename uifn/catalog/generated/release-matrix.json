@@ -1,0 +1,978 @@
+{
+  "allImplementationsImplemented": true,
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
+  "catalogVersion": "1.0.0",
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "accordion",
+      "name": "Accordion",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "alert-dialog",
+      "name": "AlertDialog",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "angle-slider",
+      "name": "AngleSlider",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "autocomplete",
+      "name": "Autocomplete",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "avatar",
+      "name": "Avatar",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "button",
+      "name": "Button",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "carousel",
+      "name": "Carousel",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "checkbox",
+      "name": "Checkbox",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "checkbox-group",
+      "name": "CheckboxGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "clipboard",
+      "name": "Clipboard",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "collapsible",
+      "name": "Collapsible",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "color-picker",
+      "name": "ColorPicker",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "combobox",
+      "name": "Combobox",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "context-menu",
+      "name": "ContextMenu",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "date-input",
+      "name": "DateInput",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "date-picker",
+      "name": "DatePicker",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "dialog",
+      "name": "Dialog",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "drawer",
+      "name": "Drawer",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "editable",
+      "name": "Editable",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "field",
+      "name": "Field",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "fieldset",
+      "name": "Fieldset",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "file-upload",
+      "name": "FileUpload",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "floating-panel",
+      "name": "FloatingPanel",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "form",
+      "name": "Form",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "hover-card",
+      "name": "HoverCard",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "image-cropper",
+      "name": "ImageCropper",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "input",
+      "name": "Input",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "listbox",
+      "name": "Listbox",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "marquee",
+      "name": "Marquee",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "menu",
+      "name": "Menu",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "menubar",
+      "name": "Menubar",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "meter",
+      "name": "Meter",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "navigation-menu",
+      "name": "NavigationMenu",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "number-input",
+      "name": "NumberInput",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "pagination",
+      "name": "Pagination",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "password-input",
+      "name": "PasswordInput",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "pin-input",
+      "name": "PinInput",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "popover",
+      "name": "Popover",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "progress",
+      "name": "Progress",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "qr-code",
+      "name": "QRCode",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "radio-group",
+      "name": "RadioGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "rating-group",
+      "name": "RatingGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "scroll-area",
+      "name": "ScrollArea",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "segment-group",
+      "name": "SegmentGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "select",
+      "name": "Select",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "separator",
+      "name": "Separator",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "signature-pad",
+      "name": "SignaturePad",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "slider",
+      "name": "Slider",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "splitter",
+      "name": "Splitter",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "steps",
+      "name": "Steps",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "switch",
+      "name": "Switch",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "tabs",
+      "name": "Tabs",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "tags-input",
+      "name": "TagsInput",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "timer",
+      "name": "Timer",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "toast",
+      "name": "Toast",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "toggle",
+      "name": "Toggle",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "toggle-group",
+      "name": "ToggleGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "toolbar",
+      "name": "Toolbar",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "tooltip",
+      "name": "Tooltip",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "tour",
+      "name": "Tour",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "tree-view",
+      "name": "TreeView",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "badge",
+      "name": "Badge",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "breadcrumb",
+      "name": "Breadcrumb",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "card",
+      "name": "Card",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "command",
+      "name": "Command",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "input-group",
+      "name": "InputGroup",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "skeleton",
+      "name": "Skeleton",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "table",
+      "name": "Table",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    },
+    {
+      "frameworkStatuses": {
+        "react": "implemented",
+        "solid": "implemented",
+        "svelte": "implemented"
+      },
+      "id": "textarea",
+      "name": "Textarea",
+      "release": {
+        "catalogStatus": "ga-required",
+        "channel": "stable-1.0",
+        "implementationStatus": "implemented"
+      }
+    }
+  ],
+  "releaseChannel": "stable-1.0",
+  "schemaVersion": 1,
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250"
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "name": "Label",
+  "slug": "label",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "text",
+    "requiredIndicator"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/label.stories.json#default",
+    "uifn/components/stories/batch-a/label.stories.json#variants",
+    "uifn/components/stories/batch-a/label.stories.json#states",
+    "uifn/components/stories/batch-a/label.stories.json#accessibility",
+    "uifn/components/stories/batch-a/label.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/label.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

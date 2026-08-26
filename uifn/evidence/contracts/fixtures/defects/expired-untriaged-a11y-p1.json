@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "FIXTURE-P1-EXPIRED-A11Y",
+  "title": "Untriaged accessibility behavior failure",
+  "severity": "P1",
+  "status": "new",
+  "owner": "uifn-maintainer",
+  "createdAt": "2026-07-01T00:00:00Z",
+  "lastTriagedAt": null,
+  "affectedRequirements": ["A11Y-002"],
+  "affectedEvidence": ["TV-A11Y-002-P"],
+  "targetRelease": "1.0.0",
+  "accessibility": true,
+  "exception": null,
+  "evaluateAt": "2026-07-17T13:00:00Z",
+  "expectedErrorCodes": ["UIFN_DEFECT_UNTRIAGED_OR_EXPIRED"]
+}

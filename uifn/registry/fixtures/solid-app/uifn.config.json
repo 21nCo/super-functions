@@ -1,0 +1,5 @@
+{
+  "framework": "solid",
+  "style": "css-variables",
+  "sourceInstallRoot": "components/ui/solid"
+}

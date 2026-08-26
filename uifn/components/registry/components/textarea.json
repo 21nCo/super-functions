@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "name": "Textarea",
+  "slug": "textarea",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "textarea"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "Textarea"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "Textarea"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "Textarea"
+    }
+  },
+  "behavior": [
+    "form-integration",
+    "disabled-invalid-state",
+    "keyboard"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/textarea.stories.json#default",
+    "uifn/components/stories/batch-b/textarea.stories.json#variants",
+    "uifn/components/stories/batch-b/textarea.stories.json#states",
+    "uifn/components/stories/batch-b/textarea.stories.json#accessibility",
+    "uifn/components/stories/batch-b/textarea.stories.json#theming",
+    "uifn/components/stories/batch-b/textarea.stories.json#keyboard",
+    "uifn/components/stories/batch-b/textarea.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/textarea.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

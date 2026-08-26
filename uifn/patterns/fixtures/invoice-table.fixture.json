@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "pattern": "InvoiceTable",
+  "slug": "invoice-table",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "data": [
+        {
+          "id": "invoice-table-loading",
+          "label": "InvoiceTable loading"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "empty": {
+      "status": "empty",
+      "data": [],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "error": {
+      "status": "error",
+      "data": [
+        {
+          "id": "invoice-table-error",
+          "label": "InvoiceTable error"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_ERROR",
+        "message": "InvoiceTable failed"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "partial": {
+      "status": "partial",
+      "data": [
+        {
+          "id": "invoice-table-partial",
+          "label": "InvoiceTable partial"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "data": [
+        {
+          "id": "invoice-table-permission-denied",
+          "label": "InvoiceTable permission-denied"
+        }
+      ],
+      "error": null,
+      "permission": "denied",
+      "optimistic": false
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "data": [
+        {
+          "id": "invoice-table-optimistic",
+          "label": "InvoiceTable optimistic"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": true
+    },
+    "success": {
+      "status": "success",
+      "data": [
+        {
+          "id": "invoice-table-success",
+          "label": "InvoiceTable success"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "data": [
+        {
+          "id": "invoice-table-degraded-network",
+          "label": "InvoiceTable degraded-network"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_DEGRADED_NETWORK",
+        "message": "InvoiceTable is using stale or partial data"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "data": [
+        {
+          "id": "invoice-table-unsupported-capability",
+          "label": "InvoiceTable unsupported-capability"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_UNSUPPORTED_CAPABILITY",
+        "message": "InvoiceTable is not available for this capability"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    }
+  },
+  "callbacks": [
+    "onDownload"
+  ],
+  "backendImports": []
+}

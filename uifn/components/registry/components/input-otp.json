@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "name": "InputOTP",
+  "slug": "input-otp",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "group",
+    "slot",
+    "separator",
+    "hiddenInput"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "behavior": [
+    "form-integration",
+    "disabled-invalid-state",
+    "keyboard"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/input-otp.stories.json#default",
+    "uifn/components/stories/batch-b/input-otp.stories.json#variants",
+    "uifn/components/stories/batch-b/input-otp.stories.json#states",
+    "uifn/components/stories/batch-b/input-otp.stories.json#accessibility",
+    "uifn/components/stories/batch-b/input-otp.stories.json#theming",
+    "uifn/components/stories/batch-b/input-otp.stories.json#keyboard",
+    "uifn/components/stories/batch-b/input-otp.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/input-otp.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

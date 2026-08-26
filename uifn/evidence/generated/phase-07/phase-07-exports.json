@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-07.mjs",
+  "phase": "PHASE_07",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "name": "AlertDialog",
+      "factory": "createAlertDialogController",
+      "parts": [
+        "root",
+        "trigger",
+        "portal",
+        "backdrop",
+        "positioner",
+        "content",
+        "title",
+        "description",
+        "cancel",
+        "action",
+        "close"
+      ]
+    },
+    {
+      "name": "Dialog",
+      "factory": "createDialogController",
+      "parts": [
+        "root",
+        "trigger",
+        "portal",
+        "backdrop",
+        "positioner",
+        "content",
+        "title",
+        "description",
+        "close"
+      ]
+    },
+    {
+      "name": "Drawer",
+      "factory": "createDrawerController",
+      "parts": [
+        "root",
+        "trigger",
+        "portal",
+        "backdrop",
+        "positioner",
+        "content",
+        "handle",
+        "title",
+        "description",
+        "close"
+      ]
+    },
+    {
+      "name": "FloatingPanel",
+      "factory": "createFloatingPanelController",
+      "parts": [
+        "root",
+        "trigger",
+        "positioner",
+        "content",
+        "header",
+        "title",
+        "description",
+        "dragHandle",
+        "resizeHandle",
+        "close"
+      ]
+    },
+    {
+      "name": "HoverCard",
+      "factory": "createHoverCardController",
+      "parts": [
+        "root",
+        "trigger",
+        "positioner",
+        "content",
+        "arrow"
+      ]
+    },
+    {
+      "name": "Popover",
+      "factory": "createPopoverController",
+      "parts": [
+        "root",
+        "anchor",
+        "trigger",
+        "positioner",
+        "content",
+        "title",
+        "description",
+        "arrow",
+        "close"
+      ]
+    },
+    {
+      "name": "Tooltip",
+      "factory": "createTooltipController",
+      "parts": [
+        "root",
+        "trigger",
+        "positioner",
+        "content",
+        "arrow"
+      ]
+    },
+    {
+      "name": "Tour",
+      "factory": "createTourController",
+      "parts": [
+        "root",
+        "portal",
+        "backdrop",
+        "spotlight",
+        "positioner",
+        "content",
+        "title",
+        "description",
+        "previous",
+        "next",
+        "skip",
+        "close",
+        "progress"
+      ]
+    }
+  ]
+}

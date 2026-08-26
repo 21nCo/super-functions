@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Resizable",
+  "slug": "resizable",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "pointer-resize",
+    "keyboard-resize",
+    "min-max"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/resizable.stories.json#default",
+    "uifn/components/stories/data-rich/resizable.stories.json#large-data",
+    "uifn/components/stories/data-rich/resizable.stories.json#keyboard",
+    "uifn/components/stories/data-rich/resizable.stories.json#empty",
+    "uifn/components/stories/data-rich/resizable.stories.json#error",
+    "uifn/components/stories/data-rich/resizable.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/resizable.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

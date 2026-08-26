@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "Progress",
+  "slug": "progress",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "track",
+    "indicator",
+    "label"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Progress"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Progress"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Progress"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/progress.stories.json#default",
+    "uifn/components/stories/batch-a/progress.stories.json#variants",
+    "uifn/components/stories/batch-a/progress.stories.json#states",
+    "uifn/components/stories/batch-a/progress.stories.json#accessibility",
+    "uifn/components/stories/batch-a/progress.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/progress.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

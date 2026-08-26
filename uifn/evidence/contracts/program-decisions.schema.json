@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "uifn-program-decisions.schema.json",
+  "title": "uifn locked program decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "contractId", "status", "effectiveAt", "sourceSpec", "sourceAudit", "decisions", "targetPackageClasses", "signature"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "contractId": { "const": "uifn-10-readiness-decisions" },
+    "status": { "const": "active" },
+    "effectiveAt": { "type": "string", "format": "date-time" },
+    "sourceSpec": { "type": "string", "pattern": "^uifn/evidence/provenance/" },
+    "sourceAudit": { "type": "string", "pattern": "^uifn/evidence/provenance/" },
+    "decisions": {
+      "type": "array",
+      "minItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "decision", "locked"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^DEC-[0-9]{3}$" },
+          "decision": { "type": "string", "minLength": 20 },
+          "locked": { "const": true }
+        }
+      }
+    },
+    "targetPackageClasses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stable", "experimental", "removed", "private"],
+      "properties": {
+        "stable": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+        "experimental": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+        "removed": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+        "private": { "$ref": "#/$defs/nonEmptyUniqueStrings" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "signer", "authority", "signedFields", "payloadSha256"],
+      "properties": {
+        "scheme": { "const": "sha256-content-attestation-v1" },
+        "signer": { "type": "string", "minLength": 1 },
+        "authority": { "type": "string", "minLength": 1 },
+        "signedFields": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+        "payloadSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyUniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

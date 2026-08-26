@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "useMediaQuery",
+  "slug": "use-media-query",
+  "kind": "hook",
+  "category": "Hook",
+  "status": "ga-candidate",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "capabilityReference": {
+    "source": "https://coss.com/ui/docs",
+    "observedAt": "2026-06-27T15:15:00Z",
+    "policy": "public-name-capability-reference-only"
+  },
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "useMediaQuery(query, options)",
+      "packageImport": "import { useMediaQuery } from '@uifn/components-react';",
+      "sourceInstall": {
+        "helperFile": "components/hooks/react/use-media-query.ts",
+        "testFile": "components/hooks/react/use-media-query.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "createMediaQuery(query, options) readable/action",
+      "packageImport": "import { useMediaQuery } from '@uifn/components-svelte';",
+      "sourceInstall": {
+        "helperFile": "components/hooks/svelte/use-media-query.ts",
+        "testFile": "components/hooks/svelte/use-media-query.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "createMediaQuery(query, options) / useMediaQuery(query, options)",
+      "packageImport": "import { createMediaQuery, useMediaQuery } from '@uifn/components-solid';",
+      "sourceInstall": {
+        "helperFile": "components/hooks/solid/use-media-query.ts",
+        "testFile": "components/hooks/solid/use-media-query.test.ts"
+      }
+    }
+  },
+  "ssr": {
+    "safeFallback": false,
+    "accessesWindowDuringSsr": false
+  },
+  "cleanup": [
+    "remove-matchMedia-listener-on-destroy"
+  ],
+  "failureBehavior": [],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/hooks/use-media-query.json",
+    "lockKey": "hook:use-media-query",
+    "files": [
+      "components/hooks/react/use-media-query.ts",
+      "components/hooks/svelte/use-media-query.ts",
+      "components/hooks/solid/use-media-query.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "ssr",
+      "status": "implemented",
+      "file": "uifn/components/stories/hooks/use-media-query.stories.json",
+      "sha256": "202d9ead54bf3b25b2a3d70a40371e2deb416421ed4a850345db379063db8bd0",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "cleanup",
+      "status": "implemented",
+      "file": "uifn/components/stories/hooks/use-media-query.stories.json",
+      "sha256": "202d9ead54bf3b25b2a3d70a40371e2deb416421ed4a850345db379063db8bd0",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "ssr",
+      "status": "implemented",
+      "file": "uifn/components/fixtures/hooks/use-media-query.fixture.json",
+      "sha256": "0d92641c7a99a7802490158d9a0b741a6d3ba7344a9dde1b718852d2e37ecf04",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "ssr",
+      "status": "implemented",
+      "file": "uifn/dom/src/hooks.test.ts",
+      "sha256": "c5d30284734c0a2536ab713dfa19ac1e358f650c193fa1bc81247683ca2bcb1f",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "cleanup",
+      "status": "implemented",
+      "file": "uifn/dom/src/hooks.test.ts",
+      "sha256": "c5d30284734c0a2536ab713dfa19ac1e358f650c193fa1bc81247683ca2bcb1f",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "failure",
+      "status": "implemented",
+      "file": "uifn/dom/src/hooks.test.ts",
+      "sha256": "c5d30284734c0a2536ab713dfa19ac1e358f650c193fa1bc81247683ca2bcb1f",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "react-behavior",
+      "status": "implemented",
+      "file": "uifn/react/src/hooks/hooks.behavior.test.tsx",
+      "sha256": "892ae1b8a783560071cf54b4a613613c40dcad183f6250ed512c0e427d8a15e2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-hook-framework-behavior"
+      }
+    },
+    {
+      "id": "svelte-behavior",
+      "status": "implemented",
+      "file": "uifn/svelte/tests/hooks.behavior.test.ts",
+      "sha256": "a206ebefac00a83787aa18d4edf8c44ceb2bec6d17d82292df93d8478dce9b51",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-hook-framework-behavior"
+      }
+    },
+    {
+      "id": "solid-behavior",
+      "status": "implemented",
+      "file": "uifn/solid/src/__tests__/hooks.behavior.test.tsx",
+      "sha256": "ce968bede494c8d48c225659d432d44d05dc46cee6bb9672c7ef5d547514625a",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-hook-framework-behavior"
+      }
+    }
+  ]
+}

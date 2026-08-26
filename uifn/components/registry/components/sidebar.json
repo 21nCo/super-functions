@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "name": "Sidebar",
+  "slug": "sidebar",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "responsive-collapse",
+    "keyboard-navigation",
+    "persistent-state"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/sidebar.stories.json#default",
+    "uifn/components/stories/data-rich/sidebar.stories.json#large-data",
+    "uifn/components/stories/data-rich/sidebar.stories.json#keyboard",
+    "uifn/components/stories/data-rich/sidebar.stories.json#empty",
+    "uifn/components/stories/data-rich/sidebar.stories.json#error",
+    "uifn/components/stories/data-rich/sidebar.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/sidebar.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

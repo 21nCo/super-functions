@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "pattern": "SessionList",
+  "slug": "session-list",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "data": [
+        {
+          "id": "session-list-loading",
+          "label": "SessionList loading"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "empty": {
+      "status": "empty",
+      "data": [],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "error": {
+      "status": "error",
+      "data": [
+        {
+          "id": "session-list-error",
+          "label": "SessionList error"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_ERROR",
+        "message": "SessionList failed"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "partial": {
+      "status": "partial",
+      "data": [
+        {
+          "id": "session-list-partial",
+          "label": "SessionList partial"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "data": [
+        {
+          "id": "session-list-permission-denied",
+          "label": "SessionList permission-denied"
+        }
+      ],
+      "error": null,
+      "permission": "denied",
+      "optimistic": false
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "data": [
+        {
+          "id": "session-list-optimistic",
+          "label": "SessionList optimistic"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": true
+    },
+    "success": {
+      "status": "success",
+      "data": [
+        {
+          "id": "session-list-success",
+          "label": "SessionList success"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "data": [
+        {
+          "id": "session-list-degraded-network",
+          "label": "SessionList degraded-network"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_DEGRADED_NETWORK",
+        "message": "SessionList is using stale or partial data"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "data": [
+        {
+          "id": "session-list-unsupported-capability",
+          "label": "SessionList unsupported-capability"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_UNSUPPORTED_CAPABILITY",
+        "message": "SessionList is not available for this capability"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    }
+  },
+  "callbacks": [
+    "onRevoke"
+  ],
+  "backendImports": []
+}

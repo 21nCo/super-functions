@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "WebhookEndpointTable",
+  "slug": "webhook-endpoint-table",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "WebhookEndpointTable(props)",
+      "packageImport": "import { WebhookEndpointTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/webhook-endpoint-table.ts",
+        "storyFile": "components/patterns/react/webhook-endpoint-table.stories.ts",
+        "fixtureFile": "components/patterns/react/webhook-endpoint-table.fixtures.ts",
+        "testFile": "components/patterns/react/webhook-endpoint-table.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "WebhookEndpointTable(props)",
+      "packageImport": "import { WebhookEndpointTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/webhook-endpoint-table.ts",
+        "storyFile": "components/patterns/svelte/webhook-endpoint-table.stories.ts",
+        "fixtureFile": "components/patterns/svelte/webhook-endpoint-table.fixtures.ts",
+        "testFile": "components/patterns/svelte/webhook-endpoint-table.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "WebhookEndpointTable(props)",
+      "packageImport": "import { WebhookEndpointTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/webhook-endpoint-table.ts",
+        "storyFile": "components/patterns/solid/webhook-endpoint-table.stories.ts",
+        "fixtureFile": "components/patterns/solid/webhook-endpoint-table.fixtures.ts",
+        "testFile": "components/patterns/solid/webhook-endpoint-table.test.ts"
+      }
+    }
+  },
+  "props": [
+    "endpoints",
+    "status",
+    "onCreate",
+    "onRotateSecret",
+    "onDelete"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Table",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/webhook-endpoint-table.json",
+    "lockKey": "pattern:webhook-endpoint-table",
+    "files": [
+      "components/patterns/react/webhook-endpoint-table.ts",
+      "components/patterns/react/webhook-endpoint-table.stories.ts",
+      "components/patterns/react/webhook-endpoint-table.fixtures.ts",
+      "components/patterns/react/webhook-endpoint-table.test.ts",
+      "components/patterns/svelte/webhook-endpoint-table.ts",
+      "components/patterns/svelte/webhook-endpoint-table.stories.ts",
+      "components/patterns/svelte/webhook-endpoint-table.fixtures.ts",
+      "components/patterns/svelte/webhook-endpoint-table.test.ts",
+      "components/patterns/solid/webhook-endpoint-table.ts",
+      "components/patterns/solid/webhook-endpoint-table.stories.ts",
+      "components/patterns/solid/webhook-endpoint-table.fixtures.ts",
+      "components/patterns/solid/webhook-endpoint-table.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/webhook-endpoint-table.stories.json",
+      "sha256": "f9bc093e9367e098ffe98e0f1df8678580909c1616931fb0388feb836543de3b",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/webhook-endpoint-table.stories.json",
+      "sha256": "f9bc093e9367e098ffe98e0f1df8678580909c1616931fb0388feb836543de3b",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/webhook-endpoint-table.stories.json",
+      "sha256": "f9bc093e9367e098ffe98e0f1df8678580909c1616931fb0388feb836543de3b",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/webhook-endpoint-table.fixture.json",
+      "sha256": "57107d154bcc576f4e70b7559d248f6b3d3f6be875d514577f0580df49de642e",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

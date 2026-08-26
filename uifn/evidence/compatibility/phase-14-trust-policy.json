@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "github": {
+    "repository": "21nCo/super-functions",
+    "signerWorkflows": [
+      "21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml"
+    ]
+  }
+}

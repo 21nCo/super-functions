@@ -1,0 +1,13 @@
+{
+  "name": "@uifn/examples",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Example hub and runner commands for uifn Workbench apps",
+  "scripts": {
+    "dev:react": "npm run dev --workspace @uifn/example-react-workbench",
+    "dev:svelte": "npm run dev --workspace @uifn/example-svelte-workbench",
+    "dev:solid": "npm run dev --workspace @uifn/example-solid-workbench",
+    "build": "npm run build --workspace @uifn/examples-shared && npm run build --workspace @uifn/example-react-workbench && npm run build --workspace @uifn/example-svelte-workbench && npm run build --workspace @uifn/example-solid-workbench",
+    "verify": "node ../../scripts/verify-uifn-examples.mjs"
+  }
+}

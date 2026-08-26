@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "FileFnQuotaUsagePanel",
+  "slug": "filefn-quota-usage-panel",
+  "kind": "sf-pattern",
+  "category": "Superfunction Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [
+    "filefn"
+  ],
+  "controlledCounterpart": "QuotaUsagePanel",
+  "clientContract": "FileFnClient",
+  "props": [
+    "fileClient",
+    "status",
+    "data"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "FileFnQuotaUsagePanel({ fileClient, status })",
+      "packageImport": "import { FileFnQuotaUsagePanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/react/filefn-quota-usage-panel.ts",
+        "storyFile": "components/sf/react/filefn-quota-usage-panel.stories.ts",
+        "fixtureFile": "components/sf/react/filefn-quota-usage-panel.fixtures.ts",
+        "testFile": "components/sf/react/filefn-quota-usage-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "FileFnQuotaUsagePanel({ fileClient, status })",
+      "packageImport": "import { FileFnQuotaUsagePanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/svelte/filefn-quota-usage-panel.ts",
+        "storyFile": "components/sf/svelte/filefn-quota-usage-panel.stories.ts",
+        "fixtureFile": "components/sf/svelte/filefn-quota-usage-panel.fixtures.ts",
+        "testFile": "components/sf/svelte/filefn-quota-usage-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "FileFnQuotaUsagePanel({ fileClient, status })",
+      "packageImport": "import { FileFnQuotaUsagePanel } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/solid/filefn-quota-usage-panel.ts",
+        "storyFile": "components/sf/solid/filefn-quota-usage-panel.stories.ts",
+        "fixtureFile": "components/sf/solid/filefn-quota-usage-panel.fixtures.ts",
+        "testFile": "components/sf/solid/filefn-quota-usage-panel.test.ts"
+      }
+    }
+  },
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/sf/filefn-quota-usage-panel.json",
+    "lockKey": "sf:filefn-quota-usage-panel",
+    "files": [
+      "components/sf/react/filefn-quota-usage-panel.ts",
+      "components/sf/react/filefn-quota-usage-panel.stories.ts",
+      "components/sf/react/filefn-quota-usage-panel.fixtures.ts",
+      "components/sf/react/filefn-quota-usage-panel.test.ts",
+      "components/sf/svelte/filefn-quota-usage-panel.ts",
+      "components/sf/svelte/filefn-quota-usage-panel.stories.ts",
+      "components/sf/svelte/filefn-quota-usage-panel.fixtures.ts",
+      "components/sf/svelte/filefn-quota-usage-panel.test.ts",
+      "components/sf/solid/filefn-quota-usage-panel.ts",
+      "components/sf/solid/filefn-quota-usage-panel.stories.ts",
+      "components/sf/solid/filefn-quota-usage-panel.fixtures.ts",
+      "components/sf/solid/filefn-quota-usage-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "mocked",
+      "status": "implemented",
+      "file": "uifn/sf/stories/filefn-quota-usage-panel.stories.json",
+      "sha256": "e4b958f59494c9c3e6e31ce51d587a01ecc9d4a0dc084935e0f28fd60b98f2ac",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/sf/fixtures/filefn-quota-usage-panel.fixture.json",
+      "sha256": "f2e05db918e4b5bb214679c6ea854edd1ad44eb905c4ad04df6ed852c27bfd52",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "injected-client",
+      "status": "implemented",
+      "file": "uifn/sf/src/sf.test.ts",
+      "sha256": "c5f9ecb9dcbc6be9af8fb8ed5f632c520768bd874ccda4eed30ab8ddfb927ff2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

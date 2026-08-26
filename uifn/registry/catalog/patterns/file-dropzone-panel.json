@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "FileDropzonePanel",
+  "slug": "file-dropzone-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "FileDropzonePanel(props)",
+      "packageImport": "import { FileDropzonePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/file-dropzone-panel.ts",
+        "storyFile": "components/patterns/react/file-dropzone-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/file-dropzone-panel.fixtures.ts",
+        "testFile": "components/patterns/react/file-dropzone-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "FileDropzonePanel(props)",
+      "packageImport": "import { FileDropzonePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/file-dropzone-panel.ts",
+        "storyFile": "components/patterns/svelte/file-dropzone-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/file-dropzone-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/file-dropzone-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "FileDropzonePanel(props)",
+      "packageImport": "import { FileDropzonePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/file-dropzone-panel.ts",
+        "storyFile": "components/patterns/solid/file-dropzone-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/file-dropzone-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/file-dropzone-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "files",
+    "status",
+    "onDrop",
+    "onUpload",
+    "onRemove"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Progress"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/file-dropzone-panel.json",
+    "lockKey": "pattern:file-dropzone-panel",
+    "files": [
+      "components/patterns/react/file-dropzone-panel.ts",
+      "components/patterns/react/file-dropzone-panel.stories.ts",
+      "components/patterns/react/file-dropzone-panel.fixtures.ts",
+      "components/patterns/react/file-dropzone-panel.test.ts",
+      "components/patterns/svelte/file-dropzone-panel.ts",
+      "components/patterns/svelte/file-dropzone-panel.stories.ts",
+      "components/patterns/svelte/file-dropzone-panel.fixtures.ts",
+      "components/patterns/svelte/file-dropzone-panel.test.ts",
+      "components/patterns/solid/file-dropzone-panel.ts",
+      "components/patterns/solid/file-dropzone-panel.stories.ts",
+      "components/patterns/solid/file-dropzone-panel.fixtures.ts",
+      "components/patterns/solid/file-dropzone-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-dropzone-panel.stories.json",
+      "sha256": "f853b28bdb7dc49abb271a59558e563a6c55c4fd1d66372320342c5a7de58fc3",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-dropzone-panel.stories.json",
+      "sha256": "f853b28bdb7dc49abb271a59558e563a6c55c4fd1d66372320342c5a7de58fc3",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-dropzone-panel.stories.json",
+      "sha256": "f853b28bdb7dc49abb271a59558e563a6c55c4fd1d66372320342c5a7de58fc3",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/file-dropzone-panel.fixture.json",
+      "sha256": "fcd4c64388630678ef4c7a4bc5af794ac241288224aa3f74c55b2fc2146746e8",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

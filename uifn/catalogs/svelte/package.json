@@ -1,0 +1,25 @@
+{
+  "name": "@uifn/catalog-svelte",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SvelteKit catalog for actual uifn Svelte components, hooks, patterns, and Superfunction panels",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 127.0.0.1 --port 6212",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@sveltejs/kit": "2.69.3",
+    "@uifn/components": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*",
+    "svelte": "^5.46.1"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "3.0.10",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

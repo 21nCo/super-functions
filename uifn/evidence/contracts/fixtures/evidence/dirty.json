@@ -1,0 +1,10 @@
+{
+  "fixtureId": "evidence-dirty-release-candidate",
+  "base": "complete.json",
+  "set": {
+    "evidenceClass": "release-manifest",
+    "source.dirty": true,
+    "source.dirtyReason": "Uncommitted implementation changes"
+  },
+  "expectedErrorCodes": ["UIFN_EVIDENCE_DIRTY"]
+}

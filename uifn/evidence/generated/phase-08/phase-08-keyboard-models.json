@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-08.mjs",
+  "phase": "PHASE_08",
+  "implementationEvidence": true,
+  "keyboardModels": {
+    "ContextMenu": {
+      "region": "content",
+      "axes": [
+        "vertical",
+        "logical-horizontal"
+      ],
+      "typeahead": true,
+      "nested": true
+    },
+    "Menu": {
+      "region": "content",
+      "axes": [
+        "vertical",
+        "logical-horizontal"
+      ],
+      "typeahead": true,
+      "nested": true
+    },
+    "Menubar": {
+      "region": "root-and-content",
+      "axes": [
+        "logical-horizontal",
+        "vertical"
+      ],
+      "typeahead": true,
+      "rtlVerticalInvariant": true
+    },
+    "NavigationMenu": {
+      "region": "root-and-content",
+      "axes": [
+        "orientation",
+        "logical-horizontal"
+      ],
+      "delayedIntent": true
+    },
+    "Pagination": {
+      "region": "root",
+      "axes": [
+        "logical-horizontal"
+      ],
+      "nativeNavigation": true
+    },
+    "Tabs": {
+      "region": "root",
+      "axes": [
+        "orientation",
+        "logical-horizontal"
+      ],
+      "activationModes": [
+        "automatic",
+        "manual"
+      ]
+    },
+    "TreeView": {
+      "region": "tree",
+      "axes": [
+        "vertical",
+        "logical-hierarchy"
+      ],
+      "typeahead": true,
+      "dynamicHierarchy": true
+    }
+  }
+}

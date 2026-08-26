@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "FileListPanel",
+  "slug": "file-list-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "FileListPanel(props)",
+      "packageImport": "import { FileListPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/file-list-panel.ts",
+        "storyFile": "components/patterns/react/file-list-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/file-list-panel.fixtures.ts",
+        "testFile": "components/patterns/react/file-list-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "FileListPanel(props)",
+      "packageImport": "import { FileListPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/file-list-panel.ts",
+        "storyFile": "components/patterns/svelte/file-list-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/file-list-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/file-list-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "FileListPanel(props)",
+      "packageImport": "import { FileListPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/file-list-panel.ts",
+        "storyFile": "components/patterns/solid/file-list-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/file-list-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/file-list-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "files",
+    "status",
+    "onOpen",
+    "onDelete"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Table",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/file-list-panel.json",
+    "lockKey": "pattern:file-list-panel",
+    "files": [
+      "components/patterns/react/file-list-panel.ts",
+      "components/patterns/react/file-list-panel.stories.ts",
+      "components/patterns/react/file-list-panel.fixtures.ts",
+      "components/patterns/react/file-list-panel.test.ts",
+      "components/patterns/svelte/file-list-panel.ts",
+      "components/patterns/svelte/file-list-panel.stories.ts",
+      "components/patterns/svelte/file-list-panel.fixtures.ts",
+      "components/patterns/svelte/file-list-panel.test.ts",
+      "components/patterns/solid/file-list-panel.ts",
+      "components/patterns/solid/file-list-panel.stories.ts",
+      "components/patterns/solid/file-list-panel.fixtures.ts",
+      "components/patterns/solid/file-list-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-list-panel.stories.json",
+      "sha256": "a621af929fc55c7f5c46a702eaf6042cf74898cb1cc5cce9c4799a3cdc96a1bb",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-list-panel.stories.json",
+      "sha256": "a621af929fc55c7f5c46a702eaf6042cf74898cb1cc5cce9c4799a3cdc96a1bb",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/file-list-panel.stories.json",
+      "sha256": "a621af929fc55c7f5c46a702eaf6042cf74898cb1cc5cce9c4799a3cdc96a1bb",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/file-list-panel.fixture.json",
+      "sha256": "6ace762430ad442b0c4ac0ca8f99037bdfc862d8a4009e28d53b40e7a1c24154",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "AuthPanel",
+  "slug": "auth-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "AuthPanel(props)",
+      "packageImport": "import { AuthPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/auth-panel.ts",
+        "storyFile": "components/patterns/react/auth-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/auth-panel.fixtures.ts",
+        "testFile": "components/patterns/react/auth-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "AuthPanel(props)",
+      "packageImport": "import { AuthPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/auth-panel.ts",
+        "storyFile": "components/patterns/svelte/auth-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/auth-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/auth-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "AuthPanel(props)",
+      "packageImport": "import { AuthPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/auth-panel.ts",
+        "storyFile": "components/patterns/solid/auth-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/auth-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/auth-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "user",
+    "providers",
+    "status",
+    "onSignIn",
+    "onSignOut",
+    "onSwitchAccount"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Avatar"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/auth-panel.json",
+    "lockKey": "pattern:auth-panel",
+    "files": [
+      "components/patterns/react/auth-panel.ts",
+      "components/patterns/react/auth-panel.stories.ts",
+      "components/patterns/react/auth-panel.fixtures.ts",
+      "components/patterns/react/auth-panel.test.ts",
+      "components/patterns/svelte/auth-panel.ts",
+      "components/patterns/svelte/auth-panel.stories.ts",
+      "components/patterns/svelte/auth-panel.fixtures.ts",
+      "components/patterns/svelte/auth-panel.test.ts",
+      "components/patterns/solid/auth-panel.ts",
+      "components/patterns/solid/auth-panel.stories.ts",
+      "components/patterns/solid/auth-panel.fixtures.ts",
+      "components/patterns/solid/auth-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/auth-panel.stories.json",
+      "sha256": "5f09664d29574177ff0279e8517e34872db77584771328a57981e024cc7df98d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/auth-panel.stories.json",
+      "sha256": "5f09664d29574177ff0279e8517e34872db77584771328a57981e024cc7df98d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/auth-panel.stories.json",
+      "sha256": "5f09664d29574177ff0279e8517e34872db77584771328a57981e024cc7df98d",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/auth-panel.fixture.json",
+      "sha256": "b2fcccec652d141093f94fc2f16429b86b5ca769de06b51a8f40fb51de5fe3f3",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

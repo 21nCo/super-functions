@@ -1,0 +1,1 @@
+export { createSliderController, assertUIFnCancelledGesture, type SliderProps, type SliderState, type SliderActions, type SliderControllerParts, type SliderController } from './range-gesture-controllers';

@@ -1,0 +1,1130 @@
+{
+  "catalogSha256": "b7c6c8b5ad0c3d7746fb04f3648794a3e7799cdd82c77eade6b06a893213da55",
+  "catalogVersion": "1.0.0",
+  "generatorVersion": "1.0.0",
+  "implementationEvidence": true,
+  "manifestStatus": "implemented",
+  "primitives": [
+    {
+      "id": "accordion",
+      "implementationStatus": "implemented",
+      "name": "Accordion",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "alert-dialog",
+      "implementationStatus": "implemented",
+      "name": "AlertDialog",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "angle-slider",
+      "implementationStatus": "implemented",
+      "name": "AngleSlider",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "autocomplete",
+      "implementationStatus": "implemented",
+      "name": "Autocomplete",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "avatar",
+      "implementationStatus": "implemented",
+      "name": "Avatar",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "button",
+      "implementationStatus": "implemented",
+      "name": "Button",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "carousel",
+      "implementationStatus": "implemented",
+      "name": "Carousel",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "checkbox",
+      "implementationStatus": "implemented",
+      "name": "Checkbox",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "checkbox-group",
+      "implementationStatus": "implemented",
+      "name": "CheckboxGroup",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "clipboard",
+      "implementationStatus": "implemented",
+      "name": "Clipboard",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "collapsible",
+      "implementationStatus": "implemented",
+      "name": "Collapsible",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "color-picker",
+      "implementationStatus": "implemented",
+      "name": "ColorPicker",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "combobox",
+      "implementationStatus": "implemented",
+      "name": "Combobox",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "context-menu",
+      "implementationStatus": "implemented",
+      "name": "ContextMenu",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "date-input",
+      "implementationStatus": "implemented",
+      "name": "DateInput",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "date-picker",
+      "implementationStatus": "implemented",
+      "name": "DatePicker",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "dialog",
+      "implementationStatus": "implemented",
+      "name": "Dialog",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "drawer",
+      "implementationStatus": "implemented",
+      "name": "Drawer",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "editable",
+      "implementationStatus": "implemented",
+      "name": "Editable",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "field",
+      "implementationStatus": "implemented",
+      "name": "Field",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "fieldset",
+      "implementationStatus": "implemented",
+      "name": "Fieldset",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "file-upload",
+      "implementationStatus": "implemented",
+      "name": "FileUpload",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "floating-panel",
+      "implementationStatus": "implemented",
+      "name": "FloatingPanel",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "form",
+      "implementationStatus": "implemented",
+      "name": "Form",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "hover-card",
+      "implementationStatus": "implemented",
+      "name": "HoverCard",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "image-cropper",
+      "implementationStatus": "implemented",
+      "name": "ImageCropper",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "input",
+      "implementationStatus": "implemented",
+      "name": "Input",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "listbox",
+      "implementationStatus": "implemented",
+      "name": "Listbox",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "marquee",
+      "implementationStatus": "implemented",
+      "name": "Marquee",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "menu",
+      "implementationStatus": "implemented",
+      "name": "Menu",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "menubar",
+      "implementationStatus": "implemented",
+      "name": "Menubar",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "meter",
+      "implementationStatus": "implemented",
+      "name": "Meter",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "navigation-menu",
+      "implementationStatus": "implemented",
+      "name": "NavigationMenu",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "number-input",
+      "implementationStatus": "implemented",
+      "name": "NumberInput",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "pagination",
+      "implementationStatus": "implemented",
+      "name": "Pagination",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "password-input",
+      "implementationStatus": "implemented",
+      "name": "PasswordInput",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "pin-input",
+      "implementationStatus": "implemented",
+      "name": "PinInput",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "popover",
+      "implementationStatus": "implemented",
+      "name": "Popover",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "progress",
+      "implementationStatus": "implemented",
+      "name": "Progress",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "qr-code",
+      "implementationStatus": "implemented",
+      "name": "QRCode",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "radio-group",
+      "implementationStatus": "implemented",
+      "name": "RadioGroup",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "rating-group",
+      "implementationStatus": "implemented",
+      "name": "RatingGroup",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "scroll-area",
+      "implementationStatus": "implemented",
+      "name": "ScrollArea",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "segment-group",
+      "implementationStatus": "implemented",
+      "name": "SegmentGroup",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "select",
+      "implementationStatus": "implemented",
+      "name": "Select",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "separator",
+      "implementationStatus": "implemented",
+      "name": "Separator",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "signature-pad",
+      "implementationStatus": "implemented",
+      "name": "SignaturePad",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "slider",
+      "implementationStatus": "implemented",
+      "name": "Slider",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "splitter",
+      "implementationStatus": "implemented",
+      "name": "Splitter",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "steps",
+      "implementationStatus": "implemented",
+      "name": "Steps",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "switch",
+      "implementationStatus": "implemented",
+      "name": "Switch",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "tabs",
+      "implementationStatus": "implemented",
+      "name": "Tabs",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "tags-input",
+      "implementationStatus": "implemented",
+      "name": "TagsInput",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "timer",
+      "implementationStatus": "implemented",
+      "name": "Timer",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "toast",
+      "implementationStatus": "implemented",
+      "name": "Toast",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "toggle",
+      "implementationStatus": "implemented",
+      "name": "Toggle",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "toggle-group",
+      "implementationStatus": "implemented",
+      "name": "ToggleGroup",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "toolbar",
+      "implementationStatus": "implemented",
+      "name": "Toolbar",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "tooltip",
+      "implementationStatus": "implemented",
+      "name": "Tooltip",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "tour",
+      "implementationStatus": "implemented",
+      "name": "Tour",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "tree-view",
+      "implementationStatus": "implemented",
+      "name": "TreeView",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "badge",
+      "implementationStatus": "implemented",
+      "name": "Badge",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "breadcrumb",
+      "implementationStatus": "implemented",
+      "name": "Breadcrumb",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "card",
+      "implementationStatus": "implemented",
+      "name": "Card",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "command",
+      "implementationStatus": "implemented",
+      "name": "Command",
+      "requiredScenarios": [
+        "default",
+        "controlled",
+        "uncontrolled",
+        "disabled-readonly-invalid",
+        "keyboard-focus",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "input-group",
+      "implementationStatus": "implemented",
+      "name": "InputGroup",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "skeleton",
+      "implementationStatus": "implemented",
+      "name": "Skeleton",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "table",
+      "implementationStatus": "implemented",
+      "name": "Table",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    },
+    {
+      "id": "textarea",
+      "implementationStatus": "implemented",
+      "name": "Textarea",
+      "requiredScenarios": [
+        "default",
+        "semantic-variants",
+        "rtl",
+        "forced-colors",
+        "reduced-motion",
+        "responsive",
+        "edge-cases"
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceSha256": "667f372d5fbba3ee294e8a4ab7918d65baead04d9938a2a62400b69475987250"
+}

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "Skeleton",
+  "slug": "skeleton",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Skeleton"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Skeleton"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Skeleton"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/skeleton.stories.json#default",
+    "uifn/components/stories/batch-a/skeleton.stories.json#variants",
+    "uifn/components/stories/batch-a/skeleton.stories.json#states",
+    "uifn/components/stories/batch-a/skeleton.stories.json#accessibility",
+    "uifn/components/stories/batch-a/skeleton.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/skeleton.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

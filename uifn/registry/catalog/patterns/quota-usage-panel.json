@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "QuotaUsagePanel",
+  "slug": "quota-usage-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "QuotaUsagePanel(props)",
+      "packageImport": "import { QuotaUsagePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/quota-usage-panel.ts",
+        "storyFile": "components/patterns/react/quota-usage-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/quota-usage-panel.fixtures.ts",
+        "testFile": "components/patterns/react/quota-usage-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "QuotaUsagePanel(props)",
+      "packageImport": "import { QuotaUsagePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/quota-usage-panel.ts",
+        "storyFile": "components/patterns/svelte/quota-usage-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/quota-usage-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/quota-usage-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "QuotaUsagePanel(props)",
+      "packageImport": "import { QuotaUsagePanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/quota-usage-panel.ts",
+        "storyFile": "components/patterns/solid/quota-usage-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/quota-usage-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/quota-usage-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "data",
+    "status",
+    "onUpgrade"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Progress",
+    "Button"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/quota-usage-panel.json",
+    "lockKey": "pattern:quota-usage-panel",
+    "files": [
+      "components/patterns/react/quota-usage-panel.ts",
+      "components/patterns/react/quota-usage-panel.stories.ts",
+      "components/patterns/react/quota-usage-panel.fixtures.ts",
+      "components/patterns/react/quota-usage-panel.test.ts",
+      "components/patterns/svelte/quota-usage-panel.ts",
+      "components/patterns/svelte/quota-usage-panel.stories.ts",
+      "components/patterns/svelte/quota-usage-panel.fixtures.ts",
+      "components/patterns/svelte/quota-usage-panel.test.ts",
+      "components/patterns/solid/quota-usage-panel.ts",
+      "components/patterns/solid/quota-usage-panel.stories.ts",
+      "components/patterns/solid/quota-usage-panel.fixtures.ts",
+      "components/patterns/solid/quota-usage-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/quota-usage-panel.stories.json",
+      "sha256": "6c1205c3c9bbf3f6cbcb27c703d06989b32c55d52f0e96205713d71c6e058d69",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/quota-usage-panel.stories.json",
+      "sha256": "6c1205c3c9bbf3f6cbcb27c703d06989b32c55d52f0e96205713d71c6e058d69",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/quota-usage-panel.stories.json",
+      "sha256": "6c1205c3c9bbf3f6cbcb27c703d06989b32c55d52f0e96205713d71c6e058d69",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/quota-usage-panel.fixture.json",
+      "sha256": "2f47ac428b573d98993081eb1f25151e1e70dcf3f75ae22b5d19629a7ca0e354",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

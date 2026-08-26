@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "hook": "useMediaQuery",
+  "slug": "use-media-query",
+  "kind": "hook-story",
+  "stories": [
+    {
+      "id": "ssr",
+      "args": {
+        "query": "(min-width: 768px)",
+        "defaultValue": false,
+        "environment": "server"
+      },
+      "controls": [
+        "query",
+        "defaultValue",
+        "environment"
+      ],
+      "testUse": [
+        "ssr",
+        "docs"
+      ],
+      "expected": {
+        "ssrValue": false,
+        "accessesWindowDuringSsr": false
+      }
+    },
+    {
+      "id": "client-subscription",
+      "args": {
+        "query": "(min-width: 768px)",
+        "defaultValue": false,
+        "environment": "client"
+      },
+      "controls": [
+        "query",
+        "defaultValue",
+        "environment"
+      ],
+      "testUse": [
+        "interaction",
+        "cleanup"
+      ],
+      "expected": {
+        "subscribesOnClient": true,
+        "cleansUp": true
+      }
+    }
+  ]
+}

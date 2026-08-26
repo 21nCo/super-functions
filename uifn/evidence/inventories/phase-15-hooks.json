@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "phase": "PHASE_15",
+  "behaviorOwner": "@uifn/core and @uifn/dom",
+  "frameworks": ["react", "svelte", "solid"],
+  "capabilities": [
+    { "id": "media-query", "owner": "@uifn/dom", "bindings": { "react": "useMediaQuery", "svelte": "createMediaQuery/useMediaQuery", "solid": "createMediaQuery/useMediaQuery" }, "ssrFallback": true, "cleanup": "modern-and-legacy-listeners" },
+    { "id": "copy-to-clipboard", "owner": "@uifn/dom", "bindings": { "react": "useCopyToClipboard", "svelte": "createCopyToClipboard/useCopyToClipboard/copyToClipboardAction", "solid": "createCopyToClipboard/useCopyToClipboard" }, "ssrFallback": true, "cleanup": "no-retained-resources" },
+    { "id": "controllable-state", "owner": "@uifn/core", "bindings": { "react": "useController", "svelte": "generated root reactive update", "solid": "generated root reactive accessors" }, "ssrFallback": true, "cleanup": "controller-destroy" },
+    { "id": "stable-id", "owner": "@uifn/core environment", "bindings": { "react": "useId/useController", "svelte": "generated root hydration id", "solid": "createSolidPrimitiveInstanceId" }, "ssrFallback": true, "cleanup": "none" },
+    { "id": "presence", "owner": "@uifn/dom", "bindings": { "react": "Presence and compound parts", "svelte": "compound parts", "solid": "compound parts" }, "ssrFallback": true, "cleanup": "dom-presence-destroy" },
+    { "id": "direction-locale-environment", "owner": "@uifn/core environment", "bindings": { "react": "root environment prop", "svelte": "root environment prop", "solid": "root environment prop" }, "ssrFallback": true, "cleanup": "scope-destroy" },
+    { "id": "composed-refs", "owner": "@uifn/adapter-kit", "bindings": { "react": "useComposedRefs", "svelte": "generated action/ref bridge", "solid": "generated ref bridge" }, "ssrFallback": true, "cleanup": "ref-null-once" },
+    { "id": "escape-and-outside-interaction", "owner": "@uifn/dom dismissable layers", "bindings": { "react": "compound layer binding", "svelte": "compound layer binding", "solid": "compound layer binding" }, "ssrFallback": true, "cleanup": "layer-unregister" }
+  ]
+}

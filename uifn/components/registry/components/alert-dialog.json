@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "name": "AlertDialog",
+  "slug": "alert-dialog",
+  "batch": "batch-b",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "trigger",
+    "content",
+    "title",
+    "description",
+    "action",
+    "cancel"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected",
+    "open"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-b.ts",
+      "exportName": "AlertDialog"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-b.ts",
+      "exportName": "AlertDialog"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-b.ts",
+      "exportName": "AlertDialog"
+    }
+  },
+  "behavior": [
+    "portal",
+    "focus-management",
+    "escape-key",
+    "outside-interaction"
+  ],
+  "stories": [
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#default",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#variants",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#states",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#accessibility",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#theming",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#keyboard",
+    "uifn/components/stories/batch-b/alert-dialog.stories.json#focus"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-b/alert-dialog.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-b.test.ts#registry"
+  ]
+}

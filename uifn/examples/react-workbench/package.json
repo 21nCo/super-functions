@@ -1,0 +1,28 @@
+{
+  "name": "@uifn/example-react-workbench",
+  "private": true,
+  "version": "0.0.0",
+  "description": "React Workbench app for uifn component, pattern, and Superfunction browser QA",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 6111",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 6111",
+    "browser-test": "node ../../../scripts/verify-uifn-browser.mjs --framework react"
+  },
+  "dependencies": {
+    "@uifn/components": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^6.0.2",
+    "vite": "^5.4.21"
+  }
+}

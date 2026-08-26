@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "name": "Sonner",
+  "slug": "sonner",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "planned",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "viewport",
+    "toast"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": false
+    },
+    "svelte": {
+      "supported": false
+    },
+    "solid": {
+      "supported": false
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/sonner.stories.json#default",
+    "uifn/components/stories/batch-a/sonner.stories.json#variants",
+    "uifn/components/stories/batch-a/sonner.stories.json#states",
+    "uifn/components/stories/batch-a/sonner.stories.json#accessibility",
+    "uifn/components/stories/batch-a/sonner.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/sonner.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

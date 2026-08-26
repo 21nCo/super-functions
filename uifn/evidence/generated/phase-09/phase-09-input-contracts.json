@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-09.mjs",
+  "phase": "PHASE_09",
+  "implementationEvidence": true,
+  "contracts": {
+    "selection": [
+      "controlled-uncontrolled",
+      "single-multiple",
+      "nullable-required",
+      "disabled-readonly",
+      "dynamic-repair",
+      "native-form",
+      "explicit-serialization",
+      "async-reconciliation",
+      "reset"
+    ],
+    "input": [
+      "ime-deferred-commit",
+      "caret",
+      "paste",
+      "autofill",
+      "locale-step",
+      "capability-injection",
+      "permission-errors",
+      "secret-redaction",
+      "reset"
+    ],
+    "browsers": [
+      "chromium",
+      "firefox",
+      "webkit",
+      "mobile-chromium",
+      "mobile-webkit"
+    ],
+    "frameworks": [
+      "react",
+      "svelte",
+      "solid"
+    ],
+    "negativeCodes": [
+      "UIFN_CONTROLLED_STATE_DIVERGED",
+      "UIFN_FORM_VALUE_SERIALIZATION",
+      "UIFN_IME_COMMIT_EARLY",
+      "UIFN_TRACE_SECRET"
+    ]
+  }
+}

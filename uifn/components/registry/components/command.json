@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "name": "Command",
+  "slug": "command",
+  "batch": "data-rich",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "behavior": [
+    "filtering",
+    "grouping",
+    "keyboard-loop",
+    "async-empty-loading"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/data-rich.ts",
+      "exportName": "Command"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/data-rich.ts",
+      "exportName": "Command"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/data-rich.ts",
+      "exportName": "Command"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/data-rich/command.stories.json#default",
+    "uifn/components/stories/data-rich/command.stories.json#large-data",
+    "uifn/components/stories/data-rich/command.stories.json#keyboard",
+    "uifn/components/stories/data-rich/command.stories.json#empty",
+    "uifn/components/stories/data-rich/command.stories.json#error",
+    "uifn/components/stories/data-rich/command.stories.json#visual"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/data-rich/command.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/data-rich.test.ts#registry"
+  ]
+}

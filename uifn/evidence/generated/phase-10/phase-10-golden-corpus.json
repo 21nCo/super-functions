@@ -1,0 +1,463 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-10.mjs",
+  "phase": "PHASE_10",
+  "implementationEvidence": true,
+  "primitiveCount": 14,
+  "catalogPrimitiveCount": 69,
+  "corpus": [
+    {
+      "primitive": "AngleSlider",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "track",
+        "thumb",
+        "valueText",
+        "hiddenInput"
+      ],
+      "operations": [
+        "KEY_STEP",
+        "POINTER_START",
+        "LOST_POINTER_CAPTURE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Carousel",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "viewport",
+        "item",
+        "previous",
+        "next",
+        "indicatorGroup",
+        "indicator",
+        "liveRegion"
+      ],
+      "operations": [
+        "DRAG_START",
+        "DRAG_END",
+        "PAUSE",
+        "RESUME"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "ColorPicker",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "control",
+        "trigger",
+        "positioner",
+        "content",
+        "area",
+        "areaThumb",
+        "channelSlider",
+        "channelInput",
+        "swatch",
+        "hiddenInput"
+      ],
+      "operations": [
+        "SET_CHANNEL",
+        "SET_AREA",
+        "SET_VALUE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "DateInput",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "segment",
+        "hiddenInput",
+        "error"
+      ],
+      "operations": [
+        "FOCUS_SEGMENT",
+        "EDIT_SEGMENT",
+        "COMMIT"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "DatePicker",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "input",
+        "segment",
+        "trigger",
+        "positioner",
+        "content",
+        "header",
+        "previous",
+        "next",
+        "grid",
+        "gridLabel",
+        "cell",
+        "cellTrigger",
+        "hiddenInput"
+      ],
+      "operations": [
+        "NAVIGATE_MONTH",
+        "NAVIGATE_GRID",
+        "SELECT_DATE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Meter",
+      "kind": "typed-static-contract",
+      "anatomy": [
+        "root",
+        "label",
+        "track",
+        "range",
+        "valueText"
+      ],
+      "operations": [
+        "GET_STATE",
+        "GET_PARTS"
+      ],
+      "traceChannels": [
+        "state",
+        "parts"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Progress",
+      "kind": "typed-static-contract",
+      "anatomy": [
+        "root",
+        "label",
+        "track",
+        "range",
+        "circle",
+        "valueText"
+      ],
+      "operations": [
+        "GET_STATE",
+        "GET_PARTS"
+      ],
+      "traceChannels": [
+        "state",
+        "parts"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "RatingGroup",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "control",
+        "item",
+        "itemIndicator",
+        "hiddenInput",
+        "valueText"
+      ],
+      "operations": [
+        "HOVER",
+        "SELECT",
+        "KEY_STEP"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "SignaturePad",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "canvas",
+        "clear",
+        "undo",
+        "status",
+        "hiddenInput"
+      ],
+      "operations": [
+        "POINTER_START",
+        "POINTER_CANCEL",
+        "POINTER_END"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Slider",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "label",
+        "control",
+        "track",
+        "range",
+        "thumb",
+        "valueText",
+        "hiddenInput"
+      ],
+      "operations": [
+        "KEY_STEP",
+        "POINTER_START",
+        "POINTER_CANCEL",
+        "LOST_POINTER_CAPTURE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Splitter",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "panel",
+        "resizeTrigger",
+        "resizeHandle"
+      ],
+      "operations": [
+        "RESIZE_START",
+        "RESIZE_MOVE",
+        "RESIZE_CANCEL",
+        "KEY_RESIZE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Steps",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "list",
+        "item",
+        "trigger",
+        "indicator",
+        "separator",
+        "content",
+        "completed"
+      ],
+      "operations": [
+        "GO_TO",
+        "COMPLETE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Timer",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "root",
+        "value",
+        "start",
+        "pause",
+        "reset",
+        "status"
+      ],
+      "operations": [
+        "START",
+        "VISIBILITY_CHANGE",
+        "TICK",
+        "COMPLETE"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    },
+    {
+      "primitive": "Toast",
+      "kind": "interactive-controller",
+      "anatomy": [
+        "viewport",
+        "root",
+        "title",
+        "description",
+        "action",
+        "close"
+      ],
+      "operations": [
+        "ADD",
+        "PAUSE",
+        "RESUME",
+        "SWIPE_CANCEL",
+        "DISMISS",
+        "ROUTE_CHANGE",
+        "DESTROY"
+      ],
+      "traceChannels": [
+        "state",
+        "parts",
+        "callbacks",
+        "dom"
+      ],
+      "requiredLocales": [
+        "ar-EG-rtl",
+        "hi-IN",
+        "ja-JP",
+        "de-DE",
+        "fr-FR"
+      ],
+      "deterministic": true
+    }
+  ]
+}

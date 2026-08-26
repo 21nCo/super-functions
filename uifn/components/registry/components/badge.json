@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "name": "Badge",
+  "slug": "badge",
+  "batch": "batch-a",
+  "kind": "component-implementation",
+  "status": "implemented",
+  "sourcePolicy": "clean-room",
+  "owners": [
+    "platform-ui"
+  ],
+  "anatomy": [
+    "root",
+    "label"
+  ],
+  "props": [
+    "unstyled",
+    "className",
+    "parts",
+    "variant",
+    "size",
+    "surface",
+    "surfaceDepth",
+    "loading",
+    "disabled",
+    "invalid",
+    "focusVisible",
+    "active",
+    "selected"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "entry": "uifn/components-react/src/batch-a.ts",
+      "exportName": "Badge"
+    },
+    "svelte": {
+      "supported": true,
+      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "exportName": "Badge"
+    },
+    "solid": {
+      "supported": true,
+      "entry": "uifn/components-solid/src/batch-a.ts",
+      "exportName": "Badge"
+    }
+  },
+  "stories": [
+    "uifn/components/stories/batch-a/badge.stories.json#default",
+    "uifn/components/stories/batch-a/badge.stories.json#variants",
+    "uifn/components/stories/batch-a/badge.stories.json#states",
+    "uifn/components/stories/batch-a/badge.stories.json#accessibility",
+    "uifn/components/stories/batch-a/badge.stories.json#theming"
+  ],
+  "fixtures": [
+    "uifn/components/fixtures/batch-a/badge.fixture.json"
+  ],
+  "tests": [
+    "uifn/components/src/__tests__/batch-a.test.ts#registry"
+  ]
+}

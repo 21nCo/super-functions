@@ -1,0 +1,663 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  addUIFnDateDays,
+  assertUIFnRangeDirection,
+  colorUIFnDistance,
+  createUIFnCalendarDate,
+  createUIFnMonthGrid,
+  firstUIFnDayOfWeek,
+  hslaToUIFnRgba,
+  parseUIFnColor,
+  parseUIFnIsoDate,
+  resolveUIFnAxisPercent,
+  resolveUIFnZonedDateTime,
+  rgbaToUIFnHsla,
+  serializeUIFnDate,
+} from '../index';
+import { createManualRuntimeScheduler } from '../internal/runtime/scheduler';
+import {
+  MeterContract,
+  ProgressContract,
+  assertUIFnAnnouncementBudget,
+  assertUIFnCancelledGesture,
+  assertUIFnNoTimerAfterDestroy,
+  createAngleSliderController,
+  createCarouselController,
+  createColorPickerController,
+  createDateInputController,
+  createDatePickerController,
+  createRatingGroupController,
+  createSignaturePadController,
+  createSliderController,
+  createSplitterController,
+  createStepsController,
+  createTimerController,
+  createToastController,
+  createTreeViewController,
+} from '../primitives';
+
+const deterministicEnv = (locale = 'en-US', direction: 'ltr' | 'rtl' = 'ltr') => ({
+  mode: 'test' as const, locale, direction, timeZone: 'UTC', reducedMotion: true,
+  generateId: (scope: string) => `phase10-${scope}`,
+});
+
+describe('PHASE_10 exact catalog contracts', () => {
+  it('exposes exact anatomy for the twelve interactive controllers and two static contracts', () => {
+    const controllers = [
+      [createAngleSliderController({}, deterministicEnv()), ['root', 'track', 'thumb', 'valueText', 'hiddenInput']],
+      [createCarouselController({ itemCount: 3 }, deterministicEnv()), ['root', 'viewport', 'item', 'previous', 'next', 'indicatorGroup', 'indicator', 'liveRegion']],
+      [createRatingGroupController({}, deterministicEnv()), ['root', 'label', 'control', 'item', 'itemIndicator', 'hiddenInput', 'valueText']],
+      [createSliderController({}, deterministicEnv()), ['root', 'label', 'control', 'track', 'range', 'thumb', 'valueText', 'hiddenInput']],
+      [createSignaturePadController({}, deterministicEnv()), ['root', 'label', 'canvas', 'clear', 'undo', 'status', 'hiddenInput']],
+      [createSplitterController({}, deterministicEnv()), ['root', 'panel', 'resizeTrigger', 'resizeHandle']],
+      [createColorPickerController({}, deterministicEnv()), ['root', 'label', 'control', 'trigger', 'positioner', 'content', 'area', 'areaThumb', 'channelSlider', 'channelInput', 'swatch', 'hiddenInput']],
+      [createDateInputController({}, deterministicEnv()), ['root', 'label', 'segment', 'hiddenInput', 'error']],
+      [createDatePickerController({}, deterministicEnv()), ['root', 'label', 'input', 'segment', 'trigger', 'positioner', 'content', 'header', 'previous', 'next', 'grid', 'gridLabel', 'cell', 'cellTrigger', 'hiddenInput']],
+      [createTimerController({ duration: 1000 }, deterministicEnv()), ['root', 'value', 'start', 'pause', 'reset', 'status']],
+      [createStepsController({ count: 3 }, deterministicEnv()), ['root', 'list', 'item', 'trigger', 'indicator', 'separator', 'content', 'completed']],
+      [createToastController({}, deterministicEnv()), ['viewport', 'root', 'title', 'description', 'action', 'close']],
+    ] as const;
+    for (const [controller, anatomy] of controllers) {
+      expect(Object.keys(controller.parts)).toEqual(anatomy);
+      expect(controller.status).toBe('running');
+      controller.destroy();
+    }
+    expect(MeterContract.anatomy.map((part) => part.name)).toEqual(['root', 'label', 'track', 'range', 'valueText']);
+    expect(ProgressContract.anatomy.map((part) => part.name)).toEqual(['root', 'label', 'track', 'range', 'circle', 'valueText']);
+  });
+});
+
+describe('TV-PRIM-006-P/N range and gesture rigor', () => {
+  it('handles precision, RTL axes, Page/Home/End, collision, locale text, multi-pointer, cancel, and touch arbitration', () => {
+    const slider = createSliderController({ defaultValue: [0.2, 0.8], min: 0, max: 1, step: 0.1, minStepsBetweenThumbs: 2, dir: 'rtl', locale: 'de-DE' }, deterministicEnv('de-DE', 'rtl'));
+    slider.actions.keyStep(0, 'ArrowRight');
+    expect(slider.state.value).toEqual([0.1, 0.8]);
+    slider.actions.keyStep(0, 'PageUp');
+    expect(slider.state.value).toEqual([0.6, 0.8]);
+    slider.actions.keyStep(0, 'End');
+    expect(slider.state.value).toEqual([0.6, 0.8]);
+    expect(slider.state.valueText[0]).toBe('0,6');
+
+    slider.actions.pointerStart(11, 20, 'mouse');
+    slider.actions.pointerStart(12, 80, 'pen');
+    expect(Object.keys(slider.state.pointers)).toHaveLength(2);
+    slider.actions.pointerCancel(11);
+    const afterCancel = slider.state.value;
+    slider.actions.pointerMove(11, 99);
+    expect(slider.state.value).toEqual(afterCancel);
+    assertUIFnCancelledGesture(slider, 11);
+    slider.actions.lostPointerCapture(12);
+    expect(slider.state.interaction).toBe('idle');
+
+    slider.actions.pointerStart(13, 50, 'touch');
+    slider.actions.pointerMove(13, 55, { x: 50, y: 70 });
+    expect(slider.state.cancelledPointers).toContain(13);
+    expect(resolveUIFnAxisPercent({ x: 25, y: 0 }, { left: 0, top: 0, width: 100, height: 100 }, 'horizontal', 'rtl')).toBe(75);
+    slider.destroy();
+  });
+
+  it('covers angle, carousel reduced motion, rating, signature cancel, and splitter conservation', () => {
+    const angle = createAngleSliderController({ defaultValue: 0, step: 15, locale: 'hi-IN' }, deterministicEnv('hi-IN'));
+    angle.actions.keyStep('PageUp');
+    expect(angle.state.value).toBe(150);
+    angle.actions.pointerStart(1, 90, 'touch'); angle.actions.lostPointerCapture(1); angle.actions.pointerMove(1, 180);
+    expect(angle.state.value).toBe(90);
+
+    const carousel = createCarouselController({ itemCount: 3, autoplayDelay: 10, reducedMotion: true, loop: true }, deterministicEnv());
+    expect(carousel.state.interaction).toBe('idle');
+    expect(carousel.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.next.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.indicator.getProps(0).attributes?.type).toBe('button');
+    carousel.actions.dragStart(1, { x: 100, y: 0 }, 'touch'); carousel.actions.dragMove(1, { x: 50, y: 2 }); carousel.actions.dragEnd(1);
+    expect(carousel.state.index).toBe(1);
+
+    const rating = createRatingGroupController({ allowHalf: true, defaultValue: 2.5, locale: 'hi-IN' }, deterministicEnv('hi-IN'));
+    rating.actions.keyStep('ArrowRight'); expect(rating.state.value).toBe(3);
+    const requiredRating = createRatingGroupController({ required: true, name: 'rating' }, deterministicEnv());
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({
+      type: 'radio',
+      checked: false,
+      required: true,
+      value: '',
+    });
+    requiredRating.actions.select(4);
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({ checked: true, value: 4 });
+
+    const signature = createSignaturePadController({}, deterministicEnv());
+    signature.actions.pointerStart(1, { x: 0, y: 0, pressure: 0.5, time: 0 });
+    signature.actions.pointerStart(2, { x: 2, y: 2, pressure: 1, time: 0 });
+    signature.actions.pointerCancel(1); signature.actions.pointerEnd(2);
+    expect(signature.state.strokes).toHaveLength(1); expect(signature.state.cancelledPointers).toEqual([1]);
+
+    const splitter = createSplitterController({ defaultSizes: [40, 60], minSizes: [20, 20], maxSizes: [80, 80], dir: 'rtl' }, deterministicEnv('ar-EG', 'rtl'));
+    splitter.actions.resize(0, 10); expect(splitter.state.sizes).toEqual([30, 70]);
+    expect(splitter.state.sizes.reduce((sum, value) => sum + value, 0)).toBe(100);
+    angle.destroy(); carousel.destroy(); rating.destroy(); requiredRating.destroy(); signature.destroy(); splitter.destroy();
+  });
+
+  it('synchronizes carousel props, callbacks, requests, and autoplay after creation', () => {
+    const scheduler = createManualRuntimeScheduler();
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const carousel = createCarouselController({
+      index: 1,
+      itemCount: 4,
+      autoplayDelay: 100,
+      reducedMotion: true,
+      onIndexChange: initialChange,
+    }, { ...deterministicEnv(), scheduler });
+    expect(scheduler.pending().timeout).toBe(0);
+
+    carousel.update({
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      autoplayDelay: 25,
+      reducedMotion: false,
+      locale: 'de-DE',
+      messages: {
+        carousel: 'Galerie',
+        slide: 'Folie',
+        item: (index, count) => `${index + 1} von ${count}`,
+      },
+      onIndexChange: updatedChange,
+    });
+    expect(carousel.state).toMatchObject({
+      index: 1,
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      interaction: 'autoplaying',
+      reducedMotion: false,
+    });
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Galerie');
+    expect(carousel.parts.item.getProps(1).aria).toMatchObject({
+      roledescription: 'Folie',
+      label: '2 von 2',
+    });
+    expect(scheduler.pending().timeout).toBe(1);
+
+    carousel.actions.next();
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(0);
+    const callbackCount = updatedChange.mock.calls.length;
+    carousel.update({ itemCount: 0 });
+    expect(scheduler.pending().timeout).toBe(0);
+    expect(carousel.state.interaction).toBe('idle');
+    scheduler.advanceBy(100);
+    expect(updatedChange).toHaveBeenCalledTimes(callbackCount);
+    carousel.update({ itemCount: 2 });
+    expect(scheduler.pending().timeout).toBe(1);
+    carousel.update({ messages: { carousel: 'Aktualisierte Galerie' } });
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Aktualisierte Galerie');
+
+    carousel.update({ autoplayDelay: 0 });
+    expect(carousel.state.interaction).toBe('idle');
+    expect(scheduler.pending().timeout).toBe(0);
+    carousel.update({ index: 0, itemCount: 0 });
+    expect(carousel.state).toMatchObject({ index: 0, itemCount: 0 });
+    expect(carousel.state.requestedIndex).toBeUndefined();
+    expect(carousel.parts.previous.getProps().disabled).toBe(true);
+    expect(carousel.parts.next.getProps().disabled).toBe(true);
+    carousel.destroy();
+  });
+
+  it('synchronizes signature pad props, controlled mode, callbacks, and messages', () => {
+    const point = { x: 1, y: 2, pressure: 0.5, time: 10 };
+    const initialStroke = Object.freeze([point]);
+    const nextStroke = Object.freeze([{ ...point, x: 3 }]);
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const signature = createSignaturePadController({
+      value: [initialStroke],
+      name: 'old-signature',
+      messages: { empty: 'Empty', complete: 'Complete' },
+      onValueChange: initialChange,
+    }, deterministicEnv());
+
+    signature.actions.pointerStart(1, point);
+    signature.actions.pointerEnd(1);
+    expect(signature.state.strokes).toEqual([initialStroke]);
+    expect(signature.state.requestedValue).toHaveLength(2);
+    expect(initialChange).toHaveBeenCalledOnce();
+
+    signature.actions.pointerStart(2, point);
+    signature.update({
+      value: [nextStroke],
+      name: 'new-signature',
+      disabled: true,
+      readOnly: true,
+      required: true,
+      messages: { empty: 'Nothing drawn', complete: 'Signed' },
+      onValueChange: updatedChange,
+    });
+    expect(signature.state).toMatchObject({
+      strokes: [nextStroke],
+      active: {},
+      status: 'complete',
+      statusMessage: 'Signed',
+      disabled: true,
+      readOnly: true,
+      required: true,
+    });
+    expect(signature.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-signature',
+      required: true,
+      disabled: true,
+    });
+    signature.actions.pointerEnd(2);
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    signature.update({ value: undefined, disabled: false, readOnly: false });
+    signature.actions.clear();
+    expect(signature.state).toMatchObject({
+      strokes: [],
+      status: 'empty',
+      statusMessage: 'Nothing drawn',
+    });
+    expect(signature.state.requestedValue).toBeUndefined();
+    expect(initialChange).toHaveBeenCalledOnce();
+    expect(updatedChange).toHaveBeenCalledWith([]);
+    signature.destroy();
+  });
+
+  it('synchronizes mutable angle slider inputs after creation', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const angle = createAngleSliderController({
+      value: 90,
+      min: 0,
+      max: 360,
+      step: 10,
+      name: 'old-angle',
+      onValueChange: initialChange,
+    }, deterministicEnv('en-US'));
+
+    angle.update({
+      min: -180,
+      max: 180,
+      step: 5,
+      locale: 'de-DE',
+      name: 'new-angle',
+      disabled: true,
+      readOnly: true,
+      onValueChange: updatedChange,
+    });
+    expect(angle.state).toMatchObject({
+      value: 90,
+      min: -180,
+      max: 180,
+      step: 5,
+      disabled: true,
+      readOnly: true,
+    });
+    expect(angle.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-angle',
+      disabled: true,
+    });
+    angle.actions.setValue(100);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    angle.update({ disabled: false, readOnly: false, value: undefined });
+    angle.actions.setValue(102);
+    expect(angle.state.value).toBe(100);
+    expect(updatedChange).toHaveBeenCalledWith(100);
+    angle.destroy();
+  });
+
+  it('synchronizes splitter interaction inputs, bounds, controlled mode, and callbacks', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const splitter = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [20, 20],
+      maxSizes: [80, 80],
+      onSizesChange: initialChange,
+    }, deterministicEnv());
+
+    splitter.actions.resizeStart(1, 0, 40);
+    splitter.update({
+      orientation: 'vertical',
+      dir: 'rtl',
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      locale: 'de-DE',
+      disabled: true,
+      onSizesChange: updatedChange,
+    });
+    expect(splitter.state).toMatchObject({
+      sizes: [40, 60],
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      orientation: 'vertical',
+      dir: 'rtl',
+      disabled: true,
+      resizing: null,
+      pointers: {},
+    });
+    splitter.actions.resize(0, 10);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    splitter.update({
+      sizes: undefined,
+      orientation: 'horizontal',
+      dir: 'ltr',
+      minSizes: [45, 0],
+      maxSizes: [60, 100],
+      disabled: false,
+    });
+    splitter.actions.resize(0, 20);
+    expect(splitter.state.sizes).toEqual([60, 40]);
+    expect(splitter.parts.resizeTrigger.getProps(0).aria).toMatchObject({
+      valuemin: 45,
+      valuemax: 60,
+      valuenow: 60,
+    });
+    expect(updatedChange).toHaveBeenCalledWith([60, 40]);
+    splitter.destroy();
+  });
+
+  it('reconciles splitter state and pending controlled requests when bounds tighten', () => {
+    const uncontrolled = createSplitterController({
+      defaultSizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    uncontrolled.update({ minSizes: [50, 0] });
+    expect(uncontrolled.state.sizes).toEqual([50, 50]);
+
+    const controlled = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    controlled.actions.resize(0, -10);
+    expect(controlled.state.requestedSizes).toEqual([30, 70]);
+    controlled.update({ minSizes: [35, 0] });
+    expect(controlled.state.sizes).toEqual([40, 60]);
+    expect(controlled.state.requestedSizes).toEqual([35, 65]);
+    controlled.update({ sizes: [20, 80] });
+    expect(controlled.state.sizes).toEqual([35, 65]);
+    expect(controlled.state.requestedSizes).toBeUndefined();
+    uncontrolled.destroy();
+    controlled.destroy();
+  });
+
+  it('recomputes Steps state and navigation when count changes', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const steps = createStepsController({
+      step: 1,
+      count: 3,
+      onStepChange: initialChange,
+    }, deterministicEnv());
+
+    steps.update({
+      step: undefined,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      errors: [4],
+      locale: 'de-DE',
+      label: 'Fortschritt',
+      onStepChange: updatedChange,
+    });
+    expect(steps.state).toMatchObject({
+      step: 1,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      statuses: ['complete', 'current', 'upcoming', 'upcoming', 'error'],
+    });
+    expect(steps.parts.root.getProps().aria?.label).toBe('Fortschritt');
+    steps.actions.goTo(4);
+    expect(steps.state.step).toBe(4);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(4);
+
+    steps.update({ count: 2 });
+    expect(steps.state).toMatchObject({ step: 1, count: 2 });
+    expect(steps.state.statuses).toHaveLength(2);
+    steps.destroy();
+  });
+
+  it('preserves Steps completion for equivalent updates and clears it for a changed owner step', () => {
+    const steps = createStepsController({ count: 3, defaultStep: 2, errors: [0, 1] }, deterministicEnv());
+    steps.actions.complete();
+    steps.update({ count: 3, errors: [1, 0] });
+    expect(steps.state).toMatchObject({ completed: true, status: 'complete', step: 2 });
+    steps.update({ step: 1 });
+    expect(steps.state).toMatchObject({ completed: false, status: 'in-progress', step: 1 });
+    steps.destroy();
+  });
+
+  it('negative classifier names wrong RTL behavior precisely', () => {
+    expect(() => assertUIFnRangeDirection(60, 40, { vector: 'TV-PRIM-006-N' })).toThrowError(expect.objectContaining({ code: 'UIFN_RANGE_DIRECTION_INVALID' }));
+  });
+});
+
+describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
+  it('detects DST gap/fold without host parsing and preserves structured locale calendar values', () => {
+    const gap = resolveUIFnZonedDateTime({ ...createUIFnCalendarDate(2024, 3, 10), hour: 2, minute: 30 }, 'America/New_York');
+    const fold = resolveUIFnZonedDateTime({ ...createUIFnCalendarDate(2024, 11, 3), hour: 1, minute: 30 }, 'America/New_York');
+    expect(gap.kind).toBe('gap');
+    expect(fold.kind).toBe('fold');
+    expect(fold.instants).toHaveLength(2);
+    expect(parseUIFnIsoDate('2024-02-29')).toEqual({ calendar: 'gregory', year: 2024, month: 2, day: 29 });
+    expect(() => parseUIFnIsoDate('02/29/2024')).toThrowError(expect.objectContaining({ code: 'UIFN_AMBIENT_DATE_PARSE' }));
+    expect(firstUIFnDayOfWeek('de-DE')).toBe(1);
+    const early = createUIFnCalendarDate(5, 2, 28);
+    expect(serializeUIFnDate(early)).toBe('0005-02-28');
+    expect(addUIFnDateDays(createUIFnCalendarDate(99, 12, 31), 1))
+      .toEqual(createUIFnCalendarDate(100, 1, 1));
+    expect(createUIFnMonthGrid(createUIFnCalendarDate(5, 1, 1), 'en-US'))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ year: 1905 })]));
+
+    const input = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 2, 29), locale: 'ja-JP', calendar: 'japanese', min: createUIFnCalendarDate(2024, 1, 1), max: createUIFnCalendarDate(2024, 12, 31) }, deterministicEnv('ja-JP'));
+    input.actions.editSegment('year', 2023);
+    expect(input.state.value).toEqual(createUIFnCalendarDate(2023, 2, 28));
+    expect(input.state.valid).toBe(false);
+    expect(input.state.message).toBe('');
+    const mutableInput = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 6, 1), name: 'start' }, deterministicEnv());
+    mutableInput.update({ disabled: true, min: createUIFnCalendarDate(2025, 1, 1), name: 'updated-start' });
+    expect(mutableInput.state).toMatchObject({ disabled: true, valid: false });
+    expect(mutableInput.parts.hiddenInput.getProps().attributes).toMatchObject({ disabled: true, name: 'updated-start' });
+    mutableInput.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutableInput.state.value).toEqual(createUIFnCalendarDate(2024, 6, 1));
+
+    const picker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), locale: 'de-DE', unavailable: (date) => date.day === 9 }, deterministicEnv('de-DE'));
+    expect(picker.parts.trigger.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.next.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.cellTrigger.getProps('2024-03-08').attributes?.type).toBe('button');
+    picker.actions.navigateGrid('ArrowRight');
+    expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
+    expect(picker.state.grid).toHaveLength(42);
+    const mutablePicker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), defaultOpen: true }, deterministicEnv());
+    mutablePicker.update({ disabled: true, readOnly: true });
+    expect(mutablePicker.state).toMatchObject({ disabled: true, readOnly: true });
+    expect(mutablePicker.parts.trigger.getProps().disabled).toBe(true);
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    const disabledFocusedDate = mutablePicker.state.focusedDate;
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    mutablePicker.parts.grid.getProps().on?.keydown?.({ key: 'ArrowRight' });
+    expect(mutablePicker.state).toMatchObject({
+      value: createUIFnCalendarDate(2024, 3, 8),
+      focusedDate: disabledFocusedDate,
+      valid: true,
+    });
+    expect(mutablePicker.parts.segment.getProps('day')).toMatchObject({
+      tabIndex: -1,
+      aria: { disabled: true, readonly: true },
+    });
+    mutablePicker.update({ disabled: false, readOnly: true });
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
+    const bounded = createDatePickerController({
+      defaultValue: createUIFnCalendarDate(2024, 3, 10),
+      min: createUIFnCalendarDate(2024, 3, 8),
+      max: createUIFnCalendarDate(2024, 3, 10),
+      unavailable: (date) => date.day === 9,
+    }, deterministicEnv());
+    bounded.actions.navigateGrid('ArrowRight');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    input.destroy(); mutableInput.destroy(); picker.destroy(); mutablePicker.destroy(); bounded.destroy();
+  });
+
+  it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
+    const source = parseUIFnColor('#33aaff80');
+    const hsl = rgbaToUIFnHsla(source);
+    const roundTrip = hslaToUIFnRgba(hsl);
+    expect(colorUIFnDistance(source, roundTrip)).toBeLessThanOrEqual(1);
+    const picker = createColorPickerController({ defaultValue: '#33aaff80', colorSpace: 'hsl', alpha: true }, deterministicEnv());
+    picker.actions.setChannel('h', 720);
+    expect(picker.state.channels.h).toBeLessThanOrEqual(360);
+    expect(picker.state.roundTripError).toBeLessThanOrEqual(1);
+    expect(picker.state.value.alpha).toBeCloseTo(128 / 255, 4);
+    picker.destroy();
+
+    const keyboardPicker = createColorPickerController({ defaultValue: '#33669980', colorSpace: 'srgb', alpha: true }, deterministicEnv());
+    const redSlider = keyboardPicker.parts.channelSlider.getProps('r');
+    expect(redSlider.tabIndex).toBe(0);
+    const redBefore = Number(redSlider.aria?.valuenow);
+    const preventDefault = vi.fn();
+    redSlider.on?.keydown?.({ key: 'ArrowRight', preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(keyboardPicker.state.channels.r).toBe(redBefore + 1);
+
+    keyboardPicker.parts.channelSlider.getProps('alpha').on?.keydown?.({ key: 'End', preventDefault: vi.fn() });
+    expect(keyboardPicker.state.channels.alpha).toBe(1);
+    keyboardPicker.parts.channelSlider.getProps('alpha').on?.keydown?.({ key: 'ArrowRight', preventDefault: vi.fn() });
+    expect(keyboardPicker.state.channels.alpha).toBe(1);
+    keyboardPicker.parts.channelSlider.getProps('alpha').on?.keydown?.({ key: 'Home', preventDefault: vi.fn() });
+    expect(keyboardPicker.state.channels.alpha).toBe(0);
+
+    const saturationBefore = rgbaToUIFnHsla(keyboardPicker.state.value).s;
+    const areaThumb = keyboardPicker.parts.areaThumb.getProps();
+    expect(areaThumb.tabIndex).toBe(0);
+    areaThumb.on?.keydown?.({ key: 'ArrowLeft', preventDefault: vi.fn() });
+    expect(rgbaToUIFnHsla(keyboardPicker.state.value).s).toBeLessThan(saturationBefore);
+
+    keyboardPicker.update({ disabled: true, colorSpace: 'hsl', alpha: false, name: 'updated-color' });
+    const disabledColor = keyboardPicker.state.value;
+    expect(keyboardPicker.state).toMatchObject({ disabled: true, colorSpace: 'hsl', alpha: false });
+    expect(keyboardPicker.parts.hiddenInput.getProps().attributes?.name).toBe('updated-color');
+    keyboardPicker.actions.setChannel('h', 180);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+    keyboardPicker.update({ disabled: false, readOnly: true });
+    keyboardPicker.actions.setArea(50, 50);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+
+    keyboardPicker.destroy();
+  });
+
+  it('derives elapsed time from injected now across pause, visibility, drift, completion, and destroy', () => {
+    const scheduler = createManualRuntimeScheduler(1000); const complete = vi.fn();
+    const timer = createTimerController({ duration: 10_000, announceInterval: 1000, onComplete: complete }, { scheduler, now: scheduler.now, locale: 'de-DE' });
+    expect(timer.parts.start.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.pause.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.reset.getProps().attributes?.type).toBe('button');
+    timer.actions.start(); scheduler.advanceBy(3333); timer.actions.tick();
+    expect(timer.state.remaining).toBe(6667);
+    timer.actions.visibilityChange(true); scheduler.advanceBy(5000); expect(timer.state.remaining).toBe(6667);
+    timer.actions.visibilityChange(false); scheduler.advanceBy(6667);
+    expect(timer.state.remaining).toBe(0); expect(complete).toHaveBeenCalledOnce();
+    expect(timer.state.announcementCount).toBeLessThanOrEqual(11);
+    timer.destroy(); scheduler.advanceBy(1000); expect(complete).toHaveBeenCalledOnce(); expect(scheduler.pending().timeout).toBe(0);
+
+    const mutableTimer = createTimerController({ duration: 5000 }, { scheduler, now: scheduler.now });
+    mutableTimer.update({ duration: 2000, direction: 'up', autoStart: true, announceInterval: 500 });
+    expect(mutableTimer.state).toMatchObject({ duration: 2000, direction: 'up', status: 'running' });
+    scheduler.advanceBy(250);
+    mutableTimer.actions.tick();
+    expect(mutableTimer.state.remaining).toBe(250);
+    mutableTimer.update({ autoStart: false });
+    expect(mutableTimer.state.status).toBe('paused');
+    mutableTimer.destroy();
+  });
+
+  it('rejects non-finite timer inputs before they can enter a runtime snapshot', () => {
+    expect(() => createTimerController({ duration: Number.POSITIVE_INFINITY }, deterministicEnv())).toThrowError(
+      expect.objectContaining({ code: 'UIFN_ERR_INVALID_VALUE' }),
+    );
+  });
+});
+
+describe('TV-PRIM-008-P/N status, workflow, queue, and lifecycle', () => {
+  it('publishes native/ARIA determinate, indeterminate, meter, steps, and tree workflow state', () => {
+    const meter = MeterContract.getParts({ value: 90, max: 100, low: 30, high: 70, optimum: 10, locale: 'de-DE' }, { scopeId: 'meter' });
+    expect(meter.root.role).toBe('meter'); expect(meter.root.aria?.valuenow).toBe(90); expect(meter.root.data?.state).toBe('critical');
+    const indeterminate = ProgressContract.getParts({ value: null }, { scopeId: 'progress' });
+    expect(indeterminate.root.aria?.valuenow).toBeUndefined();
+    const complete = ProgressContract.getParts({ value: 100, max: 100 }, { scopeId: 'progress-complete' });
+    expect(complete.root.data?.state).toBe('complete');
+
+    const steps = createStepsController({ count: 4, defaultStep: 1, errors: [3], locale: 'hi-IN' }, deterministicEnv('hi-IN'));
+    expect(steps.parts.item.getProps(1).aria?.current).toBe('step'); expect(steps.parts.item.getProps(3).data?.state).toBe('error');
+    const completedSteps = createStepsController({ count: 3, defaultStep: 2, locale: 'de-DE' }, deterministicEnv('de-DE'));
+    completedSteps.actions.complete(); expect(completedSteps.state.status).toBe('complete'); expect(completedSteps.state.statuses).toEqual(['complete', 'complete', 'complete']);
+    const tree = createTreeViewController({ items: [{ id: 'build', status: 'current' }, { id: 'ship', status: 'pending' }] }, deterministicEnv());
+    expect(tree.parts.item.getProps('build').aria?.current).toBe('step'); tree.actions.setStatus('ship', 'error'); expect(tree.parts.item.getProps('ship').aria?.invalid).toBe(true);
+    steps.destroy(); completedSteps.destroy(); tree.destroy();
+  });
+
+  it('enforces toast limit, duplicate policy, deadline pause, swipe, announcement order, callbacks, route cleanup, and destroy', () => {
+    const scheduler = createManualRuntimeScheduler(); const callbacks: string[] = [];
+    const toast = createToastController({ limit: 2, duration: 1000, duplicatePolicy: 'ignore', toasts: [{ id: 'a' }, { id: 'b', politeness: 'assertive' }, { id: 'c' }], onDismiss: (id, reason) => callbacks.push(`dismiss:${id}:${reason}`), onRemove: (id) => callbacks.push(`remove:${id}`) }, { scheduler, now: scheduler.now });
+    expect(toast.state.visible.map((item) => item.id)).toEqual(['a', 'b']); expect(toast.state.queued.map((item) => item.id)).toEqual(['c']);
+    const close = toast.parts.close.getProps('a', { aria: { label: 'Close' } });
+    expect(close.aria).toMatchObject({
+      controls: toast.parts.root.getProps('a').id,
+      label: 'Dismiss notification',
+    });
+    expect(close.warnings).toContain('UIFN_PART_INVARIANT_OVERRIDDEN');
+    toast.actions.add({ id: 'a' }); expect(toast.state.visible).toHaveLength(2);
+    toast.actions.pause('window'); scheduler.advanceBy(5000); expect(toast.state.visible).toHaveLength(2);
+    toast.actions.resume('window'); toast.actions.swipeStart('a'); toast.actions.swipeMove('a', 50); toast.actions.swipeEnd('a');
+    expect(toast.state.visible.map((item) => item.id)).toEqual(['b', 'c']);
+    expect(callbacks.slice(0, 2)).toEqual(['dismiss:a:swipe', 'remove:a']);
+    expect(toast.state.announcements.map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
+    toast.actions.routeChange(); expect(toast.state.visible).toEqual([]); expect(toast.state.queued).toEqual([]);
+    const count = callbacks.length; toast.destroy(); scheduler.advanceBy(5000); expect(callbacks).toHaveLength(count); expect(scheduler.pending().timeout).toBe(0);
+  });
+
+  it('represents persistent toast deadlines with a serializable null sentinel', () => {
+    const scheduler = createManualRuntimeScheduler();
+    const toast = createToastController({ toasts: [{ id: 'persistent', duration: Number.POSITIVE_INFINITY }] }, { scheduler, now: scheduler.now });
+    expect(toast.state.visible[0]).toMatchObject({ id: 'persistent', duration: null, remaining: null });
+    expect(JSON.parse(JSON.stringify(toast.state)).visible[0].remaining).toBeNull();
+    expect(scheduler.pending().timeout).toBe(0);
+    toast.destroy();
+  });
+
+  it('negative policies fail with the exact announcement and stale-timer codes', () => {
+    expect(() => assertUIFnAnnouncementBudget(11, 10)).toThrowError(expect.objectContaining({ code: 'UIFN_ANNOUNCEMENT_FLOOD' }));
+    expect(() => assertUIFnNoTimerAfterDestroy(1)).toThrowError(expect.objectContaining({ code: 'UIFN_TIMER_AFTER_DESTROY' }));
+  });
+});
+
+describe('TV-I18N-001-P/N cross-catalog scenarios', () => {
+  it('covers Arabic RTL, Hindi digits, Japanese structured display, and European number/date rules without core English sentences', () => {
+    const rtl = createSliderController({ defaultValue: [50], dir: 'rtl', locale: 'ar-EG' }, deterministicEnv('ar-EG', 'rtl'));
+    rtl.actions.keyStep(0, 'ArrowRight'); expect(rtl.state.value).toEqual([49]); expect(rtl.state.valueText[0]).not.toBe('49');
+    const hindi = createAngleSliderController({ defaultValue: 45, locale: 'hi-IN' }, deterministicEnv('hi-IN')); expect(hindi.state.valueText).toContain('45');
+    const japanese = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 1, 2), locale: 'ja-JP', calendar: 'japanese', messages: { invalid: '無効' } }, deterministicEnv('ja-JP')); expect(japanese.state.displayValue).toBeTruthy();
+    const european = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 1, 2), locale: 'de-DE' }, deterministicEnv('de-DE')); expect(firstUIFnDayOfWeek(european.state.locale)).toBe(1);
+    expect(() => assertUIFnRangeDirection(49, 51, { vector: 'TV-I18N-001-N' })).toThrowError(expect.objectContaining({ code: 'UIFN_RANGE_DIRECTION_INVALID' }));
+    rtl.destroy(); hindi.destroy(); japanese.destroy(); european.destroy();
+  });
+});

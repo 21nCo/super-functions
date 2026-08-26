@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@uifn/components": ["../../components/src/index.ts"],
+      "@uifn/components-svelte": ["../../components-svelte/src/index.ts"],
+      "@uifn/examples-shared": ["../shared/src/index.ts"],
+      "@uifn/patterns": ["../../patterns/src/index.ts"],
+      "@uifn/sf": ["../../sf/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "vite.config.ts"]
+}
