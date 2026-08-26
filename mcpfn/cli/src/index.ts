@@ -1,16 +1,24 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { cac } from "cac";
+import { diagnoseMcpAuthorization } from "@mcpfn/auth";
+import {
+  stdioTarget,
+  streamableHttpTarget,
+  type McpFnTarget,
+} from "@mcpfn/client";
 import {
   diffManifests,
   validateManifest,
   type McpFnManifest,
 } from "@mcpfn/core";
+import { McpFnInspector } from "@mcpfn/inspector";
 import {
   McpFnTestClient,
   McpFnAssertionError,
   assertManifestContract,
   runOfficialConformance,
+  runMcpFnTargetSuite,
   runScenarios,
 } from "@mcpfn/testing";
 
@@ -159,6 +167,69 @@ export async function runCli(
       exitCode = result.exitCode;
     });
 
+  cli.command("inspect <target>", "Inventory an HTTP or stdio MCP target")
+    .option("--stdio", "Treat target as an executable instead of an HTTP URL")
+    .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--output <path>", "Write the redacted JSON snapshot")
+    .action(async (targetValue: string, options: {
+      stdio?: boolean;
+      args?: string;
+      output?: string;
+    }) => {
+      const target = parseTarget(targetValue, options, cwd);
+      const inspector = McpFnInspector.create({ target });
+      await inspector.connect();
+      try {
+        const serialized = `${JSON.stringify(await inspector.snapshot(), null, 2)}\n`;
+        if (options.output) {
+          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        }
+        stdout(serialized);
+      } finally {
+        await inspector.close();
+      }
+    });
+
+  cli.command("test-target <target> <scenarios>", "Run scenarios against an HTTP or stdio MCP target")
+    .option("--stdio", "Treat target as an executable instead of an HTTP URL")
+    .option("--args <json>", "JSON array of stdio executable arguments")
+    .option("--output <path>", "Write the JSON report")
+    .action(async (targetValue: string, scenariosPath: string, options: {
+      stdio?: boolean;
+      args?: string;
+      output?: string;
+    }) => {
+      const report = await runMcpFnTargetSuite({
+        target: parseTarget(targetValue, options, cwd),
+        scenarios: await loadScenarios(scenariosPath, cwd),
+      });
+      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      if (options.output) {
+        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      stdout(serialized);
+      if (!report.ok) exitCode = 1;
+    });
+
+  cli.command("auth-diagnose <url>", "Probe OAuth discovery without opening a browser")
+    .option("--timeout <milliseconds>", "Per-request timeout in milliseconds")
+    .option("--output <path>", "Write the redacted JSON report")
+    .action(async (url: string, options: { timeout?: string; output?: string }) => {
+      const timeoutMs = options.timeout === undefined
+        ? undefined
+        : Number.parseInt(options.timeout, 10);
+      if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 1)) {
+        throw new Error("--timeout must be a positive integer");
+      }
+      const report = await diagnoseMcpAuthorization(url, { timeoutMs });
+      const serialized = `${JSON.stringify(report, null, 2)}\n`;
+      if (options.output) {
+        await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+      }
+      stdout(serialized);
+      if (!report.ok) exitCode = 1;
+    });
+
   cli.help();
   cli.version("0.0.1");
   try {
@@ -175,4 +246,24 @@ export async function runCli(
     return 2;
   }
   return exitCode;
+}
+
+function parseTarget(
+  targetValue: string,
+  options: { stdio?: boolean; args?: string },
+  cwd: string,
+): McpFnTarget {
+  if (!options.stdio) {
+    if (options.args) throw new Error("--args requires --stdio");
+    return streamableHttpTarget(targetValue);
+  }
+  let args: string[] | undefined;
+  if (options.args) {
+    const parsed = JSON.parse(options.args) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "string")) {
+      throw new Error("--args must be a JSON array of strings");
+    }
+    args = parsed;
+  }
+  return stdioTarget({ command: targetValue, args, cwd });
 }

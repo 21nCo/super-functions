@@ -22,7 +22,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.25.2"
+    "@modelcontextprotocol/sdk": "1.25.2",
+    "@superfunctions/auth": "0.1.2",
+    "@superfunctions/oauth-core": "0.0.1",
+    "@superfunctions/oauth-storage": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

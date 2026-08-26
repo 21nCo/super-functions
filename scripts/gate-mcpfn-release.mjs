@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -60,11 +60,14 @@ function verifyDocumentation() {
   const files = [
     "mcpfn/README.md",
     "mcpfn/ARCHITECTURE.md",
+    "mcpfn/ADOPTION.md",
     "mcpfn/TESTING.md",
     "mcpfn/MIGRATION.md",
     "mcpfn/core/README.md",
+    "mcpfn/client/README.md",
     "mcpfn/auth/README.md",
     "mcpfn/testing/README.md",
+    "mcpfn/inspector/README.md",
     "mcpfn/datafn/README.md",
     "mcpfn/cli/README.md",
   ];
@@ -137,10 +140,86 @@ function verifyPackage(packagePath) {
   }
 }
 
+function verifyPackedConsumer() {
+  const consumerRoot = path.join(temporaryRoot, "consumer");
+  mkdirSync(consumerRoot, { recursive: true });
+  writeFileSync(
+    path.join(consumerRoot, "package.json"),
+    JSON.stringify({ private: true, type: "module" }),
+  );
+  const packagePaths = [
+    "packages/auth",
+    "packages/observability",
+    "packages/db",
+    "packages/oauth-storage",
+    "packages/oauth-core",
+    "mcpfn/core",
+    "mcpfn/client",
+    "mcpfn/auth",
+    "mcpfn/testing",
+    "mcpfn/inspector",
+    "mcpfn/cli",
+  ];
+  const tarballs = packagePaths.map((packagePath) => {
+    const packed = npmStep(
+      `consumer:pack:${packagePath}`,
+      ["pack", "--json", "--pack-destination", temporaryRoot],
+      { cwd: path.join(repoRoot, packagePath) },
+    );
+    return path.join(temporaryRoot, JSON.parse(packed.stdout)[0].filename);
+  });
+  npmStep(
+    "consumer:install",
+    [
+      "install",
+      "--ignore-scripts",
+      "--legacy-peer-deps",
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+      ...tarballs,
+    ],
+    { cwd: consumerRoot },
+  );
+  const packageNames = [
+    "@mcpfn/core",
+    "@mcpfn/client",
+    "@mcpfn/auth",
+    "@mcpfn/testing",
+    "@mcpfn/inspector",
+    "@mcpfn/cli",
+  ];
+  run("consumer:esm-import", process.execPath, [
+    "--input-type=module",
+    "-e",
+    `for (const name of ${JSON.stringify(packageNames)}) { const loaded = await import(name); if (!Object.keys(loaded).length) throw new Error(name + " has no exports"); }`,
+  ], { cwd: consumerRoot });
+  run("consumer:cjs-require", process.execPath, [
+    "-e",
+    `for (const name of ${JSON.stringify(packageNames)}) { const loaded = require(name); if (!Object.keys(loaded).length) throw new Error(name + " has no exports"); }`,
+  ], { cwd: consumerRoot });
+}
+
 try {
+  for (const workspace of [
+    "@superfunctions/auth",
+    "@superfunctions/observability",
+    "@superfunctions/db",
+    "@superfunctions/oauth-storage",
+  ]) {
+    npmStep(`dependency:build:${workspace}`, ["run", "build", "--workspace", workspace]);
+  }
+  npmStep("oauth-core:typecheck", ["run", "typecheck", "--workspace", "@superfunctions/oauth-core"]);
+  npmStep("oauth-core:test", ["run", "test", "--workspace", "@superfunctions/oauth-core"]);
+  npmStep("oauth-core:build", ["run", "build", "--workspace", "@superfunctions/oauth-core"]);
+
   npmStep("core:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/core"]);
   npmStep("core:test", ["run", "test", "--workspace", "@mcpfn/core"]);
   npmStep("core:build", ["run", "build", "--workspace", "@mcpfn/core"]);
+
+  npmStep("client:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/client"]);
+  npmStep("client:test", ["run", "test", "--workspace", "@mcpfn/client"]);
+  npmStep("client:build", ["run", "build", "--workspace", "@mcpfn/client"]);
 
   npmStep("auth:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/auth"]);
   npmStep("auth:test", ["run", "test", "--workspace", "@mcpfn/auth"]);
@@ -150,6 +229,10 @@ try {
   npmStep("testing:test", ["run", "test", "--workspace", "@mcpfn/testing"]);
   npmStep("testing:playwright", ["run", "test:playwright", "--workspace", "@mcpfn/testing"]);
   npmStep("testing:build", ["run", "build", "--workspace", "@mcpfn/testing"]);
+
+  npmStep("inspector:typecheck", ["run", "typecheck", "--workspace", "@mcpfn/inspector"]);
+  npmStep("inspector:test", ["run", "test", "--workspace", "@mcpfn/inspector"]);
+  npmStep("inspector:build", ["run", "build", "--workspace", "@mcpfn/inspector"]);
 
   for (const workspace of [
     "@datafn/core",
@@ -187,7 +270,7 @@ try {
   ]);
   run("official:conformance", process.execPath, ["scripts/test-mcpfn-conformance.mjs"]);
 
-  const packageNames = ["@mcpfn/core", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/datafn", "@mcpfn/cli"];
+  const packageNames = ["@mcpfn/core", "@mcpfn/client", "@mcpfn/auth", "@mcpfn/testing", "@mcpfn/inspector", "@mcpfn/datafn", "@mcpfn/cli"];
   run("packages:esm-import", process.execPath, [
     "--input-type=module",
     "-e",
@@ -208,9 +291,10 @@ try {
     `for (const name of ${JSON.stringify(testingSubpaths)}) { const loaded = require(name); if (Object.keys(loaded).length === 0) throw new Error(name + " has no CJS exports"); }`,
   ]);
 
-  for (const packagePath of ["mcpfn/core", "mcpfn/auth", "mcpfn/testing", "mcpfn/datafn", "mcpfn/cli"]) {
+  for (const packagePath of ["mcpfn/core", "mcpfn/client", "mcpfn/auth", "mcpfn/testing", "mcpfn/inspector", "mcpfn/datafn", "mcpfn/cli"]) {
     verifyPackage(packagePath);
   }
+  verifyPackedConsumer();
   verifyDocumentation();
 
   console.log(JSON.stringify({

@@ -1,6 +1,7 @@
 # McpFn architecture
 
-McpFn separates protocol correctness from product correctness.
+McpFn separates protocol correctness from product correctness and gives every
+client-side tool one session engine.
 
 ```text
 MCP client
@@ -17,6 +18,14 @@ explicit domain tool                 DatafnExecutor
                                           |
                              DataFn auth, namespace, policy,
                              hooks, rate limits, idempotency
+
+application / CLI / test / inspector
+   |
+McpFnClient capability facades and lifecycle diagnostics
+   |
+McpFnTarget: stdio | Streamable HTTP | custom
+   |
+official MCP SDK client transports and OAuth orchestration
 ```
 
 ## Runtime ownership
@@ -26,6 +35,45 @@ The official `@modelcontextprotocol/sdk` owns initialization, JSON-RPC dispatch,
 `McpFnServer` owns server identity, capability derivation, request-context construction, pagination, dispatch, error normalization, client-mediated roots/sampling/elicitation, notifications, and transport connection lifecycle. One `McpFnServer` instance connects to one transport. A host accepting multiple connections creates one server instance per connection while sharing the immutable registry.
 
 `McpFnRegistry` owns the application contract. It registers tools, exact resources, URI-template resources, prompts, completions, subscriptions, and task-capable tool handlers. Ajv validates tool and prompt inputs. URI templates are parsed once at registration. Task-capable tools require an explicit SDK `TaskStore`. MCP App links are validated across the full registry before a server or manifest is created.
+
+`McpFnServerDeclaration` is the side-effect-free application facade. It owns a
+registry, identity, transports, extensions, and client requirements; the same
+declaration creates manifests and per-connection server runtimes. Existing
+`McpFnServer` construction remains supported.
+
+## Client and session ownership
+
+`@mcpfn/client` owns target description, connection state, initialization,
+complete inventory pagination, tool/resource/prompt/task facades, explicit
+authorization callback completion, explicit reconnection, and bounded redacted
+diagnostics. It uses official SDK transports and protocol objects. It may retry
+connection establishment when configured; it never replays a caller's tool or
+other capability operation.
+
+The testing package wraps this production client for in-memory and external
+targets. The inspector records its diagnostics and invokes its facades. The CLI
+constructs its stdio or HTTP targets. This one-way dependency rule prevents
+test-only, inspector-only, or command-line protocol forks.
+
+## Authorization ownership
+
+The official SDK owns RFC discovery, DCR, PKCE construction, token exchange,
+refresh, and transport challenge handling. `@mcpfn/auth` supplies secure state
+and integration policy:
+
+- exact redirect matching with only the RFC 8252 loopback-port exception;
+- callback-state correlation before token exchange;
+- memory-only credentials by default or application-supplied encrypted storage;
+- redacted, bounded diagnostics and read-only discovery probes;
+- protected-resource verification and conversion to trusted SDK `authInfo`;
+- hosted metadata, registration, and authorization-request compatibility while
+  login, consent, signing, token issuance, and durable identity stay with the
+  host application.
+
+Client ID Metadata Document fetching is HTTPS-only, size-bounded, and requires
+an application allow-policy before any external URL is fetched. Additional
+advertised grant types do not invalidate a client that supports the requested
+authorization-code flow.
 
 ## Manifest compatibility
 
@@ -53,3 +101,5 @@ The diff is deliberately structural. Semantic scenarios are still required for a
 - Do not expose DataFn fields that its resolved read/write capabilities reject.
 - Require OAuth resource indicators and scopes at the HTTP boundary; never infer identity from model arguments.
 - Treat MCP Apps as untrusted HTML and declare the narrowest CSP and permissions.
+- Never write authorization codes, states, verifiers, tokens, cookies, or URL
+  credentials to diagnostic, inspection, or test artifacts.

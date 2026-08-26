@@ -1,7 +1,7 @@
 {
-  "name": "@mcpfn/testing",
+  "name": "@mcpfn/client",
   "version": "0.0.1",
-  "description": "Protocol, authentication, Playwright, contract, scenario, and official conformance testing for MCP servers",
+  "description": "Production MCP client, target, session, lifecycle, and diagnostic engine for McpFn",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -11,16 +11,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./auth": {
-      "types": "./dist/auth.d.ts",
-      "import": "./dist/auth.js",
-      "require": "./dist/auth.cjs"
-    },
-    "./playwright": {
-      "types": "./dist/playwright.d.ts",
-      "import": "./dist/playwright.js",
-      "require": "./dist/playwright.cjs"
     }
   },
   "files": ["dist", "README.md"],
@@ -29,26 +19,14 @@
     "clean": "node --input-type=module -e \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:playwright": "playwright test --config playwright.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mcpfn/client": "0.0.1",
-    "@mcpfn/core": "0.0.1",
     "@modelcontextprotocol/sdk": "1.25.2",
     "@superfunctions/oauth-core": "0.0.1"
   },
-  "peerDependencies": {
-    "@playwright/test": ">=1.40.0"
-  },
-  "peerDependenciesMeta": {
-    "@playwright/test": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@mcpfn/auth": "0.0.1",
-    "@playwright/test": "^1.57.0",
+    "@mcpfn/core": "0.0.1",
     "@types/node": "^20.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
@@ -59,7 +37,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/21nCo/super-functions.git",
-    "directory": "mcpfn/testing"
+    "directory": "mcpfn/client"
   },
   "publishConfig": { "access": "public" },
   "sideEffects": false

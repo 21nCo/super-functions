@@ -4,7 +4,7 @@
 
 It includes:
 
-- an official MCP client fixture;
+- the production McpFn client exposed as a fixture;
 - exact manifest assertions across tools, resources, templates, and prompts;
 - resource, prompt, completion, subscription, and task client methods;
 - reusable API-key and OAuth resource-server regression matrices;
@@ -12,11 +12,18 @@ It includes:
 - extensible Client ID Metadata fixtures that include unrelated grant types;
 - optional Playwright fixtures for real redirect and consent-page coverage;
 - generic tools-only, full-protocol, and MCP Apps host profiles;
+- named ChatGPT- and Claude-shaped OAuth metadata fixtures;
+- one suite for in-memory, custom, stdio, and Streamable HTTP targets;
 - structured/text response parity checks;
 - declarative semantic scenarios;
 - orchestration of the official `@modelcontextprotocol/conformance` runner.
 
 Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both.
+
+Use `runMcpFnTargetSuite({ target, scenarios, manifest })` when a test should
+exercise a subprocess or deployed target. It constructs the same session used
+by applications, the inspector, and CLI. Scenario execution is serial and
+capability calls are never retried implicitly.
 
 ```ts
 import {

@@ -44,7 +44,12 @@ export default [
 ] satisfies McpFnScenario[];
 ```
 
-`mcpfn test` connects an official client and server with the official in-memory transport. It checks tool, resource-template, prompt, and static-resource contracts against the manifest and then runs scenarios serially. `McpFnTestClient` also exposes resources, prompts, completions, subscriptions, and experimental task APIs; its `configure` hook installs client-side roots, sampling, elicitation, and notification handlers before initialization.
+`mcpfn test` connects the production McpFn client and server with the official
+in-memory transport. `mcpfn test-target` runs the same scenarios against stdio
+or Streamable HTTP. Both check or exercise the real capability boundary.
+`McpFnTestClient` also exposes resources, prompts, completions, subscriptions,
+and experimental task APIs; its `configure` hook installs client-side roots,
+sampling, elicitation, and notification handlers before initialization.
 
 `structuredTextParity` is appropriate only when the text block is JSON representing the same object as `structuredContent`. Human-readable text such as MemoryFn's search summary should be asserted separately.
 
@@ -74,8 +79,17 @@ McpFn delegates to the pinned official conformance npm package and returns its e
 npm run gate:mcpfn-release
 ```
 
-The gate typechecks, tests, and builds all five McpFn packages; runs OAuth boundary tests, a real Chromium PKCE flow, and the official active conformance suite; runs the complete DataFn server suite; exercises the real CLI against the checked-in calculator server, manifest, and scenarios; and checks package contents. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
+The gate typechecks, tests, and builds all seven McpFn packages; runs real stdio
+and Streamable HTTP round trips, OAuth boundary tests, a real Chromium PKCE
+flow, and the official active conformance suite; runs the complete DataFn
+server suite; exercises the real CLI; checks package contents; and installs
+packed artifacts into a temporary external consumer for ESM and CommonJS
+imports. LangFn, MemoryFn, and ProbeFn are not covered by this release gate.
 
 CI routes a change set made entirely of the McpFn runtime, its DataFn adapter, README, and release metadata through this dedicated Node.js 22 gate. Root package manifests, lockfiles, CI workflows, and the CI planner always run the repository's generic JavaScript job as well as the McpFn gate. This conservative boundary prevents unrelated global changes from gaining coverage merely by being included with McpFn work.
 
-When publishing manually, release `@mcpfn/core` and `@mcpfn/auth` first, followed by `@mcpfn/testing`, `@mcpfn/datafn`, and `@mcpfn/cli`. The repository's package release workflow publishes one selected package at a time; it does not infer dependency order.
+When publishing manually, release the required `@superfunctions/oauth-*`
+versions, then `@mcpfn/core`, `@mcpfn/client`, and `@mcpfn/auth`, followed by
+`@mcpfn/testing`, `@mcpfn/inspector`, `@mcpfn/datafn`, and `@mcpfn/cli`. The
+repository's package release workflow publishes one selected package at a time;
+it does not infer dependency order.

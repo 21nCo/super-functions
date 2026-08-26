@@ -14,9 +14,13 @@ Handlers should return MCP `CallToolResult` values. `structuredResult` emits bot
 
 Use `createMcpFnServer({ context })` to derive principals, workspace/tenant IDs, credentials, and request metadata from authenticated transport state. Never copy these values out of tool arguments.
 
-## 4. Replace custom test clients
+## 4. Adopt the shared production client
 
-Use `McpFnTestClient` or an official SDK `Client`. Assert the real initialize and tool-call boundary, not `registry.callTool` or handler functions alone.
+Replace private stdio/HTTP clients with `McpFnClient` targets. Use
+`McpFnTestClient` for local fixtures and `runMcpFnTargetSuite` for external
+targets; both route through the same production session. Assert the real
+initialize and capability boundary, not `registry.callTool` or handler
+functions alone.
 
 ## 5. Commit the regression contract
 
@@ -24,7 +28,15 @@ Generate a manifest, review it, add semantic scenarios, and run official conform
 
 ## 6. Add HTTP authorization deliberately
 
-Wrap the Web Standard handler with `@mcpfn/auth` when the endpoint is protected. Supply an SDK-compatible token verifier, resource identifier, authorization-server URLs, and required scopes. Do not move outbound provider OAuth flows out of `@superfunctions/oauth-*`; MCP resource-server verification and provider account linking are separate boundaries.
+Wrap the Web Standard handler with `@mcpfn/auth` when the endpoint is protected.
+Supply an SDK-compatible token verifier, resource identifier,
+authorization-server URLs, and required scopes. Client applications use
+`McpFnOAuthClientProvider`, explicitly receive both callback `code` and `state`,
+and choose memory-only or encrypted persistence. Hosted authorization servers
+compose their existing identity and token systems through the compatibility
+handler. Do not move outbound provider OAuth flows out of
+`@superfunctions/oauth-*`; MCP resource-server verification and provider
+account linking are separate boundaries.
 
 ## 7. Declare host requirements
 

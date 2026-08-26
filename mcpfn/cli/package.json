@@ -23,7 +23,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mcpfn/auth": "0.0.1",
+    "@mcpfn/client": "0.0.1",
     "@mcpfn/core": "0.0.1",
+    "@mcpfn/inspector": "0.0.1",
     "@mcpfn/testing": "0.0.1",
     "cac": "^6.7.14",
     "jiti": "^2.4.2"

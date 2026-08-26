@@ -90,5 +90,6 @@ export interface OAuthService {
 }
 
 export * from "./pkce.js";
+export * from "./redaction.js";
 export * from "./state.js";
 export * from "./service.js";

@@ -1,5 +1,10 @@
 # McpFn Core
 
+`defineMcpFnServer()` creates a side-effect-free declaration whose registry and
+manifest are shared by runtime, tests, and release tooling. Call
+`declaration.createServer()` once per transport connection. Existing
+`createMcpFnServer()` usage remains supported.
+
 `@mcpfn/core` is the shared MCP runtime for Superfunctions. It delegates wire protocol and transport behavior to the official Model Context Protocol SDK while providing the pieces product code needs to remain stable:
 
 - an explicit, validated tool, resource, template, and prompt registry;
