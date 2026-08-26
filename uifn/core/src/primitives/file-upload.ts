@@ -8,8 +8,6 @@ export interface UIFnFileDescriptor { readonly name: string; readonly size: numb
 export interface UIFnFilePickerCapability { pick(options: { readonly accept?: string; readonly multiple: boolean }): Promise<readonly UIFnFileDescriptor[]> }
 export interface FileUploadProps {
   readonly capability?: UIFnFilePickerCapability;
-  readonly files?: readonly UIFnFileDescriptor[];
-  readonly defaultFiles?: readonly UIFnFileDescriptor[];
   readonly accept?: string;
   readonly multiple?: boolean;
   readonly maxFiles?: number;
@@ -62,27 +60,33 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
   const allocator = createUIFnIdAllocator(resolved, 'FileUpload');
   const token = resolved.generateId('file-upload');
   const ids = Object.freeze(Object.fromEntries(anatomy.map((part) => [part, allocator.fromToken(`file-upload-${part}`, token, part)])));
-  let options = props;
-  let files: readonly UIFnFileDescriptor[] = Object.freeze([...(options.files ?? options.defaultFiles ?? [])]);
+  let files: readonly UIFnFileDescriptor[] = Object.freeze([]);
+  let currentProps = props;
   let active = true;
+  let intrinsicDisabled = props.disabled ?? false;
+  let fieldsetDisabled = false;
   const stateFor = (base: Omit<FileUploadState, 'fileCount' | 'totalBytes' | 'valid' | 'invalid'>): FileUploadState => {
     const valid = !base.required || files.length > 0;
     return Object.freeze({ ...base, fileCount: files.length, totalBytes: files.reduce((sum, file) => sum + file.size, 0), valid, invalid: !valid });
   };
-  const store = createStateChannel<FileUploadState>(stateFor({ status: files.length ? 'accepted' : 'idle', rejectedCount: 0, required: options.required ?? false, disabled: options.disabled ?? false, multiple: options.multiple ?? false, accept: options.accept, lastErrorCode: null, ids }));
+  const store = createStateChannel<FileUploadState>(stateFor({ status: 'idle', rejectedCount: 0, required: props.required ?? false, disabled: intrinsicDisabled, multiple: props.multiple ?? false, accept: props.accept, lastErrorCode: null, ids }));
   const patch = (partial: Partial<FileUploadState>) => store.setState(stateFor({ ...store.getState(), ...partial }));
   const rejection = (code: 'type' | 'size' | 'count') => {
     patch({ status: 'rejected', rejectedCount: store.getState().rejectedCount + 1, lastErrorCode: 'UIFN_FILE_REJECTED' });
-    options.onReject?.(code);
+    currentProps.onReject?.(code);
+  };
+  const clearFiles = () => {
+    files = Object.freeze([]);
+    patch({ status: 'idle', lastErrorCode: null });
+    currentProps.onFilesChange?.(files);
   };
   const actions: FileUploadActions = {
     async openPicker() {
       if (store.getState().disabled) return;
-      if (!options.capability) throw createUIFnError({ code: 'UIFN_INPUT_CAPABILITY_UNAVAILABLE', component: 'FileUpload' });
+      if (!currentProps.capability) throw createUIFnError({ code: 'UIFN_INPUT_CAPABILITY_UNAVAILABLE', component: 'FileUpload' });
       patch({ status: 'picking', lastErrorCode: null });
       try {
-        const state = store.getState();
-        const selected = await options.capability.pick({ accept: state.accept, multiple: state.multiple });
+        const selected = await currentProps.capability.pick({ accept: currentProps.accept, multiple: currentProps.multiple ?? false });
         if (active) this.selectFiles(selected);
       } catch (error) {
         const stable = isUIFnError(error) ? error : createUIFnError({ code: 'UIFN_FILE_REJECTED', component: 'FileUpload', cause: error, recoverable: true });
@@ -92,34 +96,27 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     },
     selectFiles(nextFiles) {
       if (store.getState().disabled) return;
-      const state = store.getState();
-      const maxFiles = state.multiple ? options.maxFiles ?? Number.POSITIVE_INFINITY : 1;
+      const maxFiles = currentProps.multiple ? currentProps.maxFiles ?? Number.POSITIVE_INFINITY : 1;
       if (nextFiles.length > maxFiles) return rejection('count');
-      if (nextFiles.some((file) => !accepted(file, state.accept))) return rejection('type');
-      if (nextFiles.some((file) => file.size > (options.maxSize ?? Number.POSITIVE_INFINITY))) return rejection('size');
+      if (nextFiles.some((file) => !accepted(file, currentProps.accept))) return rejection('type');
+      if (nextFiles.some((file) => file.size > (currentProps.maxSize ?? Number.POSITIVE_INFINITY))) return rejection('size');
       files = Object.freeze([...nextFiles]);
       patch({ status: 'accepted', lastErrorCode: null });
-      options.onFilesChange?.(files);
+      currentProps.onFilesChange?.(files);
     },
     remove(index) {
       if (store.getState().disabled || index < 0 || index >= files.length) return;
       files = Object.freeze(files.filter((_, candidate) => candidate !== index));
       patch({ status: files.length ? 'accepted' : 'idle' });
-      options.onFilesChange?.(files);
+      currentProps.onFilesChange?.(files);
     },
     clear() {
       if (store.getState().disabled) return;
-      files = Object.freeze([]);
-      patch({ status: 'idle', lastErrorCode: null });
-      options.onFilesChange?.(files);
+      clearFiles();
     },
-    reset() {
-      files = Object.freeze([...(options.defaultFiles ?? [])]);
-      patch({ status: files.length ? 'accepted' : 'idle', lastErrorCode: null });
-      options.onFilesChange?.(files);
-    },
+    reset() { clearFiles(); },
     getFiles() { return files; },
-    setFieldsetDisabled(disabled) { patch({ disabled }); },
+    setFieldsetDisabled(disabled) { fieldsetDisabled = disabled; patch({ disabled: intrinsicDisabled || fieldsetDisabled }); },
   };
   const generated = (part: string, index: number | null): UIFnPartProps => {
     const state = store.getState();
@@ -128,7 +125,7 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     if (part === 'root') return common;
     if (part === 'dropzone') return { ...common, role: 'button', tabIndex: state.disabled ? -1 : 0, aria: { label: 'Drop files', disabled: state.disabled }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
     if (part === 'trigger') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, on: { click: () => { void actions.openPicker().catch(() => undefined); } } };
-    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: options.name, accept: state.accept, multiple: state.multiple }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
+    if (part === 'input') return { ...common, hidden: true, disabled: state.disabled, attributes: { type: 'file', name: currentProps.name, accept: currentProps.accept, multiple: state.multiple, required: state.required && state.invalid }, aria: { labelledby: state.ids.label, invalid: state.invalid } };
     if (part === 'itemGroup') return { ...common, role: 'list', aria: { label: 'Selected files' } };
     if (part === 'item') return { ...common, role: 'listitem' };
     if (part === 'itemDelete') return { ...common, role: 'button', disabled: state.disabled, attributes: { type: 'button' }, aria: { label: 'Remove file' }, on: { click: () => index !== null && actions.remove(index) } };
@@ -143,17 +140,14 @@ export function createFileUploadController(props: FileUploadProps = {}, env: UIF
     getState: store.getState,
     subscribe: store.subscribe,
     update(next) {
-      options = { ...options, ...next };
-      const filesChanged = 'files' in next;
-      if (filesChanged) files = Object.freeze([...(options.files ?? [])]);
-      const patchable: Partial<FileUploadState> = {
-        ...('disabled' in next ? { disabled: options.disabled ?? false } : {}),
-        ...('required' in next ? { required: options.required ?? false } : {}),
-        ...('multiple' in next ? { multiple: options.multiple ?? false } : {}),
-        ...('accept' in next ? { accept: options.accept } : {}),
-        ...(filesChanged ? { status: files.length ? 'accepted' as const : 'idle' as const, lastErrorCode: null } : {}),
-      };
-      if (Object.keys(patchable).length) patch(patchable);
+      currentProps = { ...currentProps, ...next };
+      if ('disabled' in next) intrinsicDisabled = currentProps.disabled ?? false;
+      patch({
+        disabled: intrinsicDisabled || fieldsetDisabled,
+        required: currentProps.required ?? false,
+        multiple: currentProps.multiple ?? false,
+        accept: currentProps.accept,
+      });
     },
     destroy() { active = false; files = Object.freeze([]); store.destroy(); },
   });

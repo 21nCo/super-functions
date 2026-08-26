@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@uifn/components": ["../../components/src/index.ts"],
+      "@uifn/components-react": ["../../components-react/src/index.ts"],
+      "@uifn/examples-shared": ["../shared/src/index.ts"],
+      "@uifn/patterns": ["../../patterns/src/index.ts"],
+      "@uifn/sf": ["../../sf/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "vite.config.ts"]
+}

@@ -8,18 +8,8 @@ export interface RangeDefinition {
 
 function decimals(value: number): number {
   const text = String(value).toLowerCase();
-  const [coefficient, exponentText = '0'] = text.split('e');
-  const fractionDigits = coefficient!.includes('.') ? coefficient!.length - coefficient!.indexOf('.') - 1 : 0;
-  return Math.max(0, fractionDigits - Number(exponentText));
-}
-
-function roundRangeValue(value: number, precision: number): number {
-  const [coefficient, exponentText = '0'] = String(value).split('e');
-  const shifted = Math.round(Number(`${coefficient}e${Number(exponentText) + precision}`));
-  if (!Number.isFinite(shifted)) return value;
-  const [rounded, roundedExponent = '0'] = String(shifted).split('e');
-  const result = Number(`${rounded}e${Number(roundedExponent) - precision}`);
-  return Number.isFinite(result) ? result : value;
+  if (text.includes('e-')) return Number(text.split('e-')[1]);
+  return text.includes('.') ? text.length - text.indexOf('.') - 1 : 0;
 }
 
 export function clampRangeValue(value: number, min: number, max: number): number {
@@ -29,7 +19,7 @@ export function clampRangeValue(value: number, min: number, max: number): number
 export function alignRangeValue(value: number, definition: RangeDefinition): number {
   const { min, max } = definition;
   const step = definition.step ?? 1;
-  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step) || min > max || step <= 0) {
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || min > max || step <= 0) {
     throw createUIFnError({
       code: 'UIFN_ERR_RANGE_OUT_OF_BOUNDS',
       component: 'Range',
@@ -37,20 +27,9 @@ export function alignRangeValue(value: number, definition: RangeDefinition): num
       details: { value, min, max, step },
     });
   }
-  const precision = Math.max(decimals(min), decimals(max), decimals(step));
-  const clamped = clampRangeValue(value, min, max);
-  const rawIndex = (clamped - min) / step;
-  const rawMaxIndex = roundRangeValue(max - min, precision) / step;
-  const nearestMaxIndex = Math.round(rawMaxIndex);
-  const nearestEndpoint = roundRangeValue(min + nearestMaxIndex * step, precision);
-  const maxIndex = nearestEndpoint <= max
-    ? nearestMaxIndex
-    : Math.floor(rawMaxIndex);
-  let index = Math.round(rawIndex);
-  if (Number.isFinite(maxIndex)) index = Math.min(index, maxIndex);
-  const aligned = min + index * step;
-  if (!Number.isFinite(aligned)) return clamped;
-  return clampRangeValue(roundRangeValue(aligned, precision), min, max);
+  const precision = Math.min(12, Math.max(decimals(min), decimals(max), decimals(step)));
+  const aligned = min + Math.round((clampRangeValue(value, min, max) - min) / step) * step;
+  return clampRangeValue(Number(aligned.toFixed(precision)), min, max);
 }
 
 export function normalizeRangeValues(values: readonly number[], definition: RangeDefinition): number[] {
@@ -73,7 +52,7 @@ export function stepRangeValue(value: number, key: string, definition: RangeDefi
   const step = definition.step ?? 1;
   const rtl = direction === 'rtl' ? -1 : 1;
   if (key === 'Home') return definition.min;
-  if (key === 'End') return alignRangeValue(definition.max, definition);
+  if (key === 'End') return definition.max;
   if (key === 'ArrowRight') return alignRangeValue(value + step * rtl, definition);
   if (key === 'ArrowLeft') return alignRangeValue(value - step * rtl, definition);
   if (key === 'ArrowUp') return alignRangeValue(value + step, definition);

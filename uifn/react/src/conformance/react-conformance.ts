@@ -1,0 +1,21 @@
+export const reactConformanceContract = Object.freeze({
+  framework: 'react',
+  runtimeLines: Object.freeze(['18.3.x', '19.x']),
+  packageName: '@uifn/react',
+  primitiveCount: 69,
+  anatomyCount: 465,
+  conformanceSurface: 'actual-exported-public-compound-trees',
+  traceSchemaVersion: 1,
+  syntheticFixturesAccepted: false,
+  requiredTraceChannels: Object.freeze([
+    'steps',
+    'transactions',
+    'actions',
+    'parts',
+    'dom',
+    'focus',
+    'callbacks',
+    'errors',
+    'cleanup',
+  ]),
+} as const);

@@ -12,6 +12,7 @@ build/
 **/*.d.ts
 !apifn/docsfn/src/svelte/ApifnApiReference.svelte.d.ts
 !superconsole/src/app.d.ts
+!uifn/catalog/generated/primitive-contracts.d.ts
 **/*.d.ts.map
 **/*.js.map
 
@@ -46,12 +47,14 @@ lerna-debug.log*
 
 # Security
 *.pem
+!uifn/registry/trust/registry-ed25519-public.pem
 *.p12
 *.key
 *-key.pem
 
 # Testing
 coverage/
+.vite-vitest/
 .nyc_output
 test-results/
 .pytest_cache/

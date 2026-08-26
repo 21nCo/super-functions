@@ -16,6 +16,7 @@ from ..types import (
     RegionNotFoundError,
     ValidationError,
 )
+from .gateway_routing import CanonicalRoutingConfig
 
 
 @dataclass
@@ -35,6 +36,7 @@ class MultiRegionPluginConfig:
     regions: List[MultiRegionRegionConfig] = field(default_factory=list)
     default_region_id: Optional[str] = None
     directory: Optional[Any] = None
+    routing: Optional[CanonicalRoutingConfig] = None
 
 
 class MultiRegionService:
@@ -45,6 +47,31 @@ class MultiRegionService:
     def resolve_runtime(self, request: Any) -> AuthFnRuntimeResolution:
         base_runtime = self._base_runtime(request)
         region = self._resolve_region(request, base_runtime)
+        routing = self.plugin_config.routing
+        if routing and routing.mode == "gateway":
+            if not routing.public_authority:
+                raise ValidationError("Gateway-mode AuthFn requires a public authority")
+            authority = _normalize_authority(routing.public_authority)
+            if routing.cell_region_id and self.plugin_config.regions:
+                region = next(
+                    (
+                        candidate
+                        for candidate in self.plugin_config.regions
+                        if candidate.region_id == routing.cell_region_id
+                    ),
+                    None,
+                )
+                if region is None:
+                    raise ValidationError("Gateway cell region is not present in configured regions")
+            return AuthFnRuntimeResolution.model_validate(
+                {
+                    "issuer": authority,
+                    "baseUrl": authority,
+                    "regionId": routing.cell_region_id or (region.region_id if region else None),
+                    "cookie": routing.canonical_cookie,
+                    "oauth": routing.canonical_oauth,
+                }
+            )
         if region is None:
             return base_runtime
         cookie = dict(base_runtime.cookie.model_dump(by_alias=True) if base_runtime.cookie else {})
@@ -73,7 +100,19 @@ class MultiRegionService:
         runtime: Optional[AuthFnRuntimeResolution] = None,
     ) -> Optional[Dict[str, Any]]:
         resolved_runtime = runtime or self.resolve_runtime(request or _default_request())
-        region = self._resolve_region(request or _default_request(), resolved_runtime)
+        routing = self.plugin_config.routing
+        region = None
+        if routing and routing.mode == "gateway" and routing.cell_region_id:
+            region = next(
+                (
+                    candidate
+                    for candidate in self.plugin_config.regions
+                    if candidate.region_id == routing.cell_region_id
+                ),
+                None,
+            )
+        else:
+            region = self._resolve_region(request or _default_request(), resolved_runtime)
         region_id = (region.region_id if region else resolved_runtime.region_id) or self.plugin_config.default_region_id
         authority = (region.authority if region else resolved_runtime.base_url) if resolved_runtime.base_url else None
         if not region_id or not authority:
@@ -111,7 +150,11 @@ class MultiRegionService:
                 },
                 namespace=self.config.namespace,
             )
-        register = getattr(self.plugin_config.directory, "register_user", None)
+        register = (
+            None
+            if self.plugin_config.routing and self.plugin_config.routing.mode == "gateway"
+            else getattr(self.plugin_config.directory, "register_user", None)
+        )
         if register:
             await _maybe_await(
                 register(
@@ -145,6 +188,8 @@ class MultiRegionService:
 
     async def ensure_region_alignment(self, *, user_id: str, request: Optional[Any] = None) -> Dict[str, Any]:
         runtime = self.resolve_runtime(request or _default_request())
+        if self.plugin_config.routing and self.plugin_config.routing.mode == "gateway":
+            return {"regionId": runtime.region_id}
         user = await self.config.database.find_one(
             model="users",
             where=[{"field": "id", "operator": "eq", "value": user_id}],
@@ -274,6 +319,7 @@ def authfn_multi_region_plugin(config: Optional[MultiRegionPluginConfig] = None)
         ],
         routes_factory=lambda _ctx: [
             {"method": "POST", "path": "/regions/lookup"},
+            {"method": "GET", "path": "/environment"},
             {"method": "GET", "path": "/runtime"},
         ],
     )

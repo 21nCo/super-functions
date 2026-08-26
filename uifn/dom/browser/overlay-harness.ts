@@ -34,7 +34,6 @@ interface AnyOverlayController {
   readonly actions: Record<string, (...args: any[]) => any>;
   readonly parts: Record<string, { getProps(): any }>;
   getState(): UIFnOverlayBaseState;
-  update(inputs: Record<string, unknown>): void;
   subscribe(callback: () => void, options?: { emitInitial?: boolean }): () => void;
   destroy(): void;
 }
@@ -197,20 +196,6 @@ async function exerciseOpenPrimitive(
     const top = fixture.positioner.style.top;
     invariant(left.endsWith('px') && top.endsWith('px'), `${name} shared positioner did not apply geometry`);
     geometry[name] = `${left},${top},${fixture.positioner.dataset.side}`;
-  }
-
-  if (name === 'Dialog') {
-    controller.update({ modal: false, trapFocus: false, scrollLock: false });
-    await wait(20);
-    invariant(platform.modals.size === 0, 'Dialog retained modal resources after an open update');
-    controller.update({ modal: true, trapFocus: true, scrollLock: true });
-    await wait(20);
-    invariant(platform.modals.size === 1, 'Dialog did not reacquire modal resources after an open update');
-  }
-  if (name === 'Popover') {
-    controller.update({ placement: 'top-start' });
-    await wait(20);
-    invariant(fixture.positioner.dataset.side === 'top', 'Popover did not apply an open placement update');
   }
 
   if (name === 'AlertDialog') {

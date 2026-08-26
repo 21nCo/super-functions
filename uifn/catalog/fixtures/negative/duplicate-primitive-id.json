@@ -1,0 +1,6 @@
+{
+  "id": "duplicate-primitive-id",
+  "description": "Assign AlertDialog the canonical Accordion id.",
+  "mutation": { "primitive": "AlertDialog", "setField": "id", "value": "accordion" },
+  "expectedErrorCodes": ["UIFN_CATALOG_DUPLICATE"]
+}

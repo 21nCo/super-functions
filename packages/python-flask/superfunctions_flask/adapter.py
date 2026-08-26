@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 import threading
-from typing import Any, Awaitable, Callable, Coroutine, Dict, List, cast
+from typing import Any, Awaitable, Callable, Coroutine, Dict, List, Optional, cast
 
 from flask import Blueprint, jsonify, request
 from flask import Request as FlaskRequest
@@ -16,6 +16,7 @@ from superfunctions.http import (
     Response,
     Route,
     RouteContext,
+    execute_route,
 )
 
 SUPERFUNCTIONS_ROUTE_ATTR = "__superfunctions_route__"
@@ -174,10 +175,13 @@ def _invoke_flask_handler(
     path_params: Dict[str, Any],
     *,
     log_label: str,
+    route: Optional[Route] = None,
 ) -> FlaskResponse:
     try:
         adapted_request, context = _create_request_context(path_params)
-        response = _run_async_handler(lambda: handler(adapted_request, context))
+        response = _run_async_handler(
+            lambda: execute_route(route, handler, adapted_request, context)
+        )
         return to_flask_response(response)
     except HttpError as error:
         return to_flask_response(error.to_response())
@@ -198,7 +202,7 @@ def create_handler(handler: Callable, route: Route):
     """
 
     def flask_handler(**path_params):
-        return _invoke_flask_handler(handler, path_params, log_label="route")
+        return _invoke_flask_handler(handler, path_params, log_label="route", route=route)
 
     setattr(flask_handler, SUPERFUNCTIONS_ROUTE_ATTR, route)
     setattr(flask_handler, SUPERFUNCTIONS_ROUTE_META_ATTR, route.meta)

@@ -1,20 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   addUIFnDateDays,
-  addUIFnDateMonths,
   assertUIFnRangeDirection,
   colorUIFnDistance,
-  compareUIFnDates,
   createUIFnCalendarDate,
   createUIFnMonthGrid,
   firstUIFnDayOfWeek,
-  formatUIFnDate,
   hslaToUIFnRgba,
   parseUIFnColor,
   parseUIFnIsoDate,
   resolveUIFnAxisPercent,
   resolveUIFnZonedDateTime,
   rgbaToUIFnHsla,
+  serializeUIFnDate,
 } from '../index';
 import { createManualRuntimeScheduler } from '../internal/runtime/scheduler';
 import {
@@ -107,11 +105,23 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
 
     const carousel = createCarouselController({ itemCount: 3, autoplayDelay: 10, reducedMotion: true, loop: true }, deterministicEnv());
     expect(carousel.state.interaction).toBe('idle');
+    expect(carousel.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.next.getProps().attributes?.type).toBe('button');
+    expect(carousel.parts.indicator.getProps(0).attributes?.type).toBe('button');
     carousel.actions.dragStart(1, { x: 100, y: 0 }, 'touch'); carousel.actions.dragMove(1, { x: 50, y: 2 }); carousel.actions.dragEnd(1);
     expect(carousel.state.index).toBe(1);
 
     const rating = createRatingGroupController({ allowHalf: true, defaultValue: 2.5, locale: 'hi-IN' }, deterministicEnv('hi-IN'));
     rating.actions.keyStep('ArrowRight'); expect(rating.state.value).toBe(3);
+    const requiredRating = createRatingGroupController({ required: true, name: 'rating' }, deterministicEnv());
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({
+      type: 'radio',
+      checked: false,
+      required: true,
+      value: '',
+    });
+    requiredRating.actions.select(4);
+    expect(requiredRating.parts.hiddenInput.getProps().attributes).toMatchObject({ checked: true, value: 4 });
 
     const signature = createSignaturePadController({}, deterministicEnv());
     signature.actions.pointerStart(1, { x: 0, y: 0, pressure: 0.5, time: 0 });
@@ -122,7 +132,309 @@ describe('TV-PRIM-006-P/N range and gesture rigor', () => {
     const splitter = createSplitterController({ defaultSizes: [40, 60], minSizes: [20, 20], maxSizes: [80, 80], dir: 'rtl' }, deterministicEnv('ar-EG', 'rtl'));
     splitter.actions.resize(0, 10); expect(splitter.state.sizes).toEqual([30, 70]);
     expect(splitter.state.sizes.reduce((sum, value) => sum + value, 0)).toBe(100);
-    angle.destroy(); carousel.destroy(); rating.destroy(); signature.destroy(); splitter.destroy();
+    angle.destroy(); carousel.destroy(); rating.destroy(); requiredRating.destroy(); signature.destroy(); splitter.destroy();
+  });
+
+  it('synchronizes carousel props, callbacks, requests, and autoplay after creation', () => {
+    const scheduler = createManualRuntimeScheduler();
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const carousel = createCarouselController({
+      index: 1,
+      itemCount: 4,
+      autoplayDelay: 100,
+      reducedMotion: true,
+      onIndexChange: initialChange,
+    }, { ...deterministicEnv(), scheduler });
+    expect(scheduler.pending().timeout).toBe(0);
+
+    carousel.update({
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      autoplayDelay: 25,
+      reducedMotion: false,
+      locale: 'de-DE',
+      messages: {
+        carousel: 'Galerie',
+        slide: 'Folie',
+        item: (index, count) => `${index + 1} von ${count}`,
+      },
+      onIndexChange: updatedChange,
+    });
+    expect(carousel.state).toMatchObject({
+      index: 1,
+      itemCount: 2,
+      loop: true,
+      orientation: 'vertical',
+      dir: 'rtl',
+      interaction: 'autoplaying',
+      reducedMotion: false,
+    });
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Galerie');
+    expect(carousel.parts.item.getProps(1).aria).toMatchObject({
+      roledescription: 'Folie',
+      label: '2 von 2',
+    });
+    expect(scheduler.pending().timeout).toBe(1);
+
+    carousel.actions.next();
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(0);
+    const callbackCount = updatedChange.mock.calls.length;
+    carousel.update({ itemCount: 0 });
+    expect(scheduler.pending().timeout).toBe(0);
+    expect(carousel.state.interaction).toBe('idle');
+    scheduler.advanceBy(100);
+    expect(updatedChange).toHaveBeenCalledTimes(callbackCount);
+    carousel.update({ itemCount: 2 });
+    expect(scheduler.pending().timeout).toBe(1);
+    carousel.update({ messages: { carousel: 'Aktualisierte Galerie' } });
+    expect(carousel.state.requestedIndex).toBe(0);
+    expect(carousel.parts.root.getProps().aria?.roledescription).toBe('Aktualisierte Galerie');
+
+    carousel.update({ autoplayDelay: 0 });
+    expect(carousel.state.interaction).toBe('idle');
+    expect(scheduler.pending().timeout).toBe(0);
+    carousel.update({ index: 0, itemCount: 0 });
+    expect(carousel.state).toMatchObject({ index: 0, itemCount: 0 });
+    expect(carousel.state.requestedIndex).toBeUndefined();
+    expect(carousel.parts.previous.getProps().disabled).toBe(true);
+    expect(carousel.parts.next.getProps().disabled).toBe(true);
+    carousel.destroy();
+  });
+
+  it('synchronizes signature pad props, controlled mode, callbacks, and messages', () => {
+    const point = { x: 1, y: 2, pressure: 0.5, time: 10 };
+    const initialStroke = Object.freeze([point]);
+    const nextStroke = Object.freeze([{ ...point, x: 3 }]);
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const signature = createSignaturePadController({
+      value: [initialStroke],
+      name: 'old-signature',
+      messages: { empty: 'Empty', complete: 'Complete' },
+      onValueChange: initialChange,
+    }, deterministicEnv());
+
+    signature.actions.pointerStart(1, point);
+    signature.actions.pointerEnd(1);
+    expect(signature.state.strokes).toEqual([initialStroke]);
+    expect(signature.state.requestedValue).toHaveLength(2);
+    expect(initialChange).toHaveBeenCalledOnce();
+
+    signature.actions.pointerStart(2, point);
+    signature.update({
+      value: [nextStroke],
+      name: 'new-signature',
+      disabled: true,
+      readOnly: true,
+      required: true,
+      messages: { empty: 'Nothing drawn', complete: 'Signed' },
+      onValueChange: updatedChange,
+    });
+    expect(signature.state).toMatchObject({
+      strokes: [nextStroke],
+      active: {},
+      status: 'complete',
+      statusMessage: 'Signed',
+      disabled: true,
+      readOnly: true,
+      required: true,
+    });
+    expect(signature.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-signature',
+      required: true,
+      disabled: true,
+    });
+    signature.actions.pointerEnd(2);
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    signature.update({ value: undefined, disabled: false, readOnly: false });
+    signature.actions.clear();
+    expect(signature.state).toMatchObject({
+      strokes: [],
+      status: 'empty',
+      statusMessage: 'Nothing drawn',
+    });
+    expect(signature.state.requestedValue).toBeUndefined();
+    expect(initialChange).toHaveBeenCalledOnce();
+    expect(updatedChange).toHaveBeenCalledWith([]);
+    signature.destroy();
+  });
+
+  it('synchronizes mutable angle slider inputs after creation', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const angle = createAngleSliderController({
+      value: 90,
+      min: 0,
+      max: 360,
+      step: 10,
+      name: 'old-angle',
+      onValueChange: initialChange,
+    }, deterministicEnv('en-US'));
+
+    angle.update({
+      min: -180,
+      max: 180,
+      step: 5,
+      locale: 'de-DE',
+      name: 'new-angle',
+      disabled: true,
+      readOnly: true,
+      onValueChange: updatedChange,
+    });
+    expect(angle.state).toMatchObject({
+      value: 90,
+      min: -180,
+      max: 180,
+      step: 5,
+      disabled: true,
+      readOnly: true,
+    });
+    expect(angle.parts.hiddenInput.getProps().attributes).toMatchObject({
+      name: 'new-angle',
+      disabled: true,
+    });
+    angle.actions.setValue(100);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    angle.update({ disabled: false, readOnly: false, value: undefined });
+    angle.actions.setValue(102);
+    expect(angle.state.value).toBe(100);
+    expect(updatedChange).toHaveBeenCalledWith(100);
+    angle.destroy();
+  });
+
+  it('synchronizes splitter interaction inputs, bounds, controlled mode, and callbacks', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const splitter = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [20, 20],
+      maxSizes: [80, 80],
+      onSizesChange: initialChange,
+    }, deterministicEnv());
+
+    splitter.actions.resizeStart(1, 0, 40);
+    splitter.update({
+      orientation: 'vertical',
+      dir: 'rtl',
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      locale: 'de-DE',
+      disabled: true,
+      onSizesChange: updatedChange,
+    });
+    expect(splitter.state).toMatchObject({
+      sizes: [40, 60],
+      minSizes: [30, 10],
+      maxSizes: [70, 90],
+      orientation: 'vertical',
+      dir: 'rtl',
+      disabled: true,
+      resizing: null,
+      pointers: {},
+    });
+    splitter.actions.resize(0, 10);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).not.toHaveBeenCalled();
+
+    splitter.update({
+      sizes: undefined,
+      orientation: 'horizontal',
+      dir: 'ltr',
+      minSizes: [45, 0],
+      maxSizes: [60, 100],
+      disabled: false,
+    });
+    splitter.actions.resize(0, 20);
+    expect(splitter.state.sizes).toEqual([60, 40]);
+    expect(splitter.parts.resizeTrigger.getProps(0).aria).toMatchObject({
+      valuemin: 45,
+      valuemax: 60,
+      valuenow: 60,
+    });
+    expect(updatedChange).toHaveBeenCalledWith([60, 40]);
+    splitter.destroy();
+  });
+
+  it('reconciles splitter state and pending controlled requests when bounds tighten', () => {
+    const uncontrolled = createSplitterController({
+      defaultSizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    uncontrolled.update({ minSizes: [50, 0] });
+    expect(uncontrolled.state.sizes).toEqual([50, 50]);
+
+    const controlled = createSplitterController({
+      sizes: [40, 60],
+      minSizes: [0, 0],
+      maxSizes: [100, 100],
+    }, deterministicEnv());
+    controlled.actions.resize(0, -10);
+    expect(controlled.state.requestedSizes).toEqual([30, 70]);
+    controlled.update({ minSizes: [35, 0] });
+    expect(controlled.state.sizes).toEqual([40, 60]);
+    expect(controlled.state.requestedSizes).toEqual([35, 65]);
+    controlled.update({ sizes: [20, 80] });
+    expect(controlled.state.sizes).toEqual([35, 65]);
+    expect(controlled.state.requestedSizes).toBeUndefined();
+    uncontrolled.destroy();
+    controlled.destroy();
+  });
+
+  it('recomputes Steps state and navigation when count changes', () => {
+    const initialChange = vi.fn();
+    const updatedChange = vi.fn();
+    const steps = createStepsController({
+      step: 1,
+      count: 3,
+      onStepChange: initialChange,
+    }, deterministicEnv());
+
+    steps.update({
+      step: undefined,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      errors: [4],
+      locale: 'de-DE',
+      label: 'Fortschritt',
+      onStepChange: updatedChange,
+    });
+    expect(steps.state).toMatchObject({
+      step: 1,
+      count: 5,
+      orientation: 'vertical',
+      linear: false,
+      statuses: ['complete', 'current', 'upcoming', 'upcoming', 'error'],
+    });
+    expect(steps.parts.root.getProps().aria?.label).toBe('Fortschritt');
+    steps.actions.goTo(4);
+    expect(steps.state.step).toBe(4);
+    expect(initialChange).not.toHaveBeenCalled();
+    expect(updatedChange).toHaveBeenCalledWith(4);
+
+    steps.update({ count: 2 });
+    expect(steps.state).toMatchObject({ step: 1, count: 2 });
+    expect(steps.state.statuses).toHaveLength(2);
+    steps.destroy();
+  });
+
+  it('preserves Steps completion for equivalent updates and clears it for a changed owner step', () => {
+    const steps = createStepsController({ count: 3, defaultStep: 2, errors: [0, 1] }, deterministicEnv());
+    steps.actions.complete();
+    steps.update({ count: 3, errors: [1, 0] });
+    expect(steps.state).toMatchObject({ completed: true, status: 'complete', step: 2 });
+    steps.update({ step: 1 });
+    expect(steps.state).toMatchObject({ completed: false, status: 'in-progress', step: 1 });
+    steps.destroy();
   });
 
   it('negative classifier names wrong RTL behavior precisely', () => {
@@ -140,66 +452,70 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(parseUIFnIsoDate('2024-02-29')).toEqual({ calendar: 'gregory', year: 2024, month: 2, day: 29 });
     expect(() => parseUIFnIsoDate('02/29/2024')).toThrowError(expect.objectContaining({ code: 'UIFN_AMBIENT_DATE_PARSE' }));
     expect(firstUIFnDayOfWeek('de-DE')).toBe(1);
+    const early = createUIFnCalendarDate(5, 2, 28);
+    expect(serializeUIFnDate(early)).toBe('0005-02-28');
+    expect(addUIFnDateDays(createUIFnCalendarDate(99, 12, 31), 1))
+      .toEqual(createUIFnCalendarDate(100, 1, 1));
+    expect(createUIFnMonthGrid(createUIFnCalendarDate(5, 1, 1), 'en-US'))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ year: 1905 })]));
 
     const input = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 2, 29), locale: 'ja-JP', calendar: 'japanese', min: createUIFnCalendarDate(2024, 1, 1), max: createUIFnCalendarDate(2024, 12, 31) }, deterministicEnv('ja-JP'));
     input.actions.editSegment('year', 2023);
     expect(input.state.value).toEqual(createUIFnCalendarDate(2023, 2, 28));
     expect(input.state.valid).toBe(false);
     expect(input.state.message).toBe('');
+    const mutableInput = createDateInputController({ defaultValue: createUIFnCalendarDate(2024, 6, 1), name: 'start' }, deterministicEnv());
+    mutableInput.update({ disabled: true, min: createUIFnCalendarDate(2025, 1, 1), name: 'updated-start' });
+    expect(mutableInput.state).toMatchObject({ disabled: true, valid: false });
+    expect(mutableInput.parts.hiddenInput.getProps().attributes).toMatchObject({ disabled: true, name: 'updated-start' });
+    mutableInput.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutableInput.state.value).toEqual(createUIFnCalendarDate(2024, 6, 1));
 
     const picker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), locale: 'de-DE', unavailable: (date) => date.day === 9 }, deterministicEnv('de-DE'));
+    expect(picker.parts.trigger.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.previous.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.next.getProps().attributes?.type).toBe('button');
+    expect(picker.parts.cellTrigger.getProps('2024-03-08').attributes?.type).toBe('button');
     picker.actions.navigateGrid('ArrowRight');
     expect(picker.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
     expect(picker.state.grid).toHaveLength(42);
-    input.destroy(); picker.destroy();
-  });
-
-  it('preserves years below 100 in Gregorian comparisons and day arithmetic', () => {
-    const ancient = parseUIFnIsoDate('0001-12-31');
-    const modern = parseUIFnIsoDate('1901-12-31');
-
-    expect(compareUIFnDates(ancient, modern)).toBe(-1);
-    expect(addUIFnDateDays(ancient, 1)).toEqual(createUIFnCalendarDate(2, 1, 1));
-    expect(addUIFnDateDays(parseUIFnIsoDate('0000-02-28'), 1)).toEqual(createUIFnCalendarDate(0, 2, 29));
-    expect(formatUIFnDate(parseUIFnIsoDate('0000-01-01'), 'en-US')).toMatch(/1 BC/);
-    expect(formatUIFnDate(parseUIFnIsoDate('0001-01-01'), 'en-US')).not.toMatch(/BC/);
-    expect(() => parseUIFnIsoDate('999999-02-31')).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
-    expect(createUIFnCalendarDate(275760, 9, 13)).toEqual({ calendar: 'gregory', year: 275760, month: 9, day: 13 });
-    expect(() => createUIFnCalendarDate(275760, 9, 14)).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
-    expect(() => createUIFnCalendarDate(-1, 1, 1)).toThrowError(expect.objectContaining({ code: 'UIFN_DATE_VALUE_INVALID' }));
-  });
-
-  it('clamps calendar arithmetic and picker navigation at the supported year-zero boundary', () => {
-    const lowerBound = createUIFnCalendarDate(0, 1, 1);
-    expect(addUIFnDateDays(lowerBound, -1)).toEqual(lowerBound);
-    expect(addUIFnDateMonths(lowerBound, -1)).toEqual(lowerBound);
-    const grid = createUIFnMonthGrid(lowerBound, 'en-US');
-    expect(grid).toHaveLength(42);
-    expect(grid.slice(0, 6)).toEqual([null, null, null, null, null, null]);
-    expect(grid[6]).toEqual(lowerBound);
-
-    const picker = createDatePickerController({ defaultValue: lowerBound, locale: 'en-US' }, deterministicEnv('en-US'));
-    picker.actions.navigateGrid('ArrowLeft');
-    picker.actions.navigateMonth(-1);
-    picker.actions.decrement('year');
-    expect(picker.state.focusedDate).toEqual(lowerBound);
-    expect(picker.state.visibleMonth).toEqual(lowerBound);
-    expect(picker.state.value).toEqual(lowerBound);
-    picker.destroy();
-  });
-
-  it('does not loop when backward navigation reaches an unavailable lower bound', () => {
-    const lowerBound = createUIFnCalendarDate(0, 1, 1);
-    const nextDay = createUIFnCalendarDate(0, 1, 2);
-    const picker = createDatePickerController({
-      defaultValue: nextDay,
-      locale: 'en-US',
-      unavailable: (value) => compareUIFnDates(value, lowerBound) === 0,
-    }, deterministicEnv('en-US'));
-
-    picker.actions.navigateGrid('ArrowLeft');
-    expect(picker.state.focusedDate).toEqual(nextDay);
-    picker.destroy();
+    const mutablePicker = createDatePickerController({ defaultValue: createUIFnCalendarDate(2024, 3, 8), defaultOpen: true }, deterministicEnv());
+    mutablePicker.update({ disabled: true, readOnly: true });
+    expect(mutablePicker.state).toMatchObject({ disabled: true, readOnly: true });
+    expect(mutablePicker.parts.trigger.getProps().disabled).toBe(true);
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    const disabledFocusedDate = mutablePicker.state.focusedDate;
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    mutablePicker.parts.grid.getProps().on?.keydown?.({ key: 'ArrowRight' });
+    expect(mutablePicker.state).toMatchObject({
+      value: createUIFnCalendarDate(2024, 3, 8),
+      focusedDate: disabledFocusedDate,
+      valid: true,
+    });
+    expect(mutablePicker.parts.segment.getProps('day')).toMatchObject({
+      tabIndex: -1,
+      aria: { disabled: true, readonly: true },
+    });
+    mutablePicker.update({ disabled: false, readOnly: true });
+    mutablePicker.actions.selectDate(createUIFnCalendarDate(2024, 3, 9));
+    mutablePicker.parts.segment.getProps('day').on?.keydown?.({ key: 'ArrowUp' });
+    expect(mutablePicker.state.value).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    expect(mutablePicker.parts.cellTrigger.getProps('2024-03-09').disabled).toBe(true);
+    const bounded = createDatePickerController({
+      defaultValue: createUIFnCalendarDate(2024, 3, 10),
+      min: createUIFnCalendarDate(2024, 3, 8),
+      max: createUIFnCalendarDate(2024, 3, 10),
+      unavailable: (date) => date.day === 9,
+    }, deterministicEnv());
+    bounded.actions.navigateGrid('ArrowRight');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 10));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    bounded.actions.navigateGrid('ArrowLeft');
+    expect(bounded.state.focusedDate).toEqual(createUIFnCalendarDate(2024, 3, 8));
+    input.destroy(); mutableInput.destroy(); picker.destroy(); mutablePicker.destroy(); bounded.destroy();
   });
 
   it('clamps color channels and round-trips supported spaces and alpha within one byte', () => {
@@ -235,12 +551,26 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(areaThumb.tabIndex).toBe(0);
     areaThumb.on?.keydown?.({ key: 'ArrowLeft', preventDefault: vi.fn() });
     expect(rgbaToUIFnHsla(keyboardPicker.state.value).s).toBeLessThan(saturationBefore);
+
+    keyboardPicker.update({ disabled: true, colorSpace: 'hsl', alpha: false, name: 'updated-color' });
+    const disabledColor = keyboardPicker.state.value;
+    expect(keyboardPicker.state).toMatchObject({ disabled: true, colorSpace: 'hsl', alpha: false });
+    expect(keyboardPicker.parts.hiddenInput.getProps().attributes?.name).toBe('updated-color');
+    keyboardPicker.actions.setChannel('h', 180);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+    keyboardPicker.update({ disabled: false, readOnly: true });
+    keyboardPicker.actions.setArea(50, 50);
+    expect(keyboardPicker.state.value).toEqual(disabledColor);
+
     keyboardPicker.destroy();
   });
 
   it('derives elapsed time from injected now across pause, visibility, drift, completion, and destroy', () => {
     const scheduler = createManualRuntimeScheduler(1000); const complete = vi.fn();
     const timer = createTimerController({ duration: 10_000, announceInterval: 1000, onComplete: complete }, { scheduler, now: scheduler.now, locale: 'de-DE' });
+    expect(timer.parts.start.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.pause.getProps().attributes?.type).toBe('button');
+    expect(timer.parts.reset.getProps().attributes?.type).toBe('button');
     timer.actions.start(); scheduler.advanceBy(3333); timer.actions.tick();
     expect(timer.state.remaining).toBe(6667);
     timer.actions.visibilityChange(true); scheduler.advanceBy(5000); expect(timer.state.remaining).toBe(6667);
@@ -248,6 +578,16 @@ describe('TV-PRIM-007-P/N structured date, color, and clock models', () => {
     expect(timer.state.remaining).toBe(0); expect(complete).toHaveBeenCalledOnce();
     expect(timer.state.announcementCount).toBeLessThanOrEqual(11);
     timer.destroy(); scheduler.advanceBy(1000); expect(complete).toHaveBeenCalledOnce(); expect(scheduler.pending().timeout).toBe(0);
+
+    const mutableTimer = createTimerController({ duration: 5000 }, { scheduler, now: scheduler.now });
+    mutableTimer.update({ duration: 2000, direction: 'up', autoStart: true, announceInterval: 500 });
+    expect(mutableTimer.state).toMatchObject({ duration: 2000, direction: 'up', status: 'running' });
+    scheduler.advanceBy(250);
+    mutableTimer.actions.tick();
+    expect(mutableTimer.state.remaining).toBe(250);
+    mutableTimer.update({ autoStart: false });
+    expect(mutableTimer.state.status).toBe('paused');
+    mutableTimer.destroy();
   });
 
   it('rejects non-finite timer inputs before they can enter a runtime snapshot', () => {

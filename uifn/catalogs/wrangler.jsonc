@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "uifn-components",
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-16",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "env": {
+    "preview": {
+      "name": "uifn-components-preview",
+      "workers_dev": true
+    },
+    "production": {
+      "name": "uifn-components",
+      "workers_dev": true,
+      "routes": [
+        {
+          "pattern": "uifn.dev",
+          "custom_domain": true
+        }
+      ]
+    }
+  }
+}

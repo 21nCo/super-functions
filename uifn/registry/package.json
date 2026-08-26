@@ -1,0 +1,57 @@
+{
+  "name": "@uifn/registry",
+  "version": "0.0.1",
+  "description": "Registry manifests, compiler, and CLI for uifn source installation",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "uifn": "dist/bin.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "generate": "node ../../scripts/generate-uifn-registry.mjs --write",
+    "generate:check": "node ../../scripts/generate-uifn-registry.mjs --check",
+    "build": "tsup src/index.ts --format esm,cjs --dts && tsup src/bin.ts --format esm,cjs",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "test:stable": "vitest run --config vitest.config.ts src/__tests__/stable-lane.test.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run generate:check && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "21n",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18 <23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/21nCo/super-functions.git",
+    "directory": "uifn/registry"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "uifn": {
+    "status": "ga-candidate",
+    "layer": "registry",
+    "schemaVersion": 2,
+    "sourcePolicy": "clean-room"
+  }
+}

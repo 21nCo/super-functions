@@ -196,10 +196,6 @@ export function createUIFnPositioner(
   let destroyed = false;
   let result: Readonly<UIFnPositionResult> | null = null;
   let cleanupAutoUpdate: () => void = () => undefined;
-  let boundReference: Element | UIFnVirtualAnchor | null = null;
-  let boundReferenceTarget: Element | null = null;
-  let boundFloating: HTMLElement | null = null;
-  let installingAutoUpdate = false;
   let generation = 0;
   const subscribers = new Set<(result: Readonly<UIFnPositionResult>) => void>();
   const releaseResource = scope.track('positioner', () => undefined);
@@ -219,10 +215,6 @@ export function createUIFnPositioner(
     nextOptions?: Partial<UIFnPositionerOptions>,
   ): Promise<Readonly<UIFnPositionResult>> => {
     assertPositionerAlive('update position');
-    const autoUpdateConfigChanged = !!nextOptions && (
-      ('autoUpdate' in nextOptions && nextOptions.autoUpdate !== options.autoUpdate)
-      || ('animationFrame' in nextOptions && nextOptions.animationFrame !== options.animationFrame)
-    );
     if (nextOptions) options = { ...options, ...nextOptions };
     const reference = resolve(options.reference);
     const floating = resolve(options.floating);
@@ -236,38 +228,6 @@ export function createUIFnPositioner(
         recoverable: true,
         details: { hasReference: !!reference, hasFloating: !!floating },
       });
-    }
-    const referenceTarget = 'nodeType' in reference
-      ? reference as Element
-      : reference.contextElement ?? null;
-    const restartAutoUpdate = running && !installingAutoUpdate && (
-      autoUpdateConfigChanged
-      || (options.animationFrame
-        ? reference !== boundReference
-        : referenceTarget !== boundReferenceTarget)
-      || floating !== boundFloating
-    );
-    if (restartAutoUpdate) {
-      cleanupAutoUpdate();
-      cleanupAutoUpdate = () => undefined;
-      running = false;
-      if (options.autoUpdate !== false) {
-        running = true;
-        boundReference = reference;
-        boundReferenceTarget = referenceTarget;
-        boundFloating = floating;
-        installingAutoUpdate = true;
-        try {
-          cleanupAutoUpdate = scope.track('observer', autoUpdate(
-            reference as ReferenceElement,
-            floating,
-            () => void update().catch((error) => scope.environment.error(error)),
-            { animationFrame: options.animationFrame ?? false },
-          ), 'position-auto-update');
-        } finally {
-          installingAutoUpdate = false;
-        }
-      }
     }
     const currentGeneration = ++generation;
     const sizeData: { availableWidth?: number; availableHeight?: number } = {};
@@ -361,9 +321,6 @@ export function createUIFnPositioner(
     running = false;
     cleanupAutoUpdate();
     cleanupAutoUpdate = () => undefined;
-    boundReference = null;
-    boundReferenceTarget = null;
-    boundFloating = null;
   };
 
   return {
@@ -388,23 +345,14 @@ export function createUIFnPositioner(
       }
       else {
         running = true;
-        boundReference = reference;
-        boundReferenceTarget = 'nodeType' in reference
-          ? reference as Element
-          : reference.contextElement ?? null;
-        boundFloating = floating;
-        installingAutoUpdate = true;
-        try {
-          const dependencyCleanup = autoUpdate(
-            reference as ReferenceElement,
-            floating,
-            () => void update().catch((error) => scope.environment.error(error)),
-            { animationFrame: options.animationFrame ?? false },
-          );
-          cleanupAutoUpdate = scope.track('observer', dependencyCleanup, 'position-auto-update');
-        } finally {
-          installingAutoUpdate = false;
-        }
+        const dependencyCleanup = autoUpdate(
+          reference as ReferenceElement,
+          floating,
+          () => void update().catch((error) => scope.environment.error(error)),
+          { animationFrame: options.animationFrame ?? false },
+        );
+        const release = scope.track('observer', dependencyCleanup, 'position-auto-update');
+        cleanupAutoUpdate = release;
       }
     },
     stop,

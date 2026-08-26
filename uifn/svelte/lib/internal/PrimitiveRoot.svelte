@@ -35,7 +35,10 @@
 
   const instanceId = $props.id();
   const initialDefinition = untrack(() => definition);
-  const initial = splitSvelteRootProps(untrack(() => runtimeProps), initialDefinition.inputNames);
+  const inputNames = initialDefinition.name === 'AngleSlider'
+    ? [...initialDefinition.inputNames, 'name']
+    : initialDefinition.inputNames;
+  const initial = splitSvelteRootProps(untrack(() => runtimeProps), inputNames);
   const environment: UIFnEnvironment = {
     ...initial.environment,
     scopeId: initial.environment?.scopeId ?? `${initialDefinition.name}-${instanceId}`,
@@ -46,7 +49,7 @@
   setContext(initialDefinition.contextKey, bridge);
 
   let epoch = $state(0);
-  const split = $derived(splitSvelteRootProps(runtimeProps, initialDefinition.inputNames));
+  const split = $derived(splitSvelteRootProps(runtimeProps, inputNames));
   const userProps = $derived(toSvelteUserPartProps(split.dom));
   const partProps = $derived.by(() => {
     epoch;

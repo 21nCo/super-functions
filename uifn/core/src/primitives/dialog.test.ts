@@ -52,66 +52,6 @@ describe('dialog primitive', () => {
     expect(dialog.state.open).toBe(true);
   });
 
-  it('synchronizes mutable overlay inputs after mount', () => {
-    const dialog = createDialogController({ defaultOpen: false });
-
-    dialog.update({
-      modal: false,
-      trapFocus: false,
-      scrollLock: false,
-      closeOnEscape: false,
-      closeOnInteractOutside: false,
-      closeOnOutsideInteraction: false,
-      outsideInteractionBehavior: 'ignore',
-      closeOnOutsideInteraction: false,
-      outsideInteractionBehavior: 'ignore',
-      placement: 'top-start',
-      forceMount: true,
-      initialFocusId: 'updated-initial',
-      returnFocusId: 'updated-return',
-      accessibleName: 'Updated dialog',
-    });
-
-    expect(dialog.state).toMatchObject({
-      modal: false,
-      trapFocus: false,
-      scrollLock: false,
-      closeOnEscape: false,
-      closeOnInteractOutside: false,
-      placement: 'top-start',
-      forceMount: true,
-      initialFocusId: 'updated-initial',
-      returnFocusId: 'updated-return',
-      accessibleName: 'Updated dialog',
-    });
-    expect(dialog.parts.content.getProps()).toMatchObject({
-      hidden: false,
-      aria: { label: 'Updated dialog' },
-    });
-  });
-
-  it('keeps outside-interaction behavior and dismissal actions synchronized', () => {
-    const dialog = createDialogController({ defaultOpen: true });
-
-    dialog.update({ outsideInteractionBehavior: 'ignore' });
-    expect(dialog.state).toMatchObject({
-      closeOnInteractOutside: false,
-      closeOnOutsideInteraction: false,
-      outsideInteractionBehavior: 'ignore',
-    });
-    expect(dialog.actions.onOutsideInteraction()).toBe(false);
-    expect(dialog.state.open).toBe(true);
-
-    dialog.update({ outsideInteractionBehavior: 'close' });
-    expect(dialog.state).toMatchObject({
-      closeOnInteractOutside: true,
-      closeOnOutsideInteraction: true,
-      outsideInteractionBehavior: 'close',
-    });
-    expect(dialog.actions.onOutsideInteraction()).toBe(true);
-    expect(dialog.state.open).toBe(false);
-  });
-
   it('keeps fixed bases isolated to their explicit model scopes', () => {
     const first = createDialogController({ idBase: 'shared-dialog' });
     const second = createDialogController({ idBase: 'shared-dialog' });

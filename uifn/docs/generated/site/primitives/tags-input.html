@@ -1,0 +1,159 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>TagsInput · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="tags-input"><h1>TagsInput</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>TagsInput is the stable styled selection-collection primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `TagsInputRoot` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `label` | `TagsInputLabel` | `label` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `control` | `TagsInputControl` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `item` | `TagsInputItem` | `span` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `itemText` | `TagsInputItemText` | `span` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `itemDelete` | `TagsInputItemDelete` | `button` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `input` | `TagsInputInput` | `input` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `clear` | `TagsInputClear` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `hiddenInput` | `TagsInputHiddenInput` | `input` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `error` | `TagsInputError` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/tags-input: createTagsInputController(props, environment?)`
+- State: `TagsInputState`
+- Actions: `TagsInputActions`
+- Parts: `TagsInputController[&quot;parts&quot;]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, form-bridges-live-regions
+- react context: `TagsInputProvider and useTagsInput(inputs); adapter context remains private`
+- svelte context: `TagsInputProvider; adapter context remains private to compound descendants`
+- solid context: `TagsInputProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+- `editing` (semantic)
+- `invalid` (semantic)
+
+Complete transition signatures:
+
+- `{ type: &quot;INPUT&quot;; value: string }` — TagsInput semantic transition event INPUT. Source: controller-or-native-contract.
+- `{ type: &quot;COMPOSITION_START&quot; }` — TagsInput semantic transition event COMPOSITION_START. Source: controller-or-native-contract.
+- `{ type: &quot;COMPOSITION_END&quot;; value: string }` — TagsInput semantic transition event COMPOSITION_END. Source: controller-or-native-contract.
+- `{ type: &quot;ADD&quot; }` — TagsInput semantic transition event ADD. Source: controller-or-native-contract.
+- `{ type: &quot;REMOVE&quot; }` — TagsInput semantic transition event REMOVE. Source: controller-or-native-contract.
+- `{ type: &quot;NAVIGATE_TAG&quot; }` — TagsInput semantic transition event NAVIGATE_TAG. Source: controller-or-native-contract.
+- `{ type: &quot;CLEAR&quot;; inputModality?: &quot;keyboard&quot; | &quot;pointer&quot; | &quot;touch&quot; | &quot;virtual&quot; }` — TagsInput semantic transition event CLEAR. Source: controller-or-native-contract.
+- `{ type: &quot;FORM_RESET&quot;; form?: string }` — TagsInput semantic transition event FORM_RESET. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- `onValueChange(value: string[]) =&gt; void` — Called after TagsInput requests a value change. Controlled consumers must commit the value back through value.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `value` | `string[]` | no | yes | `undefined (uncontrolled)` | Optional reactive value input from the canonical TagsInput contract. |
+| `defaultValue` | `string[]` | no | yes | `undefined → []` | Optional reactive defaultValue input from the canonical TagsInput contract. |
+| `allowDuplicates` | `boolean` | no | yes | `undefined → false` | Optional reactive allowDuplicates input from the canonical TagsInput contract. |
+| `max` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive max input from the canonical TagsInput contract. |
+| `delimiter` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive delimiter input from the canonical TagsInput contract. |
+| `name` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive name input from the canonical TagsInput contract. |
+| `disabled` | `boolean` | no | yes | `undefined → false` | Optional reactive disabled input from the canonical TagsInput contract. |
+| `readOnly` | `boolean` | no | yes | `undefined → false` | Optional reactive readOnly input from the canonical TagsInput contract. |
+| `required` | `boolean` | no | yes | `undefined → false` | Optional reactive required input from the canonical TagsInput contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `multiple`. Controlled inputs: `value`. Uncontrolled defaults: `defaultValue`. Change events: `VALUE_CHANGE`. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `selection-collection`. Native semantic basis: Use the declared listbox, combobox, radio, checkbox, switch, tag, or tree selection model.
+
+Accessible name required: yes; accepted sources: label-element, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 2.1.1, 2.1.2, 2.4.3, 2.4.7, 3.3.1, 3.3.2, 4.1.2, 4.1.3. Normative basis: native-html, wai-aria-apg-listbox, wai-aria-apg-combobox, wai-aria-apg-radio. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `selection-specific`; keys: `Tab`, `Shift+Tab`, `ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`, `Enter`, `Space`, `Escape`, `typeahead`. Pointer/touch obligations: select-item, toggle-item, touch-scroll-arbitration. Focus obligations: active-item, selected-item, dynamic-collection-focus-repair.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `controller-bridge`; value shape: `multiple`; reset: `controller-and-native-form`; validation: `native-proxy-and-controller`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, form-bridges-live-regions) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `TagsInput` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;tags-input&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | label | control | item | itemText | itemDelete | input | clear | hiddenInput | error&quot;` on all styled parts; stable.
+- `data-state=&quot;idle | editing | invalid&quot;` on stateful parts; stable semantic state.
+- `data-disabled=&quot;true | false&quot;` on parts whose semantics depend on this input; stable semantic state.
+- `data-readonly=&quot;true | false&quot;` on parts whose semantics depend on this input; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/tags-input` | `components/uifn/react/tags-input.ts` |
+| svelte | `@uifn/components-svelte/tags-input` | `components/uifn/svelte/tags-input/index.ts` |
+| solid | `@uifn/components-solid/tags-input` | `components/uifn/solid/tags-input.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { TagsInputRoot } from &quot;@uifn/components-react/tags-input&quot;;
+
+export function TagsInputExample() {
+  return React.createElement(TagsInputRoot, {});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { TagsInputRoot } from &quot;./components/uifn/react/tags-input.js&quot;;
+
+export function TagsInputExample() {
+  return React.createElement(TagsInputRoot, {});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TagsInputRoot } from &quot;@uifn/components-svelte/tags-input&quot;;
+&lt;/script&gt;
+
+&lt;TagsInputRoot  /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TagsInputRoot } from &quot;./components/uifn/svelte/tags-input/index.js&quot;;
+&lt;/script&gt;
+
+&lt;TagsInputRoot  /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TagsInputRoot } from &quot;@uifn/components-solid/tags-input&quot;;
+
+export function TagsInputExample() {
+  return createComponent(TagsInputRoot, {});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TagsInputRoot } from &quot;./components/uifn/solid/tags-input.js&quot;;
+
+export function TagsInputExample() {
+  return createComponent(TagsInputRoot, {});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add tags-input --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the selection-collection profile specifically to TagsInput; implementation vectors own exact behavior.</pre></section></main></body></html>

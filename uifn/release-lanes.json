@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stable": {
+    "distTag": "latest",
+    "blocking": true,
+    "graph": "uifn/package-graph.json",
+    "gate": "verify:uifn-stable",
+    "packagesFromGraphClass": "stable"
+  },
+  "experimental": [
+    { "package": "@uifn/patterns", "version": "0.2.0-experimental.0", "distTag": "experimental", "gate": "verify:uifn-patterns", "stableBlocking": false },
+    { "package": "@uifn/sf", "version": "0.1.0-experimental.0", "distTag": "experimental", "gate": "verify:uifn-sf", "stableBlocking": false }
+  ],
+  "aggregateGate": "verify:uifn-lanes",
+  "resultPolicy": "The stable result is computed only from stable gates. Experimental results are always reported and never folded into the stable status."
+}

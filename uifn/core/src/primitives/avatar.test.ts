@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { AvatarContract } from './avatar';
-import { createLegacyAvatar } from './legacy-compat';
 
 describe('avatar static contract', () => {
   it('derives semantic image/fallback props without a controller lifecycle', () => {
@@ -15,14 +14,5 @@ describe('avatar static contract', () => {
   it('shows fallback deterministically for missing or failed images', () => {
     const state = AvatarContract.getState({ alt: 'Ada' });
     expect(state).toEqual({ status: 'error', showImage: false, showFallback: true });
-  });
-
-  it('keeps legacy Svelte subscribers isolated and emits the current state immediately', () => {
-    const avatar = createLegacyAvatar();
-    const observed: string[] = [];
-    avatar.subscribe(() => { throw new Error('subscriber failed'); });
-    avatar.subscribe((state) => observed.push(state.status));
-    avatar.actions.setLoaded();
-    expect(observed).toEqual(['idle', 'loaded']);
   });
 });

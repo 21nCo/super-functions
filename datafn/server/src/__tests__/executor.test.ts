@@ -114,4 +114,81 @@ describe("DatafnExecutor", () => {
       allowed: false,
     })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
   });
+
+  it("resolves configured context and normalizes executor-only failures", async () => {
+    const schema = {
+      resources: [{
+        name: "tasks",
+        version: 1,
+        fields: [{ name: "title", type: "string" as const, required: true }],
+        permissions: { read: { fields: ["title"] }, write: { fields: ["title"] } },
+      }],
+    };
+    const contexts: string[] = [];
+    const contextual = await createDatafnServer<{ actorId: string }>({
+      schema,
+      db: memoryAdapter(),
+      context: (request) => {
+        contexts.push(new URL(request.url).pathname);
+        return { actorId: "configured" };
+      },
+      authorize: (context) => context.actorId === "configured",
+    });
+    servers.push(contextual);
+    await expect(contextual.executor.query({
+      resource: "tasks",
+      version: "1",
+      select: ["id", "title"],
+    })).resolves.toMatchObject({ data: [] });
+    expect(contexts).toEqual(["/datafn/query"]);
+
+    const throwing = await createDatafnServer({
+      schema,
+      db: memoryAdapter(),
+      authorize: () => { throw new Error("sensitive authorization detail"); },
+    });
+    servers.push(throwing);
+    await expect(throwing.executor.query({
+      resource: "tasks",
+      version: "1",
+    })).rejects.toMatchObject({
+      code: "INTERNAL",
+      message: "Internal Server Error",
+      status: 500,
+    });
+
+    const invalidResponse = await createDatafnServer({
+      schema,
+      db: memoryAdapter(),
+      routeHooks: {
+        afterResponse: () => new Response("not-json", { status: 502 }),
+      },
+    });
+    servers.push(invalidResponse);
+    await expect(invalidResponse.executor.query({
+      resource: "tasks",
+      version: "1",
+    })).rejects.toMatchObject({
+      code: "INTERNAL",
+      message: "DataFn execution returned an invalid response",
+      status: 502,
+    });
+
+    const nonObjectResponse = await createDatafnServer({
+      schema,
+      db: memoryAdapter(),
+      routeHooks: {
+        afterResponse: () => Response.json(null, { status: 502 }),
+      },
+    });
+    servers.push(nonObjectResponse);
+    await expect(nonObjectResponse.executor.query({
+      resource: "tasks",
+      version: "1",
+    })).rejects.toMatchObject({
+      code: "INTERNAL",
+      message: "DataFn execution returned an invalid response",
+      status: 502,
+    });
+  });
 });

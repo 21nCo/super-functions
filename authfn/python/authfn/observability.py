@@ -79,7 +79,12 @@ async def emit_auth_event(
 
 
 def _sanitize_value(value: Any, key: str | None = None) -> Any:
-    if key and any(part in key.lower() for part in _SENSITIVE_KEY_PARTS):
+    normalized_key = key.lower() if key else None
+    if (
+        normalized_key
+        and normalized_key != "errorcode"
+        and any(part in normalized_key for part in _SENSITIVE_KEY_PARTS)
+    ):
         return _REDACTED
 
     if isinstance(value, list):
@@ -99,4 +104,3 @@ def _headers_dict(request: Any) -> Dict[str, Any]:
     if hasattr(headers, "items"):
         return {str(key).lower(): value for key, value in headers.items()}
     return {str(key).lower(): value for key, value in dict(headers).items()}
-

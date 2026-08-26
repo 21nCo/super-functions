@@ -1,11 +1,15 @@
 <script lang="ts">
   import { Accordion, AlertDialog, AngleSlider, Autocomplete, Avatar, Button, Carousel, Checkbox, CheckboxGroup, Clipboard, Collapsible, ColorPicker, Combobox, ContextMenu, DateInput, DatePicker, Dialog, Drawer, Editable, Field, Fieldset, FileUpload, FloatingPanel, Form, HoverCard, ImageCropper, Input, Listbox, Marquee, Menu, Menubar, Meter, NavigationMenu, NumberInput, Pagination, PasswordInput, PinInput, Popover, Progress, QRCode, RadioGroup, RatingGroup, ScrollArea, SegmentGroup, Select, Separator, SignaturePad, Slider, Splitter, Steps, Switch, Tabs, TagsInput, Timer, Toast, Toggle, ToggleGroup, Toolbar, Tooltip, Tour, TreeView, Badge, Breadcrumb, Card, Command, InputGroup, Skeleton, Table, Textarea } from '../../lib/index.js';
+
+  let { angleName = 'angle' }: { angleName?: string } = $props();
 </script>
 
 <div id="tour-target"></div>
 <Accordion.Root data-testid="accordion-root" />
 <AlertDialog.Root data-testid="alert-dialog-root" />
-<AngleSlider.Root data-testid="angle-slider-root" />
+<AngleSlider.Root name={angleName} data-testid="angle-slider-root">
+  <AngleSlider.HiddenInput data-testid="angle-slider-input" />
+</AngleSlider.Root>
 <Autocomplete.Root items={[]} data-testid="autocomplete-root" />
 <Avatar.Root alt="Avatar" data-testid="avatar-root" />
 <Button.Root data-testid="button-root" />
@@ -26,7 +30,7 @@
 <Fieldset.Root data-testid="fieldset-root" />
 <FileUpload.Root data-testid="file-upload-root" />
 <FloatingPanel.Root data-testid="floating-panel-root" />
-<Form.Root data-testid="form-root" />
+<Form.Root action="/save" method="post" enctype="multipart/form-data" data-testid="form-root" />
 <HoverCard.Root data-testid="hover-card-root" />
 <ImageCropper.Root src="/image.png" data-testid="image-cropper-root" />
 <Input.Root data-testid="input-root" />

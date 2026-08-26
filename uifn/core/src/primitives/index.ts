@@ -258,7 +258,6 @@ export {
 } from './tree-view';
 export type { UIFnNavigationItem, UIFnNavigationIds, UIFnNavigationPolicyContext } from './navigation';
 export { createToastController, assertUIFnAnnouncementBudget, assertUIFnNoTimerAfterDestroy, type ToastPoliteness, type UIFnToastInput, type UIFnToastRecord, type ToastProps, type ToastState, type ToastActions, type ToastControllerParts, type ToastController } from './toast';
-export { createLegacyAvatar, type LegacyAvatarMachine, type LegacyAvatarState, type LegacyAvatarStatus } from './legacy-compat';
 export { createTagsInputController, type TagsInputProps, type TagsInputParts, type TagsInputController } from './tags-input';
 export {
   createToggleGroupController,

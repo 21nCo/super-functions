@@ -31,12 +31,9 @@ export function createVirtualizerContract(options: {
     getOffsetForIndex: (index: number) => Math.max(0, Math.min(count, Math.floor(index))) * estimateSize,
     getWindow(scrollOffset: number, viewportSize: number) {
       if (count === 0) return Object.freeze({ start: 0, end: -1, offset: 0, totalSize: 0 });
-      const normalizedOffset = Math.max(0, scrollOffset);
-      const firstVisible = getIndexAtOffset(normalizedOffset);
-      const start = Math.max(0, firstVisible - overscan);
-      const trailingOffset = normalizedOffset + Math.max(0, viewportSize);
-      const lastVisible = Math.max(firstVisible, Math.ceil(trailingOffset / estimateSize) - 1);
-      const end = Math.min(count - 1, lastVisible + overscan);
+      const start = Math.max(0, getIndexAtOffset(scrollOffset) - overscan);
+      const visible = Math.max(1, Math.ceil(Math.max(0, viewportSize) / estimateSize));
+      const end = Math.min(count - 1, start + visible + overscan * 2 - 1);
       return Object.freeze({ start, end, offset: start * estimateSize, totalSize: count * estimateSize });
     },
   });

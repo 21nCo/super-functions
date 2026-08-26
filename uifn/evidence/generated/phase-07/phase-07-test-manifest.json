@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-07.mjs",
+  "phase": "PHASE_07",
+  "implementationEvidence": true,
+  "requirement": "PRIM-002",
+  "vectors": [
+    "TV-PRIM-002-P",
+    "TV-PRIM-002-N",
+    "TV-DOM-002-P/N",
+    "TV-DOM-003-P/N",
+    "TV-DOM-004-P/N",
+    "TV-DOM-005-P/N",
+    "TV-DOM-006-P/N"
+  ],
+  "browsers": [
+    "chromium",
+    "firefox",
+    "webkit",
+    "mobile-chromium",
+    "mobile-webkit"
+  ],
+  "frameworks": [
+    "react",
+    "svelte",
+    "solid"
+  ],
+  "modes": [
+    "package",
+    "source"
+  ],
+  "suites": [
+    "uifn/core/src/__tests__/phase-07-overlays.test.ts",
+    "uifn/dom/browser/overlay-primitives.spec.ts",
+    "scripts/verify-uifn-phase-07-contract.test.mjs",
+    "scripts/verify-uifn-overlay-pack.mjs"
+  ]
+}

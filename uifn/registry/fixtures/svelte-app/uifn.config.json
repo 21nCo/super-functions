@@ -1,0 +1,5 @@
+{
+  "framework": "svelte",
+  "style": "css-variables",
+  "sourceInstallRoot": "components/ui/svelte"
+}

@@ -5,7 +5,6 @@ import {
   REQUIRED_PUBLIC_TOKEN_PATHS,
   UIFnTokenError,
   flattenTokens,
-  isDesignToken,
   publicTokenName,
   type DesignToken,
   type DesignTokenTheme,
@@ -145,39 +144,13 @@ function assertTokenValueType(path: string[], token: DesignToken): void {
 }
 
 function assertTokenShape(tokens: TokenTree): void {
-  const visited = new WeakSet<object>();
-  const visit = (node: unknown, path: string[]): void => {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+  flattenTokens(tokens).forEach(({ path, token }) => {
+    if (!token.$type || token.$value === undefined || token.$value === null) {
       throw new UIFnTokenError('UIFN_TOKEN_PUBLIC_NAME_INVALID', 'Tokens must include $type and $value.', {
         path: path.join('.'),
       });
     }
-    if (visited.has(node)) {
-      throw new UIFnTokenError('UIFN_TOKEN_PUBLIC_NAME_INVALID', 'Token groups must be acyclic objects.', {
-        path: path.join('.'),
-      });
-    }
-    visited.add(node);
-    for (const [key, value] of Object.entries(node)) {
-      const nextPath = [...path, key];
-      if (isDesignToken(value)) {
-        if (!value.$type || value.$value === undefined || value.$value === null) {
-          throw new UIFnTokenError('UIFN_TOKEN_PUBLIC_NAME_INVALID', 'Tokens must include $type and $value.', {
-            path: nextPath.join('.'),
-          });
-        }
-      } else if (value && typeof value === 'object' && !Array.isArray(value)
-        && !('$type' in value) && !('$value' in value)) {
-        visit(value, nextPath);
-      } else {
-        throw new UIFnTokenError('UIFN_TOKEN_PUBLIC_NAME_INVALID', 'Tokens must include $type and $value.', {
-          path: nextPath.join('.'),
-        });
-      }
-    }
-    visited.delete(node);
-  };
-  visit(tokens, []);
+  });
 }
 
 const TOKEN_REFERENCE = /^\{([^}]+)\}$/;

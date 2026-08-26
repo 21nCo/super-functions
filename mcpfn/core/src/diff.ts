@@ -11,6 +11,7 @@ import type {
 import { canonicalJson, compareCodeUnits } from "./canonical.js";
 
 type Direction = "input" | "output";
+type SchemaNode = McpFnJsonSchema | boolean;
 
 function push(
   changes: McpFnContractChange[],
@@ -36,14 +37,159 @@ function schemaTypes(schema: McpFnJsonSchema): Set<string> | undefined {
   return typeof schema.type === "string" ? new Set([schema.type]) : undefined;
 }
 
+function equalSets(left: Set<string>, right: Set<string>): boolean {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function hasUnescapedAlternation(pattern: string): boolean {
+  let escaped = false;
+  for (const character of pattern) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    // Treat alternation inside character classes conservatively too. It is not
+    // an alternation there, but declining the optimization cannot hide overlap.
+    if (character === "|") return true;
+  }
+  return false;
+}
+
+function anchoredLiteralPrefix(pattern: string): string | undefined {
+  if (!pattern.startsWith("^")) return undefined;
+  let prefix = "";
+  for (let index = 1; index < pattern.length; index += 1) {
+    const character = pattern[index]!;
+    if (character === "\\") {
+      const escaped = pattern[index + 1];
+      if (!escaped || /[A-Za-z0-9]/.test(escaped)) break;
+      prefix += escaped;
+      index += 1;
+      continue;
+    }
+    if (".^$*+?()[]{}|".includes(character)) break;
+    prefix += character;
+  }
+  return prefix || undefined;
+}
+
+function anchoredLiteralSuffix(pattern: string): string | undefined {
+  if (!pattern.endsWith("$") || pattern.endsWith("\\$")) return undefined;
+  let suffix = "";
+  for (let index = 0; index < pattern.length - 1; index += 1) {
+    const character = pattern[index]!;
+    if (character === "\\") {
+      const escaped = pattern[index + 1];
+      if (!escaped) break;
+      suffix = /[A-Za-z0-9]/.test(escaped) ? "" : suffix + escaped;
+      index += 1;
+      continue;
+    }
+    suffix = ".^$*+?()[]{}|".includes(character) ? "" : suffix + character;
+  }
+  return suffix || undefined;
+}
+
+function patternsMayOverlap(left: string, right: string): boolean {
+  // A leading/trailing anchor only scopes its own alternative. Prefix/suffix
+  // literals are therefore proof of disjointness only without alternation.
+  if (hasUnescapedAlternation(left) || hasUnescapedAlternation(right)) return true;
+  const leftPrefix = anchoredLiteralPrefix(left);
+  const rightPrefix = anchoredLiteralPrefix(right);
+  if (
+    leftPrefix && rightPrefix &&
+    !leftPrefix.startsWith(rightPrefix) && !rightPrefix.startsWith(leftPrefix)
+  ) return false;
+  const leftSuffix = anchoredLiteralSuffix(left);
+  const rightSuffix = anchoredLiteralSuffix(right);
+  if (
+    leftSuffix && rightSuffix &&
+    !leftSuffix.endsWith(rightSuffix) && !rightSuffix.endsWith(leftSuffix)
+  ) return false;
+  return true;
+}
+
+interface NestedCapabilityChange {
+  severity: "breaking" | "additive" | "behavioral";
+  path: string;
+  before: unknown;
+  after: unknown;
+}
+
+function capabilityRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function nestedCapabilityChanges(
+  before: unknown,
+  after: unknown,
+  path: string,
+): NestedCapabilityChange[] {
+  if (equal(before, after)) return [];
+  if (before === true && after === false) {
+    return [{ severity: "breaking", path, before, after }];
+  }
+  if (before === false && after === true) {
+    return [{ severity: "additive", path, before, after }];
+  }
+  if (capabilityRecord(before) && capabilityRecord(after)) {
+    return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      .sort(compareCodeUnits)
+      .flatMap((name) => {
+        const childPath = `${path}.${name}`;
+        const hadBefore = Object.prototype.hasOwnProperty.call(before, name);
+        const hasAfter = Object.prototype.hasOwnProperty.call(after, name);
+        if (!hasAfter) {
+          return [{ severity: "breaking" as const, path: childPath, before: before[name], after: undefined }];
+        }
+        if (!hadBefore) {
+          return [{ severity: "additive" as const, path: childPath, before: undefined, after: after[name] }];
+        }
+        return nestedCapabilityChanges(before[name], after[name], childPath);
+      });
+  }
+  if (capabilityRecord(before) && after === false) {
+    return [{ severity: "breaking", path, before, after }];
+  }
+  if (before === false && capabilityRecord(after)) {
+    return [{ severity: "additive", path, before, after }];
+  }
+  return [{ severity: "behavioral", path, before, after }];
+}
+
+function matchingPatternSchemas(
+  schema: McpFnJsonSchema,
+  propertyName: string,
+): SchemaNode[] {
+  const patterns = schema.patternProperties;
+  if (!patterns || typeof patterns !== "object" || Array.isArray(patterns)) {
+    return [];
+  }
+  return Object.entries(patterns)
+    .filter(([pattern]) => {
+      try {
+        return new RegExp(pattern).test(propertyName);
+      } catch {
+        return false;
+      }
+    })
+    .map(([, patternSchema]) => patternSchema as SchemaNode);
+}
+
 function diffSchema(
-  before: McpFnJsonSchema | undefined,
-  after: McpFnJsonSchema | undefined,
+  before: SchemaNode | undefined,
+  after: SchemaNode | undefined,
   path: string,
   direction: Direction,
   changes: McpFnContractChange[],
 ): void {
-  if (!before && after) {
+  if (before && typeof before === "object" && !Object.keys(before).length) before = true;
+  if (after && typeof after === "object" && !Object.keys(after).length) after = true;
+  if (before === undefined && after !== undefined) {
     push(changes, {
       severity: direction === "input" ? "breaking" : "additive",
       code: "schema-added",
@@ -53,7 +199,7 @@ function diffSchema(
     });
     return;
   }
-  if (before && !after) {
+  if (before !== undefined && after === undefined) {
     push(changes, {
       severity: direction === "input" ? "additive" : "breaking",
       code: "schema-removed",
@@ -63,15 +209,32 @@ function diffSchema(
     });
     return;
   }
-  if (!before || !after) return;
+  if (before === undefined || after === undefined || equal(before, after)) return;
+  if (typeof before === "boolean" || typeof after === "boolean") {
+    const tightened = before === true || after === false;
+    const relaxed = before === false || after === true;
+    const breaking = direction === "input" ? tightened : relaxed;
+    push(changes, {
+      severity: breaking ? "breaking" : "additive",
+      code: "boolean-schema-changed",
+      path,
+      message: `Boolean schema changed at ${path}`,
+      before,
+      after,
+    });
+    return;
+  }
 
   const beforeTypes = schemaTypes(before);
   const afterTypes = schemaTypes(after);
-  if (!equal(before.type, after.type)) {
-    const removed = beforeTypes
+  if (
+    !equal(before.type, after.type) &&
+    !(beforeTypes && afterTypes && equalSets(beforeTypes, afterTypes))
+  ) {
+    const removed = beforeTypes && afterTypes
       ? [...beforeTypes].filter((value) => !afterTypes?.has(value))
       : [];
-    const added = afterTypes
+    const added = beforeTypes && afterTypes
       ? [...afterTypes].filter((value) => !beforeTypes?.has(value))
       : [];
     const tightened = beforeTypes === undefined
@@ -182,7 +345,7 @@ function diffSchema(
     });
   }
 
-  for (const keyword of ["pattern", "format", "const", "uniqueItems"] as const) {
+  for (const keyword of ["pattern", "format", "const"] as const) {
     const oldValue = before[keyword];
     const newValue = after[keyword];
     if (equal(oldValue, newValue)) continue;
@@ -201,8 +364,38 @@ function diffSchema(
     });
   }
 
-  const beforeAdditional = before.additionalProperties ?? true;
-  const afterAdditional = after.additionalProperties ?? true;
+  const beforeUniqueItems = before.uniqueItems ?? false;
+  const afterUniqueItems = after.uniqueItems ?? false;
+  if (!equal(beforeUniqueItems, afterUniqueItems)) {
+    if (typeof beforeUniqueItems !== "boolean" || typeof afterUniqueItems !== "boolean") {
+      push(changes, {
+        severity: "breaking",
+        code: "schema-keyword-changed",
+        path: `${path}.uniqueItems`,
+        message: `uniqueItems changed at ${path}`,
+        before: before.uniqueItems,
+        after: after.uniqueItems,
+      });
+    } else {
+      const tightened = !beforeUniqueItems && afterUniqueItems;
+      const breaking = direction === "input" ? tightened : !tightened;
+      push(changes, {
+        severity: breaking ? "breaking" : "additive",
+        code: tightened ? "constraint-tightened" : "constraint-relaxed",
+        path: `${path}.uniqueItems`,
+        message: `uniqueItems changed from ${beforeUniqueItems} to ${afterUniqueItems}`,
+        before: before.uniqueItems,
+        after: after.uniqueItems,
+      });
+    }
+  }
+
+  const normalizeAdditionalProperties = (value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length
+      ? true
+      : value;
+  const beforeAdditional = normalizeAdditionalProperties(before.additionalProperties ?? true);
+  const afterAdditional = normalizeAdditionalProperties(after.additionalProperties ?? true);
   if (beforeAdditional !== false && afterAdditional === false) {
     push(changes, {
       severity: direction === "input" ? "breaking" : "additive",
@@ -218,21 +411,22 @@ function diffSchema(
       message: `Additional properties are now accepted at ${path}`,
     });
   } else if (!equal(beforeAdditional, afterAdditional)) {
-    push(changes, {
-      severity: "breaking",
-      code: "additional-properties-schema-changed",
-      path,
-      message: `The additional-properties schema changed at ${path}`,
-      before: beforeAdditional,
-      after: afterAdditional,
-    });
+    diffSchema(
+      beforeAdditional as SchemaNode,
+      afterAdditional as SchemaNode,
+      `${path}.additionalProperties`,
+      direction,
+      changes,
+    );
   }
 
-  const beforeProperties = (before.properties ?? {}) as Record<string, McpFnJsonSchema>;
-  const afterProperties = (after.properties ?? {}) as Record<string, McpFnJsonSchema>;
+  const beforeProperties = (before.properties ?? {}) as Record<string, SchemaNode>;
+  const afterProperties = (after.properties ?? {}) as Record<string, SchemaNode>;
   const propertyNames = [...new Set([
     ...Object.keys(beforeProperties),
     ...Object.keys(afterProperties),
+    ...(Array.isArray(before.required) ? before.required as string[] : []),
+    ...(Array.isArray(after.required) ? after.required as string[] : []),
   ])].sort();
   const beforeRequired = new Set(
     Array.isArray(before.required) ? (before.required as string[]) : [],
@@ -245,14 +439,49 @@ function diffSchema(
     const propertyPath = `${path}.properties.${name}`;
     const oldProperty = beforeProperties[name];
     const newProperty = afterProperties[name];
-    if (!oldProperty && newProperty) {
+    const hadOldProperty = Object.prototype.hasOwnProperty.call(beforeProperties, name);
+    const hasNewProperty = Object.prototype.hasOwnProperty.call(afterProperties, name);
+    if (!hadOldProperty && hasNewProperty) {
       const newlyRequired = afterRequired.has(name);
+      const additionalPropertyChanges: McpFnContractChange[] = [];
+      if (
+        direction === "output" &&
+        typeof beforeAdditional === "object"
+      ) {
+        diffSchema(
+          beforeAdditional as McpFnJsonSchema,
+          newProperty,
+          `${propertyPath}.additionalProperties`,
+          "output",
+          additionalPropertyChanges,
+        );
+      }
+      const inputFallbackChanges: McpFnContractChange[] = [];
+      if (direction === "input") {
+        const patternSchemas = matchingPatternSchemas(before, name);
+        const fallbackSchemas = patternSchemas.length
+          ? patternSchemas
+          : [beforeAdditional as SchemaNode];
+        fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
+          fallbackSchema,
+          newProperty,
+          `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
+          "input",
+          inputFallbackChanges,
+        ));
+      }
       const breaksDeclaredOutput =
         direction === "output" &&
-        (newlyRequired || before.additionalProperties === false);
+        (
+          beforeAdditional === false ||
+          additionalPropertyChanges.some((change) => change.severity === "breaking")
+        );
+      const narrowsAcceptedInput =
+        direction === "input" &&
+        inputFallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
         severity:
-          direction === "input" && newlyRequired || breaksDeclaredOutput
+          direction === "input" && (newlyRequired || narrowsAcceptedInput) || breaksDeclaredOutput
             ? "breaking"
             : "additive",
         code:
@@ -267,13 +496,24 @@ function diffSchema(
       });
       continue;
     }
-    if (oldProperty && !newProperty) {
-      const newlyRequired = afterRequired.has(name) && !beforeRequired.has(name);
-      const openInputRemoval = direction === "input"
-        && !newlyRequired
-        && (after.additionalProperties === undefined || after.additionalProperties === true);
+    if (hadOldProperty && !hasNewProperty) {
+      const fallbackChanges: McpFnContractChange[] = [];
+      const patternSchemas = matchingPatternSchemas(after, name);
+      const fallbackSchemas = patternSchemas.length
+        ? patternSchemas
+        : [afterAdditional as SchemaNode];
+      fallbackSchemas.forEach((fallbackSchema, index) => diffSchema(
+        oldProperty,
+        fallbackSchema,
+        `${propertyPath}.${patternSchemas.length ? `patternProperties.${index}` : "additionalProperties"}`,
+        direction,
+        fallbackChanges,
+      ));
+      const breaking =
+        direction === "output" && beforeRequired.has(name) ||
+        fallbackChanges.some((change) => change.severity === "breaking");
       push(changes, {
-        severity: openInputRemoval ? "additive" : "breaking",
+        severity: breaking ? "breaking" : "additive",
         code: "property-removed",
         path: propertyPath,
         message: `Property ${name} was removed`,
@@ -296,19 +536,72 @@ function diffSchema(
     });
   }
 
-  if (before.items || after.items) {
+  if (before.items !== undefined || after.items !== undefined) {
     diffSchema(
-      before.items as McpFnJsonSchema | undefined,
-      after.items as McpFnJsonSchema | undefined,
+      before.items as SchemaNode | undefined,
+      after.items as SchemaNode | undefined,
       `${path}.items`,
       direction,
       changes,
     );
   }
 
+  const beforePatterns = (before.patternProperties ?? {}) as Record<string, SchemaNode>;
+  const afterPatterns = (after.patternProperties ?? {}) as Record<string, SchemaNode>;
+  const patternNames = [...new Set([
+    ...Object.keys(beforePatterns),
+    ...Object.keys(afterPatterns),
+  ])].sort();
+  for (const pattern of patternNames) {
+    const hadBeforePattern = Object.prototype.hasOwnProperty.call(beforePatterns, pattern);
+    const hasAfterPattern = Object.prototype.hasOwnProperty.call(afterPatterns, pattern);
+    diffSchema(
+      hadBeforePattern ? beforePatterns[pattern] : beforeAdditional as SchemaNode,
+      hasAfterPattern ? afterPatterns[pattern] : afterAdditional as SchemaNode,
+      `${path}.patternProperties.${pattern}`,
+      direction,
+      changes,
+    );
+    const overlapChanges: McpFnContractChange[] = [];
+    if (direction === "input" && !hadBeforePattern && hasAfterPattern) {
+      for (const [existingPattern, existingSchema] of Object.entries(beforePatterns)) {
+        if (!patternsMayOverlap(existingPattern, pattern)) continue;
+        diffSchema(
+          existingSchema,
+          afterPatterns[pattern],
+          `${path}.patternProperties.${pattern}.overlap.${existingPattern}`,
+          "input",
+          overlapChanges,
+        );
+      }
+    }
+    if (direction === "output" && hadBeforePattern && !hasAfterPattern) {
+      for (const [remainingPattern, remainingSchema] of Object.entries(afterPatterns)) {
+        if (!patternsMayOverlap(pattern, remainingPattern)) continue;
+        diffSchema(
+          beforePatterns[pattern],
+          remainingSchema,
+          `${path}.patternProperties.${pattern}.overlap.${remainingPattern}`,
+          "output",
+          overlapChanges,
+        );
+      }
+    }
+    if (overlapChanges.some((change) => change.severity === "breaking")) {
+      push(changes, {
+        severity: "breaking",
+        code: "overlapping-pattern-constraint-changed",
+        path: `${path}.patternProperties.${pattern}`,
+        message: `${hadBeforePattern ? "Removing" : "Adding"} pattern ${pattern} can change constraints for properties matched by another pattern`,
+        before: hadBeforePattern ? beforePatterns[pattern] : undefined,
+        after: hasAfterPattern ? afterPatterns[pattern] : undefined,
+      });
+    }
+  }
+
   const handledKeywords = new Set([
     "type", "enum", "properties", "required", "items", "additionalProperties",
-    "pattern", "format", "const", "uniqueItems",
+    "patternProperties", "pattern", "format", "const", "uniqueItems",
     ...tightening.map(([keyword]) => keyword),
   ]);
   const behavioralKeywords = new Set([
@@ -411,6 +704,17 @@ function diffResource(
   changes: McpFnContractChange[],
 ): void {
   const root = `resources.${before.uri}`;
+  if ((before.subscribable ?? false) !== (after.subscribable ?? false)) {
+    const enabled = after.subscribable === true;
+    push(changes, {
+      severity: enabled ? "additive" : "breaking",
+      code: enabled ? "resource-subscription-enabled" : "resource-subscription-removed",
+      path: `${root}.subscribable`,
+      message: `Resource subscription support was ${enabled ? "enabled" : "removed"} for ${before.uri}`,
+      before: before.subscribable,
+      after: after.subscribable,
+    });
+  }
   if (before.mimeType !== after.mimeType) {
     push(changes, {
       severity: "breaking",
@@ -441,6 +745,19 @@ function diffResourceTemplate(
   changes: McpFnContractChange[],
 ): void {
   const root = `resourceTemplates.${before.name}`;
+  if ((before.subscribable ?? false) !== (after.subscribable ?? false)) {
+    const enabled = after.subscribable === true;
+    push(changes, {
+      severity: enabled ? "additive" : "breaking",
+      code: enabled
+        ? "resource-template-subscription-enabled"
+        : "resource-template-subscription-removed",
+      path: `${root}.subscribable`,
+      message: `Resource template subscription support was ${enabled ? "enabled" : "removed"} for ${before.name}`,
+      before: before.subscribable,
+      after: after.subscribable,
+    });
+  }
   if (before.uriTemplate !== after.uriTemplate) {
     push(changes, {
       severity: "breaking",
@@ -667,6 +984,27 @@ export function diffManifests(
       if (requirementChanged && !requirementAdded && !requirementRemoved) continue;
       const extensionWasRequired = key === "extensions" && extensionRequired(oldRecord[name]);
       const extensionIsRequired = key === "extensions" && extensionRequired(newRecord[name]);
+      const capabilityChanges = key === "capabilities" && !removed && !added
+        ? nestedCapabilityChanges(oldRecord[name], newRecord[name], `${key}.${name}`)
+        : [];
+      if (capabilityChanges.length) {
+        for (const capabilityChange of capabilityChanges) {
+          const action = capabilityChange.severity === "breaking"
+            ? "removed"
+            : capabilityChange.severity === "additive"
+              ? "added"
+              : "changed";
+          push(changes, {
+            severity: capabilityChange.severity,
+            code: `capability-support-${action}`,
+            path: capabilityChange.path,
+            message: `Capability support was ${action} at ${capabilityChange.path}`,
+            before: capabilityChange.before,
+            after: capabilityChange.after,
+          });
+        }
+        continue;
+      }
       push(changes, {
         severity: requirementChanged && requirementAdded
           ? "breaking"

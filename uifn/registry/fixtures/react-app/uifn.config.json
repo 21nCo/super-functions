@@ -1,0 +1,5 @@
+{
+  "framework": "react",
+  "style": "css-variables",
+  "sourceInstallRoot": "components/ui"
+}

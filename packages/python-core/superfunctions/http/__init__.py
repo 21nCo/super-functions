@@ -10,6 +10,7 @@ Example:
     ...     return Response(status=200, body={"message": "Hello"})
 """
 
+from .executor import execute_route
 from .openapi import OpenApiGenerationError, generate_openapi_document
 from .types import (
     AuthRouteMeta,
@@ -59,6 +60,7 @@ __all__ = [
     "get_route_openapi_meta",
     "generate_openapi_document",
     "OpenApiGenerationError",
+    "execute_route",
     "serialize_set_cookie",
     "serialize_response_cookies",
     # CORS

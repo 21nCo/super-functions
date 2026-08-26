@@ -38,40 +38,25 @@ function parseTimeList(value: string): number[] {
   });
 }
 
-function motionList(
-  names: string[],
-  durations: number[],
-  delays: number[],
-): { duration: number; count: number } {
+function pairedMaximum(durations: number[], delays: number[]): number {
+  const count = Math.max(durations.length, delays.length);
   let maximum = 0;
-  let active = 0;
-  for (let index = 0; index < names.length; index += 1) {
-    const total = (durations[index % durations.length] ?? 0)
-      + (delays[index % delays.length] ?? 0);
-    maximum = Math.max(maximum, total);
-    if (names[index] !== 'none' && total > 0) active += 1;
+  for (let index = 0; index < count; index += 1) {
+    maximum = Math.max(
+      maximum,
+      (durations[index % durations.length] ?? 0) + (delays[index % delays.length] ?? 0),
+    );
   }
-  return { duration: maximum, count: active };
+  return maximum;
 }
 
-function motionPlan(scope: UIFnDomScope, element: HTMLElement) {
-  if (scope.environment.prefersReducedMotion()) return { duration: 0, animations: 0, transitions: 0 };
+function motionDuration(scope: UIFnDomScope, element: HTMLElement): number {
+  if (scope.environment.prefersReducedMotion()) return 0;
   const style = scope.window.getComputedStyle(element);
-  const animation = motionList(
-    style.animationName.split(',').map((entry) => entry.trim()),
-    parseTimeList(style.animationDuration),
-    parseTimeList(style.animationDelay),
+  return Math.max(
+    pairedMaximum(parseTimeList(style.animationDuration), parseTimeList(style.animationDelay)),
+    pairedMaximum(parseTimeList(style.transitionDuration), parseTimeList(style.transitionDelay)),
   );
-  const transition = motionList(
-    style.transitionProperty.split(',').map((entry) => entry.trim()),
-    parseTimeList(style.transitionDuration),
-    parseTimeList(style.transitionDelay),
-  );
-  return {
-    duration: Math.max(animation.duration, transition.duration),
-    animations: animation.count,
-    transitions: transition.count,
-  };
 }
 
 export function createUIFnPresence(
@@ -103,15 +88,12 @@ export function createUIFnPresence(
   const completeAfterMotion = (expected: UIFnPresenceState, complete: UIFnPresenceState) => {
     cancelCompletion();
     const element = resolveElement(options);
-    const plan = element ? motionPlan(scope, element) : { duration: 0, animations: 0, transitions: 0 };
-    const duration = plan.duration;
+    const duration = element ? motionDuration(scope, element) : 0;
     if (!element || duration <= 0) {
       publish(complete);
       return;
     }
     let active = true;
-    let animations = plan.animations;
-    let transitions = plan.transitions;
     const finish = () => {
       if (!active || destroyed || state !== expected) return;
       active = false;
@@ -120,10 +102,7 @@ export function createUIFnPresence(
       publish(complete);
     };
     const onEnd = (event: Event) => {
-      if (event.target !== element) return;
-      if (event.type.startsWith('animation')) animations = Math.max(0, animations - 1);
-      else transitions = Math.max(0, transitions - 1);
-      if (animations + transitions === 0) finish();
+      if (event.target === element) finish();
     };
     element.addEventListener('animationend', onEnd);
     element.addEventListener('animationcancel', onEnd);

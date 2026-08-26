@@ -26,11 +26,15 @@ export {
   AuthFnOtpExpiredError,
   AuthFnOtpInvalidError,
   AuthFnOtpReplayedError,
+  AuthFnPlacementDirectoryUnavailableError,
+  AuthFnPlacementMovingError,
   AuthFnPluginAbortedError,
   AuthFnRateLimitedError,
   AuthFnRedirectUriDisallowedError,
   AuthFnRegionMismatchError,
   AuthFnRegionNotFoundError,
+  AuthFnRoutingAssertionInvalidError,
+  AuthFnRoutingCellUnavailableError,
   AuthFnSessionExpiredError,
   AuthFnSessionRevokedError,
   AuthFnTwoFactorInvalidCodeError,
@@ -191,7 +195,16 @@ export interface AuthFnAccountDeletionResult {
   deleted: true;
   userId: string;
   primaryEmail?: string;
+  delegated: boolean;
   counts: Record<string, number>;
+}
+
+export interface AuthFnAccountDeletionFailure {
+  userId: string;
+  primaryEmail?: string;
+  sessionId?: string;
+  delegated: boolean;
+  error: unknown;
 }
 
 export interface AuthFnOtpChallengeLifecycleEvent {
@@ -225,6 +238,14 @@ export type AuthFnEventType =
   | 'authfn.2fa.challenged'
   | 'authfn.region.lookup'
   | 'authfn.region.lookup.conflict'
+  | 'authfn.routing.placement_lookup'
+  | 'authfn.routing.placement_claimed'
+  | 'authfn.routing.forwarded'
+  | 'authfn.routing.mismatch'
+  | 'authfn.routing.retry'
+  | 'authfn.routing.assertion_rejected'
+  | 'authfn.routing.directory_unavailable'
+  | 'authfn.routing.cell_unavailable'
   | 'authfn.handoff.started'
   | 'authfn.handoff.exchanged'
   | 'authfn.handoff.failed'
@@ -389,6 +410,8 @@ export interface AuthFnHookContext {
   pluginName?: string;
   session?: AuthFnSession;
   actorId?: string;
+  /** Mutable state scoped to one hook-driven operation. */
+  operationState?: Map<symbol, unknown>;
 }
 
 export interface AuthFnHooks {
@@ -431,6 +454,10 @@ export interface AuthFnHooks {
   afterAccountDelete(
     ctx: AuthFnHookContext,
     result: AuthFnAccountDeletionResult
+  ): Promise<void> | void;
+  afterAccountDeleteFailure(
+    ctx: AuthFnHookContext,
+    failure: AuthFnAccountDeletionFailure
   ): Promise<void> | void;
 }
 

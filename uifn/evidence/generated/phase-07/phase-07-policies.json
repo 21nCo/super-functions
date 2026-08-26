@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-07.mjs",
+  "phase": "PHASE_07",
+  "implementationEvidence": true,
+  "policies": {
+    "AlertDialog": {
+      "modalDefault": true,
+      "initialFocus": "cancel",
+      "outside": "prevent",
+      "interaction": "press",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "none"
+    },
+    "Dialog": {
+      "modalDefault": true,
+      "initialFocus": "first-tabbable",
+      "outside": "pointer-dismiss",
+      "interaction": "press",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "none"
+    },
+    "Drawer": {
+      "modalDefault": true,
+      "initialFocus": "first-tabbable",
+      "outside": "pointer-dismiss",
+      "interaction": "press-drag",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "none"
+    },
+    "FloatingPanel": {
+      "modalDefault": false,
+      "initialFocus": "content",
+      "outside": "retain",
+      "interaction": "press-drag-resize",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "anchor"
+    },
+    "HoverCard": {
+      "modalDefault": false,
+      "initialFocus": "none",
+      "outside": "dismiss",
+      "interaction": "hover-focus-hoverable-content",
+      "touchOpens": false,
+      "nameRule": "trigger-owned",
+      "position": "anchor"
+    },
+    "Popover": {
+      "modalDefault": false,
+      "initialFocus": "content",
+      "outside": "dismiss",
+      "interaction": "press",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "anchor"
+    },
+    "Tooltip": {
+      "modalDefault": false,
+      "initialFocus": "none",
+      "outside": "retain",
+      "interaction": "hover-focus-noninteractive",
+      "touchOpens": false,
+      "nameRule": "tooltip-description-required",
+      "position": "anchor"
+    },
+    "Tour": {
+      "modalDefault": true,
+      "initialFocus": "next",
+      "outside": "prevent",
+      "interaction": "tour",
+      "touchOpens": true,
+      "nameRule": "title-or-aria-label-required",
+      "position": "target"
+    }
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pattern": "ApiKeyTable",
+  "slug": "api-key-table",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "data": [
+        {
+          "id": "api-key-table-loading",
+          "label": "ApiKeyTable loading"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "empty": {
+      "status": "empty",
+      "data": [],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "error": {
+      "status": "error",
+      "data": [
+        {
+          "id": "api-key-table-error",
+          "label": "ApiKeyTable error"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_ERROR",
+        "message": "ApiKeyTable failed"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "partial": {
+      "status": "partial",
+      "data": [
+        {
+          "id": "api-key-table-partial",
+          "label": "ApiKeyTable partial"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "data": [
+        {
+          "id": "api-key-table-permission-denied",
+          "label": "ApiKeyTable permission-denied"
+        }
+      ],
+      "error": null,
+      "permission": "denied",
+      "optimistic": false
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "data": [
+        {
+          "id": "api-key-table-optimistic",
+          "label": "ApiKeyTable optimistic"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": true
+    },
+    "success": {
+      "status": "success",
+      "data": [
+        {
+          "id": "api-key-table-success",
+          "label": "ApiKeyTable success"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "data": [
+        {
+          "id": "api-key-table-degraded-network",
+          "label": "ApiKeyTable degraded-network"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_DEGRADED_NETWORK",
+        "message": "ApiKeyTable is using stale or partial data"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "data": [
+        {
+          "id": "api-key-table-unsupported-capability",
+          "label": "ApiKeyTable unsupported-capability"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_UNSUPPORTED_CAPABILITY",
+        "message": "ApiKeyTable is not available for this capability"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    }
+  },
+  "callbacks": [
+    "onCreate",
+    "onRevoke"
+  ],
+  "backendImports": []
+}

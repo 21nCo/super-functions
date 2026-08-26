@@ -1,0 +1,6 @@
+{
+  "id": "missing-tooltip-accessibility",
+  "description": "Remove the required accessibility rules from Tooltip.",
+  "mutation": { "primitive": "Tooltip", "deletePath": ["accessibility", "rules"] },
+  "expectedErrorCodes": ["UIFN_CATALOG_FIELD_MISSING"]
+}

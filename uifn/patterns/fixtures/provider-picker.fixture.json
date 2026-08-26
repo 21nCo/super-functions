@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "pattern": "ProviderPicker",
+  "slug": "provider-picker",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "data": [
+        {
+          "id": "provider-picker-loading",
+          "label": "ProviderPicker loading"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "empty": {
+      "status": "empty",
+      "data": [],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "error": {
+      "status": "error",
+      "data": [
+        {
+          "id": "provider-picker-error",
+          "label": "ProviderPicker error"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_ERROR",
+        "message": "ProviderPicker failed"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "partial": {
+      "status": "partial",
+      "data": [
+        {
+          "id": "provider-picker-partial",
+          "label": "ProviderPicker partial"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "data": [
+        {
+          "id": "provider-picker-permission-denied",
+          "label": "ProviderPicker permission-denied"
+        }
+      ],
+      "error": null,
+      "permission": "denied",
+      "optimistic": false
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "data": [
+        {
+          "id": "provider-picker-optimistic",
+          "label": "ProviderPicker optimistic"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": true
+    },
+    "success": {
+      "status": "success",
+      "data": [
+        {
+          "id": "provider-picker-success",
+          "label": "ProviderPicker success"
+        }
+      ],
+      "error": null,
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "data": [
+        {
+          "id": "provider-picker-degraded-network",
+          "label": "ProviderPicker degraded-network"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_DEGRADED_NETWORK",
+        "message": "ProviderPicker is using stale or partial data"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "data": [
+        {
+          "id": "provider-picker-unsupported-capability",
+          "label": "ProviderPicker unsupported-capability"
+        }
+      ],
+      "error": {
+        "code": "UIFN_PATTERN_UNSUPPORTED_CAPABILITY",
+        "message": "ProviderPicker is not available for this capability"
+      },
+      "permission": "allowed",
+      "optimistic": false
+    }
+  },
+  "callbacks": [
+    "onSelect"
+  ],
+  "backendImports": []
+}

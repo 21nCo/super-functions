@@ -90,6 +90,7 @@ export function createUIFnSelectionFormBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       unsubscribe();
       releaseFieldset();
       bridge?.destroy();
@@ -167,6 +168,7 @@ export function createUIFnTextInputFormBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       unsubscribe();
       releaseCaret();
       releaseNativeReset();
@@ -238,15 +240,19 @@ export function createUIFnFileInputBinding(
 ): UIFnInputDomBinding {
   const scope = platform.scope;
   let destroyed = false;
-  const onChange = () => {
-    if (controller.state.status === 'picking') return;
-    controller.actions.selectFiles(Array.from(input.files ?? []).map((file) => Object.freeze({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified, native: file })));
-  };
+  let fieldsetDisabled = disabledByFieldset(owner);
+  const onChange = () => controller.actions.selectFiles(Array.from(input.files ?? []).map((file) => Object.freeze({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified, native: file })));
   input.addEventListener('change', onChange);
   const releaseListener = scope.track('listener', () => input.removeEventListener('change', onChange));
+  const update = () => {
+    input.disabled = controller.state.disabled || fieldsetDisabled;
+    input.required = controller.state.required && controller.state.invalid;
+  };
+  const unsubscribe = controller.subscribe(update, { emitInitial: false });
   const releaseFieldset = observeFieldset(platform, owner, (disabled) => {
+    fieldsetDisabled = disabled;
     controller.actions.setFieldsetDisabled(disabled);
-    input.disabled = controller.state.disabled || disabled;
+    update();
   });
   const form = input.form ?? owner.closest('form');
   const releaseReset = form ? scope.on('reset', (event) => { if (event.target === form) controller.actions.reset(); }) : () => undefined;
@@ -256,9 +262,11 @@ export function createUIFnFileInputBinding(
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      controller.actions.setFieldsetDisabled(false);
       releaseReset();
       releaseFieldset();
       releaseListener();
+      unsubscribe();
       releaseResource();
     },
   };

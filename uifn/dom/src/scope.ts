@@ -118,12 +118,11 @@ const RESOURCE_KINDS: readonly UIFnDomResourceKind[] = [
 ];
 
 function once(callback: () => void): () => void {
-  let current: (() => void) | null = callback;
+  let active = true;
   return () => {
-    const pending = current;
-    if (!pending) return;
-    current = null;
-    pending();
+    if (!active) return;
+    active = false;
+    callback();
   };
 }
 
@@ -235,7 +234,7 @@ export function createUIFnDomScope(options: CreateUIFnDomScopeOptions = {}): UIF
   const resourceCounts = new Map<UIFnDomResourceKind, number>(
     RESOURCE_KINDS.map((kind) => [kind, 0]),
   );
-  const cleanups = new Set<() => void>();
+  const cleanups: Array<() => void> = [];
   const delegated = new Map<string, DelegatedListener>();
   const traceRecords: UIFnDomTraceRecord[] = [];
   const traceLimit = Math.max(0, options.traceLimit ?? 200);
@@ -286,9 +285,7 @@ export function createUIFnDomScope(options: CreateUIFnDomScopeOptions = {}): UIF
     const id = providedId ?? `${kind}-${resourceSequence}`;
     resourceCounts.set(kind, (resourceCounts.get(kind) ?? 0) + 1);
     record('scope', 'resource-acquire', id, { kind });
-    let release: () => void = () => undefined;
-    release = once(() => {
-      cleanups.delete(release);
+    const release = once(() => {
       try {
         cleanup();
       } finally {
@@ -296,7 +293,7 @@ export function createUIFnDomScope(options: CreateUIFnDomScopeOptions = {}): UIF
         record('scope', 'resource-release', id, { kind });
       }
     });
-    cleanups.add(release);
+    cleanups.push(release);
     return release;
   };
 
@@ -455,7 +452,7 @@ export function createUIFnDomScope(options: CreateUIFnDomScopeOptions = {}): UIF
         resourceCounts.set('listener', Math.max(0, (resourceCounts.get('listener') ?? 1) - 1));
       }
       delegated.clear();
-      for (const cleanup of [...cleanups].reverse()) {
+      for (const cleanup of cleanups.reverse()) {
         try {
           cleanup();
         } catch (error) {
@@ -469,7 +466,6 @@ export function createUIFnDomScope(options: CreateUIFnDomScopeOptions = {}): UIF
           }));
         }
       }
-      cleanups.clear();
       record('scope', 'destroy');
     },
   };

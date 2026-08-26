@@ -30,7 +30,7 @@ select.destroy()
 
 Share one resolved environment within each render or request root. Use child scopes for nested roots. Browser objects and optional capabilities are injected; core does not discover `document` or `window` during construction.
 
-Public imports are limited to the package root and the explicit `aria`, `utils`, `errors`, `controller`, `environment`, `parts`, and `primitives` entrypoints. See [MIGRATION.md](./MIGRATION.md) for the breaking removal of generic machines, primitive subpaths, legacy constructors, and process-global ID helpers.
+Public imports include the package root; the explicit `aria`, `utils`, `errors`, `controller`, `environment`, `parts`, and `primitives` entrypoints; and generated primitive subpaths such as `@uifn/core/primitives/select`. Private source-module paths remain unsupported. See [MIGRATION.md](./MIGRATION.md) for the breaking removal of generic machines, legacy constructors, and process-global ID helpers.
 
 ## Overlay contracts
 

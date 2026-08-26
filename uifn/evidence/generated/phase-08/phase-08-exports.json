@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-08.mjs",
+  "phase": "PHASE_08",
+  "implementationEvidence": true,
+  "primitives": [
+    {
+      "name": "ContextMenu",
+      "factory": "createContextMenuController",
+      "parts": [
+        "root",
+        "trigger",
+        "positioner",
+        "content",
+        "item",
+        "itemIndicator",
+        "separator",
+        "group",
+        "groupLabel",
+        "submenuTrigger",
+        "submenuContent"
+      ]
+    },
+    {
+      "name": "Menu",
+      "factory": "createMenuController",
+      "parts": [
+        "root",
+        "trigger",
+        "positioner",
+        "content",
+        "item",
+        "itemIndicator",
+        "separator",
+        "group",
+        "groupLabel",
+        "submenuTrigger",
+        "submenuContent"
+      ]
+    },
+    {
+      "name": "Menubar",
+      "factory": "createMenubarController",
+      "parts": [
+        "root",
+        "menu",
+        "trigger",
+        "content",
+        "item",
+        "submenuTrigger",
+        "submenuContent"
+      ]
+    },
+    {
+      "name": "NavigationMenu",
+      "factory": "createNavigationMenuController",
+      "parts": [
+        "root",
+        "list",
+        "item",
+        "trigger",
+        "content",
+        "link",
+        "viewport",
+        "indicator"
+      ]
+    },
+    {
+      "name": "Pagination",
+      "factory": "createPaginationController",
+      "parts": [
+        "root",
+        "list",
+        "item",
+        "pageTrigger",
+        "previous",
+        "next",
+        "ellipsis"
+      ]
+    },
+    {
+      "name": "Tabs",
+      "factory": "createTabsController",
+      "parts": [
+        "root",
+        "list",
+        "trigger",
+        "content",
+        "indicator"
+      ]
+    },
+    {
+      "name": "TreeView",
+      "factory": "createTreeViewController",
+      "parts": [
+        "root",
+        "label",
+        "tree",
+        "item",
+        "itemTrigger",
+        "itemText",
+        "branch",
+        "indicator"
+      ]
+    }
+  ]
+}

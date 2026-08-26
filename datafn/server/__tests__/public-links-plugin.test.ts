@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMemoryIndexedDirectoryStore,
   memoryAdapter,
@@ -8,6 +8,8 @@ import type { DatafnSchema } from "@datafn/core";
 import {
   createDatafnPublicLinksPlugin,
   createDatafnServer,
+  createMemoryDatafnPlacementDirectory,
+  datafnMultiRegionPlugin,
   withDatafnPublicLinksSchema,
   type DatafnPublicLinkPrincipal,
   type DatafnServer,
@@ -71,6 +73,130 @@ const schema = {
 } satisfies DatafnSchema;
 
 describe("DataFn public-links plugin", () => {
+  it("returns a retryable placement error when public-link directory lookup fails", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const memoryDirectory = createMemoryIndexedDirectoryStore();
+    const unavailableDirectory = {
+      ...memoryDirectory,
+      async get() {
+        throw new Error("directory offline");
+      },
+    };
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory: unavailableDirectory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      publicLinks,
+      plugins: [
+        datafnMultiRegionPlugin({
+          regionId: "region:public-links",
+          directory: unavailableDirectory,
+          placement: {
+            directory: createMemoryDatafnPlacementDirectory(),
+          },
+        }),
+      ],
+    });
+
+    try {
+      const response = await post(
+        server,
+        "/datafn/public-links/resolve",
+        { token: "link:missing.secret" },
+      );
+      expect(response).toMatchObject({
+        status: 503,
+        body: {
+          error: {
+            code: "DATAFN_PLACEMENT_UNAVAILABLE",
+            details: { retryable: true, executionStarted: false },
+          },
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("routes public links from their direct directory record without the permission index", async () => {
+    const db = memoryAdapter();
+    await db.initialize();
+    const memoryDirectory = createMemoryIndexedDirectoryStore();
+    let permissionQueries = 0;
+    const get = vi.fn(memoryDirectory.get.bind(memoryDirectory));
+    const directory = {
+      ...memoryDirectory,
+      get,
+      async query(input: Parameters<typeof memoryDirectory.query>[0]) {
+        permissionQueries++;
+        return memoryDirectory.query(input);
+      },
+    };
+    const placement = createMemoryDatafnPlacementDirectory();
+    await placement.putIfAbsent({
+      namespace: "user:owner",
+      regionId: "region:public-links",
+      epoch: 1,
+      state: "active",
+      updatedAt: new Date().toISOString(),
+    });
+    const authenticateOwner = vi.fn((request: Request) => {
+      const actorId = request.headers.get("x-owner-actor");
+      return actorId ? { actorId } : null;
+    });
+    const publicLinks = createDatafnPublicLinksPlugin<{ actorId: string }>({
+      authenticateOwner,
+      getOwnerActorId: (session) => session.actorId,
+      getOwnerNamespace: (actorId) => `user:${actorId}`,
+      directory,
+      resourceRegion: "region:public-links",
+    });
+    const server = await createDatafnServer<TestContext>({
+      schema,
+      database: db,
+      publicLinks,
+      plugins: [datafnMultiRegionPlugin({
+        regionId: "region:public-links",
+        directory,
+        placement: { directory: placement },
+      })],
+    });
+
+    try {
+      const created = await post(
+        server,
+        "/datafn/public-links",
+        { resource: "linkTag", scope: "resource", level: "viewer" },
+        ownerHeaders(),
+      );
+      expect(created.status).toBe(200);
+      expect(authenticateOwner).toHaveBeenCalledOnce();
+      const token = readString(created.body.result.token);
+      get.mockClear();
+      permissionQueries = 0;
+
+      const response = await post(
+        server,
+        "/datafn/public-links/resolve",
+        { token },
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.ok).toBe(true);
+      expect(get).toHaveBeenCalledWith(
+        `datafn:publicLink:${token.slice(0, token.indexOf("."))}`,
+      );
+      expect(permissionQueries).toBe(0);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("keeps public-link storage plugin-owned and blocks direct data endpoint access", async () => {
     const db = memoryAdapter();
     await db.initialize();

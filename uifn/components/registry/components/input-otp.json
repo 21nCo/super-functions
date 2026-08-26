@@ -4,7 +4,7 @@
   "slug": "input-otp",
   "batch": "batch-b",
   "kind": "component-implementation",
-  "status": "implemented",
+  "status": "planned",
   "sourcePolicy": "clean-room",
   "owners": [
     "platform-ui"
@@ -34,19 +34,13 @@
   ],
   "frameworks": {
     "react": {
-      "supported": true,
-      "entry": "uifn/components-react/src/batch-b.ts",
-      "exportName": "InputOTP"
+      "supported": false
     },
     "svelte": {
-      "supported": true,
-      "entry": "uifn/components-svelte/src/batch-b.ts",
-      "exportName": "InputOTP"
+      "supported": false
     },
     "solid": {
-      "supported": true,
-      "entry": "uifn/components-solid/src/batch-b.ts",
-      "exportName": "InputOTP"
+      "supported": false
     }
   },
   "behavior": [
@@ -67,10 +61,6 @@
     "uifn/components/fixtures/batch-b/input-otp.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/batch-b.test.ts#render",
-    "uifn/components/src/__tests__/batch-b.test.ts#a11y",
-    "uifn/components/src/__tests__/batch-b.test.ts#interaction",
-    "uifn/components/src/__tests__/batch-b.test.ts#visual",
     "uifn/components/src/__tests__/batch-b.test.ts#registry"
   ]
 }

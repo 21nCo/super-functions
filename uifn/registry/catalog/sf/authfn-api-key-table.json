@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "AuthFnApiKeyTable",
+  "slug": "authfn-api-key-table",
+  "kind": "sf-pattern",
+  "category": "Superfunction Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [
+    "authfn"
+  ],
+  "controlledCounterpart": "ApiKeyTable",
+  "clientContract": "AuthFnClient",
+  "props": [
+    "authClient",
+    "status"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "AuthFnApiKeyTable({ authClient, status })",
+      "packageImport": "import { AuthFnApiKeyTable } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/react/authfn-api-key-table.ts",
+        "storyFile": "components/sf/react/authfn-api-key-table.stories.ts",
+        "fixtureFile": "components/sf/react/authfn-api-key-table.fixtures.ts",
+        "testFile": "components/sf/react/authfn-api-key-table.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "AuthFnApiKeyTable({ authClient, status })",
+      "packageImport": "import { AuthFnApiKeyTable } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/svelte/authfn-api-key-table.ts",
+        "storyFile": "components/sf/svelte/authfn-api-key-table.stories.ts",
+        "fixtureFile": "components/sf/svelte/authfn-api-key-table.fixtures.ts",
+        "testFile": "components/sf/svelte/authfn-api-key-table.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "AuthFnApiKeyTable({ authClient, status })",
+      "packageImport": "import { AuthFnApiKeyTable } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/solid/authfn-api-key-table.ts",
+        "storyFile": "components/sf/solid/authfn-api-key-table.stories.ts",
+        "fixtureFile": "components/sf/solid/authfn-api-key-table.fixtures.ts",
+        "testFile": "components/sf/solid/authfn-api-key-table.test.ts"
+      }
+    }
+  },
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/sf/authfn-api-key-table.json",
+    "lockKey": "sf:authfn-api-key-table",
+    "files": [
+      "components/sf/react/authfn-api-key-table.ts",
+      "components/sf/react/authfn-api-key-table.stories.ts",
+      "components/sf/react/authfn-api-key-table.fixtures.ts",
+      "components/sf/react/authfn-api-key-table.test.ts",
+      "components/sf/svelte/authfn-api-key-table.ts",
+      "components/sf/svelte/authfn-api-key-table.stories.ts",
+      "components/sf/svelte/authfn-api-key-table.fixtures.ts",
+      "components/sf/svelte/authfn-api-key-table.test.ts",
+      "components/sf/solid/authfn-api-key-table.ts",
+      "components/sf/solid/authfn-api-key-table.stories.ts",
+      "components/sf/solid/authfn-api-key-table.fixtures.ts",
+      "components/sf/solid/authfn-api-key-table.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "mocked",
+      "status": "implemented",
+      "file": "uifn/sf/stories/authfn-api-key-table.stories.json",
+      "sha256": "d5fc312cd5a73f233d43c214d69d01dce26ad83d308e569e7834a29298f2aa02",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/sf/fixtures/authfn-api-key-table.fixture.json",
+      "sha256": "44e356920c7a00a491d49faf5f891705a016ac6319b5991715e5f6c771ad59e6",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "injected-client",
+      "status": "implemented",
+      "file": "uifn/sf/src/sf.test.ts",
+      "sha256": "c5f9ecb9dcbc6be9af8fb8ed5f632c520768bd874ccda4eed30ab8ddfb927ff2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

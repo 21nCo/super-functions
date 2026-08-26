@@ -87,7 +87,7 @@ export function createDialogController(
   env: UIFnEnvironment = {},
 ): DialogController {
   const isAlert = props.role === 'alertdialog';
-  let behavior = props.outsideInteractionBehavior
+  const behavior = props.outsideInteractionBehavior
     ?? ((props.closeOnInteractOutside ?? props.closeOnOutsideInteraction) === false ? 'ignore' : 'close');
   const normalized: DialogProps = {
     ...props,
@@ -147,14 +147,5 @@ export function createDialogController(
       on: { click: () => actions.close('close-trigger') },
     }), { role: true, id: true, tabIndex: true, attributes: ['type'] }),
   };
-  return base.controller(actions, parts, state, undefined, undefined, (inputs) => {
-    if (inputs.outsideInteractionBehavior !== undefined) {
-      behavior = inputs.outsideInteractionBehavior;
-    } else if ('closeOnInteractOutside' in inputs || 'closeOnOutsideInteraction' in inputs) {
-      behavior = (inputs.closeOnInteractOutside ?? inputs.closeOnOutsideInteraction) === false
-        ? 'ignore'
-        : 'close';
-    }
-    return { ...inputs, closeOnInteractOutside: behavior === 'close' };
-  }) as DialogController;
+  return base.controller(actions, parts, state) as DialogController;
 }

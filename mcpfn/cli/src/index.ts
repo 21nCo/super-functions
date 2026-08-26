@@ -1,0 +1,178 @@
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { cac } from "cac";
+import {
+  diffManifests,
+  validateManifest,
+  type McpFnManifest,
+} from "@mcpfn/core";
+import {
+  McpFnTestClient,
+  McpFnAssertionError,
+  assertManifestContract,
+  runOfficialConformance,
+  runScenarios,
+} from "@mcpfn/testing";
+
+import { loadManifestSource, loadScenarios } from "./load.js";
+
+export { loadManifestSource, loadScenarios };
+
+export interface CliRunOptions {
+  cwd?: string;
+  stdout?: (text: string) => void;
+  stderr?: (text: string) => void;
+}
+
+export async function runCli(
+  argv = process.argv.slice(2),
+  runOptions: CliRunOptions = {},
+): Promise<number> {
+  const cwd = runOptions.cwd ?? process.cwd();
+  const stdout = runOptions.stdout ?? ((text: string) => process.stdout.write(text));
+  const stderr = runOptions.stderr ?? ((text: string) => process.stderr.write(text));
+  let exitCode = 0;
+  const cli = cac("mcpfn");
+
+  cli.command("manifest <source>", "Generate a canonical manifest from a server or registry module")
+    .option("--output <path>", "Write the manifest to a file")
+    .option("--name <name>", "Server name when source exports a registry")
+    .option("--version <version>", "Server version when source exports a registry")
+    .action(async (source: string, options: { output?: string; name?: string; version?: string }) => {
+      const info = options.name && options.version
+        ? { name: options.name, version: options.version }
+        : undefined;
+      const { manifest } = await loadManifestSource(source, cwd, info);
+      const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
+      if (options.output) {
+        const outputPath = path.resolve(cwd, options.output);
+        await writeFile(outputPath, serialized, "utf8");
+        stdout(`Wrote ${outputPath}\n`);
+      } else {
+        stdout(serialized);
+      }
+    });
+
+  cli.command("validate <manifest>", "Validate a canonical McpFn manifest and its hash")
+    .action(async (manifestPath: string) => {
+      const parsed = JSON.parse(await readFile(path.resolve(cwd, manifestPath), "utf8"));
+      const manifest = validateManifest(parsed);
+      stdout(`Valid McpFn manifest ${manifest.server.name}@${manifest.server.version} (${manifest.hash})\n`);
+    });
+
+  cli.command("diff <before> <after>", "Classify MCP contract changes")
+    .option("--json", "Print machine-readable JSON")
+    .option("--fail-on-behavioral", "Fail when descriptions, titles, or annotations change")
+    .action(async (
+      beforePath: string,
+      afterPath: string,
+      options: { json?: boolean; failOnBehavioral?: boolean },
+    ) => {
+      const read = async (file: string): Promise<McpFnManifest> =>
+        validateManifest(JSON.parse(await readFile(path.resolve(cwd, file), "utf8")));
+      const result = diffManifests(await read(beforePath), await read(afterPath));
+      if (options.json) {
+        stdout(`${JSON.stringify(result, null, 2)}\n`);
+      } else {
+        stdout(`breaking=${result.summary.breaking} additive=${result.summary.additive} behavioral=${result.summary.behavioral}\n`);
+        for (const change of result.changes) {
+          stdout(`${change.severity.toUpperCase()} ${change.code} ${change.path}: ${change.message}\n`);
+        }
+      }
+      if (!result.compatible || (options.failOnBehavioral && result.summary.behavioral > 0)) {
+        exitCode = 1;
+      }
+    });
+
+  cli.command("test <server> <scenarios>", "Run protocol-level semantic regression scenarios")
+    .option("--output <path>", "Write a JSON report")
+    .option(
+      "--visible-tools <names>",
+      "Comma-separated tool names expected for a request-filtered server",
+    )
+    .action(async (
+      serverPath: string,
+      scenariosPath: string,
+      options: { output?: string; visibleTools?: string },
+    ) => {
+      const loaded = await loadManifestSource(serverPath, cwd);
+      if (!loaded.server) {
+        throw new Error("The test command requires a module exporting McpFnServer");
+      }
+      const client = await McpFnTestClient.connect(loaded.server);
+      try {
+        await assertManifestContract(client, loaded.manifest, {
+          expectedToolNames: options.visibleTools
+            ?.split(",")
+            .map((name) => name.trim())
+            .filter(Boolean),
+        });
+        const results = await runScenarios(client, await loadScenarios(scenariosPath, cwd));
+        const report = {
+          manifestHash: loaded.manifest.hash,
+          total: results.length,
+          passed: results.filter((result) => result.status === "passed").length,
+          failed: results.filter((result) => result.status === "failed").length,
+          results,
+        };
+        const serialized = `${JSON.stringify(report, null, 2)}\n`;
+        if (options.output) {
+          await writeFile(path.resolve(cwd, options.output), serialized, "utf8");
+        }
+        stdout(serialized);
+        if (report.failed > 0) exitCode = 1;
+      } finally {
+        await client.close();
+      }
+    });
+
+  cli.command("conformance <url>", "Run the official MCP conformance package against a server")
+    .option("--suite <suite>", "active, all, or pending")
+    .option("--scenario <scenario>", "Run one official scenario")
+    .option("--expected-failures <path>", "Expected-failures baseline")
+    .option("--output-dir <path>", "Directory for official conformance artifacts")
+    .option("--spec-version <version>", "MCP specification version")
+    .option("--verbose", "Show official runner diagnostics")
+    .action(async (url: string, options: {
+      suite?: "active" | "all" | "pending";
+      scenario?: string;
+      expectedFailures?: string;
+      outputDir?: string;
+      specVersion?: string;
+      verbose?: boolean;
+    }) => {
+      const result = await runOfficialConformance({
+        url,
+        suite: options.suite,
+        scenario: options.scenario,
+        expectedFailures: options.expectedFailures
+          ? path.resolve(cwd, options.expectedFailures)
+          : undefined,
+        outputDir: options.outputDir ? path.resolve(cwd, options.outputDir) : undefined,
+        specVersion: options.specVersion,
+        verbose: options.verbose,
+        cwd,
+        stdio: "pipe",
+      });
+      if (result.stdout) stdout(result.stdout);
+      if (result.stderr) stderr(result.stderr);
+      exitCode = result.exitCode;
+    });
+
+  cli.help();
+  cli.version("0.0.1");
+  try {
+    const parsed = cli.parse(["node", "mcpfn", ...argv], { run: false });
+    if (!cli.matchedCommand) {
+      if (parsed.options.help || parsed.options.version) return 0;
+      stderr(argv.length ? `Unknown command: ${argv[0]}\n` : "A command is required\n");
+      return 2;
+    }
+    await cli.runMatchedCommand();
+  } catch (error) {
+    stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    if (error instanceof McpFnAssertionError) return 1;
+    return 2;
+  }
+  return exitCode;
+}

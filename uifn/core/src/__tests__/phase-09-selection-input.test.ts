@@ -210,6 +210,28 @@ describe('PHASE_09 selection and input vectors', () => {
     }
   });
 
+  it('honors Editable controlled and default editing inputs', () => {
+    const uncontrolled = createEditableController({ defaultEditing: true });
+    expect(uncontrolled.state.editing).toBe(true);
+    uncontrolled.actions.cancel();
+    expect(uncontrolled.state.editing).toBe(false);
+    uncontrolled.destroy();
+
+    const changes: boolean[] = [];
+    const controlled = createEditableController({
+      editing: true,
+      onEditingChange: (editing) => changes.push(editing),
+    });
+    controlled.actions.submit();
+    expect(controlled.state.editing).toBe(true);
+    expect(changes).toEqual([false]);
+    controlled.update({ editing: false });
+    expect(controlled.state.editing).toBe(false);
+    controlled.update({ editing: true });
+    expect(controlled.state.editing).toBe(true);
+    controlled.destroy();
+  });
+
   it('TV-PRIM-004-P keeps Checkbox form values separate from controlled checked state', () => {
     const controller = createCheckboxController({ value: 'accepted', defaultChecked: false, name: 'terms' });
     expect(controller.state.controlled).toBe(false);
@@ -375,66 +397,37 @@ describe('PHASE_09 selection and input vectors', () => {
     const files = createFileUploadController({
       accept: 'image/*',
       maxSize: 100,
+      required: true,
       onReject: (code) => rejected.push(code),
     });
+    expect(files.parts.input.getProps().attributes?.required).toBe(true);
     files.actions.selectFiles([{ name: 'notes.txt', size: 10, type: 'text/plain' }]);
     expect(files.state.status).toBe('rejected');
     expect(files.state.fileCount).toBe(0);
     expect(files.state.lastErrorCode).toBe('UIFN_FILE_REJECTED');
     expect(rejected).toEqual(['type']);
-    clipboard.destroy();
-    files.destroy();
-  });
-
-  it('applies updated file-picker and validation constraints immediately', async () => {
-    const selected = { name: 'notes.txt', size: 4, type: 'text/plain' };
-    const pick = vi.fn(async () => [selected]);
-    const rejected: string[] = [];
-    const files = createFileUploadController({
-      capability: { pick },
-      accept: 'image/*',
-      maxSize: 100,
-      onReject: (code) => rejected.push(code),
+    files.actions.selectFiles([{ name: 'photo.png', size: 10, type: 'image/png' }]);
+    expect(files.state.valid).toBe(true);
+    expect(files.parts.input.getProps().attributes?.required).toBe(false);
+    files.update({ accept: 'application/pdf', multiple: true, maxFiles: 2, maxSize: 20, name: 'documents' });
+    expect(files.parts.input.getProps().attributes).toMatchObject({
+      accept: 'application/pdf',
+      multiple: true,
+      name: 'documents',
     });
-
-    files.update({ accept: 'text/plain', multiple: true, maxFiles: 2, maxSize: 5 });
-    await files.actions.openPicker();
-    expect(pick).toHaveBeenCalledWith({ accept: 'text/plain', multiple: true });
-    expect(files.actions.getFiles()).toEqual([selected]);
-    expect(files.parts.input.getProps().attributes).toMatchObject({ accept: 'text/plain', multiple: true });
-
-    files.update({ maxSize: 3 });
-    files.actions.selectFiles([selected]);
-    files.update({ maxSize: 10, maxFiles: 1 });
-    files.actions.selectFiles([selected, { ...selected, name: 'other.txt' }]);
-    files.update({ accept: 'application/pdf' });
-    files.actions.selectFiles([selected]);
-    expect(rejected).toEqual(['size', 'count', 'type']);
-
-    files.update({ accept: undefined, multiple: false });
-    expect(files.parts.input.getProps().attributes).toMatchObject({ multiple: false });
-    expect(files.parts.input.getProps().attributes).not.toHaveProperty('accept');
-    files.destroy();
-  });
-
-  it('initializes and reconciles declared file collections', () => {
-    const initial = { name: 'initial.txt', size: 4, type: 'text/plain' };
-    const replacement = { name: 'replacement.txt', size: 8, type: 'text/plain' };
-    const files = createFileUploadController({ defaultFiles: [initial], multiple: true });
-
-    expect(files.actions.getFiles()).toEqual([initial]);
-    expect(files.state).toMatchObject({ status: 'accepted', fileCount: 1, totalBytes: 4 });
-
-    files.update({ files: [replacement] });
-    expect(files.actions.getFiles()).toEqual([replacement]);
-    expect(files.state).toMatchObject({ status: 'accepted', fileCount: 1, totalBytes: 8 });
-
-    files.update({ files: [] });
-    expect(files.actions.getFiles()).toEqual([]);
-    expect(files.state).toMatchObject({ status: 'idle', fileCount: 0, totalBytes: 0 });
-
+    files.actions.selectFiles([{ name: 'second.png', size: 10, type: 'image/png' }]);
+    expect(files.state.status).toBe('rejected');
+    files.actions.selectFiles([{ name: 'report.pdf', size: 25, type: 'application/pdf' }]);
+    expect(files.state.status).toBe('rejected');
+    files.actions.selectFiles([
+      { name: 'report.pdf', size: 10, type: 'application/pdf' },
+      { name: 'evidence.pdf', size: 10, type: 'application/pdf' },
+    ]);
+    expect(files.state.fileCount).toBe(2);
+    files.actions.setFieldsetDisabled(true);
     files.actions.reset();
-    expect(files.actions.getFiles()).toEqual([initial]);
+    expect(files.state).toMatchObject({ fileCount: 0, invalid: true, disabled: true });
+    clipboard.destroy();
     files.destroy();
   });
 

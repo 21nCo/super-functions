@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-09.mjs",
+  "phase": "PHASE_09",
+  "implementationEvidence": true,
+  "requirements": [
+    "PRIM-004",
+    "PRIM-005"
+  ],
+  "vectors": [
+    "TV-PRIM-004-P",
+    "TV-PRIM-004-N",
+    "TV-PRIM-005-P",
+    "TV-PRIM-005-N",
+    "TV-DOM-007-P/N"
+  ],
+  "fixtures": [
+    "Japanese IME",
+    "object-value form",
+    "disabled fieldset",
+    "controlled race",
+    "denied clipboard",
+    "file rejection",
+    "password redaction",
+    "reset"
+  ],
+  "browsers": [
+    "chromium",
+    "firefox",
+    "webkit",
+    "mobile-chromium",
+    "mobile-webkit"
+  ],
+  "frameworks": [
+    "react",
+    "svelte",
+    "solid"
+  ],
+  "modes": [
+    "package",
+    "source"
+  ],
+  "suites": [
+    "uifn/core/src/__tests__/phase-09-selection-input.test.ts",
+    "uifn/dom/browser/input-primitives.spec.ts",
+    "uifn/adapter-kit/src/__tests__/conformance.test.ts",
+    "scripts/verify-uifn-phase-09-contract.test.mjs"
+  ]
+}

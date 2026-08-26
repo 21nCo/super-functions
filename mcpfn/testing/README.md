@@ -1,0 +1,105 @@
+# McpFn Testing
+
+`@mcpfn/testing` provides deterministic MCP regression testing over the official SDK's in-memory transport. It tests the protocol boundary rather than calling handlers directly.
+
+It includes:
+
+- an official MCP client fixture;
+- exact manifest assertions across tools, resources, templates, and prompts;
+- resource, prompt, completion, subscription, and task client methods;
+- reusable API-key and OAuth resource-server regression matrices;
+- an in-memory authorization-code, PKCE, refresh, and revocation server;
+- extensible Client ID Metadata fixtures that include unrelated grant types;
+- optional Playwright fixtures for real redirect and consent-page coverage;
+- generic tools-only, full-protocol, and MCP Apps host profiles;
+- structured/text response parity checks;
+- declarative semantic scenarios;
+- orchestration of the official `@modelcontextprotocol/conformance` runner.
+
+Official conformance validates protocol behavior. McpFn scenarios validate product behavior. Production MCP servers should run both.
+
+```ts
+import {
+  McpFnTestClient,
+  assertManifestContract,
+  runScenarios,
+} from "@mcpfn/testing";
+
+const server = createServer();
+const client = await McpFnTestClient.connect(server);
+try {
+  await assertManifestContract(client, server.manifest());
+  const results = await runScenarios(client, [
+    {
+      name: "returns one skill",
+      tool: "skill_get",
+      arguments: { slug: "work-linear-issue" },
+      expect: { isError: false, structuredTextParity: true },
+    },
+  ]);
+  if (results.some((result) => result.status === "failed")) {
+    throw new Error(JSON.stringify(results));
+  }
+} finally {
+  await client.close();
+}
+```
+
+Scenarios run serially so stateful workflows and idempotency checks remain deterministic. `assertStructuredTextParity` requires a JSON text block; do not use it for intentionally human-readable text.
+
+`checkHostCompatibility(manifest, profile)` returns `compatible`, `degraded`, or `incompatible`. Unsupported optional server surfaces are degraded; missing protocol overlap or required client-mediated features are incompatible. The built-in profiles are stable capability fixtures, not claims about the current behavior of named commercial hosts. Supply a custom profile for a captured host version.
+
+## Authentication regression suite
+
+Import the transport-level testkit from `@mcpfn/testing/auth`. The application adapter owns only credential issuance and revocation; McpFn owns the common rejection and lifecycle matrix.
+
+```ts
+import {
+  apiKeyCredential,
+  assertAuthRegressionSuite,
+  createFetchAuthTarget,
+} from "@mcpfn/testing/auth";
+
+await assertAuthRegressionSuite({
+  kind: "api-key",
+  target: createFetchAuthTarget({ url: "http://127.0.0.1:8787/mcp" }),
+  invalidCredentialHeaders: { "x-api-key": "invalid" },
+  provider: {
+    capabilities: { revocation: true },
+    async issue() {
+      const key = await skillplaneTestAuth.issueApiKey();
+      return apiKeyCredential(key.value, { headerName: "x-api-key", scheme: "" });
+    },
+    async revoke(credential) {
+      await skillplaneTestAuth.revokeApiKey(credential);
+    },
+  },
+});
+```
+
+OAuth adapters can additionally enable scope, expiry, resource-binding, and revocation scenarios. Rejected OAuth requests must include a Bearer challenge with `resource_metadata`; API keys intentionally do not inherit that OAuth-specific requirement.
+
+`createOAuthClientMetadataVariants()` returns authorization-code clients with basic, JWT-bearer-extension, device-code-extension, and generic-extension metadata. The compatibility assertion requires authorization-code support while deliberately accepting unrelated grants, which catches closed-world Client ID Metadata validation regressions.
+
+## Playwright fixture
+
+Install `@playwright/test` and import the ready-to-extend fixture from `@mcpfn/testing/playwright`:
+
+```ts
+import { expect, test } from "@mcpfn/testing/playwright";
+
+test("accepts extensible OAuth client metadata", async ({ page, mcpfnOAuth }) => {
+  const result = await mcpfnOAuth.authorize(page, {
+    authorizationEndpoint: skillplane.authorizationEndpoint,
+    clientId: mcpfnOAuth.server.clientMetadataUrl("jwtBearerExtension"),
+    redirectUri: mcpfnOAuth.server.callbackUrl,
+    scopes: ["mcp:read"],
+    beforeDecision: async (currentPage) => signInIfRequired(currentPage),
+  });
+  expect(result.callback.parameters.code).toBeTruthy();
+});
+```
+
+The fixture starts a local mock server that publishes authorization-server discovery, consent UI, callback capture, client metadata variants, PKCE token exchange, refresh rotation, revocation, and an SDK-compatible access-token verifier. Extend the exported `test` with Skillplane's signed-in page or database fixtures; do not copy the OAuth machinery into the application.
+
+See [Testing and CI](https://github.com/21nCo/super-functions/blob/main/mcpfn/TESTING.md) for the complete layered strategy.

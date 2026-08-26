@@ -1,0 +1,156 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Listbox · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="listbox"><h1>Listbox</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>Listbox is the stable styled selection-collection primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `ListboxRoot` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `label` | `ListboxLabel` | `label` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `content` | `ListboxContent` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `item` | `ListboxItem` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `itemIndicator` | `ListboxItemIndicator` | `span` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `group` | `ListboxGroup` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `groupLabel` | `ListboxGroupLabel` | `div` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `hiddenInput` | `ListboxHiddenInput` | `input` | many | `string` | `value: string`, `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `value: string`, `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `value: string`, `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/listbox: createListboxController(props, environment?)`
+- State: `ListboxState`
+- Actions: `ListboxActions`
+- Parts: `ListboxController[&quot;parts&quot;]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, form-bridges-live-regions
+- react context: `ListboxProvider and useListbox(inputs); adapter context remains private`
+- svelte context: `ListboxProvider; adapter context remains private to compound descendants`
+- solid context: `ListboxProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+- `focused` (semantic)
+- `selecting` (semantic)
+
+Complete transition signatures:
+
+- `{ type: &quot;NAVIGATE&quot;; key: &quot;ArrowDown&quot; | &quot;ArrowUp&quot; | &quot;ArrowLeft&quot; | &quot;ArrowRight&quot; | &quot;Home&quot; | &quot;End&quot; }` — Listbox semantic transition event NAVIGATE. Source: controller-or-native-contract.
+- `{ type: &quot;TYPEAHEAD&quot; }` — Listbox semantic transition event TYPEAHEAD. Source: controller-or-native-contract.
+- `{ type: &quot;SELECT&quot;; key: string; inputModality?: &quot;keyboard&quot; | &quot;pointer&quot; | &quot;touch&quot; | &quot;virtual&quot; }` — Listbox semantic transition event SELECT. Source: controller-or-native-contract.
+- `{ type: &quot;TOGGLE&quot;; key?: string; inputModality?: &quot;keyboard&quot; | &quot;pointer&quot; | &quot;touch&quot; | &quot;virtual&quot; }` — Listbox semantic transition event TOGGLE. Source: controller-or-native-contract.
+- `{ type: &quot;SET_VALUE&quot;; value: UIFnSelectionValue }` — Listbox semantic transition event SET_VALUE. Source: controller-or-native-contract.
+- `{ type: &quot;FORM_RESET&quot;; form?: string }` — Listbox semantic transition event FORM_RESET. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- `onValueChange(value: UIFnSelectionValue) =&gt; void` — Called after Listbox requests a value change. Controlled consumers must commit the value back through value.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `value` | `UIFnSelectionValue` | no | yes | `undefined (uncontrolled)` | Optional reactive value input from the canonical Listbox contract. |
+| `defaultValue` | `UIFnSelectionValue` | no | yes | `undefined (component initial value)` | Optional reactive defaultValue input from the canonical Listbox contract. |
+| `items` | `readonly TItem[]` | yes | yes | `required` | Required reactive items input from the canonical Listbox contract. |
+| `multiple` | `boolean` | no | yes | `undefined → false` | Optional reactive multiple input from the canonical Listbox contract. |
+| `orientation` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive orientation input from the canonical Listbox contract. |
+| `name` | `string` | no | yes | `undefined (no public prop override)` | Optional reactive name input from the canonical Listbox contract. |
+| `disabled` | `boolean` | no | yes | `undefined → false` | Optional reactive disabled input from the canonical Listbox contract. |
+| `readOnly` | `boolean` | no | yes | `undefined → false` | Optional reactive readOnly input from the canonical Listbox contract. |
+| `required` | `boolean` | no | yes | `undefined → false` | Optional reactive required input from the canonical Listbox contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `single-or-multiple`. Controlled inputs: `value`. Uncontrolled defaults: `defaultValue`. Change events: `VALUE_CHANGE`. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `selection-collection`. Native semantic basis: Use the declared listbox, combobox, radio, checkbox, switch, tag, or tree selection model.
+
+Accessible name required: yes; accepted sources: label-element, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 2.1.1, 2.1.2, 2.4.3, 2.4.7, 3.3.1, 3.3.2, 4.1.2, 4.1.3. Normative basis: native-html, wai-aria-apg-listbox, wai-aria-apg-combobox, wai-aria-apg-radio. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `selection-specific`; keys: `Tab`, `Shift+Tab`, `ArrowDown`, `ArrowUp`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`, `Enter`, `Space`, `Escape`, `typeahead`. Pointer/touch obligations: select-item, toggle-item, touch-scroll-arbitration. Focus obligations: active-item, selected-item, dynamic-collection-focus-repair.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `controller-bridge`; value shape: `multiple`; reset: `controller-and-native-form`; validation: `native-proxy-and-controller`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, form-bridges-live-regions) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `Listbox` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;listbox&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | label | content | item | itemIndicator | group | groupLabel | hiddenInput&quot;` on all styled parts; stable.
+- `data-state=&quot;idle | focused | selecting&quot;` on stateful parts; stable semantic state.
+- `data-orientation=&quot;string&quot;` on parts whose semantics depend on this input; stable semantic state.
+- `data-disabled=&quot;true | false&quot;` on parts whose semantics depend on this input; stable semantic state.
+- `data-readonly=&quot;true | false&quot;` on parts whose semantics depend on this input; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/listbox` | `components/uifn/react/listbox.ts` |
+| svelte | `@uifn/components-svelte/listbox` | `components/uifn/svelte/listbox/index.ts` |
+| solid | `@uifn/components-solid/listbox` | `components/uifn/solid/listbox.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { ListboxRoot } from &quot;@uifn/components-react/listbox&quot;;
+
+export function ListboxExample() {
+  return React.createElement(ListboxRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { ListboxRoot } from &quot;./components/uifn/react/listbox.js&quot;;
+
+export function ListboxExample() {
+  return React.createElement(ListboxRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { ListboxRoot } from &quot;@uifn/components-svelte/listbox&quot;;
+&lt;/script&gt;
+
+&lt;ListboxRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]} /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { ListboxRoot } from &quot;./components/uifn/svelte/listbox/index.js&quot;;
+&lt;/script&gt;
+
+&lt;ListboxRoot items={[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]} /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { ListboxRoot } from &quot;@uifn/components-solid/listbox&quot;;
+
+export function ListboxExample() {
+  return createComponent(ListboxRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { ListboxRoot } from &quot;./components/uifn/solid/listbox.js&quot;;
+
+export function ListboxExample() {
+  return createComponent(ListboxRoot, {&quot;items&quot;:[{&quot;id&quot;:&quot;item-1&quot;,&quot;value&quot;:&quot;item-1&quot;,&quot;label&quot;:&quot;First option&quot;,&quot;textValue&quot;:&quot;First option&quot;},{&quot;id&quot;:&quot;item-2&quot;,&quot;value&quot;:&quot;item-2&quot;,&quot;label&quot;:&quot;Second option&quot;,&quot;textValue&quot;:&quot;Second option&quot;},{&quot;id&quot;:&quot;item-3&quot;,&quot;value&quot;:&quot;item-3&quot;,&quot;label&quot;:&quot;Unavailable option&quot;,&quot;textValue&quot;:&quot;Unavailable option&quot;,&quot;disabled&quot;:true}]});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add listbox --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the selection-collection profile specifically to Listbox; implementation vectors own exact behavior.</pre></section></main></body></html>

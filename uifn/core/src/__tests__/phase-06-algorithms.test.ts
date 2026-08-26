@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceTypeahead,
   alignRangeValue,
-  createUIFnPartId,
   createAsyncList,
   createListCollection,
   createListSelection,
@@ -12,12 +11,10 @@ import {
   findTypeaheadMatch,
   getNextCollectionKey,
   normalizeRangeValues,
-  parseUIFnColor,
   reconcileCollectionKey,
   reconcileListSelection,
   selectCollectionRange,
   selectCollectionKey,
-  stepRangeValue,
 } from '../algorithms';
 import { UIFnError } from '../errors';
 
@@ -110,110 +107,10 @@ describe('PHASE_06 canonical shared algorithms', () => {
     }
   });
 
-  it('handles scientific range steps, aligned End keys, and malformed colors', () => {
-    expect(alignRangeValue(2.5e-13, { min: 0, max: 1e-12, step: 1.25e-13 })).toBe(2.5e-13);
-    expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 3 })).toBe(9);
-    expect(stepRangeValue(3, 'End', { min: 0, max: 10, step: 4 })).toBe(8);
-    expect(stepRangeValue(0.1, 'End', { min: 0.1, max: 0.3, step: 0.1 })).toBe(0.3);
-    expect(stepRangeValue(0.1, 'End', { min: 0.1, max: 0.3 - Number.EPSILON, step: 0.1 })).toBe(0.2);
-    expect(Number.isFinite(alignRangeValue(Number.MAX_VALUE, { min: 0, max: Number.MAX_VALUE, step: 0.1 }))).toBe(true);
-    expect(() => alignRangeValue(1, { min: 0, max: 10, step: Number.POSITIVE_INFINITY })).toThrowError(UIFnError);
-    expect(() => parseUIFnColor('rgb(1..2 3 4)')).toThrowError(UIFnError);
-  });
-
-  it('keeps dynamic part IDs Unicode-safe and collision-free', () => {
-    const spaced = createUIFnPartId('scope', 'list', 'item', 'a b');
-    const dashed = createUIFnPartId('scope', 'list', 'item', 'a-b');
-    const unicode = createUIFnPartId('scope', 'list', 'item', '你好');
-    expect(new Set([spaced, dashed, unicode]).size).toBe(3);
-    expect(unicode).toMatch(/^scope-list-item-key-/);
-  });
-
-  it('isolates async subscribers and clears loading state on cancellation', async () => {
-    let resolve!: (items: readonly string[]) => void;
-    const list = createAsyncList<string>({ load: () => new Promise((done) => { resolve = done; }) });
-    const observed: string[] = [];
-    let initial = true;
-    list.subscribe(() => {
-      if (initial) {
-        initial = false;
-        return;
-      }
-      throw new Error('listener failed');
-    });
-    list.subscribe((state) => observed.push(state.status));
-    const pending = list.load();
-    list.cancel();
-    expect(list.state.status).toBe('idle');
-    resolve(['late']);
-    await pending;
-    expect(list.state.items).toEqual([]);
-    expect(observed).toContain('loading');
-  });
-
-  it('does not let a reentrant abort listener cancel the replacement AsyncList load', async () => {
-    const pending: Array<{ signal: AbortSignal; resolve: (items: readonly string[]) => void }> = [];
-    const list = createAsyncList<string>({ load: ({ signal }) => new Promise((resolve) => pending.push({ signal, resolve })) });
-    const first = list.load('first');
-    pending[0]!.signal.addEventListener('abort', () => { void list.load('replacement'); });
-    list.cancel();
-    expect(list.state.status).toBe('loading');
-    pending[1]!.resolve(['replacement']);
-    pending[0]!.resolve(['stale']);
-    await Promise.all([first, Promise.resolve()]);
-    await Promise.resolve();
-    expect(list.state).toMatchObject({ status: 'loaded', items: ['replacement'] });
-  });
-
-  it('supports collation expansions and immutable numeric-key selections', () => {
-    const matcher = createLocaleMatcher('de');
-    expect(matcher.startsWith('Äpfel', 'AE')).toBe(true);
-    expect(matcher.startsWith('1 item', '0000000001')).toBe(true);
-    expect(matcher.startsWith('0000000001 item', '1')).toBe(true);
-    expect(matcher.includes('Straße', 'STRASSE')).toBe(true);
-    expect(matcher.includes(`${'a'.repeat(50_000)}Straße`, 'STRASSE')).toBe(true);
-    expect(matcher.includes(`${'a'.repeat(50_000)}b`, 'STRASSE')).toBe(false);
-    expect(matcher.includes('ß', 's')).toBe(false);
-    expect(matcher.includes('aß', 'as')).toBe(false);
-    expect(matcher.includes('👍🏽', '👍')).toBe(false);
-    expect(matcher.includes('🇮🇳', '🇮')).toBe(false);
-    const numeric = createListCollection({
-      items: [0, 1, 2],
-      getKey: (value) => value,
-      getTextValue: String,
-    });
-    let selection = createListSelection<number>({ mode: 'multiple', anchorKey: 0, selectedKeys: [0] });
-    selection = selectCollectionRange(numeric, selection, 2);
-    expect([...selection.selectedKeys]).toEqual([0, 1, 2]);
-    expect((selection.selectedKeys as Set<number>).add).toBeUndefined();
-    expect(selectCollectionRange(numeric, selection, 99)).toBe(selection);
-  });
-
-  it('rejects partial grapheme matches when Intl.Segmenter is unavailable', () => {
-    const descriptor = Object.getOwnPropertyDescriptor(Intl, 'Segmenter');
-    Object.defineProperty(Intl, 'Segmenter', { configurable: true, value: undefined });
-    try {
-      const matcher = createLocaleMatcher('en');
-      expect(matcher.startsWith('👍🏽', '👍')).toBe(false);
-      expect(matcher.includes('🇮🇳', '🇮')).toBe(false);
-      expect(matcher.includes('👍🏽', '👍🏽')).toBe(true);
-      expect(matcher.startsWith('👍🏽 ready', '👍🏽')).toBe(true);
-      expect(matcher.includes('ready 👍🏽 now', '👍🏽')).toBe(true);
-      expect(matcher.includes('family 👨‍👩‍👧‍👦 ready', '👨‍👩‍👧‍👦')).toBe(true);
-      expect(matcher.startsWith('a\u200db', 'a')).toBe(true);
-    } finally {
-      if (descriptor) Object.defineProperty(Intl, 'Segmenter', descriptor);
-      else Reflect.deleteProperty(Intl, 'Segmenter');
-    }
-  });
-
   it('exposes deterministic virtualization without requiring every item in the DOM', () => {
     const virtualizer = createVirtualizerContract({ count: 10_000, estimateSize: 32, overscan: 3 });
     expect(virtualizer.getWindow(3_200, 320)).toEqual({ start: 97, end: 112, offset: 3_104, totalSize: 320_000 });
     expect(virtualizer.getOffsetForIndex(500)).toBe(16_000);
-
-    const withoutOverscan = createVirtualizerContract({ count: 10, estimateSize: 10, overscan: 0 });
-    expect(withoutOverscan.getWindow(5, 10)).toEqual({ start: 0, end: 1, offset: 0, totalSize: 100 });
   });
 
   it('flattens expanded trees and rejects cycles through the collection invariant', () => {

@@ -13,8 +13,14 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { McpFnOutputValidationError, McpFnValidationError } from "./errors.js";
+import { compareCodeUnits } from "./canonical.js";
+import {
+  unsupportedUriTemplateOperator,
+  uriTemplatesOverlap,
+} from "./uri-template.js";
 import type {
   McpFnListedTool,
+  McpFnObjectSchema,
   McpFnPromptDefinition,
   McpFnRequestExtra,
   McpFnResourceDefinition,
@@ -37,19 +43,6 @@ interface RegisteredPrompt<TContext> {
 interface RegisteredTemplate<TContext> {
   definition: McpFnResourceTemplateDefinition<TContext>;
   template: UriTemplate;
-  pattern: string;
-}
-
-function resourceTemplatePattern(uriTemplate: string): string {
-  return uriTemplate.replace(/\{([^{}]+)\}/g, (_expression, body: string) => {
-    const operator = /^[+#./?&]/.exec(body)?.[0] ?? "";
-    if (operator === "?" || operator === "&") return `{${body}}`;
-    const variables = body.slice(operator.length).split(",").map((variable, index) => {
-      const modifier = /(?:\*|:\d+)$/.exec(variable.trim())?.[0] ?? "";
-      return `v${index}${modifier}`;
-    });
-    return `{${operator}${variables.join(",")}}`;
-  });
 }
 
 type ResourceMatch<TContext> =
@@ -80,12 +73,279 @@ function assertName(kind: string, name: string): void {
   }
 }
 
+function assertSubscriptionCallbacks(
+  kind: "Resource" | "Resource template",
+  name: string,
+  subscribe: unknown,
+  unsubscribe: unknown,
+): void {
+  if (
+    (subscribe === undefined) !== (unsubscribe === undefined) ||
+    (subscribe !== undefined && typeof subscribe !== "function") ||
+    (unsubscribe !== undefined && typeof unsubscribe !== "function")
+  ) {
+    throw new McpFnValidationError(
+      `${kind} ${name} must define subscribe and unsubscribe together as functions`,
+    );
+  }
+}
+
 function assertUri(kind: string, uri: string): void {
   try {
     new URL(uri);
   } catch {
     throw new McpFnValidationError(`Invalid MCP ${kind} URI ${JSON.stringify(uri)}`);
   }
+}
+
+interface PromptSchemaInventory {
+  descriptions: Map<string, string>;
+  propertySchemas: Map<string, unknown[]>;
+  required: Set<string>;
+}
+
+function mergePromptSchemaInventory(
+  target: PromptSchemaInventory,
+  source: PromptSchemaInventory,
+): void {
+  for (const [name, description] of source.descriptions) {
+    if (!target.descriptions.has(name)) target.descriptions.set(name, description);
+  }
+  for (const [name, schemas] of source.propertySchemas) {
+    target.propertySchemas.set(name, [...(target.propertySchemas.get(name) ?? []), ...schemas]);
+  }
+  for (const name of source.required) target.required.add(name);
+}
+
+function resolveLocalSchemaReference(
+  root: McpFnObjectSchema,
+  reference: string,
+): unknown {
+  if (reference === "#") return root;
+  if (!reference.startsWith("#/")) return undefined;
+  return reference.slice(2).split("/").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+    return (current as Record<string, unknown>)[key];
+  }, root);
+}
+
+function derivePromptSchemaInventory(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): PromptSchemaInventory | undefined {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined;
+  const value = schema as Record<string, unknown>;
+  const nonFlatKeywords = [
+    "anyOf", "oneOf", "not", "if", "then", "else",
+    "patternProperties", "dependentSchemas", "propertyNames",
+  ];
+  if (nonFlatKeywords.some((keyword) => Object.hasOwn(value, keyword))) return undefined;
+  const inventory: PromptSchemaInventory = {
+    descriptions: new Map(),
+    propertySchemas: new Map(),
+    required: new Set(),
+  };
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return undefined;
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return undefined;
+    const nextReferences = new Set(references).add(value.$ref);
+    const referencedInventory = derivePromptSchemaInventory(referenced, root, nextReferences);
+    if (!referencedInventory) return undefined;
+    mergePromptSchemaInventory(inventory, referencedInventory);
+  }
+  if (value.allOf !== undefined) {
+    if (!Array.isArray(value.allOf)) return undefined;
+    for (const member of value.allOf) {
+      const memberInventory = derivePromptSchemaInventory(member, root, references);
+      if (!memberInventory) return undefined;
+      mergePromptSchemaInventory(inventory, memberInventory);
+    }
+  }
+  const properties = value.properties;
+  if (properties !== undefined && (
+    typeof properties !== "object" || properties === null || Array.isArray(properties)
+  )) return undefined;
+  if (value.required !== undefined && !Array.isArray(value.required)) return undefined;
+  const required = Array.isArray(value.required)
+    ? value.required.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  for (const name of required) inventory.required.add(name);
+  const propertySchemas = (properties ?? {}) as Record<string, unknown>;
+  for (const [name, propertySchema] of Object.entries(propertySchemas)) {
+    inventory.propertySchemas.set(name, [
+      ...(inventory.propertySchemas.get(name) ?? []),
+      propertySchema,
+    ]);
+    if (propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema) &&
+      typeof (propertySchema as { description?: unknown }).description === "string") {
+      inventory.descriptions.set(
+        name,
+        (propertySchema as { description: string }).description,
+      );
+    }
+  }
+  return inventory;
+}
+
+function intersectStringCandidates(
+  left: Set<string> | undefined,
+  right: Set<string> | undefined,
+): Set<string> | undefined {
+  if (!left) return right;
+  if (!right) return left;
+  return new Set([...left].filter((candidate) => right.has(candidate)));
+}
+
+function finiteStringCandidates(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): Set<string> | undefined {
+  if (typeof schema === "boolean") return schema ? undefined : new Set();
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return new Set();
+  const value = schema as Record<string, unknown>;
+  let candidates: Set<string> | undefined;
+  if (typeof value.type === "string" && value.type !== "string") return new Set();
+  if (Array.isArray(value.type) && !value.type.includes("string")) return new Set();
+  if (Object.hasOwn(value, "const")) {
+    candidates = typeof value.const === "string" ? new Set([value.const]) : new Set();
+  }
+  if (Array.isArray(value.enum)) {
+    candidates = intersectStringCandidates(
+      candidates,
+      new Set(value.enum.filter((entry): entry is string => typeof entry === "string")),
+    );
+  }
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return new Set();
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return new Set();
+    candidates = intersectStringCandidates(
+      candidates,
+      finiteStringCandidates(referenced, root, new Set(references).add(value.$ref)),
+    );
+  }
+  if (Array.isArray(value.allOf)) {
+    for (const member of value.allOf) {
+      candidates = intersectStringCandidates(
+        candidates,
+        finiteStringCandidates(member, root, references),
+      );
+    }
+  }
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    if (!Array.isArray(value[keyword])) continue;
+    let union: Set<string> | undefined = new Set();
+    for (const member of value[keyword]) {
+      const memberCandidates = finiteStringCandidates(member, root, references);
+      if (!memberCandidates) {
+        union = undefined;
+        break;
+      }
+      for (const candidate of memberCandidates) union.add(candidate);
+    }
+    candidates = intersectStringCandidates(candidates, union);
+  }
+  return candidates;
+}
+
+function schemaMayAcceptString(
+  schema: unknown,
+  root: McpFnObjectSchema,
+  references = new Set<string>(),
+): boolean {
+  if (typeof schema === "boolean") return schema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+  const value = schema as Record<string, unknown>;
+  const finiteCandidates = finiteStringCandidates(schema, root, references);
+  if (finiteCandidates?.size === 0) return false;
+  if (value.$ref !== undefined) {
+    if (typeof value.$ref !== "string" || references.has(value.$ref)) return false;
+    const referenced = resolveLocalSchemaReference(root, value.$ref);
+    if (!referenced) return false;
+    const nextReferences = new Set(references).add(value.$ref);
+    if (!schemaMayAcceptString(referenced, root, nextReferences)) return false;
+  }
+  if (typeof value.type === "string" && value.type !== "string") return false;
+  if (Array.isArray(value.type) && !value.type.includes("string")) return false;
+  if (Object.hasOwn(value, "const") && typeof value.const !== "string") return false;
+  if (Array.isArray(value.enum) && !value.enum.some((entry) => typeof entry === "string")) {
+    return false;
+  }
+  if (Array.isArray(value.allOf) &&
+    !value.allOf.every((member) => schemaMayAcceptString(member, root, references))) return false;
+  if (Array.isArray(value.anyOf) &&
+    !value.anyOf.some((member) => schemaMayAcceptString(member, root, references))) return false;
+  if (Array.isArray(value.oneOf) &&
+    !value.oneOf.some((member) => schemaMayAcceptString(member, root, references))) return false;
+  return true;
+}
+
+export function assertPromptSchemaSupportsStringValues(
+  schema: McpFnObjectSchema,
+  label: string,
+): void {
+  const inventory = derivePromptSchemaInventory(schema, schema);
+  if (!inventory) {
+    throw new McpFnValidationError(
+      `${label} must use derivable properties, allOf, or local $ref declarations`,
+    );
+  }
+  for (const [name, schemas] of inventory.propertySchemas) {
+    const finiteCandidates = finiteStringCandidates({ allOf: schemas }, schema);
+    let hasStringWitness = schemas.every(
+      (propertySchema) => schemaMayAcceptString(propertySchema, schema),
+    );
+    if (hasStringWitness && finiteCandidates) {
+      const candidateSchema = {
+        ...(schema.$defs && typeof schema.$defs === "object" ? { $defs: schema.$defs } : {}),
+        ...(schema.definitions && typeof schema.definitions === "object"
+          ? { definitions: schema.definitions }
+          : {}),
+        allOf: schemas,
+      };
+      let validate: ValidateFunction | undefined;
+      try {
+        validate = new Ajv({ strict: false, allowUnionTypes: true }).compile(candidateSchema);
+      } catch {
+        hasStringWitness = false;
+      }
+      if (validate) {
+        hasStringWitness = [...finiteCandidates].some((candidate) => validate!(candidate));
+      }
+    }
+    if (!hasStringWitness) {
+      throw new McpFnValidationError(
+        `${label} argument ${name} must accept string values`,
+      );
+    }
+  }
+}
+
+export function schemaPromptArguments(
+  definition: { argumentsSchema?: McpFnObjectSchema },
+) {
+  const schema = definition.argumentsSchema;
+  if (!schema) return undefined;
+  const inventory = derivePromptSchemaInventory(schema, schema);
+  if (!inventory) return undefined;
+  const names = [...new Set([
+    ...inventory.propertySchemas.keys(),
+    ...inventory.required,
+  ])]
+    .sort(compareCodeUnits);
+  return names.map((name) => {
+    return {
+      name,
+      ...(inventory.descriptions.has(name)
+        ? { description: inventory.descriptions.get(name)! }
+        : {}),
+      ...(inventory.required.has(name) ? { required: true } : {}),
+    };
+  });
 }
 
 function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
@@ -104,6 +364,12 @@ function promptSchema<TContext>(definition: McpFnPromptDefinition<TContext>) {
       .map((argument) => argument.name),
     additionalProperties: false,
   };
+}
+
+export function promptArguments<TContext>(definition: McpFnPromptDefinition<TContext>) {
+  return Array.isArray(definition.arguments)
+    ? definition.arguments
+    : schemaPromptArguments(definition);
 }
 
 export class McpFnRegistry<TContext = undefined> {
@@ -132,12 +398,35 @@ export class McpFnRegistry<TContext = undefined> {
         `Tool ${definition.name} requires a non-empty description`,
       );
     }
+    if (typeof definition.handler !== "function") {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} requires a handler function`,
+      );
+    }
     if (definition.inputSchema.type !== "object") {
       throw new McpFnValidationError(
         `Tool ${definition.name} inputSchema must be an object schema`,
       );
     }
+    if (
+      definition.outputSchema !== undefined &&
+      (
+        definition.outputSchema === null ||
+        typeof definition.outputSchema !== "object" ||
+        Array.isArray(definition.outputSchema) ||
+        definition.outputSchema.type !== "object"
+      )
+    ) {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} outputSchema must be an object schema`,
+      );
+    }
     const taskSupport = definition.execution?.taskSupport ?? "forbidden";
+    if (!["forbidden", "optional", "required"].includes(taskSupport)) {
+      throw new McpFnValidationError(
+        `Tool ${definition.name} has invalid taskSupport=${String(taskSupport)}`,
+      );
+    }
     if ((taskSupport === "required" || taskSupport === "optional") && !definition.taskHandler) {
       throw new McpFnValidationError(
         `Tool ${definition.name} declares taskSupport=${taskSupport} but has no taskHandler`,
@@ -153,7 +442,7 @@ export class McpFnRegistry<TContext = undefined> {
     let validateOutput: ValidateFunction | undefined;
     try {
       validateInput = this.ajv.compile(definition.inputSchema);
-      validateOutput = definition.outputSchema
+      validateOutput = definition.outputSchema !== undefined
         ? this.ajv.compile(definition.outputSchema)
         : undefined;
     } catch (error) {
@@ -179,9 +468,20 @@ export class McpFnRegistry<TContext = undefined> {
   registerResource(definition: McpFnResourceDefinition<TContext>): this {
     assertUri("resource", definition.uri);
     assertName("resource", definition.name);
+    if (typeof definition.read !== "function") {
+      throw new McpFnValidationError(
+        `Resource ${definition.name} requires a read handler function`,
+      );
+    }
     if (this.resources.has(definition.uri)) {
       throw new McpFnValidationError(`Duplicate MCP resource: ${definition.uri}`);
     }
+    assertSubscriptionCallbacks(
+      "Resource",
+      definition.name,
+      definition.subscribe,
+      definition.unsubscribe,
+    );
     this.resources.set(definition.uri, definition);
     return this;
   }
@@ -190,9 +490,25 @@ export class McpFnRegistry<TContext = undefined> {
     definition: McpFnResourceTemplateDefinition<TContext>,
   ): this {
     assertName("resource template", definition.name);
+    if (typeof definition.read !== "function") {
+      throw new McpFnValidationError(
+        `Resource template ${definition.name} requires a read handler function`,
+      );
+    }
     if (this.resourceTemplates.has(definition.name)) {
       throw new McpFnValidationError(
         `Duplicate MCP resource template: ${definition.name}`,
+      );
+    }
+    if (typeof definition.uriTemplate !== "string") {
+      throw new McpFnValidationError(
+        `Invalid resource URI template ${JSON.stringify(definition.uriTemplate)}`,
+      );
+    }
+    const unsupportedOperator = unsupportedUriTemplateOperator(definition.uriTemplate);
+    if (unsupportedOperator) {
+      throw new McpFnValidationError(
+        `Resource template ${definition.name} uses unsupported URI template operator ${unsupportedOperator}`,
       );
     }
     let template: UriTemplate;
@@ -209,10 +525,18 @@ export class McpFnRegistry<TContext = undefined> {
         `Resource template ${definition.name} must contain at least one variable`,
       );
     }
-    const pattern = resourceTemplatePattern(definition.uriTemplate);
-    if ([...this.resourceTemplates.values()].some((existing) => existing.pattern === pattern)) {
+    assertSubscriptionCallbacks(
+      "Resource template",
+      definition.name,
+      definition.subscribe,
+      definition.unsubscribe,
+    );
+    if ([...this.resourceTemplates.values()].some(
+      ({ definition: registered }) =>
+        uriTemplatesOverlap(registered.uriTemplate, definition.uriTemplate),
+    )) {
       throw new McpFnValidationError(
-        `Duplicate MCP resource template URI: ${definition.uriTemplate}`,
+        `Ambiguous MCP resource URI template: ${definition.uriTemplate}`,
       );
     }
     for (const name of Object.keys(definition.complete ?? {})) {
@@ -222,7 +546,7 @@ export class McpFnRegistry<TContext = undefined> {
         );
       }
     }
-    this.resourceTemplates.set(definition.name, { definition, template, pattern });
+    this.resourceTemplates.set(definition.name, { definition, template });
     return this;
   }
 
@@ -231,16 +555,47 @@ export class McpFnRegistry<TContext = undefined> {
     if (this.prompts.has(definition.name)) {
       throw new McpFnValidationError(`Duplicate MCP prompt: ${definition.name}`);
     }
-    const argumentNames = (definition.arguments ?? []).map(({ name }) => name);
-    if (new Set(argumentNames).size !== argumentNames.length) {
-      throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
+    if (typeof definition.get !== "function") {
+      throw new McpFnValidationError(
+        `Prompt ${definition.name} requires a get handler function`,
+      );
     }
-    for (const name of Object.keys(definition.complete ?? {})) {
-      if (!argumentNames.includes(name)) {
+    if (
+      definition.arguments !== undefined && (
+        !Array.isArray(definition.arguments) ||
+        definition.arguments.some((argument) =>
+          !argument || typeof argument !== "object" || Array.isArray(argument) ||
+          typeof argument.name !== "string"
+        )
+      )
+    ) {
+      throw new McpFnValidationError(`Prompt ${definition.name} arguments must be an array`);
+    }
+    for (const argument of definition.arguments ?? []) {
+      assertName("prompt argument", argument.name);
+      if (argument.description !== undefined && typeof argument.description !== "string") {
         throw new McpFnValidationError(
-          `Prompt ${definition.name} has a completer for unknown argument ${name}`,
+          `Prompt ${definition.name} argument ${argument.name} description must be a string`,
         );
       }
+      if (argument.required !== undefined && typeof argument.required !== "boolean") {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} argument ${argument.name} required must be a boolean`,
+        );
+      }
+    }
+    if (
+      definition.argumentsSchema !== undefined &&
+      (
+        !definition.argumentsSchema ||
+        typeof definition.argumentsSchema !== "object" ||
+        Array.isArray(definition.argumentsSchema) ||
+        definition.argumentsSchema.type !== "object"
+      )
+    ) {
+      throw new McpFnValidationError(
+        `Prompt ${definition.name} argumentsSchema must be an object schema`,
+      );
     }
     let validateArguments: ValidateFunction;
     try {
@@ -250,6 +605,36 @@ export class McpFnRegistry<TContext = undefined> {
         `Prompt ${definition.name} contains an invalid arguments JSON Schema`,
         { cause: error instanceof Error ? error.message : String(error) },
       );
+    }
+    if (definition.argumentsSchema) {
+      assertPromptSchemaSupportsStringValues(
+        definition.argumentsSchema,
+        `Prompt ${definition.name} argumentsSchema`,
+      );
+    }
+    const argumentNames = (promptArguments(definition) ?? []).map(({ name }) => name);
+    if (new Set(argumentNames).size !== argumentNames.length) {
+      throw new McpFnValidationError(`Prompt ${definition.name} has duplicate arguments`);
+    }
+    if (definition.arguments && definition.argumentsSchema) {
+      const declared = definition.arguments
+        .map(({ name, required }) => ({ name, required: required === true }))
+        .sort((left, right) => compareCodeUnits(left.name, right.name));
+      const schemaDeclared = schemaPromptArguments(definition)!.map(
+        ({ name, required }) => ({ name, required: required === true }),
+      );
+      if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} arguments and argumentsSchema disagree`,
+        );
+      }
+    }
+    for (const name of Object.keys(definition.complete ?? {})) {
+      if (!argumentNames.includes(name)) {
+        throw new McpFnValidationError(
+          `Prompt ${definition.name} has a completer for unknown argument ${name}`,
+        );
+      }
     }
     this.prompts.set(definition.name, { definition, validateArguments });
     return this;
@@ -266,23 +651,23 @@ export class McpFnRegistry<TContext = undefined> {
   definitions(): McpFnToolDefinition<TContext>[] {
     return [...this.tools.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   resourceDefinitions(): McpFnResourceDefinition<TContext>[] {
-    return [...this.resources.values()].sort((left, right) => left.uri.localeCompare(right.uri));
+    return [...this.resources.values()].sort((left, right) => compareCodeUnits(left.uri, right.uri));
   }
 
   resourceTemplateDefinitions(): McpFnResourceTemplateDefinition<TContext>[] {
     return [...this.resourceTemplates.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   promptDefinitions(): McpFnPromptDefinition<TContext>[] {
     return [...this.prompts.values()]
       .map(({ definition }) => definition)
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareCodeUnits(left.name, right.name));
   }
 
   capabilities(options: { listChanged?: boolean } = {}): ServerCapabilities {
@@ -340,7 +725,7 @@ export class McpFnRegistry<TContext = undefined> {
     for (const { definition } of this.resourceTemplates.values()) {
       if (definition.list) resources.push(...(await definition.list(context, extra)).resources);
     }
-    return resources.sort((left, right) => left.uri.localeCompare(right.uri));
+    return resources.sort((left, right) => compareCodeUnits(left.uri, right.uri));
   }
 
   listResourceTemplates(): ResourceTemplate[] {
@@ -361,7 +746,7 @@ export class McpFnRegistry<TContext = undefined> {
       name: definition.name,
       ...(definition.title ? { title: definition.title } : {}),
       ...(definition.description ? { description: definition.description } : {}),
-      ...(definition.arguments ? { arguments: definition.arguments } : {}),
+      ...(promptArguments(definition) ? { arguments: promptArguments(definition) } : {}),
       ...(definition.icons ? { icons: definition.icons } : {}),
       ...(definition.metadata ? { _meta: definition.metadata } : {}),
     }));
@@ -526,14 +911,20 @@ export class McpFnRegistry<TContext = undefined> {
   async complete(
     ref: { type: "ref/prompt"; name: string } | { type: "ref/resource"; uri: string },
     argument: { name: string; value: string },
-    context: Record<string, string> | undefined,
+    completionContext: Record<string, string> | undefined,
+    context: TContext,
     extra: McpFnRequestExtra,
   ): Promise<CompleteResult> {
     const empty = { completion: { values: [], total: 0, hasMore: false } };
     if (ref.type === "ref/prompt") {
       const prompt = this.prompts.get(ref.name);
       if (!prompt) throw new McpFnValidationError(`Unknown MCP prompt: ${ref.name}`);
-      return prompt.definition.complete?.[argument.name]?.(argument.value, context, extra) ?? empty;
+      return prompt.definition.complete?.[argument.name]?.(
+        argument.value,
+        completionContext,
+        context,
+        extra,
+      ) ?? empty;
     }
     const template = [...this.resourceTemplates.values()]
       .find(({ definition }) => definition.uriTemplate === ref.uri);
@@ -541,7 +932,12 @@ export class McpFnRegistry<TContext = undefined> {
       if (this.resources.has(ref.uri)) return empty;
       throw new McpFnValidationError(`Unknown MCP resource template: ${ref.uri}`);
     }
-    return template.definition.complete?.[argument.name]?.(argument.value, context, extra) ?? empty;
+    return template.definition.complete?.[argument.name]?.(
+      argument.value,
+      completionContext,
+      context,
+      extra,
+    ) ?? empty;
   }
 
   private finalizeResult(

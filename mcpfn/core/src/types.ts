@@ -129,7 +129,8 @@ export interface McpFnResourceTemplateDefinition<TContext = undefined> {
     string,
     (
       value: string,
-      context: Record<string, string> | undefined,
+      completionContext: Record<string, string> | undefined,
+      context: TContext,
       extra: McpFnRequestExtra,
     ) => CompleteResult | Promise<CompleteResult>
   >;
@@ -165,7 +166,8 @@ export interface McpFnPromptDefinition<TContext = undefined> {
     string,
     (
       value: string,
-      context: Record<string, string> | undefined,
+      completionContext: Record<string, string> | undefined,
+      context: TContext,
       extra: McpFnRequestExtra,
     ) => CompleteResult | Promise<CompleteResult>
   >;
@@ -189,11 +191,15 @@ export interface McpFnManifestTool {
 
 export interface McpFnManifestResource
   extends Omit<Resource, "_meta"> {
+  /** Whether this concrete resource accepts resources/subscribe requests. */
+  subscribable?: boolean;
   metadata?: Record<string, unknown>;
 }
 
 export interface McpFnManifestResourceTemplate
   extends Omit<ResourceTemplate, "_meta"> {
+  /** Whether resources matched by this template accept resources/subscribe requests. */
+  subscribable?: boolean;
   metadata?: Record<string, unknown>;
 }
 

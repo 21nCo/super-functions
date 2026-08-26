@@ -1,0 +1,149 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Timer · uifn</title></head><body><nav><a href="../index.html">All primitives</a></nav><main data-uifn-doc-page="timer"><h1>Timer</h1><section id="overview" data-uifn-doc-section="overview"><h2>overview</h2><pre>Timer is the stable styled status-feedback primitive. Behavior is owned by `@uifn/core`; framework packages adapt that behavior and the styled packages add public parts and tokens. Implementation kind: `interactive-controller`.</pre></section><section id="anatomy" data-uifn-doc-section="anatomy"><h2>anatomy</h2><pre>| Part | Public export | Native basis | Cardinality | Required value | React props | Svelte props | Solid props |
+|---|---|---|---|---|---|---|---|
+| `root` | `TimerRoot` | `div` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `value` | `TimerValue` | `time` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `start` | `TimerStart` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `pause` | `TimerPause` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `reset` | `TimerReset` | `button` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |
+| `status` | `TimerStatus` | `span` | one | — | `native element props`, `className?: string`, `children?: ReactNode`, `asChild?: boolean`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` | `native element props`, `class?: string`, `children snippet`, `render snippet`, `forceMount?: boolean`, `container?: HTMLElement | null`, `bind:ref` | `native element props`, `class?: string`, `children?: JSX.Element`, `render?`, `forceMount?: boolean`, `container?: HTMLElement | null`, `ref` |</pre></section><section id="state-actions-parts" data-uifn-doc-section="state-actions-parts"><h2>state-actions-parts</h2><pre>Controller and context ownership:
+
+- Core: `@uifn/core/timer: createTimerController(props, environment?)`
+- State: `TimerState`
+- Actions: `TimerActions`
+- Parts: `TimerController[&quot;parts&quot;]`
+- DOM owner: @uifn/dom owns root-scope-modality-tabbability, form-bridges-live-regions
+- react context: `TimerProvider and useTimer(inputs); adapter context remains private`
+- svelte context: `TimerProvider; adapter context remains private to compound descendants`
+- solid context: `TimerProvider; adapter context remains private to compound descendants`
+
+States:
+
+- `idle` (semantic)
+- `running` (semantic)
+- `paused` (semantic)
+- `complete` (semantic)
+
+Complete transition signatures:
+
+- `{ type: &quot;START&quot; }` — Timer semantic transition event START. Source: controller-or-native-contract.
+- `{ type: &quot;PAUSE&quot; }` — Timer semantic transition event PAUSE. Source: controller-or-native-contract.
+- `{ type: &quot;RESUME&quot; }` — Timer semantic transition event RESUME. Source: controller-or-native-contract.
+- `{ type: &quot;RESET&quot; }` — Timer semantic transition event RESET. Source: controller-or-native-contract.
+- `{ type: &quot;TICK&quot; }` — Timer semantic transition event TICK. Source: controller-or-native-contract.
+- `{ type: &quot;VISIBILITY_CHANGE&quot; }` — Timer semantic transition event VISIBILITY_CHANGE. Source: controller-or-native-contract.
+
+Controlled callbacks:
+
+- `onRemainingChange(value: number) =&gt; void` — Called after Timer requests a remaining change. Controlled consumers must commit the value back through remaining.
+
+Root inputs and defaults:
+
+| Input | Type | Required | Reactive | Default | Description |
+|---|---|---:|---:|---|---|
+| `duration` | `number` | yes | yes | `required` | Required reactive duration input from the canonical Timer contract. |
+| `remaining` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive remaining input from the canonical Timer contract. |
+| `defaultRemaining` | `number` | no | yes | `undefined (component initial value)` | Optional reactive defaultRemaining input from the canonical Timer contract. |
+| `direction` | `string` | no | yes | `undefined → &quot;ltr&quot;` | Optional reactive direction input from the canonical Timer contract. |
+| `autoStart` | `boolean` | no | yes | `undefined → false` | Optional reactive autoStart input from the canonical Timer contract. |
+| `announceInterval` | `number` | no | yes | `undefined (no public prop override)` | Optional reactive announceInterval input from the canonical Timer contract. |</pre></section><section id="controlled-uncontrolled" data-uifn-doc-section="controlled-uncontrolled"><h2>controlled-uncontrolled</h2><pre>Control mode: `single`. Controlled inputs: `remaining`. Uncontrolled defaults: `defaultRemaining`. Change events: `REMAINING_CHANGE`. Do not switch mode after mount.</pre></section><section id="accessibility" data-uifn-doc-section="accessibility"><h2>accessibility</h2><pre>Profile: `status-feedback`. Native semantic basis: Use meter, progressbar, status, timer, step, or alert semantics only as declared for each state.
+
+Accessible name required: yes; accepted sources: visible-label, aria-label, aria-labelledby. WCAG mapping: 1.3.1, 2.1.1, 2.2.1, 2.4.3, 3.2.2, 4.1.2, 4.1.3. Normative basis: native-html, wai-aria-live-regions. Final manual accessibility review remains outstanding. Automated and current manual evidence does not include JAWS, which remains explicitly user-deferred.</pre></section><section id="keyboard-pointer-touch" data-uifn-doc-section="keyboard-pointer-touch"><h2>keyboard-pointer-touch</h2><pre>Keyboard model: `native-or-workflow-specific`; keys: `Tab`, `Shift+Tab`, `Enter`, `Space`, `Escape`. Pointer/touch obligations: action-activation-where-interactive, swipe-with-keyboard-alternative-where-applicable. Focus obligations: do-not-steal-focus-for-passive-status, restore-focus-for-dismissed-workflow.</pre></section><section id="forms" data-uifn-doc-section="forms"><h2>forms</h2><pre>Participation: `none`; value shape: `none`; reset: `none`; validation: `none`.</pre></section><section id="direction-locale" data-uifn-doc-section="direction-locale"><h2>direction-locale</h2><pre>RTL contract: Declare logical versus physical direction behavior and mirror only directional semantics. Direction is supplied through DOM `dir`; locale-sensitive labels and formatting stay application-owned unless a primitive input says otherwise.</pre></section><section id="ssr-hydration" data-uifn-doc-section="ssr-hydration"><h2>ssr-hydration</h2><pre>The controller is deterministic and DOM access is adapter-owned. Render the same controlled/default inputs on server and first client render. Portal, presence, root-scope, modality, and tabbability services (root-scope-modality-tabbability, form-bridges-live-regions) activate only after the DOM is available.</pre></section><section id="composition-styling" data-uifn-doc-section="composition-styling"><h2>composition-styling</h2><pre>Use the compound root `Timer` or named parts shown above. Import `@uifn/components/styles.css` once, then override tokens or low-specificity part selectors in a later CSS layer.
+
+Stable data attributes:
+
+- `data-uifn-component=&quot;timer&quot;` on all styled parts; stable.
+- `data-uifn-part=&quot;root | value | start | pause | reset | status&quot;` on all styled parts; stable.
+- `data-state=&quot;idle | running | paused | complete&quot;` on stateful parts; stable semantic state.
+
+CSS variables:
+
+- `--uifn-component-accent` (shared)
+- `--uifn-component-accent-contrast` (shared)
+- `--uifn-component-bg` (shared)
+- `--uifn-component-bg-muted` (shared)
+- `--uifn-component-border` (shared)
+- `--uifn-component-border-strong` (shared)
+- `--uifn-component-danger` (shared)
+- `--uifn-component-fg` (shared)
+- `--uifn-component-fg-muted` (shared)
+- `--uifn-component-radius-lg` (shared)
+- `--uifn-component-radius-md` (shared)
+- `--uifn-component-radius-sm` (shared)
+- `--uifn-component-shadow` (shared)
+- `--uifn-control-block-size` (shared)
+- `--uifn-control-gap` (shared)</pre></section><section id="package-install" data-uifn-doc-section="package-install"><h2>package-install</h2><pre>Published package version: `0.0.1`; canonical catalog version: `stable-1.0`.
+
+| Framework | Public import | Source-install target |
+|---|---|---|
+| react | `@uifn/components-react/timer` | `components/uifn/react/timer.ts` |
+| svelte | `@uifn/components-svelte/timer` | `components/uifn/svelte/timer/index.ts` |
+| solid | `@uifn/components-solid/timer` | `components/uifn/solid/timer.ts` |
+
+#### React · package
+
+```tsx
+import * as React from 'react';
+import { TimerRoot } from &quot;@uifn/components-react/timer&quot;;
+
+export function TimerExample() {
+  return React.createElement(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
+}
+```
+
+#### React · source
+
+```tsx
+import * as React from 'react';
+import { TimerRoot } from &quot;./components/uifn/react/timer.js&quot;;
+
+export function TimerExample() {
+  return React.createElement(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
+}
+```
+
+#### Svelte · package
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TimerRoot } from &quot;@uifn/components-svelte/timer&quot;;
+&lt;/script&gt;
+
+&lt;TimerRoot duration={1} aria-label=&quot;Timer example&quot; /&gt;
+```
+
+#### Svelte · source
+
+```svelte
+&lt;script lang=&quot;ts&quot;&gt;
+  import { TimerRoot } from &quot;./components/uifn/svelte/timer/index.js&quot;;
+&lt;/script&gt;
+
+&lt;TimerRoot duration={1} aria-label=&quot;Timer example&quot; /&gt;
+```
+
+#### Solid · package
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TimerRoot } from &quot;@uifn/components-solid/timer&quot;;
+
+export function TimerExample() {
+  return createComponent(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
+}
+```
+
+#### Solid · source
+
+```tsx
+import { createComponent } from 'solid-js';
+import { TimerRoot } from &quot;./components/uifn/solid/timer.js&quot;;
+
+export function TimerExample() {
+  return createComponent(TimerRoot, {&quot;duration&quot;:1,&quot;aria-label&quot;:&quot;Timer example&quot;});
+}
+```</pre></section><section id="source-install" data-uifn-doc-section="source-install"><h2>source-install</h2><pre>Use `uifn add timer --framework &lt;react|svelte|solid&gt;` through `@uifn/registry`. The lockfile records the catalog, generator, template, and output hashes. Source-install files have the same public component contract as package delivery; edit intentionally and let `uifn diff` report local divergence.</pre></section><section id="known-constraints" data-uifn-doc-section="known-constraints"><h2>known-constraints</h2><pre>Required release channel: `stable-1.0`. Catalog status: `ga-required`. Compatibility certification is still pending external runner/device-lab evidence; this page documents current generated compatibility evidence and is not a complete release certification. Declared exceptions: none.
+
+Explicit limitations:
+
+- Controller state and actions are framework-neutral; focus, layers, portals, positioning, presence, and native form bridges activate through @uifn/dom after mount.
+- Apply the status-feedback profile specifically to Timer; implementation vectors own exact behavior.</pre></section></main></body></html>

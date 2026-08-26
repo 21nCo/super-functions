@@ -29,6 +29,10 @@ export interface WsAuthContext {
   actorId?: string;
   /** Optional resolved principal IDs for principal-targeted invalidation. */
   principalIds?: string[];
+  /** Owning region pinned during a routed handshake. */
+  regionId?: string;
+  /** Placement epoch pinned during a routed handshake. */
+  routingEpoch?: number;
 }
 
 /** WebSocket manager configuration (sourced from DatafnServerConfig.ws). */
@@ -91,10 +95,15 @@ export class WebSocketManager {
    * Reverse mapping: client → known principalIds for O(1) targeted index cleanup.
    */
   private clientPrincipals = new Map<WebSocketClient, Set<string>>();
+  private clientPlacement = new Map<WebSocketClient, { regionId?: string; epoch?: number }>();
+  /** Monotonic namespace fence generation closes the validation/registration race. */
+  private namespaceFenceGeneration = new Map<string, number>();
   /** Clients that have been sent a ping and have not yet replied (REL-007). */
   private pendingPong = new Set<WebSocketClient>();
   /** Heartbeat interval handle. */
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  /** Permanent shutdown fence; a closed manager cannot admit new handshakes. */
+  private closed = false;
 
   private readonly maxConnections: number;
   private readonly maxConnectionsPerNamespace: number;
@@ -121,6 +130,10 @@ export class WebSocketManager {
 
   private getNamespaceCount(namespace: string): number {
     return this.namespaceClients.get(namespace)?.size ?? 0;
+  }
+
+  getNamespaceFenceGeneration(namespace: string): number {
+    return this.namespaceFenceGeneration.get(namespace) ?? 0;
   }
 
   private normalizeNonEmptyString(value: unknown): string | null {
@@ -273,6 +286,11 @@ export class WebSocketManager {
   addClient(client: WebSocketClient, authContext: WsAuthContext): boolean {
     const { namespace } = authContext;
 
+    if (this.closed) {
+      this.closeClientSafely(client, 1001, "Going Away", "ws-closed-admission");
+      return false;
+    }
+
     // SCA-005: Global connection limit
     if (this.totalCount >= this.maxConnections) {
       this.closeClientSafely(client, 4503, "Connection limit reached", "ws-limit-close");
@@ -304,6 +322,12 @@ export class WebSocketManager {
       client,
       this.resolveClientPrincipals(authContext),
     );
+    this.clientPlacement.set(client, {
+      ...(authContext.regionId ? { regionId: authContext.regionId } : {}),
+      ...(Number.isSafeInteger(authContext.routingEpoch)
+        ? { epoch: authContext.routingEpoch }
+        : {}),
+    });
 
     // REL-007: Start heartbeat lazily on first connected client
     if (this.heartbeatTimer === null) {
@@ -327,7 +351,37 @@ export class WebSocketManager {
       }
       this.clientNamespace.delete(client);
     }
+    this.clientPlacement.delete(client);
     this.pendingPong.delete(client);
+  }
+
+  /**
+   * Close sessions pinned to a stale placement epoch so clients reconnect via
+   * the canonical gateway. Passing no minimum epoch fences every connection in
+   * the namespace (used when entering the moving state).
+   */
+  fenceNamespace(namespace: string, minimumEpoch?: number): number {
+    this.namespaceFenceGeneration.set(
+      namespace,
+      this.getNamespaceFenceGeneration(namespace) + 1,
+    );
+    const clients = [...(this.namespaceClients.get(namespace) ?? [])];
+    let closed = 0;
+    for (const client of clients) {
+      const epoch = this.clientPlacement.get(client)?.epoch;
+      if (minimumEpoch !== undefined && epoch !== undefined && epoch >= minimumEpoch) {
+        continue;
+      }
+      this.removeClient(client);
+      this.closeClientSafely(
+        client,
+        4510,
+        "DATAFN_REGION_MISMATCH: reconnect through canonical gateway",
+        "ws-placement-fence",
+      );
+      closed++;
+    }
+    return closed;
   }
 
   /**
@@ -440,6 +494,7 @@ export class WebSocketManager {
    * Called by DatafnServer.close().
    */
   close() {
+    this.closed = true;
     this.destroy();
     for (const [client] of this.clientNamespace) {
       this.closeClientSafely(client, 1001, "Going Away", "ws-close");
@@ -449,6 +504,7 @@ export class WebSocketManager {
     this.namespaceUntargetableClients.clear();
     this.clientNamespace.clear();
     this.clientPrincipals.clear();
+    this.clientPlacement.clear();
     this.pendingPong.clear();
   }
 

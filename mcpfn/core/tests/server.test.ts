@@ -61,6 +61,265 @@ describe("McpFnServer", () => {
     });
   });
 
+  it("normalizes structured results without treating repeated references as cycles", () => {
+    const shared = { value: 1 };
+    const circular: Record<string, unknown> = { shared };
+    circular.self = circular;
+    expect(structuredResult({ first: shared, second: shared, circular })).toMatchObject({
+      structuredContent: {
+        first: { value: 1 },
+        second: { value: 1 },
+        circular: { shared: { value: 1 }, self: "[Circular]" },
+      },
+    });
+    expect(structuredResult({ count: 1n }).structuredContent).toEqual({ count: "1" });
+    expect(() => structuredResult({ toJSON: () => null })).toThrow(
+      /structuredContent must serialize to an object/,
+    );
+  });
+
+  it("lists prompt arguments derived from argumentsSchema", () => {
+    const registry = new McpFnRegistry().registerPrompt({
+      name: "schema_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string", description: "Topic to explain." } },
+        required: ["topic"],
+        additionalProperties: false,
+      },
+      get: async () => ({ messages: [] }),
+    });
+    const prompts = registry.listPrompts();
+    expect(prompts).toEqual([expect.objectContaining({
+      name: "schema_prompt",
+      arguments: [{ name: "topic", description: "Topic to explain.", required: true }],
+    })]);
+    expect(createMcpFnServer({
+      info: { name: "schema-prompt", version: "1.0.0" },
+      registry,
+    }).manifest().prompts).toEqual([expect.objectContaining({
+      name: "schema_prompt",
+      arguments: [{ name: "topic", description: "Topic to explain.", required: true }],
+    })]);
+  });
+
+  it("lists required-only prompt arguments derived from argumentsSchema", () => {
+    const registry = new McpFnRegistry().registerPrompt({
+      name: "required_only_prompt",
+      argumentsSchema: {
+        type: "object",
+        required: ["token"],
+      },
+      get: async () => ({ messages: [] }),
+    });
+    expect(registry.listPrompts()).toEqual([expect.objectContaining({
+      name: "required_only_prompt",
+      arguments: [{ name: "token", required: true }],
+    })]);
+  });
+
+  it("rejects malformed prompt required lists through validation", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "invalid_required",
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string" } },
+        required: "topic",
+      } as never,
+      get: async () => ({ messages: [] }),
+    })).toThrow(/invalid arguments JSON Schema/);
+  });
+
+  it("rejects conflicting prompt argument declarations", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conflicting_prompt",
+      arguments: [{ name: "topic", required: false }],
+      argumentsSchema: {
+        type: "object",
+        properties: { topic: { type: "string" } },
+        required: ["topic"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/arguments and argumentsSchema disagree/);
+  });
+
+  it("derives and compares prompt inventories from composed schemas", () => {
+    const registry = new McpFnRegistry().registerPrompt({
+      name: "composed_prompt",
+      arguments: [{ name: "topic", required: true }],
+      argumentsSchema: {
+        type: "object",
+        allOf: [{
+          properties: { topic: { type: "string" } },
+          required: ["topic"],
+        }],
+      },
+      get: async () => ({ messages: [] }),
+    }).registerPrompt({
+      name: "referenced_prompt",
+      argumentsSchema: {
+        type: "object",
+        $defs: {
+          arguments: {
+            properties: { token: { type: "string", description: "Access token." } },
+            required: ["token"],
+          },
+        },
+        $ref: "#/$defs/arguments",
+      },
+      get: async () => ({ messages: [] }),
+    });
+    expect(registry.listPrompts()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "composed_prompt",
+        arguments: [{ name: "topic", required: true }],
+      }),
+      expect.objectContaining({
+        name: "referenced_prompt",
+        arguments: [{ name: "token", description: "Access token.", required: true }],
+      }),
+    ]));
+
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conflicting_composed_prompt",
+      arguments: [{ name: "topic", required: true }],
+      argumentsSchema: {
+        type: "object",
+        allOf: [{
+          properties: { other: { type: "string" } },
+          required: ["other"],
+        }],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/arguments and argumentsSchema disagree/);
+  });
+
+  it("rejects prompt schemas that cannot expose string-valued inventories", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "numeric_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: { age: { type: "number" } },
+        required: ["age"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/argument age must accept string values/);
+
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "contradictory_prompt",
+      argumentsSchema: {
+        type: "object",
+        properties: {
+          value: { allOf: [{ const: "a" }, { const: "b" }] },
+        },
+        required: ["value"],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/argument value must accept string values/);
+
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "conditional_prompt",
+      arguments: [{ name: "topic" }],
+      argumentsSchema: {
+        type: "object",
+        anyOf: [{ properties: { topic: { type: "string" } } }],
+      },
+      get: async () => ({ messages: [] }),
+    })).toThrow(/must use derivable properties/);
+  });
+
+  it("rejects prompts without callable get handlers", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "missing_get",
+    } as never)).toThrow(/requires a get handler function/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "invalid_get",
+      get: true,
+    } as never)).toThrow(/requires a get handler function/);
+  });
+
+  it("rejects malformed prompt argument inventories with a validation error", () => {
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "malformed_prompt",
+      arguments: false,
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/arguments must be an array/);
+  });
+
+  it("rejects malformed prompt argument fields and non-object schemas", () => {
+    const register = (argumentsValue: unknown) => new McpFnRegistry().registerPrompt({
+      name: "malformed_prompt",
+      arguments: argumentsValue,
+      get: async () => ({ messages: [] }),
+    } as never);
+
+    expect(() => register([{ name: "contains whitespace" }])).toThrow(/Invalid MCP prompt argument name/);
+    expect(() => register([{ name: "topic", description: 42 }])).toThrow(/description must be a string/);
+    expect(() => register([{ name: "topic", required: "yes" }])).toThrow(/required must be a boolean/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "non_object_schema",
+      argumentsSchema: { type: "string" },
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/argumentsSchema must be an object schema/);
+    expect(() => new McpFnRegistry().registerPrompt({
+      name: "null_schema",
+      argumentsSchema: null,
+      get: async () => ({ messages: [] }),
+    } as never)).toThrow(/argumentsSchema must be an object schema/);
+  });
+
+  it("rejects unknown task support values at registration", () => {
+    expect(() => new McpFnRegistry().register({
+      name: "unknown_task_support",
+      description: "Reject invalid task support.",
+      inputSchema: { type: "object" },
+      execution: { taskSupport: "sometimes" },
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/invalid taskSupport=sometimes/);
+  });
+
+  it("rejects non-object tool output schemas at registration", () => {
+    expect(() => new McpFnRegistry().register({
+      name: "non_object_output",
+      description: "Reject a non-object structured output contract.",
+      inputSchema: { type: "object" },
+      outputSchema: { type: "string" },
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/outputSchema must be an object schema/);
+
+    expect(() => new McpFnRegistry().register({
+      name: "null_output",
+      description: "Reject a null structured output contract.",
+      inputSchema: { type: "object" },
+      outputSchema: null,
+      handler: async () => structuredResult({ ok: true }),
+    } as never)).toThrow(/outputSchema must be an object schema/);
+  });
+
+  it("rejects missing and non-function tool handlers at registration", () => {
+    const definition = {
+      name: "invalid_handler",
+      description: "Reject an invalid handler.",
+      inputSchema: { type: "object" },
+    };
+    expect(() => new McpFnRegistry().register(definition as never))
+      .toThrow(/requires a handler function/);
+    expect(() => new McpFnRegistry().register({ ...definition, handler: "invalid" } as never))
+      .toThrow(/requires a handler function/);
+  });
+
+  it("rejects resources and templates without callable read handlers", () => {
+    expect(() => new McpFnRegistry().registerResource({
+      uri: "docs://missing-read",
+      name: "missing-read",
+    } as never)).toThrow(/requires a read handler function/);
+    expect(() => new McpFnRegistry().registerResourceTemplate({
+      uriTemplate: "docs://missing-read/{id}",
+      name: "missing-read-template",
+      read: "invalid",
+    } as never)).toThrow(/requires a read handler function/);
+  });
+
   it("filters tools per request and makes hidden calls indistinguishable from unknown tools", async () => {
     const invoked: string[] = [];
     const registry = new McpFnRegistry<{ permissions: readonly string[] }>()

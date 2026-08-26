@@ -39,12 +39,18 @@ export interface StepsActions { next(): void; previous(): void; goTo(step: numbe
 export interface StepsControllerParts { readonly root: UIFnPhase10Part; readonly list: UIFnPhase10Part; readonly item: UIFnPhase10ValuePart<number>; readonly trigger: UIFnPhase10ValuePart<number>; readonly indicator: UIFnPhase10ValuePart<number>; readonly separator: UIFnPhase10ValuePart<number>; readonly content: UIFnPhase10ValuePart<number>; readonly completed: UIFnPhase10ValuePart<number> }
 export type StepsController = UIFnController<StepsState, StepsActions, StepsControllerParts, StepsProps>;
 function stepStatuses(step: number, count: number, errors: readonly number[]): readonly StepStatus[] { return Object.freeze(Array.from({ length: count }, (_, index) => errors.includes(index) ? 'error' : index < step ? 'complete' : index === step ? 'current' : 'upcoming')); }
+function equalStepErrors(left: readonly number[], right: readonly number[]): boolean {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
+}
 export function createStepsController(props: StepsProps, env: UIFnEnvironment = {}): StepsController {
   const { resolved, id } = createUIFnPhase10Ids('Steps', 'steps', env);
-  const count = Math.max(1, Math.trunc(props.count));
-  const controlled = props.step !== undefined;
-  const errors = Object.freeze([...(props.errors ?? [])]);
-  const locale = props.locale ?? resolved.getLocale();
+  let currentProps = props;
+  let count = Math.max(1, Math.trunc(props.count));
+  let controlled = props.step !== undefined;
+  let errors = Object.freeze([...(props.errors ?? [])]);
+  let locale = props.locale ?? resolved.getLocale();
   const initial = clampRangeValue(Math.trunc(props.step ?? props.defaultStep ?? 0), 0, count - 1);
   const store = createStateChannel<StepsState>({
     step: initial, count, orientation: props.orientation ?? 'horizontal', linear: props.linear ?? true,
@@ -60,7 +66,7 @@ export function createStepsController(props: StepsProps, env: UIFnEnvironment = 
       const announcement = new Intl.NumberFormat(locale).format(next + 1);
       if (controlled) store.patchState({ requestedStep: next, announcement });
       else store.patchState({ step: next, requestedStep: undefined, status: next === 0 ? 'idle' : 'in-progress', statuses: stepStatuses(next, count, errors), announcement });
-      props.onStepChange?.(next);
+      currentProps.onStepChange?.(next);
     },
     complete(step = store.getState().step) {
       const target = clampRangeValue(Math.trunc(step), 0, count - 1);
@@ -79,7 +85,7 @@ export function createStepsController(props: StepsProps, env: UIFnEnvironment = 
   };
   const status = (index: number) => store.getState().statuses[index] ?? 'upcoming';
   const parts: StepsControllerParts = {
-    root: createUIFnPhase10Part('Steps', 'root', () => ({ role: 'navigation', id: id('root'), aria: { label: props.label }, data: { orientation: store.getState().orientation, state: store.getState().status } }), { role: true, id: true }),
+    root: createUIFnPhase10Part('Steps', 'root', () => ({ role: 'navigation', id: id('root'), aria: { label: currentProps.label }, data: { orientation: store.getState().orientation, state: store.getState().status } }), { role: true, id: true }),
     list: createUIFnPhase10Part('Steps', 'list', () => ({ role: 'list', id: id('list') }), { role: true, id: true }),
     item: createUIFnPhase10ValuePart('Steps', 'item', (index) => ({ role: 'listitem', id: id('item', index), aria: { current: status(index) === 'current' ? 'step' : undefined }, data: { state: status(index) } }), { role: true, id: true }),
     trigger: createUIFnPhase10ValuePart('Steps', 'trigger', (index) => ({ role: 'button', id: id('trigger', index), disabled: store.getState().completed || (store.getState().linear && index > store.getState().step + 1), aria: { current: status(index) === 'current' ? 'step' : undefined }, data: { state: status(index) }, on: { click: () => actions.goTo(index) } }), { role: true, id: true }),
@@ -88,7 +94,38 @@ export function createStepsController(props: StepsProps, env: UIFnEnvironment = 
     content: createUIFnPhase10ValuePart('Steps', 'content', (index) => ({ role: 'region', id: id('content', index), aria: { labelledby: id('trigger', index) }, hidden: store.getState().step !== index || store.getState().completed }), { role: true, id: true }),
     completed: createUIFnPhase10ValuePart('Steps', 'completed', (index) => ({ id: id('completed', index), aria: { hidden: status(index) !== 'complete' }, hidden: status(index) !== 'complete' }), { id: true }),
   };
-  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) { if (inputs.step !== undefined) actions.syncStep(inputs.step); } });
+  return createUIFnPhase10Controller({ store, actions, parts, env, update(inputs) {
+    const previousCount = count;
+    const previousErrors = errors;
+    const state = store.getState();
+    currentProps = { ...currentProps, ...inputs };
+    count = Math.max(1, Math.trunc(currentProps.count));
+    controlled = currentProps.step !== undefined;
+    errors = Object.freeze([...(currentProps.errors ?? [])]);
+    locale = currentProps.locale ?? resolved.getLocale();
+    const ownerStepProvided = 'step' in inputs && inputs.step !== undefined;
+    const ownerStepChanged = ownerStepProvided && Math.trunc(inputs.step!) !== state.step;
+    const step = clampRangeValue(
+      Math.trunc(ownerStepProvided ? inputs.step! : state.step),
+      0,
+      count - 1,
+    );
+    const completed = state.completed && previousCount === count && equalStepErrors(previousErrors, errors) && !ownerStepChanged;
+    store.patchState({
+      step,
+      requestedStep: controlled && !ownerStepProvided && state.requestedStep !== undefined
+        ? clampRangeValue(Math.trunc(state.requestedStep), 0, count - 1)
+        : undefined,
+      count,
+      orientation: currentProps.orientation ?? 'horizontal',
+      linear: currentProps.linear ?? true,
+      status: completed ? 'complete' : step === 0 ? 'idle' : 'in-progress',
+      completed,
+      statuses: completed
+        ? Object.freeze(Array.from({ length: count }, (_, index) => errors.includes(index) ? 'error' as const : 'complete' as const))
+        : stepStatuses(step, count, errors),
+    });
+  } });
 }
 
 export type ToastPoliteness = 'polite' | 'assertive';

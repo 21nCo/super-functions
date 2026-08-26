@@ -1,0 +1,27 @@
+{
+  "name": "@uifn/example-react-playground",
+  "private": true,
+  "version": "0.0.0",
+  "description": "React example workspace for uifn",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 6111",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 6111"
+  },
+  "dependencies": {
+    "@uifn/core": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/react": "*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.55.0",
+    "typescript": "^6.0.2",
+    "vite": "^5.4.21"
+  }
+}

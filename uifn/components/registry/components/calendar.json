@@ -4,7 +4,7 @@
   "slug": "calendar",
   "batch": "data-rich",
   "kind": "component-implementation",
-  "status": "implemented",
+  "status": "planned",
   "sourcePolicy": "clean-room",
   "owners": [
     "platform-ui"
@@ -17,19 +17,13 @@
   ],
   "frameworks": {
     "react": {
-      "supported": true,
-      "entry": "uifn/components-react/src/data-rich.ts",
-      "exportName": "Calendar"
+      "supported": false
     },
     "svelte": {
-      "supported": true,
-      "entry": "uifn/components-svelte/src/data-rich.ts",
-      "exportName": "Calendar"
+      "supported": false
     },
     "solid": {
-      "supported": true,
-      "entry": "uifn/components-solid/src/data-rich.ts",
-      "exportName": "Calendar"
+      "supported": false
     }
   },
   "stories": [
@@ -44,10 +38,6 @@
     "uifn/components/fixtures/data-rich/calendar.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/data-rich.test.ts#interaction",
-    "uifn/components/src/__tests__/data-rich.test.ts#large-data",
-    "uifn/components/src/__tests__/data-rich.test.ts#a11y",
-    "uifn/components/src/__tests__/data-rich.test.ts#visual",
     "uifn/components/src/__tests__/data-rich.test.ts#registry"
   ]
 }

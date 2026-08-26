@@ -3405,6 +3405,18 @@ const STYLED_COMPONENT_SEEDS = [
         "required": false,
         "type": "string",
         "defaultValue": "undefined (no public prop override)"
+      },
+      {
+        "name": "disabled",
+        "required": false,
+        "type": "boolean",
+        "defaultValue": "undefined → false"
+      },
+      {
+        "name": "readOnly",
+        "required": false,
+        "type": "boolean",
+        "defaultValue": "undefined → false"
       }
     ],
     "callbacks": [
@@ -3561,6 +3573,18 @@ const STYLED_COMPONENT_SEEDS = [
         "name": "data-state",
         "value": "closed | open | editing | invalid",
         "parts": "stateful parts",
+        "stability": "stable semantic state"
+      },
+      {
+        "name": "data-disabled",
+        "value": "true | false",
+        "parts": "parts whose semantics depend on this input",
+        "stability": "stable semantic state"
+      },
+      {
+        "name": "data-readonly",
+        "value": "true | false",
+        "parts": "parts whose semantics depend on this input",
         "stability": "stable semantic state"
       }
     ],

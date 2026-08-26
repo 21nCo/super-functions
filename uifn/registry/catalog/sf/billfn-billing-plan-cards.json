@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "BillFnBillingPlanCards",
+  "slug": "billfn-billing-plan-cards",
+  "kind": "sf-pattern",
+  "category": "Superfunction Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [
+    "billfn"
+  ],
+  "controlledCounterpart": "BillingPlanCards",
+  "clientContract": "BillFnClient",
+  "props": [
+    "billClient",
+    "status"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "BillFnBillingPlanCards({ billClient, status })",
+      "packageImport": "import { BillFnBillingPlanCards } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/react/billfn-billing-plan-cards.ts",
+        "storyFile": "components/sf/react/billfn-billing-plan-cards.stories.ts",
+        "fixtureFile": "components/sf/react/billfn-billing-plan-cards.fixtures.ts",
+        "testFile": "components/sf/react/billfn-billing-plan-cards.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "BillFnBillingPlanCards({ billClient, status })",
+      "packageImport": "import { BillFnBillingPlanCards } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/svelte/billfn-billing-plan-cards.ts",
+        "storyFile": "components/sf/svelte/billfn-billing-plan-cards.stories.ts",
+        "fixtureFile": "components/sf/svelte/billfn-billing-plan-cards.fixtures.ts",
+        "testFile": "components/sf/svelte/billfn-billing-plan-cards.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "BillFnBillingPlanCards({ billClient, status })",
+      "packageImport": "import { BillFnBillingPlanCards } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/solid/billfn-billing-plan-cards.ts",
+        "storyFile": "components/sf/solid/billfn-billing-plan-cards.stories.ts",
+        "fixtureFile": "components/sf/solid/billfn-billing-plan-cards.fixtures.ts",
+        "testFile": "components/sf/solid/billfn-billing-plan-cards.test.ts"
+      }
+    }
+  },
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/sf/billfn-billing-plan-cards.json",
+    "lockKey": "sf:billfn-billing-plan-cards",
+    "files": [
+      "components/sf/react/billfn-billing-plan-cards.ts",
+      "components/sf/react/billfn-billing-plan-cards.stories.ts",
+      "components/sf/react/billfn-billing-plan-cards.fixtures.ts",
+      "components/sf/react/billfn-billing-plan-cards.test.ts",
+      "components/sf/svelte/billfn-billing-plan-cards.ts",
+      "components/sf/svelte/billfn-billing-plan-cards.stories.ts",
+      "components/sf/svelte/billfn-billing-plan-cards.fixtures.ts",
+      "components/sf/svelte/billfn-billing-plan-cards.test.ts",
+      "components/sf/solid/billfn-billing-plan-cards.ts",
+      "components/sf/solid/billfn-billing-plan-cards.stories.ts",
+      "components/sf/solid/billfn-billing-plan-cards.fixtures.ts",
+      "components/sf/solid/billfn-billing-plan-cards.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "mocked",
+      "status": "implemented",
+      "file": "uifn/sf/stories/billfn-billing-plan-cards.stories.json",
+      "sha256": "7db61652a474a2d23c4b3f7b646156f378ef6406f7872478b2ed920cf4e5122b",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/sf/fixtures/billfn-billing-plan-cards.fixture.json",
+      "sha256": "b80baf19fb995a02c2a9a369c9d853ceb4e8e9026d54e5282814d353e11ed93f",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "injected-client",
+      "status": "implemented",
+      "file": "uifn/sf/src/sf.test.ts",
+      "sha256": "c5f9ecb9dcbc6be9af8fb8ed5f632c520768bd874ccda4eed30ab8ddfb927ff2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

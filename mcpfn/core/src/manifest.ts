@@ -3,10 +3,19 @@ import addFormats from "ajv-formats";
 import { UriTemplate } from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import { ServerCapabilitiesSchema } from "@modelcontextprotocol/sdk/types.js";
 
-import { sha256 } from "./canonical.js";
+import { compareCodeUnits, sha256 } from "./canonical.js";
 import { assertMcpAppContracts } from "./apps.js";
 import { McpFnValidationError } from "./errors.js";
-import type { McpFnRegistry } from "./registry.js";
+import {
+  unsupportedUriTemplateOperator,
+  uriTemplatesOverlap,
+} from "./uri-template.js";
+import {
+  assertPromptSchemaSupportsStringValues,
+  promptArguments,
+  schemaPromptArguments,
+  type McpFnRegistry,
+} from "./registry.js";
 import type {
   McpFnManifest,
   McpFnManifestPrompt,
@@ -26,7 +35,7 @@ export interface CreateManifestOptions {
 }
 
 function assertSortedUnique(label: string, values: string[]): void {
-  const canonical = [...new Set(values)].sort();
+  const canonical = [...new Set(values)].sort(compareCodeUnits);
   if (
     canonical.length !== values.length ||
     canonical.some((value, index) => value !== values[index])
@@ -78,6 +87,7 @@ export function createManifest<TContext>(
     ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
     ...(resource.annotations ? { annotations: resource.annotations } : {}),
     ...(resource.icons ? { icons: resource.icons } : {}),
+    ...(resource.subscribe ? { subscribable: true } : {}),
     ...(resource.metadata ? { metadata: resource.metadata } : {}),
   }));
   const resourceTemplates: McpFnManifestResourceTemplate[] =
@@ -89,13 +99,14 @@ export function createManifest<TContext>(
       ...(resource.mimeType ? { mimeType: resource.mimeType } : {}),
       ...(resource.annotations ? { annotations: resource.annotations } : {}),
       ...(resource.icons ? { icons: resource.icons } : {}),
+      ...(resource.subscribe ? { subscribable: true } : {}),
       ...(resource.metadata ? { metadata: resource.metadata } : {}),
     }));
   const prompts: McpFnManifestPrompt[] = registry.promptDefinitions().map((prompt) => ({
     name: prompt.name,
     ...(prompt.title ? { title: prompt.title } : {}),
     ...(prompt.description ? { description: prompt.description } : {}),
-    ...(prompt.arguments ? { arguments: prompt.arguments } : {}),
+    ...(promptArguments(prompt) ? { arguments: promptArguments(prompt) } : {}),
     ...(prompt.argumentsSchema ? { argumentsSchema: prompt.argumentsSchema } : {}),
     ...(prompt.icons ? { icons: prompt.icons } : {}),
     ...(prompt.metadata ? { metadata: prompt.metadata } : {}),
@@ -210,12 +221,15 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (!tool.inputSchema || tool.inputSchema.type !== "object") {
       throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object inputSchema`);
     }
-    if (tool.outputSchema && tool.outputSchema.type !== "object") {
-      throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object outputSchema`);
+    if (tool.outputSchema !== undefined) {
+      assertObject(`Manifest tool ${tool.name} outputSchema`, tool.outputSchema);
+      if (tool.outputSchema.type !== "object") {
+        throw new McpFnValidationError(`Manifest tool ${tool.name} requires an object outputSchema`);
+      }
     }
     try {
       ajv.compile(tool.inputSchema);
-      if (tool.outputSchema) ajv.compile(tool.outputSchema);
+      if (tool.outputSchema !== undefined) ajv.compile(tool.outputSchema);
     } catch (error) {
       throw new McpFnValidationError(
         `Manifest tool ${tool.name} contains an invalid JSON Schema`,
@@ -227,6 +241,17 @@ export function validateManifest(value: unknown): McpFnManifest {
       ["execution", tool.execution],
       ["metadata", tool.metadata],
     ] as const) assertMetadata(`Manifest tool ${tool.name} ${label}`, metadata);
+    const taskSupport = tool.execution?.taskSupport;
+    if (
+      taskSupport !== undefined &&
+      taskSupport !== "forbidden" &&
+      taskSupport !== "optional" &&
+      taskSupport !== "required"
+    ) {
+      throw new McpFnValidationError(
+        `Manifest tool ${tool.name} has invalid taskSupport=${String(taskSupport)}`,
+      );
+    }
   }
   assertSortedBy("Manifest tool names", manifest.tools, (tool) => tool.name);
 
@@ -236,13 +261,30 @@ export function validateManifest(value: unknown): McpFnManifest {
     try { new URL(resource.uri); } catch {
       throw new McpFnValidationError(`Manifest resource ${resource.name} has an invalid URI`);
     }
+    if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
+      throw new McpFnValidationError(
+        `Manifest resource ${resource.name} subscribable must be a boolean`,
+      );
+    }
     assertMetadata(`Manifest resource ${resource.name} metadata`, resource.metadata);
   }
   assertSortedBy("Manifest resource URIs", manifest.resources ?? [], (resource) => resource.uri);
 
+  const resourceTemplateUris: string[] = [];
   for (const resource of manifest.resourceTemplates ?? []) {
     assertObject("Every manifest resource template", resource);
     assertName("Every manifest resource template", resource.name);
+    if (typeof resource.uriTemplate !== "string") {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} has an invalid URI template`,
+      );
+    }
+    const unsupportedOperator = unsupportedUriTemplateOperator(resource.uriTemplate);
+    if (unsupportedOperator) {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} uses unsupported URI template operator ${unsupportedOperator}`,
+      );
+    }
     let template: UriTemplate;
     try { template = new UriTemplate(resource.uriTemplate); } catch {
       throw new McpFnValidationError(
@@ -252,6 +294,19 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (!template.variableNames.length) {
       throw new McpFnValidationError(
         `Manifest resource template ${resource.name} must contain at least one variable`,
+      );
+    }
+    if (resourceTemplateUris.some((uriTemplate) =>
+      uriTemplatesOverlap(uriTemplate, resource.uriTemplate)
+    )) {
+      throw new McpFnValidationError(
+        `Manifest contains an ambiguous resource URI template: ${resource.uriTemplate}`,
+      );
+    }
+    resourceTemplateUris.push(resource.uriTemplate);
+    if (resource.subscribable !== undefined && typeof resource.subscribable !== "boolean") {
+      throw new McpFnValidationError(
+        `Manifest resource template ${resource.name} subscribable must be a boolean`,
       );
     }
     assertMetadata(`Manifest resource template ${resource.name} metadata`, resource.metadata);
@@ -288,11 +343,34 @@ export function validateManifest(value: unknown): McpFnManifest {
     if (new Set(argumentNames).size !== argumentNames.length) {
       throw new McpFnValidationError(`Manifest prompt ${prompt.name} has duplicate arguments`);
     }
-    if (prompt.argumentsSchema) {
+    if (prompt.argumentsSchema !== undefined) {
+      assertObject(`Manifest prompt ${prompt.name} argumentsSchema`, prompt.argumentsSchema);
+      if (prompt.argumentsSchema.type !== "object") {
+        throw new McpFnValidationError(
+          `Manifest prompt ${prompt.name} argumentsSchema must be an object schema`,
+        );
+      }
       try { ajv.compile(prompt.argumentsSchema); } catch {
         throw new McpFnValidationError(
           `Manifest prompt ${prompt.name} has an invalid arguments JSON Schema`,
         );
+      }
+      assertPromptSchemaSupportsStringValues(
+        prompt.argumentsSchema,
+        `Manifest prompt ${prompt.name} argumentsSchema`,
+      );
+      if (prompt.arguments) {
+        const declared = prompt.arguments
+          .map(({ name, required }) => ({ name, required: required === true }))
+          .sort((left, right) => compareCodeUnits(left.name, right.name));
+        const schemaDeclared = schemaPromptArguments(prompt)!.map(
+          ({ name, required }) => ({ name, required: required === true }),
+        );
+        if (JSON.stringify(declared) !== JSON.stringify(schemaDeclared)) {
+          throw new McpFnValidationError(
+            `Manifest prompt ${prompt.name} arguments and argumentsSchema disagree`,
+          );
+        }
       }
     }
   }

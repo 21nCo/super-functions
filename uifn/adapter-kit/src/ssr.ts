@@ -11,28 +11,31 @@ export function createSSRGuard(options: { canUseDOM?: () => boolean } = {}): SSR
     options.canUseDOM ??
     (() => typeof globalThis !== 'undefined' && 'document' in globalThis);
 
-  const assertClient = (feature: string): void => {
-    if (canUseDOM()) return;
-    throw createUIFnError({
-      code: 'UIFN_ERR_UNSUPPORTED_ENVIRONMENT',
-      package: '@uifn/adapter-kit',
-      component: 'SSRGuard',
-      message: 'Adapter feature requires a client environment.',
-      details: { feature },
-    });
-  };
-
   return {
     isBrowser() {
       return canUseDOM();
     },
-    assertClient,
+    assertClient(feature) {
+      if (canUseDOM()) {
+        return;
+      }
+
+      throw createUIFnError({
+        code: 'UIFN_ERR_UNSUPPORTED_ENVIRONMENT',
+        package: '@uifn/adapter-kit',
+        component: 'SSRGuard',
+        message: 'Adapter feature requires a client environment.',
+        details: {
+          feature,
+        },
+      });
+    },
     runClient(feature, callback, fallback) {
       if (!canUseDOM()) {
         return fallback;
       }
 
-      assertClient(feature);
+      this.assertClient(feature);
       return callback();
     },
   };

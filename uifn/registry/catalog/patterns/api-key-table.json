@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "ApiKeyTable",
+  "slug": "api-key-table",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "ApiKeyTable(props)",
+      "packageImport": "import { ApiKeyTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/api-key-table.ts",
+        "storyFile": "components/patterns/react/api-key-table.stories.ts",
+        "fixtureFile": "components/patterns/react/api-key-table.fixtures.ts",
+        "testFile": "components/patterns/react/api-key-table.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "ApiKeyTable(props)",
+      "packageImport": "import { ApiKeyTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/api-key-table.ts",
+        "storyFile": "components/patterns/svelte/api-key-table.stories.ts",
+        "fixtureFile": "components/patterns/svelte/api-key-table.fixtures.ts",
+        "testFile": "components/patterns/svelte/api-key-table.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "ApiKeyTable(props)",
+      "packageImport": "import { ApiKeyTable } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/api-key-table.ts",
+        "storyFile": "components/patterns/solid/api-key-table.stories.ts",
+        "fixtureFile": "components/patterns/solid/api-key-table.fixtures.ts",
+        "testFile": "components/patterns/solid/api-key-table.test.ts"
+      }
+    }
+  },
+  "props": [
+    "keys",
+    "status",
+    "onCreate",
+    "onRevoke"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Table",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/api-key-table.json",
+    "lockKey": "pattern:api-key-table",
+    "files": [
+      "components/patterns/react/api-key-table.ts",
+      "components/patterns/react/api-key-table.stories.ts",
+      "components/patterns/react/api-key-table.fixtures.ts",
+      "components/patterns/react/api-key-table.test.ts",
+      "components/patterns/svelte/api-key-table.ts",
+      "components/patterns/svelte/api-key-table.stories.ts",
+      "components/patterns/svelte/api-key-table.fixtures.ts",
+      "components/patterns/svelte/api-key-table.test.ts",
+      "components/patterns/solid/api-key-table.ts",
+      "components/patterns/solid/api-key-table.stories.ts",
+      "components/patterns/solid/api-key-table.fixtures.ts",
+      "components/patterns/solid/api-key-table.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/api-key-table.stories.json",
+      "sha256": "f10ba076c43146186288d978f6cda930051f7f455edb1079875ee44993540c39",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/api-key-table.stories.json",
+      "sha256": "f10ba076c43146186288d978f6cda930051f7f455edb1079875ee44993540c39",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/api-key-table.stories.json",
+      "sha256": "f10ba076c43146186288d978f6cda930051f7f455edb1079875ee44993540c39",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/api-key-table.fixture.json",
+      "sha256": "1ad00908bc0ac78236c16ef011998e6c8fefcf8fb67ed8b52f6394eab986b82c",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

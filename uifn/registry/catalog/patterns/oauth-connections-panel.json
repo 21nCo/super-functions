@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "OAuthConnectionsPanel",
+  "slug": "oauth-connections-panel",
+  "kind": "pattern",
+  "category": "Product Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "OAuthConnectionsPanel(props)",
+      "packageImport": "import { OAuthConnectionsPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/react/oauth-connections-panel.ts",
+        "storyFile": "components/patterns/react/oauth-connections-panel.stories.ts",
+        "fixtureFile": "components/patterns/react/oauth-connections-panel.fixtures.ts",
+        "testFile": "components/patterns/react/oauth-connections-panel.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "OAuthConnectionsPanel(props)",
+      "packageImport": "import { OAuthConnectionsPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/svelte/oauth-connections-panel.ts",
+        "storyFile": "components/patterns/svelte/oauth-connections-panel.stories.ts",
+        "fixtureFile": "components/patterns/svelte/oauth-connections-panel.fixtures.ts",
+        "testFile": "components/patterns/svelte/oauth-connections-panel.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "OAuthConnectionsPanel(props)",
+      "packageImport": "import { OAuthConnectionsPanel } from '@uifn/patterns';",
+      "sourceInstall": {
+        "helperFile": "components/patterns/solid/oauth-connections-panel.ts",
+        "storyFile": "components/patterns/solid/oauth-connections-panel.stories.ts",
+        "fixtureFile": "components/patterns/solid/oauth-connections-panel.fixtures.ts",
+        "testFile": "components/patterns/solid/oauth-connections-panel.test.ts"
+      }
+    }
+  },
+  "props": [
+    "connections",
+    "status",
+    "onConnect",
+    "onDisconnect"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "componentDependencies": [
+    "Card",
+    "Button",
+    "Badge"
+  ],
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/patterns/oauth-connections-panel.json",
+    "lockKey": "pattern:oauth-connections-panel",
+    "files": [
+      "components/patterns/react/oauth-connections-panel.ts",
+      "components/patterns/react/oauth-connections-panel.stories.ts",
+      "components/patterns/react/oauth-connections-panel.fixtures.ts",
+      "components/patterns/react/oauth-connections-panel.test.ts",
+      "components/patterns/svelte/oauth-connections-panel.ts",
+      "components/patterns/svelte/oauth-connections-panel.stories.ts",
+      "components/patterns/svelte/oauth-connections-panel.fixtures.ts",
+      "components/patterns/svelte/oauth-connections-panel.test.ts",
+      "components/patterns/solid/oauth-connections-panel.ts",
+      "components/patterns/solid/oauth-connections-panel.stories.ts",
+      "components/patterns/solid/oauth-connections-panel.fixtures.ts",
+      "components/patterns/solid/oauth-connections-panel.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "default",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/oauth-connections-panel.stories.json",
+      "sha256": "050a92b43d21d6329c5f45a723dc8eb36476d27997b00754cda0e916277b2615",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "interaction",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/oauth-connections-panel.stories.json",
+      "sha256": "050a92b43d21d6329c5f45a723dc8eb36476d27997b00754cda0e916277b2615",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    },
+    {
+      "id": "visual",
+      "status": "implemented",
+      "file": "uifn/patterns/stories/oauth-connections-panel.stories.json",
+      "sha256": "050a92b43d21d6329c5f45a723dc8eb36476d27997b00754cda0e916277b2615",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/patterns/fixtures/oauth-connections-panel.fixture.json",
+      "sha256": "4203ea3a80f7622ba05fb2cf8e10f41a6092df84b7e9218b449273e183fadea4",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "controlled-contract",
+      "status": "implemented",
+      "file": "uifn/patterns/src/patterns.test.ts",
+      "sha256": "bbd1a236bfe099c1f4357f6e4c8de30a2d2a0f705b7ab61997217747f7e048fe",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

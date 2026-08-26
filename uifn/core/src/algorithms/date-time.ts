@@ -1,22 +1,13 @@
 import { createUIFnError } from '../errors';
 
 export interface UIFnCalendarDate { readonly calendar: 'gregory'; readonly year: number; readonly month: number; readonly day: number }
-export type UIFnCalendarGridCell = UIFnCalendarDate | null;
 export interface UIFnCalendarDateTime extends UIFnCalendarDate { readonly hour: number; readonly minute: number; readonly second?: number }
 export interface UIFnZonedResolution { readonly kind: 'exact' | 'gap' | 'fold'; readonly instants: readonly number[] }
 export type UIFnDateSegment = 'year' | 'month' | 'day';
 
 const DAY_MS = 86_400_000;
-const MIN_CALENDAR_YEAR = 0;
 
-function utcDate(
-  year: number,
-  monthIndex: number,
-  day: number,
-  hour = 0,
-  minute = 0,
-  second = 0,
-): Date {
+function utcDate(year: number, monthIndex: number, day: number, hour = 0, minute = 0, second = 0): Date {
   const date = new Date(0);
   date.setUTCHours(hour, minute, second, 0);
   date.setUTCFullYear(year, monthIndex, day);
@@ -24,20 +15,11 @@ function utcDate(
 }
 
 function daysInMonth(year: number, month: number): number {
-  if (month === 2) {
-    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
-  }
-  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+  return utcDate(year, month, 0).getUTCDate();
 }
 
 export function createUIFnCalendarDate(year: number, month: number, day: number): UIFnCalendarDate {
-  const monthLength = Number.isInteger(year) && year >= 0 && Number.isInteger(month) && month >= 1 && month <= 12
-    ? daysInMonth(year, month)
-    : Number.NaN;
-  const instant = Number.isFinite(monthLength) && Number.isInteger(day) && day >= 1 && day <= monthLength
-    ? utcDate(year, month - 1, day).getTime()
-    : Number.NaN;
-  if (!Number.isFinite(instant)) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
     throw createUIFnError({ code: 'UIFN_DATE_VALUE_INVALID', component: 'Date', details: { year, month, day } });
   }
   return Object.freeze({ calendar: 'gregory', year, month, day });
@@ -54,33 +36,23 @@ export function serializeUIFnDate(value: UIFnCalendarDate): string {
 }
 
 export function compareUIFnDates(left: UIFnCalendarDate, right: UIFnCalendarDate): number {
-  return Math.sign(
-    left.year - right.year
-    || left.month - right.month
-    || left.day - right.day,
-  );
+  return Math.sign(utcDate(left.year, left.month - 1, left.day).getTime() - utcDate(right.year, right.month - 1, right.day).getTime());
 }
 
 export function addUIFnDateDays(value: UIFnCalendarDate, amount: number): UIFnCalendarDate {
-  const date = utcDate(value.year, value.month - 1, value.day);
-  date.setTime(date.getTime() + Math.trunc(amount) * DAY_MS);
-  if (date.getUTCFullYear() < MIN_CALENDAR_YEAR) return createUIFnCalendarDate(MIN_CALENDAR_YEAR, 1, 1);
+  const date = new Date(utcDate(value.year, value.month - 1, value.day).getTime() + Math.trunc(amount) * DAY_MS);
   return createUIFnCalendarDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
 export function addUIFnDateMonths(value: UIFnCalendarDate, amount: number): UIFnCalendarDate {
   const absolute = value.year * 12 + value.month - 1 + Math.trunc(amount);
-  if (absolute < 0) return createUIFnCalendarDate(MIN_CALENDAR_YEAR, 1, 1);
   const year = Math.floor(absolute / 12);
   const month = ((absolute % 12) + 12) % 12 + 1;
   return createUIFnCalendarDate(year, month, Math.min(value.day, daysInMonth(year, month)));
 }
 
 export function setUIFnDateSegment(value: UIFnCalendarDate, segment: UIFnDateSegment, raw: number): UIFnCalendarDate {
-  if (segment === 'year') {
-    const year = Math.max(MIN_CALENDAR_YEAR, Math.trunc(raw));
-    return createUIFnCalendarDate(year, value.month, Math.min(value.day, daysInMonth(year, value.month)));
-  }
+  if (segment === 'year') return createUIFnCalendarDate(Math.trunc(raw), value.month, Math.min(value.day, daysInMonth(Math.trunc(raw), value.month)));
   if (segment === 'month') {
     const month = Math.min(12, Math.max(1, Math.trunc(raw)));
     return createUIFnCalendarDate(value.year, month, Math.min(value.day, daysInMonth(value.year, month)));
@@ -89,8 +61,7 @@ export function setUIFnDateSegment(value: UIFnCalendarDate, segment: UIFnDateSeg
 }
 
 export function formatUIFnDate(value: UIFnCalendarDate, locale: string, options: Intl.DateTimeFormatOptions = {}): string {
-  const era = value.year <= 0 && options.era === undefined ? { era: 'short' as const } : {};
-  return new Intl.DateTimeFormat(locale, { calendar: value.calendar, timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', ...options, ...era })
+  return new Intl.DateTimeFormat(locale, { calendar: value.calendar, timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', ...options })
     .format(utcDate(value.year, value.month - 1, value.day, 12));
 }
 
@@ -103,15 +74,12 @@ export function firstUIFnDayOfWeek(locale: string): number {
   return 1;
 }
 
-export function createUIFnMonthGrid(anchor: UIFnCalendarDate, locale: string): readonly UIFnCalendarGridCell[] {
+export function createUIFnMonthGrid(anchor: UIFnCalendarDate, locale: string): readonly UIFnCalendarDate[] {
   const first = createUIFnCalendarDate(anchor.year, anchor.month, 1);
   const weekday = utcDate(first.year, first.month - 1, 1).getUTCDay();
   const offset = (weekday - firstUIFnDayOfWeek(locale) + 7) % 7;
-  return Object.freeze(Array.from({ length: 42 }, (_, index) => {
-    const amount = index - offset;
-    if (first.year === MIN_CALENDAR_YEAR && first.month === 1 && amount < 0) return null;
-    return addUIFnDateDays(first, amount);
-  }));
+  const start = addUIFnDateDays(first, -offset);
+  return Object.freeze(Array.from({ length: 42 }, (_, index) => addUIFnDateDays(start, index)));
 }
 
 function zonedParts(instant: number, timeZone: string): readonly number[] {

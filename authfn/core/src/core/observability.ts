@@ -30,7 +30,7 @@ function sanitizeEvent(event: AuthFnEvent): AuthFnEvent {
 }
 
 function sanitizeValue(value: unknown, key?: string): unknown {
-  if (key && SENSITIVE_KEY_PATTERN.test(key)) {
+  if (key && key.toLowerCase() !== 'errorcode' && SENSITIVE_KEY_PATTERN.test(key)) {
     return REDACTED;
   }
 

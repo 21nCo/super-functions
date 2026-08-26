@@ -1,0 +1,6 @@
+{
+  "id": "hand-edited-output",
+  "description": "Hand edit the generated docs manifest.",
+  "mutation": { "generatedFile": "docs-manifest.json", "operation": "append-whitespace" },
+  "expectedErrorCodes": ["UIFN_CATALOG_GENERATED_DRIFT"]
+}

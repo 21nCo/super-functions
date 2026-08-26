@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "contractId": "uifn-10-readiness-decisions",
+  "status": "active",
+  "effectiveAt": "2026-07-17T13:14:10Z",
+  "sourceSpec": "uifn/evidence/provenance/readiness-spec.md",
+  "sourceAudit": "uifn/evidence/provenance/readiness-audit.md",
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "decision": "Keep state, actions, and typed parts as the public controller facade over one private owned behavior and effect runtime.",
+      "locked": true
+    },
+    {
+      "id": "DEC-002",
+      "decision": "React 18.3 and 19, Svelte 5, and current Solid 1.x are equal stable framework targets.",
+      "locked": true
+    },
+    {
+      "id": "DEC-003",
+      "decision": "Vue and Angular are removed completely without compatibility shims; historical conduct artifacts remain immutable.",
+      "locked": true
+    },
+    {
+      "id": "DEC-004",
+      "decision": "The stable catalog contains the 61 primitives named in the source specification plus its shared collections and utilities.",
+      "locked": true
+    },
+    {
+      "id": "DEC-005",
+      "decision": "Package installation and copied-source installation are equally supported outputs of one canonical definition pipeline.",
+      "locked": true
+    },
+    {
+      "id": "DEC-006",
+      "decision": "Patterns and sf are separately versioned experimental products and cannot block or be dependencies of the stable 1.0 release.",
+      "locked": true
+    },
+    {
+      "id": "DEC-007",
+      "decision": "WCAG 2.2 AA, applicable APG and native behavior, explicit browser interaction evidence, VoiceOver, NVDA, and TalkBack are mandatory; JAWS alone is user-deferred and disclosed as untested.",
+      "locked": true
+    },
+    {
+      "id": "DEC-008",
+      "decision": "Hard package size, runtime latency, long-task, virtualization, and leak budgets are release blocking.",
+      "locked": true
+    },
+    {
+      "id": "DEC-009",
+      "decision": "Signed manual evidence, unresolved-defect review, dependency, license and provenance review, and independent accessibility review are mandatory before 1.0.",
+      "locked": true
+    },
+    {
+      "id": "DEC-010",
+      "decision": "No item outside the explicit JAWS and experimental-product boundaries may be downgraded to MVP, optional, partial, preview, or post-1.0 without a new user decision.",
+      "locked": true
+    }
+  ],
+  "targetPackageClasses": {
+    "stable": [
+      "@uifn/core",
+      "@uifn/dom",
+      "@uifn/adapter-kit",
+      "@uifn/react",
+      "@uifn/svelte",
+      "@uifn/solid",
+      "@uifn/tokens",
+      "@uifn/theme",
+      "@uifn/theme-tailwind",
+      "@uifn/recipes",
+      "@uifn/components",
+      "@uifn/components-react",
+      "@uifn/components-svelte",
+      "@uifn/components-solid",
+      "@uifn/registry",
+      "@uifn/storybook"
+    ],
+    "experimental": ["@uifn/patterns", "@uifn/sf"],
+    "removed": ["@uifn/vue", "@uifn/angular"],
+    "private": [
+      "canonical-definition-compiler",
+      "conformance-vector-fixtures",
+      "packed-consumer-apps",
+      "ssr-hydration-rsc-apps",
+      "framework-storybooks-and-docs",
+      "browser-performance-leak-at-and-release-tooling"
+    ]
+  },
+  "signature": {
+    "scheme": "sha256-content-attestation-v1",
+    "signer": "codex-execution-agent",
+    "authority": "integrity-only-user-confirmed-source-decisions",
+    "signedFields": [
+      "schemaVersion",
+      "contractId",
+      "status",
+      "effectiveAt",
+      "sourceSpec",
+      "sourceAudit",
+      "decisions",
+      "targetPackageClasses"
+    ],
+    "payloadSha256": "d26d7d527dc8d0d4afc2a539d82c87f16c2e107e2dcc229b5e2834efab5582f5"
+  }
+}

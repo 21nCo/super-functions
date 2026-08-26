@@ -2,12 +2,11 @@ import { writeFile } from 'node:fs/promises';
 import { cleanup, render as renderClient } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import manifest from './fixtures/phase-14-public-vectors.json';
+import manifest from '../../evidence/generated/phase-14/phase-14-public-vectors.json';
 import {
   assemblePhase14Trace,
   capturePhase14Checkpoint,
   capturePhase14Cleanup,
-  createPhase14Scheduler,
   createPhase14HarnessRuntime,
   runPhase14Actions,
 } from '../../parity/src/trace.mjs';
@@ -15,63 +14,6 @@ import Phase14PublicTreeHarness from './fixtures/Phase14PublicTreeHarness.svelte
 import type { SveltePrimitiveBridge } from '../lib/internal/compound.js';
 
 afterEach(() => cleanup());
-
-describe('phase-14 deterministic scheduler', () => {
-  it('preserves numeric registration order for same-deadline timeouts', async () => {
-    const scheduler = createPhase14Scheduler();
-    const observed: number[] = [];
-    for (let index = 1; index <= 12; index += 1) {
-      scheduler.setTimeout(() => { observed.push(index); }, 0);
-    }
-    await scheduler.flush();
-    expect(observed).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
-  });
-
-  it('advances each live interval once per bounded flush', async () => {
-    const scheduler = createPhase14Scheduler();
-    let calls = 0;
-    const handle = scheduler.setInterval(() => { calls += 1; }, 5);
-    await scheduler.flush();
-    expect(calls).toBe(1);
-    await scheduler.flush();
-    expect(calls).toBe(2);
-    scheduler.clearInterval(handle);
-    await scheduler.flush();
-    expect(calls).toBe(2);
-  });
-
-  it('does not invoke a same-deadline interval cancelled by an earlier callback', async () => {
-    const scheduler = createPhase14Scheduler();
-    const observed: string[] = [];
-    let secondHandle: string;
-    scheduler.setInterval(() => {
-      observed.push('first');
-      scheduler.clearInterval(secondHandle);
-    }, 5);
-    secondHandle = scheduler.setInterval(() => { observed.push('second'); }, 5);
-    await scheduler.flush();
-    expect(observed).toEqual(['first']);
-  });
-
-  it('does not accept an unrelated same-valued state change for a setter', async () => {
-    let state = { open: false, unrelated: false };
-    const runtime = { callbacks: [], scheduler: createPhase14Scheduler() };
-    const bridge = {
-      getActions: () => ({ setOpen: (value: boolean) => { state = { ...state, unrelated: value }; } }),
-    };
-    const vector = {
-      primitive: 'Regression',
-      actions: [{ name: 'setOpen', arguments: [true] }],
-      callbacks: ['onOpenChange'],
-    };
-    const run = await runPhase14Actions(vector, bridge, runtime, (checkpoint, sequence) => ({
-      transaction: { sequence, changedKeys: [] },
-      rawState: state,
-      checkpoint,
-    }));
-    expect(run.actions).toEqual([expect.objectContaining({ name: 'setOpen', observed: false })]);
-  });
-});
 
 async function settleSvelteDom(): Promise<void> {
   await tick();

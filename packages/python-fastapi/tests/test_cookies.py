@@ -78,8 +78,8 @@ def test_fastapi_adapter_preserves_repeated_cookies_and_route_metadata() -> None
 
     registered_route = next(
         route
-        for route in app.router.routes
-        if isinstance(route, APIRoute) and route.path == "/api/auth/session"
+        for route in router.routes
+        if isinstance(route, APIRoute)
     )
     preserved = getattr(registered_route.endpoint, SUPERFUNCTIONS_ROUTE_ATTR)
     assert preserved.meta is not None

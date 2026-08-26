@@ -1,0 +1,25 @@
+{
+  "name": "@uifn/example-solid-workbench",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Solid Workbench app for uifn component, pattern, and Superfunction browser QA",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 6114",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 6114",
+    "browser-test": "node ../../../scripts/verify-uifn-browser.mjs --framework solid"
+  },
+  "dependencies": {
+    "@uifn/components": "*",
+    "@uifn/examples-shared": "*",
+    "@uifn/patterns": "*",
+    "@uifn/sf": "*",
+    "solid-js": "^1.8.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vite": "^5.4.21",
+    "vite-plugin-solid": "^2.11.12"
+  }
+}

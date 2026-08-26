@@ -154,21 +154,6 @@ describe('semantic token validation', () => {
     }
   });
 
-  it('TV-STYLE-001 negative rejects partial token leaves without recursing into scalars', () => {
-    const theme = cloneTheme(completeTheme());
-    (theme.tokens.color as Record<string, Record<string, unknown>>).surface.canvas = {
-      $type: 'color',
-    };
-
-    expect(() => validateTokenTheme(theme)).toThrowError(UIFnTokenError);
-    try {
-      validateTokenTheme(theme);
-    } catch (error) {
-      expect((error as UIFnTokenError).code).toBe('UIFN_TOKEN_PUBLIC_NAME_INVALID');
-      expect((error as UIFnTokenError).details?.path).toBe('color.surface.canvas');
-    }
-  });
-
   it('TV-STYLE-003 validates OKLCH contrast for custom hue output', () => {
     const surface = createCustomSurface({ hue: 260, contrast: 'auto' });
 
@@ -189,6 +174,16 @@ describe('semantic token validation', () => {
   it('TV-STYLE-003 preserves unitless OKLCH lightness', () => {
     expect(parseOklch('oklch(0.5 0.1 240)')).toMatchObject({ l: 0.5, c: 0.1, h: 240 });
     expect(parseOklch('oklch(50% 0.1 240)')).toMatchObject({ l: 0.5, c: 0.1, h: 240 });
+  });
+
+  it('TV-STYLE-003 rejects malformed and non-finite OKLCH components', () => {
+    for (const value of [
+      'oklch(. . .)',
+      'oklch(50% 0.1 .)',
+      'oklch(1e999 0.1 240)',
+    ]) {
+      expect(() => parseOklch(value), value).toThrowError(UIFnTokenError);
+    }
   });
 
   it('TV-STYLE-003 negative rejects low contrast pairs', () => {

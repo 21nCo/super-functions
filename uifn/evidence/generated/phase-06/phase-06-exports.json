@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "generate-uifn-phase-06.mjs",
+  "phase": "PHASE_06",
+  "implementationEvidence": true,
+  "algorithms": [
+    "AsyncList",
+    "ListCollection",
+    "TreeCollection",
+    "ListSelection",
+    "LocaleMatcher",
+    "CollectionNavigation",
+    "Range",
+    "Typeahead",
+    "VirtualizerContract"
+  ],
+  "primitives": [
+    {
+      "name": "Accordion",
+      "kind": "interactive-controller",
+      "symbols": [
+        "AccordionController",
+        "createAccordionController"
+      ]
+    },
+    {
+      "name": "Avatar",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "AvatarContract"
+      ]
+    },
+    {
+      "name": "Button",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "ButtonContract"
+      ]
+    },
+    {
+      "name": "Collapsible",
+      "kind": "interactive-controller",
+      "symbols": [
+        "CollapsibleController",
+        "createCollapsibleController"
+      ]
+    },
+    {
+      "name": "Field",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "FieldContract"
+      ]
+    },
+    {
+      "name": "Fieldset",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "FieldsetContract"
+      ]
+    },
+    {
+      "name": "Form",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "FormContract"
+      ]
+    },
+    {
+      "name": "ImageCropper",
+      "kind": "interactive-controller",
+      "symbols": [
+        "ImageCropperController",
+        "createImageCropperController"
+      ]
+    },
+    {
+      "name": "Input",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "InputContract"
+      ]
+    },
+    {
+      "name": "Marquee",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "MarqueeContract"
+      ]
+    },
+    {
+      "name": "QRCode",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "QRCodeContract"
+      ]
+    },
+    {
+      "name": "ScrollArea",
+      "kind": "interactive-controller",
+      "symbols": [
+        "ScrollAreaController",
+        "createScrollAreaController"
+      ]
+    },
+    {
+      "name": "Separator",
+      "kind": "typed-static-contract",
+      "symbols": [
+        "SeparatorContract"
+      ]
+    },
+    {
+      "name": "Toolbar",
+      "kind": "interactive-controller",
+      "symbols": [
+        "ToolbarController",
+        "createToolbarController"
+      ]
+    }
+  ]
+}

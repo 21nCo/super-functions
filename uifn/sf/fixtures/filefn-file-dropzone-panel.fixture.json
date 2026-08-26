@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "sfPattern": "FileFnFileDropzonePanel",
+  "slug": "filefn-file-dropzone-panel",
+  "backing": "filefn",
+  "controlledCounterpart": "FileDropzonePanel",
+  "clientProp": "fileClient",
+  "clientContract": "FileFnClient",
+  "usesInjectedClient": true,
+  "forbiddenReads": [],
+  "mockData": "fake-only",
+  "states": {
+    "loading": {
+      "status": "loading",
+      "source": "mock-client"
+    },
+    "empty": {
+      "status": "empty",
+      "source": "mock-client"
+    },
+    "error": {
+      "status": "error",
+      "source": "mock-client"
+    },
+    "partial": {
+      "status": "partial",
+      "source": "mock-client"
+    },
+    "permission-denied": {
+      "status": "permission-denied",
+      "source": "mock-client"
+    },
+    "optimistic": {
+      "status": "optimistic",
+      "source": "mock-client"
+    },
+    "success": {
+      "status": "success",
+      "source": "mock-client"
+    },
+    "degraded-network": {
+      "status": "degraded-network",
+      "source": "mock-client-stale"
+    },
+    "unsupported-capability": {
+      "status": "unsupported-capability",
+      "source": "mock-client-capability"
+    }
+  }
+}

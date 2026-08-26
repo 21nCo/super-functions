@@ -14,6 +14,7 @@
     "header",
     "title",
     "description",
+    "action",
     "content",
     "footer"
   ],
@@ -35,17 +36,17 @@
   "frameworks": {
     "react": {
       "supported": true,
-      "entry": "uifn/components-react/src/batch-a.ts",
+      "entry": "uifn/components-react/src/generated/card.ts",
       "exportName": "Card"
     },
     "svelte": {
       "supported": true,
-      "entry": "uifn/components-svelte/src/batch-a.ts",
+      "entry": "uifn/components-svelte/src/generated/card/index.ts",
       "exportName": "Card"
     },
     "solid": {
       "supported": true,
-      "entry": "uifn/components-solid/src/batch-a.ts",
+      "entry": "uifn/components-solid/src/generated/card.ts",
       "exportName": "Card"
     }
   },
@@ -60,10 +61,6 @@
     "uifn/components/fixtures/batch-a/card.fixture.json"
   ],
   "tests": [
-    "uifn/components/src/__tests__/batch-a.test.ts#render",
-    "uifn/components/src/__tests__/batch-a.test.ts#a11y",
-    "uifn/components/src/__tests__/batch-a.test.ts#visual",
-    "uifn/components/src/__tests__/batch-a.test.ts#recipe",
     "uifn/components/src/__tests__/batch-a.test.ts#registry"
   ]
 }

@@ -1,0 +1,624 @@
+name: uifn Phase 14 compatibility evidence - exact 35-cell matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uifn-phase-14-compat-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  freeze:
+    name: Freeze release-candidate packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install the locked workspace
+        run: npm ci
+
+      - name: Install the real Chromium engine used by framework hydration cells
+        run: npx playwright install --with-deps chromium
+
+      - name: Build, pack, and exercise actual public trees
+        env:
+          UIFN_NPM_PATH: npm
+        run: node scripts/run-uifn-phase-14-traces.mjs --output-dir "$RUNNER_TEMP/phase14-frozen"
+
+      - name: Reject a dirty or incomplete frozen bundle
+        run: |
+          node -e "const x=require(process.env.RUNNER_TEMP+'/phase14-frozen/trace-run.json'); if(x.source?.dirty!==false||x.packages?.length!==6||!x.artifactSetSha256||x.consumerKit?.version!==2||x.consumerKit?.files?.length!==23||!x.consumerKit?.sha256) process.exit(1)"
+          test -f "$RUNNER_TEMP/phase14-frozen/tarballs/SHA256SUMS"
+          test -f "$RUNNER_TEMP/phase14-frozen/consumer-kit/node-smoke.mjs"
+
+      - name: Attest the frozen package set and manifest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/phase14-frozen/*.json
+            ${{ runner.temp }}/phase14-frozen/tarballs/*
+            ${{ runner.temp }}/phase14-frozen/consumer-kit/*
+
+      - name: Upload the immutable frozen bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+          if-no-files-found: error
+          retention-days: 30
+
+  node:
+    name: Signed ${{ matrix.cell }} evidence
+    needs: freeze
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cell: node-20
+            node: "20"
+          - cell: node-22
+            node: "22"
+          - cell: node-24
+            node: "24"
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+
+      - name: Verify GitHub provenance before executing packages
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
+
+      - name: Execute the packed Node cell
+        env:
+          UIFN_NPM_PATH: npm
+        run: |
+          node scripts/run-uifn-phase-14-node-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+
+      - name: Create the one-cell evidence document
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+
+      - name: Attest the exact one-cell document
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+
+      - name: Upload signed cell evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  framework-client:
+    name: Signed ${{ matrix.cell }} evidence
+    needs: freeze
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - react-18.3-client
+          - react-19-client
+          - react-18.3-strictmode
+          - react-19-strictmode
+          - react-18.3-ssr-hydration
+          - react-19-ssr-hydration
+          - react-18.3-rsc-import
+          - react-19-rsc-import
+          - svelte-5-csr
+          - svelte-5-ssr-hydration
+          - solid-1-csr
+          - solid-1-ssr-hydration
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+
+      - name: Verify frozen trace and package provenance
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f \( -name '*.json' -o -name '*.tgz' \) -print | sort)
+
+      - name: Extract the already executed packed public-tree cell
+        run: |
+          node scripts/extract-uifn-phase-14-framework-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+
+      - name: Create the one-cell evidence document
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+
+      - name: Attest the exact one-cell document
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+
+      - name: Upload signed cell evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  desktop-product:
+    name: Signed ${{ matrix.cell }} exact product evidence
+    needs: freeze
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cell: chrome-latest
+            runner: '["self-hosted","uifn-phase14","chrome-latest"]'
+            executable_var: UIFN_PHASE14_CHROME_LATEST_EXECUTABLE
+          - cell: chrome-previous
+            runner: '["self-hosted","uifn-phase14","chrome-previous"]'
+            executable_var: UIFN_PHASE14_CHROME_PREVIOUS_EXECUTABLE
+          - cell: firefox-latest
+            runner: '["self-hosted","uifn-phase14","firefox-latest"]'
+            executable_var: UIFN_PHASE14_FIREFOX_LATEST_EXECUTABLE
+          - cell: firefox-previous
+            runner: '["self-hosted","uifn-phase14","firefox-previous"]'
+            executable_var: UIFN_PHASE14_FIREFOX_PREVIOUS_EXECUTABLE
+          - cell: edge-latest
+            runner: '["self-hosted","uifn-phase14","edge-latest"]'
+            executable_var: UIFN_PHASE14_EDGE_LATEST_EXECUTABLE
+          - cell: edge-previous
+            runner: '["self-hosted","uifn-phase14","edge-previous"]'
+            executable_var: UIFN_PHASE14_EDGE_PREVIOUS_EXECUTABLE
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+
+      - name: Verify every frozen browser input before execution
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
+
+      - name: Execute all 183 packed public trees in the exact installed product
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_BROWSER_EXECUTABLE: ${{ vars[matrix.executable_var] }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver playwright-product \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+
+      - name: Create, attest, and preserve the exact one-cell evidence
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+
+      - name: Attest the evidence and its raw result
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+
+      - name: Upload signed exact-product evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  safari-product:
+    name: Signed ${{ matrix.cell }} real Safari evidence
+    needs: freeze
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cell: safari-current
+            runner: '["self-hosted","uifn-phase14","safari-current"]'
+          - cell: safari-previous
+            runner: '["self-hosted","uifn-phase14","safari-previous"]'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+      - name: Verify every frozen Safari input before execution
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
+      - name: Execute all 183 packed public trees in current Safari
+        if: matrix.cell == 'safari-current'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_SAFARI_CURRENT_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_SAFARI_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_WEBDRIVER_LOCAL: "true"
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees in previous Safari
+        if: matrix.cell == 'safari-previous'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_SAFARI_PREVIOUS_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_SAFARI_PREVIOUS_CAPABILITIES }}
+          UIFN_PHASE14_WEBDRIVER_LOCAL: "true"
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Create the exact Safari evidence document
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+      - name: Attest the Safari evidence and its raw result
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+      - name: Upload signed Safari evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rendering:
+    name: Signed ${{ matrix.cell }} observable rendering evidence
+    needs: freeze
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - render-ltr
+          - render-rtl
+          - render-forced-colors
+          - render-reduced-motion
+          - render-zoom-200
+          - render-zoom-400
+          - render-theme-light
+          - render-theme-dark
+          - render-high-contrast
+        runner:
+          - '["self-hosted","uifn-phase14","chrome-latest"]'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+      - name: Verify every frozen rendering input before execution
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
+      - name: Execute all 183 packed trees under the measured rendering profile
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_BROWSER_EXECUTABLE: ${{ vars.UIFN_PHASE14_CHROME_LATEST_EXECUTABLE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --browser chrome \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver playwright-product \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Create the exact rendering evidence document
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+      - name: Attest the rendering evidence and its raw result
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+      - name: Upload signed rendering evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  physical-device:
+    name: Signed ${{ matrix.cell }} physical-device evidence
+    needs: freeze
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cell: ios-safari-current
+            runner: '["self-hosted","uifn-phase14","device-lab","ios-current"]'
+          - cell: ios-safari-previous
+            runner: '["self-hosted","uifn-phase14","device-lab","ios-previous"]'
+          - cell: android-chrome-current
+            runner: '["self-hosted","uifn-phase14","device-lab","android-current"]'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out evidence tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Download the one frozen bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: phase14-frozen-${{ github.sha }}
+          path: ${{ runner.temp }}/phase14-frozen
+      - name: Verify every frozen physical-device input before execution
+        env:
+          SIGNER_WORKFLOW: 21nCo/super-functions/.github/workflows/uifn-phase-14-compat.yml
+        run: |
+          while IFS= read -r file; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW"
+          done < <(find "$RUNNER_TEMP/phase14-frozen" -maxdepth 2 -type f -print | sort)
+      - name: Execute all 183 packed public trees on current iOS Safari
+        if: matrix.cell == 'ios-safari-current'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_IOS_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_IOS_CURRENT_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_IOS_CURRENT_ARCHITECTURE }}
+          UIFN_PHASE14_DEVICE_PHYSICAL: "true"
+          UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
+          UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees on previous iOS Safari
+        if: matrix.cell == 'ios-safari-previous'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_IOS_PREVIOUS_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_IOS_PREVIOUS_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_IOS_PREVIOUS_ARCHITECTURE }}
+          UIFN_PHASE14_DEVICE_PHYSICAL: "true"
+          UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
+          UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Execute all 183 packed public trees on current Android Chrome
+        if: matrix.cell == 'android-chrome-current'
+        env:
+          UIFN_NPM_PATH: npm
+          UIFN_PHASE14_WEBDRIVER_URL: ${{ secrets.UIFN_PHASE14_DEVICE_LAB_WEBDRIVER_URL }}
+          UIFN_PHASE14_WEBDRIVER_CAPABILITIES: ${{ secrets.UIFN_PHASE14_ANDROID_CURRENT_CAPABILITIES }}
+          UIFN_PHASE14_PUBLIC_HOST: ${{ vars.UIFN_PHASE14_ANDROID_CURRENT_PUBLIC_HOST }}
+          UIFN_PHASE14_OS_ARCHITECTURE: ${{ vars.UIFN_PHASE14_ANDROID_CURRENT_ARCHITECTURE }}
+          UIFN_PHASE14_DEVICE_PHYSICAL: "true"
+          UIFN_PHASE14_LAB_PROVIDER: ${{ vars.UIFN_PHASE14_DEVICE_LAB_PROVIDER }}
+          UIFN_PHASE14_LAB_SESSION_URL_TEMPLATE: ${{ vars.UIFN_PHASE14_DEVICE_LAB_SESSION_URL_TEMPLATE }}
+        run: |
+          node scripts/run-uifn-phase-14-browser-cell.mjs \
+            --cell "${{ matrix.cell }}" \
+            --bundle "$RUNNER_TEMP/phase14-frozen" \
+            --driver webdriver \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.result.json"
+      - name: Create the exact physical-device evidence document
+        run: |
+          node scripts/create-uifn-phase-14-compat-evidence.mjs \
+            --cell "${{ matrix.cell }}" \
+            --trace-run "$RUNNER_TEMP/phase14-frozen/trace-run.json" \
+            --result "$RUNNER_TEMP/${{ matrix.cell }}.result.json" \
+            --output "$RUNNER_TEMP/${{ matrix.cell }}.compat.json"
+      - name: Attest the physical-device evidence and its raw result
+        id: attest-cell
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+      - name: Preserve the offline Sigstore bundle
+        run: cp "${{ steps.attest-cell.outputs.bundle-path }}" "$RUNNER_TEMP/${{ matrix.cell }}.compat.sigstore.json"
+      - name: Upload signed physical-device evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase14-${{ matrix.cell }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.json
+            ${{ runner.temp }}/${{ matrix.cell }}.compat.sigstore.json
+            ${{ runner.temp }}/${{ matrix.cell }}.result.json
+          if-no-files-found: error
+          retention-days: 30

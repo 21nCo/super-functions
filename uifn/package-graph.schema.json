@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "uifn-package-graph.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "graphId", "stableFrameworks", "removedFrameworks", "stable", "experimental", "private", "removed"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "graphId": { "const": "uifn-1.0-stable-dag" },
+    "stableFrameworks": { "const": ["react", "svelte", "solid"] },
+    "removedFrameworks": { "const": ["vue", "angular"] },
+    "stable": { "type": "array", "minItems": 16, "maxItems": 16, "items": { "$ref": "#/$defs/publicNode" } },
+    "experimental": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/experimentalNode" } },
+    "private": { "type": "array", "items": { "$ref": "#/$defs/privateNode" } },
+    "removed": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/removedNode" } }
+  },
+  "$defs": {
+    "publicNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "layer", "owner", "allowedDependencies", "allowedPeerDependencies", "publicEntrypoints"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^@uifn/" },
+        "path": { "type": "string", "pattern": "^uifn/[^/]+$" },
+        "layer": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "framework": { "enum": ["react", "svelte", "solid"] },
+        "allowedDependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "allowedPeerDependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "publicEntrypoints": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "experimentalNode": {
+      "allOf": [
+        { "$ref": "#/$defs/publicNode" },
+        {
+          "type": "object",
+          "required": ["distTag", "stableBlocking"],
+          "properties": { "distTag": { "const": "experimental" }, "stableBlocking": { "const": false } }
+        }
+      ]
+    },
+    "privateNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "releaseLane"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^@uifn/" },
+        "path": { "type": "string", "pattern": "^uifn/" },
+        "releaseLane": { "enum": ["stable-qa", "experimental-demo", "tooling"] }
+      }
+    },
+    "removedNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "formerPath", "lastCompatibleVersion"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^@uifn/" },
+        "formerPath": { "type": "string", "pattern": "^uifn/" },
+        "lastCompatibleVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      }
+    }
+  }
+}

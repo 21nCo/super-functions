@@ -9,8 +9,6 @@ import { mergePartProps } from '@uifn/core/parts';
 import {
   acquireUIFnDomPlatform,
   createUIFnMenuDomBinding,
-  createUIFnFileInputBinding,
-  createUIFnNativeFilePickerCapability,
   createUIFnNativeFormResetBinding,
   createUIFnNavigationMenuDomBinding,
   createUIFnOverlayDomBinding,
@@ -101,17 +99,8 @@ interface SvelteDomBinding {
   destroy(): void;
 }
 
-const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox)$/;
+const ROOT_DOM_PROP = /^(?:aria-|data-)|^(?:id|class|className|style|title|role|tabindex|tabIndex|hidden|dir|lang|slot|inert|draggable|spellcheck|spellCheck|translate|name|type|value|checked|required|readonly|readOnly|multiple|placeholder|autocomplete|autofocus|min|max|step|accept|rows|cols|for|href|target|rel|src|alt|width|height|viewBox|action|method|enctype|encType)$/;
 const ROOT_EVENT_PROP = /^on(?::)?[a-z]/;
-const NORMALIZED_DOM_PROPS = new Set(['aria', 'data', 'on']);
-// Generated from the non-event property names accepted by Svelte 5's HTML
-// attribute interfaces. Keeping this server-independent makes SSR and browser
-// routing identical while controller-only inputs still remain input-only.
-const NATIVE_ROOT_PROPS = new Set(`abbr about accept accept-charset accesskey action align allow allowfullscreen allowpopups allowtransparency alt as async autocapitalize autocomplete autocorrect autofocus autoplay autosave autosize bgcolor blinkfeatures border capture cellpadding cellspacing challenge charset checked cite class classid closedby color cols colspan command commandfor content contenteditable contextmenu controls controlslist coords crossorigin currenttime data data-sveltekit-keepfocus data-sveltekit-noscroll data-sveltekit-preload-code data-sveltekit-preload-data data-sveltekit-reload data-sveltekit-replacestate datatype datetime decoding default defaultchecked defaultmuted defaultplaybackrate defaultvalue defer dir dirname disableblinkfeatures disabled disableguestresize disablepictureinpicture disableremoteplayback disablewebsecurity download draggable elementtiming enctype enterkeyhint fetchpriority files for form formaction formenctype formmethod formnovalidate formtarget frame frameborder group guestinstance headers height hidden high href hreflang http-equiv httpreferrer id imagesizes imagesrcset indeterminate inert inlist inputmode integrity is ismap itemid itemprop itemref itemscope itemtype keyparams keytype kind label lang list loading loop low manifest marginheight marginwidth max maxlength media mediagroup method min minlength multiple muted name nodeintegration nomodule nonce novalidate open optimum part partition pattern ping placeholder playsinline plugins popover popovertarget popovertargetaction poster prefix preload property radiogroup readonly referrerpolicy rel required resource results reversed role rows rowspan rules sandbox scope scoped scrolling seamless security selected shadowrootmode shape size sizes slot span spellcheck src srcdoc srclang srcobject srcset start step style summary tabindex target title translate type typeof unselectable usemap useragent valign value vocab volume webkitdirectory webpreferences width wmode wrap writingsuggestions`.split(' '));
-
-function isUndeclaredNativeProp(key: string): boolean {
-  return NATIVE_ROOT_PROPS.has(key.toLowerCase());
-}
 
 const EMPTY_DOM_RESOURCES: UIFnDomResourceSnapshot = Object.freeze({
   listener: 0,
@@ -142,11 +131,8 @@ export function splitSvelteRootProps(props: AnyRecord, inputNames: readonly stri
   for (const [key, value] of Object.entries(props)) {
     if (key === 'environment') environment = value as UIFnEnvironment | undefined;
     else if (declaredInputs.has(key) || /^on[A-Z]/.test(key)) inputs[key] = value;
-    else if (NORMALIZED_DOM_PROPS.has(key) || ROOT_DOM_PROP.test(key) || ROOT_EVENT_PROP.test(key)) dom[key] = value;
-    else {
-      inputs[key] = value;
-      if (isUndeclaredNativeProp(key)) dom[key] = value;
-    }
+    else if (ROOT_DOM_PROP.test(key) || ROOT_EVENT_PROP.test(key)) dom[key] = value;
+    else inputs[key] = value;
   }
   return { inputs, dom, environment };
 }
@@ -465,7 +451,9 @@ export class SveltePrimitiveBridge<TInputs extends object = AnyRecord> {
       this.emit();
       return;
     }
+    const previousVersion = this.current?.getSnapshot().version;
     this.current?.update(Object.fromEntries(changedKeys.map((key) => [key, next[key]])) as Partial<AnyRecord>);
+    if (this.current?.getSnapshot().version === previousVersion) this.emit();
   }
 
   getPartProps(part: string, value: unknown, userProps: UIFnPartProps): UIFnPartProps {
@@ -560,16 +548,8 @@ export class SveltePrimitiveBridge<TInputs extends object = AnyRecord> {
     const controller = this.current;
     try {
       const reset = controller?.actions.reset;
-      if (typeof reset === 'function' && this.definition.name !== 'FileUpload') {
+      if (typeof reset === 'function') {
         bindings.push(createUIFnNativeFormResetBinding(lease.platform.scope, root, () => reset()));
-      }
-      if (this.definition.name === 'FileUpload' && controller) {
-        const input = this.getElement('input');
-        if (input?.tagName === 'INPUT') {
-          const fileInput = input as HTMLInputElement;
-          controller.update({ capability: createUIFnNativeFilePickerCapability(lease.platform, fileInput) });
-          bindings.push(createUIFnFileInputBinding(lease.platform, controller as never, root, fileInput));
-        }
       }
       for (const [key, record] of this.elements) {
         if (!key.startsWith('portal:')) continue;

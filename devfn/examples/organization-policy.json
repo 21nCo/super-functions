@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "fallbackRange": [4100, 9999],
+  "hostnameSuffix": ".localhost",
+  "ports": [
+    { "name": "shared-http", "port": 80, "kind": "protected", "description": "Owned by the shared Caddy edge" },
+    { "name": "shared-https", "port": 443, "kind": "protected", "description": "Owned by the shared Caddy edge" },
+    { "name": "caddy-admin", "port": 2019, "kind": "protected", "description": "Owned by the shared Caddy edge" },
+    { "name": "skillplane", "range": [3200, 3299], "kind": "preferred", "project": "skillplane" }
+  ]
+}

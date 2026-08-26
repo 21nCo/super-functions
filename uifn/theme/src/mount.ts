@@ -1,7 +1,7 @@
-import { cssVariableName, flattenTokens, resolveTokenReferences, validateTokenTheme, type DesignTokenTheme } from '@uifn/tokens';
+import { cssVariableName, flattenTokens, type DesignTokenTheme } from '@uifn/tokens';
 import { getTheme, type FirstPartyThemeName } from './provider';
 
-export type ThemeErrorCode = 'UIFN_THEME_SCOPE_INVALID' | 'UIFN_THEME_TOKEN_VALUE_INVALID';
+export type ThemeErrorCode = 'UIFN_THEME_SCOPE_INVALID';
 
 export class UIFnThemeError extends Error {
   readonly name = 'UIFnThemeError';
@@ -52,41 +52,22 @@ export interface MountedTheme {
   unmount: () => void;
 }
 
-const GLOBAL_SCOPE_PATTERN = /(?:^|[\s>+~,(])(?:html|body)(?:\s+|\s*>\s*)body(?=$|[\s>+~.#:[(])/i;
-const UNSAFE_SCOPE_PATTERN = /\*|[\\<{},;@]|\/\*|\*\/|[\u0000-\u001f\u007f]/;
-const TOKEN_REFERENCE_PATTERN = /^\{[A-Za-z0-9.-]+\}$/;
-const UNSAFE_TOKEN_VALUE_PATTERN = /[;{}<]|\/\*|\*\/|[\u0000-\u001f\u007f]/;
+const UNSAFE_SCOPE_PATTERN = /(^|\s)(html|body)\s+body|html\s+body|\*/i;
 
 export function assertSafeThemeScope(scope: string): void {
-  if (!scope.trim() || GLOBAL_SCOPE_PATTERN.test(scope) || UNSAFE_SCOPE_PATTERN.test(scope)) {
+  if (!scope.trim() || UNSAFE_SCOPE_PATTERN.test(scope)) {
     throw new UIFnThemeError('UIFN_THEME_SCOPE_INVALID', 'Theme scope selector is unsafe.', {
       scope,
     });
   }
 }
 
-function assertSafeThemeTokenValue(path: readonly string[], value: string | number): void {
-  const serialized = String(value);
-  if (
-    (typeof value === 'number' && !Number.isFinite(value)) ||
-    (UNSAFE_TOKEN_VALUE_PATTERN.test(serialized) && !TOKEN_REFERENCE_PATTERN.test(serialized))
-  ) {
-    throw new UIFnThemeError(
-      'UIFN_THEME_TOKEN_VALUE_INVALID',
-      'Theme token value is unsafe for CSS serialization.',
-      { path: path.join('.') }
-    );
-  }
-}
-
 export function themeToVars(theme: DesignTokenTheme): Record<`--uifn-${string}`, string> {
-  validateTokenTheme(theme);
-  const resolvedTheme = resolveTokenReferences(theme).theme;
   return Object.fromEntries(
-    flattenTokens(resolvedTheme.tokens).map(({ path, token }) => {
-      assertSafeThemeTokenValue(path, token.$value);
-      return [cssVariableName(path), String(token.$value)];
-    })
+    flattenTokens(theme.tokens).map(({ path, token }) => [
+      cssVariableName(path),
+      String(token.$value),
+    ])
   ) as Record<`--uifn-${string}`, string>;
 }
 

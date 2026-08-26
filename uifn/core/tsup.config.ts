@@ -20,7 +20,7 @@ export default defineConfig({
   // Independent entry bundles trade a small amount of duplication for reproducible packages.
   splitting: false,
   sourcemap: true,
-  clean: true,
+  clean: process.env.UIFN_CORE_DEV_WATCH !== "1",
   treeshake: true,
   minify: false,
   define: {

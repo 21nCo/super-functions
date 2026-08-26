@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "name": "FileFnUploadProgressList",
+  "slug": "filefn-upload-progress-list",
+  "kind": "sf-pattern",
+  "category": "Superfunction Pattern",
+  "status": "beta",
+  "owners": [
+    "platform-ui"
+  ],
+  "sourcePolicy": "clean-room",
+  "backing": [
+    "filefn"
+  ],
+  "controlledCounterpart": "UploadProgressList",
+  "clientContract": "FileFnClient",
+  "props": [
+    "fileClient",
+    "status",
+    "uploads"
+  ],
+  "states": [
+    "loading",
+    "empty",
+    "error",
+    "partial",
+    "permission-denied",
+    "optimistic",
+    "success",
+    "degraded-network",
+    "unsupported-capability"
+  ],
+  "frameworks": {
+    "react": {
+      "supported": true,
+      "api": "FileFnUploadProgressList({ fileClient, status })",
+      "packageImport": "import { FileFnUploadProgressList } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/react/filefn-upload-progress-list.ts",
+        "storyFile": "components/sf/react/filefn-upload-progress-list.stories.ts",
+        "fixtureFile": "components/sf/react/filefn-upload-progress-list.fixtures.ts",
+        "testFile": "components/sf/react/filefn-upload-progress-list.test.ts"
+      }
+    },
+    "svelte": {
+      "supported": true,
+      "api": "FileFnUploadProgressList({ fileClient, status })",
+      "packageImport": "import { FileFnUploadProgressList } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/svelte/filefn-upload-progress-list.ts",
+        "storyFile": "components/sf/svelte/filefn-upload-progress-list.stories.ts",
+        "fixtureFile": "components/sf/svelte/filefn-upload-progress-list.fixtures.ts",
+        "testFile": "components/sf/svelte/filefn-upload-progress-list.test.ts"
+      }
+    },
+    "solid": {
+      "supported": true,
+      "api": "FileFnUploadProgressList({ fileClient, status })",
+      "packageImport": "import { FileFnUploadProgressList } from '@uifn/sf';",
+      "sourceInstall": {
+        "helperFile": "components/sf/solid/filefn-upload-progress-list.ts",
+        "storyFile": "components/sf/solid/filefn-upload-progress-list.stories.ts",
+        "fixtureFile": "components/sf/solid/filefn-upload-progress-list.fixtures.ts",
+        "testFile": "components/sf/solid/filefn-upload-progress-list.test.ts"
+      }
+    }
+  },
+  "registry": {
+    "sourceInstallable": true,
+    "manifestFile": "uifn/registry/catalog/sf/filefn-upload-progress-list.json",
+    "lockKey": "sf:filefn-upload-progress-list",
+    "files": [
+      "components/sf/react/filefn-upload-progress-list.ts",
+      "components/sf/react/filefn-upload-progress-list.stories.ts",
+      "components/sf/react/filefn-upload-progress-list.fixtures.ts",
+      "components/sf/react/filefn-upload-progress-list.test.ts",
+      "components/sf/svelte/filefn-upload-progress-list.ts",
+      "components/sf/svelte/filefn-upload-progress-list.stories.ts",
+      "components/sf/svelte/filefn-upload-progress-list.fixtures.ts",
+      "components/sf/svelte/filefn-upload-progress-list.test.ts",
+      "components/sf/solid/filefn-upload-progress-list.ts",
+      "components/sf/solid/filefn-upload-progress-list.stories.ts",
+      "components/sf/solid/filefn-upload-progress-list.fixtures.ts",
+      "components/sf/solid/filefn-upload-progress-list.test.ts"
+    ],
+    "provenance": {
+      "source": "repo",
+      "sourcePolicy": "clean-room",
+      "generatedBy": "uifn-sfn15-registry-integrity"
+    }
+  },
+  "stories": [
+    {
+      "id": "mocked",
+      "status": "implemented",
+      "file": "uifn/sf/stories/filefn-upload-progress-list.stories.json",
+      "sha256": "12d81d3c11e7a3304fa9fe18542aca9b0c9942bd373ab5405f1abe44d5ee6baf",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "states",
+      "status": "implemented",
+      "file": "uifn/sf/fixtures/filefn-upload-progress-list.fixture.json",
+      "sha256": "8df0f48afa7efc5a0dbcd187bae04f0d7b8ac3653620c2104ba17b1e0d95a01c",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "id": "injected-client",
+      "status": "implemented",
+      "file": "uifn/sf/src/sf.test.ts",
+      "sha256": "c5f9ecb9dcbc6be9af8fb8ed5f632c520768bd874ccda4eed30ab8ddfb927ff2",
+      "provenance": {
+        "source": "repo",
+        "sourcePolicy": "clean-room",
+        "generatedBy": "uifn-sfn15-registry-integrity"
+      }
+    }
+  ]
+}

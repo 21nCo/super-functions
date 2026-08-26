@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uifn.dev/schemas/component.schema.json",
+  "title": "uifn registry artifact manifest",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "name",
+    "slug",
+    "kind",
+    "category",
+    "status",
+    "owners",
+    "sourcePolicy",
+    "frameworks",
+    "registry",
+    "tests"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "kind": { "enum": ["component", "hook", "pattern", "sf-pattern"] },
+    "category": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["planned", "alpha", "beta", "ga-candidate", "stable"] },
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sourcePolicy": { "const": "clean-room" },
+    "primitiveBacked": { "type": "boolean" },
+    "primitiveDependencies": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "componentDependencies": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recipeDependencies": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tokenGroups": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "frameworks": {
+      "type": "object",
+      "required": ["react", "svelte", "solid"],
+      "additionalProperties": false,
+      "properties": {
+        "react": { "$ref": "#/$defs/framework" },
+        "svelte": { "$ref": "#/$defs/framework" },
+        "solid": { "$ref": "#/$defs/framework" }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "required": ["sourceInstallable", "manifestFile", "lockKey", "files"],
+      "properties": {
+        "sourceInstallable": { "type": "boolean" },
+        "manifestFile": { "type": "string", "minLength": 1 },
+        "lockKey": { "type": "string", "minLength": 1 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "stories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactRef" }
+    },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactRef" }
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifactRef" }
+    }
+  },
+  "$defs": {
+    "framework": {
+      "type": "object",
+      "required": ["supported", "api", "packageImport", "sourceInstall"],
+      "properties": {
+        "supported": { "type": "boolean" },
+        "api": { "type": "string", "minLength": 1 },
+        "packageImport": { "type": "string", "minLength": 1 },
+        "sourceInstall": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": ["id", "status", "file"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["placeholder", "implemented", "verified"] },
+        "file": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -160,7 +160,8 @@ export async function deleteAuthFnAdminUserById(
   return deleteAccountForUser(config, hooks, {
     user,
     request: input.request,
-    actorId: input.actorId
+    actorId: input.actorId,
+    delegated: true
   });
 }
 
@@ -205,7 +206,8 @@ export async function deleteAuthFnAdminUsersByEmail(
     deletedUsers.push(await deleteAccountForUser(config, hooks, {
       user,
       request: input.request,
-      actorId: input.actorId
+      actorId: input.actorId,
+      delegated: true
     }));
   }
 

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "phase00-governance-complete",
+  "evidenceClass": "governance",
+  "requirementIds": ["OPS-001"],
+  "vectorIds": ["TV-OPS-001-P"],
+  "status": "passed",
+  "source": {
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dirty": false,
+    "dirtyReason": null,
+    "lockfileSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "definitionSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "artifactHashes": [
+      {
+        "path": "uifn/evidence/contracts/ownership.json",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ]
+  },
+  "environment": {
+    "os": "Darwin",
+    "arch": "arm64",
+    "runtime": "Node 20",
+    "tools": { "governanceVerifier": "1" },
+    "framework": null,
+    "browser": null,
+    "assistiveTechnology": null
+  },
+  "timing": {
+    "startedAt": "2026-07-17T13:00:00Z",
+    "completedAt": "2026-07-17T13:00:01Z",
+    "durationMs": 1000
+  },
+  "counts": {
+    "total": 1,
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "notApplicable": 0
+  },
+  "artifacts": ["uifn/evidence/contracts/ownership.json"],
+  "defects": [],
+  "signatures": [
+    {
+      "kind": "automation",
+      "signer": "scripts/verify-uifn-governance.mjs",
+      "signedAt": "2026-07-17T13:00:01Z",
+      "attestation": "Contract inputs and OPS-001 positive vector validated."
+    }
+  ],
+  "expiresAt": "2026-10-15T13:00:01Z",
+  "supersedes": null
+}

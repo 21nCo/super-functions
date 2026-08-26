@@ -53,7 +53,7 @@ interface FocusScopeRecord {
   options: UIFnFocusScopeOptions;
   readonly trigger: Element | null;
   lastFocused: HTMLElement | null;
-  explicitlyPaused: boolean;
+  paused: boolean;
   destroyed: boolean;
   cancelInitial: () => void;
   readonly releaseResource: () => void;
@@ -122,7 +122,7 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
       const record = records[index];
       if (
         !record.destroyed
-        && !record.explicitlyPaused
+        && !record.paused
         && record.options.enabled !== false
       ) return record;
     }
@@ -149,7 +149,7 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
 
   const focusInitialRecord = (record: FocusScopeRecord): boolean => {
     const container = resolveContainer(record);
-    if (!container || record.destroyed || top() !== record) return false;
+    if (!container || record.destroyed || record.paused || record.options.enabled === false) return false;
     const explicit = resolveElement(record.options.initialFocus);
     const candidate = explicit ?? tabbable(container, record.branches)[0] ?? container;
     const event = createFocusEvent('mountAutoFocus', candidate);
@@ -281,12 +281,13 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
       sequence += 1;
       const id = options.id ?? `focus-scope-${sequence}`;
       const previous = top();
+      if (previous) previous.paused = true;
       const record: FocusScopeRecord = {
         id,
         options,
         trigger: scope.getActiveElement(),
         lastFocused: null,
-        explicitlyPaused: false,
+        paused: false,
         destroyed: false,
         cancelInitial: () => undefined,
         releaseResource: scope.track('focusScope', () => undefined, id),
@@ -306,8 +307,7 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
           return top() === record;
         },
         get paused() {
-          return record.explicitlyPaused
-            || (record.options.enabled !== false && top() !== record);
+          return record.paused;
         },
         addBranch(element) {
           assertManagerAlive('register focus scope branch', record);
@@ -323,12 +323,12 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
         },
         pause() {
           assertManagerAlive('pause focus scope', record);
-          record.explicitlyPaused = true;
+          record.paused = true;
           trace('pause', record);
         },
         resume() {
           assertManagerAlive('resume focus scope', record);
-          record.explicitlyPaused = false;
+          record.paused = false;
           trace('resume', record);
         },
         update(next) {
@@ -347,6 +347,9 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
           record.cancelInitial();
           const index = records.indexOf(record);
           if (index >= 0) records.splice(index, 1);
+          const parent = [...records].reverse().find((candidate) =>
+            !candidate.destroyed && candidate.options.enabled !== false) ?? null;
+          if (parent) parent.paused = false;
           record.releaseResource();
           restoreRecordFocus(record);
           const container = resolveContainer(record);
@@ -354,7 +357,7 @@ export function createUIFnFocusScopeManager(scope: UIFnDomScope): UIFnFocusScope
             container.removeAttribute('tabindex');
           }
           record.branches.clear();
-          trace('destroy', record, { resumedParentId: top()?.id });
+          trace('destroy', record, { resumedParentId: parent?.id });
         },
       };
     },

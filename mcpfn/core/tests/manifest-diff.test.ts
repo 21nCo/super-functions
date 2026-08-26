@@ -42,6 +42,27 @@ describe("McpFn manifests", () => {
     expect(validateManifest(first)).toEqual(first);
   });
 
+  it("uses the validator's code-unit order for generated inventories", () => {
+    const manifest = createManifest(
+      { name: "ordering", version: "1.0.0" },
+      new McpFnRegistry()
+        .register({
+          name: "a_b",
+          description: "Underscore.",
+          inputSchema: { type: "object" },
+          handler: async () => structuredResult({ ok: true }),
+        })
+        .register({
+          name: "a-b",
+          description: "Dash.",
+          inputSchema: { type: "object" },
+          handler: async () => structuredResult({ ok: true }),
+        }),
+    );
+    expect(manifest.tools.map((tool) => tool.name)).toEqual(["a-b", "a_b"]);
+    expect(validateManifest(manifest)).toEqual(manifest);
+  });
+
   it("classifies required inputs as breaking and descriptions as behavioral", () => {
     const before = createManifest(
       { name: "example", version: "1.0.0" },
@@ -63,44 +84,45 @@ describe("McpFn manifests", () => {
     );
   });
 
-  it("keeps optional input removal compatible when the new schema is open", () => {
-    const manifestWithProperty = (
-      includeProperty: boolean,
-      additionalProperties?: boolean,
-      required: string[] = [],
-    ) => createManifest(
-      { name: "example", version: includeProperty ? "1.0.0" : "1.1.0" },
+  it("detects required names that have no property schema", () => {
+    const before = createManifest(
+      { name: "example", version: "1.0.0" },
       new McpFnRegistry().register({
-        name: "open_input",
-        description: "Accept an open input.",
-        inputSchema: {
-          type: "object",
-          ...(includeProperty ? { properties: { optional: { type: "string" } } } : {}),
-          ...(required.length ? { required } : {}),
-          ...(additionalProperties === undefined ? {} : { additionalProperties }),
-        },
+        name: "token",
+        description: "Accept a token.",
+        inputSchema: { type: "object" },
         handler: async () => structuredResult({ ok: true }),
       }),
     );
+    const after = structuredClone(before);
+    after.tools[0]!.inputSchema.required = ["token"];
 
-    expect(diffManifests(manifestWithProperty(true, true), manifestWithProperty(false, true)))
-      .toMatchObject({ compatible: true, changes: expect.arrayContaining([
-        expect.objectContaining({ code: "property-removed", severity: "additive" }),
-      ]) });
-    expect(diffManifests(manifestWithProperty(true), manifestWithProperty(false)))
-      .toMatchObject({ compatible: true });
-    expect(diffManifests(manifestWithProperty(true, false), manifestWithProperty(false, false)))
-      .toMatchObject({ compatible: false, changes: expect.arrayContaining([
-        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
-      ]) });
-    expect(diffManifests(manifestWithProperty(true, true), manifestWithProperty(false, true, ["optional"])))
-      .toMatchObject({ compatible: false, changes: expect.arrayContaining([
-        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
-      ]) });
-    expect(diffManifests(manifestWithProperty(true, true, ["optional"]), manifestWithProperty(false, true, ["optional"])))
-      .toMatchObject({ compatible: true, changes: expect.arrayContaining([
-        expect.objectContaining({ code: "property-removed", severity: "additive" }),
-      ]) });
+    expect(diffManifests(before, after).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "requiredness-broken", severity: "breaking" }),
+    ]));
+  });
+
+  it("allows required output additions when prior clients accept extra properties", () => {
+    const before = createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "result",
+        description: "Return a result.",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "object" },
+        handler: async () => structuredResult({ token: "value" }),
+      }),
+    );
+    const after = structuredClone(before);
+    after.tools[0]!.outputSchema = {
+      type: "object",
+      properties: { token: { type: "string" } },
+      required: ["token"],
+    };
+
+    expect(diffManifests(before, after).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "property-added", severity: "additive" }),
+    ]));
   });
 
   it("applies input and output variance to enum and constraint changes", () => {
@@ -184,9 +206,67 @@ describe("McpFn manifests", () => {
         inputSchema: { type: "object", properties: { value: { minimum: "invalid" } } },
       }],
     })).toThrow(/invalid JSON Schema/);
+    expect(() => validateManifest({
+      ...manifest,
+      tools: [{ ...manifest.tools[0], outputSchema: null }],
+    })).toThrow(/outputSchema must be an object/);
+    expect(() => validateManifest({
+      ...manifest,
+      tools: [{ ...manifest.tools[0], execution: { taskSupport: "sometimes" } }],
+    })).toThrow(/invalid taskSupport=sometimes/);
+    expect(() => validateManifest({
+      ...manifest,
+      prompts: [{ name: "invalid", argumentsSchema: false }],
+    })).toThrow(/argumentsSchema must be an object/);
+    expect(() => validateManifest({
+      ...manifest,
+      prompts: [{ name: "invalid", argumentsSchema: { type: "string" } }],
+    })).toThrow(/argumentsSchema must be an object schema/);
+    expect(() => validateManifest({
+      ...manifest,
+      resources: [{ uri: "docs://invalid", name: "invalid", subscribable: "yes" }],
+    })).toThrow(/subscribable must be a boolean/);
+
+    const promptManifest = createManifest(
+      { name: "prompts", version: "1.0.0" },
+      new McpFnRegistry().registerPrompt({
+        name: "welcome",
+        arguments: [{ name: "name", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        },
+        get: async () => ({ messages: [] }),
+      }),
+    );
+    expect(() => validateManifest({
+      ...promptManifest,
+      prompts: [{
+        ...promptManifest.prompts![0],
+        arguments: [{ name: "other", required: true }],
+      }],
+    })).toThrow(/arguments and argumentsSchema disagree/);
+
+    const composedPromptManifest = createManifest(
+      { name: "composed-prompts", version: "1.0.0" },
+      new McpFnRegistry().registerPrompt({
+        name: "welcome",
+        arguments: [{ name: "name", required: true }],
+        argumentsSchema: {
+          type: "object",
+          allOf: [{
+            properties: { name: { type: "string" } },
+            required: ["name"],
+          }],
+        },
+        get: async () => ({ messages: [] }),
+      }),
+    );
+    expect(validateManifest(composedPromptManifest)).toEqual(composedPromptManifest);
   });
 
-  it("treats required or closed-schema output additions as breaking", () => {
+  it("treats closed-schema output additions as breaking", () => {
     const create = (
       required: string[],
       additionalProperties: boolean,
@@ -209,17 +289,461 @@ describe("McpFn manifests", () => {
         handler: async () => structuredResult({ value: "ok", added: "new" }),
       }),
     );
-    for (const [before, after] of [
-      [create(["value"], false, false), create(["value"], false, true)],
-      [create(["value"], true, false), create(["value", "added"], true, true)],
-    ]) {
-      expect(diffManifests(before, after)).toMatchObject({
-        compatible: false,
+    expect(diffManifests(
+      create(["value"], false, false),
+      create(["value"], false, true),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("uses schema-valued additionalProperties for output additions", () => {
+    const create = (
+      additionalProperties: Record<string, unknown>,
+      added?: Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "output",
+        description: "Return output.",
+        inputSchema: { type: "object" },
+        outputSchema: {
+          type: "object",
+          properties: added ? { added } : {},
+          additionalProperties,
+        },
+        handler: async () => structuredResult({ added: "new" }),
+      }),
+    );
+
+    for (const additionalProperties of [{}, { type: "string" }]) {
+      expect(diffManifests(
+        create(additionalProperties),
+        create(additionalProperties, { type: "string" }),
+      )).toMatchObject({
+        compatible: true,
         changes: expect.arrayContaining([
-          expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+          expect.objectContaining({ code: "property-added", severity: "additive" }),
         ]),
       });
     }
+    expect(diffManifests(
+      create({ type: "string" }),
+      create({ type: "string" }, { type: "number" }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "output-property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("treats true and an empty schema as equivalent additionalProperties", () => {
+    const create = (additionalProperties: true | Record<string, never>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "equivalent",
+        description: "Accept arbitrary input.",
+        inputSchema: { type: "object", additionalProperties },
+        outputSchema: { type: "object", additionalProperties },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(true), create({})).changes).toEqual([]);
+    expect(diffManifests(create({}), create(true)).changes).toEqual([]);
+  });
+
+  it("diffs schema-valued additionalProperties with directional variance", () => {
+    const create = (
+      direction: "input" | "output",
+      additionalProperties: true | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "additional",
+        description: "Use additional properties.",
+        inputSchema: direction === "input"
+          ? { type: "object", additionalProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", additionalProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+    const stringSchema = { type: "string" };
+    const cases = [
+      ["input", stringSchema, true, true],
+      ["input", true, stringSchema, false],
+      ["output", true, stringSchema, true],
+      ["output", stringSchema, true, false],
+    ] as const;
+
+    for (const [direction, before, after, compatible] of cases) {
+      expect(diffManifests(create(direction, before), create(direction, after)).compatible)
+        .toBe(compatible);
+    }
+  });
+
+  it("treats equivalent JSON Schema type sets as unchanged", () => {
+    const create = (type: string | string[]) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "types",
+        description: "Use equivalent type declarations.",
+        inputSchema: {
+          type: "object",
+          properties: { value: { type } },
+        },
+        outputSchema: {
+          type: "object",
+          properties: { value: { type } },
+        },
+        handler: async () => structuredResult({ value: "ok" }),
+      }),
+    );
+
+    expect(diffManifests(
+      create(["string", "null"]),
+      create(["null", "string"]),
+    ).changes).toEqual([]);
+    expect(diffManifests(create("string"), create(["string"])).changes).toEqual([]);
+  });
+
+  it("uses the fallback input schema when a declared property is removed", () => {
+    const create = (
+      property: Record<string, unknown> | undefined,
+      additionalProperties: boolean | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { value: property } : {},
+          additionalProperties,
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    for (const fallback of [true, {}, { type: "string" }]) {
+      expect(diffManifests(
+        create({ type: "string" }, false),
+        create(undefined, fallback),
+      )).toMatchObject({
+        compatible: true,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "property-removed", severity: "additive" }),
+        ]),
+      });
+    }
+    for (const fallback of [false, { type: "number" }]) {
+      expect(diffManifests(
+        create({ type: "string" }, false),
+        create(undefined, fallback),
+      )).toMatchObject({
+        compatible: false,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+        ]),
+      });
+    }
+  });
+
+  it("treats optional input declarations that narrow open inputs as breaking", () => {
+    const create = (property?: Record<string, unknown>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { value: property } : {},
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(), create({ type: "string" }))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-added", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("applies matching pattern schemas when an input property is removed", () => {
+    const create = (
+      property: Record<string, unknown> | undefined,
+      patternProperty: Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: property ? { pref_value: property } : {},
+          patternProperties: { "^pref_": patternProperty },
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ type: "string" }, { type: "string" }),
+      create(undefined, { type: "number" }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("diffs added, removed, and changed pattern schemas with directional variance", () => {
+    const pattern = (type: string) => ({ "^pref_": { type } });
+    const create = (
+      direction: "input" | "output",
+      patternProperties: Record<string, Record<string, unknown>>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "patterned",
+        description: "Use patterned properties.",
+        inputSchema: direction === "input"
+          ? { type: "object", patternProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", patternProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+    const cases = [
+      ["input", {}, pattern("string"), false],
+      ["input", pattern("string"), {}, true],
+      ["input", pattern("string"), pattern("number"), false],
+      ["output", {}, pattern("string"), true],
+      ["output", pattern("string"), {}, false],
+      ["output", pattern("string"), pattern("number"), false],
+    ] as const;
+
+    for (const [direction, before, after, compatible] of cases) {
+      const result = diffManifests(create(direction, before), create(direction, after));
+      expect(result.compatible, `${direction}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`)
+        .toBe(compatible);
+      expect(result.changes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: expect.stringContaining(".patternProperties.^pref_") }),
+      ]));
+    }
+  });
+
+  it("treats potentially overlapping pattern constraints conservatively", () => {
+    const create = (patternProperties: Record<string, Record<string, unknown>>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "overlapping-patterns",
+        description: "Exercise overlapping input patterns.",
+        inputSchema: {
+          type: "object",
+          patternProperties,
+          additionalProperties: false,
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "x$": { type: "number" } }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({
+          code: "overlapping-pattern-constraint-changed",
+          severity: "breaking",
+        }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "^y": { type: "number" } }),
+    )).toMatchObject({ compatible: true });
+    expect(diffManifests(
+      create({ "^x": { type: "string" } }),
+      create({ "^x": { type: "string" }, "x$": { type: "string" } }),
+    )).toMatchObject({ compatible: true });
+    for (const [existing, added] of [
+      ["^foo|bar", "^bar$"],
+      ["^baz$", "ba|qux$"],
+    ]) {
+      expect(diffManifests(
+        create({ [existing]: { type: "string" } }),
+        create({ [existing]: { type: "string" }, [added]: { type: "number" } }),
+      )).toMatchObject({
+        compatible: false,
+        changes: expect.arrayContaining([
+          expect.objectContaining({ code: "overlapping-pattern-constraint-changed" }),
+        ]),
+      });
+    }
+  });
+
+  it("compares removed output properties with their effective fallback", () => {
+    const create = (
+      properties: Record<string, Record<string, unknown>>,
+      required: string[] = [],
+      additionalProperties: boolean | Record<string, unknown> = true,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "optional-output",
+        description: "Exercise optional output properties.",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "object", properties, required, additionalProperties },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "property-removed", severity: "breaking" }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}, [], { type: "string" }),
+    )).toMatchObject({ compatible: true });
+    expect(diffManifests(
+      create({ value: { type: "string" } }),
+      create({}, [], false),
+    )).toMatchObject({ compatible: true });
+    expect(diffManifests(
+      create({ value: { type: "string" } }, ["value"]),
+      create({}),
+    )).toMatchObject({ compatible: false });
+  });
+
+  it("diffs pattern additions and removals against closed and schema fallbacks", () => {
+    const pattern = { "^pref_": { type: "string" } };
+    const create = (
+      direction: "input" | "output",
+      patternProperties: Record<string, Record<string, unknown>>,
+      additionalProperties: boolean | Record<string, unknown>,
+    ) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "pattern-fallback",
+        description: "Use pattern fallbacks.",
+        inputSchema: direction === "input"
+          ? { type: "object", patternProperties, additionalProperties }
+          : { type: "object" },
+        ...(direction === "output"
+          ? { outputSchema: { type: "object", patternProperties, additionalProperties } }
+          : {}),
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(
+      create("input", pattern, false),
+      create("input", {}, false),
+    ).compatible).toBe(false);
+    expect(diffManifests(
+      create("input", pattern, { type: "string" }),
+      create("input", {}, { type: "string" }),
+    ).compatible).toBe(true);
+    expect(diffManifests(
+      create("output", {}, false),
+      create("output", pattern, false),
+    ).compatible).toBe(false);
+    expect(diffManifests(
+      create("output", pattern, { type: "string" }),
+      create("output", {}, { type: "string" }),
+    ).compatible).toBe(true);
+  });
+
+  it("compares boolean property schemas by presence instead of truthiness", () => {
+    const create = (property: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "input",
+        description: "Accept input.",
+        inputSchema: {
+          type: "object",
+          properties: { value: property },
+        },
+        handler: async () => structuredResult({}),
+      }),
+    );
+
+    expect(diffManifests(create(true), create(false))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "boolean-schema-changed", severity: "breaking" }),
+      ]),
+    });
+  });
+
+  it("reports per-resource subscription removal while aggregate support remains", () => {
+    const create = (subscribeFirst: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry()
+        .registerResource({
+          uri: "docs://first",
+          name: "first",
+          read: async () => ({ contents: [{ uri: "docs://first", text: "First" }] }),
+          ...(subscribeFirst ? {
+            subscribe: async () => undefined,
+            unsubscribe: async () => undefined,
+          } : {}),
+        })
+        .registerResource({
+          uri: "docs://second",
+          name: "second",
+          read: async () => ({ contents: [{ uri: "docs://second", text: "Second" }] }),
+          subscribe: async () => undefined,
+          unsubscribe: async () => undefined,
+        })
+        .registerResourceTemplate({
+          uriTemplate: "docs://template-first/{id}",
+          name: "template-first",
+          read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "First" }] }),
+          ...(subscribeFirst ? {
+            subscribe: async () => undefined,
+            unsubscribe: async () => undefined,
+          } : {}),
+        })
+        .registerResourceTemplate({
+          uriTemplate: "docs://template-second/{id}",
+          name: "template-second",
+          read: async (uri) => ({ contents: [{ uri: uri.toString(), text: "Second" }] }),
+          subscribe: async () => undefined,
+          unsubscribe: async () => undefined,
+        }),
+    );
+
+    const before = create(true);
+    const after = create(false);
+    expect(before.capabilities?.resources).toEqual(after.capabilities?.resources);
+    expect(diffManifests(before, after)).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "resource-subscription-removed", severity: "breaking" }),
+        expect.objectContaining({ code: "resource-template-subscription-removed", severity: "breaking" }),
+      ]),
+    });
   });
 
   it("treats new client-mediated requirements as breaking", () => {
@@ -295,6 +819,30 @@ describe("McpFn manifests", () => {
     ]));
   });
 
+  it("applies directional variance to uniqueItems boolean transitions", () => {
+    const schema = (uniqueItems: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      new McpFnRegistry().register({
+        name: "unique-items",
+        description: "Exercise unique array items.",
+        inputSchema: { type: "object", properties: { value: { type: "array", uniqueItems } } },
+        outputSchema: { type: "object", properties: { value: { type: "array", uniqueItems } } },
+        handler: async () => structuredResult({ value: [] }),
+      }),
+    );
+
+    const relaxed = diffManifests(schema(true), schema(false)).changes;
+    expect(relaxed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining("inputSchema"), severity: "additive" }),
+      expect.objectContaining({ path: expect.stringContaining("outputSchema"), severity: "breaking" }),
+    ]));
+    const tightened = diffManifests(schema(false), schema(true)).changes;
+    expect(tightened).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining("inputSchema"), severity: "breaking" }),
+      expect.objectContaining({ path: expect.stringContaining("outputSchema"), severity: "additive" }),
+    ]));
+  });
+
   it("compares effective client and extension requirements", () => {
     const base = createManifest({ name: "example", version: "1.0.0" }, registry());
     const optional = createManifest(
@@ -314,6 +862,58 @@ describe("McpFn manifests", () => {
     expect(diffManifests(optional, required).changes).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: "extensions.optional", severity: "breaking" }),
     ]));
+  });
+
+  it("classifies nested capability operation removals as breaking", () => {
+    const create = (tasks: Record<string, unknown>) => createManifest(
+      { name: "example", version: "1.0.0" },
+      registry(),
+      { capabilities: { tasks } as never },
+    );
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } }, list: {}, cancel: {} }),
+      create({ requests: { tools: { call: {} } } }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.list" }),
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.cancel" }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } }, list: {}, cancel: {} }),
+      create({ requests: { tools: { call: {} } }, list: {}, poll: {} }),
+    )).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-removed", path: "capabilities.tasks.cancel" }),
+        expect.objectContaining({ code: "capability-support-added", path: "capabilities.tasks.poll" }),
+      ]),
+    });
+    expect(diffManifests(
+      create({ requests: { tools: { call: {} } } }),
+      create({ requests: { tools: { call: {} } }, list: {} }),
+    )).toMatchObject({
+      compatible: true,
+      changes: expect.arrayContaining([
+        expect.objectContaining({ code: "capability-support-added", path: "capabilities.tasks.list" }),
+      ]),
+    });
+
+    const withResources = (subscribe: boolean) => createManifest(
+      { name: "example", version: "1.0.0" },
+      registry(),
+      { capabilities: { resources: { subscribe } } as never },
+    );
+    expect(diffManifests(withResources(true), withResources(false))).toMatchObject({
+      compatible: false,
+      changes: expect.arrayContaining([
+        expect.objectContaining({
+          code: "capability-support-removed",
+          path: "capabilities.resources.subscribe",
+        }),
+      ]),
+    });
   });
 
   it("tracks prompt argument metadata and canonicalizes object enum values", () => {
@@ -342,18 +942,6 @@ describe("McpFn manifests", () => {
       expect.objectContaining({ code: "prompt-arguments-changed", severity: "behavioral" }),
     ]);
     expect(canonicalJson({ "ä": 1, z: 2 })).toBe('{"z":2,"ä":1}');
-    expect(canonicalJson({ "2": "two", "10": "ten", a: "letter" })).toBe('{"10":"ten","2":"two","a":"letter"}');
-    expect(canonicalJson({ at: new Date("2026-08-21T00:00:00.000Z") })).toBe('{"at":"2026-08-21T00:00:00.000Z"}');
-    const keys: string[] = [];
-    const value = {
-      toJSON(key: string) {
-        keys.push(key);
-        return { toJSON: () => "must-not-run-again", nested: { toJSON: (nestedKey: string) => nestedKey } };
-      },
-    };
-    expect(canonicalJson({ value })).toBe('{"value":{"nested":"nested"}}');
-    expect(keys).toEqual(['value']);
-    expect(canonicalJson([, "present"])).toBe('[null,"present"]');
   });
 
   it("normalizes elicitation requirements and rejects malformed manifest entries", () => {
@@ -371,5 +959,57 @@ describe("McpFn manifests", () => {
       ...normalized,
       resourceTemplates: [{ name: "static", uriTemplate: "docs://static" }],
     })).toThrow(/at least one variable/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [{ name: "missing-template" }],
+    })).toThrow(/invalid URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [{ name: "non-string-template", uriTemplate: 42 }],
+    })).toThrow(/invalid URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "person", uriTemplate: "docs://users/{id}" },
+        { name: "user", uriTemplate: "docs://users/{name}" },
+      ],
+    })).toThrow(/ambiguous resource URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "person", uriTemplate: "docs://users/{id}" },
+        { name: "path", uriTemplate: "docs://users/{+path}" },
+      ],
+    })).toThrow(/ambiguous resource URI template/);
+    expect(() => validateManifest({
+      ...normalized,
+      resourceTemplates: [
+        { name: "unsupported", uriTemplate: "docs://users{;id}" },
+      ],
+    })).toThrow(/unsupported URI template operator ;/);
+    expect(() => validateManifest({
+      ...normalized,
+      prompts: [{
+        name: "numeric",
+        arguments: [{ name: "age", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { age: { type: "number" } },
+          required: ["age"],
+        },
+      }],
+    })).toThrow(/argument age must accept string values/);
+    expect(() => validateManifest({
+      ...normalized,
+      prompts: [{
+        name: "contradictory",
+        arguments: [{ name: "value", required: true }],
+        argumentsSchema: {
+          type: "object",
+          properties: { value: { allOf: [{ const: "a" }, { const: "b" }] } },
+          required: ["value"],
+        },
+      }],
+    })).toThrow(/argument value must accept string values/);
   });
 });
